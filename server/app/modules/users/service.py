@@ -94,6 +94,8 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         user.notification_default = data.notification_default
     if data.notify_reactions is not None:
         user.notify_reactions = data.notify_reactions
+    if data.notify_tasks is not None:
+        user.notify_tasks = data.notify_tasks
     if "quick_reactions" in data.model_fields_set:
         user.quick_reactions = data.quick_reactions  # null: back to the clients' rule (M50)
     user.updated_at = utcnow()

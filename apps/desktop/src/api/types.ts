@@ -262,6 +262,42 @@ export interface CalendarEventDeleted {
   id: string;
   channel_id: string | null;
 }
+/**
+ * Tasks (TASKS.md; M55): a channel's board (`channel_id` set) or my personal list (`channel_id` null). task.updated
+ * carries the task without `can_delete` (it differs per person): it is `deleter_ids` holding me (openapi/ws-events.json).
+ */
+export type TaskOut = components["schemas"]["TaskOut"];
+export type TaskCreate = components["schemas"]["TaskCreate"];
+export type TaskUpdate = components["schemas"]["TaskUpdate"];
+export type TaskMove = components["schemas"]["TaskMove"];
+export type TaskStatus = TaskOut["status"];
+export type TaskData = Omit<TaskOut, "can_delete">;
+/** task.updated: a new, changed or moved task, and who may delete it. */
+export interface TaskUpdated {
+  task: TaskData;
+  deleter_ids: string[];
+}
+/** task.deleted. */
+export interface TaskDeleted {
+  id: string;
+  channel_id: string | null;
+}
+/** task.assigned (to me only): someone else added me to a shared task's assignees. */
+export interface TaskAssigned {
+  task_id: string;
+  channel_id: string;
+  channel_name: string;
+  title: string;
+  by_user_id: string;
+}
+/** task.due (to me only): one of my open tasks is due today (8:00 in my zone). */
+export interface TaskDue {
+  task_id: string;
+  channel_id: string | null;
+  channel_name: string | null;
+  title: string;
+  due_on: string;
+}
 /** calendar.alarm.updated: my alarm on an event was set, recomputed, fired (status "fired") or removed (null). */
 export interface CalendarAlarmUpdated {
   event_id: string;

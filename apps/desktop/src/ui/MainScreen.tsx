@@ -18,6 +18,10 @@ import { ChannelDetails } from "./ChannelDetails";
 import { CanvasPane } from "./CanvasPane";
 import { type ConversationTab, ConversationTabs, eventsTabLabel } from "./ConversationTabs";
 import { CalendarView, ChannelEvents, useCalendarHub } from "./CalendarView";
+import { ChannelTasks } from "./TaskBoard";
+import { MyTasksView } from "./MyTasksView";
+import { TaskDialog } from "./TaskDialog";
+import type { TaskOut } from "../api/types";
 import { MentionsView } from "./MentionsView";
 import { DirectoryDialog } from "./DirectoryDialog";
 import { DraftsView } from "./DraftsView";
@@ -59,7 +63,8 @@ import { YouView } from "./YouView";
 
 // "activity": the wide layout's 「アクティビティ」 (M39; the mentions list for a server before it).
 // "canvases" (M44): the canvases of all my conversations. "calendar" (M51): my calendar and my channels'.
-type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar";
+// "tasks" (M55): 「自分のタスク」 and 「自分の担当」.
+type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks";
 
 /**
  * What one screen of the narrow layout shows (M34: the selected tab's screens are live in MainScreen's state, the other
@@ -454,6 +459,39 @@ export function MainScreen({ controller }: { controller: AppController }) {
     if (options.fromSearch) setBackToSearch(true);
   };
 
+  /** M55: a channel's 「タスク」 tab (a group of 「自分の担当」, a notification); on a phone it lands as a notification does. */
+  const openTasksTab = (channelId: string) => {
+    if (compactRef.current) {
+      controller.clearMessageFocus();
+      controller.setEditing(null);
+      setHomeOverlay(null);
+      setSwitcher(false);
+      land(channelId, null, { tab: "tasks" });
+      return;
+    }
+    open(channelId);
+    setTab("tasks");
+  };
+
+  /** M55: a task's message: back to 「メッセージ」 first (the board may cover the very conversation it is in). */
+  const openTaskMessage = (messageId: string) => {
+    setTab("messages");
+    void controller.openPermalink(messageId);
+  };
+
+  /** M55: the task a notification asked for, in its dialog over its board's tab (a personal one over 「タスク」). */
+  const [taskDialog, setTaskDialog] = useState<TaskOut | null>(null);
+  useEffect(() => {
+    const request = controller.openTaskRequest;
+    if (!request) return;
+    controller.openTaskRequest = null;
+    const channel = request.channelId ? store.getChannel(request.channelId) : undefined;
+    if (channel?.isMember) openTasksTab(channel.id);
+    else if (view !== "tasks") openView("tasks");
+    void controller.loadTask(request.taskId).then((task) => { if (task) setTaskDialog(task); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller.openTaskRequest]);
+
   /** M44: the comments of a canvas are its shared message's thread, beside the canvas (over it on a phone). */
   const openCanvasThread = (channelId: string, messageId: string) => {
     controller.clearMessageFocus();
@@ -556,7 +594,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar") => {
+  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -807,6 +845,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       canvasesActive={view === "canvases"}
       onCalendar={() => openView("calendar")}
       calendarActive={view === "calendar"}
+      onTasks={() => openView("tasks")}
+      tasksActive={view === "tasks"}
       onReadAll={() => void controller.markAllRead()}
       onReminders={() => openView("reminders")}
       remindersActive={view === "reminders"}
@@ -848,8 +888,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // M43: the wide layout has 「メッセージ | キャンバス」 in the header (its pins and files stay a pane and a view).
   const canvasTab = !!current && current.isMember && !previewing;
   const shownTab: ConversationTab = tabbed
-    ? tab === "events" && !isChannel ? "messages" : tab
-    : canvasTab && (tab === "canvas" || (tab === "events" && isChannel)) ? tab : "messages";
+    ? (tab === "events" || tab === "tasks") && !isChannel ? "messages" : tab
+    : canvasTab && (tab === "canvas" || ((tab === "events" || tab === "tasks") && isChannel)) ? tab : "messages";
   // Nothing of the conversation counts as seen while another tab or a page covers it (SYNC_PROTOCOL.md §10.1 2.).
   const conversationOnScreen = shownTab === "messages" && (!compact || (!showDetails && !sidePane));
   const openDetails = () => {
@@ -914,6 +954,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         />
       ) : view === "calendar" ? (
         <CalendarView controller={controller} />
+      ) : view === "tasks" ? (
+        <MyTasksView controller={controller} onOpenBoard={openTasksTab} />
       ) : view === "drafts" ? (
         <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
       ) : current && (current.isMember || previewing) ? (
@@ -961,7 +1003,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
               {current.archived && <Badge>アーカイブ済み</Badge>}
               {canvasTab && !compact && (
                 <div role="tablist" aria-label="会話の表示" className="ml-1 flex shrink-0 rounded-lg bg-panel-2 p-0.5 text-xs font-medium">
-                  {([["messages", "メッセージ"], ["canvas", "キャンバス"], ...(isChannel ? [["events", eventsTabLabel(upcomingCount)] as const] : [])] as const).map(([value, label]) => (
+                  {([["messages", "メッセージ"], ["canvas", "キャンバス"], ...(isChannel ? [["events", eventsTabLabel(upcomingCount)] as const, ["tasks", "タスク"] as const] : [])] as const).map(([value, label]) => (
                     <button
                       key={value}
                       type="button"
@@ -1138,6 +1180,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 <ChannelEvents controller={controller} channel={current} />
               </div>
             )}
+            {shownTab === "tasks" && (
+              <div role="tabpanel" aria-label="タスク" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
+                <ChannelTasks controller={controller} channel={current} onOpenMessage={openTaskMessage} />
+              </div>
+            )}
             {shownTab === "pins" && (
               <div role="tabpanel" aria-label="ピン留め" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
                 <ChannelPins controller={controller} channel={current} onOpen={revealFromList} />
@@ -1218,6 +1265,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         </Modal>
       )}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
+      {taskDialog && <TaskDialog controller={controller} task={controller.engine?.tasks?.find(taskDialog.id) ?? taskDialog} onClose={() => setTaskDialog(null)} onOpenMessage={openTaskMessage} />}
     </>
   );
 
@@ -1244,6 +1292,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onFiles={() => openFiles(null)}
           onCanvases={() => openView("canvases")}
           onCalendar={() => openView("calendar")}
+          onTasks={() => openView("tasks")}
           onBrowse={() => setDialog("browse")}
           onNewChannel={() => setDialog("channel")}
           onDirectory={() => setDialog("directory")}

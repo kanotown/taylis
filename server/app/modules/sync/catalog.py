@@ -22,6 +22,7 @@ from app.modules.reads import events as read_events
 from app.modules.reminders import events as reminder_events
 from app.modules.scheduled import events as scheduled_events
 from app.modules.sidebar import events as sidebar_events
+from app.modules.tasks import events as task_events
 from app.modules.templates import events as template_events
 from app.modules.threads import events as thread_events
 from app.modules.users import events as user_events
@@ -91,6 +92,18 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
         "user",
         False,
     ),
+    task_events.TASK_UPDATED: (
+        task_events.TaskUpdatedData,
+        "channel (a personal task: user)",
+        False,
+    ),
+    task_events.TASK_DELETED: (
+        task_events.TaskDeletedData,
+        "channel (a personal task: user)",
+        False,
+    ),
+    task_events.TASK_ASSIGNED: (task_events.TaskAssignedData, "user", False),
+    task_events.TASK_DUE: (task_events.TaskDueData, "user", False),
     scheduled_events.SCHEDULED_UPDATED: (scheduled_events.ScheduledUpdatedData, "user", False),
     reminder_events.REMINDER_UPDATED: (reminder_events.ReminderUpdatedData, "user", False),
     emoji_events.EMOJI_UPDATED: (emoji_events.EmojiUpdatedData, "all", False),

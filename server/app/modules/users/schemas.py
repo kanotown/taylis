@@ -109,6 +109,8 @@ class UserMe(UserPublic):
     # M39: a push when someone reacts to my message (banner); the activity lists reactions either
     # way.
     notify_reactions: bool = False
+    # M55: a push when a task is assigned to me or one of mine is due today (TASKS.md §5).
+    notify_tasks: bool = True
     # M48: false for an account made by Google sign-in; clients hide 「パスワードを変更」.
     has_password: bool = True
     # M50: my quick reactions in order (1-6 plain emoji); null = not chosen, the clients' rule
@@ -137,6 +139,8 @@ class UserUpdate(BaseModel):
     notification_default: Literal["all", "mentions", "none"] | None = None
     # M39: reaction banners on or off.
     notify_reactions: bool | None = None
+    # M55: task pushes (assignments, due dates) on or off.
+    notify_tasks: bool | None = None
     # M50: 1-6 distinct plain emoji; null resets to the clients' rule.
     quick_reactions: list[str] | None = Field(
         default=None, min_length=1, max_length=MAX_QUICK_REACTIONS
@@ -221,6 +225,7 @@ def to_user_me(user: User) -> UserMe:
         presence_hidden=user.presence_hidden,
         notification_default=user.notification_default,  # type: ignore[arg-type]
         notify_reactions=user.notify_reactions,
+        notify_tasks=user.notify_tasks,
         has_password=user.password_hash is not None,
         quick_reactions=list(user.quick_reactions) if user.quick_reactions else None,
     )

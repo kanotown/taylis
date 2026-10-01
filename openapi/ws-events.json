@@ -4738,6 +4738,350 @@
         "type": "object"
       }
     },
+    "task.assigned": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "description": "task.assigned: someone else added me to a task's assignees (the push of TASKS.md §5).",
+        "properties": {
+          "by_user_id": {
+            "format": "uuid",
+            "title": "By User Id",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "channel_name": {
+            "title": "Channel Name",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "channel_id",
+          "channel_name",
+          "title",
+          "by_user_id"
+        ],
+        "title": "TaskAssignedData",
+        "type": "object"
+      }
+    },
+    "task.deleted": {
+      "audience": "channel (a personal task: user)",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id"
+        ],
+        "title": "TaskDeletedData",
+        "type": "object"
+      }
+    },
+    "task.due": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "description": "task.due: one of my open tasks is due today (8:00 in my zone); sent once.",
+        "properties": {
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "due_on": {
+            "format": "date",
+            "title": "Due On",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "channel_id",
+          "channel_name",
+          "title",
+          "due_on"
+        ],
+        "title": "TaskDueData",
+        "type": "object"
+      }
+    },
+    "task.updated": {
+      "audience": "channel (a personal task: user)",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "TaskData": {
+            "description": "A task as everyone who sees it sees it: task.updated carries this (can_delete, which\ndiffers per person, is in TaskOut).",
+            "properties": {
+              "assignee_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Assignee Ids",
+                "type": "array"
+              },
+              "channel_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Channel Id"
+              },
+              "channel_name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Channel Name"
+              },
+              "completed_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Completed At"
+              },
+              "completed_by": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Completed By"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "due_on": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Due On"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "notes": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Notes"
+              },
+              "owner_id": {
+                "format": "uuid",
+                "title": "Owner Id",
+                "type": "string"
+              },
+              "position": {
+                "title": "Position",
+                "type": "number"
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/TaskSourceOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "status": {
+                "enum": [
+                  "todo",
+                  "doing",
+                  "done"
+                ],
+                "title": "Status",
+                "type": "string"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "channel_name",
+              "owner_id",
+              "title",
+              "notes",
+              "status",
+              "position",
+              "due_on",
+              "assignee_ids",
+              "source",
+              "completed_at",
+              "completed_by",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "TaskData",
+            "type": "object"
+          },
+          "TaskSourceOut": {
+            "description": "The message a task was made from (TASKS.md §1), with its text as one line (the DM list's\nand the notifications' rule), kept up to date with edits. When the message is deleted the task\nstays: message_id and excerpt become null (「元のメッセージは削除されました」).",
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "excerpt": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Excerpt"
+              },
+              "message_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Message Id"
+              }
+            },
+            "required": [
+              "message_id",
+              "channel_id",
+              "excerpt"
+            ],
+            "title": "TaskSourceOut",
+            "type": "object"
+          }
+        },
+        "description": "task.updated: a new, changed or moved task, to those who see it.",
+        "properties": {
+          "deleter_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Deleter Ids",
+            "type": "array"
+          },
+          "task": {
+            "$ref": "#/$defs/TaskData"
+          }
+        },
+        "required": [
+          "task",
+          "deleter_ids"
+        ],
+        "title": "TaskUpdatedData",
+        "type": "object"
+      }
+    },
     "template.updated": {
       "audience": "all (a personal template: user)",
       "consumes_seq": false,

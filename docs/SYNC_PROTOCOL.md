@@ -239,6 +239,10 @@
 | `calendar.event.updated` | channel (自分用: user) | — | `{ event: CalendarEventData, editor_ids }` (M51)。予定の作成・変更。人ごとに違う `can_edit` と `alarm` は載せない: `can_edit` は `editor_ids` に自分がいるか、`alarm` は手元の値のまま。表示中の期間に重なる予定だけを差し替え、外れたら消す。手順は §15 |
 | `calendar.event.deleted` | channel (自分用: user) | — | `{ id, channel_id }` (M51)。手元から消す |
 | `calendar.alarm.updated` | user | — | `{ event_id, channel_id, alarm: CalendarAlarmOut \| null }` (M51)。自分の通知の設定・計算し直し・発火 (`status: fired`)・削除 (null)。fired はアプリ内でも通知する (プッシュは PushPlanner) |
+| `task.updated` | channel (自分用: user) | — | `{ task: TaskData, deleter_ids }` (M55)。タスクの作成・変更・移動 (並べ替えで振り直したカードも 1 件ずつ)。人ごとに違う `can_delete` は載せない: `deleter_ids` に自分がいるか。手順は §16 |
+| `task.deleted` | channel (自分用: user) | — | `{ id, channel_id }` (M55)。手元から消す |
+| `task.assigned` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id }` (M55)。ほかの人が自分を担当に加えた (自分で加えたときは出ない)。アプリ内でも通知する (プッシュは PushPlanner) |
+| `task.due` | user | — | `{ task_id, channel_id, channel_name, title, due_on }` (M55)。担当 (自分用は自分) の未完了のタスクの期限の日の 8:00。1 回だけ。アプリ内でも通知する |
 | `draft.updated` | user | — | `{ channel_id, parent_id, body, updated_at, deleted }` (M15d)。自分の端末が下書きを保存 / 削除した (`deleted` なら `body` は空)。取り込み方は §8 |
 | `reminder.updated` | user | — | `{ reminder: ReminderOut }` (M12e)。作成 / 発火 (fired) / 完了 / 取消。fired の行は「リマインダー」一覧の先頭に出し、アプリ内でも通知する |
 | `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
@@ -1005,3 +1009,22 @@ base・送られた本文・head を 3-way マージする。
   自分) ら、そのチャンネルの予定を手元から外す。
 - **自分の変更**: POST / PATCH / PUT alarm の応答 (`CalendarEventOut`) をそのまま手元に入れる。後から届く自分の変更のイベントは
   同じ内容なので二重にならない。作成の再送は `client_event_id` で同じ予定が返る (201 の代わりに 200)。
+
+## 16. タスク (M55、TASKS.md §4)
+
+タスクはチャンネルの seq を使わない。端末はタスクを長く保存せず、画面ごとに読む (カレンダーと同じ)。
+
+- **読む**: チャンネルの「タスク」タブは `GET /tasks?channel_id` (未完了の全部と、完了の最近 100 件。`include_done=all` で全部)。
+  「自分のタスク」は `GET /tasks/mine` (自分用と、参加しているチャンネルの自分が担当のもの。完了は最近 50 件)。カレンダーは表示中の
+  期間について `GET /tasks/due?from&to` (日付。`to` は含まない、最長 100 日。完了も含む)。
+- **並び**: 列 (`status`) の中は `position` の小さい順、同じなら id 順。端末は手元の順番ではなく、いつもサーバの `position` で並べる
+  (移動で列が振り直されると、動いたカードそれぞれの `task.updated` が届く)。ドラッグの移動は `POST /tasks/{id}/move
+  {status, after_id?, before_id?}` (`after_id` = すぐ上に来るカード、`before_id` = すぐ下)。手元で先に動かしてよいが、応答
+  (`TaskOut`) とイベントの `position` で置き換える。
+- **イベント**: `task.updated` はタスクを、開いている画面それぞれについて「載るなら入れ替え (無ければ足す)、載らなければ外す」
+  (ボード: そのチャンネル。自分のタスク: 自分用か、`assignee_ids` に自分がいる。カレンダー: `due_on` が期間の中)。`can_delete` は
+  `deleter_ids` (作成者 (メンバーなら)・担当者・チャンネルのオーナー・メンバーの管理者。アーカイブ済みなら空、自分用は本人) に
+  自分がいるか。`task.deleted` は外す。`task.assigned` / `task.due` は表示を変えず、アプリを開いている端末が通知を出す。
+- **再接続**: 開いているボード・自分のタスク・カレンダーの期間を全部読み直す。チャンネルから抜けた (channel.member_removed が自分) ら、
+  そのチャンネルのタスクを手元から外す。
+- **自分の変更**: POST / PATCH / move の応答をそのまま手元に入れる。作成の再送は `client_task_id` で同じタスクが返る (201 の代わりに 200)。

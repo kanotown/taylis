@@ -15,6 +15,7 @@ from app.modules.messages import models as _message_models
 from app.modules.notifications import models as _notification_models
 from app.modules.sidebar import models as _sidebar_models
 from app.modules.sso import models as _sso_models
+from app.modules.tasks import models as _task_models
 from app.modules.totp import models as _totp_models
 from app.modules.users import models as _user_models
 from app.modules.webhooks import models as _webhook_models
@@ -36,6 +37,7 @@ __all__ = [
     "_notification_models",
     "_sidebar_models",
     "_sso_models",
+    "_task_models",
     "_totp_models",
     "_user_models",
     "_webhook_models",

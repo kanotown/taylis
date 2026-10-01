@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BellOff, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, FileText, Files, Hash, Lock, MessagesSquare, MoreHorizontal, NotebookText, Plus, Search, SquarePen } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, NotebookText, Plus, Search, SquarePen } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -34,6 +34,8 @@ export interface HomeViewProps {
   onCanvases?: () => void;
   /** M51: the calendar (a tile, CALENDAR.md §7). Optional (older callers). */
   onCalendar?: () => void;
+  /** M55: 「自分のタスク」 (a tile, TASKS.md §6). Optional (older callers). */
+  onTasks?: () => void;
   onBrowse: () => void;
   onNewChannel: () => void;
   onDirectory: () => void;
@@ -250,7 +252,7 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
 }
 
 /** The tiles across the top (MOBILE_UI.md §6.1): the views the wide sidebar lists as rows. A zero is dimmed, still a tap. */
-function Tiles({ controller, onThreads, onDrafts, onSaved, onReminders, onFiles, onCanvases, onCalendar }: HomeViewProps) {
+function Tiles({ controller, onThreads, onDrafts, onSaved, onReminders, onFiles, onCanvases, onCalendar, onTasks }: HomeViewProps) {
   const store = controller.store;
   const threads = store.threadSummary;
   const drafts = store.listDrafts().length + store.scheduled.size;
@@ -261,6 +263,7 @@ function Tiles({ controller, onThreads, onDrafts, onSaved, onReminders, onFiles,
     { key: "saved", label: "保存", icon: <Bookmark size={20} />, count: store.bookmarks.size, danger: false, onClick: onSaved },
     { key: "reminders", label: "リマインダー", icon: <AlarmClock size={20} />, count: fired, danger: fired > 0, onClick: onReminders },
     ...(onCalendar ? [{ key: "calendar", label: "カレンダー", icon: <CalendarDays size={20} />, count: null, danger: false, onClick: onCalendar }] : []),
+    ...(onTasks ? [{ key: "tasks", label: "タスク", icon: <ListTodo size={20} />, count: null, danger: false, onClick: onTasks }] : []),
     { key: "files", label: "ファイル", icon: <Files size={20} />, count: null, danger: false, onClick: onFiles },
     ...(onCanvases ? [{ key: "canvases", label: "キャンバス", icon: <NotebookText size={20} />, count: null, danger: false, onClick: onCanvases }] : []),
   ];

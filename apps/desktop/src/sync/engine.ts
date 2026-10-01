@@ -7,6 +7,7 @@ import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
 import { CalendarHub, type CalendarApi } from "./calendar";
 import { CanvasHub } from "./canvases";
+import { type TaskApi, TaskHub, type TaskNotice } from "./tasks";
 import type { CanvasSaverOptions } from "./canvasSave";
 import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, overallLevel } from "./notifications";
@@ -73,6 +74,15 @@ export interface SyncApi {
   setCalendarAlarm?: CalendarApi["setCalendarAlarm"];
   clearCalendarAlarm?: CalendarApi["clearCalendarAlarm"];
   getCalendarEvent?: CalendarApi["getCalendarEvent"];
+  /** M55: tasks (TASKS.md §3). Optional (older fakes). */
+  listTasks?: TaskApi["listTasks"];
+  myTasks?: TaskApi["myTasks"];
+  dueTasks?: TaskApi["dueTasks"];
+  getTask?: TaskApi["getTask"];
+  createTask?: TaskApi["createTask"];
+  updateTask?: TaskApi["updateTask"];
+  moveTask?: TaskApi["moveTask"];
+  deleteTask?: TaskApi["deleteTask"];
   /** M15d: drafts shared by my devices. Optional (older fakes). */
   saveDraft?(channelId: string, parentId: string | null, body: string): Promise<DraftOut>;
   deleteDraft?(channelId: string, parentId: string | null): Promise<void>;
@@ -135,6 +145,8 @@ export interface EngineDeps {
   onReminder?: (reminder: ReminderOut) => void;
   /** M51: one of my calendar alarms just fired (the server pushes to phones; the app shows it while open). */
   onCalendarAlarm?: (event: CalendarEventOut) => void;
+  /** M55: task.assigned / task.due to me (the server pushes to phones; the app shows it while open). */
+  onTaskNotice?: (notice: TaskNotice) => void;
   /** A channel became fully read (here or on another device). */
   onRead?: (channelId: string) => void;
   isActive?: () => boolean;
@@ -259,6 +271,13 @@ export class SyncEngine {
       me: () => deps.store.me?.id ?? null,
       onAlarm: (event) => deps.onCalendarAlarm?.(event),
     });
+    this.tasks = new TaskHub({
+      api: api.listTasks && api.myTasks && api.dueTasks && api.getTask && api.createTask && api.updateTask && api.moveTask && api.deleteTask
+        ? (api as unknown as TaskApi)
+        : null,
+      me: () => deps.store.me?.id ?? null,
+      onNotice: (notice) => deps.onTaskNotice?.(notice),
+    });
     this.drafts = new DraftSync({
       api: api.saveDraft && api.deleteDraft ? { saveDraft: (c, p, b) => api.saveDraft!(c, p, b), deleteDraft: (c, p) => api.deleteDraft!(c, p) } : null,
       store: deps.store,
@@ -290,6 +309,8 @@ export class SyncEngine {
   readonly canvases: CanvasHub;
   /** M51: the ranges of the calendar on screen and the channels' counts (CALENDAR.md §5). */
   readonly calendar: CalendarHub;
+  /** M55: the boards, 「自分のタスク」 and calendar ranges on screen (TASKS.md §4). */
+  readonly tasks: TaskHub;
 
   /** Save edited drafts now instead of after the typing pause (tests, sign-out). */
   flushDrafts(): Promise<void> {
@@ -421,6 +442,7 @@ export class SyncEngine {
       void this.drafts.flush(); // edited while offline (M15d)
       this.canvases.online(); // M43: canvas saves that failed, open canvases read again
       this.calendar.online(); // M51: the ranges on screen read again (CALENDAR.md §5)
+      this.tasks.online(); // M55: the boards and lists on screen read again (TASKS.md §4)
       this.resendReads(); // §10: marks that did not reach the server
       // Open the conversation again: its links may have changed while away (M15f), and one opened while this
       // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
@@ -477,6 +499,7 @@ export class SyncEngine {
     this.cancelSendRetry();
     this.canvases.stop();
     this.calendar.stop();
+    this.tasks.stop();
     this.dropSocket();
     this.setStatus("signed_out");
     this.deps.onSignedOut?.();
@@ -792,6 +815,12 @@ export class SyncEngine {
       case "calendar.alarm.updated":
         this.calendar.applyEvent(frame.event, frame.data);
         return;
+      case "task.updated":
+      case "task.deleted":
+      case "task.assigned":
+      case "task.due":
+        this.tasks.applyEvent(frame.event, frame.data);
+        return;
       case "sidebar.updated": {
         const data = frame.data as { sections: SidebarSectionOut[] };
         store.replaceSidebar(data.sections);
@@ -925,6 +954,7 @@ export class SyncEngine {
     if (this.preview?.channelId === channelId) this.closePreview();
     this.canvases.removeChannel(channelId);
     this.calendar.removeChannel(channelId);
+    this.tasks.removeChannel(channelId);
     this.deps.store.removeChannel(channelId);
   }
 

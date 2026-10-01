@@ -29,6 +29,8 @@ from app.modules.reads import rules as unread_rules
 from app.modules.reads import service as reads
 from app.modules.reminders import service as reminders
 from app.modules.reminders.events import REMINDER_UPDATED
+from app.modules.tasks import service as tasks
+from app.modules.tasks.events import TASK_ASSIGNED, TASK_DUE
 from app.modules.threads import service as threads
 from app.modules.users import service as users
 from app.modules.users.dnd import dnd_active
@@ -52,6 +54,9 @@ class PushPlanner:
             return
         if event.event_type == CALENDAR_ALARM_UPDATED:
             await self.handle_calendar(db, event)
+            return
+        if event.event_type in (TASK_ASSIGNED, TASK_DUE):
+            await self.handle_task(db, event)
             return
         if (
             event.event_type != MESSAGE_CREATED
@@ -215,6 +220,78 @@ class PushPlanner:
                 kind="alert",
                 collapse_key=str(payload["collapse_key"]),
                 channel_id=notice.channel_id,
+                message_id=None,
+                message_seq=None,
+                payload=payload,
+                expires_at=expires_at,
+            )
+
+    async def handle_task(self, db: AsyncSession, event: OutboxEvent) -> None:
+        """M55 (TASKS.md §5): someone assigned me a task, or one of mine is due today. Only with
+        task notifications on (notify_tasks) and not during DND. An assignment is also held back
+        like a reaction: not in a conversation muted or set to nothing, not while I am on another
+        device, not for a task deleted or completed since. A due date is a reminder: it goes out
+        whatever the channel's level (like the calendar's alarms)."""
+        data = event.payload
+        user_id = uuid.UUID(str(event.audience_id))
+        user = await users.get_user(db, user_id)
+        now = utcnow()
+        if user is None or not user.notify_tasks or dnd_active(user, now):
+            return
+        task_id = uuid.UUID(str(data["task_id"]))
+        channel_id = uuid.UUID(str(data["channel_id"])) if data.get("channel_id") else None
+        title = str(data.get("title") or "")
+        where = f" (#{data['channel_name']})" if data.get("channel_name") else ""
+        if event.event_type == TASK_ASSIGNED:
+            if self.is_active(user_id) or channel_id is None:
+                return
+            if await channels.membership_of(db, user_id, channel_id) is None:
+                return
+            if not await tasks.still_open(db, task_id):
+                return
+            channel = await channels.require_channel(db, channel_id)
+            pref = (await repo.preferences_for_channel(db, channel_id, [user_id])).get(user_id)
+            level = push_level(
+                pref.level if pref else None,
+                is_dm=channel.is_dm,
+                others_times=channel.times_owner_id is not None
+                and channel.times_owner_id != user_id,
+                overall=user.notification_default,
+            )
+            if level == "none" or is_muted(pref, now):
+                return
+            actor = await users.get_user(db, uuid.UUID(str(data["by_user_id"])))
+            who = actor.display_name if actor else "誰か"
+            body = f"{who} がタスクを割り当てました: {title}{where}"
+            hidden = "タスクが割り当てられました"
+        else:
+            body = f"今日が期限: {title}{where}"
+            hidden = "今日が期限のタスクがあります"
+        devices = await repo.push_devices_for_users(db, [user_id])
+        if not devices:
+            return
+        expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
+        payload = PushPayload(
+            kind="task",
+            workspace_id=await workspace.workspace_id(db),
+            channel_id=channel_id,
+            task_id=task_id,
+            seq=None,
+            title="タスク",
+            subtitle=None,
+            body=(body if self.settings.push_include_content else hidden)[:240],
+            badge=max(await self.badge_for(db, user_id), 1),
+            collapse_key=f"task:{task_id}",
+            sent_at=now,
+        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        for device in devices:
+            await repo.add_delivery(
+                db,
+                event_id=event.id,
+                device=device,
+                kind="alert",
+                collapse_key=str(payload["collapse_key"]),
+                channel_id=channel_id,
                 message_id=None,
                 message_seq=None,
                 payload=payload,

@@ -42,6 +42,8 @@ class User(Base):
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
     notify_reactions: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # M55: pushes for task assignments and due dates (TASKS.md §5).
+    notify_tasks: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     # M35: what a channel without a level of its own notifies of: all | mentions | none.
     notification_default: Mapped[str] = mapped_column(
         String(16), default="mentions", server_default="mentions"

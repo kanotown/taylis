@@ -2336,6 +2336,117 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Board
+         * @description A channel's board: every open task and the completed ones, by column and position.
+         */
+        get: operations["list_board_api_v1_tasks_get"];
+        put?: never;
+        /**
+         * Create Task
+         * @description A new task in my list or on a channel's board (a member who may post there).
+         */
+        post: operations["create_task_api_v1_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/due": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Due
+         * @description Tasks I can see whose due date is in [from, to), completed ones too (the calendar);
+         *     at most 1000.
+         */
+        get: operations["list_due_api_v1_tasks_due_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Mine
+         * @description My own tasks and the shared ones assigned to me (in channels I belong to); of the
+         *     completed ones, the 50 most recent.
+         */
+        get: operations["list_mine_api_v1_tasks_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Task */
+        get: operations["get_task_api_v1_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Task
+         * @description Its creator, its assignees, the channel's owners and administrators.
+         */
+        delete: operations["delete_task_api_v1_tasks__task_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Task
+         * @description Members who may post on the board (a personal task: its owner).
+         */
+        patch: operations["update_task_api_v1_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Task
+         * @description To a column and a place in it; the server picks the position.
+         */
+        post: operations["move_task_api_v1_tasks__task_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/templates": {
         parameters: {
             query?: never;
@@ -5010,6 +5121,134 @@ export interface components {
             /** Verifier */
             verifier: string;
         };
+        /** TaskCreate */
+        TaskCreate: {
+            /** Assignee Ids */
+            assignee_ids?: string[];
+            /** Channel Id */
+            channel_id?: string | null;
+            /** Client Task Id */
+            client_task_id?: string | null;
+            /** Due On */
+            due_on?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Source Message Id */
+            source_message_id?: string | null;
+            /**
+             * Status
+             * @default todo
+             * @enum {string}
+             */
+            status: "todo" | "doing" | "done";
+            /** Title */
+            title: string;
+            /** Tz */
+            tz?: string | null;
+        };
+        /**
+         * TaskMove
+         * @description Into a column and between two cards there (the server picks the position). `after_id` is
+         *     the card that ends up just above, `before_id` the one just below; either is enough. Neither:
+         *     the bottom of todo / doing, the top of done. A neighbour that is no longer in that column is
+         *     ignored.
+         */
+        TaskMove: {
+            /** After Id */
+            after_id?: string | null;
+            /** Before Id */
+            before_id?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "todo" | "doing" | "done";
+        };
+        /** TaskOut */
+        TaskOut: {
+            /** Assignee Ids */
+            assignee_ids: string[];
+            /** Can Delete */
+            can_delete: boolean;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Channel Name */
+            channel_name: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Completed By */
+            completed_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Due On */
+            due_on: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /** Position */
+            position: number;
+            source: components["schemas"]["TaskSourceOut"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "todo" | "doing" | "done";
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * TaskSourceOut
+         * @description The message a task was made from (TASKS.md §1), with its text as one line (the DM list's
+         *     and the notifications' rule), kept up to date with edits. When the message is deleted the task
+         *     stays: message_id and excerpt become null (「元のメッセージは削除されました」).
+         */
+        TaskSourceOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Excerpt */
+            excerpt: string | null;
+            /** Message Id */
+            message_id: string | null;
+        };
+        /**
+         * TaskUpdate
+         * @description Only the fields sent change; `assignee_ids` replaces the whole list. A task cannot move
+         *     to another board.
+         */
+        TaskUpdate: {
+            /** Assignee Ids */
+            assignee_ids?: string[] | null;
+            /** Due On */
+            due_on?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Status */
+            status?: ("todo" | "doing" | "done") | null;
+            /** Title */
+            title?: string | null;
+            /** Tz */
+            tz?: string | null;
+        };
         /** TemplateCreate */
         TemplateCreate: {
             /** Body */
@@ -5266,6 +5505,11 @@ export interface components {
              */
             notify_reactions: boolean;
             /**
+             * Notify Tasks
+             * @default true
+             */
+            notify_tasks: boolean;
+            /**
              * Presence Hidden
              * @default false
              */
@@ -5344,6 +5588,8 @@ export interface components {
             notify_keywords?: string[] | null;
             /** Notify Reactions */
             notify_reactions?: boolean | null;
+            /** Notify Tasks */
+            notify_tasks?: boolean | null;
             /** Presence Hidden */
             presence_hidden?: boolean | null;
             /** Quick Reactions */
@@ -10310,6 +10556,266 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnreadSummaryOut"];
+                };
+            };
+        };
+    };
+    list_board_api_v1_tasks_get: {
+        parameters: {
+            query: {
+                /** @description The channel whose board to read */
+                channel_id: string;
+                /** @description recent: the 100 most recently completed; all: every one */
+                include_done?: "recent" | "all";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_task_api_v1_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreate"];
+            };
+        };
+        responses: {
+            /** @description A retry: the task made before */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_due_api_v1_tasks_due_get: {
+        parameters: {
+            query: {
+                /** @description First day (YYYY-MM-DD) */
+                from: string;
+                /** @description The day after the last (excluded); at most 100 days after `from` */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mine_api_v1_tasks_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"][];
+                };
+            };
+        };
+    };
+    get_task_api_v1_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_task_api_v1_tasks__task_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_task_api_v1_tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_task_api_v1_tasks__task_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

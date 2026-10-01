@@ -2,6 +2,7 @@
 import { ApiClient, type DeviceInfo } from "../api/client";
 import { dndActive } from "../ui/dnd";
 import { clock } from "../ui/calendarDates";
+import { taskNoticeText } from "../ui/tasks";
 import { canvasLink, messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { challengeFor, newVerifier, parseSsoDeepLink, saveSsoPending, type SsoPending, ssoErrorText, ssoStartUrl, takeSsoPending, takeSsoReturn } from "../ui/sso";
@@ -18,7 +19,7 @@ import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, NetworkError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
+import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -1077,6 +1078,11 @@ export class AppController {
     return this.updateProfile({ notify_reactions: on });
   }
 
+  /** M55: 「タスク (割り当て・期限)」 (users.notify_tasks). */
+  setNotifyTasks(on: boolean): Promise<boolean> {
+    return this.updateProfile({ notify_tasks: on });
+  }
+
   /**
    * M50: 「リアクションの候補」 (users.quick_reactions), null = back to the recent-first rule. Shown at once; a refused or
    * failed save puts the previous list back (and says why). My other devices read it on their next bootstrap, or at once
@@ -1505,6 +1511,14 @@ export class AppController {
         if (this.quiet(session)) return;
         const when = event.all_day ? "終日" : clock(event.starts_at!);
         void notify(this.notificationTitle(session, "予定"), `${when} ${event.title}${event.channel_name ? ` (#${event.channel_name})` : ""}`);
+      },
+      // M55: assigned to me / due today (TASKS.md §5), worded like the server's push; off with 「タスク」 in the settings.
+      onTaskNotice: (notice) => {
+        if (this.quiet(session) || (store.me ?? session.me)?.notify_tasks === false) return;
+        const { body, taskId, channelId } = taskNoticeText(notice, (id) => store.users.get(id)?.display_name ?? null);
+        void notify(this.notificationTitle(session, "タスク"), body, () => {
+          if (this.active === session) this.requestOpenTask(taskId, channelId);
+        });
       },
       onNotify: (message, channel) => {
         if (this.quiet(session)) return; // M12c: paused / quiet hours
@@ -2050,6 +2064,28 @@ export class AppController {
     if (!this.api) return null;
     try {
       return await this.api.getCalendarEvent(eventId);
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  // --- tasks (M55, TASKS.md) ----------------------------------------------------------------
+
+  /** A task the main screen should open (a notification): its board's tab (or 「自分のタスク」), then its dialog. */
+  openTaskRequest: { taskId: string; channelId: string | null } | null = null;
+
+  requestOpenTask(taskId: string, channelId: string | null): void {
+    this.openTaskRequest = { taskId, channelId };
+    this.emit();
+  }
+
+  /** A task to show (held, else read); null when it is gone or cannot be seen (the toast says so). */
+  async loadTask(taskId: string): Promise<TaskOut | null> {
+    const hub = this.engine?.tasks;
+    try {
+      if (hub?.available) return await hub.load(taskId);
+      return this.api ? await this.api.getTask(taskId) : null;
     } catch (error) {
       this.setError(error);
       return null;

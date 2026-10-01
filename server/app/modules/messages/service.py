@@ -372,6 +372,30 @@ async def last_messages(
     }
 
 
+async def find_message(db: AsyncSession, message_id: uuid.UUID) -> Message | None:
+    """A live message row or None, for modules that own the access decision (M55 tasks)."""
+    message = await repo.get_message(db, message_id)
+    return message if message is not None and not message.is_deleted else None
+
+
+async def one_line(
+    db: AsyncSession, message: Message, visible: set[uuid.UUID] | None = None
+) -> str:
+    """A message as one line, like last_messages (M55: a task's source excerpt)."""
+    user_ids = {uuid.UUID(raw) for raw in MENTION_USER.findall(message.body)}
+    if visible is not None:
+        user_ids &= visible
+    names: dict[uuid.UUID, str] = {}
+    if user_ids:
+        found = await users.get_users(db, list(user_ids))
+        names.update({user_id: user.display_name for user_id, user in found.items()})
+    names.update(await groups.names_for(db, extract_group_mentions(message.body)))
+    files = await attachments.for_messages(db, [message.id])
+    return notification_text(message.body, names, PREVIEW_LENGTH) or attachment_text(
+        files.get(message.id, [])
+    )
+
+
 async def live_bodies(db: AsyncSession, message_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
     """Bodies of the messages that still exist (reminder previews); deleted ones are absent."""
     return await repo.live_bodies(db, message_ids)
