@@ -13,6 +13,7 @@ import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.AckOut
+import jp.chikuwachat.android.api.CollectionOut
 import jp.chikuwachat.android.api.MembershipOut
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.CanvasMeta
@@ -106,6 +107,8 @@ data class MessageState(
     val acks: List<AckOut> = emptyList(),
     /** "user", or a system row, which is never unread (§10.1 rule 12); rows persisted earlier lack it. */
     val type: String = "user",
+    /** L6 (M60): a recurring post's collection (RECURRING.md §3); rows persisted earlier lack it. */
+    val collection: CollectionOut? = null,
 ) {
     fun reactedBy(userId: String, emoji: String): Boolean = reactions.any { it.emoji == emoji && userId in it.userIds }
 
@@ -124,6 +127,7 @@ data class MessageState(
             parentId = message.parentId, alsoInChannel = message.alsoInChannel, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, replyUserIds = message.replyUserIds, attachments = message.attachments,
             pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy, poll = message.poll,
             priority = message.priority, ackRequested = message.ackRequested, acks = message.acks, type = message.type,
+            collection = message.collection,
         )
 
         fun placeholder(
@@ -248,6 +252,7 @@ fun MessageState.toOut(): MessageOut? {
         parentId = parentId, alsoInChannel = alsoInChannel, body = body, mentionedUserIds = mentionedUserIds, mentionAll = mentionAll, reactions = reactions,
         attachments = attachments, replyCount = replyCount, lastReplyAt = lastReplyAt, replyUserIds = replyUserIds, createdAt = createdAt, editedAt = editedAt, deleted = deleted,
         pinnedAt = pinnedAt, pinnedBy = pinnedBy, poll = poll, priority = priority, ackRequested = ackRequested, acks = acks, type = type,
+        collection = collection,
     )
 }
 

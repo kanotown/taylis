@@ -57,10 +57,11 @@ fun RemindersPane(controller: AppController, version: Int, onOpen: (ReminderOut)
 private fun ReminderRow(row: ReminderOut, controller: AppController, action: String, onOpen: (ReminderOut) -> Unit) {
     val store = controller.store
     Column(Modifier.fillMaxWidth().clickable { onOpen(row) }.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        // L4 (M31): the author asked me to acknowledge the message (not a reminder I set).
-        if (row.kind == "ack") {
+        // L4 (M31): the author asked me to acknowledge the message (not a reminder I set); L6 (M60): a recurring post's
+        // due time passed without my reply in its thread (提出のお願い; the note names it and the due time).
+        Recurring.reminderBadge(row.kind)?.let { badge ->
             Text(
-                "確認のお願い", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+                badge, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 2.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
             )
         }

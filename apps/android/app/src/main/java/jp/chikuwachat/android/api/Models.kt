@@ -409,6 +409,11 @@ data class MessageOut(
     val priority: String? = null,
     val ackRequested: Boolean = false,
     val acks: List<AckOut> = emptyList(),
+    /**
+     * L6 (M60, RECURRING.md §3): a recurring post that collects replies; null for any other message and from a server
+     * before M59. A change arrives as the parent's message.updated (change "collection") with a new updated_seq.
+     */
+    val collection: CollectionOut? = null,
 ) {
     /** Mentions me by name, group or @channel, or by one of my notification keywords (M12g). */
     fun mentions(userId: String, keywords: List<String> = emptyList()): Boolean =
@@ -585,7 +590,10 @@ data class ReminderOut(
     val status: String,
     val firedAt: String? = null,
     val createdAt: String,
-    /** L4 (M31): "personal" (set by me) or "ack" (the author asked me to acknowledge the message). */
+    /**
+     * L4 (M31): "personal" (set by me) or "ack" (the author asked me to acknowledge the message); L6 (M59): "collect" (a
+     * recurring post's due time passed and I have not replied in its thread). Any other value reads as personal.
+     */
     val kind: String = "personal",
 )
 
@@ -760,3 +768,70 @@ data class AckOut(val userId: String, val ackedAt: String)
 /** A link pinned to the top of a conversation (M15f). */
 @Serializable
 data class ChannelLinkOut(val id: String, val title: String, val url: String, val position: Int, val createdBy: String, val createdAt: String)
+
+// --- recurring posts and collections (L6, M59/M60, docs/RECURRING.md) --------------------------------------------------
+
+/**
+ * Under a recurring post that collects replies (RECURRING.md §3): the due time, the targets fixed when it was posted,
+ * and who of them has a live reply in its thread. The same for every reader. Every field defaults, so an incomplete
+ * row (or one stored before) still decodes; an unreadable `dueAt` just shows no date.
+ */
+@Serializable
+data class CollectionOut(
+    val dueAt: String = "",
+    val targetUserIds: List<String> = emptyList(),
+    val targetCount: Int = 0,
+    val submittedUserIds: List<String> = emptyList(),
+    val remindedAt: String? = null,
+)
+
+/**
+ * WeeklySchedule (`weekdays`, 0 = Monday) or MonthlySchedule (`day` 1–31, a month without it runs on its last day), at
+ * `time` ("HH:MM") in the post's zone. One class for both, so a kind a newer server adds still decodes (and reads as
+ * unknown); requests are written by hand (ui/Recurring.kt), since the server refuses the other kind's fields.
+ */
+@Serializable
+data class RecurringSchedule(
+    val kind: String = "weekly",
+    val weekdays: List<Int> = emptyList(),
+    val day: Int = 1,
+    val time: String = "09:00",
+)
+
+/** Whom it collects from: everyone in the channel, or the union of the groups' members and the people. */
+@Serializable
+data class CollectTargets(
+    val allMembers: Boolean = false,
+    val groupIds: List<String> = emptyList(),
+    val userIds: List<String> = emptyList(),
+)
+
+/** Due `afterDays` (0–30) after the posting day at `time`, in the post's zone. */
+@Serializable
+data class CollectDue(val afterDays: Int = 0, val time: String = "18:00")
+
+@Serializable
+data class CollectSpec(val targets: CollectTargets = CollectTargets(), val due: CollectDue = CollectDue())
+
+/** GET /channels/{id}/recurring-posts and the answers of POST / PATCH (RECURRING.md §3). */
+@Serializable
+data class RecurringPostOut(
+    val id: String,
+    val channelId: String,
+    val botUserId: String = "",
+    val createdBy: String = "",
+    val name: String,
+    val body: String = "",
+    val schedule: RecurringSchedule = RecurringSchedule(),
+    val tz: String = "",
+    val collect: CollectSpec? = null,
+    val enabled: Boolean = true,
+    val nextRunAt: String = "",
+    val lastRunAt: String? = null,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+)
+
+/** POST /recurring-posts/{id}/run: the message just posted. */
+@Serializable
+data class RecurringRunOut(val messageId: String = "")

@@ -49,6 +49,10 @@ import java.time.LocalDate
 import jp.chikuwachat.android.ui.Share
 import jp.chikuwachat.android.ui.Totp
 import jp.chikuwachat.android.ui.AckReminders
+import jp.chikuwachat.android.ui.Recurring
+import jp.chikuwachat.android.ui.RecurringDraft
+import jp.chikuwachat.android.api.RecurringPostOut
+import jp.chikuwachat.android.api.RecurringRunOut
 import jp.chikuwachat.android.api.TotpEnabledOut
 import jp.chikuwachat.android.api.TotpSetupOut
 import jp.chikuwachat.android.api.TotpStatusOut
@@ -853,7 +857,9 @@ class AppController(private val app: Application) {
         engine.onReminder = { row ->
             val text = (row.note?.takeIf { it.isNotBlank() }?.let { "$it — " } ?: "") + row.preview
             notice = "⏰ $text"
-            if (!dndActive(store)) notify(workspace(), row.channelId, "リマインダー", text, key = "reminder:${row.id}", messageId = row.messageId)
+            // Worded like the server's push (確認のお願い, L6 提出のお願い).
+            val title = Recurring.reminderBadge(row.kind) ?: "リマインダー"
+            if (!dndActive(store)) notify(workspace(), row.channelId, title, text, key = "reminder:${row.id}", messageId = row.messageId)
         }
         // M52: my calendar alarm fired while the app is open (the server's push is not shown then), worded like that push.
         engine.calendar.onAlarm = { event ->
@@ -1778,6 +1784,26 @@ class AppController(private val app: Application) {
     suspend fun members(channelId: String): Result<List<String>> = attempt { api!!.members(channelId).map { it.userId } }
 
     suspend fun memberList(channelId: String): Result<List<MemberOut>> = attempt { api!!.members(channelId) }
+
+    // --- recurring posts (L6, M60, RECURRING.md §5) ---------------------------------------------------
+    // Not in the Store: the list is read each time the details page opens (its changes send no events, §7). Failures
+    // come back as results; the page shows them in place (the snackbar would sit behind the form).
+
+    suspend fun recurringPosts(channelId: String): Result<List<RecurringPostOut>> =
+        attempt { api!!.recurringPosts(channelId) }
+
+    /** Creates (`postId` null; the device's zone) or saves the form's draft. */
+    suspend fun saveRecurringPost(channelId: String, postId: String?, draft: RecurringDraft): Result<RecurringPostOut> = attempt {
+        if (postId == null) api!!.createRecurringPost(channelId, Recurring.createBody(draft, java.time.ZoneId.systemDefault().id))
+        else api!!.updateRecurringPost(postId, Recurring.updateBody(draft))
+    }
+
+    suspend fun setRecurringEnabled(postId: String, enabled: Boolean): Result<RecurringPostOut> =
+        attempt { api!!.updateRecurringPost(postId, Recurring.enabledBody(enabled)) }
+
+    suspend fun deleteRecurringPost(postId: String): Result<Unit> = attempt { api!!.deleteRecurringPost(postId) }
+
+    suspend fun runRecurringPost(postId: String): Result<RecurringRunOut> = attempt { api!!.runRecurringPost(postId) }
 
     // --- channel info & settings (UI brush-up) --------------------------------------------------
 
