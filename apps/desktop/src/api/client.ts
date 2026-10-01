@@ -1,5 +1,5 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
-import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollAnswersIn, PollCreate, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollAnswersIn, PollCreate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -619,9 +619,21 @@ export class ApiClient {
     return this.request("DELETE", `/api/v1/channels/${channelId}/favorite`);
   }
 
-  /** Every channel I belong to is read to its end; the response carries the new states. */
-  readAll(): Promise<ChannelReadStateOut[]> {
-    return this.request("POST", "/api/v1/channels/read-all");
+  /**
+   * Every channel I belong to is read to its end; the response carries the new states. L8: scope "times" reads only the
+   * Times feed's channels (TIMES_FEED.md §4); without a scope the request has no body, as before.
+   */
+  readAll(scope?: ReadAllScope): Promise<ChannelReadStateOut[]> {
+    return scope ? this.request("POST", "/api/v1/channels/read-all", { scope }) : this.request("POST", "/api/v1/channels/read-all");
+  }
+
+  // --- Times feed (L8, TIMES_FEED.md §3) ---------------------------------------------------
+
+  /** GET /times/feed: the top-level posts of my unmuted times, newest first; `cursor` is the previous page's next_cursor. */
+  timesFeed(cursor: string | null = null, limit = 50): Promise<TimesFeedOut> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set("cursor", cursor);
+    return this.request("GET", `/api/v1/times/feed?${params}`);
   }
 
   // --- recent mentions (M11h) ------------------------------------------------------------
@@ -1016,6 +1028,8 @@ export class ApiClient {
     before?: string | null;
     has?: readonly string[];
     is_thread?: boolean;
+    /** L8: only times (TIMES_FEED.md §6), as `is:times` in the words. */
+    is_times?: boolean;
     sort?: "relevance" | "newest";
     limit?: number;
     offset?: number;
@@ -1027,6 +1041,7 @@ export class ApiClient {
     if (query.before) params.set("before", query.before);
     for (const flag of query.has ?? []) params.append("has", flag);
     if (query.is_thread) params.set("is_thread", "true");
+    if (query.is_times) params.set("is_times", "true");
     if (query.sort) params.set("sort", query.sort);
     params.set("tz_offset_minutes", String(-new Date().getTimezoneOffset()));
     return this.request("GET", `/api/v1/search/messages?${params}`);

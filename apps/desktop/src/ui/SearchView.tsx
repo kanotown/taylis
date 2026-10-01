@@ -1,7 +1,7 @@
-import { AlertTriangle, ArrowUpDown, AtSign, Calendar, Check, ChevronDown, FileText, Filter, Hash, Lock, MessagesSquare, Paperclip, Search, SearchX, User, X } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, AtSign, Calendar, Check, ChevronDown, FileText, Filter, Hash, Lock, MessagesSquare, Newspaper, Paperclip, Search, SearchX, User, X } from "lucide-react";
 import { type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, type Ref, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import type { CanvasMeta, FileItem, MessageOut, SearchHit } from "../api/types";
+import type { CanvasMeta, ChannelOut, FileItem, MessageOut, SearchHit } from "../api/types";
 import { CanvasResults } from "./CanvasSearch";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -27,6 +27,8 @@ export interface SearchSnapshot {
   capped: boolean;
   hasMore: boolean;
   unresolved: string[];
+  /** L8: hit channels I am not a member of (SearchOut.channels), by id. */
+  channels: Record<string, ChannelOut>;
   scrollTop: number;
 }
 
@@ -53,6 +55,8 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
   const [capped, setCapped] = useState(kept?.capped ?? false);
   const [hasMore, setHasMore] = useState(kept?.hasMore ?? false);
   const [unresolved, setUnresolved] = useState<string[]>(kept?.unresolved ?? []);
+  // L8: `is:times` finds times I have not joined (an archived one is not even in bootstrap): the server names them.
+  const [others, setOthers] = useState<Record<string, ChannelOut>>(kept?.channels ?? {});
   const [loading, setLoading] = useState(!kept);
   const [loaded, setLoaded] = useState(!!kept);
   const scroller = useRef<HTMLDivElement>(null);
@@ -73,6 +77,8 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
       setCapped(result.total_capped ?? false);
       setHasMore(result.has_more);
       setUnresolved(result.filters.unresolved ?? []);
+      const named = Object.fromEntries((result.channels ?? []).map((c) => [c.id, c]));
+      setOthers((current) => (offset === 0 ? named : { ...current, ...named }));
       setLoaded(true);
     } catch (error) {
       if (id === request.current) controller.setError(error);
@@ -95,7 +101,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
 
   // Keep what is on screen for 「検索結果に戻る」.
   useEffect(() => {
-    snapshot.current = { key, hits, keywords, total, capped, hasMore, unresolved, scrollTop: scroller.current?.scrollTop ?? 0 };
+    snapshot.current = { key, hits, keywords, total, capped, hasMore, unresolved, channels: others, scrollTop: scroller.current?.scrollTop ?? 0 };
   });
   const rememberScroll = () => {
     if (snapshot.current) snapshot.current.scrollTop = scroller.current?.scrollTop ?? 0;
@@ -167,7 +173,20 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
             <ul className="max-w-3xl space-y-1">
               {hits.map((hit) => (
                 <li key={hit.message.id}>
-                  <ResultRow controller={controller} message={hit.message} keywords={keywords} onOpen={(m) => { rememberScroll(); onOpen(m); }} />
+                  <ResultRow
+                    controller={controller}
+                    message={hit.message}
+                    keywords={keywords}
+                    other={others[hit.message.channel_id]}
+                    onOpen={(m) => {
+                      rememberScroll();
+                      // A channel I have not joined opens as its preview (M27): the store learns of it first (an archived
+                      // public times is in no list of mine).
+                      const other = others[m.channel_id];
+                      if (other && !controller.store.getChannel(m.channel_id)) controller.store.upsertChannel(other, { isMember: false });
+                      onOpen(m);
+                    }}
+                  />
                 </li>
               ))}
             </ul>
@@ -253,6 +272,10 @@ function FilterBar({ controller, params, onChange, mode }: { controller: AppCont
               </KindPicker>
               <Chip toggle active={params.isThread} icon={<MessagesSquare size={13} />} onClick={() => onChange({ ...params, isThread: !params.isThread })}>
                 スレッド内
+              </Chip>
+              {/* L8: only times, those I have not joined included (TIMES_FEED.md §6). */}
+              <Chip toggle active={!!params.isTimes} icon={<Newspaper size={13} />} title="times の投稿だけ (is:times)" onClick={() => onChange({ ...params, isTimes: !params.isTimes })}>
+                Times
               </Chip>
             </>
           )}
@@ -455,9 +478,10 @@ function KindPicker({ value, onChange, children }: { value: SearchParams["has"];
 
 // ---- rows ----
 
-function ResultRow({ controller, message, keywords, onOpen }: { controller: AppController; message: MessageOut; keywords: string[]; onOpen: (message: MessageOut) => void }) {
+function ResultRow({ controller, message, keywords, other, onOpen }: { controller: AppController; message: MessageOut; keywords: string[]; other?: ChannelOut; onOpen: (message: MessageOut) => void }) {
   const store = controller.store;
-  const channel = store.getChannel(message.channel_id);
+  const channel = store.getChannel(message.channel_id) ?? (other ? { ...other, isMember: false } as ChannelState : undefined);
+  const joined = store.getChannel(message.channel_id)?.isMember ?? false;
   const sender = store.users.get(message.sender_id)?.display_name ?? "?";
   const text = plainText(mentionsToNames(message.body, store.users, store.groups));
   const files = message.attachments.map((a) => a.filename);
@@ -472,6 +496,7 @@ function ResultRow({ controller, message, keywords, onOpen }: { controller: AppC
         {channel && (channel.type === "private" ? <Lock size={12} /> : channel.type === "public" ? <Hash size={12} /> : <AtSign size={12} />)}
         <span className="min-w-0 truncate font-medium">{channel ? channelTitle(channel, controller).replace(/^#/, "") : "?"}</span>
         {message.parent_id && <Badge className="shrink-0 whitespace-nowrap">スレッドの返信</Badge>}
+        {channel && !joined && <Badge className="shrink-0 whitespace-nowrap">{channel.archived ? "未参加・アーカイブ済み" : "未参加"}</Badge>}
         <time className="ml-auto shrink-0">{fullTimestamp(message.created_at)}</time>
       </div>
       <div className="mt-1.5 flex gap-2.5">

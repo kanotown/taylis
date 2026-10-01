@@ -14,10 +14,12 @@ export interface SearchParams {
   date: { preset: DatePreset } | { from: string | null; to: string | null } | null;
   has: HasFlag[];
   isThread: boolean;
+  /** L8: only times (`is:times`, TIMES_FEED.md §6), joined or not. Optional: recent searches saved before lack it. */
+  isTimes?: boolean;
   sort: SearchSort;
 }
 
-export const EMPTY_SEARCH: SearchParams = { q: "", fromUserId: null, channelId: null, date: null, has: [], isThread: false, sort: "relevance" };
+export const EMPTY_SEARCH: SearchParams = { q: "", fromUserId: null, channelId: null, date: null, has: [], isThread: false, isTimes: false, sort: "relevance" };
 
 export const HAS_FLAGS: readonly HasFlag[] = ["file", "link", "pin", "reaction", "poll"];
 
@@ -38,7 +40,7 @@ export const DATE_PRESETS: ReadonlyArray<{ preset: DatePreset; label: string }> 
 ];
 
 export function hasFilters(params: SearchParams): boolean {
-  return !!(params.fromUserId || params.channelId || params.date || params.has.length > 0 || params.isThread);
+  return !!(params.fromUserId || params.channelId || params.date || params.has.length > 0 || params.isThread || params.isTimes);
 }
 
 /** Nothing to look for: no words and no filters (the server answers 422 empty_query). */
@@ -94,6 +96,7 @@ export function toQuery(params: SearchParams, now: Date = new Date()): {
   before: string | null;
   has: HasFlag[];
   is_thread: boolean;
+  is_times: boolean;
   sort: SearchSort;
 } {
   const q = params.q.trim();
@@ -104,6 +107,7 @@ export function toQuery(params: SearchParams, now: Date = new Date()): {
     ...dateRange(params.date, now),
     has: params.has,
     is_thread: params.isThread,
+    is_times: !!params.isTimes,
     sort: q ? params.sort : "newest",
   };
 }
@@ -177,7 +181,9 @@ export type Suggestion =
   | { kind: "user"; user: UserPublic }
   | { kind: "channel"; channel: ChannelState }
   | { kind: "has"; flag: HasFlag }
-  | { kind: "thread" };
+  | { kind: "thread" }
+  /** L8: 「is:times」 (TIMES_FEED.md §6). */
+  | { kind: "times" };
 
 function fold(value: string): string {
   return value.normalize("NFKC").toLowerCase();
@@ -202,6 +208,7 @@ export function suggestions(
       ...context.recent.slice(0, RECENT_MAX).map((params): Suggestion => ({ kind: "recent", params })),
       ...HAS_FLAGS.slice(0, 3).map((flag): Suggestion => ({ kind: "has", flag })),
       { kind: "thread" },
+      { kind: "times" },
     ];
   }
   const needle = fold(text.replace(/^[@#]/, ""));

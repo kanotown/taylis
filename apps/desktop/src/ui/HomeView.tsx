@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BellOff, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, NotebookText, Plus, Search, SquarePen } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Plus, Search, SquarePen } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -26,6 +26,8 @@ export interface HomeViewProps {
   /** ✏️ 新しいメッセージ. */
   onCompose: () => void;
   onThreads: () => void;
+  /** L8: the Times feed (a tile after 「スレッド」, TIMES_FEED.md §7). Optional (older callers). */
+  onTimesFeed?: () => void;
   onDrafts: () => void;
   onSaved: () => void;
   onReminders: () => void;
@@ -252,13 +254,14 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
 }
 
 /** The tiles across the top (MOBILE_UI.md §6.1): the views the wide sidebar lists as rows. A zero is dimmed, still a tap. */
-function Tiles({ controller, onThreads, onDrafts, onSaved, onReminders, onFiles, onCanvases, onCalendar, onTasks }: HomeViewProps) {
+function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onReminders, onFiles, onCanvases, onCalendar, onTasks }: HomeViewProps) {
   const store = controller.store;
   const threads = store.threadSummary;
   const drafts = store.listDrafts().length + store.scheduled.size;
   const fired = store.firedReminderCount();
   const tiles: Array<{ key: string; label: string; icon: ReactNode; count: number | null; danger: boolean; onClick: () => void }> = [
     { key: "threads", label: "スレッド", icon: <MessagesSquare size={20} />, count: threads.unread_count, danger: threads.mention_count > 0, onClick: onThreads },
+    ...(onTimesFeed ? [{ key: "times", label: "Times", icon: <Newspaper size={20} />, count: null, danger: false, onClick: onTimesFeed }] : []),
     { key: "drafts", label: "下書き", icon: <FileText size={20} />, count: drafts, danger: false, onClick: onDrafts },
     { key: "saved", label: "保存", icon: <Bookmark size={20} />, count: store.bookmarks.size, danger: false, onClick: onSaved },
     { key: "reminders", label: "リマインダー", icon: <AlarmClock size={20} />, count: fired, danger: fired > 0, onClick: onReminders },

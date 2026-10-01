@@ -55,6 +55,8 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
         return onSearch({ ...EMPTY_SEARCH, has: [row.flag], sort: "newest" });
       case "thread":
         return onSearch({ ...EMPTY_SEARCH, isThread: true, sort: "newest" });
+      case "times":
+        return onSearch({ ...EMPTY_SEARCH, isTimes: true, sort: "newest" });
     }
   };
 
@@ -104,7 +106,7 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
                   setActive(e.target.value.trim() ? 0 : -1);
                 }}
                 onKeyDown={onKeyDown}
-                placeholder="メッセージ、人、チャンネルを検索 (from:@名前 in:#チャンネル も使えます)"
+                placeholder="メッセージ、人、チャンネルを検索 (from:@名前 in:#チャンネル is:times も使えます)"
                 aria-label="検索語"
                 enterKeyHint="search"
                 aria-activedescendant={rows[active] ? `search-suggestion-${active}` : undefined}
@@ -184,7 +186,7 @@ function suggestionKey(row: Suggestion, index: number): string {
 /** A small heading where the kind of row changes (最近の検索 / 絞り込み / 人 / チャンネル). */
 function sectionHeading(rows: Suggestion[], index: number, text: string): string | null {
   const group = (row: Suggestion | undefined) =>
-    !row ? null : row.kind === "has" || row.kind === "thread" ? "filter" : row.kind === "recent" ? "recent" : row.kind === "search" ? "search" : row.kind;
+    !row ? null : row.kind === "has" || row.kind === "thread" || row.kind === "times" ? "filter" : row.kind === "recent" ? "recent" : row.kind === "search" ? "search" : row.kind;
   const here = group(rows[index]);
   if (here === group(rows[index - 1])) return null;
   switch (here) {
@@ -252,6 +254,13 @@ function SuggestionRow({ controller, row }: { controller: AppController; row: Su
           <span>スレッド内のメッセージ</span>
         </>
       );
+    case "times":
+      return (
+        <>
+          <span className="flex h-5 shrink-0 items-center justify-center rounded bg-panel-2 px-1 text-[10px] font-bold text-muted">is:times</span>
+          <span>times の投稿 (参加していない公開の times も)</span>
+        </>
+      );
   }
 }
 
@@ -269,5 +278,6 @@ export function describeSearch(controller: AppController, params: SearchParams):
   if (date) parts.push(date);
   for (const flag of params.has) parts.push(HAS_LABELS[flag]);
   if (params.isThread) parts.push("スレッド内");
+  if (params.isTimes) parts.push("Times");
   return parts.join(" · ");
 }

@@ -21,10 +21,10 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   const store = controller.store;
   const engine = controller.engine;
   const entry = store.threads.get(parentId);
-  // The parent comes from the channel, the threads list or a search hit; once seen it is kept for
+  // The parent comes from the channel, the threads list, a search hit or the Times feed (L8); once seen it is kept for
   // this pane so a list refresh that drops the row does not blank the thread.
   const lastParent = useRef<{ id: string; message: MessageState } | null>(null);
-  const found: MessageState | undefined = store.message(channel.id, parentId) ?? entry?.parent ?? controller.messageFocus?.context.find((m) => m.id === parentId);
+  const found: MessageState | undefined = store.message(channel.id, parentId) ?? entry?.parent ?? controller.messageFocus?.context.find((m) => m.id === parentId) ?? engine?.timesFeed?.find(parentId);
   if (found) lastParent.current = { id: parentId, message: found };
   const parent = found ?? (lastParent.current?.id === parentId ? lastParent.current.message : undefined);
   const replies = store.replies(channel.id, parentId);

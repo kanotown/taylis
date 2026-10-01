@@ -62,6 +62,10 @@ export type BookmarkStateOut = components["schemas"]["BookmarkStateOut"];
 export type BookmarkItem = components["schemas"]["BookmarkItem"];
 export type BookmarkListOut = components["schemas"]["BookmarkListOut"];
 
+/** L8 (TIMES_FEED.md): the Times feed's page and what 「すべて既読にする」 reads. */
+export type TimesFeedOut = components["schemas"]["TimesFeedOut"];
+export type ReadAllScope = components["schemas"]["ReadAllIn"]["scope"];
+
 /** Administration (M11e). */
 export type AdminUserOut = components["schemas"]["AdminUserOut"];
 export type AdminUserCreate = components["schemas"]["AdminUserCreate"];

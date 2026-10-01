@@ -11,7 +11,7 @@ import { keyboardUp, tapClosesKeyboard } from "../platform/viewport";
 import { AttachmentList } from "./Attachments";
 import { messageRowKey } from "./messageKeyboard";
 import { Avatar } from "./Avatar";
-import { ackLine, bannerText, buildTimeline, compactNames, fullTimestamp, lastReplyLabel, rowKey, timeLabel } from "./format";
+import { ackLine, bannerText, buildTimeline, compactNames, dateLabel, fullTimestamp, lastReplyLabel, rowKey, timeLabel } from "./format";
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
 import { attachmentText, plainText } from "./markdown";
 import { MessageBody } from "./MessageBody";
@@ -622,7 +622,7 @@ export function ChannelIntro({ controller, channel }: { controller: AppControlle
  * and the custom emoji (mutable maps). Anything else a row shows must come in as a prop here, or be subscribed to by the
  * part that shows it (LinkPreviewCard, useAvatarUrl, UserPopover while open, ShareDialog).
  */
-export function MessageRow({ controller, message, compact = false, onOpenThread, thread = false, readOnly = false, threadParent }: {
+export function MessageRow({ controller, message, compact = false, onOpenThread, thread = false, readOnly = false, threadParent, feed }: {
   controller: AppController; message: MessageState; compact?: boolean; onOpenThread?: (id: string) => void; thread?: boolean;
   /**
    * A channel read before joining (SYNC_PROTOCOL.md §7.6.1): the message is only read. No hover bar, no long-press
@@ -631,6 +631,12 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   readOnly?: boolean;
   /** The parent of a reply also sent to the channel, when it is not in the store (a preview holds its own rows). */
   threadParent?: MessageState;
+  /**
+   * L8, a row of the Times feed (TIMES_FEED.md §7): the times' name after the sender's (it opens the channel), the
+   * 「新しい」 dot, and a click on the row reveals it in its channel. Nothing that needs the conversation open (editing in
+   * place, 「ここから未読にする」). The callbacks must be stable (the row is memoized).
+   */
+  feed?: FeedRowProps;
 }) {
   const store = controller.store;
   // §10.1 10.: moving the position forward (past unread rows) only while all of them are held; back always.
@@ -657,10 +663,21 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
       isAdmin={controller.isAdmin}
       // M15c: a reply also sent to the channel names its thread in the timeline and opens it.
       threadParent={!thread && message.parent_id ? (store.getMessage(message.channel_id, message.parent_id) ?? threadParent) : undefined}
-      unreadOffered={!readOnly && !thread && message.seq !== null && !message.pending && !!conversation && markUnreadOffered(message.seq, conversation)}
+      unreadOffered={!feed && !readOnly && !thread && message.seq !== null && !message.pending && !!conversation && markUnreadOffered(message.seq, conversation)}
       readOnly={readOnly}
+      feedChannel={feed?.channelName}
+      feedNew={feed?.isNew ?? false}
+      onOpenChannel={feed?.onOpenChannel}
+      onActivate={feed?.onActivate}
     />
   );
+}
+
+export interface FeedRowProps {
+  channelName: string;
+  isNew: boolean;
+  onOpenChannel: (channelId: string) => void;
+  onActivate: (message: MessageState) => void;
 }
 
 interface MessageRowViewProps {
@@ -685,6 +702,11 @@ interface MessageRowViewProps {
   threadParent: MessageState | undefined;
   unreadOffered: boolean;
   readOnly: boolean;
+  /** L8: the times' name (a row of the Times feed); undefined elsewhere. */
+  feedChannel?: string;
+  feedNew?: boolean;
+  onOpenChannel?: (channelId: string) => void;
+  onActivate?: (message: MessageState) => void;
 }
 
 /**
@@ -722,7 +744,7 @@ function ThreadSummaryLine({ message, store, onOpen }: { message: MessageState; 
   );
 }
 
-const MessageRowView = memo(function MessageRowView({ controller, message, compact, onOpenThread, thread, store, engine, api, recentEmoji, chosenReactions, editing, highlighted, saved, isAdmin, threadParent, unreadOffered, readOnly }: MessageRowViewProps) {
+const MessageRowView = memo(function MessageRowView({ controller, message, compact, onOpenThread, thread, store, engine, api, recentEmoji, chosenReactions, editing, highlighted, saved, isAdmin, threadParent, unreadOffered, readOnly, feedChannel, feedNew = false, onOpenChannel, onActivate }: MessageRowViewProps) {
   const me = store.me;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
@@ -788,6 +810,14 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         if (!event.currentTarget.contains(event.target as Node)) return;
         // Alt+click marks the conversation unread from this message (Mattermost).
         if (event.altKey && unreadOffered) engine?.markUnread(message.channel_id, message.seq!);
+        // L8: a row of the Times feed shows its message in its channel (a mouse too), unless the click was on something of
+        // the message or ended a text selection.
+        else if (onActivate) {
+          const target = event.target as HTMLElement;
+          if (message.pending || typing.current || target.closest("a, button, input, textarea, img, video, [role=button]") || window.getSelection?.()?.toString()) return;
+          event.currentTarget.blur();
+          onActivate(message);
+        }
         // On a phone a tap on a message opens its thread, to read or to reply (Slack; testers, 2026-09-29), unless it was
         // on a link, a button or an image of the message, or the keyboard was up (the tap closes it).
         else if (touchScreen() && onOpenThread && !message.pending && !typing.current && !(event.target as HTMLElement).closest("a, button, input, textarea, img, video, [role=button]")) {
@@ -873,7 +903,13 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             </UserPopover>
             {sender?.role === "bot" && <span className="rounded bg-panel-2 px-1 text-[10px] font-bold text-muted" title="ボット (受信 Webhook・定期投稿) の投稿">BOT</span>}
             <StatusEmoji controller={controller} userId={message.sender_id} />
-            <time title={fullTimestamp(message.created_at)}>{timeLabel(message.created_at)}</time>
+            {feedChannel !== undefined && (
+              <button type="button" data-feed-channel="" className="min-w-0 truncate font-medium text-muted hover:text-ink hover:underline" title={`${feedChannel} を開く`} onClick={() => onOpenChannel?.(message.channel_id)}>
+                #{feedChannel}
+              </button>
+            )}
+            <time title={fullTimestamp(message.created_at)}>{feedChannel !== undefined ? `${dateLabel(message.created_at)} ${timeLabel(message.created_at)}` : timeLabel(message.created_at)}</time>
+            {feedNew && <span data-feed-new="" role="img" aria-label="新しい投稿" title="新しい投稿 (まだ読んでいない位置より後)" className="h-2 w-2 shrink-0 self-center rounded-full bg-accent" />}
             {message.edited_at &&
               (mine && !readOnly ? (
                 <button type="button" className="hover:text-ink hover:underline" title="編集履歴を見る" onClick={() => setRevisionsOpen(true)}>
@@ -1039,7 +1075,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               <Mail size={15} />
             </IconButton>
           )}
-          {mine && (
+          {mine && feedChannel === undefined && (
             <IconButton label="編集 (空の入力欄で ↑)" className="h-7 w-7 text-muted hover:text-ink" onClick={() => controller.setEditing(message.id)}>
               <Pencil size={15} />
             </IconButton>
