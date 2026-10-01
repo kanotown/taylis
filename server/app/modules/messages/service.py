@@ -326,6 +326,13 @@ async def messages_out(
     )
     repliers = await repo.repliers_for(db, list(collections))
     tasks = await repo.tasks_for(db, [m for m in rows if not m.is_deleted])
+    if tasks and viewer is not None:
+        # A shared task is for its conversation's members (SECURITY.md §3.2): someone reading a
+        # public channel they have not joined (preview, search) does not see its chips. Events
+        # (viewer None) only go to members.
+        channel_of = {m.id: m.channel_id for m in rows}
+        member_of = await repo.member_channel_ids(db, viewer, {channel_of[mid] for mid in tasks})
+        tasks = {mid: ts for mid, ts in tasks.items() if channel_of[mid] in member_of}
     return [
         to_message_out(
             m,
@@ -371,6 +378,34 @@ async def _collection_reply_changed_in_tx(
     if await repo.has_live_reply(db, parent.id, author_id, excluding=reply_id):
         return
     await _bump_and_announce(db, parent, "collection", commit=False)
+
+
+async def announce_change_by_id_in_tx(
+    db: AsyncSession, message_id: uuid.UUID, change: str
+) -> MessageOut | None:
+    """Like announce_change_in_tx for a message another module only knows by id (L9: a task's
+    source). The seq is taken first (the channel row lock waits for any edit or delete in flight),
+    then the row is read again, so the event carries the body as it is now; a message deleted in
+    the meantime is left alone (None)."""
+    message = await repo.get_message(db, message_id)
+    if message is None or message.is_deleted:
+        return None
+    seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
+    await db.refresh(message)
+    if message.deleted_at is not None:  # deleted while we waited for the lock
+        return None
+    message.updated_seq = seq
+    await db.flush()
+    out = await message_out(db, message)
+    await write_outbox(
+        db,
+        event_type=MESSAGE_UPDATED,
+        audience_type="channel",
+        channel_id=message.channel_id,
+        seq=seq,
+        payload=MessageUpdatedData(message=out, change=change).model_dump(mode="json"),  # type: ignore[arg-type]
+    )
+    return out
 
 
 async def announce_change_in_tx(db: AsyncSession, message: Message, change: str) -> MessageOut:

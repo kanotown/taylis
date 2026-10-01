@@ -508,6 +508,17 @@ async def collections_for(
     return {row.message_id: row for row in (await db.execute(stmt)).scalars().all()}
 
 
+async def member_channel_ids(
+    db: AsyncSession, user_id: uuid.UUID, channel_ids: set[uuid.UUID]
+) -> set[uuid.UUID]:
+    if not channel_ids:
+        return set()
+    stmt = select(ChannelMember.channel_id).where(
+        ChannelMember.user_id == user_id, ChannelMember.channel_id.in_(channel_ids)
+    )
+    return set((await db.execute(stmt)).scalars().all())
+
+
 async def tasks_for(
     db: AsyncSession, messages: list[Message]
 ) -> dict[uuid.UUID, list[tuple[Task, list[uuid.UUID]]]]:
