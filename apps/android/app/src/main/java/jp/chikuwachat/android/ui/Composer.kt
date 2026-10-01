@@ -199,7 +199,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
     val hasCamera = openCamera != null
     Column {
         val query = Mentions.query(draft)
-        val candidates = if (query != null) Mentions.candidates(query, store.users.values, store.groups.values) else emptyList()
+        val candidates = if (query != null) Mentions.candidates(query, store.users.values, store.groups.values, aiBotIds = controller.aiBotIds) else emptyList()
         // `:tada` completes to an emoji (M11f) when no mention is being typed.
         val emojiHits = if (candidates.isEmpty()) Emoji.query(draft)?.let { q ->
             val names = store.customEmoji.keys.filter { it.startsWith(q) || it.contains(q) }.take(4)
@@ -238,7 +238,10 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(candidates, key = { it.username }) { candidate ->
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.clickable { setText(Mentions.complete(draft, candidate.username)) }) {
-                        Text("@" + candidate.username + "  " + candidate.label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                            Text("@" + candidate.username + "  " + candidate.label, style = MaterialTheme.typography.labelLarge)
+                            if (candidate.ai) AiBadge(Modifier.padding(start = 6.dp)) // M66
+                        }
                     }
                 }
             }

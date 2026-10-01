@@ -137,6 +137,32 @@ class AppController(private val app: Application) {
         private set
     var engineStatus by mutableStateOf(EngineStatus.IDLE)
         private set
+    /** M66 (docs/AI.md §5): the engine's AI status; null (unknown, or a server without AI) hides every AI entry point. */
+    var aiStatus by mutableStateOf<jp.chikuwachat.android.api.AiStatusOut?>(null)
+        private set
+    /** M66: the summary sheet's request and run; null when it is closed. */
+    var aiSummary by mutableStateOf<jp.chikuwachat.android.sync.AiSummaryState?>(null)
+        private set
+    /** M66: the conversation whose 「要約」 choices (未読 / 直近 1 日 / 直近 7 日) are on screen. */
+    var aiSummaryChooser by mutableStateOf<String?>(null)
+    /** The AI bots' user ids: 「AI」 instead of 「BOT」 on their rows and mention candidates. */
+    val aiBotIds: Set<String> get() = aiStatus?.agents?.map { it.botUserId }?.toSet() ?: emptySet()
+    val aiSummaryAvailable: Boolean get() = aiStatus?.let { it.available && it.summaryAvailable } == true
+
+    fun requestSummary(request: jp.chikuwachat.android.sync.AiSummaryRequest) {
+        aiSummaryChooser = null
+        val engine = engine ?: return
+        scope.launch { engine.ai.requestSummary(request) }
+    }
+
+    fun retrySummary() {
+        val engine = engine ?: return
+        scope.launch { engine.ai.retry() }
+    }
+
+    fun closeSummary() {
+        engine?.ai?.closeSummary()
+    }
     /** Channel to open once the store knows it (from a tapped notification). */
     var pendingChannelId by mutableStateOf<String?>(null)
     /**
@@ -418,6 +444,9 @@ class AppController(private val app: Application) {
         api = null
         me = null
         engineStatus = EngineStatus.IDLE
+        aiStatus = null
+        aiSummary = null
+        aiSummaryChooser = null
         messageFocus = null
         pendingReveal = null
         pendingCanvas = null
@@ -894,6 +923,17 @@ class AppController(private val app: Application) {
             }
         }
         this.engine = engine
+        // M66: the AI status and the summary sheet follow this engine's AI hub (another workspace's never show).
+        aiStatus = null
+        aiSummary = null
+        aiSummaryChooser = null
+        scope.launch {
+            engine.ai.version.collect {
+                if (this@AppController.engine !== engine) return@collect
+                aiStatus = engine.ai.status
+                aiSummary = engine.ai.summary
+            }
+        }
         scope.launch {
             engine.status.collect { status ->
                 if (this@AppController.engine !== engine) return@collect

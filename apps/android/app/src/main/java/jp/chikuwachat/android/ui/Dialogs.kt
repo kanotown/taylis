@@ -239,6 +239,10 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
 
     Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
         ChannelDetailsHeader(controller, channel, version, memberCount = members?.size, onSearch = onSearch, onAddMember = { addingMember = true })
+        // M66 (docs/AI.md §4): what reaches the AI while an AI bot is a member.
+        AiTexts.memberNotice(controller.aiStatus?.agents ?: emptyList(), members?.map { it.userId } ?: emptyList())?.let {
+            AiMemberNotice(it, Modifier.padding(top = 8.dp))
+        }
         val editable = channel.isMember && !channel.channel.archived
         if (isChannel) {
             if (editingTopic) {
@@ -264,6 +268,10 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
         }
         // D1: the level, the mute and the timed mute were six rows here; one row now, the choices open from it.
         if (channel.isMember) ChannelNotificationRow(controller, channel)
+        // M66 (docs/AI.md §6): 「要約」 (未読 / 直近 1 日 / 直近 7 日), only to me.
+        if (channel.isMember && controller.aiSummaryAvailable) {
+            TextButton(onClick = { controller.aiSummaryChooser = channel.id }, contentPadding = PaddingValues(0.dp)) { Text("要約 (未読 / 直近 1 日 / 直近 7 日)") }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) { SectionLabel("メンバー" + (members?.let { " (${it.size})" } ?: "")) }
             if (isChannel && channel.isMember && !channel.channel.archived) {

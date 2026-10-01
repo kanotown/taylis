@@ -15,8 +15,8 @@ object Mentions {
     private val GROUP_TOKEN = Regex("""<@group:([0-9a-f-]{36})>""")
     private val QUERY = Regex("""(^|[^A-Za-z0-9._@<-])@([\p{L}\p{M}\p{N}._-]*)$""")
 
-    /** `kind` (M12k): "group" notifies the members; "all" is @channel / @here. */
-    data class Candidate(val username: String, val label: String, val kind: String = "user")
+    /** `kind` (M12k): "group" notifies the members; "all" is @channel / @here. `ai` (M66): an AI bot (shown with 「AI」). */
+    data class Candidate(val username: String, val label: String, val kind: String = "user", val ai: Boolean = false)
 
     fun encode(text: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList()): String {
         val byName = HashMap<String, String>()
@@ -49,12 +49,13 @@ object Mentions {
     /** The `@prefix` being typed at the end of `text`, or null. */
     fun query(text: String): String? = QUERY.find(text)?.groupValues?.get(2)
 
-    fun candidates(query: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList(), limit: Int = 6): List<Candidate> {
+    /** `aiBotIds` (M66, docs/AI.md §6): the AI bots' user ids, marked `ai`. */
+    fun candidates(query: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList(), limit: Int = 6, aiBotIds: Set<String> = emptySet()): List<Candidate> {
         val q = query.lowercase()
         val people = users.filter { it.deactivatedAt == null }
             .filter { it.username.lowercase().startsWith(q) || it.displayName.lowercase().contains(q) }
             .sortedBy { it.username }
-            .map { Candidate(it.username, it.displayName) }
+            .map { Candidate(it.username, it.displayName, ai = it.id in aiBotIds) }
         val teams = groups.filter { it.name.lowercase().startsWith(q) || (it.description ?: "").lowercase().contains(q) }
             .sortedBy { it.name }
             .map { Candidate(it.name, "グループ · ${it.memberIds.size} 人" + (it.description?.let { d -> " · $d" } ?: ""), kind = "group") }

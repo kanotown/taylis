@@ -619,7 +619,10 @@ fun MessageRow(
                 if (!compact) {
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(sender, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
-                        if (store.users[message.senderId]?.role == "bot") {
+                        // M66: an AI bot says 「AI」 (docs/AI.md §6), the other bots (webhooks, recurring posts) 「BOT」.
+                        if (message.senderId in controller.aiBotIds) {
+                            AiBadge(Modifier.padding(start = 6.dp))
+                        } else if (store.users[message.senderId]?.role == "bot") {
                             Surface(shape = MaterialTheme.shapes.extraSmall, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(start = 6.dp)) {
                                 Text("BOT", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
                             }
