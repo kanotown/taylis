@@ -17,6 +17,8 @@ from app.modules.messages.schemas import (
     MessageEdit,
     MessageOut,
     MessageRevisionOut,
+    PollAnswersIn,
+    PollDecideIn,
 )
 
 router = APIRouter(tags=["messages"])
@@ -166,6 +168,50 @@ async def ack_pending(message_id: UUID, user: CurrentUser, db: Db) -> AckPending
 @router.delete("/messages/{message_id}/ack", response_model=MessageOut)
 async def unacknowledge(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
     return await service.set_ack(db, user, message_id, present=False)
+
+
+@router.put("/messages/{message_id}/poll/answers", response_model=MessageOut)
+async def set_poll_answers(
+    message_id: UUID, body: PollAnswersIn, user: CurrentUser, db: Db, response: Response
+) -> MessageOut:
+    """M53: my yes / maybe / no on a scheduling poll, all at once (slots left out become
+    unanswered), and my comment (a string sets it, null or blank removes it, left out keeps
+    it). 201 when something changed. 409 poll_decided / poll_closed once it takes no answers."""
+    message, changed = await service.set_answers(db, user, message_id, body)
+    response.status_code = 201 if changed else 200
+    return message
+
+
+@router.post("/messages/{message_id}/poll/decide", response_model=MessageOut)
+async def decide_poll(
+    message_id: UUID,
+    body: PollDecideIn,
+    user: CurrentUser,
+    db: Db,
+    request: Request,
+    response: Response,
+) -> MessageOut:
+    """M53: the poll's author, the channel's owners and administrators decide a slot. The answers
+    close, the event goes into the channel's calendar (not in a DM, nor with create_event false)
+    and a thread reply says so. The same slot again: 200, nothing changes; another: 409."""
+    message, changed = await service.decide_poll(
+        db, user, message_id, body, base_url=public_base_url(request)
+    )
+    response.status_code = 201 if changed else 200
+    return message
+
+
+@router.delete("/messages/{message_id}/poll/decide", response_model=MessageOut)
+async def undecide_poll(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
+    """M53: take the decision back (answers open again). The calendar event stays."""
+    return await service.undecide_poll(db, user, message_id)
+
+
+def public_base_url(request: Request) -> str:
+    """The address links point at: PUBLIC_BASE_URL when set, else the one the request came to
+    (behind the reverse proxy, uvicorn's --proxy-headers make it the public one)."""
+    configured: str = request.app.state.settings.public_base_url.strip()
+    return (configured or str(request.base_url)).rstrip("/")
 
 
 @router.post("/messages/{message_id}/poll/close", response_model=MessageOut)

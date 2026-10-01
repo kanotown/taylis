@@ -1,13 +1,24 @@
+import datetime as dt
 import re
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.attachments.schemas import AttachmentOut
-from app.modules.messages.models import Message, MessageAck, PollVote, Reaction
+from app.modules.messages.models import Message, MessageAck, PollComment, PollVote, Reaction
+from app.modules.messages.schedule import (
+    MAX_SLOT,
+    MAX_SLOTS,
+    MIN_SLOT,
+    MIN_SLOTS,
+    slot_key,
+    slot_label,
+    stored_slot,
+)
+from app.modules.users.dnd import valid_zone
 
 MAX_BODY_LENGTH = 20_000
 # Control characters other than newline and tab are stripped (SECURITY.md §5).
@@ -27,26 +38,159 @@ def clean_body(value: str) -> str:
     return cleaned
 
 
+PollKind = Literal["choice", "schedule"]
+# M53: yes / maybe / no for one slot of a scheduling poll.
+PollAnswer = Literal["yes", "maybe", "no"]
+MAX_POLL_COMMENT = 100
+
+
+class ScheduleSlotIn(BaseModel):
+    """One candidate of a scheduling poll (M53): a time (15 minutes to 12 hours) or a whole day."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    starts_at: AwareDatetime | None = None
+    ends_at: AwareDatetime | None = None
+    date: dt.date | None = None
+
+    @model_validator(mode="after")
+    def _one_shape(self) -> "ScheduleSlotIn":
+        if self.date is not None:
+            if self.starts_at is not None or self.ends_at is not None:
+                raise ValueError("A slot is either a date or starts_at and ends_at")
+            return self
+        if self.starts_at is None or self.ends_at is None:
+            raise ValueError("A slot needs starts_at and ends_at, or a date")
+        length = self.ends_at - self.starts_at
+        if length < MIN_SLOT or length > MAX_SLOT:
+            raise ValueError("A slot lasts 15 minutes to 12 hours")
+        return self
+
+
 class PollCreate(BaseModel):
-    """A poll attached to a message (M14b): 2-10 options, one or several votes per person."""
+    """A poll attached to a message (M14b): 2-10 options, one or several votes per person.
+
+    M53 `kind = "schedule"` (SCHEDULING.md): 2-20 `slots` and the zone (`tz`) their labels are
+    written in; the server makes `options` from them (any sent are ignored) and the poll always
+    takes several answers."""
 
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1, max_length=200)
-    options: list[str] = Field(min_length=2, max_length=10)
+    options: list[str] = Field(default_factory=list, max_length=MAX_SLOTS)
     multiple: bool = False
     # M27: nobody sees who voted, only how many (set when the poll is made).
     anonymous: bool = False
+    kind: PollKind = "choice"
+    slots: list[ScheduleSlotIn] | None = Field(default=None, max_length=MAX_SLOTS)
+    # The IANA zone of the creator's device: the slots' labels (「10/3 (土) 14:00〜15:00」).
+    tz: str | None = Field(default=None, max_length=64)
 
     @field_validator("options")
     @classmethod
     def _options_clean(cls, value: list[str]) -> list[str]:
-        cleaned = [_CONTROL_CHARS.sub("", o).strip() for o in value]
-        if any(not o or len(o) > 80 for o in cleaned):
-            raise ValueError("Each option is 1-80 characters")
-        if len({o.lower() for o in cleaned}) != len(cleaned):
-            raise ValueError("Options must be distinct")
-        return cleaned
+        return [_CONTROL_CHARS.sub("", o).strip() for o in value]
+
+    @model_validator(mode="after")
+    def _by_kind(self) -> "PollCreate":
+        if self.kind == "choice":
+            if self.slots is not None or self.tz is not None:
+                raise ValueError("slots and tz are for kind schedule")
+            if not 2 <= len(self.options) <= 10:
+                raise ValueError("A poll has 2-10 options")
+            if any(not o or len(o) > 80 for o in self.options):
+                raise ValueError("Each option is 1-80 characters")
+            if len({o.lower() for o in self.options}) != len(self.options):
+                raise ValueError("Options must be distinct")
+            return self
+        if self.tz is None or not valid_zone(self.tz):
+            raise ValueError("A scheduling poll needs the device's time zone (tz)")
+        if self.slots is None or not MIN_SLOTS <= len(self.slots) <= MAX_SLOTS:
+            raise ValueError(f"A scheduling poll has {MIN_SLOTS}-{MAX_SLOTS} slots")
+        stored = self.stored_slots()
+        if len({slot_key(slot) for slot in stored}) != len(stored):
+            raise ValueError("Slots must be distinct")
+        self.options = [slot_label(slot, self.tz) for slot in stored]
+        self.multiple = True
+        return self
+
+    def stored_slots(self) -> list[dict[str, str]]:
+        return [stored_slot(s.starts_at, s.ends_at, s.date) for s in self.slots or []]
+
+
+class PollAnswerIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index: int = Field(ge=0, lt=MAX_SLOTS)
+    answer: PollAnswer
+
+
+class PollAnswersIn(BaseModel):
+    """M53: my answers to a scheduling poll, all at once: the slots left out become unanswered.
+    `comment`: a string sets my comment, null or blank removes it, left out keeps it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    answers: list[PollAnswerIn] = Field(max_length=MAX_SLOTS)
+    comment: str | None = Field(default=None, max_length=400)
+
+    @field_validator("comment")
+    @classmethod
+    def _comment_clean(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = " ".join(strip_control_chars(value).split())
+        if len(cleaned) > MAX_POLL_COMMENT:
+            raise ValueError(f"A comment is at most {MAX_POLL_COMMENT} characters")
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def _distinct(self) -> "PollAnswersIn":
+        if len({a.index for a in self.answers}) != len(self.answers):
+            raise ValueError("One answer per slot")
+        return self
+
+
+class PollDecideIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index: int = Field(ge=0, lt=MAX_SLOTS)
+    # Make the event in the channel's calendar (never in a DM, which has none).
+    create_event: bool = True
+
+
+class ScheduleSlotOut(BaseModel):
+    """A timed slot (starts_at, ends_at in UTC) or an all-day one (date)."""
+
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    date: dt.date | None = None
+
+
+class SlotAnswersOut(BaseModel):
+    """Who answered yes / maybe / no for one slot, in order of answering (empty in an anonymous
+    poll), and how many."""
+
+    yes: list[UUID] = []
+    maybe: list[UUID] = []
+    no: list[UUID] = []
+    yes_count: int = 0
+    maybe_count: int = 0
+    no_count: int = 0
+
+
+class PollCommentOut(BaseModel):
+    # null in an anonymous poll.
+    user_id: UUID | None
+    text: str
+
+
+class PollDecidedOut(BaseModel):
+    index: int
+    # The event made in the channel's calendar; null in a DM or when none was asked for.
+    event_id: UUID | None = None
+    by: UUID
+    at: datetime
 
 
 class PollOut(BaseModel):
@@ -64,6 +208,22 @@ class PollOut(BaseModel):
     # The options the viewer voted for, in a response to them. None in events: every member gets
     # the same one, so a client keeps what it knew (DATA_MODEL.md).
     mine: list[int] | None = None
+    # M53 (SCHEDULING.md §3). A choice poll: kind "choice" and the rest empty. In a scheduling
+    # poll `votes` / `counts` / `mine` are the ○ answers (what an app before M53 shows).
+    kind: PollKind = "choice"
+    slots: list[ScheduleSlotOut] = []
+    tz: str | None = None
+    decided: PollDecidedOut | None = None
+    # Per slot.
+    answers: list[SlotAnswersOut] = []
+    # Who answered or commented, in order of their first answer (empty in an anonymous poll): the
+    # rows of the people-by-slots table.
+    respondents: list[UUID] = []
+    comments: list[PollCommentOut] = []
+    # Mine per slot ("yes" / "maybe" / "no", null = unanswered) and my comment ("" = none), in a
+    # response to me; null in events (a client keeps what it knew, as `mine`).
+    my_answers: list[PollAnswer | None] | None = None
+    my_comment: str | None = None
 
 
 Priority = Literal["important", "urgent"]
@@ -207,18 +367,21 @@ def reactions_out(reactions: Sequence[Reaction]) -> list[ReactionOut]:
 
 
 def poll_out(
-    data: dict[str, Any] | None, votes: Sequence[PollVote] = (), viewer: UUID | None = None
+    data: dict[str, Any] | None,
+    votes: Sequence[PollVote] = (),
+    viewer: UUID | None = None,
+    comments: Sequence[PollComment] = (),
 ) -> PollOut | None:
     if not data:
         return None
     options = list(data.get("options", []))
     per_option: list[list[UUID]] = [[] for _ in options]
     for vote in votes:
-        if 0 <= vote.option_index < len(options):
+        if 0 <= vote.option_index < len(options) and vote.answer == "yes":
             per_option[vote.option_index].append(vote.user_id)
     closed = data.get("closed_at")
     anonymous = bool(data.get("anonymous", False))
-    return PollOut(
+    out = PollOut(
         question=str(data.get("question", "")),
         options=options,
         multiple=bool(data.get("multiple", False)),
@@ -230,6 +393,57 @@ def poll_out(
         if viewer is None
         else [i for i, voters in enumerate(per_option) if viewer in voters],
     )
+    if data.get("kind") == "schedule":
+        _fill_schedule(out, data, votes, viewer, comments)
+    return out
+
+
+def _fill_schedule(
+    out: PollOut,
+    data: dict[str, Any],
+    votes: Sequence[PollVote],
+    viewer: UUID | None,
+    comments: Sequence[PollComment],
+) -> None:
+    anonymous = out.anonymous
+    slots = list(data.get("slots", []))
+    out.kind = "schedule"
+    out.slots = [ScheduleSlotOut.model_validate(slot) for slot in slots]
+    out.tz = data.get("tz")
+    decided = data.get("decided")
+    out.decided = PollDecidedOut.model_validate(decided) if decided else None
+    per_slot: list[dict[str, list[UUID]]] = [{"yes": [], "maybe": [], "no": []} for _ in slots]
+    respondents: list[UUID] = []
+    mine: list[PollAnswer | None] = [None for _ in slots]
+    for vote in votes:  # oldest first
+        if not 0 <= vote.option_index < len(slots) or vote.answer not in ("yes", "maybe", "no"):
+            continue
+        per_slot[vote.option_index][vote.answer].append(vote.user_id)
+        if vote.user_id not in respondents:
+            respondents.append(vote.user_id)
+        if vote.user_id == viewer:
+            mine[vote.option_index] = vote.answer  # type: ignore[call-overload]
+    for comment in comments:
+        if comment.user_id not in respondents:
+            respondents.append(comment.user_id)
+    out.answers = [
+        SlotAnswersOut(
+            yes=[] if anonymous else groups["yes"],
+            maybe=[] if anonymous else groups["maybe"],
+            no=[] if anonymous else groups["no"],
+            yes_count=len(groups["yes"]),
+            maybe_count=len(groups["maybe"]),
+            no_count=len(groups["no"]),
+        )
+        for groups in per_slot
+    ]
+    out.respondents = [] if anonymous else respondents
+    out.comments = [
+        PollCommentOut(user_id=None if anonymous else c.user_id, text=c.text) for c in comments
+    ]
+    if viewer is not None:
+        out.my_answers = mine
+        out.my_comment = next((c.text for c in comments if c.user_id == viewer), "")
 
 
 def to_message_out(
@@ -239,6 +453,7 @@ def to_message_out(
     votes: Sequence[PollVote] = (),
     acks: Sequence[MessageAck] = (),
     viewer: UUID | None = None,
+    comments: Sequence[PollComment] = (),
 ) -> MessageOut:
     """`viewer`: the user a response is for (their own poll votes, M27); None for events."""
     deleted = message.is_deleted
@@ -265,7 +480,7 @@ def to_message_out(
         deleted=deleted,
         pinned_at=None if deleted else message.pinned_at,
         pinned_by=None if deleted else message.pinned_by,
-        poll=None if deleted else poll_out(message.poll, votes, viewer),
+        poll=None if deleted else poll_out(message.poll, votes, viewer, comments),
         priority=message.priority,  # type: ignore[arg-type]
         ack_requested=message.ack_requested,
         acks=[] if deleted else [AckOut(user_id=a.user_id, acked_at=a.acked_at) for a in acks],
