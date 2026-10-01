@@ -218,6 +218,8 @@ struct ChannelInfoView: View {
     @State private var addingLink = false
     /// D1: 「検索」 opens the message search narrowed to this conversation.
     @State private var searching = false
+    /// M66: the 「要約」 sheet's request.
+    @State private var aiSummary: AiSummaryRequest?
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
     /// Owners and admins manage the channel (rename / archive); every member may leave.
@@ -437,6 +439,12 @@ struct ChannelInfoView: View {
                 let isChannel = !channel.channel.isDm
                 let canEdit = channel.isMember && !channel.channel.archived
                 header(channel)
+                AiChannelSection(channelId: channelId,
+                                 notice: AiRules.notice(controller.aiHub?.agents(among: (members ?? []).map(\.userId)) ?? []),
+                                 canSummarize: controller.canSummarize(channelId)) { request in
+                    aiSummary = request
+                    controller.summarize(request)
+                }
                 if isChannel {
                     Section("トピック") {
                         if editingTopic {
@@ -524,6 +532,7 @@ struct ChannelInfoView: View {
             }
         } message: { Text(convertMessage) }
         .task(id: controller.store.memberListVersion[channelId, default: 0]) { await loadMembers() }  // L4: roles change
+        .aiSummarySheet(controller, request: $aiSummary)
         .sheet(isPresented: $addingLink) { ChannelLinkEditor(controller: controller, channelId: channelId, link: nil) }
         .sheet(isPresented: $searching) { SearchView(controller: controller, initial: SearchParams(channelId: channelId)) }
         .sheet(isPresented: $showAddMember, onDismiss: { Task { await loadMembers() } }) {

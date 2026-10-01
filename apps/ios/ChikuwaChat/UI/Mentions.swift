@@ -6,7 +6,7 @@ enum Mentions {
     struct Candidate: Identifiable, Equatable {
         let username: String
         let label: String
-        /// M12k: "group" notifies the members; "all" is @channel / @here.
+        /// M12k: "group" notifies the members; "all" is @channel / @here; M66: "ai" is an AI bot (its 「AI」 mark).
         var kind: String = "user"
         var id: String { username }
     }
@@ -46,13 +46,14 @@ enum Mentions {
     /// The `@prefix` being typed at the end of `text`, or nil.
     static func query(_ text: String) -> String? { groups(queryPattern, text)?[2] }
 
-    static func candidates(_ query: String, users: some Collection<UserPublic>, groups: [GroupOut] = [], limit: Int = 6) -> [Candidate] {
+    static func candidates(_ query: String, users: some Collection<UserPublic>, groups: [GroupOut] = [], aiBotIds: Set<String> = [],
+                           limit: Int = 6) -> [Candidate] {
         let q = query.lowercased()
         let people = users
             .filter { $0.deactivatedAt == nil }
             .filter { $0.username.lowercased().hasPrefix(q) || $0.displayName.lowercased().contains(q) }
             .sorted { $0.username < $1.username }
-            .map { Candidate(username: $0.username, label: $0.displayName) }
+            .map { Candidate(username: $0.username, label: $0.displayName, kind: aiBotIds.contains($0.id) ? "ai" : "user") }
         let teams = groups
             .filter { $0.name.lowercased().hasPrefix(q) || ($0.description ?? "").lowercased().contains(q) }
             .sorted { $0.name < $1.name }

@@ -197,6 +197,23 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
   使えるときだけ ⋯ を出す。スレッドの見出しに ⋯ を新設 (「このスレッドを要約」)。どちらも `summary_available` のときだけ。
 - **注意書き (§4)**: 広い画面はメンバーのダイアログ、スマホ幅はチャンネル情報のメンバー欄の上。
 
+## 10. 実装で決めたこと (M66 iOS)
+
+- `AiHub` (Sync/AiHub.swift) をエンジンが持つ。接続のたび (起動・再接続) に `GET /ai/status`。答えが来るまでと 404 のあいだは
+  AI の入口をすべて隠す。404 以外の失敗は前の状態のまま。
+- 「AI」の印: `/ai/status` の `agents[].bot_user_id` に入っている人。メッセージの行 (BOT の代わり)、メンションの候補
+  (`Candidate.kind = "ai"`)、メンバー一覧、プロフィール (「AI のボット」)。
+- 「要約」は `summary_available` で、かつ自分がメンバーの会話だけに出す。場所はチャンネルの ⋯、チャンネルの詳細の「AI」の欄、
+  スレッドの ⋯ (スレッドの ⋯ はこのために足した。中身は「このスレッドを要約」だけ)。
+- シートは 1 つだけ。状態は戻らない (pending → running → done / failed)。POST の答えより先に届いた `ai.run_updated` は取って
+  おいて合わせる。閉じたら結果は捨てる (あとから届いた答えも捨てる)。再接続のあと、終わっていない run を `GET /ai/runs/{id}`
+  で読み直す。
+- `tz_offset_minutes` は検索と同じ向き (東が正、日本は 540)。
+- エラーの文言: `ai_unavailable` / `ai_budget_exceeded` / `ai_daily_limit` は AiRules に持つ (共有の errors.json にまだ無いため)。
+  ほかは共通の表。`ai_unavailable` と `ai_budget_exceeded` のあとは状態を読み直し、メニューから「要約」が消える。
+  失敗した run は「要約できませんでした: (サーバの error)」。「もう一度」は新しい POST。
+- 結果は MessageBodyView で描き、選択とコピーができる。`omitted_count` > 0 なら「古い N 件は省きました」。
+
 ## 11. 実装で決めたこと (M66 Android)
 
 - `sync/Ai.kt` の `AiHub` を `SyncEngine` に持たせる (タスクの `TaskHub` と同じ形)。接続のたびに `GET /ai/status` を読み、
