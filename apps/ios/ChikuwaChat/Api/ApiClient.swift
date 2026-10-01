@@ -856,6 +856,31 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         try await request("GET", "/api/v1/canvases/\(id)/revisions/\(revisionId)")
     }
 
+    /// M58 (§4.13): post the canvas's link to its conversation; nothing when its shared message still exists. The
+    /// comments are that message's thread.
+    func shareCanvas(id: String) async throws -> CanvasOut {
+        try await request("POST", "/api/v1/canvases/\(id)/share", body: .object([:]))
+    }
+
+    /// M58 (§4.9): that version's body as a new version. A retry with the same key makes no second version.
+    func restoreCanvasRevision(id: String, revisionId: String, clientSaveId: String) async throws -> CanvasOut {
+        try await request("POST", "/api/v1/canvases/\(id)/revisions/\(revisionId)/restore", body: Self.restoreBody(clientSaveId: clientSaveId))
+    }
+
+    static func restoreBody(clientSaveId: String) -> JSONValue { .object(["client_save_id": .string(clientSaveId)]) }
+
+    /// M58: a name for the version (「提出版」); nil removes it.
+    func labelCanvasRevision(id: String, revisionId: String, label: String?) async throws -> CanvasRevisionMeta {
+        try await request("PATCH", "/api/v1/canvases/\(id)/revisions/\(revisionId)", body: Self.labelBody(label))
+    }
+
+    static func labelBody(_ label: String?) -> JSONValue { .object(["label": label.map(JSONValue.string) ?? .null]) }
+
+    /// M58 (§4.8): canvases of my conversations whose title or body matches; typed modifiers stay in `q`.
+    func searchCanvases(_ search: SearchRequest, limit: Int = 20, offset: Int = 0) async throws -> CanvasSearchOut {
+        try await request("GET", Self.pathWithQuery("/api/v1/search/canvases", search.canvasQueryItems(limit: limit, offset: offset)))
+    }
+
     // MARK: calendar (CALENDAR.md §4, M52)
 
     /// The events overlapping [from, to) (at most 100 days): mine and my channels' (or one channel's). The range goes

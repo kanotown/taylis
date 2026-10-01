@@ -37,6 +37,36 @@ enum CanvasText {
     /// Task counts as the server makes them for a list (the 「3/8」 beside a canvas).
     static func taskProgress(total: Int, done: Int) -> String? { total > 0 ? "\(done)/\(total)" : nil }
 
+    // MARK: images (M58, §4.10)
+
+    /// The server binds at most this many attachments to one canvas (too_many_canvas_images).
+    static let maxImages = 100
+
+    private static let attachmentRef = try! NSRegularExpression(
+        pattern: #"\(attachment:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)"#)
+
+    /// The distinct attachments a body names (`attachment:<id>`, as the server counts them when it binds).
+    static func attachmentRefs(_ body: String) -> Set<String> {
+        let ns = body as NSString
+        return Set(attachmentRef.matches(in: body, range: NSRange(location: 0, length: ns.length)).map { ns.substring(with: $0.range(at: 1)).lowercased() })
+    }
+
+    /// An image `![alt](attachment:<id>)` on a line of its own at the caret (replacing a selection); the caret goes on the
+    /// line below it (the desktop's insertImageLine).
+    static func insertImageLine(_ state: EditState, attachmentId: String, alt: String = "") -> EditState {
+        let ns = state.text as NSString
+        let start = min(max(state.start, 0), ns.length)
+        let end = min(max(state.end, start), ns.length)
+        let before = ns.substring(to: start)
+        let after = ns.substring(from: end)
+        let lead = before.isEmpty || before.hasSuffix("\n") ? "" : "\n"
+        let trail = after.hasPrefix("\n") ? "" : "\n"
+        let cleanAlt = alt.replacingOccurrences(of: "]", with: " ").replacingOccurrences(of: "\n", with: " ")
+        let line = "![\(cleanAlt)](attachment:\(attachmentId))"
+        let caret = (before as NSString).length + (lead as NSString).length + (line as NSString).length + 1
+        return EditState(text: before + lead + line + trail + after, start: caret, end: caret)
+    }
+
     // MARK: the caret
 
     /// Where the caret goes when the editor's text changes from `before` to `after` under it (a merge brought someone

@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -12,6 +13,12 @@ struct CanvasEditor: View {
     var sectionLine: Int? = nil
     var autoFocus = false
     @State private var model = CanvasEditorModel()
+    /// M58: 「画像」 (§4.10): the photo library or the camera; pictures are uploaded and put in at the caret.
+    @State private var showPhotoPicker = false
+    @State private var showCamera = false
+    @State private var photoItems: [PhotosPickerItem] = []
+    @State private var uploading = 0
+    private static let hasCamera = UIImagePickerController.isSourceTypeAvailable(.camera)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,6 +54,16 @@ struct CanvasEditor: View {
                 }
                 .accessibilityLabel("メンションの候補")
             }
+            if uploading > 0 {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("画像をアップロード中… (\(uploading))").font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .accessibilityElement(children: .combine)
+            }
             Divider()
             toolbar
         }
@@ -56,6 +73,49 @@ struct CanvasEditor: View {
         .fullScreenCover(item: $model.table) { target in
             CanvasTableEditor(target: target, onDone: { model.finishTable($0) }, onCancel: { model.cancelTable() })
         }
+        // M58: the picker is presented from the editor itself; a PhotosPicker inside a Menu never opens.
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 10, matching: .images)
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            photoItems = []
+            guard roomFor(items.count) else { return }
+            uploading += items.count
+            Task {
+                for item in items {
+                    // Library photos are mostly HEIC: re-encoded as JPEG as the composer does (the server keeps a thumbnail).
+                    guard let data = try? await item.loadTransferable(type: Data.self), let photo = ImageUpload.prepare(data) else {
+                        uploading -= 1
+                        controller.error = "写真を読み込めませんでした"
+                        continue
+                    }
+                    await upload(photo.data, filename: "photo." + photo.ext, contentType: photo.mime)
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { image in
+                guard let data = image.normalizedUp().jpegData(compressionQuality: 0.85), roomFor(1) else { return }
+                uploading += 1
+                Task { await upload(data, filename: "photo-\(Int(Date().timeIntervalSince1970)).jpg", contentType: "image/jpeg") }
+            }
+            .ignoresSafeArea()
+        }
+    }
+
+    /// The server takes at most 100 attachments per canvas: past that nothing is sent (the desktop's rule).
+    private func roomFor(_ count: Int) -> Bool {
+        guard CanvasText.attachmentRefs(saver.text).count + count <= CanvasText.maxImages else {
+            controller.error = ErrorMessages.byCode["too_many_canvas_images"] ?? ErrorMessages.unknown
+            return false
+        }
+        return true
+    }
+
+    /// One picture to the server (pending), then its line at the caret; the save that carries it binds it (§4.10).
+    private func upload(_ data: Data, filename: String, contentType: String) async {
+        defer { uploading -= 1 }
+        guard let uploaded = await controller.uploadAttachment(data: data, filename: filename, contentType: contentType) else { return }
+        model.insertImage(uploaded.id)
     }
 
     private var toolbar: some View {
@@ -75,6 +135,11 @@ struct CanvasEditor: View {
                 tool("minus", "区切り線") { CanvasText.insertRule($0) }
                 Button { model.openTable() } label: { toolIcon("tablecells") }
                     .accessibilityLabel("表")
+                Menu {
+                    Button("写真を選ぶ", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
+                    if Self.hasCamera { Button("写真を撮る", systemImage: "camera") { showCamera = true } }
+                } label: { toolIcon("photo") }
+                .accessibilityLabel("画像")
                 Spacer(minLength: 8)
                 Button { KeyboardBehavior.dismiss() } label: { toolIcon("keyboard.chevron.compact.down") }
                     .accessibilityLabel("キーボードを閉じる")
@@ -221,6 +286,24 @@ final class CanvasEditorModel {
     /// キャンセル: nothing changes (a new table was never put in).
     func cancelTable() { table = nil }
 
+    // MARK: images (M58, CANVAS.md §4.10)
+
+    /// Whether the reader has put the caret anywhere yet (else a picture goes at the end, as the desktop's).
+    @ObservationIgnored private var caretPlaced = false
+
+    /// An uploaded picture's `![](attachment:<id>)` on a line of its own at the caret, through the same path as typing
+    /// (the save loop, its merge and undo). The caret is the text view's: kept through merges while the picker was up.
+    func insertImage(_ attachmentId: String) {
+        external() // what the loop has merged meanwhile
+        let text = textView?.text ?? shown
+        let length = (text as NSString).length
+        let selected = caretPlaced ? (textView?.selectedRange ?? NSRange(location: length, length: 0)) : NSRange(location: length, length: 0)
+        let next = CanvasText.insertImageLine(CanvasText.EditState(text: text, start: selected.location, end: selected.location + selected.length),
+                                              attachmentId: attachmentId)
+        replaceText(with: next.text, caret: next.start)
+        caretPlaced = true
+    }
+
     /// The text replaced by `next`, through the text view's input (one undo step) when there is one.
     private func replaceText(with next: String, caret: Int) {
         guard let tv = textView else {
@@ -255,7 +338,10 @@ final class CanvasEditorModel {
         return true
     }
 
-    func selectionChanged() { updateCandidates() }
+    func selectionChanged() {
+        if textView?.isFirstResponder == true { caretPlaced = true }
+        updateCandidates()
+    }
 
     /// `@prefix` before the caret: the people and groups it may name (not @channel: a canvas notifies nobody).
     private func updateCandidates() {

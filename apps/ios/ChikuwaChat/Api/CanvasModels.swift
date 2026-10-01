@@ -155,6 +155,25 @@ struct CanvasRevisionOut: Codable, Equatable {
     let body: String
 }
 
+/// M58: one hit of `GET /search/canvases` (§4.8): the canvas and a plain-text excerpt around the words.
+struct CanvasSearchHit: Codable, Identifiable, Equatable {
+    let canvas: CanvasMeta
+    let snippet: String
+    var score: Double = 0
+    var id: String { canvas.id }
+}
+
+struct CanvasSearchOut: Codable {
+    let hits: [CanvasSearchHit]
+    let keywords: [String]
+    var filters: SearchFilters? = nil
+    let limit: Int
+    let offset: Int
+    let hasMore: Bool
+    var total: Int? = nil
+    var totalCapped: Bool? = nil
+}
+
 /// canvas.updated (§4.6): the new metadata and what changed (content / title / settings / restore).
 struct CanvasUpdatedEvent: Decodable {
     let canvas: CanvasMeta

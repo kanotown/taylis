@@ -92,6 +92,69 @@ extension AppController {
         }
     }
 
+    // MARK: M58 (CANVAS.md §4.9 / §4.13, the desktop's M44)
+
+    /// 「会話に共有」: an ordinary message with the canvas's link (nothing new while its shared message still exists).
+    @discardableResult
+    func shareCanvas(_ canvasId: String) async -> CanvasOut? {
+        guard let api else { return nil }
+        do {
+            let canvas = try await api.shareCanvas(id: canvasId)
+            store.applyCanvasMeta(canvas.meta)
+            engine?.canvases.current(canvasId)?.applyMeta(canvas.meta)
+            return canvas
+        } catch {
+            self.error = describe(error)
+            return nil
+        }
+    }
+
+    /// 「コメント」: the shared message, whose thread holds the comments; a canvas never shared (or whose message is
+    /// gone) is shared first (§4.13).
+    func canvasCommentsMessage(_ canvas: CanvasMeta) async -> String? {
+        if let id = canvas.shareMessageId, let known = store.message(canvas.channelId, id: id), !known.deleted { return id }
+        return await shareCanvas(canvas.id)?.shareMessageId
+    }
+
+    /// That version's body as a new version (§4.9). What is typed here is saved first, so it stays in the history. One
+    /// key per restore: a failure on the network is sent again with it (one version, however many tries).
+    func restoreCanvasRevision(_ canvasId: String, revisionId: String) async -> CanvasOut? {
+        guard let api else { return nil }
+        let saver = engine?.canvases.current(canvasId)
+        await saver?.flush()
+        let key = UUID().uuidString.lowercased()
+        var attempt = 0
+        while true {
+            do {
+                let canvas = try await api.restoreCanvasRevision(id: canvasId, revisionId: revisionId, clientSaveId: key)
+                store.applyCanvasMeta(canvas.meta)
+                saver?.remoteVersion(canvas.version) // the open editor reads the restored body as for canvas.updated
+                return canvas
+            } catch {
+                if attempt < 2, let apiError = error as? ApiError, apiError.isRetryable {
+                    attempt += 1
+                    try? await Task.sleep(nanoseconds: UInt64(attempt) * 700_000_000)
+                    continue
+                }
+                self.error = describe(error)
+                return nil
+            }
+        }
+    }
+
+    /// A version's name (「提出版」: kept when old versions are thinned out); nil or blank removes it.
+    func labelCanvasRevision(_ canvasId: String, revisionId: String, label: String?) async -> CanvasRevisionMeta? {
+        guard let api else { return nil }
+        let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            return try await api.labelCanvasRevision(id: canvasId, revisionId: revisionId,
+                                                     label: trimmed.flatMap { $0.isEmpty ? nil : String($0.prefix(80)) })
+        } catch {
+            self.error = describe(error)
+            return nil
+        }
+    }
+
     /// A canvas's body as a reader sees it (mentions as names) on the clipboard.
     func copyCanvasText(_ text: String) {
         UIPasteboard.general.string = Mentions.decode(text, users: store.users, groups: store.groups)
