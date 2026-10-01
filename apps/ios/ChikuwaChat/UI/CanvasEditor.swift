@@ -53,6 +53,9 @@ struct CanvasEditor: View {
         .onAppear { model.attach(saver: saver, store: controller.store, sectionLine: sectionLine) }
         .onDisappear { model.detach() }
         .onChange(of: saver.textRevision) { _, _ in model.external() }
+        .fullScreenCover(item: $model.table) { target in
+            CanvasTableEditor(target: target, onDone: { model.finishTable($0) }, onCancel: { model.cancelTable() })
+        }
     }
 
     private var toolbar: some View {
@@ -70,6 +73,8 @@ struct CanvasEditor: View {
                 tool("link", "リンク") { CanvasText.insertLink($0) }
                 tool("at", "メンション") { CanvasText.insertMentionMark($0) }
                 tool("minus", "区切り線") { CanvasText.insertRule($0) }
+                Button { model.openTable() } label: { toolIcon("tablecells") }
+                    .accessibilityLabel("表")
                 Spacer(minLength: 8)
                 Button { KeyboardBehavior.dismiss() } label: { toolIcon("keyboard.chevron.compact.down") }
                     .accessibilityLabel("キーボードを閉じる")
@@ -103,6 +108,8 @@ final class CanvasEditorModel {
     /// What the text view shows.
     private(set) var shown = ""
     private(set) var candidates: [Mentions.Candidate] = []
+    /// M57: the table open in the table editor (CANVAS.md §17).
+    var table: CanvasTable.Target?
     @ObservationIgnored weak var textView: UITextView?
     @ObservationIgnored private var saver: CanvasSaver?
     @ObservationIgnored private var store: Store?
@@ -180,6 +187,62 @@ final class CanvasEditorModel {
         tv.selectedRange = NSRange(location: next.start, length: max(0, next.end - next.start))
         if !tv.isFirstResponder { tv.becomeFirstResponder() }
         userChanged(next.text)
+    }
+
+    // MARK: the table editor (M57, CANVAS.md §17)
+
+    /// 「表」: the table holding the caret's line, else a new 3 × 2 table to go after it (written only at 完了).
+    func openTable() {
+        if let tv = textView, tv.markedTextRange != nil { return }
+        external() // what the loop has merged meanwhile
+        let text = textView?.text ?? shown
+        let caret = textView?.selectedRange.location ?? (text as NSString).length
+        KeyboardBehavior.dismiss()
+        table = CanvasTable.open(text, caretLine: CanvasTable.line(of: caret, in: text))
+    }
+
+    /// 完了: the edited table into the text as it is now (see `CanvasTable.writeBack`), as one edit through the same path
+    /// as typing, so the save loop, its merge and undo take it.
+    @discardableResult
+    func finishTable(_ edited: CanvasTable.Table) -> CanvasTable.WriteBack? {
+        guard let target = table else { return nil }
+        table = nil
+        external()
+        let current = textView?.text ?? shown
+        guard let out = CanvasTable.writeBack(target, table: edited, into: current) else { return nil }
+        let range: ClosedRange<Int>
+        switch out.result {
+        case .replaced(let r), .inserted(let r): range = r
+        }
+        replaceText(with: out.text, caret: CanvasTable.offset(ofLine: range.lowerBound, in: out.text))
+        return out.result
+    }
+
+    /// キャンセル: nothing changes (a new table was never put in).
+    func cancelTable() { table = nil }
+
+    /// The text replaced by `next`, through the text view's input (one undo step) when there is one.
+    private func replaceText(with next: String, caret: Int) {
+        guard let tv = textView else {
+            userChanged(next)
+            return
+        }
+        let before = (tv.text ?? "") as NSString
+        let after = next as NSString
+        let common = min(before.length, after.length)
+        var prefix = 0
+        while prefix < common && before.character(at: prefix) == after.character(at: prefix) { prefix += 1 }
+        var suffix = 0
+        while suffix < common - prefix && before.character(at: before.length - 1 - suffix) == after.character(at: after.length - 1 - suffix) { suffix += 1 }
+        let replacement = after.substring(with: NSRange(location: prefix, length: after.length - prefix - suffix))
+        if let start = tv.position(from: tv.beginningOfDocument, offset: prefix),
+           let end = tv.position(from: tv.beginningOfDocument, offset: before.length - suffix),
+           let range = tv.textRange(from: start, to: end) {
+            tv.replace(range, withText: replacement)
+        }
+        if tv.text != next { tv.text = next }
+        tv.selectedRange = NSRange(location: min(caret, after.length), length: 0)
+        if shown != next { userChanged(next) } // the replace above may already have told the delegate
     }
 
     /// Return inside a task, list or quote goes on with the next item (the composer's rule, §5).
