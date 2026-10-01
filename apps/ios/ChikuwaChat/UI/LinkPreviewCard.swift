@@ -20,11 +20,52 @@ enum Links {
     }
 }
 
-/// Open Graph card under a message for its first link (M11g). The row shows it once the preview has come, and asks for
-/// the preview itself (MessageRow): this view is only the card.
+/// What a row shows under its body for its link (M11g). A card that came in after the row was laid out made the rows
+/// above it jump as a conversation opened (testers, 2026-10-01): until the preview is known the row holds a card of the
+/// same height (the card's height does not depend on the page), and previews are kept with the account (Store).
+enum LinkPreviewSlot: Equatable {
+    case card(LinkPreviewOut)
+    /// Not known yet: the card's frame, filled in when the preview comes.
+    case placeholder
+    case none
+
+    /// `known`: the store's entry (nil = never asked; .some(nil) = the page gives none). `failed`: the request failed
+    /// this session (offline, rate limited): no card rather than a frame that stays empty.
+    static func of(_ known: LinkPreviewOut??, failed: Bool) -> LinkPreviewSlot {
+        switch known {
+        case .some(.some(let preview)): .card(preview)
+        case .some(.none): .none
+        case .none: failed ? .none : .placeholder
+        }
+    }
+
+    /// The server keeps a preview 7 days and a page without one 1 day (SECURITY.md §14); kept longer here, it is shown
+    /// as it is and asked for again.
+    static let okFor: TimeInterval = 7 * 24 * 3600
+    static let noneFor: TimeInterval = 24 * 3600
+    /// The newest this many previews stay with the account.
+    static let kept = 500
+
+    static func stale(savedAt: Date?, ok: Bool, now: Date) -> Bool {
+        guard let savedAt else { return true }
+        return now.timeIntervalSince(savedAt) > (ok ? okFor : noneFor)
+    }
+}
+
+/// A preview as the account's database keeps it (Store, meta "preview:<url>").
+struct StoredLinkPreview: Codable, Equatable {
+    var preview: LinkPreviewOut?
+    var savedAt: TimeInterval
+}
+
+/// Open Graph card under a message for its first link (M11g). The row asks for the preview (MessageRow): this view is
+/// only the card. It is always as tall as a site line, two title lines and two description lines, whatever the page
+/// gives, so the frame shown while the preview is on its way (`preview` nil) has the card's height.
 struct LinkPreviewCard: View {
-    let preview: LinkPreviewOut
+    /// nil: not come yet.
+    let preview: LinkPreviewOut?
     let url: String
+    static let imageSide: CGFloat = 64
 
     /// The link's host without "www.", for a page that names no site.
     static func host(_ url: String) -> String {
@@ -33,24 +74,32 @@ struct LinkPreviewCard: View {
     }
 
     var body: some View {
-        Link(destination: URL(string: preview.url) ?? URL(string: url)!) {
+        Link(destination: URL(string: preview?.url ?? url) ?? URL(string: url)!) {
             // A plain outlined card, the site first (tester, 2026-09-30: the accent bar at the left looked
             // "AI-like"); the same on the desktop and Android.
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(preview.siteName ?? Self.host(preview.url)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    if let title = preview.title { Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(2) }
-                    if let description = preview.description { Text(description).font(.footnote).foregroundStyle(.secondary).lineLimit(2) }
+                    Text(preview?.siteName ?? Self.host(preview?.url ?? url)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    if let preview {
+                        Text(preview.title ?? " ").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                            .lineLimit(2, reservesSpace: true)
+                        Text(preview.description ?? " ").font(.footnote).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
+                    } else {
+                        Text("リンクのプレビュー").font(.subheadline.weight(.semibold)).lineLimit(2, reservesSpace: true)
+                            .redacted(reason: .placeholder)
+                        Text(" ").font(.footnote).lineLimit(2, reservesSpace: true)
+                    }
                 }
                 Spacer(minLength: 0)
-                if let image = preview.imageUrl, let imageUrl = URL(string: image) {
+                if let image = preview?.imageUrl, let imageUrl = URL(string: image) {
                     AsyncImage(url: imageUrl) { phase in
                         if let image = phase.image { image.resizable().scaledToFill() } else { Color.clear }
                     }
-                    .frame(width: 64, height: 64)
+                    .frame(width: Self.imageSide, height: Self.imageSide)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
             }
+            .frame(minHeight: Self.imageSide, alignment: .top)
             .padding(10)
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color(.separator), lineWidth: 1))
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))

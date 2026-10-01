@@ -219,8 +219,7 @@ final class AppController {
         me = nil
         messageFocus = nil
         canvasLink = nil
-        linkPreviews = [:]
-        previewLoads = []
+        previewLoads = [:]
         emojiLoads = []
         AvatarCache.shared.reset()
         PushCenter.shared.pendingChannelId = nil
@@ -723,22 +722,37 @@ final class AppController {
         }
     }
 
-    // MARK: link previews (M11g): one fetch per URL per session
+    // MARK: link previews (M11g): kept with the account (Store.linkPreviews), asked for once per URL per session
 
-    /// url → preview (nil = failed / none). Views read this; `loadLinkPreview` fills it.
-    var linkPreviews: [String: LinkPreviewOut?] = [:]
-    private var previewLoads: Set<String> = []
+    /// url → preview (nil = the page gives none). Views read this; `loadLinkPreview` fills it.
+    var linkPreviews: [String: LinkPreviewOut?] { store.linkPreviews }
+    private var previewLoads: [String: Task<Void, Never>] = [:]
 
+    /// What a row shows for its link now (LinkPreviewSlot).
+    func linkPreviewSlot(_ url: String) -> LinkPreviewSlot {
+        LinkPreviewSlot.of(store.linkPreviews[url], failed: store.sessionPreviewFailures.contains(url))
+    }
+
+    /// Asks for the link's preview once, however many rows show it. The request is not the row's: a row leaving the
+    /// screen (the landing scrolls the newest rows away) cancelled it, and another row with the same link, which had
+    /// found it under way, never got its card.
     func loadLinkPreview(_ url: String) async {
-        guard let api, linkPreviews[url] == nil, !previewLoads.contains(url) else { return }
-        previewLoads.insert(url)
-        defer { previewLoads.remove(url) }
-        do {
-            let preview = try await api.linkPreview(url: url)
-            linkPreviews[url] = .some(preview.status == "ok" ? preview : nil)
-        } catch {
-            linkPreviews[url] = .some(nil) // refused or rate limited: no card this session
+        if let running = previewLoads[url] { return await running.value }
+        let store = store // the account asking, even if another one opens meanwhile
+        guard let api, store.linkPreviewWanted(url) else { return }
+        let load = Task {
+            do {
+                let preview = try await api.linkPreview(url: url)
+                store.setLinkPreview(url, preview.status == "ok" ? preview : nil)
+            } catch let error as ApiError where !error.isRetryable {
+                store.setLinkPreview(url, nil) // refused (not a public page): no card
+            } catch {
+                store.setLinkPreviewFailed(url) // offline or rate limited: no card this session; one kept before stays
+            }
         }
+        previewLoads[url] = load
+        await load.value
+        if previewLoads[url] == load { previewLoads[url] = nil }
     }
 
     /// M11c: any member pins / unpins; the updated message (with pinnedAt) replaces the row.
