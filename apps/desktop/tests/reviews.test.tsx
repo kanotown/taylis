@@ -56,7 +56,7 @@ describe("the chip's words and colours (pure)", () => {
   it("a task: 未着手 / 進行中 / 完了; nobody assigned; many assignees; an unknown user", () => {
     expect(taskChip(chipTask({ kind: "task", status: "doing", assignee_ids: ["u-kano", "u-ebi"] }), nameOf, today).text).toBe("タスク · 加納、えび · 進行中");
     expect(taskChip(chipTask({ kind: "task", assignee_ids: [] }), nameOf, today).text).toBe("タスク · 未着手");
-    expect(taskChip(chipTask({ assignee_ids: ["u-a", "u-b", "u-c", "u-kano", "u-ebi"] }), nameOf, today).text).toBe("レビュー依頼 · A、B、C 他 2 人 · 依頼中");
+    expect(taskChip(chipTask({ assignee_ids: ["u-a", "u-b", "u-c", "u-kano", "u-ebi"] }), nameOf, today).text).toBe("レビュー依頼 · A、B 他 3 人 · 依頼中");
     expect(taskChip(chipTask({ assignee_ids: ["u-gone"] }), nameOf, today).text).toBe("レビュー依頼 · ? · 依頼中");
   });
 });
