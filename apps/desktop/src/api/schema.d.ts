@@ -1259,6 +1259,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/recurring-posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Recurring Posts
+         * @description The channel's recurring posts, oldest first (paused ones too).
+         */
+        get: operations["list_recurring_posts_api_v1_channels__channel_id__recurring_posts_get"];
+        put?: never;
+        /**
+         * Create Recurring Post
+         * @description A new recurring post with its own bot (named `name`), which joins the channel. At most 20
+         *     per channel (409 too_many_recurring_posts).
+         */
+        post: operations["create_recurring_post_api_v1_channels__channel_id__recurring_posts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}/scheduled": {
         parameters: {
             query?: never;
@@ -2058,6 +2083,51 @@ export interface paths {
          */
         put: operations["mark_thread_read_api_v1_messages__message_id__thread_read_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recurring-posts/{post_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Recurring Post
+         * @description Stops it for good; the posts made (and their collections) stay.
+         */
+        delete: operations["delete_recurring_post_api_v1_recurring_posts__post_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Recurring Post
+         * @description Changes apply to the next posts. A new schedule or zone, and resuming, compute
+         *     next_run_at again from now.
+         */
+        patch: operations["update_recurring_post_api_v1_recurring_posts__post_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/recurring-posts/{post_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Recurring Post
+         * @description 今すぐ投稿: posts now (also while paused); the next scheduled time stays.
+         */
+        post: operations["run_recurring_post_api_v1_recurring_posts__post_id__run_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3510,6 +3580,57 @@ export interface components {
             type?: ("public" | "private") | null;
         };
         /**
+         * CollectDue
+         * @description Due `after_days` days after the posting day (0-30) at `time` (HH:MM), in the post's zone.
+         */
+        CollectDue: {
+            /** After Days */
+            after_days: number;
+            /** Time */
+            time: string;
+        };
+        /** CollectSpec */
+        CollectSpec: {
+            due: components["schemas"]["CollectDue"];
+            targets: components["schemas"]["CollectTargets"];
+        };
+        /**
+         * CollectTargets
+         * @description Whom to collect from: the union of the groups' members, the people and (all_members) the
+         *     whole channel, limited to the channel's members (not bots) when each post goes out.
+         */
+        CollectTargets: {
+            /**
+             * All Members
+             * @default false
+             */
+            all_members: boolean;
+            /** Group Ids */
+            group_ids?: string[];
+            /** User Ids */
+            user_ids?: string[];
+        };
+        /**
+         * CollectionOut
+         * @description L6 (RECURRING.md §3): a recurring post that collects replies. A target has submitted when
+         *     they have a live reply in the thread (also one sent to the channel too).
+         */
+        CollectionOut: {
+            /**
+             * Due At
+             * Format: date-time
+             */
+            due_at: string;
+            /** Reminded At */
+            reminded_at: string | null;
+            /** Submitted User Ids */
+            submitted_user_ids: string[];
+            /** Target Count */
+            target_count: number;
+            /** Target User Ids */
+            target_user_ids: string[];
+        };
+        /**
          * ConflictOut
          * @description A region both sides changed differently. `ours_line` / `theirs_line`: its first line
          *     (0-based) in the submitted body and in the head.
@@ -4212,6 +4333,7 @@ export interface components {
             channel_id: string;
             /** Client Msg Id */
             client_msg_id: string | null;
+            collection?: components["schemas"]["CollectionOut"] | null;
             /**
              * Created At
              * Format: date-time
@@ -4294,6 +4416,21 @@ export interface components {
              * Format: date-time
              */
             written_at: string;
+        };
+        /**
+         * MonthlySchedule
+         * @description Every month on `day` (1-31; a month without that day runs on its last day) at `time`.
+         */
+        MonthlySchedule: {
+            /** Day */
+            day: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "monthly";
+            /** Time */
+            time: string;
         };
         /**
          * MyLabProfileUpdate
@@ -4565,6 +4702,102 @@ export interface components {
             /** Unread Count */
             unread_count: number;
         };
+        /** RecurringPostCreate */
+        RecurringPostCreate: {
+            /** Body */
+            body: string;
+            collect?: components["schemas"]["CollectSpec"] | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Name */
+            name: string;
+            /** Schedule */
+            schedule: components["schemas"]["WeeklySchedule"] | components["schemas"]["MonthlySchedule"];
+            /** Tz */
+            tz: string;
+        };
+        /** RecurringPostOut */
+        RecurringPostOut: {
+            /** Body */
+            body: string;
+            /**
+             * Bot User Id
+             * Format: uuid
+             */
+            bot_user_id: string;
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            collect: components["schemas"]["CollectSpec"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Run At */
+            last_run_at: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Next Run At
+             * Format: date-time
+             */
+            next_run_at: string;
+            /** Schedule */
+            schedule: components["schemas"]["WeeklySchedule"] | components["schemas"]["MonthlySchedule"];
+            /** Tz */
+            tz: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * RecurringPostUpdate
+         * @description Fields left out stay; `collect: null` turns collecting off.
+         */
+        RecurringPostUpdate: {
+            /** Body */
+            body?: string | null;
+            collect?: components["schemas"]["CollectSpec"] | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Schedule */
+            schedule?: (components["schemas"]["WeeklySchedule"] | components["schemas"]["MonthlySchedule"]) | null;
+            /** Tz */
+            tz?: string | null;
+        };
+        /**
+         * RecurringRunOut
+         * @description POST /recurring-posts/{id}/run: the message just posted.
+         */
+        RecurringRunOut: {
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+        };
         /** RefreshRequest */
         RefreshRequest: {
             /** Refresh Token */
@@ -4604,7 +4837,7 @@ export interface components {
              * @default personal
              * @enum {string}
              */
-            kind: "personal" | "ack";
+            kind: "personal" | "ack" | "collect";
             /**
              * Message Id
              * Format: uuid
@@ -5696,6 +5929,21 @@ export interface components {
             enabled?: boolean | null;
             /** Name */
             name?: string | null;
+        };
+        /**
+         * WeeklySchedule
+         * @description Every week on `weekdays` (0 = Monday … 6 = Sunday) at `time` (HH:MM).
+         */
+        WeeklySchedule: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "weekly";
+            /** Time */
+            time: string;
+            /** Weekdays */
+            weekdays: number[];
         };
     };
     responses: never;
@@ -8460,6 +8708,72 @@ export interface operations {
             };
         };
     };
+    list_recurring_posts_api_v1_channels__channel_id__recurring_posts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringPostOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_recurring_post_api_v1_channels__channel_id__recurring_posts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecurringPostCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringPostOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     schedule_message_api_v1_channels__channel_id__scheduled_post: {
         parameters: {
             query?: never;
@@ -10093,6 +10407,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThreadState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_recurring_post_api_v1_recurring_posts__post_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_recurring_post_api_v1_recurring_posts__post_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecurringPostUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringPostOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_recurring_post_api_v1_recurring_posts__post_id__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringRunOut"];
                 };
             };
             /** @description Validation Error */

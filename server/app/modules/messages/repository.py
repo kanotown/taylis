@@ -18,6 +18,7 @@ from app.modules.messages.models import (
     mentions_of,
     timeline_filter,
 )
+from app.modules.recurring.models import Collection  # read-only (L6)
 from app.modules.users.models import User  # read-only
 
 
@@ -492,3 +493,50 @@ async def set_comment(
         )
     )
     await db.execute(stmt)
+
+
+# --- collections (L6, RECURRING.md) -------------------------------------------------------------
+
+
+async def collections_for(
+    db: AsyncSession, message_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, Collection]:
+    if not message_ids:
+        return {}
+    stmt = select(Collection).where(Collection.message_id.in_(message_ids))
+    return {row.message_id: row for row in (await db.execute(stmt)).scalars().all()}
+
+
+async def repliers_for(
+    db: AsyncSession, parent_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, set[uuid.UUID]]:
+    """The authors of each parent's live replies (one statement for a page of parents)."""
+    if not parent_ids:
+        return {}
+    stmt = (
+        select(Message.parent_id, Message.sender_id)
+        .where(Message.parent_id.in_(parent_ids), Message.deleted_at.is_(None))
+        .distinct()
+    )
+    grouped: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for parent_id, sender_id in (await db.execute(stmt)).all():
+        if parent_id is not None:
+            grouped.setdefault(parent_id, set()).add(sender_id)
+    return grouped
+
+
+async def has_live_reply(
+    db: AsyncSession,
+    parent_id: uuid.UUID,
+    user_id: uuid.UUID,
+    *,
+    excluding: uuid.UUID | None = None,
+) -> bool:
+    stmt = select(Message.id).where(
+        Message.parent_id == parent_id,
+        Message.sender_id == user_id,
+        Message.deleted_at.is_(None),
+    )
+    if excluding is not None:
+        stmt = stmt.where(Message.id != excluding)
+    return (await db.execute(stmt.limit(1))).first() is not None

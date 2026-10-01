@@ -393,7 +393,7 @@ CREATE TABLE reminders (
   remind_at   timestamptz NOT NULL,
   status      varchar(16) NOT NULL DEFAULT 'pending', -- pending | fired | done | cancelled
   fired_at    timestamptz,
-  kind        varchar(16) NOT NULL DEFAULT 'personal', -- personal (本人が設定) | ack (確認のお願い、L4)
+  kind        varchar(16) NOT NULL DEFAULT 'personal', -- personal (本人が設定) | ack (確認のお願い、L4) | collect (提出のお願い、L6)
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
@@ -417,6 +417,66 @@ CREATE INDEX reminders_message_kind_idx ON reminders (message_id, kind, created_
 - **未確認の人**: `GET /messages/{id}/ack/pending` → `{ user_ids }` (表示名順)。チャンネルのメンバーから、投稿者・bot・
   無効化された人・確認済みの人を除いたもの。メンバーなら誰でも見られる (確認した人の一覧が見えるのと同じ)。
   確認を求めていない投稿は `409 ack_not_requested`。
+
+- **提出のお願い (`kind = collect`、L6、M59)**: 回収のある定期投稿 (recurring_posts) の締切を過ぎると、worker が未提出の対象者
+  それぞれに `fired` で作る (`create_system_in_tx`。プッシュの題は「提出のお願い」、note は「(定期投稿の名前) の提出をお願いします
+  (締切 10/9 (金) 18:00)」)。そのスレッドに返信した後は `GET /reminders` に出さない。
+
+### recurring_posts / collections (定期投稿と提出の回収、M59、RECURRING.md)
+
+```sql
+CREATE TABLE recurring_posts (
+  id           uuid PRIMARY KEY,                       -- UUIDv7
+  channel_id   uuid NOT NULL REFERENCES channels(id),  -- 公開・非公開チャンネル (DM は不可)
+  created_by   uuid NOT NULL REFERENCES users(id),
+  bot_user_id  uuid NOT NULL REFERENCES users(id),     -- role = bot。この定期投稿専用 (表示名 = name)。チャンネルのメンバー
+  name         varchar(40) NOT NULL,                   -- 1〜40 文字 (空白は 1 つにまとめる)
+  body         text NOT NULL,                          -- 1〜4000 文字。{date} {weekday} {week} を投稿日で置き換える
+  schedule     jsonb NOT NULL,                         -- {"kind":"weekly","weekdays":[0,3],"time":"09:00"} | {"kind":"monthly","day":31,"time":"09:00"}
+  tz           varchar(64) NOT NULL,                   -- schedule と締切を読むゾーン (作った端末の)
+  collect      jsonb,                                  -- NULL | {"targets":{"group_ids":[],"user_ids":[],"all_members":false},"due":{"after_days":3,"time":"18:00"}}
+  enabled      boolean NOT NULL DEFAULT true,          -- false = 停止中 (アーカイブで自動的にも)
+  next_run_at  timestamptz NOT NULL,                   -- schedule と tz から計算 (作成・予定の変更・再開のとき今から)
+  last_run_at  timestamptz,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  deleted_at   timestamptz,                            -- 論理削除 (ボットは抜けて無効化。投稿と回収は残る)
+  CHECK (char_length(name) BETWEEN 1 AND 40),
+  CHECK (char_length(body) BETWEEN 1 AND 4000)
+);
+CREATE INDEX recurring_posts_due_idx     ON recurring_posts (next_run_at) WHERE enabled AND deleted_at IS NULL;
+CREATE INDEX recurring_posts_channel_idx ON recurring_posts (channel_id) WHERE deleted_at IS NULL;
+
+CREATE TABLE collections (
+  message_id         uuid PRIMARY KEY REFERENCES messages(id),   -- 定期投稿が立てたメッセージ (スレッドの親)
+  recurring_post_id  uuid NOT NULL REFERENCES recurring_posts(id),
+  channel_id         uuid NOT NULL REFERENCES channels(id),
+  target_user_ids    uuid[] NOT NULL DEFAULT '{}',               -- 投稿の時点で固定した対象者 (表示名順)
+  due_at             timestamptz NOT NULL,                       -- 投稿日 + after_days の time (tz)
+  reminded_at        timestamptz,                                -- 催促を作った時 (1 回だけ)
+  created_at         timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX collections_due_idx ON collections (due_at) WHERE reminded_at IS NULL;
+```
+
+- **予定**: 毎週 (曜日は複数可、0 = 月曜) か毎月 (1〜31 日。その日のない月は末日)、時刻は tz の壁時計。次の予定は「今より厳密に後の
+  最初の該当時刻」。夏時間で飛ばされる時刻 (02:30) は切り替え後の同じ間隔 (03:30)、2 回ある時刻は 1 回目。
+- **投稿** (worker、リマインダーと同じ周期): `next_run_at <= now` の有効な行ごとに 1 件。止まっていた間の分はまとめて 1 件にし、
+  `next_run_at` を今より後の予定へ進める (投稿と同じトランザクション)。`client_msg_id` は行と予定時刻から作る (UUIDv5)。
+  ボットがチャンネルから外されていたら入り直す。チャンネルがアーカイブ (か消滅) なら投稿せず `enabled = false`。投稿に失敗した行は
+  ログに残し、次の予定へ進める (同じ行が数秒ごとに失敗し続けないように)。今すぐ投稿 (`POST /recurring-posts/{id}/run`) は
+  停止中でも投稿し、`next_run_at` を変えない。投稿者の既読位置は動かさない。
+- **回収**: `collect` のある投稿は `collections` の行を作る。対象 = (グループのメンバー ∪ 指定した人、または `all_members` なら全員)
+  ∩ 投稿の時点のチャンネルのメンバー (bot・無効化された人を除く)。締切 = 投稿日 (tz) + after_days の time。それが投稿の時刻以前
+  (今すぐ投稿や遅れた投稿で、当日の締切が過ぎている) なら 1 日ずつ後ろへ。投稿の `message.created` には載らないので、同じ
+  トランザクションで親が別の seq を取って `message.updated (change = collection)` を出す。
+- **提出**: 対象者のうち、そのスレッドに消されていない返信 (チャンネルにも送信した返信を含む) がある人。表には持たず読むときに数える
+  (`MessageOut.collection` は履歴・差分などのページごとに 2 クエリ)。対象者の最初の返信・最後の返信の削除で提出状況が変わると、親が
+  別の seq を取って `message.updated (change = collection)` (返信の `message.created` / `message.deleted` の後)。
+- **催促**: `due_at <= now` で `reminded_at` が空の行に、未提出でまだメンバーの対象者それぞれの `reminders (kind = collect)` を作り、
+  `reminded_at` を入れて親の `message.updated (change = collection)`。投稿が消されている、チャンネルがアーカイブされている場合は
+  作らずに `reminded_at` だけ入れる。定期投稿を消しても、それまでの投稿の回収と催促は続く。
+- チャンネルの seq は投稿 (と上の親の更新) でだけ使う。定期投稿の一覧の変更はイベントを出さない (開くたびに読む)。
 
 ### channel_favorites (お気に入りチャンネル、M12a)
 
@@ -1073,6 +1133,7 @@ CREATE INDEX messages_mention_all_idx     ON messages (created_at) WHERE mention
 | 削除 | 1 | `deleted_at`, `body = ''`, `updated_seq = 新 seq`、添付を `deleted` に | `message.deleted` |
 | リアクション追加 / 削除 | 1 | `reactions` 行、`updated_seq = 新 seq` | `message.updated (change=reactions)` |
 | スレッド返信作成 | 1 | 返信行 (`seq = updated_seq = 新 seq`) と親の `reply_count`, `last_reply_at`, `reply_user_ids` (返信者を先頭へ), `updated_seq = 新 seq` | `message.created` (data に親のスレッド情報を含む) |
+| 回収の提出状況の変化 (L6) | 1 | 親の `updated_seq = 新 seq` (返信の作成・削除の seq の次)。投稿直後に回収が付いたとき・締切後の催促も | `message.updated (change=collection)` |
 
 ### message_revisions (編集履歴、M14c)
 

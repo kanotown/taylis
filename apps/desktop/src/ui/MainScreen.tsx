@@ -15,6 +15,7 @@ import { Badge, Button, cn, IconButton, Menu, MenuCheckboxItem, MenuContent, Men
 import { QuickSwitcher } from "./QuickSwitcher";
 import { ChannelPins, PinsPane } from "./PinsPane";
 import { ChannelDetails } from "./ChannelDetails";
+import { RecurringPostsDialog } from "./RecurringPosts";
 import { CanvasPane } from "./CanvasPane";
 import { type ConversationTab, ConversationTabs, eventsTabLabel } from "./ConversationTabs";
 import { CalendarView, ChannelEvents, useCalendarHub } from "./CalendarView";
@@ -93,7 +94,7 @@ function rootNav(nav: Nav): Nav {
 
 const isRootNav = (nav: Nav) => nav.pane === "list";
 
-type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | null;
+type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | "recurring" | null;
 
 const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
 
@@ -858,6 +859,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {!current.archived && <MenuItem onSelect={() => setDialog("topic")}>トピックを編集</MenuItem>}
       {canManage && !current.archived && <MenuItem onSelect={() => setDialog("rename")}>名前を変更</MenuItem>}
       <MenuItem onSelect={() => setDialog("members")}>メンバー</MenuItem>
+      {(current.type === "public" || current.type === "private") && current.isMember && <MenuItem onSelect={() => setDialog("recurring")}>定期投稿…</MenuItem>}
       {canEditLinks(current, controller) && <MenuItem onSelect={() => { setEditingLink(null); setDialog("link"); }}>リンクを追加…</MenuItem>}
       {canManage && !current.archived && (
         <MenuItem onSelect={() => void controller.setPostingPolicy(current.id, current.posting_policy === "owners" ? "everyone" : "owners")}>
@@ -1265,6 +1267,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         </Modal>
       )}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
+      {dialog === "recurring" && current && <RecurringPostsDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {taskDialog && <TaskDialog controller={controller} task={controller.engine?.tasks?.find(taskDialog.id) ?? taskDialog} onClose={() => setTaskDialog(null)} onOpenMessage={openTaskMessage} />}
     </>
   );

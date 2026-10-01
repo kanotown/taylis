@@ -40,6 +40,7 @@ from app.modules.messages.mentions import (
 from app.modules.messages.models import Message, with_replier
 from app.modules.messages.schedule import decided_text
 from app.modules.messages.schemas import (
+    CollectionOut,
     DeltaOut,
     HistoryOut,
     MentionListOut,
@@ -50,10 +51,12 @@ from app.modules.messages.schemas import (
     PollAnswersIn,
     PollCreate,
     PollDecideIn,
+    collection_out,
     thread_of,
     to_message_out,
 )
 from app.modules.reads import service as reads
+from app.modules.recurring.models import Collection
 from app.modules.threads import service as threads
 from app.modules.users import service as users
 from app.modules.users.models import User
@@ -210,6 +213,8 @@ async def create_message(
                     parent_thread=parent_thread,
                 ).model_dump(mode="json"),
             )
+            if parent is not None:
+                await _collection_reply_changed_in_tx(db, parent, actor.id, message.id)
             # Posting in the channel reads it (SYNC_PROTOCOL.md §10); a thread reply only moves the
             # thread's position (THREADS.md), and a scheduled send moves nothing.
             if advance_read and data.parent_id is None:
@@ -314,6 +319,11 @@ async def messages_out(
         db, [m.id for m in rows if _is_schedule(m) and not m.is_deleted]
     )
     acks = await repo.acks_for(db, [m.id for m in rows if m.ack_requested and not m.is_deleted])
+    # L6: only top-level posts can collect (a page costs two more queries when one does).
+    collections = await repo.collections_for(
+        db, [m.id for m in rows if m.parent_id is None and not m.is_deleted]
+    )
+    repliers = await repo.repliers_for(db, list(collections))
     return [
         to_message_out(
             m,
@@ -323,9 +333,41 @@ async def messages_out(
             acks.get(m.id, []),
             viewer,
             comments.get(m.id, []),
+            _collection_of(collections.get(m.id), repliers.get(m.id, set())),
         )
         for m in rows
     ]
+
+
+def _collection_of(row: Collection | None, repliers: set[uuid.UUID]) -> CollectionOut | None:
+    if row is None:
+        return None
+    return collection_out(row.target_user_ids, row.due_at, row.reminded_at, repliers)
+
+
+async def _collection_reply_changed_in_tx(
+    db: AsyncSession, parent: Message, author_id: uuid.UUID, reply_id: uuid.UUID
+) -> None:
+    """L6 (RECURRING.md §3): a reply came or went in a collecting post's thread. When that changes
+    who has submitted (a target's first live reply, or their last one gone), the parent takes a
+    new seq and message.updated (change collection) carries the new count, like any change of
+    the parent's own fields."""
+    row = (await repo.collections_for(db, [parent.id])).get(parent.id)
+    if row is None or author_id not in row.target_user_ids:
+        return
+    if await repo.has_live_reply(db, parent.id, author_id, excluding=reply_id):
+        return
+    await _bump_and_announce(db, parent, "collection", commit=False)
+
+
+async def announce_change_in_tx(db: AsyncSession, message: Message, change: str) -> MessageOut:
+    """A change another module made to what a message shows (L6: a collection was attached):
+    new updated_seq and message.updated; the caller commits."""
+    return await _bump_and_announce(db, message, change, commit=False)
+
+
+async def has_live_reply(db: AsyncSession, parent_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    return await repo.has_live_reply(db, parent_id, user_id)
 
 
 def _is_schedule(message: Message) -> bool:
@@ -469,6 +511,7 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
     await repo.delete_acks(db, message.id)  # M15e
     await attachments.mark_deleted_in_tx(db, message.id)
     parent_thread = None
+    parent: Message | None = None
     if message.parent_id is not None:
         parent = await repo.get_message(db, message.parent_id)
         if parent is not None:
@@ -490,6 +533,8 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
             mode="json"
         ),
     )
+    if parent_thread is not None and parent is not None:
+        await _collection_reply_changed_in_tx(db, parent, message.sender_id, message.id)
     await db.commit()
     return out
 

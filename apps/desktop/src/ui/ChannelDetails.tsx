@@ -9,6 +9,7 @@ import { MemberList, useMembers } from "./Dialogs";
 import { formatMuted } from "./format";
 import { channelTitle } from "./MainScreen";
 import { Badge, Button, cn, IconButton, Input } from "./primitives";
+import { RecurringPostList } from "./RecurringPosts";
 
 /** What the details page asks MainScreen to open (the existing dialogs). */
 export type DetailsDialog = "rename" | "archive" | "leave" | "convert" | "link" | "add-member";
@@ -115,6 +116,12 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
           </div>
           <MemberList controller={controller} channel={channel} members={members} onChange={setMembers} />
         </section>
+        {isChannel && channel.isMember && (
+          <section aria-label="定期投稿">
+            <h3 className={cn(HEADING, "mb-2")}>定期投稿</h3>
+            <RecurringPostList controller={controller} channel={channel} />
+          </section>
+        )}
         {isChannel && channel.isMember && (
           <section className="space-y-0.5">
             <h3 className={cn(HEADING, "mb-1")}>設定</h3>

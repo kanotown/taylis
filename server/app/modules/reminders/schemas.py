@@ -21,8 +21,9 @@ class ReminderOut(BaseModel):
     status: Literal["pending", "fired", "done", "cancelled"]
     fired_at: datetime | None
     created_at: datetime
-    # L4: "ack" when the message's author asked me to acknowledge it.
-    kind: Literal["personal", "ack"] = "personal"
+    # L4: "ack" when the message's author asked me to acknowledge it. L6: "collect" when a
+    # recurring post's collection is past due and I have not replied in its thread.
+    kind: Literal["personal", "ack", "collect"] = "personal"
 
 
 class AckRemindOut(BaseModel):

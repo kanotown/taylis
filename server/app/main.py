@@ -53,6 +53,8 @@ from app.modules.notifications.planner import PushPlanner
 from app.modules.notifications.providers import build_providers
 from app.modules.notifications.router import router as notifications_router
 from app.modules.notifications.sender import PushSender
+from app.modules.recurring import service as recurring
+from app.modules.recurring.router import router as recurring_router
 from app.modules.reminders import service as reminders
 from app.modules.reminders.router import router as reminders_router
 from app.modules.scheduled import service as scheduled
@@ -184,7 +186,8 @@ async def _presence_sweep_loop(app: FastAPI, stop: asyncio.Event) -> None:
 
 async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
     """Posts scheduled messages (M12d) and fires reminders (M12e), calendar alarms (M51) and
-    task due dates (M55) whose time has come."""
+    task due dates (M55) whose time has come; posts recurring posts and nudges those who have
+    not submitted to a collection past its due time (L6, M59)."""
     settings: Settings = app.state.settings
     while not stop.is_set():
         try:
@@ -210,6 +213,16 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     await tasks_service.fire_due(session)
             except Exception:
                 log.exception("task due-date firing failed")
+            try:
+                async with app.state.db.session_factory() as session:
+                    await recurring.run_due(session)
+            except Exception:
+                log.exception("recurring posting failed")
+            try:
+                async with app.state.db.session_factory() as session:
+                    await recurring.remind_due(session)
+            except Exception:
+                log.exception("collection nudging failed")
 
 
 @asynccontextmanager
@@ -274,6 +287,7 @@ def build_api_router() -> APIRouter:
     api.include_router(tasks_router)
     api.include_router(scheduled_router)
     api.include_router(reminders_router)
+    api.include_router(recurring_router)
     api.include_router(emoji_router)
     api.include_router(templates_router)
     api.include_router(groups_router)
