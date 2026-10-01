@@ -24,6 +24,9 @@ final class AppController {
     var canvasLink: CanvasLinkTarget?
     /// M52: an event to show (a calendar alarm's notification): its channel's 「予定」 tab or the calendar takes it.
     var calendarOpen: CalendarOpen?
+    /// M56: a task to show, or a board to open (a task's notification, 「自分の担当」's channel): its channel's 「タスク」 tab
+    /// or 「自分のタスク」 takes it.
+    var taskOpen: TaskOpen?
     func revealMessage(_ message: MessageOut) async -> Bool {
         await revealMessage(id: message.id, channelId: message.channelId, parentId: message.parentId)
     }
@@ -465,6 +468,8 @@ final class AppController {
         }
         // M52: my calendar alarm while the app is open (the server's push covers the background), worded like that push.
         engine.onCalendarAlarm = { [weak self] event in self?.notice = "📅 " + CalendarDates.alarmText(event) }
+        // M56: an assignment or a due date while the app is open, worded like the push (not with notify_tasks off or in DND).
+        engine.onTaskNotice = { [weak self] notice in self?.sayTaskNotice(notice) }
         engine.onBadge = { [weak self, weak engine] count in
             guard let self, self.engine === engine else { return } // a signed-out engine's late tasks leave the badge alone (§11)
             self.activeBadgeChanged(count)
@@ -634,6 +639,12 @@ final class AppController {
             // the channel (as a message's conversation), or in the calendar for my own (no channel).
             calendarOpen = CalendarOpen(eventId: eventId, channelId: payload.channelId)
             if payload.channelId == nil { PushCenter.shared.pendingCalendar = true }
+        }
+        if payload.opensTask, let taskId = payload.taskId {
+            // M56 (PUSH_NOTIFICATIONS.md §4, kind = task): the task, in its channel's 「タスク」 tab once the store knows the
+            // channel (as a message's conversation), or in 「自分のタスク」 for my own (no channel).
+            taskOpen = TaskOpen(taskId: taskId, channelId: payload.channelId)
+            if payload.channelId == nil { PushCenter.shared.pendingTasks = true }
         }
         PushCenter.shared.pendingChannelId = payload.channelId
         PushCenter.shared.pendingParentId = payload.parentId // a reply: its thread opens too (M28d)
@@ -1037,9 +1048,10 @@ final class AppController {
     func updateProfile(title: String?? = nil, statusText: String?? = nil, statusEmoji: String?? = nil, statusExpiresAt: String?? = nil,
                        dndUntil: String?? = nil, quietHours: QuietHours?? = nil, notifyKeywords: [String]? = nil,
                        presenceHidden: Bool? = nil, notificationDefault: String? = nil, notifyReactions: Bool? = nil,
-                       quickReactions: [String]?? = nil) async -> Bool {
+                       quickReactions: [String]?? = nil, notifyTasks: Bool? = nil) async -> Bool {
         guard let api else { return false }
         var fields: [String: JSONValue] = [:]
+        if let notifyTasks { fields["notify_tasks"] = .bool(notifyTasks) }  // M56
         if let quickReactions { fields["quick_reactions"] = quickReactions.map { .array($0.map(JSONValue.string)) } ?? .null }  // M50
         if let notifyReactions { fields["notify_reactions"] = .bool(notifyReactions) }  // M39
         // M35: channels that follow the default show the new level at once (they resolve with store.me).

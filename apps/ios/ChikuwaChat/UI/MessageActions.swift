@@ -3,7 +3,7 @@ import UIKit
 
 /// What a message's action sheet asks for once the sheet is gone: another sheet or a dialog can only come after it.
 enum MessageFollowUp {
-    case thread, edit, moreReactions, reactors, share, delete, customReminder
+    case thread, edit, moreReactions, reactors, share, delete, customReminder, task
 }
 
 /// A sheet a message row asks for. The conversation presents it (`messageSheets`), not the row: LazyVStack takes rows
@@ -38,6 +38,8 @@ private struct MessageSheets: ViewModifier {
     /// The action sheet's choice and its message, run once the sheet is gone.
     @State private var next: (MessageFollowUp, MessageState)?
     @State private var deleting: MessageState?
+    /// M56: 「タスクにする」's form, once the action sheet is gone.
+    @State private var taskForm: TaskFormTarget?
 
     private var store: Store { controller.store }
 
@@ -55,6 +57,11 @@ private struct MessageSheets: ViewModifier {
         case (.customReminder, let message)?: sheet = MessageSheet(kind: .reminder, message: message)
         case (.share, let message)?: sheet = MessageSheet(kind: .share, message: message)
         case (.delete, let message)?: deleting = message
+        case (.task, let message)?:
+            // M56 (TASKS.md §6): the message's line as the title, the message as the source, its channel's board (or
+            // 「自分のタスク」 for a DM or a board I may not add to).
+            taskForm = .new(TaskRules.messageTaskInit(message, channel: store.channel(message.channelId), users: store.users,
+                                                      groups: store.groups, isAdmin: controller.isAdmin))
         case nil: break
         }
         onClosed()
@@ -97,6 +104,9 @@ private struct MessageSheets: ViewModifier {
                         await controller.editMessage(message.id, body: Mentions.encode(body, users: store.users.values, groups: Array(store.groups.values)))
                     }
                 }
+            }
+            .fullScreenCover(item: $taskForm) { target in
+                TaskForm(controller: controller, hub: controller.taskHub, target: target)
             }
             // An alert in the middle of the screen: a confirmation dialog pointed at the conversation from wherever
             // iOS 26 put it (testers, 2026-09-29).
@@ -226,6 +236,10 @@ struct MessageActionsSheet: View {
                         rowLabel("リマインド", "alarm").foregroundStyle(Color.primary)
                         Divider().padding(.leading, 56)
                     }
+                }
+                // M56 (TASKS.md §6): after リマインド, as on the web; not on a server without tasks.
+                if controller.serverHasTasks && controller.taskHub?.available == true && message.type == "user" {
+                    row("タスクにする", "checklist") { then(.task) }
                 }
                 if canMarkUnread { row("ここから未読にする", "envelope.badge") { onMarkUnread(); dismiss() } }
                 row("リンクをコピー", "link") { controller.copyPermalink(message.id); dismiss() }

@@ -1,0 +1,188 @@
+import Foundation
+
+/// Tasks and kanban (docs/TASKS.md; the server and the web in M55, this client in M56): a board per public or private
+/// channel and my own list, three fixed columns, several assignees, a due date, optionally the message a task came from.
+
+/// The three columns (TASKS.md §1). An unknown value (a later server's column) reads as 未着手 rather than failing the list.
+enum TaskStatus: String, CaseIterable, Codable, Hashable {
+    case todo, doing, done
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = TaskStatus(rawValue: raw) ?? .todo
+    }
+
+    var label: String {
+        switch self {
+        case .todo: "未着手"
+        case .doing: "進行中"
+        case .done: "完了"
+        }
+    }
+}
+
+/// The message a task was made from (§8 1.): `messageId` and `excerpt` become null once that message is deleted.
+struct TaskSourceOut: Codable, Equatable, Hashable {
+    var messageId: String?
+    var channelId: String?
+    var excerpt: String?
+}
+
+/// A task as I see it (GET /tasks…, the answers to my changes). task.updated carries the same fields without
+/// `can_delete` (it differs per person, §8 4.): it then decodes as false and the hub sets it from `deleter_ids`.
+/// Decoding is tolerant: a missing list or flag takes its empty value, so a field added or left out later does not
+/// drop a whole board.
+struct TaskOut: Identifiable, Equatable, Hashable {
+    let id: String
+    /// nil: my own list.
+    let channelId: String?
+    var channelName: String?
+    let ownerId: String
+    var title: String
+    var notes: String?
+    var status: TaskStatus
+    var position: Double
+    /// "YYYY-MM-DD".
+    var dueOn: String?
+    var assigneeIds: [String]
+    var source: TaskSourceOut?
+    var completedAt: String?
+    var completedBy: String?
+    let createdAt: String
+    var updatedAt: String
+    var canDelete: Bool
+}
+
+extension TaskOut: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case id, channelId, channelName, ownerId, title, notes, status, position, dueOn, assigneeIds, source, completedAt, completedBy,
+             createdAt, updatedAt, canDelete
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        channelId = try c.decodeIfPresent(String.self, forKey: .channelId)
+        channelName = try c.decodeIfPresent(String.self, forKey: .channelName)
+        ownerId = try c.decodeIfPresent(String.self, forKey: .ownerId) ?? ""
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        notes = try c.decodeIfPresent(String.self, forKey: .notes)
+        status = try c.decodeIfPresent(TaskStatus.self, forKey: .status) ?? .todo
+        position = try c.decodeIfPresent(Double.self, forKey: .position) ?? 0
+        dueOn = try c.decodeIfPresent(String.self, forKey: .dueOn)
+        assigneeIds = try c.decodeIfPresent([String].self, forKey: .assigneeIds) ?? []
+        source = try? c.decodeIfPresent(TaskSourceOut.self, forKey: .source)
+        completedAt = try c.decodeIfPresent(String.self, forKey: .completedAt)
+        completedBy = try c.decodeIfPresent(String.self, forKey: .completedBy)
+        createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
+        updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt) ?? ""
+        canDelete = try c.decodeIfPresent(Bool.self, forKey: .canDelete) ?? false
+    }
+}
+
+/// task.updated (§4, §8 4.): the task as everyone who sees it sees it, and who may delete it.
+struct TaskUpdated: Decodable {
+    let task: TaskOut
+    let deleterIds: [String]
+
+    private enum CodingKeys: String, CodingKey { case task, deleterIds }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        task = try c.decode(TaskOut.self, forKey: .task)
+        deleterIds = try c.decodeIfPresent([String].self, forKey: .deleterIds) ?? []
+    }
+}
+
+/// task.deleted.
+struct TaskDeleted: Decodable {
+    let id: String
+    let channelId: String?
+}
+
+/// task.assigned (to me only, §8 3.): someone else added me to a shared task's assignees.
+struct TaskAssigned: Decodable, Equatable {
+    let taskId: String
+    let channelId: String
+    let channelName: String
+    let title: String
+    let byUserId: String
+}
+
+/// task.due (to me only): one of my open tasks is due today (8:00 in my zone), sent once.
+struct TaskDue: Decodable, Equatable {
+    let taskId: String
+    let channelId: String?
+    let channelName: String?
+    let title: String
+    let dueOn: String?
+}
+
+/// POST /tasks (§3). `clientTaskId` makes a retry return the same task (200 instead of 201); `tz` is the zone the due
+/// date's 8:00 notification is read in (§8 2.).
+struct TaskCreate: Equatable {
+    var channelId: String?
+    var title: String
+    var notes: String?
+    var status: TaskStatus = .todo
+    var dueOn: String?
+    var assigneeIds: [String] = []
+    var sourceMessageId: String?
+    var clientTaskId: String
+    var tz: String
+
+    /// Only what is set (the web's body: absent rather than null).
+    var json: JSONValue {
+        var fields: [String: JSONValue] = ["title": .string(title), "status": .string(status.rawValue), "client_task_id": .string(clientTaskId),
+                                           "tz": .string(tz)]
+        if let channelId { fields["channel_id"] = .string(channelId) }
+        if let notes { fields["notes"] = .string(notes) }
+        if let dueOn { fields["due_on"] = .string(dueOn) }
+        if channelId != nil && !assigneeIds.isEmpty { fields["assignee_ids"] = .array(assigneeIds.map(JSONValue.string)) }
+        if let sourceMessageId { fields["source_message_id"] = .string(sourceMessageId) }
+        return .object(fields)
+    }
+}
+
+/// PATCH /tasks/{id}: only the fields that changed (`assigneeIds` replaces the whole list). `notes` and `dueOn` are
+/// double optionals: `.some(nil)` clears them (null), nil leaves them out.
+struct TaskPatch: Equatable {
+    var title: String?
+    var notes: String??
+    var status: TaskStatus?
+    var dueOn: String??
+    var assigneeIds: [String]?
+    var tz: String?
+
+    var isEmpty: Bool { title == nil && notes == nil && status == nil && dueOn == nil && assigneeIds == nil }
+
+    var json: JSONValue {
+        var fields: [String: JSONValue] = [:]
+        if let title { fields["title"] = .string(title) }
+        if let notes { fields["notes"] = notes.map(JSONValue.string) ?? .null }
+        if let status { fields["status"] = .string(status.rawValue) }
+        if let dueOn { fields["due_on"] = dueOn.map(JSONValue.string) ?? .null }
+        if let assigneeIds { fields["assignee_ids"] = .array(assigneeIds.map(JSONValue.string)) }
+        if let tz { fields["tz"] = .string(tz) }
+        return .object(fields)
+    }
+}
+
+/// Where a moved card lands (POST /tasks/{id}/move, SYNC_PROTOCOL.md §16): `afterId` is the card that ends up just
+/// above it, `beforeId` the one just below; neither: the bottom of 未着手 / 進行中, the top of 完了.
+struct TaskNeighbors: Equatable {
+    var afterId: String?
+    var beforeId: String?
+
+    static let none = TaskNeighbors(afterId: nil, beforeId: nil)
+}
+
+struct TaskMove: Equatable {
+    var status: TaskStatus
+    var neighbors: TaskNeighbors
+
+    var json: JSONValue {
+        .object(["status": .string(status.rawValue), "after_id": neighbors.afterId.map(JSONValue.string) ?? .null,
+                 "before_id": neighbors.beforeId.map(JSONValue.string) ?? .null])
+    }
+}

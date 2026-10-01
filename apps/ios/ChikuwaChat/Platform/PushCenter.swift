@@ -17,6 +17,8 @@ final class PushCenter {
     var pendingParentId: String?
     /// M52: a tapped alarm of my own calendar: MainView opens the calendar (the event is AppController.calendarOpen).
     var pendingCalendar = false
+    /// M56: a tapped notification of my own task: MainView opens 「自分のタスク」 (the task is AppController.taskOpen).
+    var pendingTasks = false
     @ObservationIgnored private weak var controller: AppController?
     /// A tap that arrived before the app finished starting; routed after startup.
     @ObservationIgnored private var pendingTap: PushPayload?
@@ -74,6 +76,7 @@ final class PushCenter {
     func clearAll() {
         pendingChannelId = nil
         pendingCalendar = false
+        pendingTasks = false
         pendingTap = nil
         setBadge(0)
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()

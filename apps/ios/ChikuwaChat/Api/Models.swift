@@ -66,6 +66,10 @@ struct UserMe: Codable, Equatable {
     /// M50: the long-press quick reactions I chose, the same on every device. A server before M50 leaves the key out
     /// (`.unsupported`: the setting is hidden); null is `.unset` (the recent-first rule).
     var quickReactions: QuickReactionsSetting = .unsupported
+    /// M56 (TASKS.md §5): task assignments and due dates as pushes (and in-app notices). nil from a server before M55
+    /// (no tasks there: the switch is hidden, and so is 「タスクにする」); on when absent.
+    var notifyTasks: Bool? = nil
+    var taskNotices: Bool { notifyTasks ?? true }
 
     var asPublic: UserPublic {
         UserPublic(id: id, username: username, displayName: displayName, role: role, deactivatedAt: deactivatedAt, createdAt: createdAt, updatedAt: updatedAt,

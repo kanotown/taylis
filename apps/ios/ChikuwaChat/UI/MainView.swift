@@ -191,6 +191,13 @@ struct MainView: View {
             paths[.home] = [.list(CalendarView.selectionId)]
             tab = .home
         }
+        .onChange(of: PushCenter.shared.pendingTasks, initial: true) { _, pending in
+            // M56: a tapped notification of my own task: 「タスク」, on the home tab, shows it.
+            guard pending else { return }
+            PushCenter.shared.pendingTasks = false
+            paths[.home] = [.list(MyTasksView.selectionId)]
+            tab = .home
+        }
         .onChange(of: pendingChannelReady, initial: true) { _, id in
             // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
             if let id {
@@ -337,6 +344,11 @@ struct MainView: View {
             RemindersView(controller: controller) { row in Task { await controller.openPermalink(row.messageId) } }
         case CalendarView.selectionId:
             CalendarView(controller: controller)  // M52
+        case MyTasksView.selectionId:
+            MyTasksView(controller: controller) { channelId in  // M56: 「自分の担当」's channel name opens its 「タスク」 tab
+                controller.taskOpen = TaskOpen(taskId: nil, channelId: channelId)
+                show(channelId, parentId: nil, on: tab)
+            }
         case FilesView.selectionId:
             FilesView(controller: controller) { messageId, channelId, parentId in
                 Task {
@@ -355,7 +367,7 @@ private extension String {
     /// A selection naming one of the lists rather than a conversation.
     var isListId: Bool {
         [DraftsView.selectionId, FilesView.selectionId, MentionsView.selectionId, RemindersView.selectionId,
-         SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId].contains(self)
+         SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId, MyTasksView.selectionId].contains(self)
     }
 }
 

@@ -46,7 +46,7 @@ extension ErrorMessages {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, CalendarApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, CalendarApi, TaskApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -895,6 +895,39 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     func clearCalendarAlarm(id: String) async throws {
         _ = try await requestRaw("DELETE", "/api/v1/calendar/events/\(id)/alarm", body: nil, auth: true, retry401: true)
+    }
+
+    // MARK: tasks (TASKS.md §3, M56)
+
+    /// A channel's board: every open task and the latest 100 completed ones ("recent"), or every one ("all").
+    func listTasks(channelId: String, includeDone: String) async throws -> [TaskOut] {
+        try await request("GET", Self.pathWithQuery("/api/v1/tasks", [URLQueryItem(name: "channel_id", value: channelId),
+                                                                     URLQueryItem(name: "include_done", value: includeDone)]))
+    }
+
+    /// 「自分のタスク」: my personal tasks and the shared ones assigned to me.
+    func myTasks() async throws -> [TaskOut] { try await request("GET", "/api/v1/tasks/mine") }
+
+    /// The tasks due in the dates [from, to) (at most 100 days), every one I may see (the calendar).
+    func dueTasks(from: DayKey, to: DayKey) async throws -> [TaskOut] {
+        try await request("GET", Self.pathWithQuery("/api/v1/tasks/due", [URLQueryItem(name: "from", value: from), URLQueryItem(name: "to", value: to)]))
+    }
+
+    func task(id: String) async throws -> TaskOut { try await request("GET", "/api/v1/tasks/\(id)") }
+
+    /// A retry with the same client_task_id returns the first task (200 instead of 201).
+    func createTask(_ body: TaskCreate) async throws -> TaskOut { try await request("POST", "/api/v1/tasks", body: body.json) }
+
+    func updateTask(id: String, _ patch: TaskPatch) async throws -> TaskOut {
+        try await request("PATCH", "/api/v1/tasks/\(id)", body: patch.json)
+    }
+
+    func moveTask(id: String, _ move: TaskMove) async throws -> TaskOut {
+        try await request("POST", "/api/v1/tasks/\(id)/move", body: move.json)
+    }
+
+    func deleteTask(id: String) async throws {
+        _ = try await requestRaw("DELETE", "/api/v1/tasks/\(id)", body: nil, auth: true, retry401: true)
     }
 
     // MARK: transport

@@ -131,4 +131,98 @@ final class LiveBackendTests: XCTestCase {
         await alice.logout()
         await bob.logout()
     }
+
+    /// M56: tasks against a live server (TASKS.md §3, §4, §8): a board task made from a message twice with one key, seen
+    /// by its assignee through task.updated (can_delete from deleter_ids) and task.assigned, in 「自分のタスク」 and the
+    /// calendar range; moved, its source cut when the message is deleted, deleted by the assignee; a personal task
+    /// completed and deleted. Everything made is removed again. Enabled with TEST_RUNNER_LIVE_TASK_URL /
+    /// TEST_RUNNER_LIVE_TASK_PASS, users LIVE_TASK_USERS ("a,b"), in LIVE_TASK_CHANNEL (a public channel both are in).
+    func testTasks() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let liveUrl = environment["LIVE_TASK_URL"], let url = URL(string: liveUrl) else { throw XCTSkip("LIVE_TASK_URL not set") }
+        guard let channelId = environment["LIVE_TASK_CHANNEL"] else { throw XCTSkip("LIVE_TASK_CHANNEL not set") }
+        let password = environment["LIVE_TASK_PASS"] ?? ""
+        let names = (environment["LIVE_TASK_USERS"] ?? "dtuser1,dtuser2").split(separator: ",").map(String.init)
+        let device = DeviceInfo(platform: "ios", deviceName: "live-test", appVersion: "0.1.0")
+        let alice = ApiClient(baseUrl: url), bob = ApiClient(baseUrl: url)
+        _ = try await alice.login(username: names[0], password: password, device: device)
+        _ = try await bob.login(username: names[1], password: password, device: device)
+        let bobId = try await bob.me().id
+
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: bob, connect: { url, _ in try await WebSocketTransport.connect(url: url) }, wsUrl: bob.wsUrl,
+                                store: store, getAccessToken: { bob.accessToken }, options: options)
+        var notices: [TaskNotice] = []
+        engine.onTaskNotice = { notices.append($0) }
+        await engine.start()
+        await engine.idle()
+        XCTAssertNotNil(store.me?.notifyTasks) // a server with tasks says so in UserMe
+        let hub = try XCTUnwrap(engine.tasks)
+        let today = CalendarDates.today()
+        await hub.openBoard(channelId)
+        await hub.openMine()
+        await hub.openDue("calendar", from: today, to: CalendarDates.addDays(today, 30))
+        XCTAssertEqual(hub.board(channelId)?.state, .ready)
+        XCTAssertEqual(hub.mine?.state, .ready)
+
+        let (message, _) = try await alice.postMessage(channelId: channelId, clientMsgId: UUID().uuidString.lowercased(),
+                                                       body: "iOS のライブ確認: **資料**をまとめる")
+        var draft = TaskDraft(title: "iOS のライブ確認", channelId: channelId)
+        draft.dueOn = CalendarDates.addDays(today, 1)
+        draft.assigneeIds = [bobId]
+        draft.sourceMessageId = message.id
+        let key = UUID().uuidString.lowercased()
+        let made = try await alice.createTask(draft.create(clientTaskId: key, tz: CalendarDates.zoneId))
+        let again = try await alice.createTask(draft.create(clientTaskId: key, tz: CalendarDates.zoneId))
+        XCTAssertEqual(made.id, again.id) // one task for one key
+        XCTAssertEqual(made.source?.excerpt, "iOS のライブ確認: 資料をまとめる")
+        for _ in 0..<100 where hub.board(channelId)?.tasks.contains(where: { $0.id == made.id }) != true {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        let seen = try XCTUnwrap(hub.board(channelId)?.tasks.first { $0.id == made.id })
+        XCTAssertTrue(seen.canDelete) // an assignee may delete
+        XCTAssertTrue(hub.mine?.tasks.contains { $0.id == made.id } == true)
+        XCTAssertTrue(hub.dueWindow("calendar")?.tasks.contains { $0.id == made.id } == true)
+        for _ in 0..<100 where notices.isEmpty { try await Task.sleep(nanoseconds: 50_000_000) }
+        XCTAssertEqual(notices.first, .assigned(TaskAssigned(taskId: made.id, channelId: channelId, channelName: made.channelName ?? "",
+                                                             title: "iOS のライブ確認", byUserId: made.ownerId)))
+
+        let moved = try await hub.move(made.id, to: .doing, .none)
+        XCTAssertEqual(moved.status, .doing)
+        XCTAssertEqual(hub.find(made.id)?.status, .doing)
+
+        _ = try await alice.deleteMessage(id: message.id)
+        for _ in 0..<100 where hub.find(made.id)?.source?.messageId != nil { try await Task.sleep(nanoseconds: 50_000_000) }
+        XCTAssertEqual(TaskRules.sourceState(hub.find(made.id)?.source), .deleted)
+
+        try await hub.remove(made.id)
+        XCTAssertNil(hub.find(made.id))
+        await XCTAssertThrowsErrorAsync(try await alice.task(id: made.id))
+
+        var personal = TaskDraft(title: "iOS の自分用")
+        personal.dueOn = today
+        let mine = try await hub.create(personal.create(clientTaskId: UUID().uuidString.lowercased(), tz: CalendarDates.zoneId))
+        XCTAssertNil(mine.channelId)
+        XCTAssertTrue(mine.canDelete)
+        XCTAssertTrue(hub.mine?.tasks.contains { $0.id == mine.id } == true)
+        XCTAssertTrue(hub.dueWindow("calendar")?.tasks.contains { $0.id == mine.id } == true)
+        let done = try await hub.update(mine.id, TaskPatch(status: .done))
+        XCTAssertEqual(done.status, .done)
+        XCTAssertNotNil(done.completedAt)
+        try await hub.remove(mine.id)
+        XCTAssertNil(hub.find(mine.id))
+
+        engine.stop()
+        await alice.logout()
+        await bob.logout()
+    }
+}
+
+private func XCTAssertThrowsErrorAsync<T>(_ expression: @autoclosure () async throws -> T, file: StaticString = #filePath, line: UInt = #line) async {
+    do {
+        _ = try await expression()
+        XCTFail("no error", file: file, line: line)
+    } catch {}
 }
