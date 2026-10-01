@@ -72,6 +72,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.TaskCreate
+import jp.chikuwachat.android.api.TaskKind
 import jp.chikuwachat.android.api.TaskNeighbors
 import jp.chikuwachat.android.api.TaskOut
 import jp.chikuwachat.android.api.TaskStatus
@@ -292,6 +293,8 @@ fun InlineAdd(controller: AppController, add: suspend (String) -> Unit) {
 fun TaskCard(
     controller: AppController, task: TaskOut, today: String, version: Int, onOpen: () -> Unit, modifier: Modifier = Modifier,
     leading: (@Composable () -> Unit)? = null, showBoard: Boolean = false, menu: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
+    /** L9: the state in its kind's words (「自分が依頼した」: 依頼中 / 対応中 / 完了). */
+    badge: String? = null,
 ) {
     val store = controller.store
     var menuOpen by remember { mutableStateOf(false) }
@@ -301,7 +304,8 @@ fun TaskCard(
     val summary = buildString {
         append(task.title)
         if (done) append("、完了")
-        task.dueOn?.let { append("、期限 ").append(TaskRules.dueLabel(it, today)); if (overdue) append(" (過ぎています)") }
+        badge?.let { append("、").append(it) }
+        task.dueOn?.let { append(if (task.kind == TaskKind.REVIEW) "、希望日 " else "、期限 ").append(TaskRules.dueLabel(it, today)); if (overdue) append(" (過ぎています)") }
         if (names.isNotEmpty()) append("、担当 ").append(names.joinToString("、"))
         if (!task.notes.isNullOrBlank()) append("、メモあり")
         if (task.source?.messageId != null) append("、元のメッセージあり")
@@ -320,7 +324,7 @@ fun TaskCard(
             Column(Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = summary }) {
                 if (showBoard) {
                     Text(
-                        task.channelName?.let { "#$it" } ?: "自分のタスク", style = MaterialTheme.typography.labelSmall,
+                        TaskRules.placeLabel(task) { id -> store.channel(id)?.let { channelTitle(it, store) } }, style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                     )
                 }
@@ -329,13 +333,19 @@ fun TaskCard(
                     textDecoration = if (done) TextDecoration.LineThrough else null,
                     color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 )
-                val marks = task.dueOn != null || !task.notes.isNullOrBlank() || task.source?.messageId != null || names.isNotEmpty()
+                val marks = badge != null || task.dueOn != null || !task.notes.isNullOrBlank() || task.source?.messageId != null || names.isNotEmpty()
                 if (marks) {
                     Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        badge?.let {
+                            Text(
+                                it, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                                color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+                            )
+                        }
                         task.dueOn?.let { due ->
                             val color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                             Text(
-                                "期限 " + TaskRules.dueLabel(due, today), style = MaterialTheme.typography.labelMedium, color = color,
+                                (if (task.kind == TaskKind.REVIEW) "希望日 " else "期限 ") + TaskRules.dueLabel(due, today), style = MaterialTheme.typography.labelMedium, color = color,
                                 fontWeight = if (overdue || due == today) FontWeight.SemiBold else FontWeight.Normal,
                             )
                         }
@@ -389,12 +399,19 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
     val changes = taskVersion(hub)
     val today = rememberToday().toString()
     LaunchedEffect(hub) { hub?.openMine() }
-    DisposableEffect(hub) { onDispose { hub?.closeMine() } }
+    LaunchedEffect(hub) { hub?.openRequested() }  // L9 「自分が依頼した」
+    DisposableEffect(hub) { onDispose { hub?.closeMine(); hub?.closeRequested() } }
     val list = remember(changes, hub) { hub?.mineList() }
+    val requested = remember(changes, hub) { hub?.requestedList() }
     val me = controller.store.me?.id
     val (personal, groups) = remember(list, version) {
-        TaskRules.groupMineByChannel(list?.tasks ?: emptyList(), me) { id -> controller.store.channel(id)?.channel?.name }
+        // A DM's tasks (L9) have no channel name: the group is named after the other people.
+        TaskRules.groupMineByChannel(list?.tasks ?: emptyList(), me) { id ->
+            controller.store.channel(id)?.let { if (it.channel.isDm) channelTitle(it, controller.store) else it.channel.name }
+        }
     }
+    val requestedRows = remember(requested) { TaskRules.sortRequested(requested?.tasks ?: emptyList()) }
+    val requestedLoading = hub?.available == true && (requested == null || requested.state == TaskListState.LOADING)
     val loading = hub?.available == true && (list == null || list.state == TaskListState.LOADING)
     var shownDone by rememberSaveable { mutableStateOf(emptyList<String>()) }
 
@@ -468,20 +485,55 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
                 groups.forEach { group ->
                     item(key = "g:${group.channelId}") {
                         val private = controller.store.channel(group.channelId)?.channel?.type == "private"
+                        // A DM has no board (L9): its name opens the conversation.
+                        val dm = controller.store.channel(group.channelId)?.channel?.isDm == true
                         Row(
-                            Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = "#${group.channelName} のタスクを開く") { onOpenBoard(group.channelId) }
+                            Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN)
+                                .clickable(onClickLabel = if (dm) "${group.channelName} との DM を開く" else "#${group.channelName} のタスクを開く") {
+                                    if (dm) controller.pendingChannelId = group.channelId else onOpenBoard(group.channelId)
+                                }
                                 .padding(horizontal = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             if (private) Icon(Icons.Outlined.Lock, contentDescription = "非公開", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
-                                (if (private) " " else "# ") + group.channelName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                                (if (private) " " else if (dm) "" else "# ") + group.channelName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                             )
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     taskList("g:${group.channelId}", group.tasks, null)
+                }
+                // L9 (REVIEWS.md §2.3): the shared tasks I made for someone else, open ones by due date.
+                item(key = "h:requested") { SectionHeader("自分が依頼した", null) }
+                val (requestedOpen, requestedDone) = requestedRows
+                if (requestedOpen.isEmpty() && requestedDone.isEmpty()) {
+                    item(key = "requested:empty") {
+                        Text(
+                            if (requestedLoading) "読み込み中…" else "依頼したタスクはありません", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+                items(requestedOpen, key = { "r:${it.id}" }) { task -> RequestedCard(controller, task, today, version) }
+                if (requestedDone.isNotEmpty()) {
+                    val expanded = "requested" in shownDone
+                    item(key = "r:done") {
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = if (expanded) "畳む" else "表示") {
+                                shownDone = if (expanded) shownDone - "requested" else shownDone + "requested"
+                            }.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                if (expanded) Icons.Default.ExpandMore else Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
+                                modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(" 完了 (${requestedDone.size})", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (expanded) items(requestedDone, key = { "r:${it.id}" }) { task -> RequestedCard(controller, task, today, version) }
                 }
             }
         }
@@ -500,6 +552,15 @@ private fun SectionHeader(title: String, detail: String?) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         detail?.let { Text("  $it", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
+}
+
+/** L9: a row of 「自分が依頼した」: where it lives (the DM's other person), its state in its kind's words, its assignees. */
+@Composable
+private fun RequestedCard(controller: AppController, task: TaskOut, today: String, version: Int) {
+    TaskCard(
+        controller, task, today, version, onOpen = { controller.taskForm = TaskForm(task, null) },
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp), showBoard = true, badge = TaskRules.label(task.kind, task.status),
+    )
 }
 
 /** A row of 「自分のタスク」: the card with its checkbox (done / back to 未着手), when I may change it. */
@@ -526,7 +587,7 @@ private fun MineCard(controller: AppController, task: TaskOut, today: String, ve
 fun TaskDayRow(task: TaskOut, onOpen: (TaskOut) -> Unit, showBoard: Boolean = true) {
     val done = task.status == TaskStatus.DONE
     val color = Color(CalendarDates.channelColor(task.channelId))
-    val board = task.channelName?.let { "#$it" } ?: "自分"
+    val board = if (task.channelId == null) "自分" else TaskRules.placeLabel(task)
     Row(
         Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = "開く") { onOpen(task) }
             .padding(horizontal = 16.dp, vertical = 8.dp)

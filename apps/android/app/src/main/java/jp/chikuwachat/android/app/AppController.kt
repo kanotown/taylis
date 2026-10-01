@@ -875,6 +875,7 @@ class AppController(private val app: Application) {
             val text = when (said) {
                 is jp.chikuwachat.android.sync.TaskNotice.Assigned -> TaskRules.assignedText(said.data) { id -> store.users[id]?.displayName }
                 is jp.chikuwachat.android.sync.TaskNotice.Due -> TaskRules.dueText(said.data)
+                is jp.chikuwachat.android.sync.TaskNotice.ReviewDone -> TaskRules.reviewDoneText(said.data) { id -> store.users[id]?.displayName }
             }
             if (store.me?.notifyTasks != false) {
                 notice = "☑ ${text.body}"

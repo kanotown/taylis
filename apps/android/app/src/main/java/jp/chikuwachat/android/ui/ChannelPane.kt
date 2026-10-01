@@ -663,6 +663,7 @@ fun MessageRow(
                 message.poll?.let { PollCard(it, message, controller, version, readOnly) }  // M14b
                 if (message.ackRequested && !message.pending) AckBar(message, store, controller, version, readOnly)  // M15e
                 if (message.collection != null) CollectionChip(message, store, version)  // L6 (M60)
+                if (message.tasks.isNotEmpty()) MessageTaskChips(message, controller, version)  // L9 (M64)
                 AttachmentList(message.attachments, controller)
                 // Not for this server's /m/ and /c/ links: a message shows in place, a canvas as its card (M58).
                 if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null && !CanvasCards.isCanvasLink(controller.serverBase, link) }?.let { LinkPreviewCard(controller, it) }
@@ -700,6 +701,13 @@ fun MessageRow(
                         store.users, store.groups, controller.isAdmin,
                     ),
                 )
+            }) else null,
+            // L9 (M64): a review request in the message's conversation (a board I may add to, or a DM).
+            onRequestReview = if (controller.tasks?.available == true && TaskRules.canRequestReview(store.channel(message.channelId), controller.isAdmin)) ({
+                TaskRules.messageReviewInit(
+                    message.id, message.body, message.attachments.map { it.contentType }, store.channel(message.channelId),
+                    store.users, store.groups, controller.isAdmin, store.me?.id,
+                )?.let { controller.taskForm = TaskForm(null, it) }
             }) else null,
             onShare = { sharing = true },
             quick = QuickReactions.row(store.me?.quickReactions, QuickReactions.read(controller.prefs)),  // M50

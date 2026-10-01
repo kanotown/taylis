@@ -21,6 +21,27 @@ object TaskStatus {
     val all: List<String> = listOf(TODO, DOING, DONE)
 }
 
+/** L9 (REVIEWS.md §2.2, §7 3.): what a task is — made with 「タスクにする」 or 「レビューを依頼」 (only the wording differs). */
+object TaskKind {
+    const val TASK = "task"
+    const val REVIEW = "review"
+}
+
+/**
+ * L9 (REVIEWS.md §2.2): a shared task made from a message, as MessageOut.tasks carries it (the chip under the message).
+ * Personal tasks never show here. Lenient like the rest: a missing field takes its default.
+ */
+@Serializable
+data class MessageTaskOut(
+    val id: String,
+    val kind: String = TaskKind.TASK,
+    val status: String = TaskStatus.TODO,
+    val assigneeIds: List<String> = emptyList(),
+    /** "YYYY-MM-DD". */
+    val dueOn: String? = null,
+    val ownerId: String = "",
+)
+
 /**
  * The message a task was made from: `message_id` and `excerpt` become null once that message is deleted (「元のメッセージは
  * 削除されました」, TASKS.md §8 1.); `excerpt` alone is null when I can no longer read it.
@@ -51,6 +72,8 @@ data class TaskOut(
     val createdAt: String = "",
     val updatedAt: String = "",
     val canDelete: Boolean = false,
+    /** L9: "task" or "review" (a server before M63 sends none: "task"). */
+    val kind: String = TaskKind.TASK,
 )
 
 /** task.updated: the task as everyone who sees it sees it, and who may delete it. */
@@ -63,7 +86,15 @@ data class TaskDeleted(val id: String, val channelId: String? = null)
 
 /** task.assigned (to me only): someone else added me to a shared task's assignees. */
 @Serializable
-data class TaskAssigned(val taskId: String, val channelId: String, val channelName: String = "", val title: String = "", val byUserId: String = "")
+data class TaskAssigned(
+    val taskId: String, val channelId: String, val channelName: String = "", val title: String = "", val byUserId: String = "",
+    /** L9: "review" words it 「〇〇 がレビューを依頼しました」. */
+    val kind: String = TaskKind.TASK,
+)
+
+/** task.review_done (to the requester only, L9 REVIEWS.md §4): an assignee completed my review request. */
+@Serializable
+data class TaskReviewDone(val taskId: String, val channelId: String, val channelName: String = "", val title: String = "", val byUserId: String = "")
 
 /** task.due (to me only): one of my open tasks is due today (8:00 in my zone), sent once. */
 @Serializable
@@ -84,6 +115,8 @@ data class TaskCreate(
     val sourceMessageId: String? = null,
     val clientTaskId: String? = null,
     val tz: String? = null,
+    /** L9: "review" for 「レビューを依頼」 (needs `source_message_id`); left out for a plain task (the server's default). */
+    val kind: String? = null,
 )
 
 /**

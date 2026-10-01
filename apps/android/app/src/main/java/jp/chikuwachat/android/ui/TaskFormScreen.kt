@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -70,6 +72,7 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import jp.chikuwachat.android.api.MemberOut
 import jp.chikuwachat.android.api.TaskCreate
+import jp.chikuwachat.android.api.TaskKind
 import jp.chikuwachat.android.api.TaskOut
 import jp.chikuwachat.android.api.TaskStatus
 import jp.chikuwachat.android.app.AppController
@@ -96,6 +99,11 @@ private const val MINE = ""
  * confirmation. New tasks too (「タスクにする」, 「自分のタスク」's ＋), with 追加先 (a channel's board or 「自分のタスク」).
  * Someone who may not change the board sees the task read-only. Saving sends only what changed (the device's zone with a
  * new due date).
+ *
+ * L9 (M64, REVIEWS.md §2): 「レビューを依頼」 opens it in review mode (the message's conversation fixed, 依頼先 first and
+ * needed, 期限 named 希望日, the states 依頼中 / 対応中 / 完了); a review task reads the same. From a DM, 「タスクにする」 offers
+ * the DM's members: with someone picked the task is shared in the DM. An assignee of a shared task gets big 「対応を始める」 /
+ * 「完了にする」 buttons on top (they save the form with that state).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,7 +115,8 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
     val task = remember(form, changes) { form.task?.let { hub?.find(it.id) ?: it } }
     val init = form.init
     val initial = remember(form) {
-        form.task?.let { TaskRules.draftFromTask(it) } ?: TaskDraft(title = init?.title ?: "", status = init?.status ?: TaskStatus.TODO)
+        form.task?.let { TaskRules.draftFromTask(it) }
+            ?: TaskDraft(title = init?.title ?: "", status = init?.status ?: TaskStatus.TODO, assigneeIds = init?.assigneeIds ?: emptyList())
     }
     var draft by rememberSaveable(form, stateSaver = TaskDraftSaver) { mutableStateOf(initial) }
     var board by rememberSaveable(form) { mutableStateOf(init?.channelId ?: MINE) }
@@ -117,7 +126,12 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
     var picking by rememberSaveable(form) { mutableStateOf(false) }
     // The idempotency key of this form's create: a retry after a lost answer returns the same task.
     val clientId = rememberSaveable(form) { UUID.randomUUID().toString() }
-    val channelId = if (form.task != null) task?.channelId else board.ifEmpty { null }
+    // A new task's conversation: the chosen board, or (L9) the DM once someone there is assigned.
+    val channelId = if (form.task != null) task?.channelId else init?.targetChannel(board.ifEmpty { null }, draft.assigneeIds) ?: board.ifEmpty { null }
+    val kind = task?.kind ?: init?.kind ?: TaskKind.TASK
+    val review = kind == TaskKind.REVIEW
+    // Whose members can be assigned: the task's conversation, or the DM a new one may be shared in.
+    val pickFrom = if (task == null && init?.dmChannelId != null && !review) init.dmChannelId else channelId
     val channel = remember(version, channelId) { channelId?.let { store.channel(it) } }
     val editable = task == null || TaskRules.canEditTask(task, channel, controller.isAdmin)
     val boards = remember(form, version) { init?.boardChoices?.filter { TaskRules.canEditBoard(store.channel(it), controller.isAdmin) } ?: emptyList() }
@@ -126,11 +140,19 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
         draft = next
         error = null
     }
-    fun boardName(id: String?): String = if (id == null) "自分のタスク" else "#" + (store.channel(id)?.channel?.name ?: task?.channelName ?: "?") + " のボード"
+    fun boardName(id: String?): String {
+        if (id == null) return "自分のタスク"
+        val held = store.channel(id)
+        // A DM has no board (L9): its shared tasks are named after the other people.
+        if (held?.channel?.isDm == true || (held == null && task?.channelId == id && task?.channelName == null)) {
+            return (held?.let { channelTitle(it, store) } ?: "DM") + " との DM"
+        }
+        return "#" + (held?.channel?.name ?: task?.channelName ?: "?") + " のボード"
+    }
 
     fun save() {
         if (hub == null || busy) return
-        val problem = TaskRules.draftProblem(draft)
+        val problem = TaskRules.draftProblem(draft, review = task == null && review)
         if (problem != null) {
             error = problem
             return
@@ -146,9 +168,10 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             status = draft.status, dueOn = draft.dueOn.ifEmpty { null },
                             assigneeIds = draft.assigneeIds.distinct().takeIf { channelId != null && it.isNotEmpty() },
                             sourceMessageId = init?.sourceMessageId, clientTaskId = clientId, tz = zone,
+                            kind = if (review) TaskKind.REVIEW else null,
                         ),
                     )
-                    controller.notice = "タスクを作成しました"
+                    controller.notice = if (review) "レビューを依頼しました" else "タスクを作成しました"
                 } else {
                     val patch = TaskRules.taskPatch(task, draft, zone)
                     if (!patch.isEmpty) hub.update(task.id, patch)
@@ -183,10 +206,15 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
     }
 
     val title = when {
-        task == null -> "タスクを追加"
+        task == null -> if (review) "レビューを依頼" else "タスクを追加"
+        review -> "レビュー依頼"
         editable -> "タスクを編集"
         else -> "タスク"
     }
+    val dueName = if (review) "希望日" else "期限"
+    val assigneeName = if (review) "依頼先" else "担当者"
+    // L9: an assignee's big buttons (the form saved with that state).
+    val quick = if (task != null && editable && available) TaskRules.quickStatuses(task, store.me?.id) else emptyList()
     val source = when {
         task != null -> TaskRules.sourceState(task)
         init?.sourceMessageId != null -> TaskSource.Link(init.sourceMessageId, init.sourceExcerpt)
@@ -209,7 +237,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                     IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "閉じる") }
                     Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
                     if (editable) {
-                        TextButton(enabled = !busy && available, onClick = ::save) { Text(if (busy) "保存中…" else if (task == null) "追加" else "保存") }
+                        TextButton(enabled = !busy && available, onClick = ::save) { Text(if (busy) "保存中…" else if (task == null) (if (review) "依頼" else "追加") else "保存") }
                     }
                 }
                 HorizontalDivider()
@@ -217,7 +245,39 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                     Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    if (task == null) {
+                    if (quick.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            quick.forEach { status ->
+                                val go = {
+                                    change(draft.copy(status = status))
+                                    save()
+                                }
+                                val size = Modifier.weight(1f).heightIn(min = 56.dp)
+                                if (status == TaskStatus.DONE) {
+                                    Button(enabled = !busy, onClick = go, modifier = size) { Text(TaskRules.quickLabel(status), style = MaterialTheme.typography.titleMedium) }
+                                } else {
+                                    FilledTonalButton(enabled = !busy, onClick = go, modifier = size) { Text(TaskRules.quickLabel(status), style = MaterialTheme.typography.titleMedium) }
+                                }
+                            }
+                        }
+                    }
+                    if (task == null && (review || init?.dmChannelId != null)) {
+                        // Review: the message's conversation. DM 「タスクにする」: shared there once someone is assigned.
+                        Column(Modifier.fillMaxWidth()) {
+                            FieldLabel(if (review) "依頼する場所" else "追加先")
+                            Text(
+                                when {
+                                    review -> boardName(channelId)
+                                    channelId != null -> boardName(channelId) + " (メンバーに表示)"
+                                    else -> "自分のタスク (担当者を選ぶと、この DM のメンバーにも表示)"
+                                },
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
+                        if (editable && pickFrom != null) {
+                            AssigneePicker(controller, pickFrom, version, draft.assigneeIds, label = assigneeName, excludeMe = review, onChange = { change(draft.copy(assigneeIds = it)) })
+                        }
+                    } else if (task == null) {
                         BoardChoice(
                             value = if (board == MINE) "自分のタスク (自分だけに表示)" else boardName(board),
                             options = boards.map { it to boardName(it) } + (MINE to "自分のタスク (自分だけに表示)"),
@@ -243,23 +303,23 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                                     SegmentedButton(
                                         selected = draft.status == status, onClick = { change(draft.copy(status = status)) },
                                         shape = SegmentedButtonDefaults.itemShape(index, TaskStatus.all.size),
-                                    ) { Text(TaskRules.label(status)) }
+                                    ) { Text(TaskRules.label(kind, status)) }
                                 }
                             }
                         }
                         Column {
-                            FieldLabel("期限")
+                            FieldLabel(dueName)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = { picking = true }, modifier = Modifier.weight(1f)) {
                                     Text(draft.dueOn.takeIf { it.isNotEmpty() }?.let { dueText(it) } ?: "なし", maxLines = 1)
                                 }
                                 if (draft.dueOn.isNotEmpty()) {
-                                    TextButton(onClick = { change(draft.copy(dueOn = "")) }) { Text("期限をなくす") }
+                                    TextButton(onClick = { change(draft.copy(dueOn = "")) }) { Text(dueName + "をなくす") }
                                 }
                             }
                         }
-                        if (channelId != null) {
-                            AssigneePicker(controller, channelId, version, draft.assigneeIds, onChange = { change(draft.copy(assigneeIds = it)) })
+                        if (channelId != null && !(task == null && (review || init?.dmChannelId != null))) {
+                            AssigneePicker(controller, channelId, version, draft.assigneeIds, label = assigneeName, onChange = { change(draft.copy(assigneeIds = it)) })
                         }
                     } else if (task != null) {
                         ReadOnlyTask(controller, task, version)
@@ -357,7 +417,10 @@ private fun BoardChoice(value: String, options: List<Pair<String, String>>, enab
 
 /** 担当者: the channel's members (me first, then by name), each a checkbox; a filter field once there are more than 8. */
 @Composable
-private fun AssigneePicker(controller: AppController, channelId: String, version: Int, selected: List<String>, onChange: (List<String>) -> Unit) {
+private fun AssigneePicker(
+    controller: AppController, channelId: String, version: Int, selected: List<String>, label: String = "担当者", excludeMe: Boolean = false,
+    onChange: (List<String>) -> Unit,
+) {
     var members by remember(channelId) { mutableStateOf<List<MemberOut>?>(null) }
     var failed by remember(channelId) { mutableStateOf(false) }
     LaunchedEffect(channelId) {
@@ -367,7 +430,7 @@ private fun AssigneePicker(controller: AppController, channelId: String, version
     val me = controller.store.me?.id
     val rows = remember(members, version) {
         val collator = Collator.getInstance(Locale.JAPANESE)
-        (members ?: emptyList()).map { member ->
+        (members ?: emptyList()).filter { !excludeMe || it.userId != me }.map { member ->
             val user = controller.store.users[member.userId]
             Triple(member.userId, user?.displayName ?: "?", user?.username ?: "")
         }.sortedWith { a, b ->
@@ -378,7 +441,7 @@ private fun AssigneePicker(controller: AppController, channelId: String, version
     val q = query.trim().lowercase()
     val shown = if (q.isEmpty()) rows else rows.filter { it.second.lowercase().contains(q) || it.third.lowercase().contains(q) }
     Column(Modifier.fillMaxWidth()) {
-        FieldLabel("担当者" + if (selected.isNotEmpty()) " (${selected.size} 人)" else "")
+        FieldLabel(label + if (selected.isNotEmpty()) " (${selected.size} 人)" else "")
         when {
             failed -> Text("メンバーを読み込めませんでした", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             members == null -> Text("読み込み中…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -419,11 +482,12 @@ private fun ReadOnlyTask(controller: AppController, task: TaskOut, version: Int)
                 textDecoration = if (done) TextDecoration.LineThrough else null,
             )
         }
-        Text("状態: " + TaskRules.label(task.status), style = MaterialTheme.typography.bodyLarge)
-        Text("期限: " + (task.dueOn?.let { dueText(it) } ?: "なし"), style = MaterialTheme.typography.bodyLarge)
+        val review = task.kind == TaskKind.REVIEW
+        Text("状態: " + TaskRules.label(task.kind, task.status), style = MaterialTheme.typography.bodyLarge)
+        Text((if (review) "希望日: " else "期限: ") + (task.dueOn?.let { dueText(it) } ?: "なし"), style = MaterialTheme.typography.bodyLarge)
         if (task.channelId != null) {
             Text(
-                "担当者: " + task.assigneeIds.joinToString("、") { users[it]?.displayName ?: "?" }.ifEmpty { "なし" },
+                (if (review) "依頼先: " else "担当者: ") + task.assigneeIds.joinToString("、") { users[it]?.displayName ?: "?" }.ifEmpty { "なし" },
                 style = MaterialTheme.typography.bodyLarge,
             )
         }
