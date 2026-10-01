@@ -13,10 +13,12 @@ import { findDmWith } from "../ui/mobileTabs";
 import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
-import { orderTemplates, parseSchedule, SCHEDULE_USAGE } from "../ui/templates";
+import { orderTemplates, readSchedule, SCHEDULE_USAGE } from "../ui/templates";
+import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
+import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, NetworkError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, AuthMethodsOut, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
+import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -1979,6 +1981,81 @@ export class AppController {
     }
   }
 
+  // --- scheduling polls (M53, SCHEDULING.md) -------------------------------------------------
+
+  /** A scheduling poll: the candidates as UTC instants (or dates) and the device's zone, in which the server labels them. */
+  async createSchedulePoll(channelId: string, parentId: string | null, question: string, slots: ScheduleSlotIn[], tz: string, anonymous = false): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const message = await this.api.postPoll(channelId, parentId, { kind: "schedule", question, slots, tz, ...(anonymous ? { anonymous: true as const } : {}) });
+      this.postedHere = message.id;
+      if (this.engine) this.engine.postedFromHere(message);
+      else this.store.upsertMessage(message);
+      this.emit();
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** The answer to my own change: the store takes it, and its own parts (my answers) whatever the order (§8). */
+  private applyMyPoll(answer: MessageState): void {
+    this.store.upsertMessage(answer);
+    this.store.setMyVotes(answer);
+  }
+
+  /** My ○ / △ / × for every candidate at once (null = unanswered); `comment` undefined keeps mine, "" removes it. */
+  async answerSchedule(message: MessageState, answers: readonly (PollAnswer | null)[], comment?: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const body: PollAnswersIn = { answers: answersBody(answers) };
+      if (comment !== undefined) body.comment = comment.trim() || null;
+      this.applyMyPoll(await this.api.answerPoll(message.id, body));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** Decide a candidate: the server makes the channel's event (not in a DM) and replies in the thread. */
+  async decideSchedule(message: MessageState, index: number): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.applyMyPoll(await this.api.decidePoll(message.id, index));
+      this.setNotice("日程を決定しました");
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  async undecideSchedule(message: MessageState): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.applyMyPoll(await this.api.undecidePoll(message.id));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** The event a decision made (the card's 「予定を開く」); null when it is gone or cannot be seen (the toast says so). */
+  async loadCalendarEvent(eventId: string): Promise<CalendarEventOut | null> {
+    const known = this.engine?.calendar?.find(eventId);
+    if (known) return known;
+    if (!this.api) return null;
+    try {
+      return await this.api.getCalendarEvent(eventId);
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
   // --- post templates (M30) -----------------------------------------------------------------
 
   /** Adds a template (mine, or the workspace's for an admin); the row, or null when refused (the toast says why). */
@@ -2184,13 +2261,14 @@ export class AppController {
         return this.createPoll(channel.id, parentId, parts[0]!, parts.slice(1), false);
       }
       case "日程": {
-        // M30: dates as the options of a multiple-choice poll (`/日程` alone opens the form, in the composer).
-        const schedule = parseSchedule(command.args);
-        if (!schedule) {
+        // M53: a scheduling poll of the dates read (the composer opens the form with them instead, to check first).
+        const read = readSchedule(command.args);
+        const slots = read ? slotsFromEntries(read.entries) : [];
+        if (!read || slots.length < 2 || slots.length > 20) {
           this.setError(SCHEDULE_USAGE);
           return false;
         }
-        return this.createPoll(channel.id, parentId, schedule.question, schedule.options, true);
+        return this.createSchedulePoll(channel.id, parentId, read.question, slots.map(slotToIn), localZone());
       }
     }
     return false;

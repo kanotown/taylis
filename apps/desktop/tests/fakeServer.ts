@@ -37,7 +37,47 @@ interface PollRecord {
   multiple: boolean;
   anonymous: boolean;
   closedAt: string | null;
-  votes: { userId: string; option: number }[];
+  /** M53: a choice poll's votes are all "yes". */
+  votes: { userId: string; option: number; answer: "yes" | "maybe" | "no" }[];
+  /** M53 (SCHEDULING.md): a scheduling poll's candidates, the zone of their labels, the decision and the comments. */
+  kind: "choice" | "schedule";
+  slots: { starts_at?: string | null; ends_at?: string | null; date?: string | null }[];
+  tz: string | null;
+  decided: { index: number; event_id: string | null; by: string; at: string } | null;
+  comments: { userId: string; text: string }[];
+}
+
+/** A scheduling poll as POST …/messages takes it (M53). */
+export interface FakeSchedulePoll {
+  question: string;
+  slots: { starts_at?: string | null; ends_at?: string | null; date?: string | null }[];
+  tz: string;
+  anonymous?: boolean;
+}
+
+const LABEL_WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+
+/** The server's label for a candidate (messages/schedule.py slot_label), in `tz`. */
+export function fakeSlotLabel(slot: FakeSchedulePoll["slots"][number], tz: string): string {
+  const day = (y: number, m: number, d: number) => `${m}/${d} (${LABEL_WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]})`;
+  if (slot.date) {
+    const [y, m, d] = slot.date.split("-").map(Number);
+    return `${day(y!, m!, d!)} 終日`;
+  }
+  const parts = (iso: string) => {
+    const values = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", hourCycle: "h23" })
+        .formatToParts(new Date(iso))
+        .map((p) => [p.type, p.value]),
+    );
+    return { y: Number(values.year), m: Number(values.month), d: Number(values.day), h: Number(values.hour), min: Number(values.minute) };
+  };
+  const start = parts(slot.starts_at!);
+  const end = parts(slot.ends_at!);
+  const clockOf = (p: { h: number; min: number }) => `${p.h}:${String(p.min).padStart(2, "0")}`;
+  const sameDay = start.y === end.y && start.m === end.m && start.d === end.d;
+  const until = sameDay ? clockOf(end) : end.h === 0 && end.min === 0 ? "24:00" : `翌${clockOf(end)}`;
+  return `${day(start.y, start.m, start.d)} ${clockOf(start)}〜${until}`;
 }
 
 class FakeSocket implements WsLike {
@@ -478,7 +518,7 @@ export class FakeServer {
     };
     if (options.poll) {
       const { question, options: choices, multiple = false, anonymous = false } = options.poll;
-      this.polls.set(message.id, { question, options: choices, multiple, anonymous, closedAt: null, votes: [] });
+      this.polls.set(message.id, { question, options: choices, multiple, anonymous, closedAt: null, votes: [], kind: "choice", slots: [], tz: null, decided: null, comments: [] });
       message.poll = this.pollOut(message.id, null);
     }
     record.messages.push(message);
@@ -521,8 +561,8 @@ export class FakeServer {
    */
   private pollOut(messageId: string, viewer: string | null): ServerPoll {
     const poll = this.polls.get(messageId)!;
-    const voters = poll.options.map((_, index) => poll.votes.filter((v) => v.option === index).map((v) => v.userId));
-    return {
+    const voters = poll.options.map((_, index) => poll.votes.filter((v) => v.option === index && v.answer === "yes").map((v) => v.userId));
+    const out: ServerPoll = {
       question: poll.question,
       options: poll.options,
       multiple: poll.multiple,
@@ -531,7 +571,130 @@ export class FakeServer {
       votes: poll.anonymous ? poll.options.map(() => []) : voters,
       counts: voters.map((ids) => ids.length),
       mine: viewer === null ? null : voters.flatMap((ids, index) => (ids.includes(viewer) ? [index] : [])),
+      kind: poll.kind,
+      slots: [],
+      tz: null,
+      decided: null,
+      answers: [],
+      respondents: [],
+      comments: [],
+      my_answers: null,
+      my_comment: null,
     };
+    if (poll.kind !== "schedule") return out;
+    const of = (index: number, answer: string) => poll.votes.filter((v) => v.option === index && v.answer === answer).map((v) => v.userId);
+    const respondents = [...new Set([...poll.votes.map((v) => v.userId), ...poll.comments.map((c) => c.userId)])];
+    return {
+      ...out,
+      slots: poll.slots.map((s) => ({ starts_at: s.starts_at ?? null, ends_at: s.ends_at ?? null, date: s.date ?? null })),
+      tz: poll.tz,
+      decided: poll.decided,
+      answers: poll.options.map((_, index) => {
+        const [yes, maybe, no] = [of(index, "yes"), of(index, "maybe"), of(index, "no")];
+        return { yes: poll.anonymous ? [] : yes, maybe: poll.anonymous ? [] : maybe, no: poll.anonymous ? [] : no, yes_count: yes.length, maybe_count: maybe.length, no_count: no.length };
+      }),
+      respondents: poll.anonymous ? [] : respondents,
+      comments: poll.comments.map((c) => ({ user_id: poll.anonymous ? null : c.userId, text: c.text })),
+      my_answers: viewer === null ? null : poll.options.map((_, index) => poll.votes.find((v) => v.userId === viewer && v.option === index)?.answer ?? null),
+      my_comment: viewer === null ? null : (poll.comments.find((c) => c.userId === viewer)?.text ?? ""),
+    };
+  }
+
+  /** M53: POST …/messages with a scheduling poll (the server writes the labels in `tz`); the response is the author's view. */
+  postSchedule(channelId: string, userId: string, poll: FakeSchedulePoll, parentId: string | null = null): MessageOut {
+    const options = poll.slots.map((slot) => fakeSlotLabel(slot, poll.tz));
+    const message = this.post(channelId, userId, `📊 ${poll.question}`, nextId(), parentId, [], { poll: { question: poll.question, options, multiple: true, anonymous: poll.anonymous } }).message;
+    const record = this.polls.get(message.id)!;
+    Object.assign(record, { kind: "schedule", slots: poll.slots, tz: poll.tz });
+    const shown = { ...message, poll: this.pollOut(message.id, null) };
+    const rows = this.record(channelId).messages;
+    rows[rows.findIndex((m) => m.id === message.id)] = shown;
+    return this.viewAs(shown, userId);
+  }
+
+  private schedulePoll(messageId: string): PollRecord {
+    const poll = this.polls.get(messageId);
+    if (!poll) throw new ApiError(404, "poll_not_found", "no poll");
+    if (poll.kind !== "schedule") throw new ApiError(400, "poll_not_schedule", "not a scheduling poll");
+    return poll;
+  }
+
+  private bumpPoll(record: ChannelRecord, message: MessageOut): MessageOut {
+    const seq = ++record.channel.last_seq;
+    const updated: MessageOut = { ...message, updated_seq: seq, poll: this.pollOut(message.id, null) };
+    this.replace(record, updated, "message.updated", "poll");
+    return updated;
+  }
+
+  /** M53: PUT /messages/{id}/poll/answers (mine replaced; `comment` undefined keeps it, null or blank removes it). */
+  answer(channelId: string, userId: string, messageId: string, answers: { index: number; answer: "yes" | "maybe" | "no" }[], comment?: string | null): MessageOut {
+    const { record, message } = this.live(channelId, userId, messageId);
+    const poll = this.schedulePoll(messageId);
+    if (poll.decided) throw new ApiError(409, "poll_decided", "decided");
+    if (poll.closedAt) throw new ApiError(409, "poll_closed", "closed");
+    if (answers.some((a) => a.index >= poll.options.length)) throw new ApiError(400, "poll_option_invalid", "no such slot");
+    const before = JSON.stringify([poll.votes, poll.comments]);
+    const kept = poll.votes.filter((v) => v.userId !== userId || answers.some((a) => a.index === v.option));
+    for (const vote of kept) {
+      const wanted = vote.userId === userId ? answers.find((a) => a.index === vote.option) : undefined;
+      if (wanted) vote.answer = wanted.answer;
+    }
+    for (const a of answers) if (!kept.some((v) => v.userId === userId && v.option === a.index)) kept.push({ userId, option: a.index, answer: a.answer });
+    poll.votes = kept;
+    if (comment !== undefined) {
+      const text = (comment ?? "").split(/\s+/).filter(Boolean).join(" ");
+      poll.comments = poll.comments.filter((c) => c.userId !== userId);
+      if (text) poll.comments.push({ userId, text });
+    }
+    if (JSON.stringify([poll.votes, poll.comments]) === before) return this.viewAs(message, userId);
+    return this.viewAs(this.bumpPoll(record, message), userId);
+  }
+
+  /** Calendar events the decisions made (M53): id → what the server would have stored. */
+  readonly decidedEvents = new Map<string, { channelId: string; title: string; slot: PollRecord["slots"][number]; ownerId: string }>();
+
+  /** M53: POST /messages/{id}/poll/decide: closed, decided, an event (not in a DM), a thread reply mentioning those who answered. */
+  decide(channelId: string, userId: string, messageId: string, index: number, createEvent = true): MessageOut {
+    const { record, message } = this.live(channelId, userId, messageId);
+    const poll = this.schedulePoll(messageId);
+    const allowed = message.sender_id === userId || this.roleOf(channelId, userId) === "owner" || this.users.get(userId)?.role === "admin";
+    if (!allowed) throw new ApiError(403, "poll_decide_restricted", "restricted");
+    if (index >= poll.options.length) throw new ApiError(400, "poll_option_invalid", "no such slot");
+    if (poll.decided) {
+      if (poll.decided.index === index) return this.viewAs(message, userId);
+      throw new ApiError(409, "poll_decided", "decided");
+    }
+    const dm = record.channel.type === "dm" || record.channel.type === "group_dm";
+    let eventId: string | null = null;
+    if (createEvent && !dm) {
+      eventId = nextId();
+      this.decidedEvents.set(eventId, { channelId, title: poll.question, slot: poll.slots[index]!, ownerId: userId });
+    }
+    const at = now();
+    poll.decided = { index, event_id: eventId, by: userId, at };
+    poll.closedAt = poll.closedAt ?? at;
+    const updated = this.bumpPoll(record, message);
+    const chosen = poll.votes.filter((v) => v.option === index);
+    let body = `📅 日程が決まりました: ${poll.options[index]} (○ ${chosen.filter((v) => v.answer === "yes").length} · △ ${chosen.filter((v) => v.answer === "maybe").length})`;
+    if (!poll.anonymous) {
+      const mentioned = [...new Set([...poll.votes.map((v) => v.userId), ...poll.comments.map((c) => c.userId)])].filter((id) => id !== userId && record.members.has(id));
+      if (mentioned.length > 0) body += `\n${mentioned.map((id) => `<@${id}>`).join(" ")}`;
+    }
+    this.post(channelId, userId, body, nextId(), message.parent_id ?? message.id);
+    const current = record.messages.find((m) => m.id === messageId) ?? updated;
+    return this.viewAs(current, userId);
+  }
+
+  /** M53: DELETE /messages/{id}/poll/decide: answers open again; the event stays. */
+  undecide(channelId: string, userId: string, messageId: string): MessageOut {
+    const { record, message } = this.live(channelId, userId, messageId);
+    const poll = this.schedulePoll(messageId);
+    const allowed = message.sender_id === userId || this.roleOf(channelId, userId) === "owner" || this.users.get(userId)?.role === "admin";
+    if (!allowed) throw new ApiError(403, "poll_decide_restricted", "restricted");
+    if (!poll.decided) return this.viewAs(message, userId);
+    poll.decided = null;
+    poll.closedAt = null;
+    return this.viewAs(this.bumpPoll(record, message), userId);
   }
 
   /** A row as a response to `userId` carries it (their own votes filled in); events and stored rows have `mine` null. */
@@ -552,12 +715,15 @@ export class FakeServer {
     const { record, message } = this.live(channelId, userId, messageId);
     const poll = this.polls.get(messageId);
     if (!poll) throw new ApiError(404, "poll_not_found", "no poll");
+    if (poll.decided) throw new ApiError(409, "poll_decided", "decided");
     if (poll.closedAt) throw new ApiError(409, "poll_closed", "closed");
-    const had = poll.votes.some((v) => v.userId === userId && v.option === option);
+    // M53: in a scheduling poll the vote of an app before M53 is ○ (taking it back unanswers the candidate).
+    const had = poll.votes.some((v) => v.userId === userId && v.option === option && (present ? v.answer === "yes" : true));
     if (present === had) return this.viewAs(message, userId);
     if (present) {
       if (!poll.multiple) poll.votes = poll.votes.filter((v) => v.userId !== userId); // a single-answer poll moves the vote
-      poll.votes.push({ userId, option });
+      poll.votes = poll.votes.filter((v) => !(v.userId === userId && v.option === option));
+      poll.votes.push({ userId, option, answer: "yes" });
     } else {
       poll.votes = poll.votes.filter((v) => !(v.userId === userId && v.option === option));
     }

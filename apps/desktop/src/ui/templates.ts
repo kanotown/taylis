@@ -72,7 +72,7 @@ export function templateWithText(body: string, text: string): string {
 
 // --- /日程 -----------------------------------------------------------------------------------
 
-export const SCHEDULE_USAGE = "/日程 [質問] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)";
+export const SCHEDULE_USAGE = "/日程 [題名] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)";
 export const SCHEDULE_QUESTION = "日程調整";
 const MAX_RANGE_DAYS = 14;
 const MIN_OPTIONS = 2;
@@ -96,27 +96,35 @@ function minutes(h: string, mm: string): number | null {
 
 const clock = (total: number) => `${Math.floor(total / 60)}:${pad(total % 60)}`;
 
+/** One date read from `/日程` arguments, with its time of day when one followed it (minutes since midnight). */
+export interface ScheduleEntry {
+  /** "YYYY-MM-DD". */
+  day: string;
+  from: number | null;
+  to: number | null;
+}
+
 /**
- * `/日程 [質問] 日付 …` → a multiple-choice poll's question and options; null when the arguments cannot be read (the
- * command then posts nothing and shows its usage).
+ * The grammar of `/日程 [質問] 日付 …` (apps/shared/templates.json): the question and every date (a range gives each of
+ * its days) with the time after it; null when the arguments cannot be read. No limit on how many.
  */
-export function parseSchedule(args: string, today: Date = new Date()): { question: string; options: string[] } | null {
+export function readSchedule(args: string, today: Date = new Date()): { question: string; entries: ScheduleEntry[] } | null {
   const now = dayOf(today);
   const todayN = dayNumber(now);
   const words = args.split(/\s+/).filter(Boolean);
   const first = words.findIndex((w) => DATE_TOKEN.test(w));
   if (first < 0) return null;
   const question = words.slice(0, first).join(" ") || SCHEDULE_QUESTION;
-  const labels: string[] = [];
+  const entries: ScheduleEntry[] = [];
   let last: Day[] | null = null; // the days of the date just read, waiting for a time
-  const flush = (time: string) => {
-    for (const day of last ?? []) labels.push(label(day, now.y) + time);
+  const flush = (from: number | null, to: number | null) => {
+    for (const day of last ?? []) entries.push({ day: `${day.y}-${pad(day.m)}-${pad(day.d)}`, from, to });
     last = null;
   };
   for (const word of words.slice(first)) {
     const date = DATE_TOKEN.exec(word);
     if (date) {
-      flush("");
+      flush(null, null);
       const [, y1, m1, d1, y2, m2, d2, dayOnly] = date;
       const start: Day = { y: y1 ? Number(y1) : now.y, m: Number(m1), d: Number(d1) };
       if (!isRealDay(start)) return null;
@@ -144,18 +152,36 @@ export function parseSchedule(args: string, today: Date = new Date()): { questio
     if (!time || !last) return null; // not a date, or a time that does not follow one
     const from = minutes(time[1]!, time[2]!);
     if (from === null) return null;
-    let text = ` ${clock(from)}`;
+    let to: number | null = null;
     if (time[3] !== undefined) {
-      const to = minutes(time[3], time[4]!);
+      to = minutes(time[3], time[4]!);
       if (to === null || to <= from) return null;
-      text += `〜${clock(to)}`;
     }
-    flush(text);
+    flush(from, to);
   }
-  flush("");
+  flush(null, null);
+  return { question, entries };
+}
+
+/**
+ * `/日程 [質問] 日付 …` → a multiple-choice poll's question and options; null when the arguments cannot be read (the
+ * command then posts nothing and shows its usage). The phones' `/日程` until M54; the Web makes a scheduling poll from
+ * readSchedule since M53.
+ */
+export function parseSchedule(args: string, today: Date = new Date()): { question: string; options: string[] } | null {
+  const read = readSchedule(args, today);
+  if (!read) return null;
+  const thisYear = today.getFullYear();
+  const labels = read.entries.map((entry) => {
+    const [y, m, d] = entry.day.split("-").map(Number);
+    let text = label({ y: y!, m: m!, d: d! }, thisYear);
+    if (entry.from !== null) text += ` ${clock(entry.from)}`;
+    if (entry.to !== null) text += `〜${clock(entry.to)}`;
+    return text;
+  });
   const options = [...new Set(labels)];
   if (options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) return null;
-  return { question, options };
+  return { question: read.question, options };
 }
 
 /** The options `/日程` alone offers: the next `count` weekdays after today. */

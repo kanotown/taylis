@@ -1,5 +1,5 @@
 import type { AttachmentOut, ChannelLinkOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, TemplateOut } from "../api/types";
+import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PollOut, TemplateOut } from "../api/types";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
 import type { CanvasPendingState } from "./canvasSave";
@@ -894,11 +894,13 @@ export class Store {
     }
     const local = bucket.get(message.id);
     if (local && message.updated_seq <= local.updated_seq) {
-      const mine = message.poll?.mine;
-      if (message.updated_seq !== local.updated_seq || mine == null || !local.poll || sameOptions(local.poll.mine, mine)) return false;
-      message = { ...local, poll: { ...local.poll, mine } };
-    } else if (message.poll && message.poll.mine == null && local?.poll?.mine != null) {
-      message = { ...message, poll: { ...message.poll, mine: local.poll.mine } };
+      if (message.updated_seq !== local.updated_seq || !message.poll || !local.poll) return false;
+      const poll = withMyPart(local.poll, message.poll);
+      if (!poll) return false;
+      message = { ...local, poll };
+    } else if (message.poll && local?.poll) {
+      // M27 / M53: what only responses to me carry stays when an event (null) brings the rest.
+      message = { ...message, poll: keepMyPart(message.poll, local.poll) };
     }
     const stored = message;
     this.timelines.delete(stored.channel_id);
@@ -919,10 +921,11 @@ export class Store {
    * member's vote event may have come first with a newer updated_seq, and the merge above then drops the answer.
    */
   setMyVotes(message: MessageState): void {
-    const mine = message.poll?.mine;
     const local = this.bucket(message.channel_id).get(message.id);
-    if (mine == null || !local?.poll || sameOptions(local.poll.mine, mine)) return;
-    const stored = { ...local, poll: { ...local.poll, mine } };
+    if (!message.poll || !local?.poll) return;
+    const poll = withMyPart(local.poll, message.poll);
+    if (!poll) return;
+    const stored = { ...local, poll };
     this.bucket(stored.channel_id).set(stored.id, stored);
     this.timelines.delete(stored.channel_id);
     this.persist((p) => p.saveMessage(stored));
@@ -1030,6 +1033,27 @@ function sameOptions(a: readonly number[] | null | undefined, b: readonly number
   if (a == null || a.length !== b.length) return false;
   const set = new Set(a);
   return b.every((option) => set.has(option));
+}
+
+/** A poll's fields only responses to me carry (events: null): `mine` (M27), `my_answers` and `my_comment` (M53). */
+type MyPart = Pick<PollOut, "mine" | "my_answers" | "my_comment">;
+
+/** `incoming` with the parts it lacks (null) taken from `local`. */
+function keepMyPart(incoming: PollOut, local: PollOut): PollOut {
+  const kept: MyPart = {};
+  if (incoming.mine == null && local.mine != null) kept.mine = local.mine;
+  if (incoming.my_answers == null && local.my_answers != null) kept.my_answers = local.my_answers;
+  if (incoming.my_comment == null && local.my_comment != null) kept.my_comment = local.my_comment;
+  return Object.keys(kept).length > 0 ? { ...incoming, ...kept } : incoming;
+}
+
+/** `local` with the parts `response` carries, or null when they change nothing. */
+function withMyPart(local: PollOut, response: PollOut): PollOut | null {
+  const changed: MyPart = {};
+  if (response.mine != null && !sameOptions(local.mine, response.mine)) changed.mine = response.mine;
+  if (response.my_answers != null && JSON.stringify(response.my_answers) !== JSON.stringify(local.my_answers ?? null)) changed.my_answers = response.my_answers;
+  if (response.my_comment != null && response.my_comment !== local.my_comment) changed.my_comment = response.my_comment;
+  return Object.keys(changed).length > 0 ? { ...local, ...changed } : null;
 }
 
 function keptScheduled(row: ScheduledOut): boolean {

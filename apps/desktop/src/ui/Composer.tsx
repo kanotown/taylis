@@ -1,4 +1,4 @@
-import { AtSign, Bold, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X } from "lucide-react";
+import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X } from "lucide-react";
 import { Fragment, type KeyboardEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut, Priority, TemplateOut } from "../api/types";
@@ -18,7 +18,9 @@ import { MessageBody } from "./MessageBody";
 import { isSendKey, readFormatBar, sendKeyLabel, writeFormatBar } from "./prefs";
 import { scheduleLabel, schedulePresets, toLocalInput } from "./schedule";
 import { PollDialog } from "./PollDialog";
-import { appendTemplate, expandTemplate, findTemplate, nextWeekdays, orderTemplates, parseSchedule, SCHEDULE_QUESTION, SCHEDULE_USAGE, templateCandidates, templateSummary, templateWithText } from "./templates";
+import { ScheduleDialog, type ScheduleFormInitial } from "./ScheduleDialog";
+import { slotsFromEntries } from "./scheduling";
+import { appendTemplate, expandTemplate, findTemplate, orderTemplates, readSchedule, SCHEDULE_USAGE, templateCandidates, templateSummary, templateWithText } from "./templates";
 import { Button, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, modKey, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 
 const MAX_LENGTH = 20_000;
@@ -110,8 +112,9 @@ export function Composer({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
-  // The poll form and what it starts with (`/日程` alone fills it in, M30).
+  // The poll form, and the scheduling poll's form with what it starts with (M53: `/日程 …` fills it in).
   const [pollForm, setPollForm] = useState<{ question?: string; options?: string[]; multiple?: boolean } | null>(null);
+  const [scheduleForm, setScheduleForm] = useState<ScheduleFormInitial | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const send = () => {
     const command = parseSlashCommand(text);
@@ -133,17 +136,16 @@ export function Composer({
         return;
       }
       if (command.name === "日程") {
-        if (!command.args) {
-          // `/日程` alone: the form, with the next five weekdays as the options.
-          setText("");
-          setPollForm({ question: SCHEDULE_QUESTION, options: nextWeekdays(new Date(), 5), multiple: true });
-          return;
-        }
-        if (!parseSchedule(command.args)) {
-          // Nothing is posted; what was typed stays to be corrected.
+        // M53: the scheduling poll's form, with the dates (and times) typed after it as the candidates.
+        const read = command.args ? readSchedule(command.args) : null;
+        if (command.args && !read) {
+          // Nothing opens; what was typed stays to be corrected.
           controller.setError(SCHEDULE_USAGE);
           return;
         }
+        setText("");
+        setScheduleForm(read ? { question: read.question, slots: slotsFromEntries(read.entries) } : {});
+        return;
       }
       setText("");
       void controller.runCommand(command, channel, parentId);
@@ -431,6 +433,7 @@ export function Composer({
     >
       {addEmojiOpen && <AddEmojiDialog controller={controller} onClose={() => setAddEmojiOpen(false)} />}
       {pollForm && <PollDialog controller={controller} channelId={channel.id} parentId={parentId} initial={pollForm} onClose={() => setPollForm(null)} />}
+      {scheduleForm && <ScheduleDialog controller={controller} channelId={channel.id} parentId={parentId} initial={scheduleForm} onClose={() => setScheduleForm(null)} />}
       {emojiHits.length > 0 && (
         <ul className="absolute bottom-full left-4 z-20 mb-1 w-72 rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="絵文字の候補">
           {emojiHits.map((entry, index) => (
@@ -640,6 +643,9 @@ export function Composer({
                   </MenuItem>
                   <MenuItem onSelect={() => { afterMenu.current = () => setPollForm({}); }}>
                     <Vote size={14} className="text-muted" /> アンケート
+                  </MenuItem>
+                  <MenuItem onSelect={() => { afterMenu.current = () => setScheduleForm({}); }}>
+                    <CalendarDays size={14} className="text-muted" /> 日程調整
                   </MenuItem>
                   <MenuItem onSelect={() => { afterMenu.current = () => setTemplatesOpen(true); }}>
                     <LayoutTemplate size={14} className="text-muted" /> テンプレート…

@@ -125,7 +125,7 @@ describe("templates in the composer (M30)", () => {
     w.type("/help ");
     await w.sendKey();
     const notice = String(w.setNotice.mock.calls[0]?.[0]);
-    expect(notice).toContain("/日程 [質問] 日付 …");
+    expect(notice).toContain("/日程 [題名] 日付 …");
     expect(notice.endsWith("テンプレート: /日報 /週報 /メモ")).toBe(true);
   });
 
@@ -137,36 +137,46 @@ describe("templates in the composer (M30)", () => {
   });
 });
 
-describe("/日程 (M30)", () => {
-  it("posts a multiple-choice poll with the dates as its options", async () => {
+describe("/日程 (M30; a scheduling poll since M53)", () => {
+  const rows = () => [...screen.getByLabelText("候補の一覧").querySelectorAll("[data-slot-row]")].map((li) => li.querySelector("span")?.textContent);
+
+  it("opens the scheduling form with the dates (and times) typed as its candidates; nothing is posted yet", async () => {
     const w = world();
-    w.type("/日程 ゼミ 10/3 10/4");
+    w.type("/日程 ゼミ 10/3 10/4 13:00-14:30 10/6");
     await w.sendKey();
-    expect(w.createPoll).toHaveBeenCalledWith(w.channel.id, null, "ゼミ", ["10/3 (土)", "10/4 (日)"], true);
-    expect(w.box().value).toBe("");
+    expect(screen.getByRole("dialog", { name: "日程調整を作成" })).toBeTruthy();
+    expect((screen.getByPlaceholderText(/M2 中間発表/) as HTMLInputElement).value).toBe("ゼミ");
+    expect(rows()).toEqual(["10/3 (土) 終日", "10/4 (日) 13:00〜14:30", "10/6 (火) 終日"]);
+    expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe(""); // the composer (the dialog hides it from roles)
+    expect(w.createPoll).not.toHaveBeenCalled();
     expect(w.send).not.toHaveBeenCalled();
   });
 
-  it("posts nothing for arguments it cannot read, shows the usage and keeps the text", async () => {
+  it("opens nothing for arguments it cannot read, shows the usage and keeps the text", async () => {
     const w = world();
     w.type("/日程 ゼミ 10/1 10/2 午後");
     await w.sendKey();
-    expect(w.createPoll).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(w.send).not.toHaveBeenCalled();
     expect(w.setError).toHaveBeenCalledWith(SCHEDULE_USAGE);
     expect(w.box().value).toBe("/日程 ゼミ 10/1 10/2 午後");
   });
 
-  it("`/日程` alone opens the poll form with the next five weekdays, several answers allowed", async () => {
+  it("「＋」 → 「日程調整」 opens the scheduling form", async () => {
+    world();
+    await act(async () => { fireEvent.keyDown(screen.getByRole("button", { name: /^ファイルを添付・その他/ }), { key: "Enter" }); });
+    await act(async () => { fireEvent.click(screen.getByRole("menuitem", { name: "日程調整" })); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(screen.getByRole("dialog", { name: "日程調整を作成" })).toBeTruthy();
+  });
+
+  it("`/日程` alone opens the empty scheduling form", async () => {
     const w = world();
     w.type("/日程");
     await w.sendKey(); // takes the suggestion (「/日程 」)
     await w.sendKey(); // sends it: the form opens
-    expect(screen.getByRole("dialog", { name: "アンケートを作成" })).toBeTruthy();
-    expect((screen.getByPlaceholderText(/次回のミーティング/) as HTMLInputElement).value).toBe("日程調整");
-    expect([1, 2, 3, 4, 5].map((n) => (screen.getByLabelText(`選択肢 ${n}`) as HTMLInputElement).value)).toEqual(["9/30 (水)", "10/1 (木)", "10/2 (金)", "10/5 (月)", "10/6 (火)"]);
-    expect((screen.getByLabelText("複数選択を許可する") as HTMLInputElement).checked).toBe(true);
-    await act(async () => { fireEvent.click(screen.getByText("作成")); });
-    expect(w.createPoll).toHaveBeenCalledWith(w.channel.id, null, "日程調整", ["9/30 (水)", "10/1 (木)", "10/2 (金)", "10/5 (月)", "10/6 (火)"], true, false);
+    expect(screen.getByRole("dialog", { name: "日程調整を作成" })).toBeTruthy();
+    expect(screen.getByText("カレンダーで日を選んでください")).toBeTruthy();
+    expect(w.createPoll).not.toHaveBeenCalled();
   });
 });

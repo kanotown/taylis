@@ -23,7 +23,7 @@ export const COMMANDS: readonly SlashCommand[] = [
   { name: "me", usage: "/me 文", description: "動作を斜体で投稿" },
   { name: "shrug", usage: "/shrug [文]", description: "¯\\_(ツ)_/¯ を添えて投稿" },
   { name: "poll", usage: "/poll 質問 | 選択肢 | 選択肢 …", description: "アンケートを作る (/poll だけでフォームを開く)" },
-  { name: "日程", usage: "/日程 [質問] 日付 …", description: "日付を選択肢にした複数選択の投票 (/日程 だけでフォームを開く)" },
+  { name: "日程", usage: "/日程 [題名] 日付 …", description: "日程調整を作る (候補に ○ △ × で答える。日付を続けるとフォームに入る)" },
   { name: "help", usage: "/help", description: "コマンド一覧" },
 ];
 

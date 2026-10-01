@@ -5,6 +5,7 @@ import type { AppController } from "../state/app";
 import type { MessageState } from "../sync/types";
 import { compactNames } from "./format";
 import { Button, cn } from "./primitives";
+import { ScheduleCard } from "./ScheduleCard";
 
 /**
  * The server makes a poll's text 「📊 質問」 for previews, pushes and search (DATA_MODEL.md); under it the card shows the
@@ -38,6 +39,8 @@ export function pollMine(poll: PollOut, meId: string | null | undefined): number
  * names. `readOnly`: a channel read before joining (SYNC_PROTOCOL.md §7.6.1), where nobody votes.
  */
 export function PollCard({ poll, message, controller, readOnly = false }: { poll: PollOut; message: MessageState; controller: AppController; readOnly?: boolean }) {
+  // M53: a scheduling poll has its own card (○ △ × per candidate, the table, the decision).
+  if (poll.kind === "schedule") return <ScheduleCard poll={poll} message={message} controller={controller} readOnly={readOnly} />;
   const me = controller.store.me?.id;
   const counts = pollCounts(poll);
   const mine = new Set(pollMine(poll, me));
