@@ -14,6 +14,7 @@ from app.core.errors import AppError, bad_request
 from app.modules.canvases.models import Canvas
 from app.modules.canvases.schemas import to_meta as to_canvas_meta
 from app.modules.channels import service as channels
+from app.modules.channels.schemas import ChannelOut
 from app.modules.messages import service as messages
 from app.modules.messages.models import Message
 from app.modules.search import repository as repo
@@ -108,19 +109,34 @@ async def _search_in_time(
 ) -> SearchOut:
     await _limit_time(db, timeout_ms)
     mine = await channels.list_channels(db, actor, include_public=False)
-    if params.channel_id is not None:
-        await channels.require_member(db, actor.id, params.channel_id)
-        channel_ids = [params.channel_id]
-    else:
-        channel_ids = [uuid.UUID(str(c.id)) for c in mine]
-
     parsed = parse_query(params.q, tz_offset_minutes=params.tz_offset_minutes)
+    is_times = parsed.is_times or params.is_times
+    # L8 is:times (TIMES_FEED.md §6): my times plus the public times I have not joined (archived
+    # ones too: a graduate's log is kept for those who come after). Not for guests (M13e).
+    others: list[ChannelOut] = []
+    if is_times:
+        others = await channels.list_public_times_not_member(db, actor)
+        mine = [c for c in mine if c.times_owner_id is not None]
+    pool = [*mine, *others]
+    if params.channel_id is not None:
+        if not any(c.id == params.channel_id for c in others):
+            await channels.require_member(db, actor.id, params.channel_id)
+        # A channel outside is:times' range (not a times) finds nothing.
+        channel_ids = (
+            [params.channel_id]
+            if any(c.id == params.channel_id for c in pool) or not is_times
+            else []
+        )
+    else:
+        channel_ids = [uuid.UUID(str(c.id)) for c in pool]
+
     filters = SearchFilters(
         text=parsed.text,
         after=max_dt(params.after, parsed.after),
         before=min_dt(params.before, parsed.before),
         has=list(dict.fromkeys([*parsed.has, *params.has])),
         is_thread=parsed.is_thread or params.is_thread,
+        is_times=is_times,
         unresolved=list(parsed.unresolved),
     )
     from_user_id = params.from_user_id
@@ -132,7 +148,7 @@ async def _search_in_time(
             filters.from_username = user.username
             from_user_id = uuid.UUID(str(user.id))
     for name in parsed.in_channels:
-        match = next((c for c in mine if (c.name or "").lower() == name.lower()), None)
+        match = next((c for c in pool if (c.name or "").lower() == name.lower()), None)
         if match is None:
             filters.unresolved.append(f"in:#{name}")
         else:
@@ -145,6 +161,7 @@ async def _search_in_time(
         or params.before
         or params.has
         or params.is_thread
+        or params.is_times
     )
     if not parsed.text and not parsed.has_modifiers and not structured and not filters.unresolved:
         raise bad_request("empty_query", "Enter words to search or a modifier such as from:@name")
@@ -193,7 +210,9 @@ async def _search_in_time(
     rows = rows[: params.limit]
     outs = await messages.messages_out(db, [m for m, _ in rows], actor.id)
     hits = [SearchHit(message=out, score=score) for out, (_, score) in zip(outs, rows, strict=True)]
+    hit_channels = {m.channel_id for m, _ in rows}
     return SearchOut(
+        channels=[c for c in others if c.id in hit_channels],
         hits=hits,
         keywords=keywords,
         filters=filters,
@@ -250,6 +269,8 @@ async def _search_canvases_in_time(
     filters.unresolved.extend(f"has:{flag}" for flag in parsed.has)
     if parsed.is_thread:
         filters.unresolved.append("is:thread")
+    if parsed.is_times:
+        filters.unresolved.append("is:times")
     from_user_id = params.from_user_id
     for username in parsed.from_users:
         user = await users_repo.get_by_username(db, username)

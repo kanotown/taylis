@@ -4,7 +4,7 @@ ROADMAP の L8 (LAB.md §B の「(L8)」の 2 行)。研究室の times (作業�
 つらい。参加している times のトップレベルの投稿を、新しい順に 1 本の流れで読めるようにする。あわせて、検索で times だけに
 絞る `is:times` を足し、卒業した人の times も「引き継ぎの資料」として探せるようにする。
 
-**状態**: 設計 (2026-10-02)。§8 は全部推奨の案に決まった (2026-10-02)。M61 から実装する。
+**状態**: §8 は全部推奨の案に決まった (2026-10-02)。M61 のサーバは完了 (移行 0055)。Desktop / Web と M62 (iOS / Android) は作業中。
 
 ## 1. 方針
 
@@ -64,12 +64,10 @@ ORDER BY m.created_at DESC, m.id DESC
 LIMIT :limit;
 ```
 
-- 上の LATERAL は `(channel_id, created_at, id)` の順で読める索引があると、ページが深くても各チャンネルで `limit` 件だけ
-  読む。今ある索引 (`(channel_id, seq)` の一意、`messages_created_idx`) で足りるかを実装のときに `EXPLAIN ANALYZE` で
-  確かめ、足りなければ部分索引 `messages_timeline_created_idx ON messages (channel_id, created_at DESC, id DESC)
-  WHERE deleted_at IS NULL AND (parent_id IS NULL OR also_in_channel)` を足す (移行 0055)。
-- 前の Mac の性能用 DB (`chikuwa_perf`、465k 件) は作り直す手段がリポジトリに無い。実装では、times 30 本 × 3,000 件程度を
-  入れた一時的な DB を作って測る (手順は §7 に残す)。
+- 索引: 部分索引 `messages_timeline_created_idx ON messages (channel_id, created_at DESC, id DESC) WHERE deleted_at IS NULL
+  AND (parent_id IS NULL OR also_in_channel)` (移行 0055)。無いと各チャンネルの読み取りが `messages_created_idx` を新しい側から
+  辿って他のチャンネルの行を飛ばすので遅い。計測 (M61、19 万件のうち times 30 本 × 3,000 件、他 10 本 × 1 万件): 索引なし
+  最初のページ 238 ms・深いページ 6.8 ms、索引あり 0.5 ms・0.6 ms。
 
 ## 4. 未読と既読
 
@@ -115,6 +113,10 @@ isFeedRow(m) = m.type == user and not deleted and (m.parent_id == null or m.also
   - `in:#times-sato` と一緒なら、そのチャンネルが上の範囲にあれば絞り込み、無ければ今までどおり解決できない修飾子
     (`unresolved`) として何も返さない。
 - 応答 `SearchFilters.is_times: bool` を足し、クエリのパラメータ `is_times` (チップ用、`is_thread` と同じ形) も受ける。
+- 応答 `SearchOut.channels: ChannelOut[]` に、結果のうち会員でないチャンネル (`membership = null`) を入れる。アーカイブ済みの
+  公開 times は bootstrap に無いので、クライアントはここから名前を出し、開くときに使う。
+- `is:times` と `channel_id` (チャンネルの中の検索) を一緒に使い、そのチャンネルが範囲外 (times でない) なら何も返さない。
+- キャンバスの検索では `is:times` は使えない (`is:thread` と同じく `unresolved` で返す)。
 - 会員でない公開チャンネルの検索結果を開くと、参加前のプレビュー (M27) になる。
 - クライアント: 検索のチップに「Times」を足す (今の「スレッド内」の隣)。入力が空のときの候補に「is:times」を足す。
   iOS の説明文 (SearchView.swift の「語の中で from:@名前 …」) に `is:times` を足す。

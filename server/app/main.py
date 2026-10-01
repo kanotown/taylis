@@ -69,6 +69,7 @@ from app.modules.tasks import service as tasks_service
 from app.modules.tasks.router import router as tasks_router
 from app.modules.templates.router import router as templates_router
 from app.modules.threads.router import router as threads_router
+from app.modules.times_feed.router import router as times_feed_router
 from app.modules.totp.router import router as totp_router
 from app.modules.users.router import router as users_router
 from app.modules.webhooks.router import router as webhooks_router
@@ -277,6 +278,7 @@ def build_api_router() -> APIRouter:
     api.include_router(messages_router)
     api.include_router(threads_router)
     api.include_router(bookmarks_router)
+    api.include_router(times_feed_router)
     api.include_router(activity_router)
     api.include_router(favorites_router)
     api.include_router(sidebar_router)

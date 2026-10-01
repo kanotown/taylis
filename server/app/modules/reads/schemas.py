@@ -12,6 +12,12 @@ class ReadMark(BaseModel):
     mode: Literal["advance", "set"] = "advance"
 
 
+class ReadAllIn(BaseModel):
+    # "all": every channel I belong to (M12a). "times": only the Times feed's channels, the times
+    # I follow and have not muted (L8, TIMES_FEED.md §4).
+    scope: Literal["all", "times"] = "all"
+
+
 class ReadStateOut(BaseModel):
     last_read_seq: int
     unread_count: int

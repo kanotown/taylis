@@ -16,7 +16,8 @@ from app.modules.channels.schemas import (
     MemberOut,
     MemberRoleUpdate,
 )
-from app.modules.reads.schemas import ReadMark, ReadStateOut
+from app.modules.reads.schemas import ReadAllIn, ReadMark, ReadStateOut
+from app.modules.times_feed import service as times_feed
 
 router = APIRouter(tags=["channels"])
 
@@ -135,9 +136,15 @@ async def get_or_create_dm(
 
 
 @router.post("/channels/read-all", response_model=list[ChannelReadStateOut])
-async def mark_all_read(user: CurrentUser, db: Db) -> list[ChannelReadStateOut]:
-    """M12a 「すべて既読にする」: every channel I belong to is read to its end."""
-    return await service.mark_all_read(db, user)
+async def mark_all_read(
+    user: CurrentUser, db: Db, body: ReadAllIn | None = None
+) -> list[ChannelReadStateOut]:
+    """M12a 「すべて既読にする」: every channel I belong to is read to its end; with scope "times"
+    only the Times feed's channels (L8)."""
+    only = None
+    if body is not None and body.scope == "times":
+        only = set(await times_feed.feed_channel_ids(db, user))
+    return await service.mark_all_read(db, user, only=only)
 
 
 @router.put("/channels/{channel_id}/read", response_model=ReadStateOut)

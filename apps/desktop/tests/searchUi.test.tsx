@@ -27,7 +27,7 @@ function world() {
   const search = vi.fn(async (): Promise<SearchOut> => ({
     hits: [{ message: hit("設計レビューの資料です"), score: 2 }, { message: hit("設計の続き", { parent_id: "p1" }), score: 1 }],
     keywords: ["設計"],
-    filters: { text: "設計", has: [], is_thread: false, unresolved: ["from:@nobody"] },
+    filters: { text: "設計", has: [], is_thread: false, is_times: false, unresolved: ["from:@nobody"] },
     limit: 30,
     offset: 0,
     has_more: false,
@@ -95,7 +95,7 @@ describe("search results", () => {
 
   it("offers to drop the filters when nothing matches, and reuses kept results", async () => {
     const w = world();
-    w.search.mockResolvedValueOnce({ hits: [], keywords: [], filters: { text: "", has: ["poll"], is_thread: false, unresolved: [] }, limit: 30, offset: 0, has_more: false, total: 0, total_capped: false });
+    w.search.mockResolvedValueOnce({ hits: [], keywords: [], filters: { text: "", has: ["poll"], is_thread: false, is_times: false, unresolved: [] }, limit: 30, offset: 0, has_more: false, total: 0, total_capped: false });
     const onChange = vi.fn();
     const params: SearchParams = { ...EMPTY_SEARCH, q: "予算", has: ["poll"] };
     const snapshot = { current: null as SearchSnapshot | null };

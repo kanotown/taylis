@@ -1,5 +1,5 @@
 """Query modifiers as in Slack / Mattermost: from:@user in:#channel before: after: on: (YYYY-MM-DD),
-and (M15h) has:file / has:link / has:pin / has:reaction / has:poll and is:thread.
+and (M15h) has:file / has:link / has:pin / has:reaction / has:poll and is:thread, (L8) is:times.
 
 Parsing is pure; the service resolves names against what the caller can see.
 """
@@ -27,7 +27,7 @@ HAS_ALIASES = {
     "poll": "poll",
     "polls": "poll",
 }
-IS_ALIASES = {"thread": "thread", "threads": "thread"}
+IS_ALIASES = {"thread": "thread", "threads": "thread", "times": "times", "time": "times"}
 
 
 @dataclass
@@ -41,6 +41,8 @@ class ParsedQuery:
     # M15h: "has:<x>" flags (file, link, pin, reaction, poll) and "is:thread".
     has: list[str] = field(default_factory=list)
     is_thread: bool = False
+    # L8: only times channels (TIMES_FEED.md §6).
+    is_times: bool = False
 
     @property
     def has_modifiers(self) -> bool:
@@ -51,6 +53,7 @@ class ParsedQuery:
             or self.before
             or self.has
             or self.is_thread
+            or self.is_times
         )
 
 
@@ -85,8 +88,11 @@ def parse_query(q: str, *, tz_offset_minutes: int = 0) -> ParsedQuery:
             elif flag not in parsed.has:
                 parsed.has.append(flag)
         elif key == "is":
-            if IS_ALIASES.get(value.lower()) is None:
+            flag = IS_ALIASES.get(value.lower())
+            if flag is None:
                 parsed.unresolved.append(match.group(0))
+            elif flag == "times":
+                parsed.is_times = True
             else:
                 parsed.is_thread = True
         else:
