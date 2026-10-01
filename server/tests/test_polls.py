@@ -47,6 +47,16 @@ async def test_poll_lifecycle(
         "votes": [[], [], []],
         "counts": [0, 0, 0],
         "mine": [],
+        # M53: a choice poll leaves the scheduling fields empty.
+        "kind": "choice",
+        "slots": [],
+        "tz": None,
+        "decided": None,
+        "answers": [],
+        "respondents": [],
+        "comments": [],
+        "my_answers": None,
+        "my_comment": None,
     }
     bad = await _poll(client, channel["id"], options=["ひとつ"])
     assert bad.status_code == 422

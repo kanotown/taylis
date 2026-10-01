@@ -1,7 +1,8 @@
 """Message creation with channel sequence allocation and client idempotency keys."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,8 @@ from app.modules.activity.rules import reaction_audience
 from app.modules.activity.schemas import ReactionAddedData
 from app.modules.attachments import service as attachments
 from app.modules.attachments.schemas import to_attachment_out
+from app.modules.calendar import service as calendar
+from app.modules.calendar.schemas import CalendarEventCreate
 from app.modules.channels import repository as channel_repo
 from app.modules.channels import service as channels
 from app.modules.channels.schemas import LastMessageOut
@@ -35,6 +38,7 @@ from app.modules.messages.mentions import (
     notification_text,
 )
 from app.modules.messages.models import Message, with_replier
+from app.modules.messages.schedule import decided_text
 from app.modules.messages.schemas import (
     DeltaOut,
     HistoryOut,
@@ -43,6 +47,9 @@ from app.modules.messages.schemas import (
     MessageEdit,
     MessageOut,
     MessageRevisionOut,
+    PollAnswersIn,
+    PollCreate,
+    PollDecideIn,
     thread_of,
     to_message_out,
 )
@@ -88,6 +95,21 @@ async def _keyword_hits(
     member_ids = (await channel_repo.member_ids_for_channels(db, [channel_id])).get(channel_id, [])
     candidates = [uid for uid in member_ids if uid != sender_id and uid not in mentioned]
     return await users.keyword_mentions(db, body, candidates)
+
+
+def _stored_poll(poll: PollCreate) -> dict[str, Any]:
+    """messages.poll (DATA_MODEL.md 投票). A scheduling poll (M53) also keeps its slots, the zone
+    of their labels and the decision."""
+    stored: dict[str, Any] = {
+        "question": poll.question,
+        "options": poll.options,
+        "multiple": poll.multiple,
+        "anonymous": poll.anonymous,
+        "closed_at": None,
+    }
+    if poll.kind == "schedule":
+        stored |= {"kind": "schedule", "slots": poll.stored_slots(), "tz": poll.tz, "decided": None}
+    return stored
 
 
 async def create_message(
@@ -156,17 +178,7 @@ async def create_message(
                 mentioned_user_ids=mentioned,
                 keyword_user_ids=keyword_hits,
                 mention_all=mention_all,
-                poll=(
-                    {
-                        "question": data.poll.question,
-                        "options": data.poll.options,
-                        "multiple": data.poll.multiple,
-                        "anonymous": data.poll.anonymous,
-                        "closed_at": None,
-                    }
-                    if data.poll
-                    else None
-                ),
+                poll=_stored_poll(data.poll) if data.poll else None,
                 priority=data.priority,
                 ack_requested=data.ack_requested,
             )
@@ -298,6 +310,9 @@ async def messages_out(
     reactions = await repo.reactions_for(db, live)
     files = await attachments.for_messages(db, live)
     votes = await repo.poll_votes_for(db, [m.id for m in rows if m.poll and not m.is_deleted])
+    comments = await repo.comments_for(
+        db, [m.id for m in rows if _is_schedule(m) and not m.is_deleted]
+    )
     acks = await repo.acks_for(db, [m.id for m in rows if m.ack_requested and not m.is_deleted])
     return [
         to_message_out(
@@ -307,9 +322,14 @@ async def messages_out(
             votes.get(m.id, []),
             acks.get(m.id, []),
             viewer,
+            comments.get(m.id, []),
         )
         for m in rows
     ]
+
+
+def _is_schedule(message: Message) -> bool:
+    return bool(message.poll) and message.poll.get("kind") == "schedule"  # type: ignore[union-attr]
 
 
 # M49: the preview's length (MOBILE_UI.md §7.1); the row cuts it to one line anyway.
@@ -507,8 +527,11 @@ async def list_revisions(
     ]
 
 
-async def _bump_and_announce(db: AsyncSession, message: Message, change: str) -> MessageOut:
-    """A change that keeps the row alive: new updated_seq, message.updated for the channel."""
+async def _bump_and_announce(
+    db: AsyncSession, message: Message, change: str, *, commit: bool = True
+) -> MessageOut:
+    """A change that keeps the row alive: new updated_seq, message.updated for the channel.
+    `commit=False` leaves the transaction open for more writes (M53: deciding a poll)."""
     seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
     message.updated_seq = seq
     await db.flush()
@@ -521,7 +544,8 @@ async def _bump_and_announce(db: AsyncSession, message: Message, change: str) ->
         seq=seq,
         payload=MessageUpdatedData(message=out, change=change).model_dump(mode="json"),  # type: ignore[arg-type]
     )
-    await db.commit()
+    if commit:
+        await db.commit()
     return out
 
 
@@ -534,14 +558,27 @@ async def set_vote(
     poll = message.poll
     if not poll:
         raise not_found("poll_not_found", "This message has no poll")
-    if poll.get("closed_at"):
-        raise conflict("poll_closed", "The poll is closed")
     if index < 0 or index >= len(poll.get("options", [])):
         raise bad_request("poll_option_invalid", "No such option")
     # Two devices voting at once must see each other's vote (a single-choice poll would keep
     # both). The channel row is the lock, as for every write, so a vote and a reply to the same
     # message never wait for each other in opposite orders.
     await repo.lock_channel(db, message.channel_id)
+    await db.refresh(message)  # a close or a decision committed meanwhile
+    poll = _open_poll(message)
+    if poll.get("kind") == "schedule":
+        # M53: the vote of an app before M53 is ○ for that slot; taking it back unanswers it.
+        answers = await repo.user_answers(db, message.id, actor.id)
+        if present:
+            if answers.get(index) == "yes":
+                return await message_out(db, message, actor.id), False
+            await repo.set_answer(db, message.id, actor.id, index, "yes")
+        else:
+            if index not in answers:
+                return await message_out(db, message, actor.id), False
+            await repo.remove_votes(db, message.id, actor.id, index)
+        await _bump_and_announce(db, message, "poll")
+        return await message_out(db, message, actor.id), True
     current = await repo.user_votes(db, message.id, actor.id)
     if present:
         if index in current:
@@ -613,6 +650,198 @@ async def close_poll(db: AsyncSession, actor: User, message_id: uuid.UUID) -> Me
     if poll.get("closed_at"):
         return await message_out(db, message, actor.id)
     message.poll = {**poll, "closed_at": utcnow().isoformat()}
+    await _bump_and_announce(db, message, "poll")
+    return await message_out(db, message, actor.id)
+
+
+# --- scheduling polls (M53, SCHEDULING.md) ------------------------------------------------------
+
+
+def _open_poll(message: Message) -> dict[str, Any]:
+    """The poll if it still takes answers: 409 once decided or closed."""
+    poll = message.poll or {}
+    if poll.get("decided"):
+        raise conflict("poll_decided", "The date has been decided")
+    if poll.get("closed_at"):
+        raise conflict("poll_closed", "The poll is closed")
+    return poll
+
+
+async def _schedule_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> Message:
+    message = await _require_live_message(db, actor, message_id)
+    if not message.poll:
+        raise not_found("poll_not_found", "This message has no poll")
+    if not _is_schedule(message):
+        raise bad_request("poll_not_schedule", "This poll is not a scheduling poll")
+    return message
+
+
+async def set_answers(
+    db: AsyncSession, actor: User, message_id: uuid.UUID, data: PollAnswersIn
+) -> tuple[MessageOut, bool]:
+    """PUT /messages/{id}/poll/answers: my answers replace the ones I had (slots left out become
+    unanswered); `comment` as PollAnswersIn says. (message, changed); only a change takes a seq."""
+    message = await _schedule_message(db, actor, message_id)
+    await repo.lock_channel(db, message.channel_id)  # as set_vote: see the others' answers
+    await db.refresh(message)
+    poll = _open_poll(message)
+    count = len(poll.get("slots", []))
+    wanted = {a.index: a.answer for a in data.answers}
+    if any(index >= count for index in wanted):
+        raise bad_request("poll_option_invalid", "No such slot")
+    current = await repo.user_answers(db, message.id, actor.id)
+    changed = False
+    for index in current.keys() - wanted.keys():
+        await repo.remove_votes(db, message.id, actor.id, index)
+        changed = True
+    for index, answer in wanted.items():
+        if current.get(index) != answer:
+            await repo.set_answer(db, message.id, actor.id, index, answer)
+            changed = True
+    if "comment" in data.model_fields_set:
+        if await repo.user_comment(db, message.id, actor.id) != data.comment:
+            await repo.set_comment(db, message.id, actor.id, data.comment)
+            changed = True
+    if not changed:
+        return await message_out(db, message, actor.id), False
+    await _bump_and_announce(db, message, "poll")
+    return await message_out(db, message, actor.id), True
+
+
+async def _require_decider(db: AsyncSession, actor: User, message: Message) -> None:
+    """The poll's author, the channel's owners and administrators (SCHEDULING.md §1)."""
+    if message.sender_id == actor.id or actor.is_admin:
+        return
+    membership = await channels.membership_of(db, actor.id, message.channel_id)
+    if membership is None or membership.role != "owner":
+        raise forbidden(
+            "poll_decide_restricted",
+            "Only the poll's author, the channel's owners and administrators decide the date",
+        )
+
+
+def _event_title(poll: dict[str, Any]) -> str:
+    return " ".join(str(poll.get("question", "")).split()) or "日程調整"
+
+
+def _event_for_slot(
+    channel_id: uuid.UUID, title: str, slot: dict[str, str], description: str
+) -> CalendarEventCreate:
+    if "date" in slot:
+        day = date.fromisoformat(slot["date"])
+        return CalendarEventCreate(
+            channel_id=channel_id,
+            title=title,
+            all_day=True,
+            start_date=day,
+            end_date=day,
+            description=description,
+        )
+    return CalendarEventCreate(
+        channel_id=channel_id,
+        title=title,
+        starts_at=datetime.fromisoformat(slot["starts_at"]),
+        ends_at=datetime.fromisoformat(slot["ends_at"]),
+        description=description,
+    )
+
+
+async def decide_poll(
+    db: AsyncSession,
+    actor: User,
+    message_id: uuid.UUID,
+    data: PollDecideIn,
+    *,
+    base_url: str,
+) -> tuple[MessageOut, bool]:
+    """POST /messages/{id}/poll/decide (SCHEDULING.md §3, §4), in one transaction: the poll is
+    decided and closed (message.updated, change poll); the event goes into the channel's calendar
+    (not in a DM, nor with create_event false); a thread reply by the decider says so and mentions
+    those who answered (not in an anonymous poll). Deciding the same slot again changes nothing
+    (a retry); another slot is 409 until the decision is taken back. `base_url`: the server's
+    public address, for the message's link in the event."""
+    message = await _schedule_message(db, actor, message_id)
+    await _require_decider(db, actor, message)
+    channel = await channels.require_channel(db, message.channel_id)
+    await repo.lock_channel(db, message.channel_id)
+    await db.refresh(message)
+    poll = dict(message.poll or {})
+    slots: list[dict[str, str]] = list(poll.get("slots", []))
+    if data.index >= len(slots):
+        raise bad_request("poll_option_invalid", "No such slot")
+    decided = poll.get("decided")
+    if decided:
+        if decided.get("index") == data.index:
+            return await message_out(db, message, actor.id), False
+        raise conflict("poll_decided", "The date has been decided; take the decision back first")
+
+    event_id: uuid.UUID | None = None
+    if data.create_event and not channel.is_dm:
+        link = f"{base_url.rstrip('/')}/m/{message.id}" if base_url else ""
+        description = "日程調整で決定" + (f"\n{link}" if link else "")
+        event_id = await calendar.create_channel_event_in_tx(
+            db,
+            actor,
+            _event_for_slot(channel.id, _event_title(poll), slots[data.index], description),
+        )
+    now = utcnow()
+    message.poll = {
+        **poll,
+        "decided": {
+            "index": data.index,
+            "event_id": str(event_id) if event_id else None,
+            "by": str(actor.id),
+            "at": now.isoformat(),
+        },
+        "closed_at": poll.get("closed_at") or now.isoformat(),
+    }
+    await _bump_and_announce(db, message, "poll", commit=False)
+
+    votes = (await repo.poll_votes_for(db, [message.id])).get(message.id, [])
+    chosen = [v for v in votes if v.option_index == data.index]
+    label = list(poll.get("options", []))[data.index]
+    body = decided_text(
+        label,
+        sum(1 for v in chosen if v.answer == "yes"),
+        sum(1 for v in chosen if v.answer == "maybe"),
+    )
+    if not poll.get("anonymous"):
+        members = set(
+            (await channel_repo.member_ids_for_channels(db, [channel.id])).get(channel.id, [])
+        )
+        comments = (await repo.comments_for(db, [message.id])).get(message.id, [])
+        mentioned: list[uuid.UUID] = []
+        for user_id in [v.user_id for v in votes] + [c.user_id for c in comments]:
+            if user_id != actor.id and user_id in members and user_id not in mentioned:
+                mentioned.append(user_id)
+        if mentioned:
+            body += "\n" + " ".join(f"<@{user_id}>" for user_id in mentioned)
+    await create_message(
+        db,
+        actor,
+        channel.id,
+        MessageCreate(
+            client_msg_id=uuid.uuid4(),
+            body=body,
+            parent_id=message.parent_id or message.id,
+        ),
+        commit=False,
+    )
+    await db.commit()
+    return await message_out(db, message, actor.id), True
+
+
+async def undecide_poll(db: AsyncSession, actor: User, message_id: uuid.UUID) -> MessageOut:
+    """DELETE /messages/{id}/poll/decide: answers open again; the event stays (its creator or the
+    channel's owners delete it in the calendar). Idempotent."""
+    message = await _schedule_message(db, actor, message_id)
+    await _require_decider(db, actor, message)
+    await repo.lock_channel(db, message.channel_id)
+    await db.refresh(message)
+    poll = message.poll or {}
+    if not poll.get("decided"):
+        return await message_out(db, message, actor.id)
+    message.poll = {**poll, "decided": None, "closed_at": None}
     await _bump_and_announce(db, message, "poll")
     return await message_out(db, message, actor.id)
 

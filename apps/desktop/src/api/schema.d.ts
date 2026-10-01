@@ -1838,6 +1838,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/{message_id}/poll/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Poll Answers
+         * @description M53: my yes / maybe / no on a scheduling poll, all at once (slots left out become
+         *     unanswered), and my comment (a string sets it, null or blank removes it, left out keeps
+         *     it). 201 when something changed. 409 poll_decided / poll_closed once it takes no answers.
+         */
+        put: operations["set_poll_answers_api_v1_messages__message_id__poll_answers_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}/poll/close": {
         parameters: {
             query?: never;
@@ -1853,6 +1875,32 @@ export interface paths {
          */
         post: operations["close_poll_api_v1_messages__message_id__poll_close_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/poll/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Poll
+         * @description M53: the poll's author, the channel's owners and administrators decide a slot. The answers
+         *     close, the event goes into the channel's calendar (not in a DM, nor with create_event false)
+         *     and a thread reply says so. The same slot again: 200, nothing changes; another: 409.
+         */
+        post: operations["decide_poll_api_v1_messages__message_id__poll_decide_post"];
+        /**
+         * Undecide Poll
+         * @description M53: take the decision back (answers open again). The calendar event stays.
+         */
+        delete: operations["undecide_poll_api_v1_messages__message_id__poll_decide_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4187,9 +4235,41 @@ export interface components {
             /** New Password */
             new_password: string;
         };
+        /** PollAnswerIn */
+        PollAnswerIn: {
+            /**
+             * Answer
+             * @enum {string}
+             */
+            answer: "yes" | "maybe" | "no";
+            /** Index */
+            index: number;
+        };
+        /**
+         * PollAnswersIn
+         * @description M53: my answers to a scheduling poll, all at once: the slots left out become unanswered.
+         *     `comment`: a string sets my comment, null or blank removes it, left out keeps it.
+         */
+        PollAnswersIn: {
+            /** Answers */
+            answers: components["schemas"]["PollAnswerIn"][];
+            /** Comment */
+            comment?: string | null;
+        };
+        /** PollCommentOut */
+        PollCommentOut: {
+            /** Text */
+            text: string;
+            /** User Id */
+            user_id: string | null;
+        };
         /**
          * PollCreate
          * @description A poll attached to a message (M14b): 2-10 options, one or several votes per person.
+         *
+         *     M53 `kind = "schedule"` (SCHEDULING.md): 2-20 `slots` and the zone (`tz`) their labels are
+         *     written in; the server makes `options` from them (any sent are ignored) and the poll always
+         *     takes several answers.
          */
         PollCreate: {
             /**
@@ -4198,14 +4278,51 @@ export interface components {
              */
             anonymous: boolean;
             /**
+             * Kind
+             * @default choice
+             * @enum {string}
+             */
+            kind: "choice" | "schedule";
+            /**
              * Multiple
              * @default false
              */
             multiple: boolean;
             /** Options */
-            options: string[];
+            options?: string[];
             /** Question */
             question: string;
+            /** Slots */
+            slots?: components["schemas"]["ScheduleSlotIn"][] | null;
+            /** Tz */
+            tz?: string | null;
+        };
+        /** PollDecideIn */
+        PollDecideIn: {
+            /**
+             * Create Event
+             * @default true
+             */
+            create_event: boolean;
+            /** Index */
+            index: number;
+        };
+        /** PollDecidedOut */
+        PollDecidedOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * By
+             * Format: uuid
+             */
+            by: string;
+            /** Event Id */
+            event_id?: string | null;
+            /** Index */
+            index: number;
         };
         /** PollOut */
         PollOut: {
@@ -4214,21 +4331,54 @@ export interface components {
              * @default false
              */
             anonymous: boolean;
+            /**
+             * Answers
+             * @default []
+             */
+            answers: components["schemas"]["SlotAnswersOut"][];
             /** Closed At */
             closed_at?: string | null;
+            /**
+             * Comments
+             * @default []
+             */
+            comments: components["schemas"]["PollCommentOut"][];
             /**
              * Counts
              * @default []
              */
             counts: number[];
+            decided?: components["schemas"]["PollDecidedOut"] | null;
+            /**
+             * Kind
+             * @default choice
+             * @enum {string}
+             */
+            kind: "choice" | "schedule";
             /** Mine */
             mine?: number[] | null;
             /** Multiple */
             multiple: boolean;
+            /** My Answers */
+            my_answers?: (("yes" | "maybe" | "no") | null)[] | null;
+            /** My Comment */
+            my_comment?: string | null;
             /** Options */
             options: string[];
             /** Question */
             question: string;
+            /**
+             * Respondents
+             * @default []
+             */
+            respondents: string[];
+            /**
+             * Slots
+             * @default []
+             */
+            slots: components["schemas"]["ScheduleSlotOut"][];
+            /** Tz */
+            tz?: string | null;
             /** Votes */
             votes: string[][];
         };
@@ -4581,6 +4731,30 @@ export interface components {
              */
             submitted_rev_id: string;
         };
+        /**
+         * ScheduleSlotIn
+         * @description One candidate of a scheduling poll (M53): a time (15 minutes to 12 hours) or a whole day.
+         */
+        ScheduleSlotIn: {
+            /** Date */
+            date?: string | null;
+            /** Ends At */
+            ends_at?: string | null;
+            /** Starts At */
+            starts_at?: string | null;
+        };
+        /**
+         * ScheduleSlotOut
+         * @description A timed slot (starts_at, ends_at in UTC) or an all-day one (date).
+         */
+        ScheduleSlotOut: {
+            /** Date */
+            date?: string | null;
+            /** Ends At */
+            ends_at?: string | null;
+            /** Starts At */
+            starts_at?: string | null;
+        };
         /** ScheduledCreate */
         ScheduledCreate: {
             /** Attachment Ids */
@@ -4790,6 +4964,43 @@ export interface components {
             name: string;
             /** Position */
             position: number;
+        };
+        /**
+         * SlotAnswersOut
+         * @description Who answered yes / maybe / no for one slot, in order of answering (empty in an anonymous
+         *     poll), and how many.
+         */
+        SlotAnswersOut: {
+            /**
+             * Maybe
+             * @default []
+             */
+            maybe: string[];
+            /**
+             * Maybe Count
+             * @default 0
+             */
+            maybe_count: number;
+            /**
+             * No
+             * @default []
+             */
+            no: string[];
+            /**
+             * No Count
+             * @default 0
+             */
+            no_count: number;
+            /**
+             * Yes
+             * @default []
+             */
+            yes: string[];
+            /**
+             * Yes Count
+             * @default 0
+             */
+            yes_count: number;
         };
         /** SsoExchange */
         SsoExchange: {
@@ -9191,7 +9402,108 @@ export interface operations {
             };
         };
     };
+    set_poll_answers_api_v1_messages__message_id__poll_answers_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PollAnswersIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     close_poll_api_v1_messages__message_id__poll_close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_poll_api_v1_messages__message_id__poll_decide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PollDecideIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undecide_poll_api_v1_messages__message_id__poll_decide_delete: {
         parameters: {
             query?: never;
             header?: never;

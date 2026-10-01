@@ -12,6 +12,7 @@ from app.modules.messages.models import (
     Message,
     MessageAck,
     MessageRevision,
+    PollComment,
     PollVote,
     Reaction,
     mentions_of,
@@ -416,3 +417,78 @@ async def remove_ack(db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID
 
 async def delete_acks(db: AsyncSession, message_id: uuid.UUID) -> None:
     await db.execute(delete(MessageAck).where(MessageAck.message_id == message_id))
+
+
+# --- scheduling polls (M53) --------------------------------------------------------------------
+
+
+async def user_answers(
+    db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID
+) -> dict[int, str]:
+    """One person's answers on a poll: slot index → 'yes' / 'maybe' / 'no'."""
+    stmt = select(PollVote.option_index, PollVote.answer).where(
+        PollVote.message_id == message_id, PollVote.user_id == user_id
+    )
+    return {int(row[0]): str(row[1]) for row in (await db.execute(stmt)).all()}
+
+
+async def set_answer(
+    db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID, index: int, answer: str
+) -> None:
+    """Insert the answer, or change it in place (the row keeps its created_at: the order of the
+    people in the table stays)."""
+    stmt = (
+        pg_insert(PollVote)
+        .values(message_id=message_id, user_id=user_id, option_index=index, answer=answer)
+        .on_conflict_do_update(
+            index_elements=["message_id", "user_id", "option_index"],
+            set_={"answer": answer},
+        )
+    )
+    await db.execute(stmt)
+
+
+async def comments_for(
+    db: AsyncSession, message_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[PollComment]]:
+    """Comments per poll, the oldest change first."""
+    if not message_ids:
+        return {}
+    stmt = (
+        select(PollComment)
+        .where(PollComment.message_id.in_(message_ids))
+        .order_by(PollComment.updated_at.asc(), PollComment.user_id.asc())
+    )
+    grouped: dict[uuid.UUID, list[PollComment]] = {}
+    for row in (await db.execute(stmt)).scalars().all():
+        grouped.setdefault(row.message_id, []).append(row)
+    return grouped
+
+
+async def user_comment(db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID) -> str | None:
+    stmt = select(PollComment.text).where(
+        PollComment.message_id == message_id, PollComment.user_id == user_id
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def set_comment(
+    db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID, text: str | None
+) -> None:
+    """Set my comment, or remove it (None)."""
+    if text is None:
+        await db.execute(
+            delete(PollComment).where(
+                PollComment.message_id == message_id, PollComment.user_id == user_id
+            )
+        )
+        return
+    stmt = (
+        pg_insert(PollComment)
+        .values(message_id=message_id, user_id=user_id, text=text, updated_at=func.now())
+        .on_conflict_do_update(
+            index_elements=["message_id", "user_id"],
+            set_={"text": text, "updated_at": func.now()},
+        )
+    )
+    await db.execute(stmt)

@@ -479,21 +479,7 @@ async def create(
     if data.alarm_minutes is not None:
         check_alarm(data.all_day, data.alarm_minutes)
     now = utcnow()
-    event = CalendarEvent(
-        channel_id=data.channel_id,
-        owner_id=actor_id,
-        title=data.title,
-        all_day=data.all_day,
-        starts_at=_utc(data.starts_at),
-        ends_at=_utc(data.ends_at),
-        start_date=data.start_date,
-        end_date=data.end_date,
-        location=data.location,
-        description=data.description,
-        client_event_id=data.client_event_id,
-        created_at=now,
-        updated_at=now,
-    )
+    event = _new_event(data, actor_id, now)
     db.add(event)
     try:
         await db.flush()
@@ -523,6 +509,41 @@ async def create(
         await _emit_alarm(db, event, actor_id, alarm)
     await db.commit()
     return to_out(_Seen(event, channel, None), actor, alarm), True  # the creator may edit
+
+
+def _new_event(data: CalendarEventCreate, owner_id: uuid.UUID, now: datetime) -> CalendarEvent:
+    return CalendarEvent(
+        channel_id=data.channel_id,
+        owner_id=owner_id,
+        title=data.title,
+        all_day=data.all_day,
+        starts_at=_utc(data.starts_at),
+        ends_at=_utc(data.ends_at),
+        start_date=data.start_date,
+        end_date=data.end_date,
+        location=data.location,
+        description=data.description,
+        client_event_id=data.client_event_id,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+async def create_channel_event_in_tx(
+    db: AsyncSession, actor: User, data: CalendarEventCreate
+) -> uuid.UUID:
+    """A new event in a channel's calendar inside the caller's transaction, which commits it (M53:
+    a decided scheduling poll, SCHEDULING.md §4). The rules of `create` (a member who may post,
+    not a DM, not archived, the time's shape); no alarm and no idempotency key."""
+    if data.channel_id is None or data.alarm_minutes is not None or data.client_event_id:
+        raise ValueError("a channel event without alarm or client_event_id")
+    channel = await _target_channel(db, actor, data.channel_id)
+    check_timing(data.all_day, data.starts_at, data.ends_at, data.start_date, data.end_date)
+    event = _new_event(data, actor.id, utcnow())
+    db.add(event)
+    await db.flush()
+    await _emit_updated(db, event, channel)
+    return event.id
 
 
 async def update(

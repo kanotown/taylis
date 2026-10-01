@@ -79,7 +79,9 @@ class Message(Base):
     # Pinned in its channel (M11c): any member pins / unpins; the change consumes a seq.
     pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pinned_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
-    # Poll (M14b): {question, options, multiple, closed_at}; the votes live in poll_votes.
+    # Poll (M14b): {question, options, multiple, anonymous, closed_at}; the votes live in
+    # poll_votes. M53 scheduling polls add kind = "schedule", slots, tz and decided (and their
+    # comments live in poll_comments).
     poll: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     # M15e: "important" / "urgent" on a top-level post, and whether readers are asked to
     # acknowledge it (the acknowledgements live in message_acks).
@@ -140,16 +142,37 @@ class Reaction(Base):
 
 
 class PollVote(Base):
-    """One user's vote for one option of a message's poll (M14b)."""
+    """One user's vote for one option of a message's poll (M14b); in a scheduling poll (M53) their
+    answer for one slot: 'yes' / 'maybe' / 'no'. A choice poll's votes are all 'yes'."""
 
     __tablename__ = "poll_votes"
 
     message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id"), primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
     option_index: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    answer: Mapped[str] = mapped_column(String(8), default="yes", server_default="yes")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
+
+    __table_args__ = (CheckConstraint("answer IN ('yes', 'maybe', 'no')", name="answer_values"),)
+
+
+class PollComment(Base):
+    """One person's short comment on a scheduling poll (M53, SCHEDULING.md §2)."""
+
+    __tablename__ = "poll_comments"
+
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    text: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+    __table_args__ = (CheckConstraint("char_length(text) BETWEEN 1 AND 100", name="text_length"),)
 
 
 class MessageAck(Base):

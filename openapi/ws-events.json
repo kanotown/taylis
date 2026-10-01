@@ -2202,12 +2202,84 @@
             "title": "ParentThread",
             "type": "object"
           },
+          "PollCommentOut": {
+            "properties": {
+              "text": {
+                "title": "Text",
+                "type": "string"
+              },
+              "user_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "User Id"
+              }
+            },
+            "required": [
+              "user_id",
+              "text"
+            ],
+            "title": "PollCommentOut",
+            "type": "object"
+          },
+          "PollDecidedOut": {
+            "properties": {
+              "at": {
+                "format": "date-time",
+                "title": "At",
+                "type": "string"
+              },
+              "by": {
+                "format": "uuid",
+                "title": "By",
+                "type": "string"
+              },
+              "event_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Event Id"
+              },
+              "index": {
+                "title": "Index",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "index",
+              "by",
+              "at"
+            ],
+            "title": "PollDecidedOut",
+            "type": "object"
+          },
           "PollOut": {
             "properties": {
               "anonymous": {
                 "default": false,
                 "title": "Anonymous",
                 "type": "boolean"
+              },
+              "answers": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/SlotAnswersOut"
+                },
+                "title": "Answers",
+                "type": "array"
               },
               "closed_at": {
                 "anyOf": [
@@ -2222,6 +2294,14 @@
                 "default": null,
                 "title": "Closed At"
               },
+              "comments": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/PollCommentOut"
+                },
+                "title": "Comments",
+                "type": "array"
+              },
               "counts": {
                 "default": [],
                 "items": {
@@ -2229,6 +2309,26 @@
                 },
                 "title": "Counts",
                 "type": "array"
+              },
+              "decided": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/PollDecidedOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "kind": {
+                "default": "choice",
+                "enum": [
+                  "choice",
+                  "schedule"
+                ],
+                "title": "Kind",
+                "type": "string"
               },
               "mine": {
                 "anyOf": [
@@ -2249,6 +2349,45 @@
                 "title": "Multiple",
                 "type": "boolean"
               },
+              "my_answers": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "yes",
+                            "maybe",
+                            "no"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "My Answers"
+              },
+              "my_comment": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "My Comment"
+              },
               "options": {
                 "items": {
                   "type": "string"
@@ -2259,6 +2398,35 @@
               "question": {
                 "title": "Question",
                 "type": "string"
+              },
+              "respondents": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Respondents",
+                "type": "array"
+              },
+              "slots": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/ScheduleSlotOut"
+                },
+                "title": "Slots",
+                "type": "array"
+              },
+              "tz": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Tz"
               },
               "votes": {
                 "items": {
@@ -2306,6 +2474,101 @@
               "user_ids"
             ],
             "title": "ReactionOut",
+            "type": "object"
+          },
+          "ScheduleSlotOut": {
+            "description": "A timed slot (starts_at, ends_at in UTC) or an all-day one (date).",
+            "properties": {
+              "date": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Date"
+              },
+              "ends_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Ends At"
+              },
+              "starts_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Starts At"
+              }
+            },
+            "title": "ScheduleSlotOut",
+            "type": "object"
+          },
+          "SlotAnswersOut": {
+            "description": "Who answered yes / maybe / no for one slot, in order of answering (empty in an anonymous\npoll), and how many.",
+            "properties": {
+              "maybe": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Maybe",
+                "type": "array"
+              },
+              "maybe_count": {
+                "default": 0,
+                "title": "Maybe Count",
+                "type": "integer"
+              },
+              "no": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "No",
+                "type": "array"
+              },
+              "no_count": {
+                "default": 0,
+                "title": "No Count",
+                "type": "integer"
+              },
+              "yes": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Yes",
+                "type": "array"
+              },
+              "yes_count": {
+                "default": 0,
+                "title": "Yes Count",
+                "type": "integer"
+              }
+            },
+            "title": "SlotAnswersOut",
             "type": "object"
           }
         },
@@ -2706,12 +2969,84 @@
             "title": "ParentThread",
             "type": "object"
           },
+          "PollCommentOut": {
+            "properties": {
+              "text": {
+                "title": "Text",
+                "type": "string"
+              },
+              "user_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "User Id"
+              }
+            },
+            "required": [
+              "user_id",
+              "text"
+            ],
+            "title": "PollCommentOut",
+            "type": "object"
+          },
+          "PollDecidedOut": {
+            "properties": {
+              "at": {
+                "format": "date-time",
+                "title": "At",
+                "type": "string"
+              },
+              "by": {
+                "format": "uuid",
+                "title": "By",
+                "type": "string"
+              },
+              "event_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Event Id"
+              },
+              "index": {
+                "title": "Index",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "index",
+              "by",
+              "at"
+            ],
+            "title": "PollDecidedOut",
+            "type": "object"
+          },
           "PollOut": {
             "properties": {
               "anonymous": {
                 "default": false,
                 "title": "Anonymous",
                 "type": "boolean"
+              },
+              "answers": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/SlotAnswersOut"
+                },
+                "title": "Answers",
+                "type": "array"
               },
               "closed_at": {
                 "anyOf": [
@@ -2726,6 +3061,14 @@
                 "default": null,
                 "title": "Closed At"
               },
+              "comments": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/PollCommentOut"
+                },
+                "title": "Comments",
+                "type": "array"
+              },
               "counts": {
                 "default": [],
                 "items": {
@@ -2733,6 +3076,26 @@
                 },
                 "title": "Counts",
                 "type": "array"
+              },
+              "decided": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/PollDecidedOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "kind": {
+                "default": "choice",
+                "enum": [
+                  "choice",
+                  "schedule"
+                ],
+                "title": "Kind",
+                "type": "string"
               },
               "mine": {
                 "anyOf": [
@@ -2753,6 +3116,45 @@
                 "title": "Multiple",
                 "type": "boolean"
               },
+              "my_answers": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "yes",
+                            "maybe",
+                            "no"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "My Answers"
+              },
+              "my_comment": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "My Comment"
+              },
               "options": {
                 "items": {
                   "type": "string"
@@ -2763,6 +3165,35 @@
               "question": {
                 "title": "Question",
                 "type": "string"
+              },
+              "respondents": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Respondents",
+                "type": "array"
+              },
+              "slots": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/ScheduleSlotOut"
+                },
+                "title": "Slots",
+                "type": "array"
+              },
+              "tz": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Tz"
               },
               "votes": {
                 "items": {
@@ -2810,6 +3241,101 @@
               "user_ids"
             ],
             "title": "ReactionOut",
+            "type": "object"
+          },
+          "ScheduleSlotOut": {
+            "description": "A timed slot (starts_at, ends_at in UTC) or an all-day one (date).",
+            "properties": {
+              "date": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Date"
+              },
+              "ends_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Ends At"
+              },
+              "starts_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Starts At"
+              }
+            },
+            "title": "ScheduleSlotOut",
+            "type": "object"
+          },
+          "SlotAnswersOut": {
+            "description": "Who answered yes / maybe / no for one slot, in order of answering (empty in an anonymous\npoll), and how many.",
+            "properties": {
+              "maybe": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Maybe",
+                "type": "array"
+              },
+              "maybe_count": {
+                "default": 0,
+                "title": "Maybe Count",
+                "type": "integer"
+              },
+              "no": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "No",
+                "type": "array"
+              },
+              "no_count": {
+                "default": 0,
+                "title": "No Count",
+                "type": "integer"
+              },
+              "yes": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Yes",
+                "type": "array"
+              },
+              "yes_count": {
+                "default": 0,
+                "title": "Yes Count",
+                "type": "integer"
+              }
+            },
+            "title": "SlotAnswersOut",
             "type": "object"
           }
         },
@@ -3155,12 +3681,84 @@
             "title": "MessageOut",
             "type": "object"
           },
+          "PollCommentOut": {
+            "properties": {
+              "text": {
+                "title": "Text",
+                "type": "string"
+              },
+              "user_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "User Id"
+              }
+            },
+            "required": [
+              "user_id",
+              "text"
+            ],
+            "title": "PollCommentOut",
+            "type": "object"
+          },
+          "PollDecidedOut": {
+            "properties": {
+              "at": {
+                "format": "date-time",
+                "title": "At",
+                "type": "string"
+              },
+              "by": {
+                "format": "uuid",
+                "title": "By",
+                "type": "string"
+              },
+              "event_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Event Id"
+              },
+              "index": {
+                "title": "Index",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "index",
+              "by",
+              "at"
+            ],
+            "title": "PollDecidedOut",
+            "type": "object"
+          },
           "PollOut": {
             "properties": {
               "anonymous": {
                 "default": false,
                 "title": "Anonymous",
                 "type": "boolean"
+              },
+              "answers": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/SlotAnswersOut"
+                },
+                "title": "Answers",
+                "type": "array"
               },
               "closed_at": {
                 "anyOf": [
@@ -3175,6 +3773,14 @@
                 "default": null,
                 "title": "Closed At"
               },
+              "comments": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/PollCommentOut"
+                },
+                "title": "Comments",
+                "type": "array"
+              },
               "counts": {
                 "default": [],
                 "items": {
@@ -3182,6 +3788,26 @@
                 },
                 "title": "Counts",
                 "type": "array"
+              },
+              "decided": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/PollDecidedOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "kind": {
+                "default": "choice",
+                "enum": [
+                  "choice",
+                  "schedule"
+                ],
+                "title": "Kind",
+                "type": "string"
               },
               "mine": {
                 "anyOf": [
@@ -3202,6 +3828,45 @@
                 "title": "Multiple",
                 "type": "boolean"
               },
+              "my_answers": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "yes",
+                            "maybe",
+                            "no"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "My Answers"
+              },
+              "my_comment": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "My Comment"
+              },
               "options": {
                 "items": {
                   "type": "string"
@@ -3212,6 +3877,35 @@
               "question": {
                 "title": "Question",
                 "type": "string"
+              },
+              "respondents": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Respondents",
+                "type": "array"
+              },
+              "slots": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/ScheduleSlotOut"
+                },
+                "title": "Slots",
+                "type": "array"
+              },
+              "tz": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Tz"
               },
               "votes": {
                 "items": {
@@ -3259,6 +3953,101 @@
               "user_ids"
             ],
             "title": "ReactionOut",
+            "type": "object"
+          },
+          "ScheduleSlotOut": {
+            "description": "A timed slot (starts_at, ends_at in UTC) or an all-day one (date).",
+            "properties": {
+              "date": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Date"
+              },
+              "ends_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Ends At"
+              },
+              "starts_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Starts At"
+              }
+            },
+            "title": "ScheduleSlotOut",
+            "type": "object"
+          },
+          "SlotAnswersOut": {
+            "description": "Who answered yes / maybe / no for one slot, in order of answering (empty in an anonymous\npoll), and how many.",
+            "properties": {
+              "maybe": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Maybe",
+                "type": "array"
+              },
+              "maybe_count": {
+                "default": 0,
+                "title": "Maybe Count",
+                "type": "integer"
+              },
+              "no": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "No",
+                "type": "array"
+              },
+              "no_count": {
+                "default": 0,
+                "title": "No Count",
+                "type": "integer"
+              },
+              "yes": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Yes",
+                "type": "array"
+              },
+              "yes_count": {
+                "default": 0,
+                "title": "Yes Count",
+                "type": "integer"
+              }
+            },
+            "title": "SlotAnswersOut",
             "type": "object"
           }
         },

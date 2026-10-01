@@ -4567,14 +4567,106 @@
         "title": "PasswordChange",
         "type": "object"
       },
+      "PollAnswerIn": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "enum": [
+              "yes",
+              "maybe",
+              "no"
+            ],
+            "title": "Answer",
+            "type": "string"
+          },
+          "index": {
+            "exclusiveMaximum": 20.0,
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "index",
+          "answer"
+        ],
+        "title": "PollAnswerIn",
+        "type": "object"
+      },
+      "PollAnswersIn": {
+        "additionalProperties": false,
+        "description": "M53: my answers to a scheduling poll, all at once: the slots left out become unanswered.\n`comment`: a string sets my comment, null or blank removes it, left out keeps it.",
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/PollAnswerIn"
+            },
+            "maxItems": 20,
+            "title": "Answers",
+            "type": "array"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 400,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "title": "PollAnswersIn",
+        "type": "object"
+      },
+      "PollCommentOut": {
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "user_id",
+          "text"
+        ],
+        "title": "PollCommentOut",
+        "type": "object"
+      },
       "PollCreate": {
         "additionalProperties": false,
-        "description": "A poll attached to a message (M14b): 2-10 options, one or several votes per person.",
+        "description": "A poll attached to a message (M14b): 2-10 options, one or several votes per person.\n\nM53 `kind = \"schedule\"` (SCHEDULING.md): 2-20 `slots` and the zone (`tz`) their labels are\nwritten in; the server makes `options` from them (any sent are ignored) and the poll always\ntakes several answers.",
         "properties": {
           "anonymous": {
             "default": false,
             "title": "Anonymous",
             "type": "boolean"
+          },
+          "kind": {
+            "default": "choice",
+            "enum": [
+              "choice",
+              "schedule"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "multiple": {
             "default": false,
@@ -4585,8 +4677,7 @@
             "items": {
               "type": "string"
             },
-            "maxItems": 10,
-            "minItems": 2,
+            "maxItems": 20,
             "title": "Options",
             "type": "array"
           },
@@ -4595,13 +4686,97 @@
             "minLength": 1,
             "title": "Question",
             "type": "string"
+          },
+          "slots": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ScheduleSlotIn"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slots"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
           }
         },
         "required": [
-          "question",
-          "options"
+          "question"
         ],
         "title": "PollCreate",
+        "type": "object"
+      },
+      "PollDecideIn": {
+        "additionalProperties": false,
+        "properties": {
+          "create_event": {
+            "default": true,
+            "title": "Create Event",
+            "type": "boolean"
+          },
+          "index": {
+            "exclusiveMaximum": 20.0,
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "index"
+        ],
+        "title": "PollDecideIn",
+        "type": "object"
+      },
+      "PollDecidedOut": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "by": {
+            "format": "uuid",
+            "title": "By",
+            "type": "string"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "index",
+          "by",
+          "at"
+        ],
+        "title": "PollDecidedOut",
         "type": "object"
       },
       "PollOut": {
@@ -4610,6 +4785,14 @@
             "default": false,
             "title": "Anonymous",
             "type": "boolean"
+          },
+          "answers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SlotAnswersOut"
+            },
+            "title": "Answers",
+            "type": "array"
           },
           "closed_at": {
             "anyOf": [
@@ -4623,6 +4806,14 @@
             ],
             "title": "Closed At"
           },
+          "comments": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PollCommentOut"
+            },
+            "title": "Comments",
+            "type": "array"
+          },
           "counts": {
             "default": [],
             "items": {
@@ -4630,6 +4821,25 @@
             },
             "title": "Counts",
             "type": "array"
+          },
+          "decided": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PollDecidedOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "default": "choice",
+            "enum": [
+              "choice",
+              "schedule"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "mine": {
             "anyOf": [
@@ -4649,6 +4859,43 @@
             "title": "Multiple",
             "type": "boolean"
           },
+          "my_answers": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "yes",
+                        "maybe",
+                        "no"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Answers"
+          },
+          "my_comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Comment"
+          },
           "options": {
             "items": {
               "type": "string"
@@ -4659,6 +4906,34 @@
           "question": {
             "title": "Question",
             "type": "string"
+          },
+          "respondents": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Respondents",
+            "type": "array"
+          },
+          "slots": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ScheduleSlotOut"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
           },
           "votes": {
             "items": {
@@ -5568,6 +5843,93 @@
         "title": "SaveOut",
         "type": "object"
       },
+      "ScheduleSlotIn": {
+        "additionalProperties": false,
+        "description": "One candidate of a scheduling poll (M53): a time (15 minutes to 12 hours) or a whole day.",
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          }
+        },
+        "title": "ScheduleSlotIn",
+        "type": "object"
+      },
+      "ScheduleSlotOut": {
+        "description": "A timed slot (starts_at, ends_at in UTC) or an all-day one (date).",
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          }
+        },
+        "title": "ScheduleSlotOut",
+        "type": "object"
+      },
       "ScheduledCreate": {
         "properties": {
           "attachment_ids": {
@@ -6088,6 +6450,55 @@
           "channel_ids"
         ],
         "title": "SidebarSectionOut",
+        "type": "object"
+      },
+      "SlotAnswersOut": {
+        "description": "Who answered yes / maybe / no for one slot, in order of answering (empty in an anonymous\npoll), and how many.",
+        "properties": {
+          "maybe": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Maybe",
+            "type": "array"
+          },
+          "maybe_count": {
+            "default": 0,
+            "title": "Maybe Count",
+            "type": "integer"
+          },
+          "no": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "No",
+            "type": "array"
+          },
+          "no_count": {
+            "default": 0,
+            "title": "No Count",
+            "type": "integer"
+          },
+          "yes": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Yes",
+            "type": "array"
+          },
+          "yes_count": {
+            "default": 0,
+            "title": "Yes Count",
+            "type": "integer"
+          }
+        },
+        "title": "SlotAnswersOut",
         "type": "object"
       },
       "SsoExchange": {
@@ -13756,6 +14167,65 @@
         ]
       }
     },
+    "/api/v1/messages/{message_id}/poll/answers": {
+      "put": {
+        "description": "M53: my yes / maybe / no on a scheduling poll, all at once (slots left out become\nunanswered), and my comment (a string sets it, null or blank removes it, left out keeps\nit). 201 when something changed. 409 poll_decided / poll_closed once it takes no answers.",
+        "operationId": "set_poll_answers_api_v1_messages__message_id__poll_answers_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PollAnswersIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Poll Answers",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
     "/api/v1/messages/{message_id}/poll/close": {
       "post": {
         "description": "M14b: the author ends the voting (only the author, not an administrator).",
@@ -13800,6 +14270,112 @@
           }
         ],
         "summary": "Close Poll",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/api/v1/messages/{message_id}/poll/decide": {
+      "delete": {
+        "description": "M53: take the decision back (answers open again). The calendar event stays.",
+        "operationId": "undecide_poll_api_v1_messages__message_id__poll_decide_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Undecide Poll",
+        "tags": [
+          "messages"
+        ]
+      },
+      "post": {
+        "description": "M53: the poll's author, the channel's owners and administrators decide a slot. The answers\nclose, the event goes into the channel's calendar (not in a DM, nor with create_event false)\nand a thread reply says so. The same slot again: 200, nothing changes; another: 409.",
+        "operationId": "decide_poll_api_v1_messages__message_id__poll_decide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PollDecideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Decide Poll",
         "tags": [
           "messages"
         ]
