@@ -637,6 +637,7 @@ fun MessageRow(
                 }
                 message.poll?.let { PollCard(it, message, controller, version, readOnly) }  // M14b
                 if (message.ackRequested && !message.pending) AckBar(message, store, controller, version, readOnly)  // M15e
+                if (message.collection != null) CollectionChip(message, store, version)  // L6 (M60)
                 AttachmentList(message.attachments, controller)
                 // Not for this server's /m/ and /c/ links: a message shows in place, a canvas as its card (M58).
                 if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null && !CanvasCards.isCanvasLink(controller.serverBase, link) }?.let { LinkPreviewCard(controller, it) }

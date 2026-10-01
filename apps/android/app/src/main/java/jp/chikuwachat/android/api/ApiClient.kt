@@ -585,6 +585,23 @@ class ApiClient(
 
     suspend fun deleteChannelLink(channelId: String, linkId: String): List<ChannelLinkOut> = request("DELETE", "/api/v1/channels/$channelId/links/$linkId")
 
+    // --- recurring posts (L6, M59/M60, RECURRING.md §3) ----------------------------------------------
+
+    /** Any reader of the channel; 404 on a server before M59. */
+    suspend fun recurringPosts(channelId: String): List<RecurringPostOut> = request("GET", "/api/v1/channels/$channelId/recurring-posts")
+
+    /** `body`: ui/Recurring.createBody (owners and admins who are members; 403 recurring_manage_restricted otherwise). */
+    suspend fun createRecurringPost(channelId: String, body: JsonObject): RecurringPostOut = request("POST", "/api/v1/channels/$channelId/recurring-posts", body)
+
+    /** `body`: ui/Recurring.updateBody, or just `enabled` (止める / 再開). */
+    suspend fun updateRecurringPost(id: String, body: JsonObject): RecurringPostOut = request("PATCH", "/api/v1/recurring-posts/$id", body)
+
+    /** 204; the posts made so far (and their collections) stay. */
+    suspend fun deleteRecurringPost(id: String) { requestRaw("DELETE", "/api/v1/recurring-posts/$id", null, auth = true, retry401 = true) }
+
+    /** 今すぐ投稿 (the next scheduled time stays). */
+    suspend fun runRecurringPost(id: String): RecurringRunOut = request("POST", "/api/v1/recurring-posts/$id/run", buildJsonObject {})
+
     // --- canvases (CANVAS.md §4.5, M46) ---------------------------------------------------------
 
     /** The conversation's canvases without bodies, most recently updated first (`trashed`: its trash instead). */

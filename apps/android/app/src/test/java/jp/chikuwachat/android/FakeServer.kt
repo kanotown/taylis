@@ -307,6 +307,21 @@ class FakeServer {
         return readState(userId, channelId)
     }
 
+    /**
+     * L6 (RECURRING.md §7): the server's side of a collection changing (the post went out, a target's first reply or
+     * last reply's deletion, the reminder): the parent takes a seq of its own and goes out as message.updated
+     * (change=collection).
+     */
+    fun setCollection(channelId: String, messageId: String, collection: jp.chikuwachat.android.api.CollectionOut?): MessageOut {
+        val record = channels.getValue(channelId)
+        val message = record.messages.first { it.id == messageId }
+        val seq = record.channel.lastSeq + 1
+        record.channel = record.channel.copy(lastSeq = seq)
+        val updated = message.copy(updatedSeq = seq, collection = collection)
+        replace(record, updated, "message.updated", "collection")
+        return updated
+    }
+
     // --- pins and bookmarks (M11c) --------------------------------------------------------------------
 
     /** PUT / DELETE /messages/{id}/pin: any member; a change consumes a seq (message.updated change=pin). */

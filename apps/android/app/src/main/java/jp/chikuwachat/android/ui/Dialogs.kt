@@ -308,6 +308,8 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                 }
             }
         }
+        // L6 (M60, RECURRING.md §5): every member reads the list; owners and admins manage it.
+        if (isChannel && channel.isMember) RecurringPostsSection(controller, channel, version)
         if (isChannel && channel.isMember) {
             SectionLabel("管理")
             if (renaming) {
