@@ -6,6 +6,7 @@
 import { ApiError } from "../src/api/errors";
 import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { LastMessageOut } from "../src/api/types";
+import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiRunOut, AiStatusOut, AiSummaryCreate, AiUsageOut } from "../src/api/ai";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import { lastMessageOf } from "../src/ui/dmPreview";
@@ -1407,7 +1408,7 @@ export class FakeServer {
     return { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: this.notificationDefaults.get(userId) ?? "mentions", notify_reactions: this.notifyReactions.has(userId), notify_tasks: !this.tasksOff.has(userId), has_password: true, quick_reactions: this.quickReactions.get(userId) ?? null };
   }
 
-  apiFor(userId: string): SyncApi & FakeCanvasApi & { failNext: (error: Error) => void; listActivity: (options: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => Promise<ActivityListOut>; sessions: () => Promise<SessionOut[]>; revokeSession: (sessionId: string) => Promise<void> } {
+  apiFor(userId: string): SyncApi & FakeCanvasApi & FakeAiApi & { failNext: (error: Error) => void; listActivity: (options: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => Promise<ActivityListOut>; sessions: () => Promise<SessionOut[]>; revokeSession: (sessionId: string) => Promise<void> } {
     let pendingFailure: Error | null = null;
     const maybeFail = (): void => {
       if (pendingFailure) {
@@ -1417,6 +1418,7 @@ export class FakeServer {
       }
     };
     return {
+      ...this.aiApiFor(userId),
       failNext: (error: Error) => {
         pendingFailure = error;
       },
@@ -1702,6 +1704,161 @@ export class FakeServer {
     };
   }
 
+  // --- AI (M65, docs/AI.md §5) ---------------------------------------------------------------
+
+  /** The server answers 404 to every AI route (a server before M65). */
+  aiMissing = false;
+  /** AI_API_KEY_FILE is there. */
+  aiKey = true;
+  /** This month's budget is not used up. */
+  aiBudgetLeft = true;
+  /** The next POST /ai/summaries is refused with this (429 ai_daily_limit …). */
+  aiRefuseNext: ApiError | null = null;
+  readonly aiAgents: AiAgentOut[] = [];
+  readonly aiRuns = new Map<string, { run: AiRunOut; userId: string }>();
+  aiUsage: AiUsageOut = { month: "2026-10", budget_usd: 30, total_cost_usd: 0, total_runs: 0, by_agent: [], by_user: [] };
+
+  private aiGate(): void {
+    if (this.aiMissing) throw new ApiError(404, "not_found", "Not Found");
+  }
+
+  private aiAdmin(userId: string): void {
+    this.aiGate();
+    if (this.users.get(userId)?.role !== "admin") throw new ApiError(403, "forbidden", "admins only");
+  }
+
+  aiStatusOut(): AiStatusOut {
+    const enabled = this.aiAgents.filter((a) => a.enabled);
+    const available = this.aiKey && enabled.length > 0;
+    return {
+      available,
+      summary_available: available && this.aiBudgetLeft,
+      agents: enabled.map((a) => ({ id: a.id, bot_user_id: a.bot_user_id, name: a.name, model: a.model })),
+    };
+  }
+
+  /** POST /admin/ai/agents: the agent and its bot user (role bot). */
+  createAiAgent(body: AiAgentCreate): AiAgentOut {
+    if ([...this.users.values()].some((u) => u.username === body.username)) throw new ApiError(409, "username_taken", "taken");
+    const bot = this.addUser(body.username);
+    bot.role = "bot";
+    bot.display_name = body.name;
+    const at = now();
+    const agent: AiAgentOut = {
+      id: nextId(),
+      bot_user_id: bot.id,
+      username: body.username,
+      name: body.name,
+      character: body.character,
+      model: body.model,
+      effort: body.effort ?? "medium",
+      allow_private: body.allow_private ?? false,
+      enabled: body.enabled ?? true,
+      created_at: at,
+      updated_at: at,
+    };
+    this.aiAgents.push(agent);
+    return agent;
+  }
+
+  /** A summary's state changes (the worker): ai.run_updated to the one who asked, unless `emit` is false (a lost event). */
+  updateAiRun(runId: string, patch: Partial<AiRunOut>, options: { emit?: boolean } = {}): AiRunOut {
+    const entry = this.aiRuns.get(runId)!;
+    entry.run = { ...entry.run, ...patch };
+    if (options.emit !== false) {
+      this.emit(new Set([entry.userId]), { type: "event", id: ++this.eventId, event: "ai.run_updated", ts: now(), channel_id: null, seq: null, data: { run: { ...entry.run } } });
+    }
+    return entry.run;
+  }
+
+  /** The newest run someone asked for. */
+  lastAiRun(): AiRunOut | undefined {
+    return [...this.aiRuns.values()].pop()?.run;
+  }
+
+  private createAiSummary(userId: string, body: AiSummaryCreate): AiRunOut {
+    this.aiGate();
+    const record = this.channels.get(body.channel_id);
+    if (!record || !record.members.has(userId)) throw new ApiError(404, "channel_not_found", "not found");
+    if (body.scope === "thread" && (!body.thread_id || !record.messages.some((m) => m.id === body.thread_id && !m.parent_id))) {
+      throw new ApiError(400, "validation_error", "thread_id");
+    }
+    const status = this.aiStatusOut();
+    if (!status.available) throw new ApiError(409, "ai_unavailable", "unavailable");
+    if (!status.summary_available) throw new ApiError(429, "ai_budget_exceeded", "budget");
+    if (this.aiRefuseNext) {
+      const err = this.aiRefuseNext;
+      this.aiRefuseNext = null;
+      throw err;
+    }
+    const run: AiRunOut = {
+      id: nextId(),
+      kind: "summary",
+      status: "pending",
+      channel_id: body.channel_id,
+      thread_id: body.thread_id ?? null,
+      scope: body.scope,
+      days: body.scope === "recent" ? (body.days ?? 1) : null,
+      output: null,
+      error: null,
+      omitted_count: 0,
+      created_at: now(),
+      finished_at: null,
+    };
+    this.aiRuns.set(run.id, { run, userId });
+    return { ...run };
+  }
+
+  aiApiFor(userId: string): FakeAiApi {
+    const admin = (): void => this.aiAdmin(userId);
+    return {
+      aiStatus: async () => {
+        this.aiGate();
+        return this.aiStatusOut();
+      },
+      createAiSummary: async (body) => this.createAiSummary(userId, body),
+      getAiRun: async (runId) => {
+        this.aiGate();
+        const entry = this.aiRuns.get(runId);
+        if (!entry || entry.userId !== userId) throw new ApiError(404, "ai_run_not_found", "not found");
+        return { ...entry.run };
+      },
+      aiRuns: async () => {
+        this.aiGate();
+        return [...this.aiRuns.values()].filter((e) => e.userId === userId).map((e) => ({ ...e.run })).reverse().slice(0, 20);
+      },
+      adminAiAgents: async () => {
+        admin();
+        return this.aiAgents.map((a) => ({ ...a }));
+      },
+      adminCreateAiAgent: async (body) => {
+        admin();
+        return { ...this.createAiAgent(body) };
+      },
+      adminUpdateAiAgent: async (agentId, patch) => {
+        admin();
+        const agent = this.aiAgents.find((a) => a.id === agentId);
+        if (!agent) throw new ApiError(404, "not_found", "not found");
+        if ("username" in patch) throw new ApiError(400, "validation_error", "username");
+        Object.assign(agent, patch, { updated_at: now() });
+        const bot = this.users.get(agent.bot_user_id);
+        if (bot && patch.name) bot.display_name = patch.name;
+        return { ...agent };
+      },
+      adminDeleteAiAgent: async (agentId) => {
+        admin();
+        const index = this.aiAgents.findIndex((a) => a.id === agentId);
+        if (index < 0) throw new ApiError(404, "not_found", "not found");
+        const [agent] = this.aiAgents.splice(index, 1);
+        for (const record of this.channels.values()) record.members.delete(agent!.bot_user_id);
+      },
+      adminAiUsage: async (month) => {
+        admin();
+        return { ...this.aiUsage, month: month ?? this.aiUsage.month };
+      },
+    };
+  }
+
   connectorFor(userId: string): WsConnector {
     return async () => {
       const socket = new FakeSocket(this, userId);
@@ -1712,6 +1869,19 @@ export class FakeServer {
 }
 
 /** The canvas calls the screen makes through controller.api besides the engine's (SyncApi) ones. */
+/** M65: the AI routes (docs/AI.md §5) as ApiClient names them. */
+export interface FakeAiApi {
+  aiStatus(): Promise<AiStatusOut>;
+  createAiSummary(body: AiSummaryCreate): Promise<AiRunOut>;
+  getAiRun(runId: string): Promise<AiRunOut>;
+  aiRuns(): Promise<AiRunOut[]>;
+  adminAiAgents(): Promise<AiAgentOut[]>;
+  adminCreateAiAgent(body: AiAgentCreate): Promise<AiAgentOut>;
+  adminUpdateAiAgent(agentId: string, patch: AiAgentUpdate): Promise<AiAgentOut>;
+  adminDeleteAiAgent(agentId: string): Promise<void>;
+  adminAiUsage(month?: string): Promise<AiUsageOut>;
+}
+
 export interface FakeCanvasApi {
   createCanvas(channelId: string, body: CanvasCreate): Promise<CanvasOut>;
   updateCanvas(canvasId: string, patch: CanvasUpdate): Promise<CanvasOut>;

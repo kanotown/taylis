@@ -1,3 +1,4 @@
+import type { AiAgentPublic, AiStatusOut } from "../api/ai";
 import type { AttachmentOut, ChannelLinkOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PollOut, TemplateOut } from "../api/types";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
@@ -397,6 +398,21 @@ export class Store {
 
   // --- me / users -------------------------------------------------------------------------
 
+  /**
+   * M65 (docs/AI.md §5): GET /ai/status, read after every connection. Null while unknown or when the server has no AI
+   * (404, an older server): every AI entry point is hidden then. Not persisted. Rows show the 「AI」 badge from it, so a
+   * change moves rowsVersion.
+   */
+  aiStatus: AiStatusOut | null = null;
+  setAiStatus(status: AiStatusOut | null): void {
+    if (JSON.stringify(status) === JSON.stringify(this.aiStatus)) return;
+    this.aiStatus = status;
+    this.emitRows();
+  }
+  /** The AI agent whose bot user this is (bots of an unavailable AI included: their posts stay AI posts). */
+  aiAgentOf(userId: string): AiAgentPublic | undefined {
+    return this.aiStatus?.agents.find((agent) => agent.bot_user_id === userId);
+  }
   setMe(me: UserMe | null): void {
     this.me = me;
     this.persist((p) => p.saveMeta("me", me ? JSON.stringify(me) : null));

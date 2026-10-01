@@ -9,6 +9,8 @@ export interface MentionCandidate {
   label: string;
   /** M12k: a group's members are notified; "all" is @channel / @here. */
   kind?: "user" | "group" | "all";
+  /** M65: an AI bot (shown with the 「AI」 badge; mentioning it asks it to answer in the thread). */
+  ai?: boolean;
 }
 
 // After anything but an ASCII handle character, @ or <: 「まとめます。@kano」 is a mention, a@b.jp and <@uuid> are not.
@@ -63,13 +65,14 @@ export function mentionQuery(text: string, caret: number): { start: number; quer
   return { start: before.length - query.length - 1, query };
 }
 
-export function mentionCandidates(query: string, users: UserPublic[], groups: GroupOut[] = [], limit = 6): MentionCandidate[] {
+/** `aiBotIds` (M65): the bot users of the AI agents (GET /ai/status), marked `ai`. */
+export function mentionCandidates(query: string, users: UserPublic[], groups: GroupOut[] = [], limit = 6, aiBotIds: ReadonlySet<string> = new Set()): MentionCandidate[] {
   const q = query.toLowerCase();
   const people: MentionCandidate[] = users
     .filter((u) => !u.deactivated_at)
     .filter((u) => u.username.toLowerCase().startsWith(q) || u.display_name.toLowerCase().includes(q))
     .sort((a, b) => a.username.localeCompare(b.username))
-    .map((u) => ({ username: u.username, label: u.display_name, kind: "user" }));
+    .map((u) => ({ username: u.username, label: u.display_name, kind: "user", ...(aiBotIds.has(u.id) ? { ai: true } : {}) }));
   const teams: MentionCandidate[] = groups
     .filter((g) => g.name.toLowerCase().startsWith(q) || (g.description ?? "").toLowerCase().includes(q))
     .sort((a, b) => a.name.localeCompare(b.name))

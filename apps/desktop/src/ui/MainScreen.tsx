@@ -37,6 +37,7 @@ import { SavedView } from "./SavedView";
 import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
 import { WorkspaceMenu } from "./WorkspaceRail";
+import { startSummary, SummaryDialog, SummaryMenuItems, summaryAvailable } from "./ai";
 import { isWeb, overlayTitleBar, TRAFFIC_LIGHTS_INSET } from "../platform/env";
 import { EMPTY_SEARCH, pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
 import { HomeView } from "./HomeView";
@@ -1124,7 +1125,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   </MenuContent>
                 </Menu>
               )}
-              {current.isMember && (isChannel || compact) && (
+              {current.isMember && (isChannel || compact || summaryAvailable(controller)) && (
                 <Menu>
                   <MenuTrigger asChild>
                     <button type="button" aria-label={isChannel ? "チャンネルの操作" : "会話の操作"} title={isChannel ? "チャンネルの操作" : "会話の操作"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
@@ -1144,6 +1145,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
                     ) : (
                       isChannel && channelMenuItems
                     )}
+                    {/* M65: 「要約」 (docs/AI.md §6), only to the one who asks. */}
+                    <SummaryMenuItems controller={controller} channel={current} onSummary={(target) => startSummary(controller, target)} separator={compact || isChannel} />
                   </MenuContent>
                 </Menu>
               )}
@@ -1231,6 +1234,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const overlays = (
     <>
       <Toast controller={controller} />
+      <SummaryDialog controller={controller} />
       <NoticeToast controller={controller} />
       {switcher && <QuickSwitcher controller={controller} onOpen={open} onOpenCanvas={(canvas) => openCanvas(canvas.channel_id, canvas.id)} onClose={() => setSwitcher(false)} />}
       {dialog === "dm" && <NewDmDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} />}

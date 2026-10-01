@@ -305,7 +305,7 @@ it("the red 「ログアウト」 asks first; 管理 is there for an admin with 
 
   await openRow("管理");
   const tabs = within(you()).getByRole("tablist", { name: "管理" });
-  expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["ユーザー", "名簿", "グループ", "招待", "Webhook", "チャンネル", "絵文字", "キャンバス"]);
+  expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["ユーザー", "名簿", "グループ", "招待", "Webhook", "AI", "チャンネル", "絵文字", "キャンバス"]); // M65: 「AI」 (the fake server has the AI routes)
   w.engine.stop();
 });
 

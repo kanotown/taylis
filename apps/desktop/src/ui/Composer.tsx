@@ -9,6 +9,7 @@ import { PriorityLabel } from "./PriorityLabel";
 import { PendingAttachments } from "./Attachments";
 import { continueStructure, type EditState, indentListLine, insertLink, insideFence, replaceThroughBrowser, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
+import { AiBadge } from "./ai";
 import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { AddEmojiDialog, CustomEmojiImage } from "./customEmoji";
 import { canPostTopLevel } from "./channels";
@@ -97,7 +98,7 @@ export function Composer({
   const listKey = query ? `@${query.start}:${query.query}` : emojiAt ? `:${emojiAt.start}:${emojiAt.query}` : `/${text}`;
   const [dismissed, setDismissed] = useState<string | null>(null);
   const listShown = dismissed !== listKey;
-  const candidates = query && listShown ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()]) : [];
+  const candidates = query && listShown ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()], 6, new Set(store.aiStatus?.agents.map((a) => a.bot_user_id))) : [];
   const emojiHits = emojiAt && listShown ? [...customEmojiCandidates(emojiAt.query, store.customEmoji), ...emojiCandidates(emojiAt.query)].slice(0, 8) : [];
   const [addEmojiOpen, setAddEmojiOpen] = useState(false);
   // M30: the templates in the order they are offered here (a times channel puts `suggest_in = times` first).
@@ -466,7 +467,7 @@ export function Composer({
                 pick(candidate);
               }}
             >
-              <strong>@{candidate.username}</strong> <span className="text-muted">{candidate.label}</span>{candidate.kind === "group" && <span className="ml-auto rounded bg-accent-soft px-1.5 text-[10px] text-accent">グループ</span>}
+              <strong>@{candidate.username}</strong> <span className="text-muted">{candidate.label}</span>{candidate.kind === "group" && <span className="ml-auto rounded bg-accent-soft px-1.5 text-[10px] text-accent">グループ</span>}{candidate.ai && <AiBadge className="ml-auto" />}
             </li>
           ))}
         </ul>
