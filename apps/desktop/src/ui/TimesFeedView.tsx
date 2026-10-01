@@ -2,7 +2,7 @@ import { CheckCheck, Newspaper, PenLine, Plus, RotateCw } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 import type { AppController } from "../state/app";
-import { isFeedChannel, isNewFeedRow, type TimesFeedHub } from "../sync/timesFeed";
+import { feedRevealTarget, isFeedChannel, isNewFeedRow, type TimesFeedHub } from "../sync/timesFeed";
 import type { MessageState } from "../sync/types";
 import { BackButton } from "./compact";
 import { channelTitle } from "./MainScreen";
@@ -47,7 +47,8 @@ export function TimesFeedView({ controller, onReveal, onOpenThread, onOpenChanne
   // The rows are memoized (MessageRow): the callbacks they get stay the same object.
   const latest = useRef({ onReveal, onOpenThread, onOpenChannel });
   latest.current = { onReveal, onOpenThread, onOpenChannel };
-  const reveal = useCallback((message: MessageState) => latest.current.onReveal(message), []);
+  // A reply also sent to the channel is shown as the channel's row, not in its thread (§7; 「N 件の返信」 opens threads).
+  const reveal = useCallback((message: MessageState) => latest.current.onReveal(feedRevealTarget(message)), []);
   const openChannel = useCallback((channelId: string) => latest.current.onOpenChannel(channelId), []);
   const threadOpeners = useRef(new Map<string, (id: string) => void>());
   const openerFor = (channelId: string) => {

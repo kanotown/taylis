@@ -291,10 +291,13 @@ export class Store {
   /** M49: a preview emptied by a deletion the rows held could not replace; the engine fetches the server's. */
   onStalePreview: ((channelId: string) => void) | null = null;
   /**
-   * L8: every message taken in (events, catch-up pages, the answers to my reactions, pins and deletes): the Times feed
-   * keeps its rows, held apart from the store, current with it (TIMES_FEED.md §5).
+   * L8: every message taken in (events, catch-up pages, the answers to my posts, edits, reactions, pins and deletes): the
+   * Times feed keeps its rows, held apart from the store, current with it (TIMES_FEED.md §5). `created`: the store did
+   * not hold it, so it may be a row the feed lacks too (one a gap's catch-up recovered, review v0.1.15 #4).
    */
-  onMessageStored: ((message: MessageState) => void) | null = null;
+  onMessageStored: ((message: MessageState, created: boolean) => void) | null = null;
+  /** L8: the answer to my own vote / answer / close (setMyVotes), for the Times feed's copy of the row (§8). */
+  onMyVotes: ((message: MessageState) => void) | null = null;
 
   constructor(private readonly persistence: Persistence | null = null) {}
 
@@ -933,7 +936,7 @@ export class Store {
       this.persist((p) => p.saveMessage(stored));
     }
     this.applyLastMessage(stored); // M49: events, catch-up pages and my own edits / deletes alike
-    this.onMessageStored?.(stored);
+    this.onMessageStored?.(stored, !local);
     this.emit();
     return true;
   }
@@ -943,6 +946,7 @@ export class Store {
    * member's vote event may have come first with a newer updated_seq, and the merge above then drops the answer.
    */
   setMyVotes(message: MessageState): void {
+    this.onMyVotes?.(message);
     const local = this.bucket(message.channel_id).get(message.id);
     if (!message.poll || !local?.poll) return;
     const poll = withMyPart(local.poll, message.poll);
@@ -1061,7 +1065,7 @@ function sameOptions(a: readonly number[] | null | undefined, b: readonly number
 type MyPart = Pick<PollOut, "mine" | "my_answers" | "my_comment">;
 
 /** `incoming` with the parts it lacks (null) taken from `local`. */
-function keepMyPart(incoming: PollOut, local: PollOut): PollOut {
+export function keepMyPart(incoming: PollOut, local: PollOut): PollOut {
   const kept: MyPart = {};
   if (incoming.mine == null && local.mine != null) kept.mine = local.mine;
   if (incoming.my_answers == null && local.my_answers != null) kept.my_answers = local.my_answers;
@@ -1070,7 +1074,7 @@ function keepMyPart(incoming: PollOut, local: PollOut): PollOut {
 }
 
 /** `local` with the parts `response` carries, or null when they change nothing. */
-function withMyPart(local: PollOut, response: PollOut): PollOut | null {
+export function withMyPart(local: PollOut, response: PollOut): PollOut | null {
   const changed: MyPart = {};
   if (response.mine != null && !sameOptions(local.mine, response.mine)) changed.mine = response.mine;
   if (response.my_answers != null && JSON.stringify(response.my_answers) !== JSON.stringify(local.my_answers ?? null)) changed.my_answers = response.my_answers;

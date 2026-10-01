@@ -138,6 +138,34 @@ it("a row shows its message in its channel; the times' name opens the channel; t
   w.engine.stop();
 });
 
+it("a reply also sent to the channel: its body shows the channel's row (no thread); 「スレッドに返信」 opens the thread (review #13)", async () => {
+  const { w, controller, carol, carolTimes } = await setup();
+  const parent = w.server.messageByBody(carolTimes, "論文を読む");
+  w.server.post(carolTimes, carol.id, "返信もチャンネルに", undefined, parent.id, [], { alsoInChannel: true });
+  fireEvent.click(screen.getByRole("button", { name: "Times フィード" }));
+  await settle(w);
+  const replyRow = () => [...feed().querySelectorAll("article")].find((r) => r.textContent?.includes("返信もチャンネルに"))!;
+  // The row itself: the channel, at that row, with no thread open.
+  fireEvent.click(replyRow().querySelector("div.min-w-0")!);
+  await settle(w);
+  await waitFor(() => expect(screen.queryByRole("feed")).toBeNull());
+  expect(screen.getByText("times-carol", { selector: "header strong" })).toBeTruthy();
+  expect(controller.messageFocus).toMatchObject({ channelId: carolTimes, parentId: null });
+  expect(screen.queryByLabelText("スレッドのメッセージ一覧")).toBeNull();
+  // Back in the feed (another conversation open behind it now: #c), 「スレッドに返信:」 opens the parent's thread.
+  fireEvent.click(screen.getByRole("button", { name: "c" }));
+  await settle(w);
+  fireEvent.click(screen.getByRole("button", { name: "Times フィード" }));
+  await settle(w);
+  fireEvent.click(within(replyRow()).getByRole("button", { name: /スレッドに返信/ }));
+  await settle(w);
+  const list = screen.getByLabelText("スレッドのメッセージ一覧");
+  // The thread of the row's channel, not of the conversation left open behind the feed.
+  await waitFor(() => expect(list.textContent).toContain("返信もチャンネルに"));
+  expect(screen.getByText("#times-carol にも送信")).toBeTruthy();
+  w.engine.stop();
+});
+
 it("「自分の times に書く」 is 「自分の times を作る」 until I have one; the empty feed explains itself", async () => {
   const w = world({ posts: 1, lastRead: 1 });
   const inner = w.api as unknown as Record<string, unknown>;

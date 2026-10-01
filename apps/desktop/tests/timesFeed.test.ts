@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
-import { appendFeed, applyFeedMessage, applyFeedParentThread, EMPTY_FEED, feedOrder, isFeedRow, isNewFeedRow, pruneFeed, replaceFeed } from "../src/sync/timesFeed";
+import type { PollOut } from "../src/api/types";
+import { appendFeed, applyFeedMessage, applyFeedMyVotes, applyFeedParentThread, EMPTY_FEED, feedOrder, feedRevealTarget, feedTimeKey, isFeedRow, isNewFeedRow, pruneFeed, replaceFeed, TimesFeedHub, type TimesFeedPage } from "../src/sync/timesFeed";
 import type { ChannelState, MessageState } from "../src/sync/types";
 import { FakeServer } from "./fakeServer";
 
@@ -232,6 +233,171 @@ describe("the hub on the engine", () => {
     expect(w.server.readAllScopes).toEqual(["times"]);
     expect(w.server.readState(w.bob.id, w.aliceTimes).last_read_seq).toBe(w.server.channels.get(w.aliceTimes)!.channel.last_seq);
     expect(w.server.readState(w.bob.id, w.general).last_read_seq).toBe(0); // not a times
+    w.engine.stop();
+  });
+});
+
+// ---- review v0.1.15 (#2, #3, #4, #10, #13, #14) ----
+
+describe("full-precision order (review #14)", () => {
+  it("compares created_at to the microsecond, before the id, also at a page boundary", () => {
+    const newer = msg({ id: "a", created_at: "2026-10-02T10:00:00.000002Z" });
+    const older = msg({ id: "z", created_at: "2026-10-02T10:00:00.000001Z" });
+    expect(feedOrder(newer, older)).toBeLessThan(0);
+    expect(feedOrder(older, newer)).toBeGreaterThan(0);
+    expect([older, newer].sort(feedOrder).map((m) => m.id)).toEqual(["a", "z"]);
+    // The same instant written with an offset or fewer digits: the same key.
+    expect(feedTimeKey("2026-10-02T19:00:00.5+09:00")).toBe(feedTimeKey("2026-10-02T10:00:00.500000Z"));
+    expect(feedTimeKey("2026-10-02T10:00:00Z") < feedTimeKey("2026-10-02T10:00:00.000001Z")).toBe(true);
+    // The last row held is the newer one; an older row of the same millisecond waits for its page.
+    const state = { rows: [newer], nextCursor: "more", loaded: true };
+    expect(applyFeedMessage(state, older, { created: true, belongs: true })).toBe(state);
+  });
+});
+
+describe("per-viewer poll fields (review #10)", () => {
+  const poll = (patch: Partial<PollOut>): PollOut => ({ question: "q", options: ["a", "b"], multiple: false, anonymous: true, closed: false, counts: [0, 0], votes: null, mine: null, ...patch }) as unknown as PollOut;
+
+  it("an event without them keeps mine / my comment; an answer of the same version brings them; setMyVotes always", () => {
+    const row = msg({ poll: poll({ mine: [0], my_comment: "ok" }) });
+    const state = replaceFeed({ items: [row], next_cursor: null });
+    const event = { ...row, updated_seq: row.updated_seq + 1, poll: poll({ counts: [2, 0], mine: null }) };
+    const after = applyFeedMessage(state, event, { created: false, belongs: true });
+    expect(after.rows[0]!.poll).toMatchObject({ counts: [2, 0], mine: [0], my_comment: "ok" });
+    const answer = { ...event, poll: poll({ counts: [2, 0], mine: [1] }) };
+    expect(applyFeedMessage(after, answer, { created: false, belongs: true }).rows[0]!.poll!.mine).toEqual([1]);
+    // My own vote's answer older than another member's event: still mine (setMyVotes).
+    const late = applyFeedMyVotes(after, { ...row, poll: poll({ mine: [1] }) });
+    expect(late.rows[0]!.poll).toMatchObject({ counts: [2, 0], mine: [1] });
+    // A first page read again whose copy carries no mine keeps the held one.
+    expect(replaceFeed({ items: [{ ...event, poll: poll({ counts: [2, 0] }) }], next_cursor: null }, after).rows[0]!.poll!.mine).toEqual([0]);
+  });
+});
+
+describe("a row's click (review #13)", () => {
+  it("a reply also sent to the channel opens as the channel's row; other rows as they are", () => {
+    const reply = msg({ parent_id: "p", also_in_channel: true });
+    expect(feedRevealTarget(reply)).toMatchObject({ id: reply.id, parent_id: null });
+    const top = msg();
+    expect(feedRevealTarget(top)).toBe(top);
+  });
+});
+
+/** A hub whose page reads wait until the test answers them. */
+function pendingHub(channels: Map<string, ChannelState>) {
+  const answers: Array<(page: TimesFeedPage) => void> = [];
+  const hub = new TimesFeedHub({
+    api: { timesFeed: () => new Promise<TimesFeedPage>((resolve) => answers.push(resolve)) },
+    channel: (id) => channels.get(id),
+    now: () => NOW,
+  });
+  const answer = async (page: TimesFeedPage) => {
+    answers.shift()!(page);
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+  };
+  return { hub, answer };
+}
+
+describe("pages on their way (review #2, #3)", () => {
+  it("a channel removed, left or muted while a first or next page is on its way does not come back with it", async () => {
+    const channels = new Map([["c1", channel()], ["c2", channel({ id: "c2" })]]);
+    const { hub, answer } = pendingHub(channels);
+    hub.open();
+    channels.delete("c2"); // removed from a private times
+    hub.removeChannel("c2");
+    await answer({ items: [msg({ channel_id: "c2" }), msg()], next_cursor: "more" });
+    expect(hub.state.rows.map((m) => m.channel_id)).toEqual(["c1"]);
+
+    channels.set("c2", channel({ id: "c2" })); // joined again: a later page brings it
+    const more = hub.loadMore();
+    hub.removeChannel("c1"); // left while the next page is read (the store still holding it for now)
+    await answer({ items: [msg({ channel_id: "c1", created_at: "2020-01-02T00:00:00Z" }), msg({ channel_id: "c2", created_at: "2020-01-01T00:00:00Z" })], next_cursor: "more2" });
+    await more;
+    expect(hub.state.rows.map((m) => m.channel_id)).toEqual(["c2"]);
+
+    const again = hub.loadMore();
+    channels.set("c2", channel({ id: "c2", muted: true })); // muted while the next page is read
+    await answer({ items: [msg({ channel_id: "c2", created_at: "2019-01-01T00:00:00Z" })], next_cursor: null });
+    await again;
+    expect(hub.state.rows).toEqual([]);
+  });
+
+  it("events while the first page is read: a new row stays, an edit or a deletion is not undone", async () => {
+    const channels = new Map([["c1", channel()]]);
+    const { hub, answer } = pendingHub(channels);
+    hub.open();
+    const old = msg({ body: "old" });
+    const gone = msg({ body: "gone" });
+    const flash = msg({ body: "flash" }); // created and deleted at once
+    const fresh = msg({ body: "new" });
+    hub.applyMessage(fresh, true);
+    hub.applyMessage({ ...old, body: "edited", updated_seq: 100 }, false);
+    hub.applyMessage({ ...gone, deleted: true, updated_seq: 101 }, false);
+    hub.applyMessage(flash, true);
+    hub.applyMessage({ ...flash, deleted: true, updated_seq: flash.updated_seq + 1 }, false);
+    await answer({ items: [flash, gone, old], next_cursor: null });
+    expect(hub.state.rows.map((m) => m.body)).toEqual(["new", "edited"]);
+
+    // A refresh: an edit made while it is read stays; the page's newer version wins over an older one held.
+    const refresh = hub.refresh();
+    hub.applyMessage({ ...fresh, body: "new edited", updated_seq: 200 }, false);
+    await answer({ items: [{ ...fresh }, { ...old, body: "edited again", updated_seq: 150 }], next_cursor: null });
+    await refresh;
+    expect(hub.state.rows.map((m) => m.body)).toEqual(["new edited", "edited again"]);
+  });
+
+  it("a row deleted while the next page is read is not brought back by it, nor by a late copy afterwards", async () => {
+    const channels = new Map([["c1", channel()]]);
+    const { hub, answer } = pendingHub(channels);
+    hub.open();
+    const top = msg({ created_at: "2026-10-01T10:00:00Z" });
+    await answer({ items: [top], next_cursor: "more" });
+    const below = msg({ created_at: "2026-09-01T10:00:00Z", body: "below" });
+    const parent = msg({ created_at: "2026-08-01T10:00:00Z", body: "parent" });
+    const more = hub.loadMore();
+    hub.applyMessage({ ...below, deleted: true, updated_seq: below.updated_seq + 1 }, false);
+    hub.applyParentThread({ id: parent.id, reply_count: 3, last_reply_at: "2026-10-02T00:00:00Z", updated_seq: parent.updated_seq + 5 });
+    await answer({ items: [below, parent], next_cursor: null });
+    await more;
+    expect(hub.state.rows.map((m) => m.body)).toEqual([top.body, "parent"]);
+    expect(hub.find(parent.id)?.reply_count).toBe(3); // the reply that came meanwhile counts
+    hub.applyMessage(below, true); // a late created event of the deleted row
+    expect(hub.state.rows.map((m) => m.body)).toEqual([top.body, "parent"]);
+  });
+});
+
+describe("one path from the store (review #4, #10)", () => {
+  it("rows a gap's catch-up recovers reach the feed, in order", async () => {
+    const w = await feedWorld();
+    await w.engine.openChannel(w.aliceTimes);
+    await flush(w);
+    w.engine.timesFeed.open();
+    await flush(w);
+    for (const socket of w.server.socketsOf(w.bob.id)) socket.dropNext = 1;
+    w.server.post(w.aliceTimes, w.alice.id, "lost");
+    w.server.post(w.aliceTimes, w.alice.id, "gap");
+    await flush(w);
+    expect(w.store.messages(w.aliceTimes).map((m) => m.body)).toEqual(["a1", "lost", "gap"]);
+    expect(bodies(w)).toEqual(["gap", "lost", "c1", "a1"]);
+    w.engine.stop();
+  });
+
+  it("the answers to my own actions reach the feed without their events: my post, my edit, my vote", async () => {
+    const w = await feedWorld();
+    w.engine.timesFeed.open();
+    await flush(w);
+    for (const socket of w.server.socketsOf(w.bob.id)) socket.dropNext = 100; // no event arrives
+    await w.engine.send(w.aliceTimes, "mine");
+    await flush(w);
+    expect(bodies(w)[0]).toBe("mine");
+    const mine = w.engine.timesFeed.state.rows[0]!;
+    w.store.upsertMessage({ ...mine, body: "mine edited", edited_at: mine.created_at, updated_seq: mine.updated_seq + 1 }); // the edit's answer
+    expect(bodies(w)[0]).toBe("mine edited");
+    // My vote's answer, older than what the feed holds (another member's vote came first), still shows my vote.
+    const held = w.engine.timesFeed.find(mine.id)!;
+    w.engine.timesFeed.applyMessage({ ...held, updated_seq: held.updated_seq + 5, poll: { question: "q", options: ["a"], mine: null } as unknown as PollOut }, false);
+    w.store.setMyVotes({ ...held, poll: { question: "q", options: ["a"], mine: [0] } as unknown as PollOut });
+    expect(w.engine.timesFeed.find(mine.id)!.poll!.mine).toEqual([0]);
     w.engine.stop();
   });
 });
