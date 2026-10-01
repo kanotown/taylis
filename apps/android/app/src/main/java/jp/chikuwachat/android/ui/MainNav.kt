@@ -87,6 +87,10 @@ sealed interface Route {
     @Serializable @SerialName("saved")
     data object Saved : Pane { override val keptUnderConversation get() = false }
 
+    /** L8 (TIMES_FEED.md §7): the Times feed, from the home's tile or the Times section's 「フィード」; back returns to it. */
+    @Serializable @SerialName("times_feed")
+    data object TimesFeed : Pane { override val keptUnderConversation get() = true }
+
     @Serializable @SerialName("mentions")
     data object Mentions : Pane { override val keptUnderConversation get() = false }
 

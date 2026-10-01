@@ -702,7 +702,13 @@ data class SearchOut(
     /** M16b: how many messages match; the server stops counting past 1,000 and then sets `totalCapped`. */
     val total: Int = 0,
     val totalCapped: Boolean = false,
+    /** L8 (TIMES_FEED.md §6): the hits' channels I am not a member of (an `is:times` search); older servers lack it. */
+    val channels: List<ChannelOut> = emptyList(),
 )
+
+/** GET /times/feed (L8, TIMES_FEED.md §3); `nextCursor` null at the end. */
+@Serializable
+data class TimesFeedOut(val items: List<MessageOut> = emptyList(), val nextCursor: String? = null)
 
 /**
  * GET /search/messages parameters (M16b): the words (typed modifiers such as from:@ stay in them) and the
@@ -716,6 +722,8 @@ data class SearchRequest(
     val before: String? = null,
     val has: List<String> = emptyList(),
     val isThread: Boolean = false,
+    /** L8: only times channels (the 「Times」 chip; a typed `is:times` stays in `q`). */
+    val isTimes: Boolean = false,
     /** "relevance" or "newest"; a search without words is newest first whatever this says. */
     val sort: String = "relevance",
 )
@@ -732,6 +740,8 @@ data class SearchFilters(
     /** M15h: the has: flags (file, link, pin, reaction, poll) and is:thread the server understood. */
     val has: List<String> = emptyList(),
     val isThread: Boolean = false,
+    /** L8: `is:times` (or the is_times parameter) understood; older servers lack it. */
+    val isTimes: Boolean = false,
 )
 
 /** GET /server (M16c, no sign-in): which ChikuwaChat deployment a URL is (WORKSPACES.md §3.1). */

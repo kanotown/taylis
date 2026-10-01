@@ -107,27 +107,30 @@ class HomeTest {
         val tiles = HomeTiles.tiles(ThreadSummary(unreadCount = 3, mentionCount = 1), drafts = 2, saved = 0, firedReminders = 1)
         assertEquals(HomeTile.entries.toList(), tiles.map { it.tile })
         assertEquals(TileState(HomeTile.THREADS, 3, alert = true), tiles[0])
-        assertEquals(TileState(HomeTile.DRAFTS, 2), tiles[1])
-        assertEquals(TileState(HomeTile.SAVED, 0), tiles[2])
-        assertTrue(tiles[2].dimmed) // 0: dimmed, still a tile to tap
-        assertEquals(TileState(HomeTile.REMINDERS, 1, alert = true), tiles[3])
+        // L8 (TIMES_FEED.md §7): 「Times」 after スレッド, without a number.
+        assertEquals(TileState(HomeTile.TIMES, null), tiles[1])
+        assertEquals(TileState(HomeTile.DRAFTS, 2), tiles[2])
+        assertEquals(TileState(HomeTile.SAVED, 0), tiles[3])
+        assertTrue(tiles[3].dimmed) // 0: dimmed, still a tile to tap
+        assertEquals(TileState(HomeTile.REMINDERS, 1, alert = true), tiles[4])
         // M52 (CALENDAR.md §7): 「カレンダー」 next to リマインダー, without a number.
-        assertEquals(TileState(HomeTile.CALENDAR, null), tiles[4])
+        assertEquals(TileState(HomeTile.CALENDAR, null), tiles[5])
         // M56 (TASKS.md §6): 「タスク」 next to カレンダー, without a number.
-        assertEquals(TileState(HomeTile.TASKS, null), tiles[5])
-        assertEquals(TileState(HomeTile.FILES, null), tiles[6])
-        assertFalse(tiles[6].dimmed) // no number: never dimmed
+        assertEquals(TileState(HomeTile.TASKS, null), tiles[6])
+        assertEquals(TileState(HomeTile.FILES, null), tiles[7])
+        assertFalse(tiles[7].dimmed) // no number: never dimmed
         // Unread threads without a mention are not red; nothing fired: no red either.
         val calm = HomeTiles.tiles(ThreadSummary(unreadCount = 2), drafts = 0, saved = 5, firedReminders = 0)
         assertFalse(calm[0].alert)
-        assertTrue(calm[1].dimmed)
-        assertFalse(calm[3].alert)
-        assertTrue(calm[3].dimmed)
+        assertTrue(calm[2].dimmed)
+        assertFalse(calm[4].alert)
+        assertTrue(calm[4].dimmed)
         assertEquals("スレッド、未読 3 件、メンションあり", HomeTiles.description(tiles[0]))
-        assertEquals("リマインダー、通知済み 1 件", HomeTiles.description(tiles[3]))
-        assertEquals("カレンダー", HomeTiles.description(tiles[4]))
-        assertEquals("タスク", HomeTiles.description(tiles[5]))
-        assertEquals("ファイル", HomeTiles.description(tiles[6]))
+        assertEquals("リマインダー、通知済み 1 件", HomeTiles.description(tiles[4]))
+        assertEquals("カレンダー", HomeTiles.description(tiles[5]))
+        assertEquals("タスク", HomeTiles.description(tiles[6]))
+        assertEquals("ファイル", HomeTiles.description(tiles[7]))
+        assertEquals("Times", HomeTiles.description(tiles[1]))
     }
 
     // --- recent conversations ---

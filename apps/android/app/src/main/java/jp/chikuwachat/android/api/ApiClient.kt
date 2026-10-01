@@ -355,6 +355,7 @@ class ApiClient(
             query.before?.let { add("before=" + Enc.encode(it, "UTF-8")) }
             query.has.forEach { add("has=" + Enc.encode(it, "UTF-8")) }
             if (query.isThread) add("is_thread=true")
+            if (query.isTimes) add("is_times=true") // L8 (TIMES_FEED.md §6)
             add("sort=" + Enc.encode(query.sort, "UTF-8"))
             add("tz_offset_minutes=$tzOffset")
             add("limit=$limit")
@@ -470,7 +471,8 @@ class ApiClient(
 
     suspend fun favoriteChannel(channelId: String): FavoriteStateOut = request("PUT", "/api/v1/channels/$channelId/favorite")
     suspend fun unfavoriteChannel(channelId: String): FavoriteStateOut = request("DELETE", "/api/v1/channels/$channelId/favorite")
-    override suspend fun readAll(): List<ChannelReadStateOut> = request("POST", "/api/v1/channels/read-all", buildJsonObject {})
+    override suspend fun readAll(scope: String?): List<ChannelReadStateOut> =
+        request("POST", "/api/v1/channels/read-all", buildJsonObject { scope?.let { put("scope", it) } })
 
     // --- pins and bookmarks (M11c) --------------------------------------------------------------
 
@@ -502,6 +504,13 @@ class ApiClient(
     /** PUT /activity/read: everything up to `readAt` is read (the server only moves it forward, never past now). */
     suspend fun markActivityRead(readAt: String): ActivitySummaryOut =
         request("PUT", "/api/v1/activity/read", buildJsonObject { put("read_at", readAt) })
+
+    /**
+     * GET /times/feed (L8, TIMES_FEED.md §3): the timeline rows of my unmuted times, newest first; `cursor` is the
+     * previous page's opaque next_cursor (null at the end).
+     */
+    suspend fun timesFeed(cursor: String? = null, limit: Int = 50): TimesFeedOut =
+        request("GET", "/api/v1/times/feed?limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
 
     suspend fun listBookmarks(cursor: String? = null, limit: Int = 50): BookmarkListOut =
         request("GET", "/api/v1/bookmarks?limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))

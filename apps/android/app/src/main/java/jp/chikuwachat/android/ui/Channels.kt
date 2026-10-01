@@ -140,6 +140,8 @@ object GroupUnread {
 /** M37 (MOBILE_UI.md §6.1): the home's tiles, in the row's order. */
 enum class HomeTile(val label: String) {
     THREADS("スレッド"),
+    /** L8 (TIMES_FEED.md §7): the Times feed, after スレッド; no number (the feed is read, never marked read by looking). */
+    TIMES("Times"),
     DRAFTS("下書き"),
     SAVED("保存"),
     REMINDERS("リマインダー"),
@@ -162,6 +164,7 @@ object HomeTiles {
      */
     fun tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int): List<TileState> = listOf(
         TileState(HomeTile.THREADS, threads.unreadCount, alert = threads.unreadCount > 0 && threads.mentionCount > 0),
+        TileState(HomeTile.TIMES, null),
         TileState(HomeTile.DRAFTS, drafts),
         TileState(HomeTile.SAVED, saved),
         TileState(HomeTile.REMINDERS, firedReminders, alert = firedReminders > 0),

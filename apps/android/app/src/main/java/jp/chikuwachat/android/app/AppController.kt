@@ -437,6 +437,7 @@ class AppController(private val app: Application) {
         val old = persistence
         persistence = null
         store = Store()
+        timesFeedState = jp.chikuwachat.android.ui.TimesFeedState()
         if (old != null) withContext(Dispatchers.IO) { old.close() }
     }
 
@@ -831,6 +832,7 @@ class AppController(private val app: Application) {
         withContext(Dispatchers.IO) { store.load() }
         this.persistence = persistence
         this.store = store
+        timesFeedState = jp.chikuwachat.android.ui.TimesFeedState() // another account's rows never show
         if (restoring) {
             val cached = store.me ?: return false
             if (cached.mustChangePassword) return false
@@ -1272,6 +1274,14 @@ class AppController(private val app: Application) {
 
     suspend fun listPins(channelId: String): Result<List<jp.chikuwachat.android.api.MessageOut>> = attempt { api!!.listPins(channelId) }
     suspend fun listBookmarks(cursor: String? = null): Result<jp.chikuwachat.android.api.BookmarkListOut> = attempt { api!!.listBookmarks(cursor) }
+    /** L8: a page of the Times feed (TIMES_FEED.md §3). */
+    suspend fun loadTimesFeed(cursor: String? = null): Result<jp.chikuwachat.android.api.TimesFeedOut> = attempt { api!!.timesFeed(cursor) }
+
+    /**
+     * L8 (TIMES_FEED.md §5): the Times feed's rows, kept here while its pane is closed (a row opened and back again shows
+     * them at once, offline too), read again whenever the pane opens. Not stored on the device.
+     */
+    var timesFeedState by mutableStateOf(jp.chikuwachat.android.ui.TimesFeedState())
     suspend fun listMentions(cursor: String? = null): Result<jp.chikuwachat.android.api.MentionListOut> = attempt { api!!.listMentions(cursor) }
 
     /** M39: the activity badge read again (the tab's pull to refresh). */
@@ -1680,10 +1690,10 @@ class AppController(private val app: Application) {
         }
     }
 
-    /** M12a 「すべて既読にする」. */
-    suspend fun markAllRead() {
+    /** M12a 「すべて既読にする」; `scope` "times": the Times feed's 「すべて既読にする」 (L8, TIMES_FEED.md §4). */
+    suspend fun markAllRead(scope: String? = null) {
         val engine = engine ?: return
-        try { engine.markAllRead() } catch (e: Exception) { report(e) }
+        try { engine.markAllRead(scope) } catch (e: Exception) { report(e) }
     }
 
     /** M37 pull to refresh: the engine's bootstrap and catch-up again (a reconnect when offline); a failure is reported. */

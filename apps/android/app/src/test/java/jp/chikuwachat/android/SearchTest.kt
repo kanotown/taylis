@@ -139,7 +139,7 @@ class SearchTest {
     @Test fun emptyBoxSuggestsRecentSearchesThenQuickFilters() {
         val recent = (1..12).map { SearchParams(q = "r$it") }
         val rows = Search.suggestions("  ", emptyList(), emptyList(), recent) { "" }
-        assertEquals(recent.take(10).map { Suggestion.Recent(it) } + listOf(Suggestion.Kind("file"), Suggestion.Kind("link"), Suggestion.Kind("pin"), Suggestion.Thread), rows)
+        assertEquals(recent.take(10).map { Suggestion.Recent(it) } + listOf(Suggestion.Kind("file"), Suggestion.Kind("link"), Suggestion.Kind("pin"), Suggestion.Thread, Suggestion.Times), rows)
     }
 
     @Test fun typingSuggestsTheWordsPeopleConversationsAndMatchingRecentSearches() {
