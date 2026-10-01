@@ -25,7 +25,7 @@ private struct Fixture: Decodable {
         let text: String
         let cases: [Case]
     }
-    struct Insert: Decodable { let text: String; let caret_line: Int; let range: [Int] }
+    struct Insert: Decodable { let text: String; let caret_line: Int; let text_out: String; let range: [Int] }
     struct Ops: Decodable {
         struct Case: Decodable {
             let op: String
@@ -88,17 +88,11 @@ final class CanvasTableFixtureTests: XCTestCase {
         }
     }
 
-    /// The fixture's insert cases keep only the result: gen_canvas_table.py writes `{"text": t, ..., **insert_table(t, c)}`
-    /// and the result's "text" replaces the input's. The inputs here are gen_canvas_table.py's INSERT, in its order.
     func testInsert() throws {
-        let inputs: [(String, Int)] = [("", 0), ("本文", 0), ("一行目\n二行目", 0), ("一行目\n\n三行目", 0), ("一行目\n二行目", 1)]
-        let cases = try fixture().insert
-        XCTAssertEqual(cases.count, inputs.count)
-        for (c, input) in zip(cases, inputs) {
-            XCTAssertEqual(c.caret_line, input.1)
-            let out = CanvasTable.insertTable(input.0, caretLine: input.1)
-            XCTAssertEqual(out.text, c.text, "\(input)")
-            XCTAssertEqual([out.range.lowerBound, out.range.upperBound], c.range, "\(input)")
+        for c in try fixture().insert {
+            let out = CanvasTable.insertTable(c.text, caretLine: c.caret_line)
+            XCTAssertEqual(out.text, c.text_out, c.text)
+            XCTAssertEqual([out.range.lowerBound, out.range.upperBound], c.range, c.text)
             // The result is a table where it says, and 「表」 there finds it.
             XCTAssertEqual(CanvasTable.findTable(out.text, caretLine: out.range.lowerBound), out.range)
         }
