@@ -289,6 +289,11 @@ export class Store {
   private closed = false;
   /** M49: a preview emptied by a deletion the rows held could not replace; the engine fetches the server's. */
   onStalePreview: ((channelId: string) => void) | null = null;
+  /**
+   * L8: every message taken in (events, catch-up pages, the answers to my reactions, pins and deletes): the Times feed
+   * keeps its rows, held apart from the store, current with it (TIMES_FEED.md §5).
+   */
+  onMessageStored: ((message: MessageState) => void) | null = null;
 
   constructor(private readonly persistence: Persistence | null = null) {}
 
@@ -912,6 +917,7 @@ export class Store {
       this.persist((p) => p.saveMessage(stored));
     }
     this.applyLastMessage(stored); // M49: events, catch-up pages and my own edits / deletes alike
+    this.onMessageStored?.(stored);
     this.emit();
     return true;
   }

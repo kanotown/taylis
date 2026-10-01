@@ -60,12 +60,13 @@ import { DmListView } from "./DmListView";
 import { MobileTabBar } from "./MobileTabBar";
 import { landingTab, landOn, MOBILE_TABS, type MobileTab, tapTab } from "./mobileTabs";
 import { SettingsDialog } from "./Settings";
+import { TimesFeedView } from "./TimesFeedView";
 import { YouView } from "./YouView";
 
 // "activity": the wide layout's 「アクティビティ」 (M39; the mentions list for a server before it).
 // "canvases" (M44): the canvases of all my conversations. "calendar" (M51): my calendar and my channels'.
-// "tasks" (M55): 「自分のタスク」 and 「自分の担当」.
-type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks";
+// "tasks" (M55): 「自分のタスク」 and 「自分の担当」. "times" (L8): the Times feed (TIMES_FEED.md §7).
+type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "times";
 
 /**
  * What one screen of the narrow layout shows (M34: the selected tab's screens are live in MainScreen's state, the other
@@ -595,7 +596,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks") => {
+  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "times") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -619,6 +620,17 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
     setView((v) => (v === "threads" && !compactRef.current ? "channel" : "threads"));
   };
+
+  /** L8: 「N 件の返信」 or 「スレッドで返信」 on a row of the Times feed: its thread beside the feed (over it on a phone). */
+  const openFeedThread = (channelId: string, parentId: string) => {
+    controller.clearMessageFocus();
+    controller.setEditing(null);
+    setThreadChannelId(channelId);
+    setThreadId(parentId);
+  };
+
+  /** L8: 「自分の times を作る」 (from the feed's header too): made on the server, then it opens. */
+  const createTimes = () => void controller.ensureTimes().then((id) => { if (id) open(id); });
 
   const openThreadEntry = (entry: ThreadEntry) => {
     controller.clearMessageFocus();
@@ -828,7 +840,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       onOpen={open}
       onNewDm={() => setDialog("dm")} onDirectory={() => setDialog("directory")}
       onNewChannel={() => setDialog("channel")}
-      onCreateTimes={() => void controller.ensureTimes().then((id) => { if (id) open(id); })}
+      onCreateTimes={createTimes}
+      onTimesFeed={() => openView("times")}
+      timesFeedActive={view === "times"}
       onSettings={() => (compact ? selectTab("you") : setDialog("settings"))}
       onThreads={openThreads}
       threadsActive={view === "threads"}
@@ -935,6 +949,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} />
       ) : view === "saved" ? (
         <SavedView controller={controller} onOpen={revealFromList} />
+      ) : view === "times" ? (
+        <TimesFeedView controller={controller} onReveal={(message) => revealFromList(message as MessageOut)} onOpenThread={openFeedThread} onOpenChannel={open} onCreateTimes={createTimes} />
       ) : view === "activity" ? (
         store.activity ? (
           <ActivityView controller={controller} active onOpen={openActivityItem} onOpenMessage={revealFromList} onOpenThread={openActivityThread} />
@@ -1289,6 +1305,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onJump={() => setHomeOverlay("jump")}
           onCompose={() => setHomeOverlay("compose")}
           onThreads={openThreads}
+          onTimesFeed={() => openView("times")}
           onDrafts={() => openView("drafts")}
           onSaved={openSaved}
           onReminders={() => openView("reminders")}
@@ -1299,7 +1316,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onBrowse={() => setDialog("browse")}
           onNewChannel={() => setDialog("channel")}
           onDirectory={() => setDialog("directory")}
-          onCreateTimes={() => void controller.ensureTimes().then((id) => { if (id) open(id); })}
+          onCreateTimes={createTimes}
           onAllDms={() => selectTab("dm")}
         />
       ) : value === "dm" ? (

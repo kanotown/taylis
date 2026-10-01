@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, NotebookText, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
+import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -27,6 +27,9 @@ interface Props {
   onNewChannel: () => void;
   /** M24: make (or open) my times. */
   onCreateTimes?: () => void;
+  /** L8: the Times feed (the Times section's first row, and an icon in its header for when it is folded). */
+  onTimesFeed?: () => void;
+  timesFeedActive?: boolean;
   onSearch?: () => void;
   onSettings?: () => void;
   /** The threads view (THREADS.md §5); `threadsActive` highlights its entry instead of a channel. */
@@ -64,7 +67,7 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -423,14 +426,43 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           onToggle={() => toggleFolded("times")}
           onDropChannel={backToDefault}
           action={
-            onCreateTimes && !hasMyTimes && !controller.isGuest ? (
-              <IconButton tone="sidebar" label="自分の times を作る" className="h-6 w-6" onClick={onCreateTimes}>
-                <Plus size={14} />
-              </IconButton>
-            ) : undefined
+            <span className="flex items-center">
+              {onTimesFeed && (
+                <IconButton tone="sidebar" label="Times フィード" className="h-6 w-6" onClick={onTimesFeed}>
+                  <Newspaper size={14} />
+                </IconButton>
+              )}
+              {onCreateTimes && !hasMyTimes && !controller.isGuest && (
+                <IconButton tone="sidebar" label="自分の times を作る" className="h-6 w-6" onClick={onCreateTimes}>
+                  <Plus size={14} />
+                </IconButton>
+              )}
+            </span>
           }
         >
-          <ul className="space-y-px">{shown(sections.times, folded.has("times"))}</ul>
+          <ul className="space-y-px">
+            {onTimesFeed && (
+              // L8: the posts of every times I am in, newest first (TIMES_FEED.md §7); folded away with the section.
+              <li className={cn("fold-row", folded.has("times") && !timesFeedActive && "folded")} aria-hidden={(folded.has("times") && !timesFeedActive) || undefined} inert={folded.has("times") && !timesFeedActive}>
+                <div className="fold-inner">
+                  <button
+                    type="button"
+                    onClick={onTimesFeed}
+                    aria-current={timesFeedActive ? "page" : undefined}
+                    title="参加している times の新しい投稿"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      timesFeedActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                    )}
+                  >
+                    <Newspaper size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">フィード</span>
+                  </button>
+                </div>
+              </li>
+            )}
+            {shown(sections.times, folded.has("times"))}
+          </ul>
           {sections.times.length === 0 && <Hint>+ で自分の times を作成</Hint>}
         </Section>
       )}

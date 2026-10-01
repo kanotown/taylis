@@ -8,8 +8,9 @@ import { DraftSync } from "./drafts";
 import { CalendarHub, type CalendarApi } from "./calendar";
 import { CanvasHub } from "./canvases";
 import { type TaskApi, TaskHub, type TaskNotice } from "./tasks";
+import { TimesFeedHub } from "./timesFeed";
 import type { CanvasSaverOptions } from "./canvasSave";
-import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded } from "../api/types";
+import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, overallLevel } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
@@ -49,7 +50,9 @@ export interface SyncApi {
   channel?(channelId: string): Promise<ChannelOut>;
   markRead(channelId: string, lastReadSeq: number, mode?: "advance" | "set"): Promise<ReadStateOut>;
   /** M12a: every channel read to its end; returns the new states. */
-  readAll(): Promise<ChannelReadStateOut[]>;
+  readAll(scope?: ReadAllScope): Promise<ChannelReadStateOut[]>;
+  /** L8: the Times feed (TIMES_FEED.md §3). Optional (older fakes). */
+  timesFeed?(cursor?: string | null, limit?: number): Promise<TimesFeedOut>;
   /** M12d: my pending scheduled messages. */
   listScheduled(): Promise<ScheduledOut[]>;
   /** M12e: my open reminders. */
@@ -286,6 +289,13 @@ export class SyncEngine {
     });
     deps.store.onDraftEdited = (channelId, parentId) => this.drafts.edited(channelId, parentId);
     deps.store.onStalePreview = (channelId) => void this.refreshLastMessage(channelId);
+    this.timesFeed = new TimesFeedHub({
+      api: api.timesFeed ? { timesFeed: (cursor, limit) => api.timesFeed!(cursor, limit) } : null,
+      channel: (id) => deps.store.getChannel(id),
+      subscribeChannels: (listener) => deps.store.subscribe(listener),
+      isOnline: () => this.status === "online",
+    });
+    deps.store.onMessageStored = (message) => this.timesFeed.applyMessage(message, false);
   }
 
   /**
@@ -311,6 +321,8 @@ export class SyncEngine {
   readonly calendar: CalendarHub;
   /** M55: the boards, 「自分のタスク」 and calendar ranges on screen (TASKS.md §4). */
   readonly tasks: TaskHub;
+  /** L8: the Times feed's rows, read while it is on screen (TIMES_FEED.md §5). */
+  readonly timesFeed: TimesFeedHub;
 
   /** Save edited drafts now instead of after the typing pause (tests, sign-out). */
   flushDrafts(): Promise<void> {
@@ -443,6 +455,7 @@ export class SyncEngine {
       this.canvases.online(); // M43: canvas saves that failed, open canvases read again
       this.calendar.online(); // M51: the ranges on screen read again (CALENDAR.md §5)
       this.tasks.online(); // M55: the boards and lists on screen read again (TASKS.md §4)
+      this.timesFeed.online(); // L8: a feed on screen reads its first page again (TIMES_FEED.md §5)
       this.resendReads(); // §10: marks that did not reach the server
       // Open the conversation again: its links may have changed while away (M15f), and one opened while this
       // connection was starting (a tap during start-up) skipped its catch-up then; a synced one costs nothing.
@@ -500,6 +513,7 @@ export class SyncEngine {
     this.canvases.stop();
     this.calendar.stop();
     this.tasks.stop();
+    this.timesFeed.stop();
     this.dropSocket();
     this.setStatus("signed_out");
     this.deps.onSignedOut?.();
@@ -682,8 +696,9 @@ export class SyncEngine {
   }
 
   /** 「すべて既読にする」 (M12a): the server moves every channel; the states apply like read.updated. */
-  async markAllRead(): Promise<void> {
-    const states = await this.deps.api.readAll();
+  async markAllRead(scope?: ReadAllScope): Promise<void> {
+    // L8: the Times feed's button reads only its channels (scope "times"); the request has no body otherwise.
+    const states = scope ? await this.deps.api.readAll(scope) : await this.deps.api.readAll();
     await this.enqueue(async () => {
       for (const state of states) this.applyReadState(state.channel_id, state, false);
     });
@@ -899,6 +914,9 @@ export class SyncEngine {
     const message = frame.data["message"] as MessageOut;
     const thread = (frame.data["parent_thread"] as ParentThread | null | undefined) ?? null;
     const isNew = frame.event === "message.created";
+    // L8 (TIMES_FEED.md §5): whatever the timeline does with it, the feed takes it (a new row only while on screen).
+    this.timesFeed.applyMessage(message, isNew);
+    if (thread) this.timesFeed.applyParentThread(thread);
     if (isNew) {
       store.clearTyping(channel.id, message.parent_id ?? null, message.sender_id);
       this.noteLastMessage(channel.id, message);
@@ -955,6 +973,7 @@ export class SyncEngine {
     this.canvases.removeChannel(channelId);
     this.calendar.removeChannel(channelId);
     this.tasks.removeChannel(channelId);
+    this.timesFeed.removeChannel(channelId);
     this.deps.store.removeChannel(channelId);
   }
 

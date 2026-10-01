@@ -1243,11 +1243,42 @@ export class FakeServer {
     this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "favorite.updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, favorite: on } });
   }
 
-  /** POST /channels/read-all: every membership read to its end; read.updated per moved channel. */
-  readAll(userId: string): ChannelReadStateOut[] {
+  /**
+   * POST /channels/read-all: every membership read to its end; read.updated per moved channel. L8: scope "times" reads only
+   * the Times feed's channels (member, a times, not muted).
+   */
+  readAll(userId: string, scope: "all" | "times" = "all"): ChannelReadStateOut[] {
+    this.readAllScopes.push(scope);
     return [...this.channels.values()]
-      .filter((r) => r.members.has(userId))
+      .filter((r) => r.members.has(userId) && (scope === "all" || this.inTimesFeed(userId, r.channel.id)))
       .map((r) => ({ channel_id: r.channel.id, ...this.markRead(userId, r.channel.id, r.channel.last_seq) }));
+  }
+
+  /** The scopes read-all was called with (L8 tests). */
+  readonly readAllScopes: Array<"all" | "times"> = [];
+  /** GET /times/feed calls (L8 tests). */
+  readonly timesFeedCalls: Array<string | null> = [];
+
+  /** L8 (TIMES_FEED.md §2): a times I am in and have not muted. */
+  inTimesFeed(userId: string, channelId: string): boolean {
+    const record = this.record(channelId);
+    if (!record.members.has(userId) || !record.channel.times_owner_id) return false;
+    const pref = this.notificationPreference(userId, channelId);
+    const mutedUntil = pref.muted_until ? Date.parse(pref.muted_until) > Date.now() : false;
+    return !(pref.follows_default === false && pref.level === "none") && !pref.muted && !mutedUntil;
+  }
+
+  /** GET /times/feed (TIMES_FEED.md §3): (created_at, id) descending, cursor "<created_at>_<id>". */
+  timesFeed(userId: string, cursor: string | null, limit: number): { items: MessageOut[]; next_cursor: string | null } {
+    this.timesFeedCalls.push(cursor);
+    const key = (m: MessageOut) => `${m.created_at}_${m.id}`;
+    const rows = [...this.channels.values()]
+      .filter((r) => this.inTimesFeed(userId, r.channel.id))
+      .flatMap((r) => r.messages.filter((m) => !m.deleted && m.type === "user" && (!m.parent_id || m.also_in_channel)))
+      .sort((a, b) => (key(b) < key(a) ? -1 : key(b) > key(a) ? 1 : 0))
+      .filter((m) => !cursor || key(m) < cursor);
+    const page = rows.slice(0, limit);
+    return { items: page.map((m) => this.viewAs(m, userId)), next_cursor: rows.length > limit ? key(page[page.length - 1]!) : null };
   }
 
   /** "user" → saved message ids, newest first. */
@@ -1611,9 +1642,13 @@ export class FakeServer {
         maybeFail();
         return this.scheduled.get(userId) ?? [];
       },
-      readAll: async (): Promise<ChannelReadStateOut[]> => {
+      readAll: async (scope?: "all" | "times"): Promise<ChannelReadStateOut[]> => {
         maybeFail();
-        return this.readAll(userId);
+        return this.readAll(userId, scope);
+      },
+      timesFeed: async (cursor?: string | null, limit?: number) => {
+        maybeFail();
+        return this.timesFeed(userId, cursor ?? null, limit ?? 50);
       },
       markRead: async (channelId, lastReadSeq, mode = "advance"): Promise<ReadStateOut> => {
         maybeFail();

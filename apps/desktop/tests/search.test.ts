@@ -38,7 +38,7 @@ describe("search conditions", () => {
     const params = { ...EMPTY_SEARCH, q: "  ", fromUserId: "u1", has: ["file" as const], isThread: true, sort: "relevance" as const };
     expect(isEmptySearch(params)).toBe(false);
     expect(isEmptySearch({ ...EMPTY_SEARCH, q: " " })).toBe(true);
-    expect(toQuery(params, NOW)).toEqual({ q: "", channel_id: null, from_user_id: "u1", after: null, before: null, has: ["file"], is_thread: true, sort: "newest" });
+    expect(toQuery(params, NOW)).toEqual({ q: "", channel_id: null, from_user_id: "u1", after: null, before: null, has: ["file"], is_thread: true, is_times: false, sort: "newest" });
     expect(toQuery({ ...params, q: "設計" }, NOW).sort).toBe("relevance");
   });
 });
@@ -75,7 +75,7 @@ describe("suggestions", () => {
 
   it("offers recent searches and quick filters for an empty box", () => {
     const rows = suggestions("", context());
-    expect(rows.map((r) => r.kind)).toEqual(["recent", "has", "has", "has", "thread"]);
+    expect(rows.map((r) => r.kind)).toEqual(["recent", "has", "has", "has", "thread", "times"]);
   });
 
   it("offers the words, then people, conversations and matching recent searches", () => {
