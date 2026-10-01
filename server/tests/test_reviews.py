@@ -177,3 +177,84 @@ async def test_review_pushes(
     await _drain(_relay(app, test_settings))
     bodies = [p["body"] for p in await _task_pushes(db)]
     assert bodies[1:] == ["Prof がレビューを完了しました: レビュー: 予稿 (#m2-進捗)"]
+
+
+async def test_review_fixes_due_leave_and_non_member_chips(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    test_settings: Settings,
+) -> None:
+    """Review v0.1.15: #5 a due-date-only change, #6 an assignee leaving, #7 a non-member."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    carol = await make_user(db, "carol")
+    as_user(alice)
+    lab = await _channel(client, "lab")
+    await _join(client, as_user, lab["id"], bob)
+    as_user(alice)
+    post = await _post(client, lab["id"], "予稿")
+    review = await _create(
+        client,
+        {
+            "channel_id": lab["id"],
+            "kind": "review",
+            "title": "レビュー: 予稿",
+            "source_message_id": post["id"],
+            "assignee_ids": [str(bob.id)],
+            "due_on": "2030-01-10",
+        },
+    )
+    seq = (await _message(client, lab["id"], post["id"]))["updated_seq"]
+    await _patch(client, review["id"], {"due_on": "2030-01-11"})
+    moved = await _message(client, lab["id"], post["id"])
+    assert moved["updated_seq"] > seq and moved["tasks"][0]["due_on"] == "2030-01-11"
+    await _patch(client, review["id"], {"due_on": None})
+    cleared = await _message(client, lab["id"], post["id"])
+    assert cleared["updated_seq"] > moved["updated_seq"] and cleared["tasks"][0]["due_on"] is None
+
+    # A non-member reading the public post sees no chip (the task itself is 404 for them).
+    as_user(carol)
+    assert (await client.get(f"{TASKS}/{review['id']}")).status_code == 404
+    single = await client.get(f"{API}/messages/{post['id']}")
+    assert single.status_code == 200 and single.json()["tasks"] == []
+
+    # The reviewer leaves: the chip drops them, with a new seq.
+    as_user(bob)
+    assert (await client.post(f"{API}/channels/{lab['id']}/leave")).status_code == 204
+    await _drain(_relay(app, test_settings))
+    as_user(alice)
+    left = await _message(client, lab["id"], post["id"])
+    assert left["updated_seq"] > cleared["updated_seq"] and left["tasks"][0]["assignee_ids"] == []
+
+
+async def test_a_chip_update_carries_the_body_as_it_is_now(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """Review v0.1.15 #1: an edit committed while the task change waits is not undone."""
+    from sqlalchemy import update
+
+    from app.modules.messages import service as messages
+    from app.modules.messages.models import Message
+
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    lab = await _channel(client, "lab")
+    post = await _post(client, lab["id"], "old sensitive text")
+    import uuid as _uuid
+
+    message_id = _uuid.UUID(post["id"])
+    async with app.state.db.session_factory() as mine:
+        stale = await mine.get(Message, message_id)
+        assert stale is not None and stale.body == "old sensitive text"
+        async with app.state.db.session_factory() as other:
+            await other.execute(
+                update(Message).where(Message.id == message_id).values(body="redacted")
+            )
+            await other.commit()
+        out = await messages.announce_change_by_id_in_tx(mine, message_id, "tasks")
+        await mine.commit()
+    assert out is not None and out.body == "redacted"
+    updated = await _outbox(db, "message.updated")
+    assert updated[-1].payload["message"]["body"] == "redacted"
