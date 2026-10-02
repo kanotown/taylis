@@ -215,6 +215,77 @@ final class TaskSnapshotTests: XCTestCase {
         }
     }
 
+    /// M86 (DEADLINES.md §8): the header's chip over the tabs (a long channel name and a long title: the name keeps the
+    /// navigation bar, the title is cut, 「あと N 日」 is not), 「締切」 from the home's tile, the board's ⏰ cards, the form of
+    /// a new deadline and of a saved one, and read-only.
+    func testDeadlines() throws {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let suffix = style == .dark ? "dark" : "light"
+            let (controller, api) = world()
+            func deadline(_ title: String, _ id: String, _ dueOn: String, channelId: String? = nil, status: TaskStatus = .todo, dueAt: String? = nil,
+                          assignees: [String] = [], notice: [Int] = [7, 3, 1, 0]) -> TaskOut {
+                var out = F.task(title, id: id, channelId: channelId ?? labId, channelName: channelId == m2Id ? "m2-進捗" : "lab", position: 10,
+                                 dueOn: dueOn, assigneeIds: assignees, kind: .deadline)
+                out.dueAt = dueAt
+                out.noticeDays = notice
+                if status == .done {
+                    out.status = .done
+                    out.completedAt = "2026-09-30T00:00:00Z"
+                }
+                return out
+            }
+            let rows = [
+                deadline("情報処理学会 全国大会 原稿 (4 ページ、カメラレディ版を PDF で提出)", "x1", "2026-10-03", assignees: ["me", "u-ebi"]),
+                deadline("奨学金の申請書類", "x2", "2026-10-02", channelId: m2Id, notice: [14, 7, 1]),
+                deadline("修士論文 中間発表 要旨", "x3", "2026-10-20", dueAt: "2026-10-20T08:00:00Z", assignees: ["u-sato"]),
+                deadline("学振 DC1 申請", "x4", "2027-01-08", channelId: m2Id),
+                deadline("研究室 HP の更新", "x5", "2026-09-29", status: .done),
+                deadline("ポスター印刷の締切", "x6", "2026-09-30"),
+            ]
+            // A channel with a long name, holding the first deadline too.
+            let longId = "0199a0b0-4444-7000-8000-000000000004"
+            controller.store.upsertChannel(ChannelOut(id: longId, type: "public", name: "情報処理学会-全国大会-2026-実行委員会", topic: "原稿の進捗と分担",
+                                                      purpose: nil, archived: false, createdBy: nil, lastSeq: 0, lastMessageAt: nil, createdAt: "",
+                                                      updatedAt: "", membership: MembershipOut(role: "member", joinedAt: ""), dmUserIds: nil),
+                                           isMember: true)
+            var copy = rows[0]
+            copy = TaskOut(id: "x8", channelId: longId, channelName: "情報処理学会-全国大会-2026-実行委員会", ownerId: "me", title: copy.title,
+                           notes: nil, status: .todo, position: 1, dueOn: copy.dueOn, assigneeIds: [], source: nil, completedAt: nil, completedBy: nil,
+                           createdAt: "", updatedAt: "", canDelete: true, kind: .deadline, noticeDays: [7, 3, 1, 0])
+            api.deadlines = rows + [copy]
+            api.board += [rows[0], rows[2], rows[4], rows[5]]
+            let hub = hub(api)
+            let long = try XCTUnwrap(controller.store.channel(longId))
+            let header = NavigationStack {
+                VStack(spacing: 0) {
+                    DeadlineChipRow(controller: controller, channel: long, hub: hub, today: today) { _ in }
+                    ChannelTabsRow(controller: controller, channel: long, tab: .constant(.messages), onAddLink: {}, onEditLink: { _ in })
+                    Spacer()
+                }
+                .navigationTitle("#" + (long.channel.name ?? ""))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { Image(systemName: "ellipsis") } }
+            }
+            _ = try render(header, size: CGSize(width: 393, height: 300), style: style, name: "m86-header-\(suffix).png")
+            XCTAssertEqual(api.deadlineCalls, 1)
+            _ = try render(NavigationStack { DeadlinesView(controller: controller, hub: hub, today: today) }, style: style,
+                           name: "m86-deadlines-\(suffix).png")
+            XCTAssertEqual(api.deadlineCalls, 1)  // kept
+            _ = try render(pane(controller, api, channelId: labId, column: .todo, title: "#lab"), style: style, name: "m86-board-\(suffix).png")
+            var draft = TaskDraft.newDeadline(boards: [labId, m2Id], channelId: labId)
+            draft.title = "全国大会 原稿"
+            draft.dueOn = "2026-10-09"
+            _ = try render(TaskForm(controller: controller, hub: hub, target: .new(draft), memberIds: people.map(\.0), today: today),
+                           size: CGSize(width: 393, height: 1300), style: style, name: "m86-form-new-\(suffix).png")
+            _ = try render(TaskForm(controller: controller, hub: hub, target: .task(rows[1]), memberIds: people.map(\.0), today: today),
+                           size: CGSize(width: 393, height: 1300), style: style, name: "m86-form-edit-\(suffix).png")
+            var news = deadline("全体連絡の締切", "x7", "2026-10-09", channelId: newsId)
+            news.canDelete = false
+            _ = try render(TaskForm(controller: controller, hub: hub, target: .task(news), memberIds: people.map(\.0), today: today), style: style,
+                           name: "m86-form-readonly-\(suffix).png")
+        }
+    }
+
     /// M84 (TASKS.md §11.8): a board with an added column, cards with a time, a checklist and 🔁, the column editor, and
     /// the form's time, repeat and subtasks.
     func testColumnsTimesRepeatsAndSubtasks() throws {

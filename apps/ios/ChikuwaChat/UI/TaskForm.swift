@@ -51,14 +51,26 @@ struct TaskForm: View {
     private var now: DayKey { today ?? CalendarDates.today() }
     /// L9: a review request — 依頼先 first, 希望日 for the due date.
     private var isReview: Bool { (current?.kind ?? draft.kind) == .review }
+    /// M86: a deadline — 締切日 (required), 事前の通知, no repeat, only on a channel's board.
+    private var isDeadline: Bool { (current?.kind ?? draft.kind) == .deadline }
     private var assigneeLabel: String { isReview ? "依頼先" : "担当者" }
+    private var dueLabel: String { isReview ? "希望日" : isDeadline ? "締切日" : "期限" }
 
-    /// The boards a new task may go to besides 「自分のタスク」 (those I may still add to).
-    private var boards: [String] { draft.boardChoices.filter(controller.canEditBoard) }
+    /// The boards a new task may go to besides 「自分のタスク」 (those I may still add to; a deadline: not as a guest).
+    private var boards: [String] { draft.boardChoices.filter(isDeadline ? controller.canAddDeadline : controller.canEditBoard) }
+
+    /// M86 (DEADLINES.md §8 4.): 「タスク / 締切」 — a new task on a channel's board (not a review request, not from a
+    /// message or a canvas, not in a DM), for someone who may add a deadline there.
+    private var showsKindSwitch: Bool {
+        guard task == nil, draft.kind != .review, draft.sourceMessageId == nil, draft.sourceCanvasId == nil, draft.dmChannelId == nil,
+              let channelId = draft.channelId else { return false }
+        return controller.canAddDeadline(channelId)
+    }
 
     private var title: String {
-        guard task != nil else { return isReview ? "レビューを依頼" : "タスクを追加" }
+        guard task != nil else { return isReview ? "レビューを依頼" : isDeadline ? "締切を追加" : "タスクを追加" }
         if isReview { return "レビュー依頼" }
+        if isDeadline { return editable ? "締切を編集" : "締切" }
         return editable ? "タスクを編集" : "タスク"
     }
 
@@ -73,6 +85,17 @@ struct TaskForm: View {
         NavigationStack {
             Form {
                 if let quick = quickStatus { quickStatusSection(quick) }
+                if showsKindSwitch {
+                    Section {
+                        Picker("種類", selection: Binding(get: { draft.kind }, set: { draft.setKind($0); error = nil })) {
+                            Text("タスク").tag(TaskKind.task)
+                            Text("⏰ 締切").tag(TaskKind.deadline)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .accessibilityLabel("タスクか締切か")
+                    }
+                }
                 if task == nil && !isReview && draft.dmChannelId == nil {
                     Section {
                         Picker("追加先", selection: Binding(get: { draft.channelId }, set: { id in
@@ -80,9 +103,9 @@ struct TaskForm: View {
                             draft.assigneeIds = []
                         })) {
                             ForEach(boards, id: \.self) { id in Text(boardName(id)).tag(String?.some(id)) }
-                            Text("自分のタスク (自分だけに表示)").tag(String?.none)
+                            if !isDeadline { Text("自分のタスク (自分だけに表示)").tag(String?.none) }  // M86: a deadline is a channel's
                         }
-                        .disabled(boards.isEmpty)
+                        .disabled(boards.isEmpty || (isDeadline && boards.count == 1))
                     }
                 }
                 if editable {
@@ -99,7 +122,7 @@ struct TaskForm: View {
                 }
                 if current?.canDelete == true {
                     Section {
-                        Button("タスクを削除", role: .destructive) { confirmDelete = true }
+                        Button(isDeadline ? "締切を削除" : "タスクを削除", role: .destructive) { confirmDelete = true }
                             .frame(maxWidth: .infinity)
                             .disabled(busy)
                     }
@@ -120,11 +143,11 @@ struct TaskForm: View {
                     }
                 }
             }
-            .alert("このタスクを削除しますか？", isPresented: $confirmDelete) {
+            .alert(isDeadline ? "この締切を削除しますか？" : "このタスクを削除しますか？", isPresented: $confirmDelete) {
                 Button("キャンセル", role: .cancel) {}
                 Button("削除する", role: .destructive) { Task { await remove() } }
             } message: {
-                Text("「\(current?.title ?? draft.title)」")
+                Text("「\(current?.title ?? draft.title)」" + (isDeadline ? "\n" + DeadlineRules.deleteNote : ""))
             }
             .interactiveDismissDisabled(busy)
             .task(id: channelId) { await loadMembers() }
@@ -147,13 +170,15 @@ struct TaskForm: View {
     private var editableFields: some View {
         if isReview { assigneeSection }
         Section {
-            TextField("題名 (例: 資料をまとめる)", text: $draft.title, axis: .vertical)
+            TextField(isDeadline ? "題名 (例: 全国大会 原稿)" : "題名 (例: 資料をまとめる)", text: $draft.title, axis: .vertical)
                 .lineLimit(1...4)
                 .onChange(of: draft.title) { _, _ in error = nil }
         } header: {
             if let placeHeader { Text(placeHeader) }
         } footer: {
-            if let problem, problem != "題名を入れてください", problem != "依頼先を選んでください" { Text(problem).foregroundStyle(.red) }
+            if let problem, problem != "題名を入れてください", problem != "依頼先を選んでください", problem != Self.noDeadlineDate {
+                Text(problem).foregroundStyle(.red)
+            }
         }
         Section("メモ") {
             TextField("Markdown で書けます", text: $draft.notes, axis: .vertical)
@@ -168,8 +193,8 @@ struct TaskForm: View {
                 .labelsHidden()
             }
         }
-        let due = isReview ? "希望日" : "期限"
-        Section(due) {
+        let due = dueLabel
+        Section {
             if draft.dueOn.isEmpty {
                 Button("\(due)を設定", systemImage: "calendar.badge.plus") { draft.dueOn = now }
             } else {
@@ -183,17 +208,47 @@ struct TaskForm: View {
                                displayedComponents: [.hourAndMinute])
                     Button("時刻なし", systemImage: "clock.badge.xmark") { draft.dueTime = "" }
                 }
-                Button("\(due)をなくす", systemImage: "xmark.circle", role: .destructive) { draft.clearDue() }
-                    .tint(.red)
+                if !isDeadline {  // M86: a deadline always has its date
+                    Button("\(due)をなくす", systemImage: "xmark.circle", role: .destructive) { draft.clearDue() }
+                        .tint(.red)
+                }
             }
+        } header: {
+            Text(due)
+        } footer: {
+            if problem == Self.noDeadlineDate { Text(Self.noDeadlineDate).foregroundStyle(.red) }
         }
-        // M84: 「繰り返し」 once there is a due date (the calendar's picker, starting on it); never for a review request.
-        if !isReview && !draft.dueOn.isEmpty {
+        // M84: 「繰り返し」 once there is a due date (the calendar's picker, starting on it); never for a review request
+        // or (M86) a deadline.
+        if !isReview && !isDeadline && !draft.dueOn.isEmpty {
             RepeatPickerSection(repetition: Binding(get: { draft.repetition }, set: { draft.repetition = $0; error = nil }), start: draft.dueOn,
                                 note: "完了にすると、次の回のタスクができます")
         }
+        if isDeadline { noticeSection }
         if !(task == nil && isReview) { subtaskSection }
         if !isReview { assigneeSection }
+    }
+
+    static let noDeadlineDate = "締切の日付を入れてください"
+
+    /// M86 (DEADLINES.md §8 4.): 「事前の通知」 — 14 日前・7 日前・3 日前・前日・当日 (and any other day it already has), each a
+    /// check; saved with the rest (PATCH `notice_days`, the whole set).
+    private var noticeSection: some View {
+        Section {
+            ForEach(DeadlineRules.noticeRows(draft.noticeDays + (basis?.noticeDays ?? [])), id: \.self) { days in
+                Toggle(DeadlineRules.noticeLabel(days), isOn: Binding(get: { draft.noticeDays.contains(days) }, set: { on in
+                    if on {
+                        draft.noticeDays = DeadlineRules.normalize(draft.noticeDays + [days])
+                    } else {
+                        draft.noticeDays.removeAll { $0 == days }
+                    }
+                }))
+            }
+        } header: {
+            Text("事前の通知")
+        } footer: {
+            Text(draft.noticeDays.isEmpty ? "通知しません" : DeadlineRules.botNote)
+        }
     }
 
     /// The due time on the due date, for the picker.
@@ -342,7 +397,10 @@ struct TaskForm: View {
                 .foregroundStyle(task.status == .done ? Color.secondary : Color.primary)
                 .textSelection(.enabled)
             LabeledContent("状態", value: TaskRules.statusLabel(task.status, kind: task.kind))
-            LabeledContent(isReview ? "希望日" : "期限", value: TaskRules.dueText(task.dueOn, today: now, dueAt: task.dueAt))
+            LabeledContent(dueLabel, value: TaskRules.dueText(task.dueOn, today: now, dueAt: task.dueAt))
+            if task.kind == .deadline {  // M86
+                LabeledContent("事前の通知", value: DeadlineRules.noticeSummary(task.noticeDays))
+            }
             if let rrule = task.rrule {  // M84
                 LabeledContent("繰り返し") {
                     Label(CalendarRecurrence.describe(rrule, start: TaskRules.dueDay(task) ?? now), systemImage: "repeat")
@@ -468,7 +526,7 @@ struct TaskForm: View {
                 // M73: the server looks for a checklist item's line in the saved body, so what is typed goes first.
                 if let canvasId = draft.sourceCanvasId { await controller.engine?.canvases.current(canvasId)?.flush() }
                 _ = try await hub.create(draft.create(clientTaskId: clientTaskId, tz: CalendarDates.zoneId))
-                controller.notice = draft.kind == .review ? "レビューを依頼しました" : "タスクを作成しました"
+                controller.notice = draft.kind == .review ? "レビューを依頼しました" : draft.kind == .deadline ? "締切を追加しました" : "タスクを作成しました"
             }
             dismiss()
         } catch {

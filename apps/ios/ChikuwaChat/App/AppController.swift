@@ -532,6 +532,7 @@ final class AppController {
     /// push token goes to every workspace and the other workspaces' badges are read again (WORKSPACES.md §6, §8).
     func didBecomeActive() {
         engine?.reconnectNow()
+        refreshDeadlines() // M86: a deadline may have been added while away (offline: the reconnect reads it)
         guard booted else { return }
         Task {
             await uploadPushTokens()

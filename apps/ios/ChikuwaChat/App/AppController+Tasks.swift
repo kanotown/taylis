@@ -25,6 +25,22 @@ extension AppController {
         TaskRules.canEditBoard(store.channel(channelId), isAdmin: isAdmin)
     }
 
+    /// M86 (DEADLINES.md §2 2.): who may add a deadline — whoever may change the board, but not a guest.
+    func canAddDeadline(_ channelId: String) -> Bool { !isGuest && canEditBoard(channelId) }
+
+    /// M86: 「締切」's ＋ — the channels I may add a deadline to, by name.
+    var deadlineBoards: [String] {
+        store.channels.values.filter { canAddDeadline($0.id) }
+            .sorted { ($0.channel.name ?? "").localizedStandardCompare($1.channel.name ?? "") == .orderedAscending }
+            .map(\.id)
+    }
+
+    /// M86: the app is back in the foreground — the deadlines window is read again (a reconnect reads it anyway).
+    func refreshDeadlines() {
+        guard engine?.status == .online, let hub = taskHub else { return }
+        Task { await hub.reloadDeadlines() }
+    }
+
     /// task.assigned / task.due while the app is open: the push's words in the notice, unless I turned task
     /// notifications off or do not want to be disturbed now (the push is held back then too, TASKS.md §5).
     func sayTaskNotice(_ notice: TaskNotice) {

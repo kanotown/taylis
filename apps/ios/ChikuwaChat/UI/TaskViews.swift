@@ -46,7 +46,7 @@ struct TaskAssigneeStack: View {
 
 /// A card's title and its marks: 進行中 (in 「自分のタスク」), the due date (red when overdue and not done, bold today;
 /// M81 with its time, 「10/9 14:00」), 🔁 when it repeats, the checklist's 「☑ 2/5」 (green when all done), メモ,
-/// 元のメッセージ, the assignees.
+/// 元のメッセージ, the assignees. M86: ⏰ before a deadline's title.
 struct TaskCardContent: View {
     @Bindable var controller: AppController
     let task: TaskOut
@@ -63,12 +63,20 @@ struct TaskCardContent: View {
         let hasMeta = task.dueOn != nil || task.notes != nil || hasSource || hasCanvas || !task.assigneeIds.isEmpty || (showStatus && task.status == .doing)
             || progress != nil || task.rrule != nil
         VStack(alignment: .leading, spacing: 5) {
-            Text(task.title)
-                .font(.subheadline)
-                .strikethrough(done)
-                .foregroundStyle(done ? Color.secondary : Color.primary)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if task.kind == .deadline {  // M86 (DEADLINES.md §8 5.)
+                    Image(systemName: "alarm")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(done ? Color.secondary : Color.orange)
+                        .accessibilityLabel("締切")
+                }
+                Text(task.title)
+                    .font(.subheadline)
+                    .strikethrough(done)
+                    .foregroundStyle(done ? Color.secondary : Color.primary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             if hasMeta {
                 HStack(spacing: 8) {
                     if showStatus && task.status == .doing {
@@ -210,12 +218,18 @@ struct ChannelTasksPane: View {
         let cards = TaskRules.boardColumn(tasks, shown, columns)
         let note = TaskRules.boardNote(board?.state, channel: channel, canEdit: canEdit)
         let canEditColumns = canEdit && board?.columnsSupported == true
+        let canAddDeadline = canEdit && controller.canAddDeadline(channel.id)  // M86
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 columnSwitch(columns, shown: shown, tasks: tasks, board: board)
-                if canEditColumns {
+                if canEditColumns || canAddDeadline {
                     Menu {
-                        Button("列を編集", systemImage: "rectangle.split.3x1") { editingColumns = true }
+                        if canAddDeadline {
+                            Button("締切を追加", systemImage: "alarm") { addDeadline() }
+                        }
+                        if canEditColumns {
+                            Button("列を編集", systemImage: "rectangle.split.3x1") { editingColumns = true }
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.body)
@@ -260,6 +274,13 @@ struct ChannelTasksPane: View {
                         if canEdit {
                             TaskInlineAdd { title in await add(title, into: shown) }
                         }
+                        if canAddDeadline && shown.status != .done {  // M86 (DEADLINES.md §8 5.)
+                            Button { addDeadline() } label: {
+                                Label("締切を追加", systemImage: "alarm").font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.borderless)
+                            .padding(.horizontal, 4).padding(.bottom, 6)
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -289,12 +310,18 @@ struct ChannelTasksPane: View {
         .sheet(isPresented: $editingColumns) {
             TaskColumnsEditor(controller: controller, channelId: channel.id, hub: taskHub)
         }
-        .alert("このタスクを削除しますか？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { task in
+        .alert(deleting?.kind == .deadline ? "この締切を削除しますか？" : "このタスクを削除しますか？",
+               isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { task in
             Button("キャンセル", role: .cancel) {}
             Button("削除する", role: .destructive) { Task { await remove(task) } }
         } message: { task in
-            Text("「\(task.title)」")
+            Text("「\(task.title)」" + (task.kind == .deadline ? "\n" + DeadlineRules.deleteNote : ""))
         }
+    }
+
+    /// M86: 「締切を追加」 — the form as a deadline on this board (未着手).
+    private func addDeadline() {
+        form = .new(TaskDraft.newDeadline(boards: [channel.id], channelId: channel.id))
     }
 
     /// Three columns: the segmented switch (as before M84); more: a row of capsules that scrolls sideways (names stay whole).

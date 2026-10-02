@@ -23,8 +23,9 @@ enum TaskStatus: String, CaseIterable, Codable, Hashable {
 
 /// L9 (docs/REVIEWS.md §2.2, §7 3.): what a task made from a message is — 「タスクにする」 (task) or 「レビューを依頼」
 /// (review). Only the words change (the chip, the form, the pushes). An unknown value reads as a task.
+/// M86 (docs/DEADLINES.md §8 1.): `deadline` — a channel's deadline (always dated, never repeats, `notice_days`).
 enum TaskKind: String, Codable, Hashable {
-    case task, review
+    case task, review, deadline
 
     init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -96,6 +97,9 @@ struct TaskOut: Identifiable, Equatable, Hashable {
     var rrule: String? = nil
     /// M81: the added column the card is in; nil: the built-in column of its status (and always from before M81).
     var columnId: String? = nil
+    /// M86 (DEADLINES.md §3): how many days before a deadline the 「締切」 bot posts in its channel (largest first); nil for
+    /// every other task (and from a server before M85).
+    var noticeDays: [Int]? = nil
 }
 
 /// M81: an item of a task's checklist.
@@ -233,7 +237,7 @@ struct SubtaskUpdate: Equatable {
 extension TaskOut: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, channelId, channelName, ownerId, title, notes, status, position, dueOn, assigneeIds, source, completedAt, completedBy,
-             createdAt, updatedAt, canDelete, kind, canvasSource, dueAt, dueTz, subtasks, rrule, columnId
+             createdAt, updatedAt, canDelete, kind, canvasSource, dueAt, dueTz, subtasks, rrule, columnId, noticeDays
     }
 
     init(from decoder: Decoder) throws {
@@ -262,6 +266,8 @@ extension TaskOut: Decodable {
         subtasks = SubtaskOut.list(c, forKey: .subtasks)
         rrule = (try? c.decodeIfPresent(String.self, forKey: .rrule)) ?? nil
         columnId = (try? c.decodeIfPresent(String.self, forKey: .columnId)) ?? nil
+        // M86: optional (a server before M85 sends none; null for a task that is not a deadline).
+        noticeDays = (try? c.decodeIfPresent([Int].self, forKey: .noticeDays)) ?? nil
     }
 }
 
@@ -389,6 +395,8 @@ struct TaskCreate: Equatable {
     var dueAt: String? = nil
     var rrule: String? = nil
     var subtasks: [SubtaskIn] = []
+    /// M86 (DEADLINES.md §5): a deadline's advance notices (nil: the server's 7 / 3 / 1 / 0); sent only for a deadline.
+    var noticeDays: [Int]? = nil
 
     /// Only what is set (the web's body: absent rather than null).
     var json: JSONValue {
@@ -399,7 +407,8 @@ struct TaskCreate: Equatable {
         if let dueOn { fields["due_on"] = .string(dueOn) }
         if channelId != nil && !assigneeIds.isEmpty { fields["assignee_ids"] = .array(assigneeIds.map(JSONValue.string)) }
         if let sourceMessageId { fields["source_message_id"] = .string(sourceMessageId) }
-        if kind == .review { fields["kind"] = .string(kind.rawValue) }
+        if kind != .task { fields["kind"] = .string(kind.rawValue) }  // a server before M63 knows no kind
+        if kind == .deadline, let noticeDays { fields["notice_days"] = .array(noticeDays.map { .number(Double($0)) }) }
         if let sourceCanvasId, let sourceCanvasLine {
             fields["source_canvas_id"] = .string(sourceCanvasId)
             fields["source_canvas_line"] = .string(sourceCanvasLine)
@@ -425,9 +434,12 @@ struct TaskPatch: Equatable {
     var dueAt: String?? = nil
     var rrule: String?? = nil
     var subtasks: [SubtaskIn]? = nil
+    /// M86: a deadline's advance notices, the whole set (`[]`: none).
+    var noticeDays: [Int]? = nil
 
     var isEmpty: Bool {
         title == nil && notes == nil && status == nil && dueOn == nil && assigneeIds == nil && dueAt == nil && rrule == nil && subtasks == nil
+            && noticeDays == nil
     }
 
     var json: JSONValue {
@@ -441,6 +453,7 @@ struct TaskPatch: Equatable {
         if let dueAt { fields["due_at"] = dueAt.map(JSONValue.string) ?? .null }
         if let rrule { fields["rrule"] = rrule.map(JSONValue.string) ?? .null }
         if let subtasks { fields["subtasks"] = .array(subtasks.map(\.json)) }
+        if let noticeDays { fields["notice_days"] = .array(noticeDays.map { .number(Double($0)) }) }
         return .object(fields)
     }
 }
