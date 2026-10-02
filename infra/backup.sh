@@ -8,13 +8,27 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="${1:-$HERE/backups}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-DEST="$ROOT/$STAMP"
 COMPOSE=(docker compose -f "$HERE/docker-compose.yml")
 [ -f "$HERE/docker-compose.prod.yml" ] && [ "${CHIKUWA_PROD:-0}" = "1" ] && COMPOSE+=(-f "$HERE/docker-compose.prod.yml")
 # shellcheck disable=SC1091
 set -a; . "$HERE/.env"; set +a
 
-mkdir -p "$DEST"
+mkdir -p "$ROOT"
+# One backup at a time (the nightly cron and a deploy can overlap): a second run waits for the first.
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$ROOT/.backup.lock"
+  flock -w 1800 9 || { echo "[$(date -u +%FT%TZ)] another backup is still running" >&2; exit 1; }
+fi
+# This run's own directory, created exclusively: an existing one (same second, clock set back) is never
+# reused, so the clean-up below can only ever remove what this run started.
+DEST="$ROOT/$STAMP"
+n=1
+until mkdir "$DEST" 2>/dev/null; do
+  n=$((n + 1))
+  [ "$n" -le 50 ] || { echo "[$(date -u +%FT%TZ)] cannot create a new backup directory under $ROOT" >&2; exit 1; }
+  STAMP="$(date -u +%Y%m%dT%H%M%SZ)-$n"
+  DEST="$ROOT/$STAMP"
+done
 # The objects of a backup are written by the object store's container as root, so only a container can
 # remove them (the deploy user cannot): every removal of a backup directory goes through this.
 remove_backup() {
@@ -26,6 +40,7 @@ COMPLETE=0
 discard_partial() {
   local status=$?
   [ "$status" -eq 0 ] || [ "$COMPLETE" = "1" ] && return 0
+  [ -f "$DEST/SHA256SUMS" ] && return 0  # complete after all: keep it
   remove_backup "$STAMP" || rm -rf "$DEST" || true
   echo "[$(date -u +%FT%TZ)] backup failed, nothing kept" >&2
 }
