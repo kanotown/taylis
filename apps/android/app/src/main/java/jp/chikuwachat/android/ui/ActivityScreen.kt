@@ -39,7 +39,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -76,8 +78,29 @@ object ActivityText {
             "mention" -> "${who}がメンション"
             "thread_reply" -> "${who}がスレッドに返信"
             "reaction" -> "${who}が"
+            "canvas_mention" -> "${who}が「${item.canvas?.title ?: "キャンバス"}」であなたをメンションしました"
             else -> who.trim()
         }
+    }
+
+    /** The conversation the item is in (a message's, or the canvas's). */
+    fun channelId(item: ActivityItem): String? = item.message?.channelId ?: item.canvas?.channelId
+
+    /** The second line: the conversation (「#一般」 / a DM's names), 「#一般 のキャンバス」 for a canvas item (M77). */
+    fun where(item: ActivityItem, conversation: String): String = when {
+        conversation.isEmpty() -> ""
+        item.kind == "canvas_mention" -> "$conversation のキャンバス"
+        else -> conversation
+    }
+
+    /** TalkBack for a canvas row (CANVAS.md §20.5): 「未読 佐藤 が「題名」であなたをメンションしました、#一般」. */
+    fun spokenCanvas(item: ActivityItem, name: (String) -> String?, conversation: String, unread: Boolean): String =
+        (if (unread) "未読 " else "") + lead(item, name) + (if (conversation.isNotEmpty()) "、$conversation" else "")
+
+    /** Where a tapped row goes: its message (a reply in its thread), or a canvas item's canvas (M77). */
+    fun target(item: ActivityItem): ActivityTarget? {
+        item.canvas?.takeIf { item.kind == "canvas_mention" }?.let { return ActivityTarget.Canvas(it.channelId, it.canvasId) }
+        return item.message?.let { ActivityTarget.Message(it) }
     }
 
     /** 「佐藤 がメンション」 / 「佐藤 ほか 2 人が 👍🎉」 / 「佐藤 がスレッドに返信」. */
@@ -98,6 +121,13 @@ object ActivityText {
         val oldest = page.lastOrNull()?.let { ActivityRules.parse(it.at) } ?: return page
         return page + shown.filter { it.key !in keys && ActivityRules.parse(it.at)?.isBefore(oldest) == true }
     }
+}
+
+/** What an activity row opens ([ActivityText.target]). */
+sealed interface ActivityTarget {
+    data class Message(val message: MessageOut) : ActivityTarget
+    /** M77 (CANVAS.md §20.7): the canvas in its conversation's 「キャンバス」 tab, on the activity tab's stack. */
+    data class Canvas(val channelId: String, val canvasId: String) : ActivityTarget
 }
 
 /** The activity tab's list on screen: its rows, where the next page starts, and which rows have the unread dot. */
@@ -186,6 +216,7 @@ fun ActivityScreen(
     onReadAllHandled: () -> Unit,
     onOpenMessage: (MessageOut) -> Unit,
     onOpenThread: (ThreadEntry) -> Unit,
+    onOpenCanvas: (channelId: String, canvasId: String) -> Unit,
 ) {
     val store = controller.store
     if (store.activity == null) {
@@ -278,7 +309,13 @@ fun ActivityScreen(
                                 item, store, version, now,
                                 unread = ActivityRules.isUnread(item.at, feed.baseline),
                                 onNeedEmojiImage = { controller.loadEmojiImage(it) },
-                                onClick = { onOpenMessage(item.message) },
+                                onClick = {
+                                    when (val target = ActivityText.target(item)) {
+                                        is ActivityTarget.Message -> onOpenMessage(target.message)
+                                        is ActivityTarget.Canvas -> onOpenCanvas(target.channelId, target.canvasId)
+                                        null -> Unit
+                                    }
+                                },
                             )
                             HorizontalDivider()
                         }
@@ -317,20 +354,39 @@ private fun ActivityRow(
 ) {
     val name: (String) -> String? = { id -> store.users[id]?.displayName }
     val lead = remember(version, item) { ActivityText.lead(item, name) }
-    val channel = store.channel(item.message.channelId)
-    val where = remember(version, item.message.channelId) { channel?.let { channelTitle(it, store) } ?: "" }
+    val channelId = ActivityText.channelId(item)
+    val channel = channelId?.let { store.channel(it) }
+    val conversation = remember(version, channelId) { channel?.let { channelTitle(it, store) } ?: "" }
+    val where = ActivityText.where(item, conversation)
+    val canvas = item.canvas.takeIf { item.kind == "canvas_mention" }
     val excerpt = remember(version, item) {
-        messageLine(item.message.body, item.message.attachments, store)
+        canvas?.excerpt ?: item.message?.let { messageLine(it.body, it.attachments, store) } ?: ""
     }
     val time = MainTabs.dmTimeLabel(item.at, now) ?: ""
+    // M77: a canvas row reads as one sentence (CANVAS.md §20.5); the others keep their parts.
+    val spoken = canvas?.let { ActivityText.spokenCanvas(item, name, conversation, unread) }
+    val tap = onClick
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 6.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+        Modifier.fillMaxWidth()
+            .then(if (spoken != null) Modifier.clearAndSetSemantics { contentDescription = spoken; this.onClick(label = null, action = { tap(); true }) } else Modifier)
+            .clickable(onClick = onClick)
+            .padding(start = 6.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Box(Modifier.width(14.dp).padding(top = 14.dp), contentAlignment = Alignment.Center) {
             if (unread) Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = "未読" })
         }
-        ActorFaces(item.actorIds, name)
+        Box {
+            ActorFaces(item.actorIds, name)
+            // M77: the kind's mark on the face, 📝 for a canvas mention.
+            if (canvas != null) {
+                Box(
+                    Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp).size(18.dp)
+                        .background(MaterialTheme.colorScheme.surface, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) { Text("📝", style = MaterialTheme.typography.labelSmall) }
+            }
+        }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -346,7 +402,7 @@ private fun ActivityRow(
             if (where.isNotEmpty()) {
                 Text(where, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Text(excerpt, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            Text(excerpt, style = MaterialTheme.typography.bodyMedium, maxLines = if (canvas != null) 2 else 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
         }
     }
 }

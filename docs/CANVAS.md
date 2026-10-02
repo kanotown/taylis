@@ -1254,3 +1254,28 @@ M73 は iOS と Android (§18.5)。
   メンションと同じまとめ方)。M73 の前面の通知はそのまま。
 - **テスト**: 項目の読み込み (キャンバスの項目、知らない種類を混ぜても他の項目が残る)、行の文、行を押すとキャンバスが開く、
   パラメータが 4 つの呼び出しすべてに付くこと。
+
+### 20.7 M77 Android
+
+- **API** (`api/ApiClient.kt`): `listActivity`・`activitySummary`・`markActivityRead` に `include=canvas_mention`、`bootstrap` に
+  `activity_include=canvas_mention` (`ActivityInclude.VALUE`)。M76 より前のサーバは無視する。
+- **読み込み** (`api/Models.kt`): `ActivityItem.message` は null 可、`canvas: ActivityCanvas?` を足した。`ActivityListOut.items` は
+  `ActivityItemsSerializer` で `JsonElement` の配列から 1 件ずつ `decodeFromJsonElement` を試し、読めない項目と出せない項目
+  (`isShown`: mention / reaction / thread_reply は `message`、canvas_mention は `canvas` が要る。知らない種類は出さない) を落とす。
+  全部落ちても空のページで、`next_cursor` はそのまま (次のページは読む)。行の ID は `canvas_mention:<item_id>`。
+- **行** (`ui/ActivityScreen.kt`): アバターは `actor_ids[0]`、その右下に 📝。1 行目「〇〇 が「題名」であなたをメンションしました」
+  (`ActivityText.lead`)、2 行目「#チャンネル のキャンバス」(DM は相手の名前。`ActivityText.where`)、3 行目は抜粋 (2 行まで)。
+  TalkBack は行を 1 つにまとめて「未読 〇〇 が「題名」であなたをメンションしました、#チャンネル」(`spokenCanvas`)。未読の点・
+  既読にする規則・ページの重ね方は他の行と同じ。
+- **押すと** (`ActivityText.target`): メッセージの行と同じく**アクティビティのタブのスタックに積む** (M34 の「アクティビティの行から
+  開いたものはアクティビティのスタックに積む」、MOBILE_UI.md)。`MainNav.openCanvas` で会話の「キャンバス」タブにそのキャンバス。
+  戻るは会話の「メッセージ」タブ、もう一度で一覧 (他のキャンバスのタブと同じ)。開く先は §18.5 のプッシュと同じ画面だが、
+  プッシュはこれまでどおりホーム / DM のタブに着地する。会話がまだ端末に無い時だけ、プッシュと同じ着地
+  (`AppController.openCanvasFromActivity` → `pendingCanvas`、会話が届いてから)。
+- **バッジ**: `canvas.mentioned` を受けたら `store.noteActivity()` と `scheduleActivityRefresh()` (メッセージのメンションと同じ 1 秒
+  まとめ)。バッジは `GET /activity/summary?include=canvas_mention` を読み直し、見ている一覧は最初のページを読み直す。前面の
+  通知 (M73) はそのまま。
+- **テスト** (`ActivityCanvasTest`): キャンバスの項目の読み込みと、知らない種類・形の違う項目・オブジェクトでない要素を混ぜても
+  他の項目が残ること、4 つの呼び出しのパラメータ、行の文 (見出し・2 行目・TalkBack)、押すとアクティビティのスタックに
+  キャンバス (戻るで一覧。会話が無い時の着地はホーム / DM の「キャンバス」タブ)、`canvas.mentioned` でバッジと一覧を
+  読み直すこと。
