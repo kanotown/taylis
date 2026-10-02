@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Lock
@@ -63,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -309,6 +311,7 @@ fun TaskCard(
         if (names.isNotEmpty()) append("、担当 ").append(names.joinToString("、"))
         if (!task.notes.isNullOrBlank()) append("、メモあり")
         if (task.source?.messageId != null) append("、元のメッセージあり")
+        if (task.canvasSource?.canvasId != null) append("、元のキャンバスあり")
     }
     Surface(
         shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -333,7 +336,8 @@ fun TaskCard(
                     textDecoration = if (done) TextDecoration.LineThrough else null,
                     color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 )
-                val marks = badge != null || task.dueOn != null || !task.notes.isNullOrBlank() || task.source?.messageId != null || names.isNotEmpty()
+                val canvasId = task.canvasSource?.canvasId
+                val marks = badge != null || task.dueOn != null || !task.notes.isNullOrBlank() || task.source?.messageId != null || canvasId != null || names.isNotEmpty()
                 if (marks) {
                     Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         badge?.let {
@@ -354,6 +358,16 @@ fun TaskCard(
                         }
                         if (task.source?.messageId != null) {
                             Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
+                        }
+                        // M73: made from a canvas's checklist item — a tap opens that canvas (the desktop's card button).
+                        if (canvasId != null) {
+                            Icon(
+                                Icons.AutoMirrored.Outlined.Article, contentDescription = "元のキャンバスを開く", tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .clickable(role = Role.Button, onClickLabel = "元のキャンバスを開く") { controller.scope.launch { controller.openCanvasLink(canvasId) } }
+                                    .padding(4.dp)
+                                    .size(15.dp),
+                            )
                         }
                         Spacer(Modifier.weight(1f))
                         if (task.assigneeIds.isNotEmpty()) AssigneeAvatars(task.assigneeIds, names)

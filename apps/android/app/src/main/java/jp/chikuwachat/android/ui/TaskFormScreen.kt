@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -78,6 +79,7 @@ import jp.chikuwachat.android.api.TaskStatus
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.text.Collator
 import java.time.LocalDate
 import java.time.ZoneId
@@ -116,7 +118,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
     val init = form.init
     val initial = remember(form) {
         form.task?.let { TaskRules.draftFromTask(it) }
-            ?: TaskDraft(title = init?.title ?: "", status = init?.status ?: TaskStatus.TODO, assigneeIds = init?.assigneeIds ?: emptyList())
+            ?: TaskDraft(title = init?.title ?: "", status = init?.status ?: TaskStatus.TODO, dueOn = init?.dueOn ?: "", assigneeIds = init?.assigneeIds ?: emptyList())
     }
     var draft by rememberSaveable(form, stateSaver = TaskDraftSaver) { mutableStateOf(initial) }
     var board by rememberSaveable(form) { mutableStateOf(init?.channelId ?: MINE) }
@@ -162,6 +164,14 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
             try {
                 val zone = ZoneId.systemDefault().id
                 if (task == null) {
+                    // M73 (CANVAS.md §18.3): the server looks for the checklist line in the canvas's saved body, so what is
+                    // typed (or ticked) there goes out first.
+                    init?.sourceCanvasId?.let { id ->
+                        controller.engine?.canvases?.current(id)?.let { saver ->
+                            saver.flush()
+                            withTimeoutOrNull(5_000) { saver.settled() }
+                        }
+                    }
                     hub.create(
                         TaskCreate(
                             channelId = channelId, title = TaskRules.cleanTitle(draft.title), notes = draft.notes.takeIf { it.isNotBlank() },
@@ -169,6 +179,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             assigneeIds = draft.assigneeIds.distinct().takeIf { channelId != null && it.isNotEmpty() },
                             sourceMessageId = init?.sourceMessageId, clientTaskId = clientId, tz = zone,
                             kind = if (review) TaskKind.REVIEW else null,
+                            sourceCanvasId = init?.sourceCanvasId, sourceCanvasLine = init?.sourceCanvasLine?.takeIf { init.sourceCanvasId != null },
                         ),
                     )
                     controller.notice = if (review) "レビューを依頼しました" else "タスクを作成しました"
@@ -219,6 +230,12 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
         task != null -> TaskRules.sourceState(task)
         init?.sourceMessageId != null -> TaskSource.Link(init.sourceMessageId, init.sourceExcerpt)
         else -> TaskSource.None
+    }
+    // M73: the canvas checklist item it came from (TASKS.md §10).
+    val canvasSource = when {
+        task != null -> TaskRules.canvasSourceState(task)
+        init?.sourceCanvasId != null -> CanvasTaskSource.Link(init.sourceCanvasId, init.sourceCanvasExcerpt)
+        else -> CanvasTaskSource.None
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val view = LocalView.current
@@ -348,6 +365,12 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                         )
                         TaskSource.None -> Unit
                     }
+                    if (canvasSource !is CanvasTaskSource.None) {
+                        CanvasSourceBox(controller, canvasSource, version, onOpen = if (task != null) ({ id ->
+                            onDismiss()
+                            controller.scope.launch { controller.openCanvasLink(id) }
+                        }) else null)
+                    }
                     if (!available) Text("このサーバはタスクに対応していません", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
                     if (task?.canDelete == true) {
@@ -382,6 +405,42 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                 confirmButton = { TextButton(onClick = { confirmDelete = false; remove() }) { Text("削除", color = MaterialTheme.colorScheme.error) } },
                 dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("キャンセル") } },
             )
+        }
+    }
+}
+
+/**
+ * M73: 「元のキャンバス: 題名」 and the item's text, 「キャンバスを開く」 (`onOpen`, for a saved task); 「元のキャンバスは
+ * 削除されました」 once the canvas was purged.
+ */
+@Composable
+private fun CanvasSourceBox(controller: AppController, source: CanvasTaskSource, version: Int, onOpen: ((String) -> Unit)?) {
+    val link = source as? CanvasTaskSource.Link
+    val title = remember(version, link?.canvasId) { link?.let { controller.store.canvasMeta(it.canvasId)?.title } }
+    val excerpt = when (source) {
+        is CanvasTaskSource.Link -> source.excerpt
+        is CanvasTaskSource.Deleted -> source.excerpt
+        CanvasTaskSource.None -> null
+    }
+    Row(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(10.dp)).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.AutoMirrored.Outlined.Article, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                when {
+                    link == null -> "元のキャンバスは削除されました"
+                    title != null -> "元のキャンバス: $title"
+                    else -> "元のキャンバス"
+                },
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            excerpt?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+        }
+        if (link != null && onOpen != null) {
+            TextButton(onClick = { onOpen(link.canvasId) }) { Text("キャンバスを開く") }
         }
     }
 }

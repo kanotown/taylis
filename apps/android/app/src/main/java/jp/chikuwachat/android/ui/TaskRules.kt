@@ -46,6 +46,12 @@ data class TaskCreateInit(
     val kind: String = TaskKind.TASK,
     val dmChannelId: String? = null,
     val assigneeIds: List<String> = emptyList(),
+    /** M73: the due date picked from the start ("YYYY-MM-DD", "" none): a checklist item's `📅 YYYY-MM-DD`. */
+    val dueOn: String = "",
+    /** M73 (CANVAS.md §18.3): 「タスクにする」 on a canvas's checklist item — the canvas, the line as in its body, its text. */
+    val sourceCanvasId: String? = null,
+    val sourceCanvasLine: String? = null,
+    val sourceCanvasExcerpt: String? = null,
 ) {
     val isReview: Boolean get() = kind == TaskKind.REVIEW
 
@@ -66,6 +72,14 @@ sealed interface TaskSource {
     /** 「元のメッセージは削除されました」. */
     data object Deleted : TaskSource
     data class Link(val messageId: String, val excerpt: String?) : TaskSource
+}
+
+/** M73: what a task says of the canvas checklist item it came from (TaskOut.canvas_source). */
+sealed interface CanvasTaskSource {
+    data object None : CanvasTaskSource
+    /** 「元のキャンバスは削除されました」 (purged from the trash). */
+    data class Deleted(val excerpt: String?) : CanvasTaskSource
+    data class Link(val canvasId: String, val excerpt: String?) : CanvasTaskSource
 }
 
 /** 「自分の担当」's group: one channel's tasks assigned to me. */
@@ -387,6 +401,16 @@ object TaskRules {
         val source = task.source ?: return TaskSource.None
         val messageId = source.messageId ?: return TaskSource.Deleted
         return TaskSource.Link(messageId, source.excerpt)
+    }
+
+    /**
+     * M73 (TASKS.md §10): the canvas a task came from — a link while the canvas exists (one in the trash still links; it
+     * opens as 「表示できないキャンバス」), 「元のキャンバスは削除されました」 once purged, nothing without one.
+     */
+    fun canvasSourceState(task: TaskOut): CanvasTaskSource {
+        val source = task.canvasSource ?: return CanvasTaskSource.None
+        val canvasId = source.canvasId ?: return CanvasTaskSource.Deleted(source.excerpt)
+        return CanvasTaskSource.Link(canvasId, source.excerpt)
     }
 
     /**

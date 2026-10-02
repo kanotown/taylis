@@ -1033,6 +1033,17 @@ class Store(private val persistence: Persistence? = null) {
         if (typing[typingKey(channelId, parentId)]?.remove(userId) != null) emit()
     }
 
+    /** M73: who edits which canvas (volatile `canvas_presence` frames, CANVAS.md §18.2). */
+    private val canvasEditing = CanvasEditors()
+
+    /** M73: a `canvas_presence` frame from someone else (true for 45 s unless refreshed, false ends it). */
+    fun noteCanvasEditing(canvasId: String, userId: String, editing: Boolean, section: String?, now: Long = System.currentTimeMillis()) {
+        if (canvasEditing.note(canvasId, userId, editing, section, now)) emit()
+    }
+
+    /** M73: who edits the canvas now (expired entries are skipped). */
+    fun canvasEditors(canvasId: String, now: Long = System.currentTimeMillis()): List<CanvasEditor> = canvasEditing.of(canvasId, now)
+
     /** Users typing in this conversation right now (expired entries are skipped, not removed). */
     fun typingUsers(channelId: String, parentId: String?, now: Long = System.currentTimeMillis()): List<String> =
         typing[typingKey(channelId, parentId)]?.filterValues { it > now }?.keys?.sorted() ?: emptyList()

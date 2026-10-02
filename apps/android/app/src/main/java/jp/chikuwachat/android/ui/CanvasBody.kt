@@ -15,7 +15,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.outlined.AddTask
 import androidx.compose.material.icons.outlined.BrokenImage
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.Checkbox
@@ -49,6 +56,8 @@ import kotlinx.coroutines.withContext
  * M46: one block of a canvas (CANVAS.md §4.2): the message renderer's blocks ([BodyBlockView]) plus tasks with boxes that
  * tick (§4.4 「チェックの切り替え」: `onToggle` null = the boxes only show), images of the canvas (the authenticated
  * loader; [CanvasImage]) and rules. A heading offers 「このセクションを編集」 when `onEditSection` is given.
+ * M73 (CANVAS.md §18.3 / §18.5): an open checklist item's long press (and its accessibility action) offers
+ * 「タスクにする」 when `onMakeTask` is given.
  */
 @Composable
 fun CanvasBlockView(
@@ -57,26 +66,50 @@ fun CanvasBlockView(
     controller: AppController,
     onToggle: ((line: Int, done: Boolean) -> Unit)?,
     onEditSection: ((line: Int) -> Unit)?,
+    onMakeTask: ((line: Int) -> Unit)? = null,
 ) {
     when (block) {
         is BodyBlock.Tasks -> androidx.compose.foundation.layout.Column(Modifier.padding(vertical = 2.dp)) {
             block.items.forEach { item ->
                 val label = visibleText(item.tokens)
-                Row(Modifier.padding(start = (item.level * 24).dp), verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = item.done,
-                        onCheckedChange = onToggle?.let { toggle -> { done: Boolean -> toggle(item.line, done) } },
-                        enabled = onToggle != null,
-                        modifier = Modifier.semantics { contentDescription = (if (item.done) "完了を取り消す: " else "完了にする: ") + label },
-                    )
-                    Text(
-                        inline.build(item.tokens),
-                        inlineContent = inline.inlineContent,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (item.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                        textDecoration = if (item.done) TextDecoration.LineThrough else null,
-                        modifier = Modifier.weight(1f),
-                    )
+                var menu by remember { mutableStateOf(false) }
+                val makeTask = onMakeTask?.takeIf { !item.done }
+                Box {
+                    Row(
+                        Modifier
+                            .padding(start = (item.level * 24).dp)
+                            .then(
+                                if (makeTask == null) Modifier else Modifier
+                                    // Under the box and the links (they take their own taps first): only a long press here.
+                                    .pointerInput(item.line) { detectTapGestures(onLongPress = { menu = true }) }
+                                    .semantics { customActions = listOf(CustomAccessibilityAction("タスクにする") { makeTask(item.line); true }) },
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = item.done,
+                            onCheckedChange = onToggle?.let { toggle -> { done: Boolean -> toggle(item.line, done) } },
+                            enabled = onToggle != null,
+                            modifier = Modifier.semantics { contentDescription = (if (item.done) "完了を取り消す: " else "完了にする: ") + label },
+                        )
+                        Text(
+                            inline.build(item.tokens),
+                            inlineContent = inline.inlineContent,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (item.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                            textDecoration = if (item.done) TextDecoration.LineThrough else null,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (makeTask != null) {
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("タスクにする") },
+                                leadingIcon = { Icon(Icons.Outlined.AddTask, contentDescription = null) },
+                                onClick = { menu = false; makeTask(item.line) },
+                            )
+                        }
+                    }
                 }
             }
         }

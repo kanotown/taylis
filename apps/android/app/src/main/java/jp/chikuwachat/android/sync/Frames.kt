@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.sync
 
 import jp.chikuwachat.android.api.Codec
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -22,6 +23,8 @@ sealed class ServerFrame {
     /** Volatile (M11b): shown for a few seconds, never stored. */
     data class Typing(val channelId: String, val parentId: String?, val userId: String) : ServerFrame()
     data class Presence(val userId: String, val status: String) : ServerFrame()
+    /** M73 (CANVAS.md §18.2): someone else edits a canvas (or stopped). Volatile: dropped 45 s after the last refresh. */
+    data class CanvasPresence(val canvasId: String, val channelId: String?, val userId: String, val editing: Boolean, val section: String?) : ServerFrame()
 
     companion object {
         fun parse(text: String): ServerFrame? {
@@ -42,6 +45,11 @@ sealed class ServerFrame {
                 )
                 "typing" -> Typing(obj.str("channel_id") ?: return null, obj.str("parent_id"), obj.str("user_id") ?: return null)
                 "presence" -> Presence(obj.str("user_id") ?: return null, obj.str("status") ?: return null)
+                // Lenient: no `editing` reads as a stop (the safe side: an indicator that goes rather than one that stays).
+                "canvas_presence" -> CanvasPresence(
+                    obj.str("canvas_id") ?: return null, obj.str("channel_id"), obj.str("user_id") ?: return null,
+                    obj.bool("editing") ?: false, obj.str("section")?.takeIf { it.isNotBlank() },
+                )
                 else -> null
             }
         }
@@ -54,6 +62,15 @@ object ClientFrame {
     fun typing(channelId: String, parentId: String?): String = Codec.plain.encodeToString(
         JsonObject.serializer(),
         buildJsonObject { put("type", "typing"); put("channel_id", channelId); if (parentId != null) put("parent_id", parentId) },
+    )
+
+    /** M73: `{type: "canvas_presence", canvas_id, editing, section}` (section null when none, or on a stop). */
+    fun canvasPresence(frame: CanvasPresenceOut): String = Codec.plain.encodeToString(
+        JsonObject.serializer(),
+        buildJsonObject {
+            put("type", "canvas_presence"); put("canvas_id", frame.canvasId); put("editing", frame.editing)
+            put("section", frame.section?.let { JsonPrimitive(it) } ?: JsonNull)
+        },
     )
 }
 

@@ -973,6 +973,13 @@ class AppController(private val app: Application) {
                 if (!dndActive(store)) notify(workspace(), text.channelId, "タスク", text.body, key = "task:${text.taskId}", taskId = text.taskId)
             }
         }
+        // M73 (CANVAS.md §18.1): a canvas newly mentions me while the app is open (the server's push is not shown then),
+        // worded like that push; the engine has checked the conversation's level and mute.
+        engine.onCanvasMention = { mention, channel ->
+            val text = jp.chikuwachat.android.ui.CanvasTasks.mentionText(mention, channel) { id -> store.users[id]?.displayName }
+            notice = "📝 $text"
+            if (!dndActive(store)) notify(workspace(), channel.id, "キャンバス", text, key = "canvas:${mention.canvasId}", canvasId = mention.canvasId)
+        }
         engine.onNotify = { message, channel ->
             // M12c: Do Not Disturb / quiet hours hold local alerts back as well (the server does so for pushes).
             if (!dndActive(store)) {
@@ -1044,12 +1051,13 @@ class AppController(private val app: Application) {
      */
     private fun notify(
         entry: Workspace?, channelId: String?, title: String, body: String, key: String = channelId ?: "", messageId: String? = null, parentId: String? = null,
-        reveal: Boolean = false, eventId: String? = null, taskId: String? = null,
+        reveal: Boolean = false, eventId: String? = null, taskId: String? = null, canvasId: String? = null,
     ) {
         val named = workspaces.size >= 2
         notifier.notifyMessage(
             channelId, title, body, key = key, workspace = entry?.serverUrl, subText = if (named) entry?.name else null,
             messageId = messageId, parentId = parentId, reveal = reveal, badge = totalBadge(), eventId = eventId, taskId = taskId,
+            canvasId = canvasId,
         )
     }
 
@@ -1096,7 +1104,7 @@ class AppController(private val app: Application) {
                 val reading = appForeground && message.kind == "message" && message.channelId != null && message.channelId == openChannelId
                 // M52: a calendar alarm's push is shown the same way (while live, the socket's calendar.alarm.updated says it).
                 if (message.shown && !live && !reading && key != null) {
-                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId)
+                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId)
                 }
                 // M28c: the push's own conversation catches up too (the socket may be stale), not only the open one.
                 engine?.pushReceived(message.channelId, message.messageId)
@@ -1105,7 +1113,7 @@ class AppController(private val app: Application) {
             // The mark first: the notification's number counts this workspace's badge with the others'.
             if (message.kind == "message") updateWorkspace(target.serverUrl) { it.copy(hasUnread = true, badge = message.badge ?: it.badge) }
             if (message.shown && key != null) {
-                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId)
+                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId)
             }
         }
     }
@@ -1155,6 +1163,17 @@ class AppController(private val app: Application) {
         bringWorkspace { pendingTask = target }
     }
 
+    /**
+     * M73 (CANVAS.md §18.5): a tapped canvas mention: its workspace comes on screen, then the main screen opens the canvas in
+     * its conversation's 「キャンバス」 tab (once the store knows the conversation).
+     */
+    fun openCanvasFromNotification(workspaceKey: String?, channelId: String, canvasId: String) {
+        pendingWorkspaceKey = workspaceKey
+        val target = channelId to canvasId
+        pendingCanvas = target
+        bringWorkspace { pendingCanvas = target }
+    }
+
     /** The pending workspace on screen (switching if needed); `after` restores what the switch cleared. */
     private fun bringWorkspace(after: () -> Unit) {
         scope.launch {
@@ -1178,6 +1197,7 @@ class AppController(private val app: Application) {
         appForeground = active
         engine?.reportActivity()
         if (!active) engine?.canvases?.flushAll() // M46 (CANVAS.md §4.4): what is typed is saved when the app goes to the background
+        if (!active) engine?.stopCanvasEditing() // M73 (§18.2): no 「編集中」 from a phone in a pocket
         if (active) {
             engine?.reconnectNow()
             if (api != null) push.refresh()

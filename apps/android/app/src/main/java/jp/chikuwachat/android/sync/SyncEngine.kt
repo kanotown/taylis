@@ -215,6 +215,11 @@ class SyncEngine(
         private set
     var onSignedOut: (() -> Unit)? = null
     var onNotify: ((MessageOut, ChannelState) -> Unit)? = null
+    /**
+     * M73 (CANVAS.md §18.1): a canvas newly mentions me while the app is open (the push is not shown then). Called only
+     * when the conversation's level is not 「なし」 and it is not muted (DND is the caller's).
+     */
+    var onCanvasMention: ((jp.chikuwachat.android.api.CanvasMentioned, ChannelState) -> Unit)? = null
     /** A channel became fully read (here or on another device): dismiss its notification. */
     var onRead: ((String) -> Unit)? = null
     var isActive: () -> Boolean = { true }
@@ -266,6 +271,8 @@ class SyncEngine(
     private var activityRefresh: Job? = null
     /** "channel[:parent]" → when the last typing frame went out. */
     private val typingSent = HashMap<String, Long>()
+    /** M73: what this device last said of the canvases it edits (`canvas_presence`, CANVAS.md §18.2). */
+    private val canvasPresence = CanvasPresenceSender()
 
     // --- serial work queue --------------------------------------------------------------------
 
@@ -522,6 +529,7 @@ class SyncEngine(
     private suspend fun onFrame(frame: ServerFrame, connection: Connection) {
         when (frame) {
             is ServerFrame.Hello -> if (ws === connection.socket) {
+                canvasPresence.reset() // a new connection knows nothing of what the last one said
                 startHeartbeat(connection, frame.heartbeatIntervalSec * 1000L)
                 // The server counts a new connection as in use (PUSH_NOTIFICATIONS.md §4.1): one that is not says so at
                 // once, not a heartbeat later (the reader's pushes were held back meanwhile).
@@ -536,6 +544,10 @@ class SyncEngine(
                 if (frame.userId != store.me?.id) store.noteTyping(frame.channelId, frame.parentId, frame.userId, System.currentTimeMillis() + options.typingTtlMs)
             }
             is ServerFrame.Presence -> store.setPresence(frame.userId, frame.status)
+            // M73: volatile 「編集中」 (CANVAS.md §18.2), dropped after 45 s without a refresh.
+            is ServerFrame.CanvasPresence -> if (frame.userId != store.me?.id) {
+                store.noteCanvasEditing(frame.canvasId, frame.userId, frame.editing, frame.section, System.currentTimeMillis())
+            }
         }
     }
 
@@ -656,6 +668,22 @@ class SyncEngine(
         runCatching { socket.send(ClientFrame.ping(isActive())) }
     }
 
+    /**
+     * M73 (CANVAS.md §18.2): I edit this canvas (the editor has the focus and is used; `section` is the caret's heading)
+     * or stopped. Repeats go out every 20 s, a new heading after 2 s at most; a stop only after a start went out.
+     */
+    fun setCanvasEditing(canvasId: String, editing: Boolean, section: String? = null) {
+        val socket = ws ?: return
+        if (_status.value != EngineStatus.ONLINE) return
+        val frame = canvasPresence.next(canvasId, editing, section, options.clock()) ?: return
+        runCatching { socket.send(ClientFrame.canvasPresence(frame)) } // volatile: the others drop it after 45 s anyway
+    }
+
+    /** M73: the app went to the background: every canvas I said I edit gets its `editing: false`. */
+    fun stopCanvasEditing() {
+        canvasPresence.editing().forEach { setCanvasEditing(it, false) }
+    }
+
     fun sendTyping(channelId: String, parentId: String? = null) {
         val socket = ws ?: return
         if (_status.value != EngineStatus.ONLINE) return
@@ -694,6 +722,7 @@ class SyncEngine(
                 store.setChannelLinks(id, Codec.snake.decodeFromJsonElement(ListSerializer(ChannelLinkOut.serializer()), frame.data["links"] ?: return))
             }
             "canvas.created", "canvas.updated", "canvas.deleted" -> canvases.applyEvent(frame.event, frame.data)
+            "canvas.mentioned" -> maybeNotifyCanvasMention(frame.data)
             // M52 (CALENDAR.md §5): outside the channel seq; the ranges on screen take them.
             "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated" -> calendar.applyEvent(frame.event, frame.data)
             // M56 (SYNC_PROTOCOL.md §16): outside the channel seq too; the windows on screen take them.
@@ -913,6 +942,20 @@ class SyncEngine(
             )
         } ?: return
         if (updated.unreadCount == 0) onRead?.invoke(channelId)
+    }
+
+    /**
+     * M73 (CANVAS.md §18.1): canvas.mentioned (to me only) — said while the app is open unless the conversation's level is
+     * 「なし」 or it is muted (a mention: 「メンションのみ」 says it too). Not from myself; not for a conversation I left.
+     */
+    private fun maybeNotifyCanvasMention(data: JsonObject) {
+        val mention = runCatching { Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.CanvasMentioned.serializer(), data) }.getOrNull() ?: return
+        val me = store.me ?: return
+        if (mention.byUserId == me.id) return
+        val channel = store.channel(mention.channelId) ?: return
+        if (!channel.isMember) return
+        if (!NotificationLevels.notifies(channel, me.notificationDefault, me.id, involved = true)) return
+        onCanvasMention?.invoke(mention, channel)
     }
 
     /**
