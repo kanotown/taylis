@@ -3,7 +3,7 @@
 まだ終わっていないことを 1 か所にまとめた一覧です。詳しい設計と順番は [ROADMAP.md](ROADMAP.md)、終わったものの記録は
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) にあります。終わったらこの一覧から消し、IMPLEMENTATION_PLAN.md に行を足します。
 
-最終更新: 2026-10-02 (M60 の後)
+最終更新: 2026-10-02 (v0.1.18 の後)
 
 ## 1. 情報待ち
 
@@ -63,5 +63,5 @@ ROADMAP.md §5 の表。実際の番号は着手したときに空いている�
 
 ## 6. リリースと片付け
 
-- v0.1.14 は 00c3592 (M60 の後) に付けた (2026-10-02)。次は v0.1.15: M61〜M66 (Times フィード、レビュー依頼、AI のボットと要約)、iOS の直し (build 66 まで)、Codex のレビュー (v0.1.15、14 件すべて修正)。移行は 0055〜0058。本番で AI を使うには、サーバの `/run/secrets/anthropic_api_key` に API キーを置く。
+- 本番は v0.1.18 (4160aa8、2026-10-02)。次は v0.1.19。v0.1.15〜v0.1.18 の範囲は Codex にレビューを頼む予定 (../ChikuwaChat-review/REVIEW-v0.1.18.md)。本番の AI のキーは `/srv/chikuwachat/infra/secrets/` (権限 644)。
 - 開発サーバのテスト用のチャンネル (#canvas-m43、#canvas-m44、m46-private、#quote-test、#tab-test、#tab-sp、#tab-tt、#arrival-test、#arrival-android、#link-test など) は、利用者の了承を得てから片付ける。
