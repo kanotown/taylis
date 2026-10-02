@@ -14,6 +14,7 @@ async def make_user(
     role: str = "member",
     password: str | None = None,
     must_change_password: bool = False,
+    notification_default: str = "mentions",
 ) -> User:
     """Insert a user directly. Pass ``password`` when the test needs to log in."""
     user = User(
@@ -22,6 +23,8 @@ async def make_user(
         password_hash=await hash_password(password) if password else "not-a-real-hash",
         must_change_password=must_change_password,
         role=role,
+        # Written when "mentions" was the default (before 0060); new accounts now get "all".
+        notification_default=notification_default,
     )
     db.add(user)
     await db.commit()

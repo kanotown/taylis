@@ -12,6 +12,7 @@ from app.core.settings import build_settings
 from app.events.models import OutboxEvent
 from app.modules.channels import service as channels
 from app.modules.notifications.planner import PushPlanner
+from app.modules.users import repository as users_repo
 from app.modules.users.models import User
 from tests.helpers import make_user
 
@@ -375,3 +376,57 @@ async def test_unfollow_removes_thread_from_list_and_from_push_targets(
     page2 = await _threads(client, limit=1, cursor=page["next_cursor"])
     assert [i["parent"]["id"] for i in page2["items"]] == [parent["id"]]
     assert (await _threads(client, limit=1, cursor=page2["next_cursor"]))["items"] == []
+
+
+async def test_at_level_all_a_thread_reply_reaches_only_its_followers(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """2026-10-02: "all" is the default for new users, and a reply only in a thread wakes its
+    followers (author, repliers, followed by hand) and those it mentions, not the whole channel."""
+    alice = await make_user(db, "alice", notification_default="all")
+    bob = await make_user(db, "bob", notification_default="all")
+    carol = await make_user(db, "carol", notification_default="all")
+    dave = await make_user(db, "dave", notification_default="all")
+    as_user(alice)
+    channel = (await client.post("/api/v1/channels", json={"name": "general"})).json()
+    for user in (bob, carol, dave):
+        as_user(user)
+        await client.post(f"/api/v1/channels/{channel['id']}/join")
+    as_user(alice)
+    parent = await _post(client, channel["id"], "topic")
+    as_user(dave)
+    followed = await client.put(
+        f"/api/v1/messages/{parent['id']}/thread/follow", json={"following": True}
+    )
+    assert followed.status_code in (200, 204), followed.text
+    as_user(bob)
+    reply = await _post(client, channel["id"], "reply", parent["id"])
+
+    planner = PushPlanner(build_settings(), is_active=lambda _uid: False)
+    record = await channels.require_channel(db, uuid.UUID(channel["id"]))
+    everyone = [alice.id, carol.id, dave.id]
+    targets = await planner.select_recipients(
+        db, record, everyone, reply, {alice.id, bob.id}, parent_id=uuid.UUID(parent["id"])
+    )
+    assert set(targets) == {alice.id, dave.id}  # carol never joined the thread
+    mention = {**reply, "mentioned_user_ids": [str(carol.id)]}
+    targets = await planner.select_recipients(
+        db, record, everyone, mention, {alice.id, bob.id}, parent_id=uuid.UUID(parent["id"])
+    )
+    assert set(targets) == {alice.id, carol.id, dave.id}
+    # A channel message (or a reply also sent to the channel) still reaches everyone at "all".
+    top = await _post(client, channel["id"], "news")
+    assert set(await planner.select_recipients(db, record, everyone, top)) == set(everyone)
+
+
+async def test_new_accounts_are_notified_of_everything_by_default(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    root = await make_user(db, "root", role="admin")
+    as_user(root)
+    made = await client.post(
+        "/api/v1/admin/users", json={"username": "newbie", "display_name": "Newbie"}
+    )
+    assert made.status_code == 201, made.text
+    user = await users_repo.get_by_username(db, "newbie")
+    assert user is not None and user.notification_default == "all"

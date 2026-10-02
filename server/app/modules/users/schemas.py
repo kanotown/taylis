@@ -105,7 +105,7 @@ class UserMe(UserPublic):
     # L4 (M31): others see me as offline.
     presence_hidden: bool = False
     # M35: what channels without a level of their own notify me of (PUSH_NOTIFICATIONS.md §4).
-    notification_default: Literal["all", "mentions", "none"] = "mentions"
+    notification_default: Literal["all", "mentions", "none"] = "all"
     # M39: a push when someone reacts to my message (banner); the activity lists reactions either
     # way.
     notify_reactions: bool = False

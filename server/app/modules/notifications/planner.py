@@ -394,8 +394,13 @@ class PushPlanner:
             mentioned |= await messages.keyword_user_ids(db, uuid.UUID(str(message["id"])))
         mention_all = bool((message or {}).get("mention_all"))
         seq = (message or {}).get("seq")
+        followers: set[uuid.UUID] = set()
         if parent_id is not None:
             positions = await threads.last_read_seqs(db, parent_id, recipients)
+            # A reply only in its thread is for those who follow it (author, repliers, followed by
+            # hand): at level "all" too, others are not woken by a talk they never joined (Slack's
+            # rule, PUSH_NOTIFICATIONS.md §4). A mention still reaches them.
+            followers = set(await threads.followers(db, parent_id))
         else:
             positions = await reads.last_read_seqs(db, recipients, channel.id)
         rows = await users.get_users(db, recipients)
@@ -416,6 +421,8 @@ class PushPlanner:
                 continue  # paused / quiet hours (M12c); the badge catches up with the next push
             involved = mention_all or user_id in mentioned or user_id in (participants or set())
             if level == "mentions" and not involved:
+                continue
+            if parent_id is not None and not involved and user_id not in followers:
                 continue
             if seq is not None and positions.get(user_id, 0) >= int(seq):
                 continue  # already read on another device (§4)

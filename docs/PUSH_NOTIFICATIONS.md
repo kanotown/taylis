@@ -83,7 +83,7 @@ Ad Hoc / TestFlight / App Store に切り替えた端末は `production` とし�
 対象イベントは `message.created` のみ (v1)。受信者は次の順で絞り込む。
 
 通知の level (M35) は、チャンネル自身の `notification_preferences.level` があればそれ。無ければ (行が無い、または
-NULL) 本人の全体設定 `users.notification_default` (`all` / `mentions` / `none`、初期値 `mentions`) から:
+NULL) 本人の全体設定 `users.notification_default` (`all` / `mentions` / `none`、初期値 `all`。2026-10-02 の移行 0060 から。それより前に作った人は `mentions` のまま) から:
 
 | 全体設定 | DM / グループ DM | 他の人の times (M24) | ほかのチャンネル |
 | --- | --- | --- | --- |
@@ -108,6 +108,7 @@ NULL) 本人の全体設定 `users.notification_default` (`all` / `mentions` / `
 | 本人の `dnd_until > now()`、または quiet hours の時間帯 (本人のタイムゾーン、`users.quiet_hours_*`) | 除外 (M12c 「通知を一時停止」。バッジは次のプッシュ / 起動時に追いつく) | M12c |
 | `level = all` | 対象 | M5 |
 | `level = mentions` | `mentioned_user_ids` か `keyword_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
+| スレッドだけの返信 (チャンネルにも送信したものを除く) | `level = all` でも、フォロワー (下の行) とメンションされた人だけ (2026-10-02: 既定を `all` にしたので、参加していないスレッドの他人同士のやり取りでは起こさない。Slack と同じ) | 2026-10-02 |
 | スレッド返信 | 上記に加え、スレッドのフォロワー (`thread_follows.following`: 親の投稿者、返信者、スレッド内でメンションされた人。手動で外した人は含まない) を対象 (level が `none` でなければ) | M8c → M11a (実装済み。`message.created` の `parent_thread.participant_ids` から判定、THREADS.md §4) |
 | 既に既読 (`last_read_seq >= message.seq`) | 除外。スレッドの返信 (チャンネルにも送信したものを除く) は `thread_follows.last_read_seq` で判定する (Desktop でスレッドを読んだ返信がスマホに届いていた。M28a) | M8b (実装済み。送信直前にも再判定し `skipped / already_read`。返信の再判定のために `push_deliveries.payload` に `parent_id` を添える) |
 | 有効なセッションの無い端末 (期限切れ) | 送信直前に除外 (`skipped / session_expired`)。1 時間ごとの掃除がその端末を無効にする (DATA_MODEL.md devices) | M28a |

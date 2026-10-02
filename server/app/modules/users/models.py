@@ -46,7 +46,7 @@ class User(Base):
     notify_tasks: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     # M35: what a channel without a level of its own notifies of: all | mentions | none.
     notification_default: Mapped[str] = mapped_column(
-        String(16), default="mentions", server_default="mentions"
+        String(16), default="all", server_default="all"
     )
     # M50: my long-press quick reactions, in order (1-6 plain emoji); NULL = the clients' rule
     # (the ones I used last, then the defaults).
