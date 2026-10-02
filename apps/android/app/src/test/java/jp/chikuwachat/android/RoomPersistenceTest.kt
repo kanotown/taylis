@@ -8,12 +8,17 @@ import org.junit.Test
 
 class RoomPersistenceTest {
     /**
-     * The local database opens with fallbackToDestructiveMigration, which is only acceptable for the first schema.
-     * Whoever bumps the version must add a Migration to RoomPersistence.open (and hasChannel) and drop the fallback,
-     * then update this test: otherwise every device loses its cached rows, drafts and unsent messages at the update.
+     * Every schema bump ships a Migration (no destructive fallback on upgrade: every device would lose its cached
+     * rows, drafts and unsent messages at the update). The chain must run from the first schema to the current one.
      */
-    @Test fun schemaVersionIsStillTheFirstOne() {
-        assertEquals("bumping the Room schema needs a Migration instead of the destructive fallback", 1, RoomPersistence.SCHEMA_VERSION)
+    @Test fun migrationsReachTheCurrentSchemaFromTheFirst() {
+        assertEquals(2, RoomPersistence.SCHEMA_VERSION) // M74: the canvases table
+        var at = 1
+        RoomPersistence.MIGRATIONS.forEach { migration ->
+            assertEquals("migrations must be contiguous", at, migration.startVersion)
+            at = migration.endVersion
+        }
+        assertEquals(RoomPersistence.SCHEMA_VERSION, at)
     }
 
     @Test fun databaseFilesAreNamedByAHashOfTheProfile() { // SYNC_PROTOCOL.md §11
