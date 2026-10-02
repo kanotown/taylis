@@ -133,6 +133,44 @@ it("wide: 「メッセージ | キャンバス」 in the header; a canvas from a
   expect(document.querySelector(".timeline")?.closest("[inert]")).toBeNull();
 });
 
+it("a narrow header (the thread pane open): the tabs fold into one menu, then pins, files and shortcuts move into ⋯ (2026-10-02)", async () => {
+  let headerWidth = 560;
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return this.tagName === "HEADER" ? ({ width: headerWidth, height: 52, top: 0, left: 0, right: headerWidth, bottom: 52, x: 0, y: 0, toJSON: () => ({}) } as DOMRect) : rect.call(this);
+  });
+  await setup();
+  const fold = () => screen.getByRole("button", { name: "会話の表示: メッセージ" });
+  expect(screen.queryByRole("tablist", { name: "会話の表示" })).toBeNull();
+  expect(screen.getByRole("button", { name: "ピン留め" })).toBeTruthy(); // "tabMenu": the buttons stay
+  fireEvent.keyDown(fold(), { key: "Enter" });
+  await settle();
+  expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent?.replace("✓", ""))).toEqual(["メッセージ", "キャンバス", "予定", "タスク"]);
+  expect(screen.getByRole("menuitemradio", { name: /メッセージ/ }).getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "キャンバス" }));
+  await settle();
+  expect(screen.getByRole("button", { name: "会話の表示: キャンバス" })).toBeTruthy();
+  expect(screen.getByText("この会話にはまだキャンバスがありません")).toBeTruthy();
+
+  // Narrower ("tight"): pins, files, members and the shortcuts button go into ⋯; the star, the bell and ⋯ stay.
+  // (The test's ResizeObserver does nothing, so the header is measured again on a fresh mount.)
+  headerWidth = 420;
+  cleanup();
+  await setup();
+  const header = within(document.querySelector("header")!);
+  expect(header.queryByRole("button", { name: "ピン留め" })).toBeNull();
+  expect(header.queryByRole("button", { name: "ファイル" })).toBeNull();
+  expect(header.queryByRole("button", { name: "メンバー" })).toBeNull();
+  expect(header.queryByRole("button", { name: /キーボードショートカット/ })).toBeNull();
+  expect(header.getByRole("button", { name: "お気に入りに追加" })).toBeTruthy();
+  expect(header.getByRole("button", { name: "通知設定" })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole("button", { name: "チャンネルの操作" }), { key: "Enter" });
+  await settle();
+  const items = screen.getAllByRole("menuitem").map((item) => item.textContent);
+  expect(items.slice(0, 3)).toEqual(["ピン留め", "ファイル", "キーボードショートカット"]);
+  expect(items).toContain("メンバー");
+});
+
 it("phone: 「キャンバス」 in the conversation's tab row; someone else's save shows up while reading", async () => {
   compact = true;
   const { server, alice, channelId } = await setup();

@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -202,9 +203,10 @@ fun HomeScreen(
                     val timesFolded = FoldedSections.TIMES in folded
                     item(key = "header:times") {
                         Box(Modifier.folding(this)) {
-                            // L8: 「フィード」 at the header's end, folded or not (TIMES_FEED.md §7).
+                            // L8: 「フィード」 at the header's end, folded or not (TIMES_FEED.md §7). In the header's
+                            // grey like its title: the primary colour read as "selected" all the time (2026-10-02).
                             SectionHeader("Times", timesFolded, action = {
-                                TextButton(onClick = onTimesFeed) {
+                                TextButton(onClick = onTimesFeed, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)) {
                                     Icon(Icons.Default.DynamicFeed, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
                                     Text("フィード", style = MaterialTheme.typography.labelLarge)

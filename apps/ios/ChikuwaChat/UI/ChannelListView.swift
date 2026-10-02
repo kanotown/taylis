@@ -370,7 +370,9 @@ struct ChannelListView: View {
         .listRowSeparator(.hidden)
     }
 
-    /// L8 (TIMES_FEED.md §7): the Times feed, from the right of the section's title (folded or not).
+    /// L8 (TIMES_FEED.md §7): the Times feed, from the right of the section's title (folded or not). In the header's
+    /// grey like the title beside it: a borderless button took the accent tint and looked selected all the time
+    /// (testers, 2026-10-02).
     private var timesFeedButton: some View {
         Button { selection = TimesFeedView.selectionId } label: {
             HStack(spacing: 4) {
@@ -378,10 +380,11 @@ struct ChannelListView: View {
                 Text("フィード")
             }
             .font(.subheadline)
-                .padding(.top, 6)
-                .contentShape(Rectangle())
+            .foregroundStyle(.secondary)
+            .padding(.top, 6)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .accessibilityLabel("Times フィード")
     }
 
