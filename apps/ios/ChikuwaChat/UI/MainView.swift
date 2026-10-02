@@ -26,8 +26,10 @@ struct MainView: View {
         let parentId: String
     }
 
-    enum Sheet: Identifiable {
+    enum Sheet: Identifiable, Equatable {
         case newDm, newChannel, search, browse, directory, workspaces, newSection, compose
+        /// M78: 「キャンバス」's filter searched in the canvases' bodies (the search's 「キャンバス」 tab).
+        case canvasSearch(SearchParams)
         var id: Int {
             switch self {
             case .newDm: 0
@@ -38,6 +40,7 @@ struct MainView: View {
             case .workspaces: 6
             case .newSection: 7
             case .compose: 8
+            case .canvasSearch: 9
             }
         }
     }
@@ -137,6 +140,7 @@ struct MainView: View {
             case .directory: DirectoryView(controller: controller) { id in land(id) }
             case .newChannel: NewChannelView(controller: controller) { id in land(id) }
             case .search: SearchView(controller: controller)
+            case .canvasSearch(let params): SearchView(controller: controller, initial: params, initialTab: .canvases)
             case .browse: ChannelBrowserView(controller: controller) { id in land(id) }
             case .workspaces: WorkspaceSwitcherSheet(controller: controller)
             case .newSection: SectionFormView(controller: controller, section: nil)
@@ -179,7 +183,7 @@ struct MainView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .chikuwaOpenChannel)) { note in
             if let id = note.userInfo?["id"] as? String {
-                if sheet == .search { sheet = nil } // a conversation opened from a search result's profile or link
+                if sheet == .search || sheet?.isCanvasSearch == true { sheet = nil } // a conversation opened from a search result's profile or link
                 jumpShown = false // …or from the message search of 移動・検索
                 previewMessageId = note.userInfo?["messageId"] as? String
                 land(id, parentId: note.userInfo?["parentId"] as? String)
@@ -382,10 +386,20 @@ struct MainView: View {
             }
         case DraftsView.selectionId:
             DraftsView(controller: controller) { channelId, parentId in show(channelId, parentId: parentId, on: tab) }
+        case CanvasesView.selectionId:
+            // M78: a canvas in its conversation's 「キャンバス」 tab on this stack (Back: the list), or its own sheet for a
+            // conversation not on this device.
+            CanvasesView(controller: controller, onOpen: { canvas in
+                Task { if await controller.openListedCanvas(canvas) { show(canvas.channelId, parentId: nil, on: tab) } }
+            }, onSearch: { params in sheet = .canvasSearch(params) })
         default:
             EmptyView()
         }
     }
+}
+
+private extension MainView.Sheet {
+    var isCanvasSearch: Bool { if case .canvasSearch = self { true } else { false } }
 }
 
 private extension String {
@@ -393,7 +407,7 @@ private extension String {
     var isListId: Bool {
         [DraftsView.selectionId, FilesView.selectionId, MentionsView.selectionId, RemindersView.selectionId,
          SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId, MyTasksView.selectionId,
-         TimesFeedView.selectionId].contains(self)
+         TimesFeedView.selectionId, CanvasesView.selectionId].contains(self)
     }
 }
 

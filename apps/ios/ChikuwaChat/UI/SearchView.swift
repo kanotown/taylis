@@ -216,6 +216,8 @@ struct SearchView: View {
     @Bindable var controller: AppController
     /// M37: a search to run at once (「"語" をメッセージ検索」 or a recent search chosen in 移動・検索).
     var initial: SearchParams? = nil
+    /// M78: the results tab `initial` shows first (the home's 「キャンバス」 searches the canvases' bodies).
+    var initialTab: SearchTab? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var model = SearchModel()
@@ -309,7 +311,10 @@ struct SearchView: View {
             // now and then on a cold start (iOS 27, keyframe animation over a _SwiftUILayerDelegate layer). The start
             // page offers recent searches and quick filters; a tap on the field starts typing.
             recent = RecentSearches.read(key: recentKey)
-            if let initial, model.params == nil, !initial.isEmpty { run(initial, remember: true) }
+            if let initial, model.params == nil, !initial.isEmpty {
+                if let initialTab { model.tab = initialTab }
+                run(initial, remember: true)
+            }
         }
         .onDisappear {
             if let focus = controller.messageFocus, revealed.contains(focus.messageId) { controller.messageFocus = nil }
