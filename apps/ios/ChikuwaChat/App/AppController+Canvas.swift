@@ -32,6 +32,16 @@ extension AppController {
         if navigate { NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": channelId]) }
     }
 
+    /// M77 (CANVAS.md §20.6): an activity row of a canvas that mentions me. The canvas is chosen for its conversation's
+    /// 「キャンバス」 tab (`canvasOpen`), and true says the caller pushes that conversation on the activity tab's own stack
+    /// (M34: what an activity row opens goes there; the push and the notice land on home / DM instead). A conversation
+    /// I am not in: the canvas's own sheet, false.
+    func openActivityCanvas(_ item: ActivityItem) async -> Bool {
+        guard let canvas = item.canvas else { return false }
+        await openCanvas(canvas.canvasId, channelId: canvas.channelId, navigate: false)
+        return canvasOpen == CanvasOpen(canvasId: canvas.canvasId, channelId: canvas.channelId)
+    }
+
     /// canvas.mentioned while the app is open (the engine checked the conversation's level and mute): the push's
     /// words, unless I do not want to be disturbed now or the canvas is on screen already. Tapping it opens the canvas.
     func sayCanvasMention(_ mention: CanvasMentioned) {

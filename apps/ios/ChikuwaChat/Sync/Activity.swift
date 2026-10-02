@@ -13,7 +13,7 @@ protocol ActivityApi: AnyObject {
 enum ActivityRules {
     /// The filters in the order the tab shows them (the GET /activity `filter` values).
     static let filters = ["all", "mentions", "threads", "reactions"]
-    static let kinds: Set<String> = ["mention", "reaction", "thread_reply"]
+    static let kinds: Set<String> = ["mention", "reaction", "thread_reply", "canvas_mention"]
 
     static func filterLabel(_ filter: String) -> String {
         switch filter {
@@ -74,7 +74,7 @@ enum ActivityRules {
     static func append(_ held: [ActivityItem], _ page: [ActivityItem]) -> [ActivityItem] {
         var keys = Set(held.map(\.id))
         var rows = held
-        for item in page where kinds.contains(item.kind) && !keys.contains(item.id) {
+        for item in page where kinds.contains(item.kind) && (item.message != nil || item.canvas != nil) && !keys.contains(item.id) {
             keys.insert(item.id)
             rows.append(item)
         }
@@ -88,6 +88,7 @@ enum ActivityRules {
         switch item.kind {
         case "mention": return (name, " がメンション")
         case "thread_reply": return (name, " がスレッドに返信")
+        case "canvas_mention": return (name, " が「\(canvasTitle(item.canvas))」であなたをメンションしました")
         default:
             let others = max(0, item.actorIds.count - 1)
             return others > 0 ? ("\(name) ほか \(others) 人", "が") : (name, " が")
@@ -100,6 +101,20 @@ enum ActivityRules {
         return item.kind == "reaction" ? "\(who)\(what) \(item.emojis.joined())" : who + what
     }
 
+    /// M77: a canvas's title as the rows say it (an untitled one: 「キャンバス」, as the push).
+    static func canvasTitle(_ canvas: ActivityCanvas?) -> String {
+        let title = canvas?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return title.isEmpty ? "キャンバス" : title
+    }
+
+    /// The row's last line: the message's opening words, or a canvas item's excerpt (already one plain line, the
+    /// server's copy of the line that mentions me).
+    static func excerpt(_ item: ActivityItem, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
+        if let canvas = item.canvas { return canvas.excerpt }
+        guard let message = item.message else { return "" }
+        return excerpt(message, users: users, groups: groups)
+    }
+
     /// The row's message line (MOBILE_POLISH.md X1): Timeline.excerpt — no markdown, one line, mentions as display
     /// names, 「画像を送信しました」 without text — the same for every kind (a reaction's no longer in 「」), as
     /// Android's activity and the search results say it.
@@ -108,9 +123,13 @@ enum ActivityRules {
         return Timeline.excerpt(message.body, attachments: message.attachments, users: users, groups: groups)
     }
 
-    /// The row's second line: the conversation, 「#c のスレッド」 for a reply.
+    /// The row's second line: the conversation, 「#c のスレッド」 for a reply, 「#c のキャンバス」 for a canvas.
     static func whereText(_ item: ActivityItem, conversation: String) -> String {
-        item.kind == "thread_reply" ? "\(conversation) のスレッド" : conversation
+        switch item.kind {
+        case "thread_reply": "\(conversation) のスレッド"
+        case "canvas_mention": "\(conversation) のキャンバス"
+        default: conversation
+        }
     }
 
     /// A new message that is activity of mine moves the badge (the count itself is the server's, fetched again): it

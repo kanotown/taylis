@@ -302,8 +302,14 @@ struct MainView: View {
             ActivityView(controller: controller, onOpenMention: { message in
                 Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: .activity) } }
             }, onOpenItem: { item in
+                // M77: a canvas, in its conversation's 「キャンバス」 tab on this tab's stack (Back: the activity), or its
+                // own sheet for a conversation I am not in.
+                if let canvas = item.canvas {
+                    Task { if await controller.openActivityCanvas(item) { show(canvas.channelId, parentId: nil, on: .activity) } }
+                    return
+                }
                 // M39: the message in its conversation, a reply in its thread, on this tab's stack.
-                let message = item.message
+                guard let message = item.message else { return }
                 Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: .activity) } }
             })
             .navigationDestination(for: MainRoute.self) { route in screen(route, on: .activity) }

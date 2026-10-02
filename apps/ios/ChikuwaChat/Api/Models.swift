@@ -734,46 +734,119 @@ struct BootstrapOut: Codable {
 }
 
 /// M39 (MOBILE_UI.md §6.4 / §7.2): one item of the activity, newest first. A mention of me, the reactions to one message
-/// of mine (who and which emoji, one item per message), or someone's reply in a thread I follow.
+/// of mine (who and which emoji, one item per message), or someone's reply in a thread I follow. M77 (CANVAS.md §20):
+/// a canvas that mentions me (`canvas_mention`, asked for with `include=canvas_mention`), with `canvas` and no message.
 struct ActivityItem: Codable, Equatable, Identifiable {
-    /// "mention" / "reaction" / "thread_reply".
+    /// "mention" / "reaction" / "thread_reply" / "canvas_mention".
     let kind: String
     /// When it happened (a reaction item: its newest reaction); compared with the read position.
     let at: String
-    let message: MessageOut
-    /// Who did it (a mention or a reply: its sender).
+    /// The message (every kind but `canvas_mention`).
+    let message: MessageOut?
+    /// Who did it (a mention or a reply: its sender; a canvas: who saved it).
     let actorIds: [String]
     /// A reaction item's emoji (`:name:` for a custom one).
     var emojis: [String] = []
+    /// A `canvas_mention` item's canvas (M77).
+    var canvas: ActivityCanvas? = nil
 
-    /// One row per kind and message.
-    var id: String { "\(kind):\(message.id)" }
+    /// One row per kind and message; a canvas item is its own (`canvas_mention:<item_id>`).
+    var id: String {
+        if let canvas { return "canvas_mention:\(canvas.itemId)" }
+        return "\(kind):\(message?.id ?? "")"
+    }
 
-    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis }
+    /// The conversation the row is in.
+    var channelId: String? { canvas?.channelId ?? message?.channelId }
 
-    init(kind: String, at: String, message: MessageOut, actorIds: [String], emojis: [String] = []) {
+    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis, canvas }
+
+    init(kind: String, at: String, message: MessageOut?, actorIds: [String], emojis: [String] = [], canvas: ActivityCanvas? = nil) {
         self.kind = kind
         self.at = at
         self.message = message
         self.actorIds = actorIds
         self.emojis = emojis
+        self.canvas = canvas
     }
 
+    /// A canvas item needs its canvas, every other kind its message: an item with neither (a kind of a newer server,
+    /// or a malformed one) fails here, and the list leaves just that item out (ActivityListOut).
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         kind = try c.decode(String.self, forKey: .kind)
         at = try c.decode(String.self, forKey: .at)
-        message = try c.decode(MessageOut.self, forKey: .message)
+        if kind == "canvas_mention" {
+            canvas = try c.decode(ActivityCanvas.self, forKey: .canvas)
+            message = nil
+        } else {
+            message = try c.decode(MessageOut.self, forKey: .message)
+            canvas = nil
+        }
         actorIds = try c.decodeIfPresent([String].self, forKey: .actorIds) ?? []
         emojis = try c.decodeIfPresent([String].self, forKey: .emojis) ?? []
     }
 }
 
-/// GET /activity: a page, the next page's cursor (nil at the end) and my read position.
+/// M77 (CANVAS.md §20.3): a `canvas_mention` item's canvas. `title` is the canvas's title now, `excerpt` one plain line
+/// of the body as it was saved (the line that mentions me).
+struct ActivityCanvas: Codable, Equatable {
+    let itemId: String
+    let canvasId: String
+    let channelId: String
+    var title: String = ""
+    var excerpt: String = ""
+    var revId: String? = nil
+
+    init(itemId: String, canvasId: String, channelId: String, title: String = "", excerpt: String = "", revId: String? = nil) {
+        self.itemId = itemId
+        self.canvasId = canvasId
+        self.channelId = channelId
+        self.title = title
+        self.excerpt = excerpt
+        self.revId = revId
+    }
+
+    private enum CodingKeys: String, CodingKey { case itemId, canvasId, channelId, title, excerpt, revId }
+
+    /// The ids are required (the row opens the canvas); the words read as empty when missing.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        itemId = try c.decode(String.self, forKey: .itemId)
+        canvasId = try c.decode(String.self, forKey: .canvasId)
+        channelId = try c.decode(String.self, forKey: .channelId)
+        title = (try? c.decodeIfPresent(String.self, forKey: .title)) ?? ""
+        excerpt = (try? c.decodeIfPresent(String.self, forKey: .excerpt)) ?? ""
+        revId = try? c.decodeIfPresent(String.self, forKey: .revId)
+    }
+}
+
+/// GET /activity: a page, the next page's cursor (nil at the end) and my read position. M77: the items are read one at
+/// a time; one that does not decode is left out, so a bad item no longer fails the whole list.
 struct ActivityListOut: Codable {
     let items: [ActivityItem]
     let nextCursor: String?
     let readAt: String
+
+    init(items: [ActivityItem], nextCursor: String?, readAt: String) {
+        self.items = items
+        self.nextCursor = nextCursor
+        self.readAt = readAt
+    }
+
+    private enum CodingKeys: String, CodingKey { case items, nextCursor, readAt }
+
+    private struct Lenient: Decodable {
+        let item: ActivityItem?
+        init(from decoder: Decoder) throws { item = try? ActivityItem(from: decoder) }
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        items = try c.decode([Lenient].self, forKey: .items).compactMap(\.item)
+        nextCursor = try c.decodeIfPresent(String.self, forKey: .nextCursor)
+        readAt = try c.decode(String.self, forKey: .readAt)
+    }
 }
 
 /// M39: the activity badge (bootstrap `activity`, GET /activity/summary, PUT /activity/read): the items after my read

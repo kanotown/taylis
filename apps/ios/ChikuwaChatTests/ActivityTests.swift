@@ -51,7 +51,7 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(page.items[0].emojis, ["👍", ":party:"])
         XCTAssertEqual(page.items[2].emojis, []) // absent: none
         XCTAssertEqual(page.items[0].id, "reaction:m1")
-        XCTAssertEqual(page.items[0].message.body, "スライド v2 です")
+        XCTAssertEqual(page.items[0].message?.body, "スライド v2 です")
         XCTAssertEqual(page.nextCursor, "2026-09-30T01:00:00Z")
         XCTAssertEqual(page.readAt, "2026-09-30T00:00:00Z")
 

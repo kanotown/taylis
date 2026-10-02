@@ -657,6 +657,8 @@ final class SyncEngine {
             canvases.applyEvent(frame.event, frame.data)
         case "canvas.mentioned":  // M73 (CANVAS.md §18.1): the push's words while the app is open
             if let mention = try? frame.data.decode(CanvasMentioned.self) { maybeNotifyCanvasMention(mention) }
+            // M77 (CANVAS.md §20.5): it is an activity item too (whatever the conversation's level), counted by the server.
+            scheduleActivityRefresh()
         case "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated":  // M52 (CALENDAR.md §5)
             calendar.applyEvent(frame.event, frame.data)
         case "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done":  // M56 (TASKS.md §4), L9

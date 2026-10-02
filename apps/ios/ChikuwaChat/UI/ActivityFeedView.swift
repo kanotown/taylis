@@ -182,7 +182,7 @@ struct ActivityRowView: View {
     var body: some View {
         let nameOf: (String) -> String = { store.users[$0]?.displayName ?? (store.me?.id == $0 ? store.me?.displayName : nil) ?? "メンバー" }
         let (who, what) = ActivityRules.headline(item, nameOf: nameOf)
-        let conversation = store.channel(item.message.channelId).map { channelTitle($0, store: store) } ?? ""
+        let conversation = item.channelId.flatMap { store.channel($0) }.map { channelTitle($0, store: store) } ?? ""
         let place = conversation.isEmpty ? "" : ActivityRules.whereText(item, conversation: conversation)
         HStack(alignment: .top, spacing: 8) {
             Circle()
@@ -194,7 +194,7 @@ struct ActivityRowView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     HStack(spacing: 3) {
                         (Text(who).fontWeight(.semibold) + Text(what))
-                            .lineLimit(1)
+                            .lineLimit(item.kind == "canvas_mention" ? 2 : 1) // the title in it
                         if item.kind == "reaction" {
                             ForEach(item.emojis, id: \.self) { SectionIcon(controller: controller, emoji: $0, size: 16) }
                         }
@@ -220,12 +220,12 @@ struct ActivityRowView: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    private var excerpt: String { ActivityRules.excerpt(item.message, users: store.users, groups: store.groups) }
+    private var excerpt: String { ActivityRules.excerpt(item, users: store.users, groups: store.groups) }
 
     /// The first actor's picture, two overlapping for several, and the kind's small badge at the corner.
     private func avatars(_ nameOf: (String) -> String) -> some View {
         let actors = Array(item.actorIds.prefix(2))
-        let first = actors.first ?? item.message.senderId
+        let first = actors.first ?? item.message?.senderId ?? ""
         return ZStack(alignment: .bottomTrailing) {
             if actors.count > 1 {
                 ZStack(alignment: .topLeading) {
@@ -243,7 +243,21 @@ struct ActivityRowView: View {
         .frame(width: 40, height: 40)
     }
 
+    @ViewBuilder
     private var kindBadge: some View {
+        if item.kind == "canvas_mention" {
+            // M77: 📝, where a message's mention has its @.
+            Text("📝")
+                .font(.system(size: 10))
+                .frame(width: 18, height: 18)
+                .background(Color(.secondarySystemBackground), in: Circle())
+                .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+        } else {
+            symbolBadge
+        }
+    }
+
+    private var symbolBadge: some View {
         let (symbol, color): (String, Color) = switch item.kind {
         case "mention": ("at", .red)
         case "thread_reply": ("bubble.left.and.bubble.right.fill", .accentColor)
