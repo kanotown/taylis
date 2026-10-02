@@ -1,6 +1,9 @@
 package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.CustomEmojiOut
+import jp.chikuwachat.android.api.CalendarFeedCreated
+import jp.chikuwachat.android.api.CalendarFeedOut
+import jp.chikuwachat.android.sync.CalendarFeedApi
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.api.ScheduledOut
 import jp.chikuwachat.android.api.ApiException
@@ -64,6 +67,10 @@ import kotlinx.serialization.json.put
 
 /** In-process model of the server side of SYNC_PROTOCOL.md (same behaviour as the other clients' fakes). */
 class FakeServer {
+    /** M69: each person's iCal feeds (CALENDAR.md §10.6). */
+    val calendarFeedsOf = mutableMapOf<String, MutableList<CalendarFeedOut>>()
+    private var calendarFeedSeq = 0
+
     /** M12g notification keywords per user; like the server, hits never appear in mentionedUserIds. */
     val keywords = mutableMapOf<String, List<String>>()
     /** M35: users.notification_default per user (absent = "mentions"), in UserMe at bootstrap. */
@@ -125,7 +132,32 @@ class FakeServer {
         }
     }
 
-    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ChannelApi, AiApi {
+    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ChannelApi, AiApi, CalendarFeedApi {
+        // --- M69 iCal feeds (CALENDAR.md §10.3, §10.6): 5 per person, the URL only in the answer that makes one ---
+
+        override suspend fun calendarFeeds(): List<CalendarFeedOut> {
+            maybeFail()
+            return calendarFeedsOf[userId].orEmpty().toList()
+        }
+
+        override suspend fun createCalendarFeed(scope: String): CalendarFeedCreated {
+            maybeFail()
+            if (scope != "all" && scope != "personal") throw ApiException.Api(422, "validation_error", "bad scope")
+            val mine = calendarFeedsOf.getOrPut(userId) { ArrayList() }
+            if (mine.size >= 5) throw ApiException.Api(409, "calendar_feed_limit", "at most 5 feeds")
+            calendarFeedSeq += 1
+            val feed = CalendarFeedOut("feed-$calendarFeedSeq", scope, "2026-10-02T03:00:00Z", null)
+            mine += feed
+            return CalendarFeedCreated(feed, "https://chat.example/api/v1/calendar/ical/token$calendarFeedSeq.ics")
+        }
+
+        override suspend fun deleteCalendarFeed(feedId: String) {
+            maybeFail()
+            val mine = calendarFeedsOf[userId]
+            if (mine == null || mine.none { it.id == feedId }) throw ApiException.Api(404, "calendar_feed_not_found", "not found")
+            mine.removeAll { it.id == feedId }
+        }
+
         // --- M66 AI (docs/AI.md §5) ---
         /** GET /ai/status and GET /ai/runs/{id} calls made. */
         var aiStatusCalls = 0

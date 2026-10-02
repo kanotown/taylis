@@ -7,6 +7,8 @@ enum class BarMenuItem {
     READ_ALL_TIMES, MY_TIMES,
     /** M66 (docs/AI.md §6): 「要約」 (未読 / 直近 1 日 / 直近 7 日) in a conversation, 「このスレッドを要約」 in a thread. */
     SUMMARIZE, SUMMARIZE_THREAD,
+    /** M69 (CALENDAR.md §10.9): the calendar's 「カレンダーを購読 (iCal)」. */
+    CALENDAR_FEEDS,
 }
 
 /**
@@ -23,11 +25,13 @@ object BarMenu {
      * or its details page). `channel`: it is a channel, not a DM. `activityFeed`: the activity tab's feed is on screen.
      * `timesFeed` (L8): the Times feed is; `myTimes`: 「自分の times」 is offered there (I have one, or may make one).
      * `thread` (M66): a joined conversation's thread is on screen; `summaries`: the server takes summaries (GET /ai/status).
+     * `calendar` (M69): the calendar is on screen (and the server has one).
      */
     fun items(
         conversation: Boolean, channel: Boolean, archived: Boolean, activityFeed: Boolean, timesFeed: Boolean = false, myTimes: Boolean = false,
-        thread: Boolean = false, summaries: Boolean = false,
+        thread: Boolean = false, summaries: Boolean = false, calendar: Boolean = false,
     ): List<BarMenuItem> = when {
+        calendar -> listOf(BarMenuItem.CALENDAR_FEEDS)
         conversation -> buildList {
             add(BarMenuItem.FAVORITE)
             add(BarMenuItem.NOTIFICATIONS)

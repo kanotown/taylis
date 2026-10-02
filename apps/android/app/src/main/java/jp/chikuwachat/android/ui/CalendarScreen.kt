@@ -300,10 +300,15 @@ private fun DayHeader(day: LocalDate, today: LocalDate) {
 private fun EventRow(event: CalendarEventOut, day: LocalDate, onOpen: (CalendarEventOut) -> Unit, showCalendar: Boolean) {
     val calendar = event.channelName?.let { "#$it" } ?: "自分"
     val time = CalendarDates.timeOnDay(event, day)
+    // M69: a recurring event's occurrence says so, with its rule in words (「🔁 毎週 火曜日」).
+    val repeat = remember(event) { CalendarDates.repeatLine(event) }
     Row(
         Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = "開く") { onOpen(event) }
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .semantics(mergeDescendants = true) { contentDescription = "$time ${event.title}、$calendar" + (event.location?.let { "、$it" } ?: "") },
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$time ${event.title}、$calendar" + (event.location?.let { "、$it" } ?: "") +
+                    (repeat?.let { "、繰り返し: " + it.removePrefix("🔁 ") } ?: "")
+            },
         verticalAlignment = Alignment.Top,
     ) {
         Text(time, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(92.dp).padding(top = 2.dp))
@@ -322,6 +327,7 @@ private fun EventRow(event: CalendarEventOut, day: LocalDate, onOpen: (CalendarE
                     }
                 }
             }
+            repeat?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }

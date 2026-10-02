@@ -1,6 +1,10 @@
 package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,20 +80,25 @@ val EventDraftSaver = listSaver<EventDraft, String>(
     save = { draft ->
         listOf(
             draft.title, draft.allDay.toString(), draft.startDay.toString(), draft.startTime.toString(), draft.endDay.toString(), draft.endTime.toString(),
-            draft.calendar ?: "", draft.location, draft.description, draft.alarm?.toString() ?: "",
+            draft.calendar ?: "", draft.location, draft.description, draft.alarm?.toString() ?: "", CalendarRecurrence.save(draft.repeat),
         )
     },
     restore = { fields ->
+        val start = LocalDate.parse(fields[2])
         EventDraft(
-            title = fields[0], allDay = fields[1].toBoolean(), startDay = LocalDate.parse(fields[2]), startTime = LocalTime.parse(fields[3]),
+            title = fields[0], allDay = fields[1].toBoolean(), startDay = start, startTime = LocalTime.parse(fields[3]),
             endDay = LocalDate.parse(fields[4]), endTime = LocalTime.parse(fields[5]), calendar = fields[6].ifEmpty { null },
             location = fields[7], description = fields[8], alarm = fields[9].toIntOrNull(),
+            repeat = fields.getOrNull(10)?.let { CalendarRecurrence.restore(it, start) } ?: CalendarRecurrence.noRepeat(start),
         )
     },
 )
 
-/** Which picker is up over the form. */
-private enum class FormPicker { START_DAY, START_TIME, END_DAY, END_TIME }
+/** Which picker is up over the form (UNTIL: 「繰り返し」's last day). */
+private enum class FormPicker { START_DAY, START_TIME, END_DAY, END_TIME, UNTIL }
+
+/** M69: saving or deleting an occurrence of a recurring event asks which ones (the scopes offered). */
+private data class ScopeAsk(val deleting: Boolean, val scopes: List<OccurrenceScope>)
 
 /**
  * M52 (CALENDAR.md §7, phone column): an event's full-screen form. New: 題名, 終日, 開始 / 終了 (Material date and time
@@ -111,6 +120,8 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
     // The idempotency key of this form's create (CALENDAR.md §9 4.): a retry after a lost answer returns the same event.
     val clientId = rememberSaveable(form) { UUID.randomUUID().toString() }
     val editable = event == null || event.canEdit
+    val recurring = event?.recurring == true
+    var askScope by remember(form) { mutableStateOf<ScopeAsk?>(null) }
     val calendars = remember(form) { controller.writableCalendars() }
     val alarmChanged = event?.alarm?.minutesBefore != draft.alarm
     fun change(next: EventDraft) {
@@ -118,23 +129,12 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
         error = null
     }
 
-    fun save() {
-        if (hub == null || busy) return
-        val problem = if (editable) CalendarDates.draftProblem(draft) else null
-        if (problem != null) {
-            error = problem
-            return
-        }
+    /** Runs a change, closing the form when it went through and saying why when not. */
+    fun attempt(block: suspend () -> Unit) {
         busy = true
         controller.scope.launch {
             try {
-                if (event == null) {
-                    hub.create(CalendarDates.draftToCreate(draft, ZoneId.systemDefault().id, clientId))
-                } else {
-                    if (editable) hub.update(event.id, CalendarDates.draftToPatch(draft))
-                    // The server remaps the alarm when the event turns all-day (or back); what was chosen here wins.
-                    if (alarmChanged || (editable && draft.allDay != event.allDay && draft.alarm != null)) hub.setAlarm(event.id, draft.alarm)
-                }
+                block()
                 onDismiss()
             } catch (e: CancellationException) {
                 throw e
@@ -146,19 +146,45 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
         }
     }
 
+    fun save() {
+        if (hub == null || busy) return
+        val problem = if (editable) CalendarDates.draftProblem(draft) else null
+        if (problem != null) {
+            error = problem
+            return
+        }
+        // M69: a change to an occurrence of a series (not only my alarm) asks which occurrences it is for.
+        if (event != null && recurring && editable && CalendarDates.occurrenceChanged(draft, initial, event.rrule)) {
+            askScope = ScopeAsk(deleting = false, scopes = CalendarDates.scopesFor(false, draft, event))
+            return
+        }
+        attempt {
+            if (event == null) {
+                hub.create(CalendarDates.draftToCreate(draft, ZoneId.systemDefault().id, clientId))
+            } else {
+                if (editable && !recurring) hub.update(event.id, CalendarDates.draftToPatch(draft, ZoneId.systemDefault().id))
+                // The server remaps the alarm when the event turns all-day (or back); what was chosen here wins. A series'
+                // alarm is the series' (every occurrence).
+                if (alarmChanged || (editable && draft.allDay != event.allDay && draft.alarm != null)) hub.setAlarm(event.series, draft.alarm)
+            }
+        }
+    }
+
     fun remove() {
         if (hub == null || event == null || busy) return
-        busy = true
-        controller.scope.launch {
-            try {
-                hub.remove(event.id)
-                onDismiss()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = controller.describe(e)
-            } finally {
-                busy = false
+        attempt { hub.remove(event.id) }
+    }
+
+    /** M69: a recurring event's occurrence saved or deleted, for the occurrences chosen. */
+    fun applyScope(ask: ScopeAsk, scope: OccurrenceScope) {
+        if (hub == null || event == null || busy) return
+        askScope = null
+        attempt {
+            if (ask.deleting) {
+                hub.removeOccurrence(event.series, event.occurrenceKey, scope)
+            } else {
+                val result = hub.updateOccurrence(event.series, event.occurrenceKey, CalendarDates.occurrenceUpdate(scope, draft, initial, event.rrule))
+                if (alarmChanged) hub.setAlarm(result.series, draft.alarm)
             }
         }
     }
@@ -210,6 +236,7 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
                         }
                         WhenRow("開始", draft.startDay, draft.startTime.takeIf { !draft.allDay }, onDay = { picker = FormPicker.START_DAY }, onTime = { picker = FormPicker.START_TIME })
                         WhenRow("終了", draft.endDay, draft.endTime.takeIf { !draft.allDay }, onDay = { picker = FormPicker.END_DAY }, onTime = { picker = FormPicker.END_TIME })
+                        RepeatSection(draft.repeat, draft.startDay, onChange = { change(draft.copy(repeat = it)) }, onPickUntil = { picker = FormPicker.UNTIL })
                         val calendarName = calendarName(controller, draft.calendar, event?.channelName)
                         if (event == null) {
                             ChoiceField(
@@ -245,7 +272,9 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
                     if (event != null && editable) {
                         Spacer(Modifier.size(8.dp))
-                        TextButton(enabled = !busy, onClick = { confirmDelete = true }) {
+                        TextButton(enabled = !busy, onClick = {
+                            if (recurring) askScope = ScopeAsk(deleting = true, scopes = OccurrenceScope.entries) else confirmDelete = true
+                        }) {
                             Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                             Text(" 予定を削除", color = MaterialTheme.colorScheme.error)
                         }
@@ -254,16 +283,27 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
             }
         }
         when (picker) {
-            FormPicker.START_DAY, FormPicker.END_DAY -> {
-                val start = picker == FormPicker.START_DAY
-                val state = rememberDatePickerState(initialSelectedDateMillis = Schedule.pickerMillis(if (start) draft.startDay else draft.endDay))
+            FormPicker.START_DAY, FormPicker.END_DAY, FormPicker.UNTIL -> {
+                val which = picker
+                val shown = when (which) {
+                    FormPicker.START_DAY -> draft.startDay
+                    FormPicker.UNTIL -> draft.repeat.until ?: draft.startDay
+                    else -> draft.endDay
+                }
+                val state = rememberDatePickerState(initialSelectedDateMillis = Schedule.pickerMillis(shown))
                 DatePickerDialog(
                     onDismissRequest = { picker = null },
                     confirmButton = {
                         TextButton(enabled = state.selectedDateMillis != null, onClick = {
                             state.selectedDateMillis?.let { millis ->
                                 val day = Schedule.pickerDate(millis)
-                                change(if (start) CalendarDates.withStart(draft, day) else draft.copy(endDay = day))
+                                change(
+                                    when (which) {
+                                        FormPicker.START_DAY -> CalendarDates.withStart(draft, day)
+                                        FormPicker.UNTIL -> draft.copy(repeat = draft.repeat.copy(until = day))
+                                        else -> draft.copy(endDay = day)
+                                    },
+                                )
                             }
                             picker = null
                         }) { Text("決定") }
@@ -295,7 +335,130 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
                 dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("キャンセル") } },
             )
         }
+        askScope?.let { ask ->
+            // M69 (CALENDAR.md §10.7): 「この予定」「これ以降すべて」「すべての予定」 (「この予定」 only when the change fits one occurrence).
+            AlertDialog(
+                onDismissRequest = { askScope = null },
+                title = { Text(if (ask.deleting) "繰り返しの予定の削除" else "繰り返しの予定の変更") },
+                text = {
+                    Column(Modifier.fillMaxWidth()) {
+                        ask.scopes.forEach { scope ->
+                            TextButton(onClick = { applyScope(ask, scope) }, modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    scope.label, modifier = Modifier.fillMaxWidth(),
+                                    color = if (ask.deleting) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { askScope = null }) { Text("キャンセル") } },
+            )
+        }
     }
+}
+
+private val REPEAT_UNITS = RepeatFreq.entries
+
+/**
+ * M69 (CALENDAR.md §10.7): 「繰り返し」: しない / 毎日 / 毎週 (曜日) / 毎月 (日付・第 N 曜日・月末・最終 X 曜日) / 毎年 /
+ * カスタム (間隔), 終了 (なし / 日付 / 回数) whenever it repeats, and the rule in words under it.
+ */
+@Composable
+private fun RepeatSection(repeat: RepeatDraft, start: LocalDate, onChange: (RepeatDraft) -> Unit, onPickUntil: () -> Unit) {
+    val freq = CalendarRecurrence.freq(repeat)
+    val rrule = CalendarRecurrence.repeatToRrule(repeat, start)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ChoiceField(
+            "繰り返し", repeat.kind.label, options = RepeatKind.entries.map { it to it.label },
+            onPick = { kind ->
+                var next = repeat.copy(kind = kind)
+                if (kind == RepeatKind.CUSTOM && repeat.kind != RepeatKind.CUSTOM) next = next.copy(freq = freq ?: RepeatFreq.WEEKLY)
+                if (CalendarRecurrence.freq(next) == RepeatFreq.WEEKLY && next.weekdays.isEmpty()) next = next.copy(weekdays = CalendarRecurrence.noRepeat(start).weekdays)
+                onChange(next)
+            },
+        )
+        if (repeat.kind == RepeatKind.CUSTOM) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NumberField(repeat.interval, label = "間隔", onValue = { onChange(repeat.copy(interval = it)) })
+                Box(Modifier.width(120.dp)) {
+                    ChoiceField("単位", repeat.freq.label, options = REPEAT_UNITS.map { it to it.label }, onPick = { unit ->
+                        var next = repeat.copy(freq = unit)
+                        if (unit == RepeatFreq.WEEKLY && next.weekdays.isEmpty()) next = next.copy(weekdays = CalendarRecurrence.noRepeat(start).weekdays)
+                        onChange(next)
+                    })
+                }
+                Text("ごと", style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+        if (freq == RepeatFreq.WEEKLY) {
+            Row(Modifier.fillMaxWidth().semantics { contentDescription = "曜日" }, horizontalArrangement = Arrangement.SpaceBetween) {
+                CalendarRecurrence.WEEKDAY_NAMES.forEachIndexed { day, name ->
+                    val on = day in repeat.weekdays
+                    Box(
+                        Modifier.size(40.dp)
+                            .background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
+                            .border(1.dp, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape)
+                            .toggleable(value = on, role = Role.Checkbox, onValueChange = { checked ->
+                                onChange(repeat.copy(weekdays = if (checked) repeat.weekdays + day else repeat.weekdays - day))
+                            })
+                            .semantics { contentDescription = "${name}曜日" },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(name, color = if (on) MaterialTheme.colorScheme.onPrimary else weekdayColor(day) ?: MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+            }
+        }
+        if (freq == RepeatFreq.MONTHLY) {
+            val choices = CalendarRecurrence.monthlyChoices(start)
+            val current = choices.firstOrNull { it.value == repeat.monthly }?.label ?: CalendarRecurrence.describeRrule(rrule, start)
+            ChoiceField("毎月の日", current, options = choices.map { it.value to it.label }, onPick = { onChange(repeat.copy(monthly = it)) })
+        }
+        if (repeat.kind != RepeatKind.NONE) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.width(120.dp)) {
+                    ChoiceField("終了", repeat.end.label, options = RepeatEnd.entries.map { it to it.label }, onPick = { end ->
+                        // A last day to start from: a month after the start (the picker changes it).
+                        onChange(repeat.copy(end = end, until = repeat.until ?: if (end == RepeatEnd.UNTIL) start.plusMonths(1) else null))
+                    })
+                }
+                when (repeat.end) {
+                    RepeatEnd.UNTIL -> OutlinedButton(onClick = onPickUntil, modifier = Modifier.weight(1f).padding(top = 20.dp)) {
+                        Text(repeat.until?.let { CalendarDates.dayLabel(it) + " まで" } ?: "終了日", maxLines = 1)
+                    }
+                    RepeatEnd.COUNT -> Row(Modifier.padding(top = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                        NumberField(repeat.count, label = "回数", onValue = { onChange(repeat.copy(count = it)) })
+                        Text(" 回", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    RepeatEnd.NEVER -> Unit
+                }
+            }
+        }
+        if (rrule != null) {
+            Text(
+                "🔁 " + CalendarRecurrence.describeRrule(rrule, start),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** A small number field (間隔, 回数): what cannot be read as a number is 0, which the form's check refuses. */
+@Composable
+private fun NumberField(value: Int, label: String, onValue: (Int) -> Unit) {
+    var text by remember { mutableStateOf(value.toString()) }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { typed ->
+            text = typed.filter { it.isDigit() }.take(3)
+            onValue(text.toIntOrNull() ?: 0)
+        },
+        label = { Text(label) }, singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.width(88.dp),
+    )
 }
 
 /** The colour dot of my own calendar in [ChoiceField]. */
@@ -344,6 +507,7 @@ private fun ReadOnlyEvent(controller: AppController, event: jp.chikuwachat.andro
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SelectionContainer { Text(event.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold) }
         Text(CalendarDates.eventWhen(event), style = MaterialTheme.typography.bodyLarge)
+        CalendarDates.repeatLine(event)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(10.dp).background(Color(CalendarDates.channelColor(event.channelId)), CircleShape))
             Spacer(Modifier.width(8.dp))

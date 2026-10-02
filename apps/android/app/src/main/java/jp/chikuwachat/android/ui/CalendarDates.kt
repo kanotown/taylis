@@ -5,6 +5,10 @@ import jp.chikuwachat.android.api.CalendarEventOut
 import jp.chikuwachat.android.api.CalendarEventUpdate
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.sync.ChannelState
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import java.text.Collator
 import java.time.Duration
 import java.time.Instant
@@ -276,6 +280,7 @@ object CalendarDates {
             endDay = day,
             endTime = if (hour == 23) LocalTime.of(23, 59) else LocalTime.of(hour + 1, 0),
             calendar = calendar,
+            repeat = CalendarRecurrence.noRepeat(day),
         )
     }
 
@@ -292,15 +297,17 @@ object CalendarDates {
             description = event.description ?: "",
             alarm = event.alarm?.minutesBefore,
         )
+        // M69: 「繰り返し」 is the series' rule, read on the opened occurrence's day (as the desktop's draftFromEvent).
         if (event.allDay) {
             val (first, last) = eventDays(event)
-            return common.copy(startDay = first, endDay = last)
+            return common.copy(startDay = first, endDay = last, repeat = CalendarRecurrence.rruleToRepeat(event.rrule, first))
         }
         val start = local(event.startsAt!!)
         val end = local(event.endsAt!!)
         return common.copy(
             startDay = start.toLocalDate(), startTime = start.toLocalTime().truncatedTo(ChronoUnit.MINUTES),
             endDay = end.toLocalDate(), endTime = end.toLocalTime().truncatedTo(ChronoUnit.MINUTES),
+            repeat = CalendarRecurrence.rruleToRepeat(event.rrule, start.toLocalDate()),
         )
     }
 
@@ -313,6 +320,7 @@ object CalendarDates {
         if (title.length > MAX_TITLE) return "題名は $MAX_TITLE 文字までです"
         if (draft.location.trim().length > MAX_LOCATION) return "場所は $MAX_LOCATION 文字までです"
         if (draft.description.trim().length > MAX_DESCRIPTION) return "説明は $MAX_DESCRIPTION 文字までです"
+        CalendarRecurrence.repeatProblem(draft.repeat, draft.startDay)?.let { return it }
         if (draft.allDay) {
             if (draft.endDay.isBefore(draft.startDay)) return "終了日は開始日より後にしてください"
             if (ChronoUnit.DAYS.between(draft.startDay, draft.endDay) >= MAX_ALL_DAY_DAYS) return "終日の予定は $MAX_ALL_DAY_DAYS 日までです"
@@ -327,6 +335,12 @@ object CalendarDates {
 
     /** Moving the start carries the end along (the event keeps its length). */
     fun withStart(draft: EventDraft, day: LocalDate, time: LocalTime = draft.startTime): EventDraft {
+        // M69: before a rule is chosen, 毎週's weekday follows the start (it is the start's weekday by default).
+        val moved = if (draft.repeat.kind == RepeatKind.NONE) draft.copy(repeat = draft.repeat.copy(weekdays = CalendarRecurrence.noRepeat(day).weekdays)) else draft
+        return movedStart(moved, day, time)
+    }
+
+    private fun movedStart(draft: EventDraft, day: LocalDate, time: LocalTime): EventDraft {
         if (draft.allDay) {
             val length = maxOf(0L, ChronoUnit.DAYS.between(draft.startDay, draft.endDay))
             return draft.copy(startDay = day, endDay = day.plusDays(length))
@@ -362,8 +376,61 @@ object CalendarDates {
             alarmMinutes = draft.alarm,
             tz = tz,
             clientEventId = clientEventId,
+            rrule = CalendarRecurrence.repeatToRrule(draft.repeat, draft.startDay),
         )
     }
+
+    /**
+     * M69: what the form changed against the event as it was opened, and only that (an occurrence's 「この予定」 must not
+     * mark the fields it left alone as its own, CALENDAR.md §10.8). The time goes whole when any of it changed; an emptied
+     * 場所 / 説明 goes as null. The desktop's draftChanges.
+     */
+    fun draftChanges(draft: EventDraft, before: EventDraft): JsonObject = buildJsonObject {
+        if (draft.title.trim() != before.title.trim()) put("title", JsonPrimitive(draft.title.trim()))
+        if (draft.location.trim() != before.location.trim()) put("location", draft.location.trim().ifEmpty { null }?.let { JsonPrimitive(it) } ?: JsonNull)
+        if (draft.description.trim() != before.description.trim()) put("description", draft.description.trim().ifEmpty { null }?.let { JsonPrimitive(it) } ?: JsonNull)
+        val now = draftToPatch(draft)
+        val then = draftToPatch(before)
+        if (now.allDay != then.allDay || now.startsAt != then.startsAt || now.endsAt != then.endsAt || now.startDate != then.startDate || now.endDate != then.endDate) {
+            put("all_day", JsonPrimitive(now.allDay))
+            put("starts_at", now.startsAt?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("ends_at", now.endsAt?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("start_date", now.startDate?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("end_date", now.endDate?.let { JsonPrimitive(it) } ?: JsonNull)
+        }
+    }
+
+    /**
+     * PATCH /calendar/events/{series_id}/occurrences/{occurrence_start}: the scope, what changed, and (「これ以降」 /
+     * 「すべて」 only) the rule when the picker changed it (null: no longer repeating). The desktop's applyScope.
+     */
+    fun occurrenceUpdate(scope: OccurrenceScope, draft: EventDraft, opened: EventDraft, rrule: String?): JsonObject = buildJsonObject {
+        put("scope", JsonPrimitive(scope.wire))
+        draftChanges(draft, opened).forEach { (key, value) -> put(key, value) }
+        if (scope != OccurrenceScope.THIS && CalendarRecurrence.ruleChanged(draft.repeat, draft.startDay, rrule)) {
+            put("rrule", CalendarRecurrence.repeatToRrule(draft.repeat, draft.startDay)?.let { JsonPrimitive(it) } ?: JsonNull)
+        }
+    }
+
+    /** Whether saving a recurring event's occurrence changes anything but my alarm (then the scope is asked). */
+    fun occurrenceChanged(draft: EventDraft, opened: EventDraft, rrule: String?): Boolean =
+        draftChanges(draft, opened).isNotEmpty() || CalendarRecurrence.ruleChanged(draft.repeat, draft.startDay, rrule)
+
+    /** 「この予定」 is offered only when the change fits one occurrence (not its rule, not all-day ↔ timed). */
+    fun scopesFor(deleting: Boolean, draft: EventDraft, event: CalendarEventOut): List<OccurrenceScope> {
+        val single = deleting || (!CalendarRecurrence.ruleChanged(draft.repeat, draft.startDay, event.rrule) && draft.allDay == event.allDay)
+        return OccurrenceScope.entries.filter { single || it != OccurrenceScope.THIS }
+    }
+
+    /** A one-off event's PATCH: the whole form, and the rule (with its zone) when the picker makes it recurring. */
+    fun draftToPatch(draft: EventDraft, tz: String): CalendarEventUpdate {
+        val rrule = CalendarRecurrence.repeatToRrule(draft.repeat, draft.startDay)
+        return draftToPatch(draft).copy(rrule = rrule, tz = rrule?.let { tz })
+    }
+
+    /** 🔁 and the rule in words for an occurrence (null: a one-off event). */
+    fun repeatLine(event: CalendarEventOut): String? =
+        if (!event.recurring) null else "🔁 " + CalendarRecurrence.describeRrule(event.rrule, eventDays(event).first)
 
     /** PATCH /calendar/events/{id}: the whole form (its calendar cannot move). */
     fun draftToPatch(draft: EventDraft): CalendarEventUpdate {
@@ -418,4 +485,6 @@ data class EventDraft(
     val location: String = "",
     val description: String = "",
     val alarm: Int? = null,
+    /** M69: 「繰り返し」 (the rule of the series an occurrence belongs to). */
+    val repeat: RepeatDraft = RepeatDraft(),
 )

@@ -231,6 +231,15 @@ class AppController(private val app: Application) {
     var pendingEvent by mutableStateOf<PendingEvent?>(null)
     /** M52: the event form on screen (a row tapped, 「予定を追加」, an alarm); kept here so a rotation keeps it open. */
     var calendarForm by mutableStateOf<jp.chikuwachat.android.ui.CalendarForm?>(null)
+    /**
+     * M69: 「カレンダーを購読 (iCal)」 on screen (the calendar's ⋮), null when closed; kept here so a rotation keeps it open
+     * and keeps the URL just made (shown once).
+     */
+    var calendarFeeds by mutableStateOf<jp.chikuwachat.android.sync.CalendarFeeds?>(null)
+
+    fun openCalendarFeeds() {
+        calendarFeeds = jp.chikuwachat.android.sync.CalendarFeeds(api)
+    }
     /** M56: a task to open once the main screen sees it (a tapped notification): its channel (null: a personal one) and id. */
     data class PendingTask(val channelId: String?, val taskId: String)
     var pendingTask by mutableStateOf<PendingTask?>(null)
@@ -503,6 +512,7 @@ class AppController(private val app: Application) {
         pendingCanvas = null
         pendingEvent = null
         calendarForm = null
+        calendarFeeds = null
         pendingTask = null
         taskForm = null
         linkPreviews.clear()
@@ -948,7 +958,7 @@ class AppController(private val app: Application) {
         engine.calendar.onAlarm = { event ->
             val text = CalendarDates.alarmText(event)
             notice = "📅 $text"
-            if (!dndActive(store)) notify(workspace(), event.channelId, "予定", text, key = "calendar:${event.id}", eventId = event.id)
+            if (!dndActive(store)) notify(workspace(), event.channelId, "予定", text, key = "calendar:${event.series}", eventId = event.series)
         }
         // M56: task.assigned / task.due while the app is open (the server's push is not shown then), worded like that push;
         // not with 「タスク (割り当て・期限)」 off (the server sends the event either way, TASKS.md §8).

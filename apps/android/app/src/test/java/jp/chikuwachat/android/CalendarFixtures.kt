@@ -21,6 +21,14 @@ object CalendarFixtures {
         )
     }
 
+    /** M69: an occurrence of a series as GET /calendar/events expands it (the first one has the series' id). */
+    fun occurrence(
+        title: String, startsAt: String, endsAt: String, series: String, rrule: String = "FREQ=WEEKLY;BYDAY=MO", first: Boolean = false,
+        channelId: String? = null, alarm: jp.chikuwachat.android.api.CalendarAlarmOut? = null,
+    ): CalendarEventOut = timed(title, startsAt, endsAt, id = if (first) series else "$series@$startsAt", channelId = channelId, alarm = alarm).copy(
+        seriesId = series, occurrenceStart = startsAt, recurring = true, rrule = rrule, tz = "Asia/Tokyo",
+    )
+
     fun allDay(title: String, start: String, end: String = start, id: String? = null, channelId: String? = null): CalendarEventOut {
         n += 1
         return CalendarEventOut(

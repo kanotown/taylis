@@ -11,9 +11,12 @@ import kotlinx.serialization.json.buildJsonObject
  * CalendarEventOut / CalendarAlarmOut / CalendarEventCreate / CalendarEventUpdate and ws-events.json's calendar.* data.
  */
 
-/** My alarm on an event (§2, §6). `status`: "pending" | "fired" | "cancelled". */
+/**
+ * My alarm on an event (§2, §6). `status`: "pending" | "fired" | "cancelled". M69 (§10.4): on a series it is the series'
+ * (one per person); `occurrence_start` is the occurrence it is for (null: a one-off event).
+ */
 @Serializable
-data class CalendarAlarmOut(val minutesBefore: Int, val fireAt: String, val status: String = "pending")
+data class CalendarAlarmOut(val minutesBefore: Int, val fireAt: String, val status: String = "pending", val occurrenceStart: String? = null)
 
 /**
  * An event as I see it. Timed events carry `starts_at` / `ends_at` (instants), all-day ones `start_date` / `end_date`
@@ -38,7 +41,21 @@ data class CalendarEventOut(
     val updatedAt: String = "",
     val canEdit: Boolean = false,
     val alarm: CalendarAlarmOut? = null,
-)
+    /** M69 (CALENDAR.md §10.3): the series' (parent's) id; a one-off event's own. Absent from a server before M68. */
+    val seriesId: String? = null,
+    /** The occurrence's key: its original start (`…Z` for a timed event, the date for an all-day one); a one-off event's start. */
+    val occurrenceStart: String? = null,
+    val recurring: Boolean = false,
+    /** The series' rule and its wall-clock zone (null for a one-off event). */
+    val rrule: String? = null,
+    val tz: String? = null,
+) {
+    /** The series this entry belongs to (a one-off event is its own). */
+    val series: String get() = seriesId ?: id
+
+    /** The occurrence's key for the occurrence endpoints (a server always sends it for a recurring event). */
+    val occurrenceKey: String get() = occurrenceStart ?: (if (allDay) startDate else startsAt) ?: ""
+}
 
 /** calendar.event.updated: the event as everyone sees it, and who may change it (my `can_edit` is whether I am among them). */
 @Serializable
@@ -67,6 +84,8 @@ data class CalendarEventCreate(
     val alarmMinutes: Int? = null,
     val tz: String? = null,
     val clientEventId: String? = null,
+    /** M69: the rule (CALENDAR.md §10.1); null (left out): a one-off event. */
+    val rrule: String? = null,
 )
 
 /**
@@ -82,6 +101,9 @@ data class CalendarEventUpdate(
     val endDate: String?,
     val location: String?,
     val description: String?,
+    /** M69: a one-off event made recurring (`tz`: the rule's zone); null leaves it one-off (not sent). */
+    val rrule: String? = null,
+    val tz: String? = null,
 ) {
     fun toJson(): JsonObject = buildJsonObject {
         put("title", JsonPrimitive(title))
@@ -92,5 +114,17 @@ data class CalendarEventUpdate(
         put("end_date", endDate?.let { JsonPrimitive(it) } ?: JsonNull)
         put("location", location?.let { JsonPrimitive(it) } ?: JsonNull)
         put("description", description?.let { JsonPrimitive(it) } ?: JsonNull)
+        rrule?.let { rule ->
+            put("rrule", JsonPrimitive(rule))
+            tz?.let { put("tz", JsonPrimitive(it)) }
+        }
     }
 }
+
+/** M69 (CALENDAR.md §10.6): a private iCal feed, without its token. `scope`: "all" | "personal". */
+@Serializable
+data class CalendarFeedOut(val id: String, val scope: String = "all", val createdAt: String = "", val lastUsedAt: String? = null)
+
+/** POST /calendar/ical-feeds: the feed and its URL (in this answer only: the server keeps a hash). */
+@Serializable
+data class CalendarFeedCreated(val feed: CalendarFeedOut, val url: String)

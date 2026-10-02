@@ -2,6 +2,9 @@ package jp.chikuwachat.android.api
 
 import jp.chikuwachat.android.sync.ActivityApi
 import jp.chikuwachat.android.sync.CalendarApi
+import jp.chikuwachat.android.sync.CalendarFeedApi
+import jp.chikuwachat.android.ui.CalendarRecurrence
+import jp.chikuwachat.android.ui.OccurrenceScope
 import jp.chikuwachat.android.sync.TaskApi
 import jp.chikuwachat.android.sync.AiApi
 import jp.chikuwachat.android.sync.CanvasApi
@@ -64,7 +67,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, ChannelApi, CalendarApi, TaskApi, AiApi {
+) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -736,6 +739,24 @@ class ApiClient(
 
     override suspend fun clearCalendarAlarm(eventId: String) {
         requestRaw("DELETE", "/api/v1/calendar/events/$eventId/alarm", null, auth = true, retry401 = true)
+    }
+
+    // --- recurring events and iCal feeds (CALENDAR.md §10, M69) -----------------------------------
+
+    override suspend fun updateCalendarOccurrence(seriesId: String, occurrenceStart: String, body: JsonObject): CalendarEventOut =
+        request("PATCH", CalendarRecurrence.occurrencePath(seriesId, occurrenceStart), body)
+
+    override suspend fun deleteCalendarOccurrence(seriesId: String, occurrenceStart: String, scope: OccurrenceScope) {
+        requestRaw("DELETE", CalendarRecurrence.occurrencePath(seriesId, occurrenceStart, scope), null, auth = true, retry401 = true)
+    }
+
+    override suspend fun calendarFeeds(): List<CalendarFeedOut> = request("GET", "/api/v1/calendar/ical-feeds")
+
+    override suspend fun createCalendarFeed(scope: String): CalendarFeedCreated =
+        request("POST", "/api/v1/calendar/ical-feeds", buildJsonObject { put("scope", scope) })
+
+    override suspend fun deleteCalendarFeed(feedId: String) {
+        requestRaw("DELETE", "/api/v1/calendar/ical-feeds/$feedId", null, auth = true, retry401 = true)
     }
 
     // --- tasks (TASKS.md §3, M56) ---------------------------------------------------------------

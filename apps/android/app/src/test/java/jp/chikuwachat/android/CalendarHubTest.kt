@@ -1,6 +1,7 @@
 package jp.chikuwachat.android
 
 import jp.chikuwachat.android.CalendarFixtures.allDay
+import jp.chikuwachat.android.CalendarFixtures.occurrence
 import jp.chikuwachat.android.CalendarFixtures.timed
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.CalendarAlarmOut
@@ -11,6 +12,7 @@ import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.sync.CalendarApi
 import jp.chikuwachat.android.sync.CalendarHub
 import jp.chikuwachat.android.sync.CalendarWindowState
+import jp.chikuwachat.android.ui.OccurrenceScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,7 +61,9 @@ class CalendarHubTest {
 
         override suspend fun createCalendarEvent(body: CalendarEventCreate): CalendarEventOut {
             calls += "create ${body.clientEventId}"
-            return timed(body.title, body.startsAt!!, body.endsAt!!, id = "new", channelId = body.channelId)
+            val made = timed(body.title, body.startsAt!!, body.endsAt!!, id = "new", channelId = body.channelId)
+            // M69: with a rule, the answer is the series' first occurrence.
+            return if (body.rrule == null) made else made.copy(seriesId = "new", occurrenceStart = body.startsAt, recurring = true, rrule = body.rrule)
         }
 
         override suspend fun updateCalendarEvent(eventId: String, patch: CalendarEventUpdate): CalendarEventOut {
@@ -78,6 +82,18 @@ class CalendarHubTest {
 
         override suspend fun clearCalendarAlarm(eventId: String) {
             calls += "clear $eventId"
+        }
+
+        /** M69: what PATCH …/occurrences/… answers (else the series' first occurrence held). */
+        var occurrenceAnswer: CalendarEventOut? = null
+
+        override suspend fun updateCalendarOccurrence(seriesId: String, occurrenceStart: String, body: JsonObject): CalendarEventOut {
+            calls += "occurrence $seriesId $occurrenceStart $body"
+            return occurrenceAnswer ?: rows.first { it.series == seriesId }
+        }
+
+        override suspend fun deleteCalendarOccurrence(seriesId: String, occurrenceStart: String, scope: OccurrenceScope) {
+            calls += "delete-occurrence $seriesId $occurrenceStart ${scope.wire}"
         }
     }
 
@@ -272,5 +288,101 @@ class CalendarHubTest {
         assertFalse(none.available)
         none.open("view", oct.first, oct.second)
         assertEquals(CalendarWindowState.LOADING, none.window("view")!!.state)
+    }
+
+    // --- M69 (CALENDAR.md §10.4): recurring events ------------------------------------------------------
+
+    private val s1 = occurrence("ゼミ", "2026-10-05T05:00:00Z", "2026-10-05T06:00:00Z", series = "s1", first = true, channelId = "c1")
+    private val s2 = occurrence("ゼミ", "2026-10-12T05:00:00Z", "2026-10-12T06:00:00Z", series = "s1", channelId = "c1")
+    private val s3 = occurrence("ゼミ", "2026-10-19T05:00:00Z", "2026-10-19T06:00:00Z", series = "s1", channelId = "c1")
+
+    @Test
+    fun aSeriesChangedIsReadAgainAndASeriesDeletedTakesEveryOccurrence() = runBlocking {
+        val other = timed("ほか", "2026-10-06T05:00:00Z", "2026-10-06T06:00:00Z", channelId = "c2")
+        val api = FakeCalendarApi(listOf(s1, s2, s3, other))
+        val hub = hub(api)
+        hub.open("view", oct.first, oct.second)
+        hub.open("c1", oct.first, oct.second, "c1")
+        hub.open("c2", oct.first, oct.second, "c2")
+        api.calls.clear()
+        // The series' parent, recurring: the windows that may hold c1's events are read (not c2's), no occurrence is patched here.
+        api.rows = listOf(s1.copy(title = "輪講"), s2.copy(title = "輪講"), other)
+        hub.applyEvent("calendar.event.updated", updated(s1.copy(title = "輪講"), listOf("me")))
+        assertEquals(listOf("events ${oct.first} ${oct.second} -", "events ${oct.first} ${oct.second} c1"), api.calls)
+        assertEquals(listOf("輪講", "ほか", "輪講"), hub.window("view")!!.events.map { it.title })
+        // Deleted: every occurrence of the series leaves at once.
+        hub.applyEvent("calendar.event.deleted", json("""{"id": "s1", "channel_id": "c1"}"""))
+        assertEquals(listOf("ほか"), hub.window("view")!!.events.map { it.title })
+        assertTrue(hub.window("c1")!!.events.isEmpty())
+    }
+
+    @Test
+    fun aSeriesAlarmIsOnEveryOccurrenceAndSaysTheOccurrenceItFiresFor() = runBlocking {
+        val said = ArrayList<CalendarEventOut>()
+        val api = FakeCalendarApi(listOf(s1, s2, s3))
+        val hub = hub(api) { said += it }
+        hub.open("view", oct.first, oct.second)
+        // calendar.alarm.updated as the worker sends it (the decoder reads its occurrence_start).
+        fun alarm(status: String, occurrence: String) = json(
+            """{"event_id": "s1", "channel_id": "c1", "alarm": {"minutes_before": 10, "fire_at": "x", "status": "$status", "occurrence_start": "$occurrence"}}""",
+        )
+        hub.applyEvent("calendar.alarm.updated", alarm("pending", s2.occurrenceStart!!))
+        assertTrue(hub.window("view")!!.events.all { it.alarm?.minutesBefore == 10 && it.alarm?.occurrenceStart == s2.occurrenceStart })
+        hub.applyEvent("calendar.alarm.updated", alarm("fired", s2.occurrenceStart!!))
+        hub.applyEvent("calendar.alarm.updated", alarm("fired", s2.occurrenceStart!!))
+        // The next occurrence fires too (pending in between, then fired again for the 19th).
+        hub.applyEvent("calendar.alarm.updated", alarm("pending", s3.occurrenceStart!!))
+        hub.applyEvent("calendar.alarm.updated", alarm("fired", s3.occurrenceStart!!))
+        assertEquals(listOf(s2.id, s3.id), said.map { it.id })
+        // Set from here on an occurrence: the series' alarm, on all of them.
+        api.rows = listOf(s1)
+        hub.setAlarm("s1", 30)
+        assertTrue(hub.window("view")!!.events.all { it.alarm?.minutesBefore == 30 })
+        assertEquals(3, hub.window("view")!!.events.size)
+    }
+
+    @Test
+    fun anOccurrenceChangedOrDeletedHereReadsTheWindowsAgain() = runBlocking {
+        val api = FakeCalendarApi(listOf(s1, s2, s3))
+        val hub = hub(api)
+        hub.open("view", oct.first, oct.second)
+        api.calls.clear()
+        val body = JsonObject(mapOf("scope" to JsonPrimitive("this"), "title" to JsonPrimitive("休み")))
+        api.occurrenceAnswer = s2.copy(title = "休み")
+        api.rows = listOf(s1, s2.copy(title = "休み"), s3)
+        assertEquals("休み", hub.updateOccurrence("s1", s2.occurrenceStart!!, body).title)
+        assertEquals(listOf("occurrence s1 ${s2.occurrenceStart} $body", "events ${oct.first} ${oct.second} -"), api.calls)
+        assertEquals(listOf("ゼミ", "休み", "ゼミ"), hub.window("view")!!.events.map { it.title })
+
+        // 「この予定」 deleted: that one leaves at once (the read that follows has the rest).
+        api.calls.clear()
+        api.rows = listOf(s1, s3)
+        hub.removeOccurrence("s1", s2.occurrenceStart!!, OccurrenceScope.THIS)
+        assertEquals("delete-occurrence s1 ${s2.occurrenceStart} this", api.calls.first())
+        assertEquals(listOf(s1.id, s3.id), hub.window("view")!!.events.map { it.id })
+        // 「これ以降すべて」: that one and the later ones.
+        api.rows = listOf(s1)
+        hub.removeOccurrence("s1", s3.occurrenceStart!!, OccurrenceScope.FOLLOWING)
+        assertEquals(listOf(s1.id), hub.window("view")!!.events.map { it.id })
+        // 「すべての予定」: the series.
+        hub.removeOccurrence("s1", s1.occurrenceStart!!, OccurrenceScope.ALL)
+        assertTrue(hub.window("view")!!.events.isEmpty())
+    }
+
+    @Test
+    fun aSeriesMadeOneOffReplacesItsOccurrencesAndANewSeriesIsRead() = runBlocking {
+        val api = FakeCalendarApi(listOf(s1, s2, s3))
+        val hub = hub(api)
+        hub.open("view", oct.first, oct.second)
+        // PATCH rrule null (or someone else's): the one-off event comes as itself; the other occurrences go.
+        val single = s1.copy(seriesId = "s1", recurring = false, rrule = null, title = "単発")
+        hub.applyEvent("calendar.event.updated", updated(single, listOf("me")))
+        assertEquals(listOf("単発"), hub.window("view")!!.events.map { it.title })
+        // Made with a rule here: the answer is the series' first occurrence, and the windows are read again for the rest.
+        api.calls.clear()
+        api.rows = listOf(s1, s2, s3)
+        hub.create(CalendarEventCreate(title = "ゼミ", startsAt = s1.startsAt, endsAt = s1.endsAt, clientEventId = "k", rrule = "FREQ=WEEKLY;BYDAY=MO"))
+        assertEquals(listOf("create k", "events ${oct.first} ${oct.second} -"), api.calls)
+        assertEquals(listOf(s1.id, s2.id, s3.id), hub.window("view")!!.events.map { it.id })
     }
 }
