@@ -1255,6 +1255,25 @@ M73 は iOS と Android (§18.5)。
 - **テスト**: 項目の読み込み (キャンバスの項目、知らない種類を混ぜても他の項目が残る)、行の文、行を押すとキャンバスが開く、
   パラメータが 4 つの呼び出しすべてに付くこと。
 
+### 20.6 M77 iOS (build 73)
+
+- **API**: `ApiClient.activityInclude` (`["canvas_mention"]`) を `GET /activity`・`GET /activity/summary`・`PUT /activity/read` の
+  `include`、bootstrap の `activity_include` に付ける。
+- **読み込み**: `ActivityItem.message` は省略可、`canvas: ActivityCanvas?` を足した。`canvas_mention` は `canvas` が、それ以外は
+  `message` が無いと読めない。`ActivityListOut` は項目を 1 件ずつ `try?` で読み、読めないもの (知らない種類で `message` も
+  `canvas` も無い、形が違う、オブジェクトでない) だけを落とす。`message` のある知らない種類は今までどおり `ActivityRules.append`
+  で外す。行の ID は `canvas_mention:<item_id>`。
+- **行**: アバターは `actor_ids[0]`、右下の印は 📝。1 行目「〇〇 が「題名」であなたをメンションしました」(題名が空なら
+  「キャンバス」、2 行まで)、2 行目「#チャンネル のキャンバス」、3 行目は抜粋 (サーバの写しのまま、2 行まで)。VoiceOver は他の
+  行と同じ並び (「未読、〇〇 が「題名」であなたをメンションしました、#チャンネル のキャンバス、時刻、抜粋」)。
+- **押すと**: M34 の規則 (アクティビティの行から開いたものはアクティビティのスタックに積む) どおり、メッセージの行と同じく
+  **アクティビティのタブのスタックに会話を積み**、その「キャンバス」タブでそのキャンバスを選ぶ (戻るとアクティビティの一覧)。
+  `AppController.openActivityCanvas` が `openCanvas(navigate: false)` で `canvasOpen` を置き、積むのは MainView。メンバーでない
+  会話はキャンバスのシート。プッシュと前面の通知は M73 のまま (ホーム / DM のタブに開く)。
+- **バッジ**: `canvas.mentioned` を受けたら (会話の level・ミュートにかかわらず。項目はサーバが書くので) 1 秒まとめて
+  `GET /activity/summary` を読み直す。前面の通知 (M73) はそのまま。
+- **テスト**: `ActivityCanvasTests` (項目の読み込みと読み飛ばし、4 つの呼び出しのパラメータ、行の文、開く経路、バッジの読み直し)。
+
 ### 20.7 M77 Android
 
 - **API** (`api/ApiClient.kt`): `listActivity`・`activitySummary`・`markActivityRead` に `include=canvas_mention`、`bootstrap` に

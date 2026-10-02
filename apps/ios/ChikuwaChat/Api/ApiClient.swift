@@ -216,7 +216,11 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         ]))
     }
 
-    func bootstrap() async throws -> BootstrapOut { try await request("GET", "/api/v1/sync/bootstrap") }
+    /// M77: `activity_include` as the activity calls' `include` (the badge in bootstrap counts the same kinds).
+    func bootstrap() async throws -> BootstrapOut {
+        try await request("GET", Self.pathWithQuery("/api/v1/sync/bootstrap",
+                                                    Self.activityInclude.map { URLQueryItem(name: "activity_include", value: $0) }))
+    }
 
     func channels(includePublic: Bool) async throws -> [ChannelOut] {
         try await request("GET", "/api/v1/channels" + (includePublic ? "?include=public" : ""))
@@ -449,20 +453,29 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     // MARK: activity (M39, MOBILE_UI.md §7.2)
 
-    /// Mentions of me, reactions to my messages and replies in threads I follow, newest first; `cursor` is the previous
-    /// page's next_cursor. `filter`: all / mentions / threads / reactions.
+    /// M77 (CANVAS.md §20.3): the kinds beyond M39's this build shows, sent on every activity call (the list, the badge,
+    /// marking read and bootstrap's `activity_include`) so the badge counts what the list shows. A server before M76
+    /// ignores it.
+    static let activityInclude = ["canvas_mention"]
+
+    private static var activityIncludeItems: [URLQueryItem] { activityInclude.map { URLQueryItem(name: "include", value: $0) } }
+
+    /// Mentions of me, reactions to my messages, replies in threads I follow and canvases that mention me, newest first;
+    /// `cursor` is the previous page's next_cursor. `filter`: all / mentions / threads / reactions.
     func listActivity(filter: String = "all", cursor: String? = nil, limit: Int = 50) async throws -> ActivityListOut {
         var items = [URLQueryItem(name: "filter", value: filter), URLQueryItem(name: "limit", value: String(limit))]
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
-        return try await request("GET", Self.pathWithQuery("/api/v1/activity", items))
+        return try await request("GET", Self.pathWithQuery("/api/v1/activity", items + Self.activityIncludeItems))
     }
 
     /// The activity badge: the items after my read position (at most 99), and whether a mention is among them.
-    func activitySummary() async throws -> ActivitySummary { try await request("GET", "/api/v1/activity/summary") }
+    func activitySummary() async throws -> ActivitySummary {
+        try await request("GET", Self.pathWithQuery("/api/v1/activity/summary", Self.activityIncludeItems))
+    }
 
     /// Everything up to `readAt` is read (the server only moves it forward, never past its own now).
     func markActivityRead(readAt: String) async throws -> ActivitySummary {
-        try await request("PUT", "/api/v1/activity/read", body: .object(["read_at": .string(readAt)]))
+        try await request("PUT", Self.pathWithQuery("/api/v1/activity/read", Self.activityIncludeItems), body: .object(["read_at": .string(readAt)]))
     }
 
     func listBookmarks(cursor: String? = nil, limit: Int = 50) async throws -> BookmarkListOut {
