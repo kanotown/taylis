@@ -12,6 +12,15 @@ final class ChannelRulesTests: XCTestCase {
         return ChannelState(channel: out, isMember: true, syncedSeq: nil, lastSeq: 0, lastReadSeq: 0, unreadCount: unread, mentionCount: mentions, hasOlder: true)
     }
 
+    /// The preview of a channel I have not joined (M27): an archived one (an `is:times` hit) offers no 「参加する」.
+    func testPreviewOffersJoiningOnlyWhenNotArchived() {
+        var out = channel("times-alice").channel
+        XCTAssertTrue(PreviewJoin.canJoin(out))
+        out.archived = true
+        XCTAssertFalse(PreviewJoin.canJoin(out))
+        XCTAssertEqual(PreviewJoin.archivedNote, "アーカイブされたチャンネルです (読むだけ)")
+    }
+
     func testMutedChannelsCountOnlyMentions() {
         let muted = channel("a", unread: 5, level: "none")
         XCTAssertTrue(muted.isMuted)

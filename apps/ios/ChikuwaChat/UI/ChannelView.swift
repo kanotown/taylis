@@ -551,7 +551,7 @@ struct ChannelView: View {
                     .coordinateSpace(name: "conversation")
                 }
                 if let channel {
-                    if !channel.isMember {
+                    if !channel.isMember && PreviewJoin.canJoin(channel.channel) {
                         Button("参加する") {
                             Task {
                                 guard let api = controller.api else { return }
