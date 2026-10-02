@@ -61,6 +61,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
@@ -306,8 +307,17 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                     }
                 }
                 HorizontalDivider()
+                val formScroll = rememberScrollState()
+                // The error line sits near the end of a long form, below the fold when 追加 / 保存 at the top is pressed
+                // (a deadline without a date looked like nothing happened): scroll it into view once laid out.
+                LaunchedEffect(error) {
+                    if (error != null) {
+                        withFrameNanos { }
+                        formScroll.animateScrollTo(formScroll.maxValue)
+                    }
+                }
                 Column(
-                    Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
+                    Modifier.fillMaxWidth().weight(1f).verticalScroll(formScroll).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     if (quick.isNotEmpty()) {
