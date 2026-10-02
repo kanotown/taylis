@@ -1011,6 +1011,23 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         try await request("GET", "/api/v1/ai/summaries/target?channel_id=\(channelId)")
     }
 
+    /// M71 「AI に聞く」 (docs/AI.md §13.5): 202 with the run pending; its states follow as ai.run_updated.
+    func createAsk(_ request: AiAskRequest) async throws -> AiRunOut {
+        try await self.request("POST", "/api/v1/ai/ask", body: request.json)
+    }
+
+    /// M71: where the question would go (404 on a server without 「AI に聞く」).
+    func askTarget(question: String, channelId: String?) async throws -> AiAskTargetOut {
+        var items = [URLQueryItem(name: "q", value: question)]
+        if let channelId { items.append(URLQueryItem(name: "channel_id", value: channelId)) }
+        return try await request("GET", Self.pathWithQuery("/api/v1/ai/ask/target", items))
+    }
+
+    /// M71: my recent runs of one kind (20, newest first).
+    func aiRuns(kind: String) async throws -> [AiRunOut] {
+        try await request("GET", Self.pathWithQuery("/api/v1/ai/runs", [URLQueryItem(name: "kind", value: kind)]))
+    }
+
     // MARK: transport
 
     private func request<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil, auth: Bool = true, timeout: TimeInterval? = nil,

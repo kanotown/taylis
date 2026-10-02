@@ -79,6 +79,64 @@ final class AiSummarySnapshotTests: XCTestCase {
         _ = try render(AiSummarySheet(controller: world(), hub: refused, request: thread), style: .light, name: "ai-summary-failed-light.png")
     }
 
+    /// M71: the 「AI に聞く」 sheet — the answer with [n] links, the omitted note, the sources and the caption; working;
+    /// refused; the past questions. And the row above the search results.
+    func testAskSheet() async throws {
+        let m1 = "0199a0b0-0000-7000-8000-000000000001"
+        let m2 = "0199a0b0-0000-7000-8000-000000000002"
+        let answer = """
+        ゼミは **10/9 (木) 13:00** に決まりました [1]。場所は 3 階のセミナー室です [1][2]。
+        - 発表は加納さんと海老原さん [2]
+        """
+        let sources = [
+            AiSourceOut(n: 1, messageId: m1, channelId: channelId, senderId: "u1", createdAt: "2026-09-30T04:12:00Z",
+                        excerpt: "来週のゼミは 10/9 (木) 13:00 から、3 階のセミナー室で行います"),
+            AiSourceOut(n: 2, messageId: m2, channelId: channelId, parentId: m1, senderId: "u2", createdAt: "2026-09-30T05:40:00Z",
+                        excerpt: "発表は加納さんと海老原さんでお願いします。資料は前日までに共有してください"),
+        ]
+        func controller() -> AppController {
+            let controller = world()
+            controller.api = ApiClient(baseUrl: URL(string: "https://chat.example.jp")!)
+            controller.store.upsertUser(UserPublic(id: "u1", username: "tanaka", displayName: "田中", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: ""))
+            controller.store.upsertUser(UserPublic(id: "u2", username: "ebi", displayName: "海老原", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: ""))
+            return controller
+        }
+        func hub(_ result: Result<AiRunOut, Error>) async -> AiHub {
+            let api = FakeAiApi()
+            api.askResult = result
+            api.history = .success([AiRunOut(id: "q1", kind: "ask", status: "done", channelId: "", createdAt: "2026-10-02T01:00:00Z", question: "ゼミの日程は?"),
+                                    AiRunOut(id: "q0", kind: "ask", status: "failed", channelId: "", createdAt: "2026-10-01T09:30:00Z", question: "学会の締め切りはいつ?")])
+            let hub = AiHub(api: api)
+            await hub.startAsk(AiAskRequest(question: "ゼミの日程は? from:@tanaka", channelId: channelId))
+            return hub
+        }
+        let done = AiRunOut(id: "q1", kind: "ask", status: "done", channelId: channelId, output: answer, omittedCount: 3, provider: "anthropic",
+                            model: "claude-opus-5-5", question: "ゼミの日程は? from:@tanaka", sources: sources)
+        let target = AiAskTargetOut(available: true, provider: "anthropic", model: "claude-opus-5-5", agentName: "ちくわ")
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let suffix = style == .dark ? "dark" : "light"
+            let doneHub = await hub(.success(done))
+            guard case .done(let output, 3, let shown) = doneHub.ask?.phase else { return XCTFail("not done") }
+            XCTAssertEqual(output, answer)
+            XCTAssertEqual(shown, sources)
+            _ = try render(AiAskSheet(controller: controller(), hub: doneHub) { _ in }, style: style, name: "ai-ask-done-\(suffix).png")
+            let working = await hub(.success(AiRunOut(id: "q1", kind: "ask", status: "running", channelId: "")))
+            _ = try render(AiAskSheet(controller: controller(), hub: working) { _ in }, style: style, name: "ai-ask-working-\(suffix).png")
+            let bar = VStack(spacing: 0) {
+                AiAskBar(hub: doneHub, target: target, canAsk: true, onAsk: {}, onSheet: { _ in }).padding()
+                AiAskBar(hub: AiHub(api: nil), target: AiAskTargetOut(available: false, provider: "anthropic", reason: "ai_private_not_allowed"),
+                         canAsk: false, onAsk: {}, onSheet: { _ in }).padding()
+                Spacer()
+            }
+            _ = try render(bar, style: style, name: "ai-ask-bar-\(suffix).png")
+        }
+        let refused = await hub(.failure(ApiError.api(status: 429, code: "ai_daily_limit", message: "")))
+        XCTAssertEqual(refused.ask?.phase, .failed(ErrorMessages.byCode["ai_daily_limit"]!))
+        _ = try render(AiAskSheet(controller: controller(), hub: refused) { _ in }, style: .light, name: "ai-ask-failed-light.png")
+        let historyHub = await hub(.success(done))
+        _ = try render(AiAskSheet(controller: controller(), hub: historyHub, startInHistory: true) { _ in }, style: .light, name: "ai-ask-history-light.png")
+    }
+
     func testChannelSection() throws {
         let notice = AiRules.notice([AiAgentPublic(id: "a1", botUserId: "u-bot", name: "ちくわ")])
         for style in [UIUserInterfaceStyle.light, .dark] {

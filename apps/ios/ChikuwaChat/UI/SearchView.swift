@@ -231,6 +231,9 @@ struct SearchView: View {
     @State private var picker: SearchPicker?
     /// Messages revealed from here: their focus goes when the screen closes.
     @State private var revealed: Set<String> = []
+    /// M71: the 「AI に聞く」 sheet, and a cited message to open once it has gone.
+    @State private var askSheet: AskSheetMode?
+    @State private var askOpen: AiSourceOut?
 
     private var store: Store { controller.store }
     private var recentKey: String { controller.recentSearchKey }
@@ -277,6 +280,18 @@ struct SearchView: View {
                 .navigationDestination(for: SearchCanvasRoute.self) { route in
                     CanvasOpenView(controller: controller, canvasId: route.canvasId, onTrashed: { if !path.isEmpty { path.removeLast() } })
                 }
+                // M71: the answer stays with the hub when the sheet goes (the row above the results brings it back); a
+                // cited message opens here like a result, once the sheet is gone.
+                .sheet(item: $askSheet, onDismiss: {
+                    guard let source = askOpen else { return }
+                    askOpen = nil
+                    open(messageId: source.messageId, channelId: source.channelId, parentId: source.parentId)
+                }) { mode in
+                    AiAskSheet(controller: controller, hub: controller.aiHub ?? AiHub(api: nil), startInHistory: mode == .history) { source in
+                        askOpen = source
+                        askSheet = nil
+                    }
+                }
         }
         .overlay(alignment: .bottom) { ErrorToast(controller: controller) }
         .sheet(item: $picker) { which in
@@ -298,6 +313,7 @@ struct SearchView: View {
         }
         .onDisappear {
             if let focus = controller.messageFocus, revealed.contains(focus.messageId) { controller.messageFocus = nil }
+            controller.aiHub?.closeAsk() // M71: only the asker sees it, and only while the search is open
         }
     }
 
@@ -314,7 +330,8 @@ struct SearchView: View {
                               onUpdate: { change in update(change) },
                               onPick: { picker = $0 },
                               onOpen: { messageId, channelId, parentId in open(messageId: messageId, channelId: channelId, parentId: parentId) },
-                              onOpenCanvas: { canvas in path.append(SearchCanvasRoute(canvasId: canvas.id)) })
+                              onOpenCanvas: { canvas in path.append(SearchCanvasRoute(canvasId: canvas.id)) },
+                              onAskSheet: { askSheet = $0 })
         } else {
             List { startRows }
                 .listStyle(.insetGrouped)
@@ -558,8 +575,16 @@ struct SearchResultsView: View {
     let onOpen: (_ messageId: String, _ channelId: String, _ parentId: String?) -> Void
     /// M58: a canvas hit of the 「キャンバス」 tab.
     var onOpenCanvas: (CanvasMeta) -> Void = { _ in }
+    /// M71: the 「AI に聞く」 sheet, on the answer or on the past questions.
+    var onAskSheet: (AskSheetMode) -> Void = { _ in }
+    /// M71: where the question on screen would go (GET /ai/ask/target), for the question it was read for.
+    @State private var askRead: AskTargetRead?
 
     private var params: SearchParams { model.params ?? SearchParams() }
+
+    /// M71 (docs/AI.md §13.1): the words and the chips' filters as modifiers; the conversation goes as channel_id.
+    private var askQuestion: String { AskRules.question(params, usernameOf: { controller.store.users[$0]?.username }) }
+    private var askKey: String { "\(askQuestion)|\(params.channelId ?? "")" }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -586,13 +611,48 @@ struct SearchResultsView: View {
             }
             Divider()
             switch model.tab {
-            case .messages: messages
+            case .messages:
+                askRow
+                messages
             case .files: files
             case .canvases: CanvasSearchList(controller: controller, results: model.canvases, params: params, onOpen: onOpenCanvas)
             }
         }
         .onChange(of: model.tab) { _, tab in
             if tab == .files { Task { await model.showFiles(api: controller.api) } }
+        }
+        // M71: where the question would go, read again when the question, the AI status or the connection changes, and
+        // after a question was refused for an AI reason.
+        .task(id: "\(askKey)|\(controller.aiHub?.summaryAvailable == true)|\(controller.engine?.status.rawValue ?? "")|\(controller.aiHub?.askTargetEpoch ?? 0)") {
+            guard let hub = controller.aiHub, hub.summaryAvailable, !askQuestion.isEmpty else { return }
+            let key = askKey
+            let target = await hub.loadAskTarget(question: askQuestion, channelId: params.channelId)
+            guard !Task.isCancelled else { return }
+            askRead = AskTargetRead(key: key, target: target)
+        }
+    }
+
+    /// M71 (docs/AI.md §13.6): 「AI に聞く」 above the message results — while AI can be used and the server told where
+    /// this question would go, or while a question is followed. Above the list, so 「見つかりませんでした」 does not hide
+    /// it (the AI searches with each word on its own and may find what the search did not).
+    @ViewBuilder
+    private var askRow: some View {
+        if let hub = controller.aiHub {
+            let question = askQuestion
+            let target = askRead?.key == askKey ? askRead?.target : nil
+            let usable = hub.summaryAvailable && !question.isEmpty && target != nil
+            if usable || hub.ask != nil {
+                AiAskBar(hub: hub, target: usable ? target : nil, canAsk: usable && AskRules.canAsk(target) && hub.ask?.phase != .starting,
+                         onAsk: {
+                             Task { await hub.startAsk(AiAskRequest(question: question, channelId: params.channelId)) }
+                             onAskSheet(.answer)
+                         },
+                         onSheet: onAskSheet)
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                    .background(Color.accentColor.opacity(0.06))
+                Divider()
+            }
         }
     }
 
