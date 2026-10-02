@@ -21,6 +21,8 @@ function fakeApi(rows: CalendarEventOut[] = []) {
     setCalendarAlarm: vi.fn(async (id, minutes) => ({ ...state.rows.find((e) => e.id === id)!, alarm: { minutes_before: minutes, fire_at: "2026-10-05T04:50:00Z", status: "pending" as const } })),
     clearCalendarAlarm: vi.fn(async () => {}),
     getCalendarEvent: vi.fn(async (id) => state.rows.find((e) => e.id === id)!),
+    updateCalendarOccurrence: vi.fn(async (seriesId) => state.rows.find((e) => e.series_id === seriesId)!),
+    deleteCalendarOccurrence: vi.fn(async () => {}),
   };
   return { api, state };
 }

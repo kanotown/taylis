@@ -328,6 +328,18 @@
                 "title": "Minutes Before",
                 "type": "integer"
               },
+              "occurrence_start": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Occurrence Start"
+              },
               "status": {
                 "enum": [
                   "pending",
@@ -508,9 +520,33 @@
                 ],
                 "title": "Location"
               },
+              "occurrence_start": {
+                "title": "Occurrence Start",
+                "type": "string"
+              },
               "owner_id": {
                 "format": "uuid",
                 "title": "Owner Id",
+                "type": "string"
+              },
+              "recurring": {
+                "title": "Recurring",
+                "type": "boolean"
+              },
+              "rrule": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Rrule"
+              },
+              "series_id": {
+                "format": "uuid",
+                "title": "Series Id",
                 "type": "string"
               },
               "start_date": {
@@ -541,6 +577,17 @@
                 "title": "Title",
                 "type": "string"
               },
+              "tz": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Tz"
+              },
               "updated_at": {
                 "format": "date-time",
                 "title": "Updated At",
@@ -561,7 +608,12 @@
               "location",
               "description",
               "created_at",
-              "updated_at"
+              "updated_at",
+              "series_id",
+              "occurrence_start",
+              "recurring",
+              "rrule",
+              "tz"
             ],
             "title": "CalendarEventData",
             "type": "object"

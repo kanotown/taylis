@@ -79,6 +79,8 @@ export interface SyncApi {
   setCalendarAlarm?: CalendarApi["setCalendarAlarm"];
   clearCalendarAlarm?: CalendarApi["clearCalendarAlarm"];
   getCalendarEvent?: CalendarApi["getCalendarEvent"];
+  updateCalendarOccurrence?: CalendarApi["updateCalendarOccurrence"];
+  deleteCalendarOccurrence?: CalendarApi["deleteCalendarOccurrence"];
   /** M55: tasks (TASKS.md §3). Optional (older fakes). */
   listTasks?: TaskApi["listTasks"];
   myTasks?: TaskApi["myTasks"];
@@ -281,7 +283,7 @@ export class SyncEngine {
       options: this.opts.canvasSave,
     });
     this.calendar = new CalendarHub({
-      api: api.calendarEvents && api.calendarUpcoming && api.createCalendarEvent && api.updateCalendarEvent && api.deleteCalendarEvent && api.setCalendarAlarm && api.clearCalendarAlarm && api.getCalendarEvent
+      api: api.calendarEvents && api.calendarUpcoming && api.createCalendarEvent && api.updateCalendarEvent && api.deleteCalendarEvent && api.setCalendarAlarm && api.clearCalendarAlarm && api.getCalendarEvent && api.updateCalendarOccurrence && api.deleteCalendarOccurrence
         ? (api as unknown as CalendarApi)
         : null,
       me: () => deps.store.me?.id ?? null,

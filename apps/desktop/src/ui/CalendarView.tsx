@@ -3,9 +3,10 @@
  * past three), a week (all-day row over a time grid) or a list (day by day from today). 「すべて / 自分 / #channel」
  * filters; each channel has its fixed colour. Weeks start on Sunday. A channel's 「予定」 tab (ChannelEvents) lists
  * its events ahead with 「予定を追加」. M55 (TASKS.md §6): the tasks due in the range, as all-day rows 「☐ 題名」 (done:
- * 「☑」, struck through); a click opens the task.
+ * 「☑」, struck through); a click opens the task. M68 (CALENDAR.md §10.7): a recurring event's rows carry 🔁 and its rule in
+ * words; 「購読」 opens the private iCal feed URLs (CalendarFeedsDialog).
  */
-import { CalendarDays, ChevronLeft, ChevronRight, MapPin, Plus } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, MapPin, Plus, Repeat, Rss } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type { CalendarEventOut, TaskOut } from "../api/types";
@@ -13,6 +14,8 @@ import type { AppController } from "../state/app";
 import type { CalendarHub, CalendarWindow } from "../sync/calendar";
 import type { ChannelState } from "../sync/types";
 import { CalendarEventDialog, writableCalendars } from "./CalendarEventDialog";
+import { CalendarFeedsDialog } from "./CalendarFeedsDialog";
+import { describeRrule } from "./calendarRecurrence";
 import {
   addDays,
   addMonths,
@@ -97,6 +100,7 @@ export function CalendarView({ controller }: { controller: AppController }) {
   const [anchor, setAnchor] = useState<DayKey>(now);
   const [filter, setFilter] = useState<CalendarFilter>("all");
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [feeds, setFeeds] = useState(false);
   const { start, end } = rangeFor(mode, anchor);
   const { from, to } = rangeParams(start, end);
   useEffect(() => {
@@ -190,6 +194,15 @@ export function CalendarView({ controller }: { controller: AppController }) {
               <option key={c.id} value={c.id}>#{c.name}</option>
             ))}
           </select>
+          <button
+            type="button"
+            aria-label="カレンダーを購読"
+            title="カレンダーを購読 (iCal)"
+            onClick={() => setFeeds(true)}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-ink/6 hover:text-ink"
+          >
+            <Rss size={15} />
+          </button>
           <Button size="sm" onClick={() => create(start <= now && now < end ? now : mode === "month" ? `${anchor.slice(0, 7)}-01` : start)} aria-label="予定を追加">
             <Plus size={14} /> <span className="max-md:hidden">予定を追加</span>
           </Button>
@@ -209,6 +222,7 @@ export function CalendarView({ controller }: { controller: AppController }) {
       )}
       {dialog && <CalendarEventDialog controller={controller} event={dialog.event} initial={dialog.initial} onClose={() => setDialog(null)} />}
       {taskDialog && <TaskDialog controller={controller} task={taskHub?.find(taskDialog.id) ?? taskDialog} onClose={() => setTaskDialog(null)} />}
+      {feeds && <CalendarFeedsDialog controller={controller} onClose={() => setFeeds(false)} />}
     </div>
   );
 }
@@ -504,6 +518,12 @@ export function AgendaList({ events, tasks = [], taskPlaceOf = (task) => taskPla
                     <span className="block truncate text-sm font-medium">{event.title}</span>
                     <span className="flex min-w-0 items-center gap-2 text-xs text-muted">
                       {showCalendar && <span className="shrink-0">{event.channel_name ? `#${event.channel_name}` : "自分"}</span>}
+                      {event.recurring && (
+                        <span className="flex min-w-0 items-center gap-0.5 truncate" title={describeRrule(event.rrule, day)}>
+                          <Repeat size={11} className="shrink-0" aria-label="繰り返し" />
+                          <span className="truncate max-md:hidden">{describeRrule(event.rrule, day)}</span>
+                        </span>
+                      )}
                       {event.location && (
                         <span className="flex min-w-0 items-center gap-0.5 truncate"><MapPin size={11} className="shrink-0" />{event.location}</span>
                       )}

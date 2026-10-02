@@ -377,6 +377,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "login_ip": RateLimiter(settings.login_rate_limit_per_ip),
         "login_account": RateLimiter(settings.login_rate_limit_per_account),
         "invite": RateLimiter(settings.invite_rate_limit_per_ip),
+        "ical": RateLimiter(settings.ical_rate_limit_per_ip),
         "sso": RateLimiter(settings.sso_rate_limit_per_ip),
         "webhook": RateLimiter(settings.webhook_rate_limit_per_hook),
         "upload": RateLimiter(settings.upload_rate_limit_per_user),

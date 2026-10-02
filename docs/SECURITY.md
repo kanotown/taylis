@@ -106,6 +106,11 @@ refresh(token):
   公開エンドポイントは IP ごとにレートリミット (20 回 / 分)。ブラウザ向けの `GET /invite/{token}` は
   静的なページで、API を呼んだあとセッションを logout で閉じる (ブラウザにはトークンを残さない)。
   発行・取消・受諾はいずれも監査ログに残る (トークンは載せない)。
+- iCal の購読 URL (M68、CALENDAR.md §10.6): 本人が `POST /calendar/ical-feeds` で作る `<server>/api/v1/calendar/ical/<token>.ics`。
+  トークンは 32 バイトの乱数で、DB には SHA-256 だけを置き、作成の応答に 1 回だけ載せる。URL を知っていれば認証なしで読めるので
+  (カレンダーのアプリはヘッダの認証を送れない)、画面で必ずそう伝え、本人が `DELETE /calendar/ical-feeds/{id}` ですぐに止められる
+  (1 人 5 個まで)。中身は読まれた時点でその人が見られるもの (§3 の規則。チャンネルを抜ければ消える、無効化された人は 404)。
+  読み取り専用。IP ごとにレートリミット (60 回 / 分)。
 
 ### 2.6 端末とプッシュトークン
 
@@ -396,8 +401,8 @@ M42: キャンバスの画像 (`attachments.canvas_id`) も会話のメンバー
 
 - 全リクエストに `request_id`。認証済みなら `user_id` と `session_id` を構造化ログに付ける。
 - ログイン失敗、refresh の再利用検知、権限エラー (`403`) は WARN で記録する。
-- アクセスログのパスは、URL に秘密が入るもの (`/api/v1/hooks/{token}`、`/invite/{token}`、`/api/v1/invites/{token}/…`)
-  を `***` に置き換えて記録する (§7: トークンをログに残さない)。
+- アクセスログのパスは、URL に秘密が入るもの (`/api/v1/hooks/{token}`、`/invite/{token}`、`/api/v1/invites/{token}/…`、
+  `/api/v1/calendar/ical/{token}.ics`) を `***` に置き換えて記録する (§7: トークンをログに残さない)。
 - 管理者操作 (ユーザー作成、パスワードリセット、ロール変更、無効化、セッション失効、他人のメッセージ削除) は
   `audit_logs` に記録する (M10)。
 - キャンバスの削除・復元・編集の制限の変更・版の本文の消去も `audit_logs` に記録する (`canvas.delete` / `canvas.restore` /

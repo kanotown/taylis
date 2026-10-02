@@ -6,6 +6,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 AlarmStatus = Literal["pending", "fired", "cancelled"]
+# M68 (CALENDAR.md §10): which occurrences an edit or delete of a recurring event touches.
+OccurrenceScope = Literal["this", "following", "all"]
+FeedScope = Literal["all", "personal"]
+MAX_RRULE_LENGTH = 200
 
 # CALENDAR.md §2.
 MAX_TITLE_LENGTH = 200
@@ -50,6 +54,9 @@ class CalendarAlarmOut(BaseModel):
     fire_at: datetime
     # cancelled: the time it works out to had passed, or the event is gone.
     status: AlarmStatus
+    # M68: the occurrence of a recurring event it is for (its occurrence_start); null for a
+    # one-off event (or while no occurrence of the series is near).
+    occurrence_start: str | None = None
 
 
 class CalendarEventData(BaseModel):
@@ -75,6 +82,16 @@ class CalendarEventData(BaseModel):
     description: str | None
     created_at: datetime
     updated_at: datetime
+    # M68 (CALENDAR.md §10.3). A recurring event is listed once per occurrence: `id` is the
+    # occurrence's (the series' own id for the first one), `series_id` the series' (an event's
+    # own id when it does not repeat), `occurrence_start` the occurrence's original start
+    # ("2030-01-10T05:00:00Z", or "2030-01-10" all-day), the key of its edits and deletes.
+    series_id: UUID
+    occurrence_start: str
+    recurring: bool
+    # The series' rule (an RRULE subset, normalized) and the zone it repeats in.
+    rrule: str | None
+    tz: str | None
 
 
 class CalendarEventOut(CalendarEventData):
@@ -106,6 +123,8 @@ class CalendarEventCreate(BaseModel):
     tz: str | None = Field(default=None, max_length=64)
     # Idempotency key: a retry returns the event made by the first request (200).
     client_event_id: UUID | None = None
+    # M68: makes it recurring (CALENDAR.md §10.1); `tz` is then also the zone it repeats in.
+    rrule: str | None = Field(default=None, max_length=MAX_RRULE_LENGTH)
 
     _title = field_validator("title")(_clean_title)
     _location = field_validator("location")(_clean_text)
@@ -127,10 +146,48 @@ class CalendarEventUpdate(BaseModel):
     # null (or blank) clears.
     location: str | None = Field(default=None, max_length=MAX_LOCATION_LENGTH)
     description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
+    # M68: a new rule (null: no longer recurring, its overrides go); left out: unchanged.
+    rrule: str | None = Field(default=None, max_length=MAX_RRULE_LENGTH)
+    # M68: the zone a recurring event repeats in (left out: unchanged, or mine when it starts
+    # repeating).
+    tz: str | None = Field(default=None, max_length=64)
 
     _title = field_validator("title")(_clean_title)
     _location = field_validator("location")(_clean_text)
     _description = field_validator("description")(_clean_text)
+    _tz = field_validator("tz")(_valid_zone)
+
+
+class CalendarOccurrenceUpdate(CalendarEventUpdate):
+    """M68: PATCH /calendar/events/{series_id}/occurrences/{occurrence_start}. The times are the
+    occurrence's new ones. this: only this occurrence (no rrule, all_day unchanged); following:
+    this one and the later ones become a new series; all: the whole series (shifted by as much
+    as this occurrence moved)."""
+
+    scope: OccurrenceScope
+
+
+class CalendarFeedCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # all: my own calendar and the channels' I belong to; personal: my own only.
+    scope: FeedScope = "all"
+
+
+class CalendarFeedOut(BaseModel):
+    """A private iCal feed (CALENDAR.md §10.6), without its token."""
+
+    id: UUID
+    scope: FeedScope
+    created_at: datetime
+    last_used_at: datetime | None
+
+
+class CalendarFeedCreated(BaseModel):
+    feed: CalendarFeedOut
+    # The feed's URL: shown this once (only a hash of its token is kept). Anyone with it sees the
+    # events.
+    url: str
 
 
 class CalendarAlarmIn(BaseModel):

@@ -5,8 +5,14 @@ let n = 0;
 
 export function timed(title: string, startsAt: string, endsAt: string, extra: Partial<CalendarEventOut> = {}): CalendarEventOut {
   n += 1;
+  const id = extra.id ?? `e${n}`;
   return {
-    id: `e${n}`,
+    id,
+    series_id: id,
+    occurrence_start: extra.start_date ?? startsAt,
+    recurring: false,
+    rrule: null,
+    tz: null,
     channel_id: null,
     channel_name: null,
     owner_id: "me",

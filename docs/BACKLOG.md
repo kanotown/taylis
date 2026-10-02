@@ -21,7 +21,7 @@
 
 1. M48 Google でログイン (docs/SSO.md、案B: 大学のドメインの人は初回ログインで作成)
 2. スマホを Slack のように洗練: M49 (DM 一覧のプレビュー) のあと、[MOBILE_POLISH.md](MOBILE_POLISH.md) の「優先して直す 10 件」を 仕上げ A (小さな直し) → B (Android の入力欄) → C (Slack らしさ) の順で
-3. ~~カレンダー~~ M51・M52 で完了 (docs/CALENDAR.md)。あとで: 繰り返し、予定の共有メッセージ、iCal 購読
+3. ~~カレンダー~~ M51・M52 で完了 (docs/CALENDAR.md)。繰り返しと iCal 購読は M68 (サーバと Desktop / Web、CALENDAR.md §10) で入れた。スマホは M69。あとで: 予定の共有メッセージ、1 件の .ics の書き出し
 4. ~~調整さん型の日程調整~~ M53・M54 で完了 (docs/SCHEDULING.md)
 5. ~~タスク (ToDo) とカンバン~~ M55・M56 で完了 (docs/TASKS.md)。あとで: 列を足す、繰り返し、サブタスク、期限の時刻
 6. ~~キャンバスの表の挿入・編集画面~~ M57 で完了 (CANVAS.md §17)

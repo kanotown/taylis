@@ -9,11 +9,13 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -27,6 +29,18 @@ MAX_ALL_DAY_DAYS = 60
 # -480 = 当日 8:00 (8:00 in the alarm's zone).
 TIMED_ALARMS = (0, 5, 10, 15, 30, 60, 1440)
 ALL_DAY_ALARMS = (1440, -480)
+
+_TIME_SHAPE = (
+    "(all_day AND starts_at IS NULL AND ends_at IS NULL"
+    " AND start_date IS NOT NULL AND end_date IS NOT NULL"
+    f" AND end_date >= start_date AND end_date - start_date < {MAX_ALL_DAY_DAYS})"
+    " OR (NOT all_day AND start_date IS NULL AND end_date IS NULL"
+    " AND starts_at IS NOT NULL AND ends_at IS NOT NULL"
+    " AND ends_at > starts_at"
+    f" AND ends_at - starts_at <= interval '{MAX_TIMED_DAYS} days')"
+)
+# M68: what an override (この予定だけ) may change.
+OVERRIDE_FIELDS = ("title", "time", "location", "description")
 
 
 class CalendarEvent(Base):
@@ -51,6 +65,11 @@ class CalendarEvent(Base):
     description: Mapped[str | None] = mapped_column(Text)
     # Idempotency key of the POST that made it (a retry returns this event).
     client_event_id: Mapped[uuid.UUID | None] = mapped_column()
+    # M68 (CALENDAR.md §10): the normalized RRULE of a recurring event (NULL: a one-off), the zone
+    # whose wall clock it repeats on, and a bound on its last occurrence's end (NULL: no end).
+    rrule: Mapped[str | None] = mapped_column(Text)
+    tz: Mapped[str | None] = mapped_column(String(64))
+    series_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
@@ -65,16 +84,8 @@ class CalendarEvent(Base):
         CheckConstraint(
             "description IS NULL OR char_length(description) <= 4000", name="description_length"
         ),
-        CheckConstraint(
-            "(all_day AND starts_at IS NULL AND ends_at IS NULL"
-            " AND start_date IS NOT NULL AND end_date IS NOT NULL"
-            f" AND end_date >= start_date AND end_date - start_date < {MAX_ALL_DAY_DAYS})"
-            " OR (NOT all_day AND start_date IS NULL AND end_date IS NULL"
-            " AND starts_at IS NOT NULL AND ends_at IS NOT NULL"
-            " AND ends_at > starts_at"
-            f" AND ends_at - starts_at <= interval '{MAX_TIMED_DAYS} days')",
-            name="time_shape",
-        ),
+        CheckConstraint(_TIME_SHAPE, name="time_shape"),
+        CheckConstraint("rrule IS NULL OR tz IS NOT NULL", name="rrule_tz"),
         Index(
             "calendar_events_channel_idx",
             "channel_id",
@@ -106,11 +117,92 @@ class CalendarEvent(Base):
             unique=True,
             postgresql_where=text("client_event_id IS NOT NULL"),
         ),
+        Index(
+            "calendar_events_recurring_idx",
+            "owner_id",
+            "channel_id",
+            postgresql_where=text("rrule IS NOT NULL AND deleted_at IS NULL"),
+        ),
     )
 
     @property
     def is_deleted(self) -> bool:
         return self.deleted_at is not None
+
+    @property
+    def recurring(self) -> bool:
+        return self.rrule is not None
+
+
+class CalendarEventOverride(Base):
+    """One occurrence of a recurring event changed or cancelled (この予定だけ, CALENDAR.md §10.2),
+    keyed by the occurrence's original start. Fields not in `changed` follow the series."""
+
+    __tablename__ = "calendar_event_overrides"
+
+    series_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("calendar_events.id", ondelete="CASCADE"), primary_key=True
+    )
+    # "2030-01-10T05:00:00Z" (timed) or "2030-01-10" (all-day).
+    occurrence_start: Mapped[str] = mapped_column(String(32), primary_key=True)
+    cancelled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    changed: Mapped[list[str]] = mapped_column(
+        ARRAY(String(16)), default=list, server_default=text("'{}'")
+    )
+    title: Mapped[str | None] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    all_day: Mapped[bool | None] = mapped_column(Boolean)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    start_date: Mapped[date | None] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "title IS NULL OR char_length(title) BETWEEN 1 AND 200", name="title_length"
+        ),
+        CheckConstraint("location IS NULL OR char_length(location) <= 200", name="location_length"),
+        CheckConstraint(
+            "description IS NULL OR char_length(description) <= 4000", name="description_length"
+        ),
+        CheckConstraint(
+            "(all_day IS NULL AND starts_at IS NULL AND ends_at IS NULL"
+            f" AND start_date IS NULL AND end_date IS NULL) OR {_TIME_SHAPE}",
+            name="time_shape",
+        ),
+    )
+
+    @property
+    def moved(self) -> bool:
+        return "time" in self.changed and self.all_day is not None
+
+
+class CalendarFeed(Base):
+    """A private iCal feed URL (CALENDAR.md §10.6). Only the token's SHA-256 is kept."""
+
+    __tablename__ = "calendar_feeds"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    # all: my own calendar and my channels'; personal: my own only.
+    scope: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("scope IN ('all', 'personal')", name="scope_values"),
+        Index("calendar_feeds_user_idx", "user_id"),
+    )
 
 
 class CalendarEventAlarm(Base):
@@ -130,6 +222,9 @@ class CalendarEventAlarm(Base):
     tz: Mapped[str] = mapped_column(String(64))
     fire_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+    # M68: the occurrence of a recurring event fire_at is for (NULL: a one-off event, or a wake-up
+    # to look again when no occurrence is near, CALENDAR.md §10.5).
+    occurrence_start: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

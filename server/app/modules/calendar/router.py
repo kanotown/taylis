@@ -1,10 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Path, Query, Request, Response
 from pydantic import AwareDatetime
 
 from app.core.db import Db
-from app.core.errors import bad_request
+from app.core.errors import bad_request, not_found, rate_limited
+from app.core.ratelimit import RateLimiter
 from app.modules.auth.deps import CurrentUser
 from app.modules.calendar import service
 from app.modules.calendar.schemas import (
@@ -12,6 +13,11 @@ from app.modules.calendar.schemas import (
     CalendarEventCreate,
     CalendarEventOut,
     CalendarEventUpdate,
+    CalendarFeedCreate,
+    CalendarFeedCreated,
+    CalendarFeedOut,
+    CalendarOccurrenceUpdate,
+    OccurrenceScope,
 )
 from app.modules.users.dnd import valid_zone
 
@@ -99,3 +105,91 @@ async def set_alarm(
 async def clear_alarm(event_id: UUID, user: CurrentUser, db: Db) -> Response:
     await service.clear_alarm(db, user, event_id)
     return Response(status_code=204)
+
+
+# --- M68: occurrences of a recurring event (CALENDAR.md §10.3) -----------------------------------
+
+OccurrenceKey = Path(
+    description="The occurrence's original start: `2030-01-10T05:00:00Z` (timed; any offset is "
+    "read) or `2030-01-10` (all-day)",
+    max_length=40,
+)
+
+
+@router.patch(
+    "/calendar/events/{series_id}/occurrences/{occurrence_start}",
+    response_model=CalendarEventOut,
+)
+async def update_occurrence(
+    series_id: UUID,
+    body: CalendarOccurrenceUpdate,
+    user: CurrentUser,
+    db: Db,
+    occurrence_start: str = OccurrenceKey,
+) -> CalendarEventOut:
+    """Changes one occurrence (`this`), it and the later ones (`following`: a new series from it)
+    or the whole series (`all`: moved by as much as this occurrence moved). The answer: the
+    occurrence (`this`) or the first occurrence of the series changed or made."""
+    return await service.update_occurrence(db, user, series_id, occurrence_start, body)
+
+
+@router.delete("/calendar/events/{series_id}/occurrences/{occurrence_start}", status_code=204)
+async def delete_occurrence(
+    series_id: UUID,
+    user: CurrentUser,
+    db: Db,
+    occurrence_start: str = OccurrenceKey,
+    scope: OccurrenceScope = Query(description="this, following or all"),
+) -> Response:
+    await service.delete_occurrence(db, user, series_id, occurrence_start, scope)
+    return Response(status_code=204)
+
+
+# --- M68: iCal feeds (CALENDAR.md §10.6) ---------------------------------------------------------
+
+
+@router.post("/calendar/ical-feeds", response_model=CalendarFeedCreated, status_code=201)
+async def create_feed(
+    body: CalendarFeedCreate, user: CurrentUser, db: Db, request: Request
+) -> CalendarFeedCreated:
+    """A private feed URL of my calendars (at most 5). The URL is in this answer only: anyone
+    who has it sees the events."""
+    configured: str = request.app.state.settings.public_base_url.strip()
+    base = (configured or str(request.base_url)).rstrip("/")  # as messages' links (M53)
+    return await service.create_feed(db, user, body, base)
+
+
+@router.get("/calendar/ical-feeds", response_model=list[CalendarFeedOut])
+async def list_feeds(user: CurrentUser, db: Db) -> list[CalendarFeedOut]:
+    return await service.list_feeds(db, user)
+
+
+@router.delete("/calendar/ical-feeds/{feed_id}", status_code=204)
+async def delete_feed(feed_id: UUID, user: CurrentUser, db: Db) -> Response:
+    """The URL stops working at once (make a new one to change it)."""
+    await service.delete_feed(db, user, feed_id)
+    return Response(status_code=204)
+
+
+@router.get(
+    "/calendar/ical/{token}.ics",
+    response_class=Response,
+    responses={200: {"content": {"text/calendar": {}}, "description": "The calendar"}},
+)
+async def ical_feed(token: str, request: Request, db: Db) -> Response:
+    """No login: the token is the secret. Rate limited per IP; unknown or deleted tokens are
+    404."""
+    limiter: RateLimiter = request.app.state.limiters["ical"]
+    key = (request.client.host[:45] if request.client else None) or "unknown"
+    if not limiter.try_acquire(key):
+        raise rate_limited(limiter.retry_after_seconds(key))
+    if len(token) > 100:
+        raise not_found("calendar_feed_not_found", "Feed not found")
+    body = await service.feed_ics(db, token)
+    if body is None:
+        raise not_found("calendar_feed_not_found", "Feed not found")
+    return Response(
+        content=body,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Cache-Control": "private, max-age=300", "Content-Disposition": "inline"},
+    )
