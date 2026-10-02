@@ -281,3 +281,42 @@ async def test_search_and_excerpts_skip_the_marker(
     await _save(client, current, body.replace("[ ]", "[x]"), client_save_id=key())
     assert await _status(client, task["id"]) == "done"
     assert await _status(client, second["id"]) == "done"
+
+
+async def test_ticking_a_repeating_task_in_the_canvas_makes_the_next_one(
+    client: AsyncClient, db: AsyncSession, as_user: Actor
+) -> None:
+    """M80 + M81: the box ticked in the canvas completes the task the same way as the task
+    screen does, so a repeating task gets its next occurrence (once), back in a built-in column."""
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    cid = await _channel(client, "lab")
+    line = "- [ ] 週報を出す"
+    canvas = await _canvas(client, cid, f"# TODO\n{line}")
+    task = await _task(
+        client,
+        {
+            "channel_id": cid,
+            "title": "週報を出す",
+            "due_on": "2030-01-07",
+            "rrule": "FREQ=WEEKLY;BYDAY=MO",
+            "source_canvas_id": canvas["id"],
+            "source_canvas_line": line,
+        },
+    )
+    current = await _get(client, canvas["id"])
+    await _save(client, current, current["body"].replace("- [ ] 週報", "- [x] 週報"))
+    assert await _status(client, task["id"]) == "done"
+    board = (await client.get(f"{API}/tasks", params={"channel_id": cid})).json()
+    nxt = [t for t in board if t["id"] != task["id"]]
+    assert len(nxt) == 1
+    assert nxt[0]["due_on"] == "2030-01-14" and nxt[0]["status"] == "todo"
+    assert nxt[0]["column_id"] is None
+
+    # Unticked and ticked again: still only one next occurrence.
+    current = await _get(client, canvas["id"])
+    await _save(client, current, current["body"].replace("- [x] 週報", "- [ ] 週報"))
+    current = await _get(client, canvas["id"])
+    await _save(client, current, current["body"].replace("- [ ] 週報", "- [x] 週報"))
+    board = (await client.get(f"{API}/tasks", params={"channel_id": cid})).json()
+    assert len([t for t in board if t["id"] != task["id"]]) == 1

@@ -5856,6 +5856,18 @@
             "title": "Assignee Ids",
             "type": "array"
           },
+          "due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
           "due_on": {
             "anyOf": [
               {
@@ -8350,6 +8362,95 @@
         "title": "SsoExchange",
         "type": "object"
       },
+      "SubtaskIn": {
+        "additionalProperties": false,
+        "description": "An item of the whole list sent: a known `id` keeps it, none (or an unknown one) is new.",
+        "properties": {
+          "done": {
+            "default": false,
+            "title": "Done",
+            "type": "boolean"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "maxLength": 200,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "SubtaskIn",
+        "type": "object"
+      },
+      "SubtaskOut": {
+        "description": "M81 (TASKS.md §11): one item of a task's checklist.",
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "done"
+        ],
+        "title": "SubtaskOut",
+        "type": "object"
+      },
+      "SubtaskUpdate": {
+        "additionalProperties": false,
+        "description": "One item changed (its checkbox, its title); the rest of the list is left alone.",
+        "properties": {
+          "done": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "SubtaskUpdate",
+        "type": "object"
+      },
       "TaskCanvasSourceOut": {
         "description": "M72 (CANVAS.md §18.3): the canvas a task was made from, and its checklist item's text as it\nwas then (one line; it does not follow later edits). canvas_id is null once the canvas was\npurged from the trash (「元のキャンバスは削除されました」).",
         "properties": {
@@ -8382,6 +8483,127 @@
           "excerpt"
         ],
         "title": "TaskCanvasSourceOut",
+        "type": "object"
+      },
+      "TaskColumnCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "after_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Id"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 50,
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "todo",
+              "doing",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "name",
+          "status"
+        ],
+        "title": "TaskColumnCreate",
+        "type": "object"
+      },
+      "TaskColumnOut": {
+        "description": "M81 (TASKS.md §11): a column of a channel's board, left to right by position.",
+        "properties": {
+          "builtin": {
+            "title": "Builtin",
+            "type": "boolean"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "todo",
+              "doing",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id",
+          "name",
+          "status",
+          "builtin",
+          "position"
+        ],
+        "title": "TaskColumnOut",
+        "type": "object"
+      },
+      "TaskColumnUpdate": {
+        "additionalProperties": false,
+        "description": "`after_id` sent moves it right of that column (null: to the left end).",
+        "properties": {
+          "after_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "TaskColumnUpdate",
         "type": "object"
       },
       "TaskCreate": {
@@ -8421,6 +8643,18 @@
             ],
             "title": "Client Task Id"
           },
+          "due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
           "due_on": {
             "anyOf": [
               {
@@ -8453,6 +8687,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "rrule": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rrule"
           },
           "source_canvas_id": {
             "anyOf": [
@@ -8501,6 +8747,14 @@
             "title": "Status",
             "type": "string"
           },
+          "subtasks": {
+            "items": {
+              "$ref": "#/components/schemas/SubtaskIn"
+            },
+            "maxItems": 50,
+            "title": "Subtasks",
+            "type": "array"
+          },
           "title": {
             "maxLength": 200,
             "title": "Title",
@@ -8527,7 +8781,7 @@
       },
       "TaskMove": {
         "additionalProperties": false,
-        "description": "Into a column and between two cards there (the server picks the position). `after_id` is\nthe card that ends up just above, `before_id` the one just below; either is enough. Neither:\nthe bottom of todo / doing, the top of done. A neighbour that is no longer in that column is\nignored.",
+        "description": "Into a column and between two cards there (the server picks the position). `after_id` is\nthe card that ends up just above, `before_id` the one just below; either is enough. Neither:\nthe bottom of todo / doing, the top of done. A neighbour that is no longer in that column is\nignored.\n\nM81: `column_id` moves it into a column of the board (its status is the column's); `status`\nalone keeps the card's column when the status stays (an older device reordering), else the\nbuilt-in column of that status. One of the two is needed.",
         "properties": {
           "after_id": {
             "anyOf": [
@@ -8553,19 +8807,35 @@
             ],
             "title": "Before Id"
           },
-          "status": {
-            "enum": [
-              "todo",
-              "doing",
-              "done"
+          "column_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Status",
-            "type": "string"
+            "title": "Column Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "todo",
+                  "doing",
+                  "done"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           }
         },
-        "required": [
-          "status"
-        ],
         "title": "TaskMove",
         "type": "object"
       },
@@ -8616,6 +8886,18 @@
             ],
             "title": "Channel Name"
           },
+          "column_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Id"
+          },
           "completed_at": {
             "anyOf": [
               {
@@ -8645,6 +8927,18 @@
             "title": "Created At",
             "type": "string"
           },
+          "due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
           "due_on": {
             "anyOf": [
               {
@@ -8656,6 +8950,17 @@
               }
             ],
             "title": "Due On"
+          },
+          "due_tz": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Tz"
           },
           "id": {
             "format": "uuid",
@@ -8691,6 +8996,17 @@
             "title": "Position",
             "type": "number"
           },
+          "rrule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rrule"
+          },
           "source": {
             "anyOf": [
               {
@@ -8709,6 +9025,13 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "subtasks": {
+            "items": {
+              "$ref": "#/components/schemas/SubtaskOut"
+            },
+            "title": "Subtasks",
+            "type": "array"
           },
           "title": {
             "title": "Title",
@@ -8801,6 +9124,18 @@
             ],
             "title": "Assignee Ids"
           },
+          "due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
           "due_on": {
             "anyOf": [
               {
@@ -8825,6 +9160,18 @@
             ],
             "title": "Notes"
           },
+          "rrule": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rrule"
+          },
           "status": {
             "anyOf": [
               {
@@ -8840,6 +9187,21 @@
               }
             ],
             "title": "Status"
+          },
+          "subtasks": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SubtaskIn"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtasks"
           },
           "title": {
             "anyOf": [
@@ -19720,6 +20082,205 @@
         ]
       }
     },
+    "/api/v1/tasks/columns": {
+      "get": {
+        "description": "A board's columns, left to right: the three built-in ones (renamed and moved, never\ndeleted) and those added. Each belongs to a status; the cards of a done one are completed.",
+        "operationId": "list_columns_api_v1_tasks_columns_get",
+        "parameters": [
+          {
+            "description": "The channel whose board's columns to read",
+            "in": "query",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "description": "The channel whose board's columns to read",
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskColumnOut"
+                  },
+                  "title": "Response List Columns Api V1 Tasks Columns Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Columns",
+        "tags": [
+          "tasks"
+        ]
+      },
+      "post": {
+        "description": "A new column (at most 20 per board), right of `after_id` (left out: the right end).",
+        "operationId": "create_column_api_v1_tasks_columns_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskColumnCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskColumnOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Column",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/columns/{column_id}": {
+      "delete": {
+        "description": "An added column; its cards go to the built-in column of the same status.",
+        "operationId": "delete_column_api_v1_tasks_columns__column_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "column_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Column Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Column",
+        "tags": [
+          "tasks"
+        ]
+      },
+      "patch": {
+        "description": "Rename it, or move it right of `after_id` (null: the left end).",
+        "operationId": "update_column_api_v1_tasks_columns__column_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "column_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Column Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskColumnUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskColumnOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Column",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
     "/api/v1/tasks/due": {
       "get": {
         "description": "Tasks I can see whose due date is in [from, to), completed ones too (the calendar);\nat most 1000.",
@@ -20048,6 +20609,75 @@
           }
         ],
         "summary": "Move Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/subtasks/{subtask_id}": {
+      "patch": {
+        "description": "M81: one item of the checklist (done, title); the rest of the list is left alone.",
+        "operationId": "update_subtask_api_v1_tasks__task_id__subtasks__subtask_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "subtask_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subtask Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubtaskUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Subtask",
         "tags": [
           "tasks"
         ]

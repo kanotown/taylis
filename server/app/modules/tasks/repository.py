@@ -4,7 +4,7 @@ from datetime import date, datetime
 from sqlalchemy import ColumnElement, and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.tasks.models import Task, TaskAssignee, TaskDueAlarm
+from app.modules.tasks.models import Task, TaskAssignee, TaskColumn, TaskDueAlarm
 
 
 async def get(db: AsyncSession, task_id: uuid.UUID, *, lock: bool = False) -> Task | None:
@@ -32,18 +32,25 @@ def _board(channel_id: uuid.UUID | None, owner_id: uuid.UUID) -> ColumnElement[b
     return and_(Task.channel_id.is_(None), Task.owner_id == owner_id, Task.deleted_at.is_(None))
 
 
+def _in_column(status: str, column_id: uuid.UUID | None) -> ColumnElement[bool]:
+    """M81: a column is a status and a column added to the board (NULL: the built-in one)."""
+    which = Task.column_id.is_(None) if column_id is None else Task.column_id == column_id
+    return and_(Task.status == status, which)
+
+
 async def column(
     db: AsyncSession,
     channel_id: uuid.UUID | None,
     owner_id: uuid.UUID,
     status: str,
     *,
+    column_id: uuid.UUID | None = None,
     lock: bool = False,
 ) -> list[Task]:
     """One column of a board in order (position, then id for ties)."""
     stmt = (
         select(Task)
-        .where(_board(channel_id, owner_id), Task.status == status)
+        .where(_board(channel_id, owner_id), _in_column(status, column_id))
         .order_by(Task.position, Task.id)
     )
     if lock:
@@ -52,11 +59,17 @@ async def column(
 
 
 async def column_edge(
-    db: AsyncSession, channel_id: uuid.UUID | None, owner_id: uuid.UUID, status: str, *, top: bool
+    db: AsyncSession,
+    channel_id: uuid.UUID | None,
+    owner_id: uuid.UUID,
+    status: str,
+    *,
+    top: bool,
+    column_id: uuid.UUID | None = None,
 ) -> float | None:
     """The smallest (top) or largest position in a column; None when it is empty."""
     agg = func.min(Task.position) if top else func.max(Task.position)
-    stmt = select(agg).where(_board(channel_id, owner_id), Task.status == status)
+    stmt = select(agg).where(_board(channel_id, owner_id), _in_column(status, column_id))
     value = (await db.execute(stmt)).scalar_one_or_none()
     return float(value) if value is not None else None
 
@@ -133,7 +146,12 @@ async def requested_by(
     if done:
         stmt = stmt.order_by(Task.completed_at.desc(), Task.id.desc())
     else:
-        stmt = stmt.order_by(Task.due_on.asc().nulls_last(), Task.created_at, Task.id)
+        stmt = stmt.order_by(
+            Task.due_on.asc().nulls_last(),
+            Task.due_at.asc().nulls_last(),
+            Task.created_at,
+            Task.id,
+        )
     return list((await db.execute(stmt.limit(limit))).scalars().all())
 
 
@@ -249,5 +267,36 @@ async def due_alarms(db: AsyncSession, now: datetime, limit: int) -> list[TaskDu
         .order_by(TaskDueAlarm.fire_at.asc())
         .limit(limit)
         .with_for_update(skip_locked=True)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+# --- board columns (M81, TASKS.md §11) ---------------------------------------------------------
+
+
+async def columns_of(
+    db: AsyncSession, channel_id: uuid.UUID, *, lock: bool = False
+) -> list[TaskColumn]:
+    stmt = (
+        select(TaskColumn)
+        .where(TaskColumn.channel_id == channel_id)
+        .order_by(TaskColumn.position, TaskColumn.id)
+    )
+    if lock:
+        stmt = stmt.with_for_update()
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def get_column(db: AsyncSession, column_id: uuid.UUID) -> TaskColumn | None:
+    return await db.get(TaskColumn, column_id)
+
+
+async def in_column(db: AsyncSession, column_id: uuid.UUID) -> list[Task]:
+    """The live cards of an added column, in order, locked."""
+    stmt = (
+        select(Task)
+        .where(Task.column_id == column_id, Task.deleted_at.is_(None))
+        .order_by(Task.position, Task.id)
+        .with_for_update()
     )
     return list((await db.execute(stmt)).scalars().all())

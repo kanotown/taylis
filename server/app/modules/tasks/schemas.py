@@ -5,7 +5,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.modules.tasks.models import MAX_CLIENT_ID_LENGTH, MAX_NOTES_LENGTH, MAX_TITLE_LENGTH
+from app.modules.tasks.models import (
+    MAX_CLIENT_ID_LENGTH,
+    MAX_COLUMN_NAME_LENGTH,
+    MAX_NOTES_LENGTH,
+    MAX_SUBTASKS,
+    MAX_TITLE_LENGTH,
+)
 
 TaskStatus = Literal["todo", "doing", "done"]
 # L9: "review" is a review request made from a message (REVIEWS.md).
@@ -47,6 +53,43 @@ def _distinct(value: list[UUID] | None) -> list[UUID] | None:
     return list(dict.fromkeys(value))
 
 
+def _aware(value: datetime | None) -> datetime | None:
+    if value is not None and value.tzinfo is None:
+        raise ValueError("A due time needs an offset (or Z)")
+    return value
+
+
+class SubtaskOut(BaseModel):
+    """M81 (TASKS.md §11): one item of a task's checklist."""
+
+    id: UUID
+    title: str
+    done: bool
+
+
+class SubtaskIn(BaseModel):
+    """An item of the whole list sent: a known `id` keeps it, none (or an unknown one) is new."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    title: str = Field(max_length=MAX_TITLE_LENGTH)
+    done: bool = False
+
+    _title = field_validator("title")(_clean_title)
+
+
+class SubtaskUpdate(BaseModel):
+    """One item changed (its checkbox, its title); the rest of the list is left alone."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(default=None, max_length=MAX_TITLE_LENGTH)
+    done: bool | None = None
+
+    _title = field_validator("title")(_clean_title)
+
+
 class TaskSourceOut(BaseModel):
     """The message a task was made from (TASKS.md §1), with its text as one line (the DM list's
     and the notifications' rule), kept up to date with edits. When the message is deleted the task
@@ -83,8 +126,17 @@ class TaskData(BaseModel):
     status: TaskStatus
     # Order within the column, smaller first. Only the order means anything.
     position: float
-    # The due date (no time).
+    # The due date. With a due time (M81), due_at's date in due_tz.
     due_on: date | None
+    # M81: the due time (UTC), and the zone whose wall clock it keeps; null: the whole day.
+    due_at: datetime | None = None
+    due_tz: str | None = None
+    # M81: the checklist inside the task, in order.
+    subtasks: list[SubtaskOut] = Field(default_factory=list)
+    # M81: the repeat rule (RRULE subset of the calendar); completing makes the next occurrence.
+    rrule: str | None = None
+    # M81: a column added to the board; null: the built-in column of `status`.
+    column_id: UUID | None = None
     # Members of the channel; always empty on a personal task (it is its owner's).
     assignee_ids: list[UUID]
     source: TaskSourceOut | None
@@ -111,6 +163,13 @@ class TaskCreate(BaseModel):
     notes: str | None = Field(default=None, max_length=MAX_NOTES_LENGTH)
     status: TaskStatus = "todo"
     due_on: date | None = None
+    # M81: a due time (with an offset). due_on becomes its date in `tz` (else my quiet-hours
+    # zone, else Asia/Tokyo), whatever due_on says.
+    due_at: datetime | None = None
+    # M81: the checklist.
+    subtasks: list[SubtaskIn] = Field(default_factory=list, max_length=MAX_SUBTASKS)
+    # M81: repeat (needs a due date; not a review request).
+    rrule: str | None = Field(default=None, max_length=200)
     # Members of the channel; must be empty (or left out) for a personal task.
     assignee_ids: list[UUID] = Field(default_factory=list, max_length=MAX_ASSIGNEES)
     # A message I can see. A shared task's must be in the same channel. L9: a DM's task (shared
@@ -133,6 +192,7 @@ class TaskCreate(BaseModel):
     _notes = field_validator("notes")(_clean_notes)
     _assignees = field_validator("assignee_ids")(_distinct)
     _tz = field_validator("tz")(_valid_zone)
+    _due_at = field_validator("due_at")(_aware)
 
 
 class TaskUpdate(BaseModel):
@@ -146,8 +206,14 @@ class TaskUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=MAX_NOTES_LENGTH)
     # A new column: the task goes to the bottom of todo / doing, to the top of done.
     status: TaskStatus | None = None
-    # null clears.
+    # null clears (the due time too). Alone on a task with a due time: the same time that day.
     due_on: date | None = None
+    # M81: a due time (due_on follows it); null keeps due_on and drops the time.
+    due_at: datetime | None = None
+    # M81: the whole checklist (replaces it).
+    subtasks: list[SubtaskIn] | None = Field(default=None, max_length=MAX_SUBTASKS)
+    # M81: null stops repeating.
+    rrule: str | None = Field(default=None, max_length=200)
     assignee_ids: list[UUID] | None = Field(default=None, max_length=MAX_ASSIGNEES)
     tz: str | None = Field(default=None, max_length=64)
 
@@ -155,19 +221,77 @@ class TaskUpdate(BaseModel):
     _notes = field_validator("notes")(_clean_notes)
     _assignees = field_validator("assignee_ids")(_distinct)
     _tz = field_validator("tz")(_valid_zone)
+    _due_at = field_validator("due_at")(_aware)
 
 
 class TaskMove(BaseModel):
     """Into a column and between two cards there (the server picks the position). `after_id` is
     the card that ends up just above, `before_id` the one just below; either is enough. Neither:
     the bottom of todo / doing, the top of done. A neighbour that is no longer in that column is
-    ignored."""
+    ignored.
+
+    M81: `column_id` moves it into a column of the board (its status is the column's); `status`
+    alone keeps the card's column when the status stays (an older device reordering), else the
+    built-in column of that status. One of the two is needed."""
 
     model_config = ConfigDict(extra="forbid")
 
-    status: TaskStatus
+    status: TaskStatus | None = None
+    column_id: UUID | None = None
     before_id: UUID | None = None
     after_id: UUID | None = None
+
+
+class TaskColumnOut(BaseModel):
+    """M81 (TASKS.md §11): a column of a channel's board, left to right by position."""
+
+    id: UUID
+    channel_id: UUID
+    name: str
+    # The status of its cards ("done": they are completed).
+    status: TaskStatus
+    # One of the three columns every board has (renamed and moved, never deleted).
+    builtin: bool
+    position: float
+
+
+def _clean_name(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = " ".join(value.split())
+    if not cleaned:
+        raise ValueError("A name cannot be blank")
+    return cleaned
+
+
+class TaskColumnCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    channel_id: UUID
+    name: str = Field(max_length=MAX_COLUMN_NAME_LENGTH)
+    status: TaskStatus
+    # The column it goes right of; left out: the right end.
+    after_id: UUID | None = None
+
+    _name = field_validator("name")(_clean_name)
+
+
+class TaskColumnUpdate(BaseModel):
+    """`after_id` sent moves it right of that column (null: to the left end)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, max_length=MAX_COLUMN_NAME_LENGTH)
+    after_id: UUID | None = None
+
+    _name = field_validator("name")(_clean_name)
+
+
+class TaskColumnsUpdatedData(BaseModel):
+    """task.columns.updated: a board's columns changed (all of them, in order)."""
+
+    channel_id: UUID
+    columns: list[TaskColumnOut]
 
 
 class TaskUpdatedData(BaseModel):
@@ -215,3 +339,7 @@ class TaskDueData(BaseModel):
     channel_name: str | None
     title: str
     due_on: date
+    # M81: the due time when it has one (the notification went out then), and the zone the
+    # notification reads it in.
+    due_at: datetime | None = None
+    tz: str | None = None

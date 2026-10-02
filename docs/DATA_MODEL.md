@@ -1026,7 +1026,13 @@ CREATE TABLE tasks (
   notes              text,                                   -- ≤ 4000 (Markdown)
   status             varchar(8) NOT NULL DEFAULT 'todo',     -- 列: todo / doing / done
   position           double precision NOT NULL,              -- 列の中の並び (小さいほど上)
-  due_on             date,                                   -- 期限 (日付だけ)
+  due_on             date,                                   -- 期限の日。時刻付きなら due_at の due_tz での日付
+  due_at             timestamptz,                            -- M81: 時刻付きの期限 (分まで)。NULL = 日付だけ (0069)
+  due_tz             varchar(64),                            -- M81: due_at の壁時計のゾーン (due_at と一緒)
+  subtasks           jsonb NOT NULL DEFAULT '[]',            -- M81: サブタスク [{id, title, done}] の並び (50 個まで)
+  rrule              text,                                   -- M81: 繰り返し (CALENDAR.md §10.1 の RRULE の一部、正規化)。due_on が要る
+  next_task_id       uuid,                                   -- M81: 完了で作った次の回 (冪等の印)
+  column_id          uuid REFERENCES task_columns(id) ON DELETE SET NULL,  -- M81: 足した列。NULL = status の組み込みの列
   source_message_id  uuid REFERENCES messages(id) ON DELETE SET NULL,  -- メッセージから作ったとき
   source_channel_id  uuid,                                   -- そのメッセージのチャンネル
   source_excerpt     text,                                   -- 作った時の 1 行の抜粋 (DM の一覧・通知と同じ規則、140 文字)
@@ -1041,8 +1047,29 @@ CREATE TABLE tasks (
   CHECK (char_length(title) BETWEEN 1 AND 200),
   CHECK (notes IS NULL OR char_length(notes) <= 4000),
   CHECK (status IN ('todo', 'doing', 'done')),
-  CHECK ((status = 'done') = (completed_at IS NOT NULL))
+  CHECK ((status = 'done') = (completed_at IS NOT NULL)),
+  CHECK ((due_at IS NULL) = (due_tz IS NULL)),               -- M81
+  CHECK (due_at IS NULL OR due_on IS NOT NULL),
+  CHECK (rrule IS NULL OR due_on IS NOT NULL)
 );
+CREATE INDEX tasks_column_idx ON tasks (column_id) WHERE column_id IS NOT NULL;  -- M81
+
+-- M81 (TASKS.md §11.2): a channel board's columns. The three built-in ones (builtin, one per status) have ids
+-- uuid5(namespace, "<channel_id>:<status>") and get rows the first time the layout changes.
+CREATE TABLE task_columns (
+  id          uuid PRIMARY KEY,
+  channel_id  uuid NOT NULL REFERENCES channels(id),
+  name        text NOT NULL,                                -- 1〜50
+  status      varchar(8) NOT NULL,                          -- その列のカードの状態 (done = 完了)
+  builtin     boolean NOT NULL DEFAULT false,
+  position    double precision NOT NULL,                    -- 左からの並び
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  CHECK (char_length(name) BETWEEN 1 AND 50),
+  CHECK (status IN ('todo', 'doing', 'done'))
+);
+CREATE INDEX task_columns_board_idx ON task_columns (channel_id, position);
+CREATE UNIQUE INDEX task_columns_builtin_uniq ON task_columns (channel_id, status) WHERE builtin;
 CREATE INDEX tasks_board_idx    ON tasks (channel_id, status, position) WHERE channel_id IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX tasks_personal_idx ON tasks (owner_id, status, position)   WHERE channel_id IS NULL AND deleted_at IS NULL;
 CREATE INDEX tasks_source_canvas_idx ON tasks (source_canvas_id) WHERE source_canvas_id IS NOT NULL;  -- M72: 完全削除の SET NULL 用
@@ -1061,7 +1088,7 @@ CREATE TABLE task_due_alarms (
   task_id     uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   user_id     uuid NOT NULL REFERENCES users(id),           -- 知らせる人 (担当者。自分用は持ち主)
   tz          varchar(64) NOT NULL,                         -- 8:00 を読むゾーン
-  fire_at     timestamptz NOT NULL,                         -- due_on の 8:00 (tz)
+  fire_at     timestamptz NOT NULL,                         -- due_on の 8:00 (tz)。M81: 時刻付きなら due_at
   status      varchar(16) NOT NULL DEFAULT 'pending',       -- pending → fired、または cancelled
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),

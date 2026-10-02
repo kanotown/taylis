@@ -1,7 +1,9 @@
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -13,6 +15,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -24,6 +27,10 @@ STATUSES = ("todo", "doing", "done")
 MAX_TITLE_LENGTH = 200
 MAX_NOTES_LENGTH = 4000
 MAX_CLIENT_ID_LENGTH = 64
+# M81 (TASKS.md §11): a task's checklist and a board's columns.
+MAX_SUBTASKS = 50
+MAX_COLUMN_NAME_LENGTH = 50
+MAX_COLUMNS_PER_BOARD = 20
 
 
 class Task(Base):
@@ -46,6 +53,22 @@ class Task(Base):
     kind: Mapped[str] = mapped_column(String(8), default="task", server_default="task")
     position: Mapped[float] = mapped_column(Double)
     due_on: Mapped[date | None] = mapped_column(Date)
+    # M81 (§11.2): a due time. due_on is then due_at's date in due_tz (the wall clock a repeat
+    # keeps). NULL: due_on alone (the whole day).
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    due_tz: Mapped[str | None] = mapped_column(String(64))
+    # M81: the checklist inside the task, in order: [{"id", "title", "done"}].
+    subtasks: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    # M81: the repeat rule (calendar/recurrence.py's subset, normalized) and the occurrence made
+    # when this one was completed (set once: completing again makes no second one).
+    rrule: Mapped[str | None] = mapped_column(Text)
+    next_task_id: Mapped[uuid.UUID | None] = mapped_column()
+    # M81: a column added to the board; NULL is the built-in column of its status.
+    column_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_columns.id", ondelete="SET NULL")
+    )
     # Made from a message: the link, its channel and a one-line excerpt. An edit of the message
     # refreshes the excerpt; its deletion clears the link and the excerpt (no copy of a deleted
     # body is kept). The task itself outlives the message.
@@ -83,6 +106,15 @@ class Task(Base):
         CheckConstraint("kind IN ('task', 'review')", name="kind_values"),
         CheckConstraint(
             "(status = 'done') = (completed_at IS NOT NULL)", name="completed_when_done"
+        ),
+        CheckConstraint("(due_at IS NULL) = (due_tz IS NULL)", name="due_time_zone"),
+        CheckConstraint("due_at IS NULL OR due_on IS NOT NULL", name="due_time_has_date"),
+        CheckConstraint("rrule IS NULL OR due_on IS NOT NULL", name="rrule_has_due"),
+        # The cards of a column added to a board (moved out when it is deleted).
+        Index(
+            "tasks_column_idx",
+            "column_id",
+            postgresql_where=text("column_id IS NOT NULL"),
         ),
         # A board's column in order.
         Index(
@@ -129,6 +161,43 @@ class Task(Base):
     @property
     def is_deleted(self) -> bool:
         return self.deleted_at is not None
+
+
+class TaskColumn(Base):
+    """A column of a channel's board (M81, TASKS.md §11.2). Each belongs to one of the three
+    statuses; the cards of a "done" one are completed. The three built-in columns (one per status)
+    have fixed ids (uuid5 of the channel and the status) and get rows only once the board's layout
+    changes; a task in one has column_id NULL."""
+
+    __tablename__ = "task_columns"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("channels.id"))
+    name: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(8))
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    position: Mapped[float] = mapped_column(Double)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            f"char_length(name) BETWEEN 1 AND {MAX_COLUMN_NAME_LENGTH}", name="name_length"
+        ),
+        CheckConstraint("status IN ('todo', 'doing', 'done')", name="status_values"),
+        Index("task_columns_board_idx", "channel_id", "position"),
+        Index(
+            "task_columns_builtin_uniq",
+            "channel_id",
+            "status",
+            unique=True,
+            postgresql_where=text("builtin"),
+        ),
+    )
 
 
 class TaskAssignee(Base):

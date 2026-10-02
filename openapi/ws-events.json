@@ -2597,6 +2597,19 @@
                 "title": "Assignee Ids",
                 "type": "array"
               },
+              "due_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Due At"
+              },
               "due_on": {
                 "anyOf": [
                   {
@@ -3512,6 +3525,19 @@
                 },
                 "title": "Assignee Ids",
                 "type": "array"
+              },
+              "due_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Due At"
               },
               "due_on": {
                 "anyOf": [
@@ -4429,6 +4455,19 @@
                 },
                 "title": "Assignee Ids",
                 "type": "array"
+              },
+              "due_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Due At"
               },
               "due_on": {
                 "anyOf": [
@@ -5609,6 +5648,81 @@
         "type": "object"
       }
     },
+    "task.columns.updated": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "TaskColumnOut": {
+            "description": "M81 (TASKS.md §11): a column of a channel's board, left to right by position.",
+            "properties": {
+              "builtin": {
+                "title": "Builtin",
+                "type": "boolean"
+              },
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "name": {
+                "title": "Name",
+                "type": "string"
+              },
+              "position": {
+                "title": "Position",
+                "type": "number"
+              },
+              "status": {
+                "enum": [
+                  "todo",
+                  "doing",
+                  "done"
+                ],
+                "title": "Status",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "name",
+              "status",
+              "builtin",
+              "position"
+            ],
+            "title": "TaskColumnOut",
+            "type": "object"
+          }
+        },
+        "description": "task.columns.updated: a board's columns changed (all of them, in order).",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/$defs/TaskColumnOut"
+            },
+            "title": "Columns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "channel_id",
+          "columns"
+        ],
+        "title": "TaskColumnsUpdatedData",
+        "type": "object"
+      }
+    },
     "task.deleted": {
       "audience": "channel (a personal task: user)",
       "consumes_seq": false,
@@ -5669,6 +5783,19 @@
             ],
             "title": "Channel Name"
           },
+          "due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Due At"
+          },
           "due_on": {
             "format": "date",
             "title": "Due On",
@@ -5682,6 +5809,18 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tz"
           }
         },
         "required": [
@@ -5741,6 +5880,31 @@
       "consumes_seq": false,
       "data": {
         "$defs": {
+          "SubtaskOut": {
+            "description": "M81 (TASKS.md §11): one item of a task's checklist.",
+            "properties": {
+              "done": {
+                "title": "Done",
+                "type": "boolean"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "done"
+            ],
+            "title": "SubtaskOut",
+            "type": "object"
+          },
           "TaskCanvasSourceOut": {
             "description": "M72 (CANVAS.md §18.3): the canvas a task was made from, and its checklist item's text as it\nwas then (one line; it does not follow later edits). canvas_id is null once the canvas was\npurged from the trash (「元のキャンバスは削除されました」).",
             "properties": {
@@ -5820,6 +5984,19 @@
                 ],
                 "title": "Channel Name"
               },
+              "column_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Column Id"
+              },
               "completed_at": {
                 "anyOf": [
                   {
@@ -5849,6 +6026,19 @@
                 "title": "Created At",
                 "type": "string"
               },
+              "due_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Due At"
+              },
               "due_on": {
                 "anyOf": [
                   {
@@ -5860,6 +6050,18 @@
                   }
                 ],
                 "title": "Due On"
+              },
+              "due_tz": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Due Tz"
               },
               "id": {
                 "format": "uuid",
@@ -5895,6 +6097,18 @@
                 "title": "Position",
                 "type": "number"
               },
+              "rrule": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Rrule"
+              },
               "source": {
                 "anyOf": [
                   {
@@ -5913,6 +6127,13 @@
                 ],
                 "title": "Status",
                 "type": "string"
+              },
+              "subtasks": {
+                "items": {
+                  "$ref": "#/$defs/SubtaskOut"
+                },
+                "title": "Subtasks",
+                "type": "array"
               },
               "title": {
                 "title": "Title",

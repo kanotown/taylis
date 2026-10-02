@@ -83,6 +83,7 @@ async def test_a_review_request_in_a_dm_is_shared_and_shown_under_its_message(
             "assignee_ids": [str(prof.id)],
             "due_on": "2030-01-10",
             "owner_id": str(student.id),
+            "due_at": None,
         }
     ]
     updated = await _outbox(db, "message.updated")

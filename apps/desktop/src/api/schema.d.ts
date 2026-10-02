@@ -2758,6 +2758,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Columns
+         * @description A board's columns, left to right: the three built-in ones (renamed and moved, never
+         *     deleted) and those added. Each belongs to a status; the cards of a done one are completed.
+         */
+        get: operations["list_columns_api_v1_tasks_columns_get"];
+        put?: never;
+        /**
+         * Create Column
+         * @description A new column (at most 20 per board), right of `after_id` (left out: the right end).
+         */
+        post: operations["create_column_api_v1_tasks_columns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/columns/{column_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Column
+         * @description An added column; its cards go to the built-in column of the same status.
+         */
+        delete: operations["delete_column_api_v1_tasks_columns__column_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Column
+         * @description Rename it, or move it right of `after_id` (null: the left end).
+         */
+        patch: operations["update_column_api_v1_tasks_columns__column_id__patch"];
+        trace?: never;
+    };
     "/api/v1/tasks/due": {
         parameters: {
             query?: never;
@@ -2864,6 +2913,26 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/subtasks/{subtask_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Subtask
+         * @description M81: one item of the checklist (done, title); the rest of the list is left alone.
+         */
+        patch: operations["update_subtask_api_v1_tasks__task_id__subtasks__subtask_id__patch"];
         trace?: never;
     };
     "/api/v1/templates": {
@@ -5255,6 +5324,8 @@ export interface components {
         MessageTaskOut: {
             /** Assignee Ids */
             assignee_ids: string[];
+            /** Due At */
+            due_at?: string | null;
             /** Due On */
             due_on: string | null;
             /**
@@ -6232,6 +6303,46 @@ export interface components {
             verifier: string;
         };
         /**
+         * SubtaskIn
+         * @description An item of the whole list sent: a known `id` keeps it, none (or an unknown one) is new.
+         */
+        SubtaskIn: {
+            /**
+             * Done
+             * @default false
+             */
+            done: boolean;
+            /** Id */
+            id?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * SubtaskOut
+         * @description M81 (TASKS.md §11): one item of a task's checklist.
+         */
+        SubtaskOut: {
+            /** Done */
+            done: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * SubtaskUpdate
+         * @description One item changed (its checkbox, its title); the rest of the list is left alone.
+         */
+        SubtaskUpdate: {
+            /** Done */
+            done?: boolean | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
          * TaskCanvasSourceOut
          * @description M72 (CANVAS.md §18.3): the canvas a task was made from, and its checklist item's text as it
          *     was then (one line; it does not follow later edits). canvas_id is null once the canvas was
@@ -6243,6 +6354,60 @@ export interface components {
             /** Excerpt */
             excerpt: string | null;
         };
+        /** TaskColumnCreate */
+        TaskColumnCreate: {
+            /** After Id */
+            after_id?: string | null;
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "todo" | "doing" | "done";
+        };
+        /**
+         * TaskColumnOut
+         * @description M81 (TASKS.md §11): a column of a channel's board, left to right by position.
+         */
+        TaskColumnOut: {
+            /** Builtin */
+            builtin: boolean;
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "todo" | "doing" | "done";
+        };
+        /**
+         * TaskColumnUpdate
+         * @description `after_id` sent moves it right of that column (null: to the left end).
+         */
+        TaskColumnUpdate: {
+            /** After Id */
+            after_id?: string | null;
+            /** Name */
+            name?: string | null;
+        };
         /** TaskCreate */
         TaskCreate: {
             /** Assignee Ids */
@@ -6251,6 +6416,8 @@ export interface components {
             channel_id?: string | null;
             /** Client Task Id */
             client_task_id?: string | null;
+            /** Due At */
+            due_at?: string | null;
             /** Due On */
             due_on?: string | null;
             /**
@@ -6261,6 +6428,8 @@ export interface components {
             kind: "task" | "review";
             /** Notes */
             notes?: string | null;
+            /** Rrule */
+            rrule?: string | null;
             /** Source Canvas Id */
             source_canvas_id?: string | null;
             /** Source Canvas Line */
@@ -6273,6 +6442,8 @@ export interface components {
              * @enum {string}
              */
             status: "todo" | "doing" | "done";
+            /** Subtasks */
+            subtasks?: components["schemas"]["SubtaskIn"][];
             /** Title */
             title: string;
             /** Tz */
@@ -6284,17 +6455,20 @@ export interface components {
          *     the card that ends up just above, `before_id` the one just below; either is enough. Neither:
          *     the bottom of todo / doing, the top of done. A neighbour that is no longer in that column is
          *     ignored.
+         *
+         *     M81: `column_id` moves it into a column of the board (its status is the column's); `status`
+         *     alone keeps the card's column when the status stays (an older device reordering), else the
+         *     built-in column of that status. One of the two is needed.
          */
         TaskMove: {
             /** After Id */
             after_id?: string | null;
             /** Before Id */
             before_id?: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "todo" | "doing" | "done";
+            /** Column Id */
+            column_id?: string | null;
+            /** Status */
+            status?: ("todo" | "doing" | "done") | null;
         };
         /** TaskOut */
         TaskOut: {
@@ -6307,6 +6481,8 @@ export interface components {
             channel_id: string | null;
             /** Channel Name */
             channel_name: string | null;
+            /** Column Id */
+            column_id?: string | null;
             /** Completed At */
             completed_at: string | null;
             /** Completed By */
@@ -6316,8 +6492,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Due At */
+            due_at?: string | null;
             /** Due On */
             due_on: string | null;
+            /** Due Tz */
+            due_tz?: string | null;
             /**
              * Id
              * Format: uuid
@@ -6338,12 +6518,16 @@ export interface components {
             owner_id: string;
             /** Position */
             position: number;
+            /** Rrule */
+            rrule?: string | null;
             source: components["schemas"]["TaskSourceOut"] | null;
             /**
              * Status
              * @enum {string}
              */
             status: "todo" | "doing" | "done";
+            /** Subtasks */
+            subtasks?: components["schemas"]["SubtaskOut"][];
             /** Title */
             title: string;
             /**
@@ -6377,12 +6561,18 @@ export interface components {
         TaskUpdate: {
             /** Assignee Ids */
             assignee_ids?: string[] | null;
+            /** Due At */
+            due_at?: string | null;
             /** Due On */
             due_on?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Rrule */
+            rrule?: string | null;
             /** Status */
             status?: ("todo" | "doing" | "done") | null;
+            /** Subtasks */
+            subtasks?: components["schemas"]["SubtaskIn"][] | null;
             /** Title */
             title?: string | null;
             /** Tz */
@@ -12563,6 +12753,135 @@ export interface operations {
             };
         };
     };
+    list_columns_api_v1_tasks_columns_get: {
+        parameters: {
+            query: {
+                /** @description The channel whose board's columns to read */
+                channel_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskColumnOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_column_api_v1_tasks_columns_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskColumnCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskColumnOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_column_api_v1_tasks_columns__column_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_column_api_v1_tasks_columns__column_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                column_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskColumnUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskColumnOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_due_api_v1_tasks_due_get: {
         parameters: {
             query: {
@@ -12744,6 +13063,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TaskMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subtask_api_v1_tasks__task_id__subtasks__subtask_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                subtask_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubtaskUpdate"];
             };
         };
         responses: {

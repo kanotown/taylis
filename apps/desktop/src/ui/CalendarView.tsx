@@ -21,6 +21,7 @@ import {
   addMonths,
   type CalendarMode,
   channelColor,
+  clock,
   dayBlocks,
   type DayKey,
   dayLabel,
@@ -268,6 +269,8 @@ export function TaskChip({ task, onOpen }: { task: TaskOut; onOpen: (task: TaskO
       style={{ borderLeftColor: color, background: `color-mix(in srgb, ${color} 14%, var(--color-canvas, #fff))` }}
     >
       <span aria-hidden className="shrink-0" style={{ color }}>{done ? "☑" : "☐"}</span>
+      {/* M81: a due time before the title. */}
+      {task.due_at && <span className="shrink-0 tabular-nums text-muted" data-task-time>{clock(task.due_at)}</span>}
       <span className={cn("min-w-0 truncate", done && "text-muted line-through")}>{task.title}</span>
     </button>
   );
@@ -535,7 +538,7 @@ export function AgendaList({ events, tasks = [], taskPlaceOf = (task) => taskPla
             {due.map((task) => (
               <li key={`task-${task.id}`}>
                 <button type="button" data-task={task.id} onClick={() => onOpenTask(task)} className="flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-panel-2/60">
-                  <span className="w-[92px] shrink-0 pt-px text-xs text-muted">期限</span>
+                  <span className="w-[92px] shrink-0 pt-px text-xs text-muted">{task.due_at ? `期限 ${clock(task.due_at)}` : "期限"}</span>
                   <span aria-hidden className="mt-1 h-3 w-1 shrink-0 self-stretch rounded-full" style={{ background: channelColor(task.channel_id) }} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">

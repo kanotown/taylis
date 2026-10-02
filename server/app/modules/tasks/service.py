@@ -23,23 +23,33 @@ for the same time is never sent again. The worker (`fire_due`, beside the remind
 rows fired and writes task.due, which the push planner turns into a notification. Leaving a
 channel takes one off its tasks and cancels their alarms (`TaskLeaveHandler`, an outbox handler on
 channel.member_removed: channels does not call tasks, ARCHITECTURE.md §5).
+
+M81 (§11): a due time (due_at in due_tz; due_on stays its date, and the alarm fires at that time
+instead of 8:00), a checklist inside the task (subtasks), a repeat rule (completing an occurrence
+makes the next one in the same transaction, once: next_task_id) and columns added to a channel's
+board (task_columns; each belongs to a status, so `status` keeps its three values for older
+devices, and a task in a built-in column has column_id NULL).
 """
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy import update as sql_update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import bad_request, conflict, forbidden, not_found
+from app.core.ids import uuid7
 from app.core.time import utcnow
 from app.events.envelope import Audience
 from app.events.models import OutboxEvent
 from app.events.outbox import write_outbox
+from app.modules.calendar import recurrence
 from app.modules.calendar.service import DEFAULT_TZ, zone_for
 from app.modules.canvases import markers as canvas_markers
 from app.modules.canvases import repository as canvases_repo
@@ -59,15 +69,29 @@ from app.modules.messages.mentions import (
 from app.modules.tasks import repository as repo
 from app.modules.tasks.events import (
     TASK_ASSIGNED,
+    TASK_COLUMNS_UPDATED,
     TASK_DELETED,
     TASK_DUE,
     TASK_REVIEW_DONE,
     TASK_UPDATED,
 )
-from app.modules.tasks.models import Task, TaskDueAlarm
+from app.modules.tasks.models import (
+    MAX_COLUMNS_PER_BOARD,
+    STATUSES,
+    Task,
+    TaskColumn,
+    TaskDueAlarm,
+)
 from app.modules.tasks.schemas import (
+    SubtaskIn,
+    SubtaskOut,
+    SubtaskUpdate,
     TaskAssignedData,
     TaskCanvasSourceOut,
+    TaskColumnCreate,
+    TaskColumnOut,
+    TaskColumnsUpdatedData,
+    TaskColumnUpdate,
     TaskCreate,
     TaskData,
     TaskDeletedData,
@@ -96,6 +120,9 @@ MAX_DUE_TASKS = 1000
 MAX_OPEN_PER_BOARD = 1000
 # The due-date notification goes out at 8:00 of the day, in the person's zone.
 DUE_ALARM_TIME = time(8, 0)
+# M81: the built-in columns' fixed ids are uuid5(this, "<channel id>:<status>"), and their names.
+BUILTIN_COLUMN_NAMESPACE = uuid.UUID("6f1c2b0e-81a0-4c55-9d1e-7a5ad0c0b081")
+BUILTIN_COLUMN_NAMES = {"todo": "未着手", "doing": "進行中", "done": "完了"}
 
 
 @dataclass(frozen=True)
@@ -145,6 +172,11 @@ def to_data(task: Task, channel: Channel | None, assignee_ids: list[uuid.UUID]) 
         status=task.status,  # type: ignore[arg-type]
         position=task.position,
         due_on=task.due_on,
+        due_at=_utc(task.due_at),
+        due_tz=task.due_tz,
+        subtasks=[SubtaskOut(**item) for item in (task.subtasks or [])],
+        rrule=task.rrule,
+        column_id=task.column_id,
         assignee_ids=assignee_ids,
         source=source,
         canvas_source=canvas_source,
@@ -382,11 +414,15 @@ async def _joined(db: AsyncSession, actor: User) -> dict[uuid.UUID, tuple[Channe
 
 
 async def _default_position(
-    db: AsyncSession, channel_id: uuid.UUID | None, owner_id: uuid.UUID, status: str
+    db: AsyncSession,
+    channel_id: uuid.UUID | None,
+    owner_id: uuid.UUID,
+    status: str,
+    column_id: uuid.UUID | None = None,
 ) -> float:
     """The bottom of todo / doing, the top of done."""
     top = status == "done"
-    edge = await repo.column_edge(db, channel_id, owner_id, status, top=top)
+    edge = await repo.column_edge(db, channel_id, owner_id, status, top=top, column_id=column_id)
     if edge is None:
         return SPACING
     return edge - SPACING if top else edge + SPACING
@@ -426,10 +462,14 @@ async def _place(
     status: str,
     after_id: uuid.UUID | None,
     before_id: uuid.UUID | None,
+    column_id: uuid.UUID | None = None,
 ) -> list[Task]:
-    """Sets task.position for its place in `status`'s column; returns the other cards that were
-    renumbered on the way (they need a task.updated too)."""
-    cards = await repo.column(db, task.channel_id, task.owner_id, status, lock=True)
+    """Sets task.position for its place in the column (`status`, and an added column or None for
+    the built-in one); returns the other cards that were renumbered on the way (they need a
+    task.updated too)."""
+    cards = await repo.column(
+        db, task.channel_id, task.owner_id, status, column_id=column_id, lock=True
+    )
     cards = [t for t in cards if t.id != task.id]
     index = insertion_index([t.id for t in cards], after_id, before_id)
     if index is None:
@@ -467,8 +507,10 @@ def _set_status(task: Task, status: str, actor_id: uuid.UUID, now: datetime) -> 
 # --- due-date alarms -----------------------------------------------------------------------------
 
 
-def due_fire_at(due_on: date, tz: str) -> datetime:
-    """8:00 of the due date in the person's zone (TASKS.md §5)."""
+def due_fire_at(due_on: date, tz: str, due_at: datetime | None = None) -> datetime:
+    """8:00 of the due date in the person's zone (TASKS.md §5); M81: a due time itself."""
+    if due_at is not None:
+        return due_at.astimezone(UTC)
     return datetime.combine(due_on, DUE_ALARM_TIME, ZoneInfo(tz)).astimezone(UTC)
 
 
@@ -488,9 +530,11 @@ async def _sync_alarms(
     actor: User,
     tz: str | None,
     now: datetime,
+    zones: dict[uuid.UUID, str] | None = None,
 ) -> None:
     """Makes the task's alarm rows match who is to be notified and when. A row whose time is
-    unchanged keeps its status (one fired is not sent again); one that went away is cancelled."""
+    unchanged keeps its status (one fired is not sent again); one that went away is cancelled.
+    `zones`: the zone of a new row per person (a repeat's next occurrence keeps the old ones)."""
     wanted = _notified(task, assignee_ids)
     rows = {row.user_id: row for row in await repo.alarms_of_task(db, task.id)}
     for user_id, stale in rows.items():
@@ -507,7 +551,9 @@ async def _sync_alarms(
         if row is None:
             person = actor if user_id == actor.id else people.get(user_id)
             zone = zone_for(tz if user_id == actor.id else None, person) if person else DEFAULT_TZ
-            fire_at = due_fire_at(task.due_on, zone)
+            if zones and user_id in zones and not (user_id == actor.id and tz):
+                zone = zones[user_id]
+            fire_at = due_fire_at(task.due_on, zone, task.due_at)
             db.add(
                 TaskDueAlarm(
                     task_id=task.id,
@@ -522,7 +568,7 @@ async def _sync_alarms(
             continue
         if user_id == actor.id and tz and tz != row.tz:
             row.tz = tz
-        fire_at = due_fire_at(task.due_on, row.tz)
+        fire_at = due_fire_at(task.due_on, row.tz, task.due_at)
         if fire_at != row.fire_at:
             row.fire_at = fire_at
             row.status = "pending" if fire_at > now else "cancelled"
@@ -531,6 +577,378 @@ async def _sync_alarms(
             row.status = "pending"
             row.updated_at = now
     await db.flush()
+
+
+# --- M81: due times, subtasks, repeats (TASKS.md §11) --------------------------------------------
+
+
+def _set_due_time(task: Task, due_at: datetime, zone: str) -> None:
+    """A due time: kept to the minute, with its zone; due_on becomes its date there."""
+    local = due_at.astimezone(ZoneInfo(zone)).replace(second=0, microsecond=0)
+    task.due_at = local.astimezone(UTC)
+    task.due_tz = zone
+    task.due_on = local.date()
+
+
+def _apply_due(
+    task: Task,
+    sent: set[str],
+    due_on: date | None,
+    due_at: datetime | None,
+    tz: str | None,
+    actor: User,
+) -> None:
+    """§11.3: due_at wins (due_on follows it); `due_at: null` drops the time; `due_on: null`
+    clears both; due_on alone on a timed task keeps the wall-clock time on the new day."""
+    if "due_at" in sent and due_at is not None:
+        _set_due_time(task, due_at, tz or task.due_tz or zone_for(None, actor))
+        return
+    if "due_on" in sent and due_on is None:
+        task.due_on, task.due_at, task.due_tz = None, None, None
+        return
+    if "due_at" in sent:
+        task.due_at, task.due_tz = None, None
+    if "due_on" in sent:
+        task.due_on = due_on
+        if task.due_at is not None and task.due_tz is not None and due_on is not None:
+            zone = ZoneInfo(task.due_tz)
+            wall = task.due_at.astimezone(zone).time()
+            task.due_at = recurrence.timed_start(due_on, wall, zone)
+
+
+def _merge_subtasks(
+    current: list[dict[str, Any]], incoming: list[SubtaskIn]
+) -> list[dict[str, Any]]:
+    """The whole list sent: a known id keeps it; none, an unknown or a repeated one is new."""
+    known = {str(item["id"]) for item in current}
+    used: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for item in incoming:
+        key = str(item.id) if item.id is not None else None
+        if key is None or key not in known or key in used:
+            key = str(uuid7())
+        used.add(key)
+        out.append({"id": key, "title": item.title, "done": item.done})
+    return out
+
+
+def _invalid_rrule(message: str) -> Exception:
+    return bad_request("task_invalid_rrule", message)
+
+
+def _check_repeat(task: Task) -> None:
+    """A repeat needs a due date and is not for a review request (§11.3)."""
+    if task.rrule is None:
+        return
+    if task.due_on is None:
+        raise _invalid_rrule("A repeating task needs a due date (send rrule: null to stop it)")
+    if task.kind == "review":
+        raise _invalid_rrule("A review request does not repeat")
+
+
+def _normalized_rrule(text: str | None) -> str | None:
+    if text is None:
+        return None
+    try:
+        return recurrence.normalize(text)
+    except recurrence.RRuleError as exc:
+        raise _invalid_rrule(str(exc)) from exc
+
+
+def next_due(rule_text: str, due_on: date, today: date) -> tuple[date, str] | None:
+    """§11.4: the next occurrence's date and rule: the rule read from this due date (DTSTART),
+    the first occurrence after it and on or after `today` (missed ones skipped; COUNT counts
+    them). None when the series is over."""
+    rule = recurrence.parse(rule_text)
+    after = max(due_on + timedelta(days=1), today)
+    if rule.count is None:
+        found = next(recurrence.dates(rule, due_on, stop=date.max, after=after), None)
+        return (found, recurrence.format_rule(rule)) if found is not None else None
+    for index, day in enumerate(recurrence.dates(rule, due_on, stop=date.max)):
+        if day >= after:
+            rest = recurrence.with_end(rule, count=rule.count - index)
+            return day, recurrence.format_rule(rest)
+    return None
+
+
+async def _spawn_next(
+    db: AsyncSession,
+    task: Task,
+    channel: Channel | None,
+    assignee_ids: list[uuid.UUID],
+    actor: User,
+    tz: str | None,
+    now: datetime,
+) -> None:
+    """A repeating task was completed: its next occurrence, once (next_task_id), in the same
+    transaction (§11.4). The row is locked, so two completions make one."""
+    if task.rrule is None or task.next_task_id is not None or task.due_on is None:
+        return
+    today = now.astimezone(ZoneInfo(zone_for(tz, actor))).date()
+    found = next_due(task.rrule, task.due_on, today)
+    if found is None:
+        return
+    day, rule = found
+    nxt = Task(
+        channel_id=task.channel_id,
+        owner_id=task.owner_id,
+        title=task.title,
+        notes=task.notes,
+        status="todo",
+        kind="task",
+        due_on=day,
+        subtasks=[
+            {"id": str(uuid7()), "title": item["title"], "done": False}
+            for item in (task.subtasks or [])
+        ],
+        rrule=rule,
+        created_at=now,
+        updated_at=now,
+    )
+    if task.due_at is not None and task.due_tz is not None:
+        zone = ZoneInfo(task.due_tz)
+        nxt.due_at = recurrence.timed_start(day, task.due_at.astimezone(zone).time(), zone)
+        nxt.due_tz = task.due_tz
+    nxt.position = await _default_position(db, task.channel_id, task.owner_id, "todo")
+    db.add(nxt)
+    await db.flush()
+    task.next_task_id = nxt.id
+    if assignee_ids:
+        await repo.set_assignees(db, nxt.id, [], assignee_ids)
+    zones = {row.user_id: row.tz for row in await repo.alarms_of_task(db, task.id)}
+    await _sync_alarms(db, nxt, assignee_ids, actor, tz, now, zones)
+    await _emit_updated(db, nxt, channel, assignee_ids)
+
+
+# --- M81: board columns ---------------------------------------------------------------------------
+
+
+def builtin_column_id(channel_id: uuid.UUID, status: str) -> uuid.UUID:
+    return uuid.uuid5(BUILTIN_COLUMN_NAMESPACE, f"{channel_id}:{status}")
+
+
+def _column_out(column: TaskColumn) -> TaskColumnOut:
+    return TaskColumnOut(
+        id=column.id,
+        channel_id=column.channel_id,
+        name=column.name,
+        status=column.status,  # type: ignore[arg-type]
+        builtin=column.builtin,
+        position=column.position,
+    )
+
+
+def _virtual_columns(channel_id: uuid.UUID) -> list[TaskColumnOut]:
+    """A board whose layout never changed: the three built-in columns."""
+    return [
+        TaskColumnOut(
+            id=builtin_column_id(channel_id, status),
+            channel_id=channel_id,
+            name=BUILTIN_COLUMN_NAMES[status],
+            status=status,  # type: ignore[arg-type]
+            builtin=True,
+            position=SPACING * (i + 1),
+        )
+        for i, status in enumerate(STATUSES)
+    ]
+
+
+async def _columns(db: AsyncSession, channel_id: uuid.UUID) -> list[TaskColumnOut]:
+    rows = await repo.columns_of(db, channel_id)
+    return [_column_out(c) for c in rows] if rows else _virtual_columns(channel_id)
+
+
+async def _materialized(db: AsyncSession, channel_id: uuid.UUID) -> list[TaskColumn]:
+    """The board's column rows, locked, with the built-in three written first if missing (the
+    first change of a layout; concurrent first changes write them once)."""
+    now = utcnow()
+    for i, status in enumerate(STATUSES):
+        await db.execute(
+            pg_insert(TaskColumn)
+            .values(
+                id=builtin_column_id(channel_id, status),
+                channel_id=channel_id,
+                name=BUILTIN_COLUMN_NAMES[status],
+                status=status,
+                builtin=True,
+                position=SPACING * (i + 1),
+                created_at=now,
+                updated_at=now,
+            )
+            .on_conflict_do_nothing()
+        )
+    return await repo.columns_of(db, channel_id, lock=True)
+
+
+def _column_not_found() -> Exception:
+    return not_found("task_column_not_found", "Column not found")
+
+
+async def _emit_columns(db: AsyncSession, channel_id: uuid.UUID) -> list[TaskColumnOut]:
+    columns = await _columns(db, channel_id)
+    await write_outbox(
+        db,
+        event_type=TASK_COLUMNS_UPDATED,
+        audience_type="channel",
+        audience_id=None,
+        channel_id=channel_id,
+        payload=TaskColumnsUpdatedData(channel_id=channel_id, columns=columns).model_dump(
+            mode="json"
+        ),
+    )
+    return columns
+
+
+async def _target_column(
+    db: AsyncSession, channel: Channel | None, column_id: uuid.UUID
+) -> tuple[uuid.UUID | None, str]:
+    """Where a move with column_id goes: (the added column's id, or None for a built-in one;
+    its status). Another board's or an unknown column: 400 task_invalid_column."""
+    if channel is not None and not channel.is_dm:
+        for status in STATUSES:
+            if column_id == builtin_column_id(channel.id, status):
+                return None, status
+        row = await repo.get_column(db, column_id)
+        if row is not None and row.channel_id == channel.id:
+            return (None if row.builtin else row.id), row.status
+    raise bad_request("task_invalid_column", "No such column on this task's board")
+
+
+async def _load_column(
+    db: AsyncSession, actor: User, column_id: uuid.UUID
+) -> tuple[TaskColumn | None, Channel]:
+    """A column the actor may change: its row (None: a built-in one not written yet) and its
+    channel (a board they may post on). One they cannot see: 404."""
+    row = await repo.get_column(db, column_id)
+    channel_id: uuid.UUID | None = row.channel_id if row is not None else None
+    if row is None:
+        for channel, _role in (await _joined(db, actor)).values():
+            if not channel.is_dm and any(
+                column_id == builtin_column_id(channel.id, status) for status in STATUSES
+            ):
+                channel_id = channel.id
+                break
+    if channel_id is None:
+        raise _column_not_found()
+    membership = await channels.membership_of(db, actor.id, channel_id)
+    if membership is None:
+        raise _column_not_found()
+    channel = await channels.require_channel(db, channel_id)
+    _require_poster(actor, channel, membership.role)
+    return row, channel
+
+
+def _position_after(
+    columns: list[TaskColumn], moving: uuid.UUID | None, after_id: uuid.UUID | None
+) -> float | None:
+    """A column's position right of `after_id` (None: the left end) among the others; None when
+    the gap is too small (renumber first)."""
+    others = [c for c in columns if c.id != moving]
+    if after_id is None:
+        return between(None, others[0].position if others else None)
+    index = next((i for i, c in enumerate(others) if c.id == after_id), None)
+    if index is None:
+        raise bad_request("task_invalid_column", "after_id is not a column of this board")
+    hi = others[index + 1].position if index + 1 < len(others) else None
+    return between(others[index].position, hi)
+
+
+def _renumber_columns(columns: list[TaskColumn], now: datetime) -> None:
+    for i, column in enumerate(columns):
+        column.position = SPACING * (i + 1)
+        column.updated_at = now
+
+
+async def list_columns(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> list[TaskColumnOut]:
+    await _board_channel(db, actor, channel_id)
+    return await _columns(db, channel_id)
+
+
+async def create_column(db: AsyncSession, actor: User, data: TaskColumnCreate) -> TaskColumnOut:
+    channel, role = await _board_channel(db, actor, data.channel_id)
+    _require_poster(actor, channel, role)
+    columns = await _materialized(db, channel.id)
+    if len(columns) >= MAX_COLUMNS_PER_BOARD:
+        raise conflict("task_column_limit", f"A board has at most {MAX_COLUMNS_PER_BOARD} columns")
+    now = utcnow()
+    after = data.after_id if data.after_id is not None else columns[-1].id
+    position = _position_after(columns, None, after)
+    if position is None:
+        _renumber_columns(columns, now)
+        position = _position_after(columns, None, after)
+    assert position is not None
+    column = TaskColumn(
+        channel_id=channel.id,
+        name=data.name,
+        status=data.status,
+        builtin=False,
+        position=position,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(column)
+    await db.flush()
+    await _emit_columns(db, channel.id)
+    await db.commit()
+    return _column_out(column)
+
+
+async def update_column(
+    db: AsyncSession, actor: User, column_id: uuid.UUID, data: TaskColumnUpdate
+) -> TaskColumnOut:
+    _row, channel = await _load_column(db, actor, column_id)
+    columns = await _materialized(db, channel.id)
+    column = next(c for c in columns if c.id == column_id)
+    now = utcnow()
+    sent = data.model_fields_set
+    if "name" in sent:
+        if data.name is None:
+            raise bad_request("validation_error", "A name cannot be null")
+        column.name = data.name
+    if "after_id" in sent and data.after_id != column.id:
+        position = _position_after(columns, column.id, data.after_id)
+        if position is None:
+            _renumber_columns([c for c in columns if c.id != column.id], now)
+            position = _position_after(columns, column.id, data.after_id)
+        assert position is not None
+        column.position = position
+    column.updated_at = now
+    await db.flush()
+    await _emit_columns(db, channel.id)
+    await db.commit()
+    return _column_out(column)
+
+
+async def delete_column(db: AsyncSession, actor: User, column_id: uuid.UUID) -> None:
+    """§11.3: its cards go to the built-in column of the same status (after its cards; the top of
+    a done one), in their order; their status does not change."""
+    row, channel = await _load_column(db, actor, column_id)
+    if row is None or row.builtin:
+        raise conflict("task_column_builtin", "A built-in column cannot be deleted")
+    await _materialized(db, channel.id)
+    cards = await repo.in_column(db, row.id)
+    now = utcnow()
+    if cards:
+        target = await repo.column(db, channel.id, actor.id, row.status, lock=True)
+        if row.status == "done":
+            top = target[0].position if target else SPACING * (len(cards) + 1)
+            for i, card in enumerate(cards):
+                card.position = top - SPACING * (len(cards) - i)
+        else:
+            bottom = target[-1].position if target else 0.0
+            for i, card in enumerate(cards):
+                card.position = bottom + SPACING * (i + 1)
+        assignees = await repo.assignees_of(db, [c.id for c in cards])
+        for card in cards:
+            card.column_id = None
+            card.updated_at = now
+        await db.flush()
+        for card in cards:
+            await _emit_updated(db, card, channel, assignees.get(card.id, []))
+    await db.delete(row)
+    await db.flush()
+    await _emit_columns(db, channel.id)
+    await db.commit()
 
 
 # --- reading -------------------------------------------------------------------------------------
@@ -709,9 +1127,14 @@ async def create(db: AsyncSession, actor: User, data: TaskCreate) -> tuple[TaskO
         completed_at=now if data.status == "done" else None,
         completed_by=actor_id if data.status == "done" else None,
         client_task_id=data.client_task_id,
+        subtasks=_merge_subtasks([], data.subtasks),
+        rrule=_normalized_rrule(data.rrule),
         created_at=now,
         updated_at=now,
     )
+    if data.due_at is not None:
+        _set_due_time(task, data.due_at, data.tz or zone_for(None, actor))
+    _check_repeat(task)
     task.position = await _default_position(db, data.channel_id, actor_id, data.status)
     db.add(task)
     try:
@@ -767,7 +1190,7 @@ async def update(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskUp
     task = seen.task
     sent = data.model_fields_set
     # What the chip under its message shows, before anything changes (L9, REVIEWS.md §2.2).
-    shown_before = (task.status, task.due_on)
+    shown_before = (task.status, task.due_on, task.due_at)
     current = (await repo.assignees_of(db, [task.id])).get(task.id, [])
     assignees = current
     if "assignee_ids" in sent:
@@ -779,29 +1202,39 @@ async def update(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskUp
         task.title = data.title
     if "notes" in sent:
         task.notes = data.notes
-    if "due_on" in sent:
-        task.due_on = data.due_on
+    _apply_due(task, sent, data.due_on, data.due_at, data.tz, actor)
+    if "subtasks" in sent:
+        task.subtasks = _merge_subtasks(task.subtasks or [], data.subtasks or [])
+    if "rrule" in sent:
+        task.rrule = _normalized_rrule(data.rrule)
+    _check_repeat(task)
     now = utcnow()
     renumbered: list[Task] = []
     status_changed = False
+    completed = False
     if "status" in sent and data.status is not None and data.status != task.status:
         if data.status != "done" and task.status == "done":
             await _check_room(db, task)
+        # M81: a new status by itself goes to that status's built-in column.
         renumbered = await _place(db, task, data.status, None, None)
+        task.column_id = None
         _set_status(task, data.status, actor.id, now)
         status_changed = True
         if data.status == "done":
+            completed = True
             await _emit_review_done(db, task, seen.channel, actor.id)
     task.updated_at = now
     if assignees != current:
         await repo.set_assignees(db, task.id, current, assignees)
     await db.flush()
     await _sync_alarms(db, task, assignees, actor, data.tz, now)
+    if completed:
+        await _spawn_next(db, task, seen.channel, assignees, actor, data.tz, now)
     await _emit_changes(db, task, seen.channel, assignees, renumbered)
     if seen.channel is not None:
         added = [uid for uid in assignees if uid not in current]
         await _emit_assigned(db, task, seen.channel, actor.id, added)
-    if (task.status, task.due_on) != shown_before or assignees != current:
+    if (task.status, task.due_on, task.due_at) != shown_before or assignees != current:
         await _announce_source(db, task)
     if status_changed:
         await _follow_in_canvas(db, actor, task)
@@ -837,23 +1270,71 @@ async def move(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskMove
     seen = await _load(db, actor, task_id, lock=True)
     _require_editor(actor, seen)
     task = seen.task
-    if data.status != "done" and task.status == "done":
+    # M81 (§11.3): into a column of the board, or a status (its card's column while the status
+    # stays: an older device reordering what it shows as one column).
+    column_id: uuid.UUID | None
+    if data.column_id is not None:
+        column_id, status = await _target_column(db, seen.channel, data.column_id)
+        if data.status is not None and data.status != status:
+            raise bad_request("task_invalid_column", "The column has another status")
+    elif data.status is not None:
+        status = data.status
+        column_id = task.column_id if status == task.status else None
+    else:
+        raise bad_request("validation_error", "Send status or column_id")
+    if status != "done" and task.status == "done":
         await _check_room(db, task)
     now = utcnow()
-    renumbered = await _place(db, task, data.status, data.after_id, data.before_id)
-    status_changed = data.status != task.status
-    _set_status(task, data.status, actor.id, now)
+    renumbered = await _place(db, task, status, data.after_id, data.before_id, column_id)
+    task.column_id = column_id
+    status_changed = status != task.status
+    _set_status(task, status, actor.id, now)
     task.updated_at = now
     await db.flush()
     assignees = (await repo.assignees_of(db, [task.id])).get(task.id, [])
     if status_changed:
         await _sync_alarms(db, task, assignees, actor, None, now)
+        if status == "done":
+            await _spawn_next(db, task, seen.channel, assignees, actor, None, now)
     await _emit_changes(db, task, seen.channel, assignees, renumbered)
     if status_changed:
-        if data.status == "done":
+        if status == "done":
             await _emit_review_done(db, task, seen.channel, actor.id)
         await _announce_source(db, task)
         await _follow_in_canvas(db, actor, task)
+    await db.commit()
+    return to_out(seen, actor, assignees)
+
+
+async def update_subtask(
+    db: AsyncSession,
+    actor: User,
+    task_id: uuid.UUID,
+    subtask_id: uuid.UUID,
+    data: SubtaskUpdate,
+) -> TaskOut:
+    """M81: one item of the checklist (its checkbox, its title); the others are left alone."""
+    seen = await _load(db, actor, task_id, lock=True)
+    _require_editor(actor, seen)
+    task = seen.task
+    items = [dict(item) for item in (task.subtasks or [])]
+    item = next((i for i in items if str(i["id"]) == str(subtask_id)), None)
+    if item is None:
+        raise not_found("task_subtask_not_found", "Subtask not found")
+    sent = data.model_fields_set
+    if "title" in sent:
+        if data.title is None:
+            raise bad_request("validation_error", "A title cannot be null")
+        item["title"] = data.title
+    if "done" in sent:
+        if data.done is None:
+            raise bad_request("validation_error", "done cannot be null")
+        item["done"] = data.done
+    task.subtasks = items
+    task.updated_at = utcnow()
+    await db.flush()
+    assignees = (await repo.assignees_of(db, [task.id])).get(task.id, [])
+    await _emit_updated(db, task, seen.channel, assignees)
     await db.commit()
     return to_out(seen, actor, assignees)
 
@@ -905,11 +1386,14 @@ async def follow_canvas_ticks(
             continue
         now = utcnow()
         renumbered = await _place(db, task, status, None, None)
+        task.column_id = None
         _set_status(task, status, actor.id, now)
         task.updated_at = now
         await db.flush()
         assignees = (await repo.assignees_of(db, [task.id])).get(task.id, [])
         await _sync_alarms(db, task, assignees, actor, None, now)
+        if done:
+            await _spawn_next(db, task, seen.channel, assignees, actor, None, now)
         await _emit_changes(db, task, seen.channel, assignees, renumbered)
         if done:
             await _emit_review_done(db, task, seen.channel, actor.id)
@@ -962,7 +1446,7 @@ async def fire_due(db: AsyncSession, *, now: datetime | None = None, limit: int 
             or task.is_deleted
             or task.status == "done"
             or task.due_on is None
-            or due_fire_at(task.due_on, alarm.tz) != alarm.fire_at
+            or due_fire_at(task.due_on, alarm.tz, task.due_at) != alarm.fire_at
         ):
             alarm.status = "cancelled"
             continue
@@ -977,6 +1461,8 @@ async def fire_due(db: AsyncSession, *, now: datetime | None = None, limit: int 
             channel_name=channel.name if channel is not None else None,
             title=task.title,
             due_on=task.due_on,
+            due_at=_utc(task.due_at),
+            tz=alarm.tz,
         )
         await write_outbox(
             db,

@@ -9,8 +9,8 @@
  * when the server refuses it.
  */
 import { ApiError } from "../api/errors";
-import type { TaskAssigned, TaskCreate, TaskDeleted, TaskDue, TaskMove, TaskOut, TaskReviewDone, TaskStatus, TaskUpdate, TaskUpdated } from "../api/types";
-import { applyLocalMove, dueInRange, isMine, isRequestedByMe, type Neighbors, removeTask, taskFromEvent, upsertTask } from "../ui/tasks";
+import type { SubtaskUpdate, TaskAssigned, TaskColumnCreate, TaskColumnOut, TaskColumnsUpdated, TaskColumnUpdate, TaskCreate, TaskDeleted, TaskDue, TaskMove, TaskOut, TaskReviewDone, TaskStatus, TaskUpdate, TaskUpdated } from "../api/types";
+import { applyLocalMove, type BoardColumn, dueInRange, FALLBACK_COLUMNS, isMine, isRequestedByMe, type Neighbors, removeTask, sortColumns, taskFromEvent, upsertTask } from "../ui/tasks";
 
 export interface TaskApi {
   listTasks(channelId: string, includeDone?: "recent" | "all"): Promise<TaskOut[]>;
@@ -23,6 +23,12 @@ export interface TaskApi {
   updateTask(taskId: string, patch: TaskUpdate): Promise<TaskOut>;
   moveTask(taskId: string, body: TaskMove): Promise<TaskOut>;
   deleteTask(taskId: string): Promise<void>;
+  /** M81 (TASKS.md §11). Optional: without them (an older fake) a board has the three built-in columns. */
+  updateSubtask?(taskId: string, subtaskId: string, patch: SubtaskUpdate): Promise<TaskOut>;
+  listTaskColumns?(channelId: string): Promise<TaskColumnOut[]>;
+  createTaskColumn?(body: TaskColumnCreate): Promise<TaskColumnOut>;
+  updateTaskColumn?(columnId: string, patch: TaskColumnUpdate): Promise<TaskColumnOut>;
+  deleteTaskColumn?(columnId: string): Promise<void>;
 }
 
 export type TaskListState = "loading" | "ready" | "failed" | "unsupported";
@@ -37,6 +43,12 @@ export interface TaskBoard extends TaskList {
   channelId: string;
   /** Every completed card (「完了をすべて表示」), not only the latest 100. */
   allDone: boolean;
+  /**
+   * M81: the board's columns, left to right. FALLBACK_COLUMNS (ids = statuses) until read, or from a server before M81
+   * (`columnsSupported` false: no adding, renaming or moving columns).
+   */
+  columns: BoardColumn[];
+  columnsSupported: boolean;
 }
 
 export interface TaskDueWindow extends TaskList {
@@ -108,7 +120,14 @@ export class TaskHub {
   async openBoard(channelId: string, allDone = false): Promise<void> {
     const current = this.boards.get(channelId);
     if (current && current.state === "ready" && current.allDone === allDone) return;
-    this.boards.set(channelId, { channelId, allDone, state: "loading", tasks: current?.tasks ?? [] });
+    this.boards.set(channelId, {
+      channelId,
+      allDone,
+      state: "loading",
+      tasks: current?.tasks ?? [],
+      columns: current?.columns ?? [...FALLBACK_COLUMNS],
+      columnsSupported: current?.columnsSupported ?? false,
+    });
     this.changed();
     await this.readBoard(channelId);
   }
@@ -177,16 +196,29 @@ export class TaskHub {
     const key = `board:${channelId}`;
     const ticket = this.ticket(key);
     try {
-      const tasks = await api.listTasks(channelId, board.allDone ? "all" : "recent");
+      const [tasks, columns] = await Promise.all([api.listTasks(channelId, board.allDone ? "all" : "recent"), this.readColumns(channelId)]);
       const now = this.boards.get(channelId);
       if (this.reads.get(key) !== ticket || !now) return;
-      this.boards.set(channelId, { ...now, state: "ready", tasks });
+      this.boards.set(channelId, { ...now, state: "ready", tasks, columns: columns ?? [...FALLBACK_COLUMNS], columnsSupported: columns !== null });
     } catch (err) {
       const now = this.boards.get(channelId);
       if (this.reads.get(key) !== ticket || !now) return;
       this.boards.set(channelId, { ...now, state: this.failure(err) });
     }
     this.changed();
+  }
+
+  /** M81: a board's columns; null from a server (or fake) without them. */
+  private async readColumns(channelId: string): Promise<BoardColumn[] | null> {
+    const api = this.deps.api;
+    if (!api?.listTaskColumns) return null;
+    try {
+      return sortColumns(await api.listTaskColumns(channelId));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return null; // before M81 (or a route the server lacks)
+      if (err instanceof ApiError && err.status === 422) return null; // before M81: "columns" read as a task id
+      throw err;
+    }
   }
 
   private async readMine(): Promise<void> {
@@ -256,12 +288,15 @@ export class TaskHub {
    * Into `status` between `neighbors`: shown at once at a guessed place, then where the server put it. A refusal puts
    * the card back and throws (the screen says why).
    */
-  async move(taskId: string, status: TaskStatus, neighbors: Neighbors): Promise<TaskOut> {
+  async move(taskId: string, status: TaskStatus, neighbors: Neighbors, column?: BoardColumn): Promise<TaskOut> {
     const api = this.requireApi();
     const before = this.find(taskId);
-    if (before) this.putLocalMove(before, status, neighbors);
+    // M81: into a column of the board (a fallback column, id = its status, sends the status alone).
+    const columnId = column && column.id !== column.status ? column.id : undefined;
+    if (before) this.putLocalMove(before, status, neighbors, column ? (column.builtin ? null : column.id) : undefined);
     try {
-      const task = await api.moveTask(taskId, { status, after_id: neighbors.after_id, before_id: neighbors.before_id });
+      const body: TaskMove = columnId ? { column_id: columnId, after_id: neighbors.after_id, before_id: neighbors.before_id } : { status, after_id: neighbors.after_id, before_id: neighbors.before_id };
+      const task = await api.moveTask(taskId, body);
       this.put(task);
       return task;
     } catch (err) {
@@ -270,10 +305,10 @@ export class TaskHub {
     }
   }
 
-  private putLocalMove(task: TaskOut, status: TaskStatus, neighbors: Neighbors): void {
+  private putLocalMove(task: TaskOut, status: TaskStatus, neighbors: Neighbors, columnId?: string | null): void {
     // The guess is made among the cards of the window that holds the task (its board, else 「自分のタスク」).
     const pool = (task.channel_id ? this.boards.get(task.channel_id)?.tasks : undefined) ?? this.mine?.tasks ?? [task];
-    const moved = applyLocalMove(pool.some((t) => t.id === task.id) ? pool : [...pool, task], task.id, status, neighbors, this.deps.now?.() ?? new Date().toISOString(), this.deps.me());
+    const moved = applyLocalMove(pool.some((t) => t.id === task.id) ? pool : [...pool, task], task.id, status, neighbors, this.deps.now?.() ?? new Date().toISOString(), this.deps.me(), columnId);
     const local = moved.find((t) => t.id === task.id);
     if (local) this.put(local);
   }
@@ -281,6 +316,57 @@ export class TaskHub {
   async remove(taskId: string): Promise<void> {
     await this.requireApi().deleteTask(taskId);
     this.drop(taskId);
+  }
+
+  /** M81: one checklist item's checkbox (shown at once, put back when refused). */
+  async toggleSubtask(taskId: string, subtaskId: string, done: boolean): Promise<TaskOut> {
+    const api = this.requireApi();
+    if (!api.updateSubtask) throw new Error("Subtasks are not available");
+    const before = this.find(taskId);
+    if (before) this.put({ ...before, subtasks: (before.subtasks ?? []).map((i) => (i.id === subtaskId ? { ...i, done } : i)) });
+    try {
+      const task = await api.updateSubtask(taskId, subtaskId, { done });
+      this.put(task);
+      return task;
+    } catch (err) {
+      if (before) this.put(before);
+      throw err;
+    }
+  }
+
+  // --- columns (M81) -------------------------------------------------------------------------------
+
+  async addColumn(body: TaskColumnCreate): Promise<TaskColumnOut> {
+    const api = this.requireApi();
+    if (!api.createTaskColumn) throw new Error("Columns are not available");
+    const column = await api.createTaskColumn(body);
+    await this.refreshColumns(body.channel_id);
+    return column;
+  }
+
+  async changeColumn(channelId: string, columnId: string, patch: TaskColumnUpdate): Promise<void> {
+    const api = this.requireApi();
+    if (!api.updateTaskColumn) throw new Error("Columns are not available");
+    await api.updateTaskColumn(columnId, patch);
+    await this.refreshColumns(channelId);
+  }
+
+  /** An added column; its cards come back (task.updated) in the built-in column of their status. */
+  async removeColumn(channelId: string, columnId: string): Promise<void> {
+    const api = this.requireApi();
+    if (!api.deleteTaskColumn) throw new Error("Columns are not available");
+    await api.deleteTaskColumn(columnId);
+    await this.refreshColumns(channelId);
+  }
+
+  /** After my own change (the event comes too; whichever lands last is the same list). */
+  private async refreshColumns(channelId: string): Promise<void> {
+    if (!this.boards.has(channelId)) return;
+    const columns = await this.readColumns(channelId);
+    const board = this.boards.get(channelId);
+    if (!board || !columns) return;
+    this.boards.set(channelId, { ...board, columns, columnsSupported: true });
+    this.changed();
   }
 
   /** The task as held here, else read (a notification, a calendar row outside every window). */
@@ -307,6 +393,13 @@ export class TaskHub {
       this.deps.onNotice?.({ kind: "due", data: data as TaskDue });
     } else if (event === "task.review_done") {
       this.deps.onNotice?.({ kind: "review_done", data: data as TaskReviewDone });
+    } else if (event === "task.columns.updated") {
+      const { channel_id: channelId, columns } = data as TaskColumnsUpdated;
+      const board = this.boards.get(channelId);
+      if (board) {
+        this.boards.set(channelId, { ...board, columns: sortColumns(columns), columnsSupported: true });
+        this.changed();
+      }
     }
   }
 

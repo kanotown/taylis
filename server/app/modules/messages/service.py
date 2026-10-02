@@ -351,6 +351,7 @@ async def messages_out(
                     assignee_ids=people,
                     due_on=t.due_on,
                     owner_id=t.owner_id,
+                    due_at=t.due_at,
                 )
                 for t, people in tasks.get(m.id, [])
             ],
