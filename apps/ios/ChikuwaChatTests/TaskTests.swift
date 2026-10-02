@@ -94,14 +94,18 @@ final class FakeTaskApi: TaskApi {
     }
 
     func task(id: String) async throws -> TaskOut {
-        guard let row = (board + mine + due + (requested ?? [])).first(where: { $0.id == id }) else { throw ApiError.api(status: 404, code: "task_not_found", message: "") }
+        guard let row = (board + mine + due + (requested ?? []) + (deadlines ?? [])).first(where: { $0.id == id }) else { throw ApiError.api(status: 404, code: "task_not_found", message: "") }
         return row
     }
 
     func createTask(_ body: TaskCreate) async throws -> TaskOut {
         creates.append(body)
-        let task = TaskFixtures.task(body.title, id: "new-\(creates.count)", channelId: body.channelId, status: body.status, dueOn: body.dueOn,
+        var task = TaskFixtures.task(body.title, id: "new-\(creates.count)", channelId: body.channelId, status: body.status, dueOn: body.dueOn,
                                      assigneeIds: body.assigneeIds)
+        if body.kind == .deadline {  // M86
+            task.kind = .deadline
+            task.noticeDays = body.noticeDays ?? DeadlineRules.defaultNoticeDays
+        }
         if body.channelId != nil { board.append(task) } else { mine.append(task) }
         return task
     }
@@ -129,6 +133,18 @@ final class FakeTaskApi: TaskApi {
 
     func deleteTask(id: String) async throws {
         deletes.append(id)
+    }
+
+    // M86 (DEADLINES.md §5): GET /tasks/deadlines (nil: a server before M85, 422; `deadlinesError` another failure).
+    var deadlines: [TaskOut]? = []
+    var deadlinesError: Error?
+    private(set) var deadlineCalls = 0
+
+    func deadlineTasks() async throws -> [TaskOut] {
+        deadlineCalls += 1
+        if let deadlinesError { throw deadlinesError }
+        guard let deadlines else { throw ApiError.api(status: 422, code: "validation_error", message: "") }
+        return deadlines
     }
 
     // M84 (TASKS.md §11.3): nil columns answer 404, as a server before M81.

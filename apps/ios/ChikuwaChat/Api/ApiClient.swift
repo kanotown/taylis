@@ -1009,6 +1009,10 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         try await request("GET", Self.pathWithQuery("/api/v1/tasks/due", [URLQueryItem(name: "from", value: from), URLQueryItem(name: "to", value: to)]))
     }
 
+    /// M86 (DEADLINES.md §5): the deadlines of every channel I am in, due from 30 days ago on (done ones too). A server
+    /// before M85 reads "deadlines" as a task id (422).
+    func deadlineTasks() async throws -> [TaskOut] { try await request("GET", "/api/v1/tasks/deadlines") }
+
     func task(id: String) async throws -> TaskOut { try await request("GET", "/api/v1/tasks/\(id)") }
 
     /// A retry with the same client_task_id returns the first task (200 instead of 201).

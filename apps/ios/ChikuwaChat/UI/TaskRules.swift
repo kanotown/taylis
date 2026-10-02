@@ -534,8 +534,14 @@ enum TaskRules {
 
     // MARK: the chip under a message (L9, REVIEWS.md §2.2)
 
-    /// 「レビュー依頼」 / 「タスク」.
-    static func kindLabel(_ kind: TaskKind) -> String { kind == .review ? "レビュー依頼" : "タスク" }
+    /// 「レビュー依頼」 / 「締切」 (M86) / 「タスク」.
+    static func kindLabel(_ kind: TaskKind) -> String {
+        switch kind {
+        case .review: "レビュー依頼"
+        case .deadline: "締切"
+        case .task: "タスク"
+        }
+    }
 
     /// A review request's state reads 依頼中 / 対応中 / 完了; a task's the columns' 未着手 / 進行中 / 完了.
     static func statusLabel(_ status: TaskStatus, kind: TaskKind) -> String {
@@ -657,11 +663,27 @@ struct TaskDraft: Equatable {
     var repetition = CalendarRecurrence.noRepeat(CalendarDates.today())
     /// M81: 「サブタスク」, in order.
     var subtasks: [SubtaskDraft] = []
+    /// M86 (DEADLINES.md §8 4.): a deadline's 「事前の通知」 (days before; the server's 7 / 3 / 1 / 0 to start with).
+    var noticeDays: [Int] = DeadlineRules.defaultNoticeDays
 
     init(title: String = "", channelId: String? = nil, status: TaskStatus = .todo) {
         self.title = title
         self.channelId = channelId
         self.status = status
+    }
+
+    /// M86: 「締切を追加」 — a deadline on one of `boards` (the first chosen), no date yet (the form asks for one).
+    static func newDeadline(boards: [String], channelId: String? = nil) -> TaskDraft {
+        var draft = TaskDraft(channelId: channelId ?? boards.first)
+        draft.kind = .deadline
+        draft.boardChoices = boards
+        return draft
+    }
+
+    /// M86: the form's 「タスク / 締切」 switch (a new task on a channel's board only). A deadline does not repeat.
+    mutating func setKind(_ kind: TaskKind) {
+        self.kind = kind
+        if kind == .deadline { repetition.kind = .none }
     }
 
     init(task: TaskOut) {
@@ -675,6 +697,7 @@ struct TaskDraft: Equatable {
         dueTime = task.dueAt.flatMap(TaskDraft.hhmm) ?? ""
         repetition = CalendarRecurrence.toRepeat(task.rrule, start: dueOn.isEmpty ? CalendarDates.today() : dueOn)
         subtasks = task.subtasks.map { SubtaskDraft(id: $0.id, title: $0.title, done: $0.done) }
+        noticeDays = task.noticeDays ?? (task.kind == .deadline ? [] : DeadlineRules.defaultNoticeDays)
     }
 
     /// "14:30" on the device's clock.
@@ -700,9 +723,9 @@ struct TaskDraft: Equatable {
         }
     }
 
-    /// The rule to send: the picker's, on the due date (nil without one, or for a review request).
+    /// The rule to send: the picker's, on the due date (nil without one, or for a review request or a deadline).
     var rrule: String? {
-        guard !dueOn.isEmpty, kind != .review else { return nil }
+        guard !dueOn.isEmpty, kind == .task else { return nil }
         return CalendarRecurrence.toRrule(repetition, start: dueOn)
     }
 
@@ -722,7 +745,8 @@ struct TaskDraft: Equatable {
         if title.isEmpty { return "題名を入れてください" }
         if title.count > TaskRules.maxTitle { return "題名は \(TaskRules.maxTitle) 文字までです" }
         if notes.count > TaskRules.maxNotes { return "メモは \(TaskRules.maxNotes) 文字までです" }
-        if kind != .review && repetition.kind != .none {
+        if kind == .deadline && dueOn.isEmpty { return "締切の日付を入れてください" }  // M86
+        if kind == .task && repetition.kind != .none {
             if dueOn.isEmpty { return "繰り返すには期限を入れてください" }
             if let problem = CalendarRecurrence.problem(repetition, start: dueOn) { return problem }
         }
@@ -743,7 +767,8 @@ struct TaskDraft: Equatable {
                           dueOn: dueOn.isEmpty ? nil : dueOn, assigneeIds: assignees, sourceMessageId: sourceMessageId,
                           clientTaskId: clientTaskId, tz: tz, kind: kind,
                           sourceCanvasId: sourceCanvasLine == nil ? nil : sourceCanvasId, sourceCanvasLine: sourceCanvasId == nil ? nil : sourceCanvasLine,
-                          dueAt: dueAt, rrule: rrule, subtasks: subtasksBody)
+                          dueAt: dueAt, rrule: rrule, subtasks: subtasksBody,
+                          noticeDays: kind == .deadline ? DeadlineRules.normalize(noticeDays) : nil)
     }
 
     /// PATCH /tasks/{id} with only what changed (`tz` with a new due date: its notification is read in my zone).
@@ -770,9 +795,13 @@ struct TaskDraft: Equatable {
         }
         // M81: the repeat, compared as the calendar does (the task's rule read through the picker); a dropped due date
         // drops it too (the server refuses a rule without one).
-        let ruleChanged = due.map { CalendarRecurrence.ruleChanged(kind == .review ? CalendarRecurrence.noRepeat($0) : repetition, start: $0, rrule: task.rrule) }
+        let ruleChanged = due.map { CalendarRecurrence.ruleChanged(kind != .task ? CalendarRecurrence.noRepeat($0) : repetition, start: $0, rrule: task.rrule) }
             ?? (task.rrule != nil)
         if ruleChanged { patch.rrule = .some(rrule) }
+        // M86: a deadline's notice days, the whole set (largest first) when they changed.
+        if task.kind == .deadline && !DeadlineRules.sameNoticeDays(noticeDays, task.noticeDays) {
+            patch.noticeDays = DeadlineRules.normalize(noticeDays)
+        }
         let body = subtasksBody
         if body != task.subtasks.map({ SubtaskIn(id: $0.id, title: $0.title, done: $0.done) }) { patch.subtasks = body }
         if task.channelId != nil {

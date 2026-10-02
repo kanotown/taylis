@@ -102,7 +102,7 @@ enum HomeSections {
 /// still opens its list.
 struct HomeTile: Identifiable, Equatable {
     enum Kind: String {
-        case threads, times, drafts, saved, reminders, calendar, tasks, files, canvases
+        case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, files, canvases
     }
 
     let kind: Kind
@@ -123,6 +123,7 @@ struct HomeTile: Identifiable, Equatable {
         case .reminders: "リマインダー"
         case .calendar: "カレンダー"
         case .tasks: "タスク"
+        case .deadlines: "締切"
         case .files: "ファイル"
         case .canvases: "キャンバス"
         }
@@ -137,6 +138,7 @@ struct HomeTile: Identifiable, Equatable {
         case .reminders: "alarm"
         case .calendar: "calendar"
         case .tasks: "checklist"
+        case .deadlines: "calendar.badge.exclamationmark"
         case .files: "doc.on.doc"
         case .canvases: "doc.text"
         }
@@ -152,6 +154,7 @@ struct HomeTile: Identifiable, Equatable {
         case .reminders: RemindersView.selectionId
         case .calendar: CalendarView.selectionId
         case .tasks: MyTasksView.selectionId
+        case .deadlines: DeadlinesView.selectionId
         case .files: FilesView.selectionId
         case .canvases: CanvasesView.selectionId
         }
@@ -169,7 +172,7 @@ struct HomeTile: Identifiable, Equatable {
 
     /// スレッド: followed threads with unread replies, red with a mention; 下書き: drafts and scheduled messages; 保存: saved
     /// messages; リマインダー: the reminders that fired, red; カレンダー (M52, CALENDAR.md §7): no number; タスク (M56,
-    /// TASKS.md §6): no number; ファイル: no number; Times (L8, TIMES_FEED.md §7: the feed, after スレッド): no number;
+    /// TASKS.md §6): no number; 締切 (M86, DEADLINES.md §8 3.: after タスク): no number; ファイル: no number; Times (L8, TIMES_FEED.md §7: the feed, after スレッド): no number;
     /// キャンバス (M78, CANVAS.md §21.1: after ファイル, as in the desktop's sidebar): no number.
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int) -> [HomeTile] {
         [
@@ -180,6 +183,7 @@ struct HomeTile: Identifiable, Equatable {
             HomeTile(kind: .reminders, count: firedReminders, alert: firedReminders > 0),
             HomeTile(kind: .calendar, count: nil, alert: false),
             HomeTile(kind: .tasks, count: nil, alert: false),
+            HomeTile(kind: .deadlines, count: nil, alert: false),
             HomeTile(kind: .files, count: nil, alert: false),
             HomeTile(kind: .canvases, count: nil, alert: false),
         ]

@@ -21,10 +21,13 @@ protocol TaskApi: AnyObject {
     func createTaskColumn(_ body: TaskColumnCreate) async throws -> TaskColumnOut
     func updateTaskColumn(id: String, _ patch: TaskColumnUpdate) async throws -> TaskColumnOut
     func deleteTaskColumn(id: String) async throws
+    /// M86 (DEADLINES.md §5): my channels' deadlines due from 30 days ago on. The fakes that leave it out answer 404.
+    func deadlineTasks() async throws -> [TaskOut]
 }
 
 extension TaskApi {
     private var missing: ApiError { ApiError.api(status: 404, code: "not_found", message: "Not Found") }
+    func deadlineTasks() async throws -> [TaskOut] { throw missing }
     func updateSubtask(taskId: String, subtaskId: String, _ patch: SubtaskUpdate) async throws -> TaskOut { throw missing }
     func listTaskColumns(channelId: String) async throws -> [TaskColumnOut] { throw missing }
     func createTaskColumn(_ body: TaskColumnCreate) async throws -> TaskColumnOut { throw missing }
@@ -76,6 +79,10 @@ final class TaskHub {
     /// L9: 「自分が依頼した」 (GET /tasks/requested).
     private(set) var requested: TaskList?
     private(set) var due: [String: TaskList] = [:]
+    /// M86 (DEADLINES.md §8 1.): my channels' deadlines (GET /tasks/deadlines) for the conversation headers' chips and
+    /// 「締切」. Read the first time either shows and kept while the app runs (never closed by a screen): task.* events keep
+    /// it, a reconnect (and coming back to the foreground) reads it again.
+    private(set) var deadlines: TaskList?
     /// A read in flight per window: an older answer never replaces a newer one.
     @ObservationIgnored private var reads: [String: Int] = [:]
     @ObservationIgnored private let api: TaskApi?
@@ -151,6 +158,19 @@ final class TaskHub {
     func closeDue(_ key: String) {
         due[key] = nil
         reads["due:\(key)"] = nil
+    }
+
+    /// M86: a header's chip or 「締切」 is on screen — read once (again only after a failure).
+    func openDeadlines() async {
+        if let deadlines, deadlines.state != .failed { return }
+        deadlines = TaskList(state: .loading, tasks: deadlines?.tasks ?? [])
+        await readDeadlines()
+    }
+
+    /// 「締切」 pulled down, or the app back in the foreground.
+    func reloadDeadlines() async {
+        guard deadlines != nil else { return }
+        await readDeadlines()
     }
 
     /// 下に引いて読み直す.
@@ -234,6 +254,24 @@ final class TaskHub {
         } catch {
             guard reads["requested"] == ticket, requested != nil else { return }
             requested?.state = failure(error)
+        }
+    }
+
+    /// M86: 404 (no tasks at all) or 422 (a server before M85, where "deadlines" reads as a task id) is unsupported.
+    private func readDeadlines() async {
+        guard let api, deadlines != nil else { return }
+        let ticket = ticket("deadlines")
+        do {
+            let tasks = try await api.deadlineTasks()
+            guard reads["deadlines"] == ticket, deadlines != nil else { return }
+            deadlines = TaskList(state: .ready, tasks: tasks)
+        } catch {
+            guard reads["deadlines"] == ticket, deadlines != nil else { return }
+            if case ApiError.api(let status, _, _) = error, status == 404 || status == 422 {
+                deadlines?.state = .unsupported
+            } else {
+                deadlines?.state = failure(error)
+            }
         }
     }
 
@@ -404,6 +442,13 @@ final class TaskHub {
             if !fits && !held { continue }
             due[key]?.tasks = fits ? TaskRules.upsert(window.tasks, task) : TaskRules.remove(window.tasks, task.id)
         }
+        // M86: a deadline due from 30 days ago on comes in; one no longer a deadline (or older) goes.
+        if let list = deadlines, newer(list.tasks) {
+            let fits = DeadlineRules.inWindow(task, now: parseIsoDate(now()) ?? Date())
+            if fits || list.tasks.contains(where: { $0.id == task.id }) {
+                deadlines?.tasks = fits ? TaskRules.upsert(list.tasks, task) : TaskRules.remove(list.tasks, task.id)
+            }
+        }
     }
 
     private func drop(_ taskId: String) {
@@ -415,6 +460,7 @@ final class TaskHub {
         for (key, window) in due where window.tasks.contains(where: { $0.id == taskId }) {
             due[key]?.tasks = TaskRules.remove(window.tasks, taskId)
         }
+        if let list = deadlines, list.tasks.contains(where: { $0.id == taskId }) { deadlines?.tasks = TaskRules.remove(list.tasks, taskId) }
     }
 
     func find(_ taskId: String) -> TaskOut? {
@@ -426,7 +472,7 @@ final class TaskHub {
         for window in due.values {
             if let task = window.tasks.first(where: { $0.id == taskId }) { return task }
         }
-        return nil
+        return deadlines?.tasks.first { $0.id == taskId }
     }
 
     // MARK: lifecycle
@@ -437,6 +483,7 @@ final class TaskHub {
         if mine != nil { Task { await readMine() } }
         if requested != nil { Task { await readRequested() } }
         for key in due.keys { Task { await readDue(key) } }
+        if deadlines != nil { Task { await readDeadlines() } }  // M86
     }
 
     /// I left the channel (or was removed): its board closes and its tasks leave the other windows.
@@ -451,6 +498,9 @@ final class TaskHub {
         for (key, window) in due where window.tasks.contains(where: { $0.channelId == channelId }) {
             due[key]?.tasks = window.tasks.filter { $0.channelId != channelId }
         }
+        if let list = deadlines, list.tasks.contains(where: { $0.channelId == channelId }) {
+            deadlines?.tasks = list.tasks.filter { $0.channelId != channelId }
+        }
     }
 
     func stop() {
@@ -458,6 +508,7 @@ final class TaskHub {
         mine = nil
         requested = nil
         due = [:]
+        deadlines = nil
         reads = [:]
     }
 }

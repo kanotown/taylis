@@ -12,6 +12,8 @@ struct ChannelView: View {
     @State private var showInfo = false
     /// M66: the summary sheet's request (the ⋯ 「要約」).
     @State private var aiSummary: AiSummaryRequest?
+    /// M86: the deadline the header's chip opened.
+    @State private var deadlineForm: TaskFormTarget?
     /// M29: 「メッセージ」, or the pins or files covering the conversation (which stays as it was underneath).
     @State private var tab: ChannelTab = .messages
     @Environment(\.scenePhase) private var scenePhase
@@ -381,6 +383,10 @@ struct ChannelView: View {
         VStack(spacing: 0) {
             if let channel {
                 if channel.isMember {
+                    if TaskRules.hasBoard(channel) {
+                        // M86 (DEADLINES.md §8 2.): the next deadline, a row of its own (the navigation bar stays as it was).
+                        DeadlineChipRow(controller: controller, channel: channel) { deadlineForm = .task($0) }
+                    }
                     // M29: the tabs, then the links (the link bar of M15f moved into this row).
                     ChannelTabsRow(controller: controller, channel: channel, tab: $tab,
                                    upcoming: controller.calendarHub?.upcomingOf(channel.id)?.count ?? 0,
@@ -657,6 +663,9 @@ struct ChannelView: View {
             case .addMember: AddMemberView(controller: controller, channelId: channelId)
             case .link(let link): ChannelLinkEditor(controller: controller, channelId: channelId, link: link)
             }
+        }
+        .fullScreenCover(item: $deadlineForm, onDismiss: sheetClosed) { target in
+            TaskForm(controller: controller, hub: controller.taskHub, target: target)
         }
         .aiSummarySheet(controller, request: $aiSummary)
         .loadsSummaryTarget(controller, channelId: channelId)
