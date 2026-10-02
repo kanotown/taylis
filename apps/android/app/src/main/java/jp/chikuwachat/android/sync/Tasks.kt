@@ -15,6 +15,8 @@ import jp.chikuwachat.android.api.TaskOut
 import jp.chikuwachat.android.api.TaskUpdate
 import jp.chikuwachat.android.api.TaskUpdated
 // The order and move rules are plain list work shared with the screens (TaskRules.kt), as the calendar's CalendarDates.
+import jp.chikuwachat.android.ui.CalendarDates
+import jp.chikuwachat.android.ui.DeadlineRules
 import jp.chikuwachat.android.ui.TaskRules
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -73,6 +75,12 @@ class TaskHub(
     /** L9 「自分が依頼した」 (GET /tasks/requested): open while 「タスク」 is on screen, like [mine]. */
     private var requested: TaskList? = null
     private val due = LinkedHashMap<String, TaskDueWindow>()
+    /**
+     * M86 (DEADLINES.md §8 1.): my channels' deadlines (GET /tasks/deadlines) — 「締切」 and every conversation header's
+     * chip. Opened the first time either shows and kept while the app runs (task.* events keep it, a reconnect and a
+     * return to the foreground read it again); UNSUPPORTED from a server before M85.
+     */
+    private var deadlines: TaskList? = null
     /** A read in flight per window: an older answer never replaces a newer one. */
     private val reads = HashMap<String, Int>()
     private val _version = MutableStateFlow(0)
@@ -95,6 +103,8 @@ class TaskHub(
     fun requestedList(): TaskList? = requested
 
     fun dueWindow(key: String): TaskDueWindow? = due[key]
+
+    fun deadlineList(): TaskList? = deadlines
 
     // --- windows -----------------------------------------------------------------------------------
 
@@ -153,6 +163,21 @@ class TaskHub(
 
     fun closeDue(key: String) {
         if (due.remove(key) != null) changed()
+    }
+
+    /** M86: 「締切」 or a header chip is on screen: read the deadlines once (again only after a failure). */
+    suspend fun openDeadlines() {
+        val current = deadlines
+        if (current != null && current.state != TaskListState.FAILED) return
+        deadlines = TaskList(TaskListState.LOADING, current?.tasks ?: emptyList())
+        changed()
+        readDeadlines()
+    }
+
+    /** M86: back in the foreground — the deadlines read again (the socket may have stayed up while events were missed). */
+    fun refreshDeadlines() {
+        if (api == null || deadlines == null) return
+        scope.launch { readDeadlines() }
     }
 
     private fun ticket(key: String): Int = ((reads[key] ?: 0) + 1).also { reads[key] = it }
@@ -227,6 +252,27 @@ class TaskHub(
             val now = requested
             if (reads[REQUESTED] != ticket || now == null) return
             requested = now.copy(state = failure(e))
+        }
+        changed()
+    }
+
+    private suspend fun readDeadlines() {
+        val api = api ?: return
+        if (deadlines == null) return
+        val ticket = ticket(DEADLINES)
+        try {
+            val tasks = api.deadlineTasks()
+            val now = deadlines
+            if (reads[DEADLINES] != ticket || now == null) return
+            deadlines = if (tasks == null) now.copy(state = TaskListState.UNSUPPORTED) else TaskList(TaskListState.READY, tasks)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val now = deadlines
+            if (reads[DEADLINES] != ticket || now == null) return
+            // Before M85 the route is /tasks/{task_id}: "deadlines" is no task id (422); 404 from an older one still.
+            val old = e is ApiException.Api && (e.status == 404 || e.status == 422)
+            deadlines = now.copy(state = if (old) TaskListState.UNSUPPORTED else failure(e))
         }
         changed()
     }
@@ -395,6 +441,14 @@ class TaskHub(
             if (!fits && window.tasks.none { it.id == task.id }) continue
             due[key] = window.copy(tasks = if (fits) TaskRules.upsert(window.tasks, task) else TaskRules.remove(window.tasks, task.id))
         }
+        // M86: a deadline due from 30 days ago on joins; one no longer a deadline (or older) leaves.
+        deadlines?.let { list ->
+            if (!newer(list.tasks)) return@let
+            val fits = DeadlineRules.inWindow(task, today())
+            if (fits || list.tasks.any { it.id == task.id }) {
+                deadlines = list.copy(tasks = if (fits) TaskRules.upsert(list.tasks, task) else TaskRules.remove(list.tasks, task.id))
+            }
+        }
         changed()
     }
 
@@ -407,6 +461,7 @@ class TaskHub(
         for ((key, window) in due.entries.toList()) {
             if (window.tasks.any { it.id == taskId }) due[key] = window.copy(tasks = TaskRules.remove(window.tasks, taskId))
         }
+        deadlines?.let { list -> if (list.tasks.any { it.id == taskId }) deadlines = list.copy(tasks = TaskRules.remove(list.tasks, taskId)) }
         changed()
     }
 
@@ -415,6 +470,10 @@ class TaskHub(
             ?: mine?.tasks?.firstOrNull { it.id == taskId }
             ?: requested?.tasks?.firstOrNull { it.id == taskId }
             ?: due.values.firstNotNullOfOrNull { window -> window.tasks.firstOrNull { it.id == taskId } }
+            ?: deadlines?.tasks?.firstOrNull { it.id == taskId }
+
+    /** This device's day of [now] ("YYYY-MM-DD"). */
+    private fun today(): String = runCatching { CalendarDates.local(now()).toLocalDate().toString() }.getOrElse { CalendarDates.today().toString() }
 
     // --- lifecycle ---------------------------------------------------------------------------------
 
@@ -425,6 +484,7 @@ class TaskHub(
         if (mine != null) scope.launch { readMine() }
         if (requested != null) scope.launch { readRequested() }
         due.keys.toList().forEach { key -> scope.launch { readDue(key) } }
+        if (deadlines != null) scope.launch { readDeadlines() }
     }
 
     /** I left the channel (or was removed): its board closes and its tasks leave the other windows. */
@@ -433,6 +493,7 @@ class TaskHub(
         mine?.let { list -> mine = list.copy(tasks = list.tasks.filter { it.channelId != channelId }) }
         requested?.let { list -> requested = list.copy(tasks = list.tasks.filter { it.channelId != channelId }) }
         for ((key, window) in due.entries.toList()) due[key] = window.copy(tasks = window.tasks.filter { it.channelId != channelId })
+        deadlines?.let { list -> deadlines = list.copy(tasks = list.tasks.filter { it.channelId != channelId }) }
         changed()
     }
 
@@ -441,12 +502,14 @@ class TaskHub(
         mine = null
         requested = null
         due.clear()
+        deadlines = null
         changed()
     }
 
     companion object {
         private const val MINE = "mine"
         private const val REQUESTED = "requested"
+        private const val DEADLINES = "deadlines"
 
         /** A server from before M55 has no such route (404 not_found): trying again cannot help until it is updated. */
         fun serverLacksTasks(e: Throwable): Boolean = e is ApiException.Api && e.status == 404 && (e.code == "not_found" || e.code == "http_404")

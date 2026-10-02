@@ -39,6 +39,8 @@ data class TaskDraft(
     val repeat: RepeatDraft = RepeatDraft(),
     /** M84: 「サブタスク」, in order. */
     val subtasks: List<SubtaskDraft> = emptyList(),
+    /** M86 (DEADLINES.md §8 4.): a deadline's 「事前の通知」, days before (null: not a deadline). */
+    val noticeDays: List<Int>? = null,
 )
 
 /** M84: a checklist item in the form (`id` null: new). `key` keeps a row's identity across edits (new ones have no id). */
@@ -75,6 +77,13 @@ data class TaskCreateInit(
     val sourceCanvasExcerpt: String? = null,
 ) {
     val isReview: Boolean get() = kind == TaskKind.REVIEW
+
+    /**
+     * M86 (DEADLINES.md §8 4.): whether the form offers 「タスク / 締切」 — a new task on a channel's board (not a review
+     * request, not from a message, a canvas or a DM).
+     */
+    val canBeDeadline: Boolean
+        get() = !isReview && dmChannelId == null && sourceMessageId == null && sourceCanvasId == null
 
     /** The conversation a new task goes to: a DM once someone is assigned there, else the chosen board (null: mine). */
     fun targetChannel(board: String?, assigneeIds: List<String>): String? =
@@ -415,7 +424,11 @@ object TaskRules {
     fun dueText(task: TaskOut, today: String): String = dueText(task.dueOn, task.dueAt, today)
 
     /** A card's due line: 「期限 10/9 14:00」 (a review request's 「希望日 …」). */
-    fun cardDueText(task: TaskOut, today: String): String = (if (task.kind == TaskKind.REVIEW) "希望日 " else "期限 ") + dueText(task, today)
+    fun cardDueText(task: TaskOut, today: String): String = when (task.kind) {
+        TaskKind.REVIEW -> "希望日 "
+        TaskKind.DEADLINE -> "締切 "
+        else -> "期限 "
+    } + dueText(task, today)
 
     private val HHMM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -543,8 +556,14 @@ object TaskRules {
             dueTime = dueTimeOf(task.dueAt),
             repeat = CalendarRecurrence.rruleToRepeat(task.rrule, start),
             subtasks = task.subtasks.map { SubtaskDraft(it.id, it.title, it.done) },
+            noticeDays = task.noticeDays?.let { DeadlineRules.normalize(it) } ?: if (task.kind == TaskKind.DEADLINE) emptyList() else null,
         )
     }
+
+    /** M86: the form switched to 締切 (the default notices, no repeat) or back to タスク (the notices dropped). */
+    fun asKind(draft: TaskDraft, kind: String): TaskDraft =
+        if (kind == TaskKind.DEADLINE) draft.copy(noticeDays = draft.noticeDays ?: DeadlineRules.DEFAULT_NOTICE_DAYS, repeat = draft.repeat.copy(kind = RepeatKind.NONE))
+        else draft.copy(noticeDays = null)
 
     /** M84: what a due date picked in the form does to the rest (before a rule is picked, 毎週's weekday follows the date). */
     fun withDueOn(draft: TaskDraft, dueOn: String): TaskDraft {
@@ -564,12 +583,13 @@ object TaskRules {
     /** The title as the server keeps it (whitespace collapsed). */
     fun cleanTitle(title: String): String = title.replace(Regex("\\s+"), " ").trim()
 
-    /** `review`: a review request needs someone to ask (依頼先). */
-    fun draftProblem(draft: TaskDraft, review: Boolean = false): String? {
+    /** `review`: a review request needs someone to ask (依頼先). M86 `deadline`: a deadline needs its date. */
+    fun draftProblem(draft: TaskDraft, review: Boolean = false, deadline: Boolean = false): String? {
         val title = cleanTitle(draft.title)
         return when {
             review && draft.assigneeIds.isEmpty() -> "依頼先を選んでください"
             title.isEmpty() -> "題名を入れてください"
+            deadline && draft.dueOn.isEmpty() -> "締切の日付を入れてください"
             title.length > MAX_TITLE -> "題名は $MAX_TITLE 文字までです"
             draft.notes.length > MAX_NOTES -> "メモは $MAX_NOTES 文字までです"
             // M84: a rule needs a due date to start from; the checklist's limits are the server's.
@@ -585,19 +605,26 @@ object TaskRules {
      * rule (not for a review request), the checklist (blank items left out), and what was there before (the target, the
      * source, the idempotency key, the zone).
      */
-    fun taskCreateBody(draft: TaskDraft, channelId: String?, init: TaskCreateInit?, clientId: String, tz: String): TaskCreate {
+    fun taskCreateBody(
+        draft: TaskDraft, channelId: String?, init: TaskCreateInit?, clientId: String, tz: String,
+        /** M86: the form's 「タスク / 締切」 (else the init's kind). */
+        kind: String = init?.kind ?: TaskKind.TASK,
+    ): TaskCreate {
         val review = init?.isReview == true
+        // M86 (DEADLINES.md §5): a deadline never repeats, and sends its notices (largest first).
+        val deadline = kind == TaskKind.DEADLINE && !review
         val subtasks = subtasksBody(draft.subtasks)
         return TaskCreate(
             channelId = channelId, title = cleanTitle(draft.title), notes = draft.notes.takeIf { it.isNotBlank() },
             status = draft.status, dueOn = draft.dueOn.ifEmpty { null },
             assigneeIds = draft.assigneeIds.distinct().takeIf { channelId != null && it.isNotEmpty() },
             sourceMessageId = init?.sourceMessageId, clientTaskId = clientId, tz = tz,
-            kind = if (review) TaskKind.REVIEW else null,
+            kind = if (review) TaskKind.REVIEW else if (deadline) TaskKind.DEADLINE else null,
             sourceCanvasId = init?.sourceCanvasId, sourceCanvasLine = init?.sourceCanvasLine?.takeIf { init.sourceCanvasId != null },
             dueAt = dueAtOf(draft.dueOn, draft.dueTime),
-            rrule = if (review) null else repeatRule(draft),
+            rrule = if (review || deadline) null else repeatRule(draft),
             subtasks = subtasks.takeIf { it.isNotEmpty() },
+            noticeDays = if (deadline) DeadlineRules.normalize(draft.noticeDays ?: DeadlineRules.DEFAULT_NOTICE_DAYS) else null,
         )
     }
 
@@ -628,7 +655,15 @@ object TaskRules {
         }
         // The rule: compared through the picker (CalendarRecurrence.ruleChanged); no due date stops it.
         val start = due?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-        val ruleChanged = if (start != null) CalendarRecurrence.ruleChanged(draft.repeat, start, task.rrule) else task.rrule != null
+        // M86: a deadline never repeats (the form offers none): nothing to send.
+        val deadline = task.kind == TaskKind.DEADLINE
+        val ruleChanged = when {
+            deadline -> false
+            start != null -> CalendarRecurrence.ruleChanged(draft.repeat, start, task.rrule)
+            else -> task.rrule != null
+        }
+        // M86: a deadline's notices, the whole set, only when they changed (largest first).
+        val noticeDays = draft.noticeDays?.takeIf { deadline && !DeadlineRules.sameNoticeDays(it, task.noticeDays) }?.let { DeadlineRules.normalize(it) }
         val subtasks = subtasksBody(draft.subtasks).takeIf { body ->
             body.map { Triple(it.id, it.title, it.done) } != task.subtasks.map { Triple(it.id, it.title, it.done) }
         }
@@ -641,7 +676,7 @@ object TaskRules {
             title = title, setNotes = notesChanged, notes = notes, status = status, setDueOn = setDueOn, dueOn = due,
             tz = if (sendTz) tz else null, assigneeIds = assignees,
             setDueAt = setDueAt, dueAt = dueAt, setRrule = ruleChanged, rrule = if (ruleChanged) repeatRule(draft) else null,
-            subtasks = subtasks,
+            subtasks = subtasks, noticeDays = noticeDays,
         )
     }
 

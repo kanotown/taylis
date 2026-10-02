@@ -99,6 +99,7 @@ private val TaskDraftSaver = listSaver<TaskDraft, String>(
         listOf(
             it.title, it.notes, it.status, it.dueOn, it.assigneeIds.joinToString(","), it.dueTime, CalendarRecurrence.save(it.repeat),
             Codec.plain.encodeToString(ListSerializer(SubtaskDraft.serializer()), it.subtasks),
+            it.noticeDays?.joinToString(",") ?: "-",
         )
     },
     restore = {
@@ -108,6 +109,7 @@ private val TaskDraftSaver = listSaver<TaskDraft, String>(
             dueTime = it.getOrElse(5) { "" },
             repeat = it.getOrNull(6)?.let { text -> CalendarRecurrence.restore(text, start) } ?: CalendarRecurrence.noRepeat(start),
             subtasks = it.getOrNull(7)?.let { text -> runCatching { Codec.plain.decodeFromString(ListSerializer(SubtaskDraft.serializer()), text) }.getOrNull() } ?: emptyList(),
+            noticeDays = it.getOrNull(8)?.takeIf { text -> text != "-" }?.split(",")?.mapNotNull { day -> day.toIntOrNull() },
         )
     },
 )
@@ -144,8 +146,10 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
             ?: TaskRules.withDueOn(
                 TaskDraft(title = init?.title ?: "", status = init?.status ?: TaskStatus.TODO, assigneeIds = init?.assigneeIds ?: emptyList()),
                 init?.dueOn ?: "",
-            )
+            ).let { if (init?.kind == TaskKind.DEADLINE) TaskRules.asKind(it, TaskKind.DEADLINE) else it }
     }
+    // M86: a new task's 「タスク / 締切」 (a review keeps its kind).
+    var newKind by rememberSaveable(form) { mutableStateOf(init?.kind ?: TaskKind.TASK) }
     var draft by rememberSaveable(form, stateSaver = TaskDraftSaver) { mutableStateOf(initial) }
     var board by rememberSaveable(form) { mutableStateOf(init?.channelId ?: MINE) }
     var busy by remember(form) { mutableStateOf(false) }
@@ -156,14 +160,17 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
     val clientId = rememberSaveable(form) { UUID.randomUUID().toString() }
     // A new task's conversation: the chosen board, or (L9) the DM once someone there is assigned.
     val channelId = if (form.task != null) task?.channelId else init?.targetChannel(board.ifEmpty { null }, draft.assigneeIds) ?: board.ifEmpty { null }
-    val kind = task?.kind ?: init?.kind ?: TaskKind.TASK
+    val kind = task?.kind ?: newKind
     val review = kind == TaskKind.REVIEW
+    val deadline = kind == TaskKind.DEADLINE
     // Whose members can be assigned: the task's conversation, or the DM a new one may be shared in.
     val pickFrom = if (task == null && init?.dmChannelId != null && !review) init.dmChannelId else channelId
     val channel = remember(version, channelId) { channelId?.let { store.channel(it) } }
     val editable = task == null || TaskRules.canEditTask(task, channel, controller.isAdmin)
     val boards = remember(form, version) { init?.boardChoices?.filter { TaskRules.canEditBoard(store.channel(it), controller.isAdmin) } ?: emptyList() }
     val available = hub?.available == true
+    // M86 (DEADLINES.md §8 4.): 「タスク / 締切」 on a new board task, where I may add to a board (never a guest).
+    val canBeDeadline = task == null && init?.canBeDeadline == true && boards.isNotEmpty() && !controller.isGuest
     fun change(next: TaskDraft) {
         draft = next
         error = null
@@ -180,7 +187,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
 
     fun save() {
         if (hub == null || busy) return
-        val problem = TaskRules.draftProblem(draft, review = task == null && review)
+        val problem = TaskRules.draftProblem(draft, review = task == null && review, deadline = deadline)
         if (problem != null) {
             error = problem
             return
@@ -198,8 +205,8 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             withTimeoutOrNull(5_000) { saver.settled() }
                         }
                     }
-                    hub.create(TaskRules.taskCreateBody(draft, channelId, init, clientId, zone))
-                    controller.notice = if (review) "レビューを依頼しました" else "タスクを作成しました"
+                    hub.create(TaskRules.taskCreateBody(draft, channelId, init, clientId, zone, kind = kind))
+                    controller.notice = if (review) "レビューを依頼しました" else if (deadline) "締切を追加しました" else "タスクを作成しました"
                 } else {
                     val patch = TaskRules.taskPatch(task, draft, zone)
                     if (!patch.isEmpty) hub.update(task.id, patch)
@@ -258,12 +265,12 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
     }
 
     val title = when {
-        task == null -> if (review) "レビューを依頼" else "タスクを追加"
+        task == null -> if (review) "レビューを依頼" else if (deadline) "締切を追加" else "タスクを追加"
         review -> "レビュー依頼"
-        editable -> "タスクを編集"
-        else -> "タスク"
+        editable -> if (deadline) "締切を編集" else "タスクを編集"
+        else -> if (deadline) "締切" else "タスク"
     }
-    val dueName = if (review) "希望日" else "期限"
+    val dueName = if (review) "希望日" else if (deadline) "締切日" else "期限"
     val assigneeName = if (review) "依頼先" else "担当者"
     // L9: an assignee's big buttons (the form saved with that state).
     val quick = if (task != null && editable && available) TaskRules.quickStatuses(task, store.me?.id) else emptyList()
@@ -336,9 +343,17 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             AssigneePicker(controller, pickFrom, version, draft.assigneeIds, label = assigneeName, excludeMe = review, onChange = { change(draft.copy(assigneeIds = it)) })
                         }
                     } else if (task == null) {
+                        if (canBeDeadline) {
+                            KindSwitch(deadline, onPick = { next ->
+                                newKind = next
+                                change(TaskRules.asKind(draft, next))
+                                // A deadline is a board's: never 「自分のタスク」.
+                                if (next == TaskKind.DEADLINE && board == MINE) board = boards.first()
+                            })
+                        }
                         BoardChoice(
                             value = if (board == MINE) "自分のタスク (自分だけに表示)" else boardName(board),
-                            options = boards.map { it to boardName(it) } + (MINE to "自分のタスク (自分だけに表示)"),
+                            options = boards.map { it to boardName(it) } + if (deadline) emptyList() else listOf(MINE to "自分のタスク (自分だけに表示)"),
                             enabled = boards.isNotEmpty(),
                             onPick = { picked -> board = picked; change(draft.copy(assigneeIds = emptyList())) },
                         )
@@ -369,7 +384,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             FieldLabel(dueName)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = { picking = TaskPicker.DATE }, modifier = Modifier.weight(1f)) {
-                                    Text(draft.dueOn.takeIf { it.isNotEmpty() }?.let { dueText(it) } ?: "なし", maxLines = 1)
+                                    Text(draft.dueOn.takeIf { it.isNotEmpty() }?.let { dueText(it) } ?: if (deadline) "日付を選ぶ" else "なし", maxLines = 1)
                                 }
                                 // M84: the time beside the date (none: the whole day).
                                 if (draft.dueOn.isNotEmpty()) {
@@ -381,20 +396,24 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             if (draft.dueOn.isNotEmpty()) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     if (draft.dueTime.isNotEmpty()) TextButton(onClick = { change(draft.copy(dueTime = "")) }) { Text("時刻をなくす") }
-                                    // Without a due date nothing repeats: the save sends `rrule: null` with it.
-                                    TextButton(onClick = { change(TaskRules.withDueOn(draft, "")) }) { Text(dueName + "をなくす") }
+                                    // Without a due date nothing repeats: the save sends `rrule: null` with it. M86: a deadline keeps its date.
+                                    if (!deadline) TextButton(onClick = { change(TaskRules.withDueOn(draft, "")) }) { Text(dueName + "をなくす") }
                                 }
                             }
                         }
                         // M84: 「繰り返し」, the calendar's picker (M69) from the due date; not for a review request.
                         val dueDate = draft.dueOn.takeIf { it.isNotEmpty() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-                        if (dueDate != null && !review) {
+                        if (dueDate != null && !review && !deadline) {
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 RepeatSection(draft.repeat, dueDate, onChange = { change(draft.copy(repeat = it)) }, onPickUntil = { picking = TaskPicker.UNTIL })
                                 if (draft.repeat.kind != RepeatKind.NONE) {
                                     Text("完了にすると、次の回のタスクができます", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
+                        }
+                        // M86: 「事前の通知」 — the days the 「締切」 bot posts in the channel.
+                        if (deadline) {
+                            NoticeDaysPicker(draft.noticeDays ?: DeadlineRules.DEFAULT_NOTICE_DAYS, enabled = !busy, onChange = { change(draft.copy(noticeDays = it)) })
                         }
                         SubtaskEditor(draft.subtasks, enabled = !busy, onChange = { change(draft.copy(subtasks = it)) }, onTick = ::tick)
                         if (channelId != null && !(task == null && (review || init?.dmChannelId != null))) {
@@ -438,7 +457,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                     if (task?.canDelete == true) {
                         TextButton(enabled = !busy, onClick = { confirmDelete = true }) {
                             Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                            Text(" タスクを削除", color = MaterialTheme.colorScheme.error)
+                            Text(if (deadline) " 締切を削除" else " タスクを削除", color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -477,7 +496,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
         if (confirmDelete && task != null) {
             AlertDialog(
                 onDismissRequest = { confirmDelete = false },
-                title = { Text("タスクを削除しますか？") },
+                title = { Text(if (deadline) "この締切を削除しますか？ (前もっての通知も止まります)" else "タスクを削除しますか？") },
                 text = { Text("「${task.title}」を削除します。" + if (task.channelId != null) "ボードのメンバー全員から消えます。" else "") },
                 confirmButton = { TextButton(onClick = { confirmDelete = false; remove() }) { Text("削除", color = MaterialTheme.colorScheme.error) } },
                 dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("キャンセル") } },
@@ -569,6 +588,48 @@ private fun SubtaskEditor(items: List<SubtaskDraft>, enabled: Boolean, onChange:
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(" サブタスクを追加")
         }
+    }
+}
+
+/** M86 (DEADLINES.md §8 4.): 「タスク / 締切」 for a new task on a channel's board. */
+@Composable
+private fun KindSwitch(deadline: Boolean, onPick: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        FieldLabel("種類")
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            listOf(TaskKind.TASK to "タスク", TaskKind.DEADLINE to "⏰ 締切").forEachIndexed { index, (value, label) ->
+                SegmentedButton(
+                    selected = deadline == (value == TaskKind.DEADLINE), onClick = { onPick(value) },
+                    shape = SegmentedButtonDefaults.itemShape(index, 2),
+                ) { Text(label) }
+            }
+        }
+    }
+}
+
+/**
+ * M86: 「事前の通知」 — a check per day (14 日前・7 日前・3 日前・前日・当日, and any other day the deadline already has); the
+ * 「締切」 bot posts in the channel at 9:00 of each.
+ */
+@Composable
+private fun NoticeDaysPicker(days: List<Int>, enabled: Boolean, onChange: (List<Int>) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        FieldLabel("事前の通知")
+        DeadlineRules.noticeChoices(days).forEach { day ->
+            val checked = day in days
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN)
+                    .clickable(enabled = enabled, role = Role.Checkbox) { onChange(DeadlineRules.toggleNotice(days, day, !checked)) },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = checked, onCheckedChange = null, enabled = enabled, modifier = Modifier.padding(horizontal = 8.dp))
+                Text(DeadlineRules.noticeLabel(day), style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+        Text(
+            "『締切』のボットがこのチャンネルに、その日の 9:00 に投稿します", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -667,7 +728,10 @@ private fun ReadOnlyTask(controller: AppController, task: TaskOut, version: Int)
         // M84: with its time (this device's clock), the rule and the checklist.
         val dueDay = TaskRules.dueDay(task.dueOn, task.dueAt)
         val time = TaskRules.dueTimeOf(task.dueAt).takeIf { it.isNotEmpty() }?.let { " " + clockText(it) } ?: ""
-        Text((if (review) "希望日: " else "期限: ") + (dueDay?.let { dueText(it) + time } ?: "なし"), style = MaterialTheme.typography.bodyLarge)
+        val deadline = task.kind == TaskKind.DEADLINE
+        Text((if (review) "希望日: " else if (deadline) "締切日: " else "期限: ") + (dueDay?.let { dueText(it) + time } ?: "なし"), style = MaterialTheme.typography.bodyLarge)
+        // M86: who hears of it beforehand.
+        if (deadline) Text("事前の通知: " + DeadlineRules.noticeSummary(task.noticeDays), style = MaterialTheme.typography.bodyLarge)
         if (task.rrule != null) {
             val start = dueDay?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: CalendarDates.today()
             Text("🔁 " + CalendarRecurrence.describeRrule(task.rrule, start), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

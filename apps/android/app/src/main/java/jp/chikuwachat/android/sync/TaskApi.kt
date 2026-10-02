@@ -49,4 +49,10 @@ interface TaskApi {
 
     /** An added column; its cards go to the built-in column of the same status. */
     suspend fun deleteTaskColumn(columnId: String): Unit = throw UnsupportedOperationException("Task columns are not available")
+
+    /**
+     * M86 (DEADLINES.md §5): GET /tasks/deadlines — my channels' deadlines due from 30 days ago on, open and done. Null:
+     * none to read here (a fake); a server before M85 answers 422 (the route read as /tasks/{task_id}) or 404.
+     */
+    suspend fun deadlineTasks(): List<TaskOut>? = null
 }

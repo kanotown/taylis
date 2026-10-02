@@ -562,6 +562,7 @@ fun MainScreen(controller: AppController) {
                             pane == Route.Reminders -> Text("リマインダー")
                             pane == Route.Calendar -> Text("カレンダー")
                             pane == Route.Tasks -> Text("タスク")
+                            pane == Route.Deadlines -> Text("締切")
                             // 仕上げ A (MOBILE_POLISH.md C5): 「DM」 as on iOS and on the tab (「ダイレクトメッセ…」 was cut).
                             top == Route.DmList -> Text("DM", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             top is Route.Activity -> Text("アクティビティ", maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -748,6 +749,8 @@ fun MainScreen(controller: AppController) {
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             // M29: the tab row sits directly under the app bar of a joined conversation's timeline.
             if (selectedChannel != null && ConversationNav.tabRowShown(true, selectedChannel.isMember, threadId != null, searching, detailsOpen)) {
+                // M86 (DEADLINES.md §8 2.): the channel's next deadline, a line of its own over the tabs.
+                DeadlineChipRow(controller, selectedChannel)
                 ConversationTabRow(controller, selectedChannel, version, conversationTab, onTab = ::selectTab, upcoming = upcomingEvents)
             }
             ConnectionBanner(status)
@@ -870,6 +873,9 @@ fun MainScreen(controller: AppController) {
                         focusManager.clearFocus()
                         stack = MainNav.openTasks(stack, channelId)
                     })
+                } else if (pane == Route.Deadlines) {
+                    // M86 (DEADLINES.md §8 3.): 今週 / 今月 / それ以降 / 過ぎたもの; a row opens the deadline's form.
+                    DeadlinesPane(controller, version)
                 } else if (pane == Route.Mentions) {
                     MentionsPane(controller, version, onOpen = ::reveal)
                 } else if (pane == Route.Drafts) {
@@ -960,6 +966,7 @@ fun MainScreen(controller: AppController) {
                                     HomeTile.REMINDERS -> Route.Reminders
                                     HomeTile.CALENDAR -> Route.Calendar
                                     HomeTile.TASKS -> Route.Tasks
+                                    HomeTile.DEADLINES -> Route.Deadlines
                                     HomeTile.FILES -> Route.Files()
                                     HomeTile.CANVASES -> {
                                         // Afresh from the tile (back from a canvas keeps the pages and the place).

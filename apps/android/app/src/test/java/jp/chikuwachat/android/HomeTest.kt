@@ -117,8 +117,10 @@ class HomeTest {
         assertEquals(TileState(HomeTile.CALENDAR, null), tiles[5])
         // M56 (TASKS.md §6): 「タスク」 next to カレンダー, without a number.
         assertEquals(TileState(HomeTile.TASKS, null), tiles[6])
-        assertEquals(TileState(HomeTile.FILES, null), tiles[7])
-        assertFalse(tiles[7].dimmed) // no number: never dimmed
+        // M86 (DEADLINES.md §8 3.): 「締切」 next to タスク, without a number.
+        assertEquals(TileState(HomeTile.DEADLINES, null), tiles[7])
+        assertEquals(TileState(HomeTile.FILES, null), tiles[8])
+        assertFalse(tiles[8].dimmed) // no number: never dimmed
         // Unread threads without a mention are not red; nothing fired: no red either.
         val calm = HomeTiles.tiles(ThreadSummary(unreadCount = 2), drafts = 0, saved = 5, firedReminders = 0)
         assertFalse(calm[0].alert)
@@ -129,7 +131,8 @@ class HomeTest {
         assertEquals("リマインダー、通知済み 1 件", HomeTiles.description(tiles[4]))
         assertEquals("カレンダー", HomeTiles.description(tiles[5]))
         assertEquals("タスク", HomeTiles.description(tiles[6]))
-        assertEquals("ファイル", HomeTiles.description(tiles[7]))
+        assertEquals("締切", HomeTiles.description(tiles[7]))
+        assertEquals("ファイル", HomeTiles.description(tiles[8]))
         assertEquals("Times", HomeTiles.description(tiles[1]))
     }
 

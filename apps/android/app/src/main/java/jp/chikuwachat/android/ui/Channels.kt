@@ -149,6 +149,8 @@ enum class HomeTile(val label: String) {
     CALENDAR("カレンダー"),
     /** M56 (TASKS.md §6): 「自分のタスク」 and 「自分の担当」, next to カレンダー; no number. */
     TASKS("タスク"),
+    /** M86 (DEADLINES.md §8 3.): my channels' deadlines (今週 / 今月 / それ以降 / 過ぎたもの), next to タスク; no number. */
+    DEADLINES("締切"),
     FILES("ファイル"),
     /** M78 (CANVAS.md §21.2): the canvases of all my conversations, after ファイル (as the desktop's sidebar); no number. */
     CANVASES("キャンバス"),
@@ -172,6 +174,7 @@ object HomeTiles {
         TileState(HomeTile.REMINDERS, firedReminders, alert = firedReminders > 0),
         TileState(HomeTile.CALENDAR, null),
         TileState(HomeTile.TASKS, null),
+        TileState(HomeTile.DEADLINES, null),
         TileState(HomeTile.FILES, null),
         TileState(HomeTile.CANVASES, null),
     )
