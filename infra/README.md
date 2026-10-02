@@ -492,6 +492,103 @@ rm -rf /srv/chikuwachat/import
 2〜32 文字 (a-z 0-9 _ + -) で、そうでない名前には「not a valid custom emoji name」と付く。31 文字以上など
 リアクションとして保存できない名前は「reactions not imported」に出る。
 
+## Slack からの移行 (M87)
+
+Slack のワークスペースの書き出し (エクスポート ZIP) を、会話ごとこのサーバーへ読み込む。読み込み先はどの ChikuwaChat
+サーバーでもよい (このサーバー専用の前提は無い)。Mattermost の移行と同じ仕組み (`import_refs`・やり直し・`--dry-run`) を使う。
+
+**読み込むもの**: 公開チャンネル (アーカイブ済みはアーカイブのまま)、そのメンバー、メッセージ (`ts` の順にチャンネルの seq を
+振る。時刻は `ts` そのもの)、スレッド (`thread_ts`)、「チャンネルにも送信」した返信 (`thread_broadcast`)、編集の時刻
+(`edited.ts`)、リアクション (肌の色も)、ピン留め、添付ファイル (画像はサムネイル、動画は縦横・長さ・ポスターも作る)。
+本文の mrkdwn は ChikuwaChat の書き方に変える: `<@U…>` はメンション、`<#C…|名前>` は `#チャンネル名` (読み込んだ
+チャンネルは新しい名前)、`<!here>` / `<!channel>` / `<!everyone>` は全体メンション (読み込みでは通知しない)、
+`<URL|文字>` はリンク、`*太字*` は `**太字**`、`~取り消し~` は `~~取り消し~~`、コードブロックは前後を独立した行に、
+`>` / `>>>` の引用はそのまま、`&amp; &lt; &gt;` は元の文字、`:smile:` などの標準の絵文字は絵文字そのもの。本文が空の
+bot の投稿は `attachments` / `blocks` の文字を本文にする。
+
+**読み込まないもの**: 非公開チャンネル・DM・グループ DM (下の `--include-private` / `--include-dms` を付けた時だけ)、
+参加・退出・トピックや説明や名前の変更の通知 (チャンネルのトピックと説明は channels.json から取る)、削除済みのメッセージ、
+Slack の無料プランで見えなくなった古いファイル (`hidden_by_limit`)、編集の履歴。
+
+**人の対応付け** (先に当てはまったもの):
+
+1. `--user slackの名前=chikuwaの名前`。左は Slack のユーザー名・表示名・ユーザー id (`U…`) のどれでもよい (表示名に
+   空白があれば `--user "Hanako S=hana"` のように引用符で囲む)。指定先は既に存在すること
+2. 前回の移行で対応付けたアカウント
+3. 同じメールアドレスのアカウント (users.json の `profile.email`。書き出しの種類によっては入っていない)
+4. それ以外で投稿かリアクションのある人は、新しく**無効化済み**のアカウントを作る (bot は bot アカウント。
+   users.json に無い bot も `bot_id` / 表示名ごとに 1 つ作る)。名前が使用中なら `名前-slack` にして警告を出す
+
+**チャンネル名**: Slack のチャンネル名をそのまま使う。読み込み先に同じ名前があると、何も書かずに止まる (例: `#general`)。
+その場合は `--channel-prefix slack-` のように前置きを付ける (新しく作るチャンネルがすべて `slack-general` などになる)。
+2 回目以降は前回作ったチャンネルに足すので、前置きは同じでなくてもよい。
+
+**添付ファイル**: Slack の書き出しにはファイルそのものは入っておらず、ダウンロード用の URL (`url_private_download`。
+標準の書き出しには `?t=` のトークンが付いている) だけがある。
+
+- `--download --files-cache DIR`: Slack から取ってくる。同時に 4 件まで (`--download-concurrency`)、失敗は 4 回まで
+  やり直す (429 / 5xx・接続の失敗)。アップロードの上限 (`ATTACHMENT_MAX_BYTES`) を超えるものは取らない。取ったものは
+  `DIR/<ファイル id>/<名前>` に残り、次の実行はそこから読む (途中で止めても続きから)。`--dry-run` でもダウンロードは行う
+  (ChikuwaChat には何も書かない。本番の実行は同じキャッシュを使う)。
+- `?t=` のトークンが効かない (HTTP 403 や「ログイン画面を返した」と出る) ときは、`files:read` を持つ Slack のトークン
+  (Slack アプリのユーザートークン `xoxp-…` など) を 1 行のファイルに書いて `--slack-token-file` で渡す。トークンは
+  Slack のファイルのホスト (`*.slack.com` など) にだけ送る。**コマンドラインに直接書かない** (シェルの履歴に残る)。
+- `--files-dir DIR`: 別の道具で先にダウンロードしたものを読む (`<id>/<名前>`・`<id>-<名前>`・`<id>.<拡張子>`・`<id>`)。
+
+中身はアップロードと同じく調べる (上限・空のファイル・中身から種類を判定・画素数が多すぎる画像は断る)。取れなかった
+ファイルは結果の「files not brought over」に理由つきで出て、メッセージには「📎 名前 (Slack から取得できませんでした)」の
+行が残る (移行は止まらない)。この行はやり直しでは直らないので、**本番の前に `--dry-run` で失敗が無いことを確かめる**。
+
+**カスタム絵文字**: Slack の書き出しには入っていない。`--emoji-dir DIR` に `名前.png` (`.gif`・`.jpg`・`.webp`) を
+置くと、使われている名前のカスタム絵文字を作る (大きなものは Mattermost の移行と同じく縮める)。無い名前は `:名前:` の
+文字のまま入り、結果の「reactions without an emoji image」に出る (後から同じ名前のカスタム絵文字を足せば表示される)。
+
+**書き出しを作る (Slack 側)**: ワークスペースの管理者 (またはオーナー) が、ブラウザで
+`https://<ワークスペース>.slack.com/services/export` を開く (ワークスペース名 → 「ツールと設定」→「ワークスペースの設定」
+→「データのインポート/エクスポート」→「エクスポート」と同じ)。期間 (「全期間」) を選んで「エクスポートを開始」し、
+できたらメールと同じ画面に出るリンクから ZIP をダウンロードする。標準の書き出しは公開チャンネルだけ
+(非公開チャンネルと DM が入るのは、有料プランで Slack に申請が通った場合だけ)。無料プランで見えなくなった古いメッセージ・
+ファイルは書き出しに入らない。ZIP の中のファイルの URL は時間が経つと使えなくなることがあるので、書き出しは移行の直前に作る。
+
+本番サーバー (root。書き出しには全メッセージが入っているので、root だけが読めるところに置く) での手順:
+
+```sh
+# 0. 手元の Mac から、書き出しの ZIP をサーバーへ送る
+ssh root@<サーバー> install -d -m 700 /srv/chikuwachat/import
+scp ~/Downloads/'<ワークスペース> Slack export <期間>.zip' root@<サーバー>:/srv/chikuwachat/import/slack-export.zip
+
+# ここからサーバーで
+cd /srv/chikuwachat/infra
+. ./deploy.conf
+export CHIKUWA_SERVER_IMAGE="$REGISTRY/chikuwachat-server:$(cat .release)"
+export CHIKUWA_WEB_IMAGE="$REGISTRY/chikuwachat-web:$(cat .release)"
+chmod 600 /srv/chikuwachat/import/slack-export.zip
+
+# 1. 試し読み (--dry-run: ChikuwaChat には何も書かない。人の対応付け・チャンネルごとの件数・取れなかったファイルが出る。
+#    ファイルは /srv/chikuwachat/import/files にダウンロードされ、本番の実行で使い回す)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml \
+  run --rm --no-deps --user root -e RUN_MIGRATIONS=false \
+  -v /srv/chikuwachat/import:/import app \
+  python -m app.cli import-slack /import/slack-export.zip --actor admin \
+  --channel-prefix slack- --user taro.yamada=yamada \
+  --download --files-cache /import/files --dry-run
+
+# 1'. (ファイルが 403 やログイン画面で取れないときだけ) トークンを 1 行で書いたファイルを作り、
+#     1. に --slack-token-file /import/slack-token を足してもう一度
+install -m 600 /dev/null /srv/chikuwachat/import/slack-token
+nano /srv/chikuwachat/import/slack-token
+
+# 2. 本番: 1. から --dry-run を外して実行する (同じコマンドの再実行は、増えたメッセージだけを足す)
+
+# 3. 終わったら書き出し・キャッシュ・トークンを消す (全メッセージとファイルが入っている)
+rm -rf /srv/chikuwachat/import
+```
+
+`--actor` は実行する管理者 (監査ログと、作成者が分からない行の作成者になる)。結果には人の対応付け、誰にも対応付け
+られなかった人 (新しく作ったアカウント)、件数 (`posts`・`replies`・`files`・`files_failed`・`files_hidden` など)、
+チャンネルごとの件数、使われていた絵文字のうち画像が無いもの、取れなかったファイル、警告が出る。添付の分だけオブジェクト
+ストアが増え、ダウンロードの間はキャッシュの分も要る (`df -h /srv` で空きを確かめる)。
+
 ## 実機での動作確認 (iPhone)
 
 前提: `apps/ios/project.yml` の `DEVELOPMENT_TEAM` で自動署名できること (Xcode にそのチームの Apple ID を

@@ -1574,13 +1574,13 @@ CREATE TABLE workspace_identity (
 `GET /api/v1/server` とプッシュのペイロードで `workspace_id` として返す。クライアントはこの値で
 通知をワークスペースに振り分ける。データなのでバックアップ / 復元で保たれる。行が無ければ起動時に作る。
 
-### import_refs (移行元の対応、M18)
+### import_refs (移行元の対応、M18・M87)
 
 ```sql
 CREATE TABLE import_refs (
-  source      varchar(32) NOT NULL,   -- 'mattermost'
+  source      varchar(32) NOT NULL,   -- 'mattermost' | 'slack'
   kind        varchar(16) NOT NULL,   -- 'user' | 'channel' | 'post' | 'file' | 'emoji'
-  source_id   varchar(64) NOT NULL,   -- 移行元の id (Mattermost の 26 文字の id)
+  source_id   varchar(64) NOT NULL,   -- 移行元の id (Mattermost の 26 文字の id、Slack は下記)
   target_id   uuid NOT NULL,          -- 作った行 (users / channels / messages / attachments / custom_emoji) の id
   created_at  timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (source, kind, source_id)
@@ -1604,6 +1604,21 @@ CREATE TABLE import_refs (
   スレッドの参加者 (親の投稿者と返信した人) はフォローして既読。
 - **users**: 移行元の人は、指定・前回の移行・同じメールアドレスの順で既存のアカウントに対応付け、それ以外で
   投稿かリアクションのある人は無効化済みのアカウント (bot は `role = 'bot'`) を作る。
+
+Slack (M87、`app.cli import-slack`、infra/README.md「Slack からの移行」) も同じ表と同じ規則で、`source = 'slack'`。
+Slack のメッセージには全体で一意の id が無いので、`source_id` は次の形にする (スキーマは変えない):
+
+| kind | source_id |
+| --- | --- |
+| user | Slack のユーザー id (`U…` / `W…`)。users.json に無い bot は `bot:<bot_id>` (bot_id も無ければ `bot:name:<表示名>`) |
+| channel | Slack のチャンネル id (`C…`、非公開 `G…`、DM `D…`) |
+| post | `<チャンネル id>:<ts>` (ts は `1714521600.000100` の形) |
+| file | `<post の source_id>:<ファイル id>` (同じファイルが複数のチャンネルに共有されても別の添付になる) |
+| emoji | 絵文字名 (`--emoji-dir` から作ったカスタム絵文字) |
+
+`created_at` は `ts` (秒.マイクロ秒) をそのまま使い、並びも `ts` 順。`thread_broadcast` は `also_in_channel = true` の
+返信、ピン留めの `pinned_by` は channels.json の `pins` にある人 (無ければ投稿者)。リアクションの時刻は Slack の
+書き出しに無いので、メッセージの時刻。
 
 ## 4. 代表的なクエリ
 

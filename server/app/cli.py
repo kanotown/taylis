@@ -345,14 +345,57 @@ def cmd_mattermost_extract(args: argparse.Namespace) -> int:
     return 0
 
 
-def parse_user_map(pairs: Sequence[str]) -> dict[str, str]:
+def parse_user_map(pairs: Sequence[str], source: str = "MATTERMOST") -> dict[str, str]:
     mapping: dict[str, str] = {}
     for pair in pairs:
         mm, sep, chikuwa = pair.partition("=")
         if not sep or not mm.strip() or not chikuwa.strip():
-            raise ValueError(f"--user {pair}: use MATTERMOST_NAME=CHIKUWA_NAME")
+            raise ValueError(f"--user {pair}: use {source}_NAME=CHIKUWA_NAME")
         mapping[mm.strip().lstrip("@").lower()] = chikuwa.strip().lstrip("@").lower()
     return mapping
+
+
+def print_import_report(report: Any) -> None:
+    """The summary of an import (M18, M87): people, counts, per channel, emoji, files, warnings."""
+    print("dry run: nothing was written" if report.dry_run else "imported")
+    print("people:")
+    for line in report.people:
+        print(f"  {line}")
+    if report.unmapped:
+        print("people nobody was mapped to (new accounts; map them with --user and run again):")
+        for line in report.unmapped:
+            print(f"  {line}")
+    print("counts:")
+    for key, value in sorted(report.counts.items()):
+        print(f"  {key}: {value}")
+    if report.channels:
+        print("per channel:")
+        for label, counts in sorted(report.channels.items()):
+            print(f"  {label}: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+    if report.unmatched_emoji:
+        # Names a custom emoji can take (NAME in app.modules.emoji.service) show up once added.
+        from app.modules.emoji.service import NAME
+
+        print("reactions without an emoji image (add a custom emoji of the same name to show it):")
+        for name, count in report.unmatched_emoji.most_common():
+            note = "" if NAME.match(name) else "  (not a valid custom emoji name)"
+            print(f"  :{name}: {count} times{note}")
+    if report.dropped_emoji:
+        print("reactions not imported (the name is not a valid reaction):")
+        for name, count in report.dropped_emoji.most_common():
+            print(f"  {name} {count} times")
+    if report.failed_files:
+        print(f"files not brought over ({len(report.failed_files)}):")
+        for line in report.failed_files[:500]:
+            print(f"  {line}")
+        if len(report.failed_files) > 500:
+            print(f"  … and {len(report.failed_files) - 500} more")
+    if report.warnings:
+        print(f"warnings ({len(report.warnings)}):")
+        for line in report.warnings[:200]:
+            print(f"  {line}")
+        if len(report.warnings) > 200:
+            print(f"  … and {len(report.warnings) - 200} more")
 
 
 async def _import_mattermost(args: argparse.Namespace) -> int:
@@ -382,37 +425,90 @@ async def _import_mattermost(args: argparse.Namespace) -> int:
                 return 1
     finally:
         await db.dispose()
-    print("dry run: nothing was written" if report.dry_run else "imported")
-    print("people:")
-    for line in report.people:
-        print(f"  {line}")
-    print("counts:")
-    for key, value in sorted(report.counts.items()):
-        print(f"  {key}: {value}")
-    if report.unmatched_emoji:
-        # Names a custom emoji can take (NAME in app.modules.emoji.service) show up once added.
-        from app.modules.emoji.service import NAME
-
-        print("reactions without an emoji image (add a custom emoji of the same name to show it):")
-        for name, count in report.unmatched_emoji.most_common():
-            note = "" if NAME.match(name) else "  (not a valid custom emoji name)"
-            print(f"  :{name}: {count} times{note}")
-    if report.dropped_emoji:
-        print("reactions not imported (the name is not a valid reaction):")
-        for name, count in report.dropped_emoji.most_common():
-            print(f"  {name} {count} times")
-    if report.warnings:
-        print(f"warnings ({len(report.warnings)}):")
-        for line in report.warnings[:200]:
-            print(f"  {line}")
-        if len(report.warnings) > 200:
-            print(f"  … and {len(report.warnings) - 200} more")
+    print_import_report(report)
     return 0
 
 
 def cmd_import_mattermost(args: argparse.Namespace) -> int:
     """Import a mattermost-extract file (M18). Safe to run again: only new posts are added."""
     return asyncio.run(_import_mattermost(args))
+
+
+def read_secret_file(path: str | None) -> str | None:
+    """A secret from a file (never from argv: it would stay in the shell history)."""
+    if not path:
+        return None
+    value = Path(path).read_text(encoding="utf-8").strip()
+    if not value:
+        raise ValueError(f"{path} is empty")
+    return value
+
+
+async def _import_slack(args: argparse.Namespace) -> int:
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.attachments.blobstore import build_blobstore
+    from app.modules.importer.core import ImportFailed
+    from app.modules.importer.slack_import import FileSource, Options, import_slack
+
+    if args.download and args.files_dir:
+        print("Error: give --download or --files-dir, not both", file=sys.stderr)
+        return 2
+    if args.download and not args.files_cache:
+        print("Error: --download needs --files-cache DIR (resumable)", file=sys.stderr)
+        return 2
+    if args.slack_token_file and not args.download:
+        print("Error: --slack-token-file is for --download", file=sys.stderr)
+        return 2
+    try:
+        token = read_secret_file(args.slack_token_file)
+        user_map = parse_user_map(args.user or [], "SLACK")
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    files = FileSource(
+        files_dir=Path(args.files_dir) if args.files_dir else None,
+        cache_dir=Path(args.files_cache) if args.files_cache else None,
+        download=args.download,
+        token=token,
+        concurrency=args.download_concurrency,
+    )
+    options = Options(
+        channel_prefix=args.channel_prefix or "",
+        include_private=args.include_private,
+        include_dms=args.include_dms,
+        emoji_dir=Path(args.emoji_dir) if args.emoji_dir else None,
+    )
+    settings = get_settings()
+    db = Database(settings.database_url)
+    try:
+        async with db.session_factory() as session:
+            try:
+                report = await import_slack(
+                    session,
+                    Path(args.export),
+                    files=files,
+                    options=options,
+                    user_map=user_map,
+                    actor_username=args.actor,
+                    blobs=build_blobstore(settings),
+                    settings=settings,
+                    dry_run=args.dry_run,
+                )
+            except (ImportFailed, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+    finally:
+        await db.dispose()
+    print_import_report(report)
+    if report.dry_run and args.download:
+        print("(the dry run filled --files-cache; the real run reuses it)")
+    return 0
+
+
+def cmd_import_slack(args: argparse.Namespace) -> int:
+    """Import a Slack export ZIP (M87). Safe to run again: only new messages are added."""
+    return asyncio.run(_import_slack(args))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -480,6 +576,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="read emoji imported before again (an animated GIF stored as its first frame moves)",
     )
     mm_import.set_defaults(func=cmd_import_mattermost)
+
+    sl = sub.add_parser("import-slack", help="import a Slack export ZIP (public channels)")
+    sl.add_argument("export", help="the export ZIP (or the folder it was unpacked into)")
+    sl.add_argument("--actor", required=True, help="the administrator running the import")
+    sl.add_argument(
+        "--user",
+        action="append",
+        metavar="SLACK=CHIKUWA",
+        help="map a Slack username, display name or user id to an existing account (repeatable)",
+    )
+    sl.add_argument("--channel-prefix", help="put before every new channel name, e.g. slack-")
+    sl.add_argument("--download", action="store_true", help="download the files from Slack")
+    sl.add_argument(
+        "--slack-token-file", help="a file holding a Slack token for the downloads (optional)"
+    )
+    sl.add_argument("--files-cache", help="where downloads are kept (a rerun resumes from it)")
+    sl.add_argument("--download-concurrency", type=int, default=4, help="downloads at once")
+    sl.add_argument("--files-dir", help="files downloaded beforehand (<file id>/<name>, …)")
+    sl.add_argument("--emoji-dir", help="custom emoji images named <name>.png / .gif / …")
+    sl.add_argument("--include-private", action="store_true", help="also groups.json")
+    sl.add_argument("--include-dms", action="store_true", help="also dms.json and mpims.json")
+    sl.add_argument("--dry-run", action="store_true", help="check everything, write nothing")
+    sl.set_defaults(func=cmd_import_slack)
 
     export = sub.add_parser("export-openapi", help="write the OpenAPI document to openapi/")
     export.add_argument("--out", default=str(REPO_ROOT / "openapi" / "openapi.json"))
