@@ -197,25 +197,34 @@ struct AttachmentFileButton: View {
 /// it and plays it full screen (VideoViewer, M38; it was Quick Look's sheet), whose share button saves it to Photos.
 /// M38: the tile has the video's shape (VideoFit): the size the server recorded, else its poster's, else the
 /// downloaded file's once there is one; a landscape box until then.
+/// M82 (M79's phone half, VideoTileModel): the server records the size, the length and a poster at upload, so the tile
+/// has its final box from the first layout and shows the poster from /thumbnail; the clip is downloaded only when
+/// opened. Reading the video on the device (its header, a frame) is the fallback without a poster.
 struct VideoTile: View {
     let attachment: AttachmentOut
     @Bindable var controller: AppController
     @State private var loader = AttachmentFileLoader()
     @State private var playing: URL?
     @State private var poster: UIImage?
+    @State private var posterFailed = false
     @State private var found: CGSize?
 
-    /// Known from the first layout when this device has seen it before (VideoSizes), not after the task ran.
-    private var shape: CGSize? { VideoFit.recorded(attachment) ?? found ?? VideoSizes.size(attachment.id) }
+    private var model: VideoTileModel { VideoTileModel(attachment: attachment) }
 
     var body: some View {
-        let box = VideoFit.box(for: shape)
+        // Known from the first layout when the server recorded it or this device has seen it before (VideoSizes).
+        let box = model.box(found: found, remembered: VideoSizes.size(attachment.id))
         Button(action: tapped) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.85))
                 if let poster {
                     Image(uiImage: poster).resizable().scaledToFill().frame(width: box.width, height: box.height).clipped()
                         .overlay(Color.black.opacity(0.15))
+                        .overlay(alignment: .bottom) {
+                            // The caption stays legible over a light poster.
+                            LinearGradient(colors: [.clear, .black.opacity(0.45)], startPoint: .top, endPoint: .bottom).frame(height: 36)
+                        }
+                        .accessibilityHidden(true)
                 }
                 if loader.loading {
                     ProgressView().tint(.white)
@@ -226,10 +235,11 @@ struct VideoTile: View {
                 VStack {
                     Spacer()
                     HStack(spacing: 6) {
-                        Image(systemName: "film")
+                        // M82: bottom left, the length with the size (「0:42 · 1.9 MB」); a narrow (portrait) tile cuts the
+                        // name, not these.
+                        Text(model.caption).lineLimit(1).fixedSize()
                         Text(attachment.filename).lineLimit(1)
-                        Spacer(minLength: 4)
-                        Text(formatSize(attachment.sizeBytes)).lineLimit(1).fixedSize() // a narrow (portrait) tile cuts the name, not the size
+                        Spacer(minLength: 0)
                     }
                     .font(.caption2).foregroundStyle(.white.opacity(0.85))
                     .padding(.horizontal, 10).padding(.bottom, 8)
@@ -241,23 +251,37 @@ struct VideoTile: View {
         }
         .buttonStyle(.plain)
         .disabled(loader.loading)
-        .accessibilityLabel("動画 \(attachment.filename) を\(loader.failed ? "再試行" : "再生")")
-        .fullScreenCover(item: $playing) { url in VideoViewer(attachment: attachment, url: url) }
-        .task(id: attachment.id) { await findShape() }
+        .accessibilityLabel("動画 \(attachment.filename)\(model.duration.map { " \($0)" } ?? "") を\(loader.failed ? "再試行" : "再生")")
+        .fullScreenCover(item: $playing) { url in VideoViewer(attachment: attachment, url: url, poster: poster) }
+        // Again when the server fills in the poster later (message.updated, change "attachments": same id).
+        .task(id: "\(attachment.id):\(attachment.hasPoster)") { await findShape() }
     }
 
-    /// The poster (a server thumbnail, when it makes one) and the video's shape where the server did not record it.
+    /// The server's poster, and only without one (or when it does not load) the video's shape and a frame from a copy
+    /// already on this device (never downloaded for the tile).
     private func findShape() async {
         if found == nil, let known = VideoSizes.size(attachment.id) { found = known } // the same box: no change
-        if attachment.hasThumbnail, poster == nil, let api = controller.api,
-           let data = try? await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail"), let image = UIImage(data: data) {
-            poster = image
-            if found == nil { remember(image.size) }
+        if model.fetchesPoster, poster == nil {
+            if let api = controller.api, let data = try? await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail"),
+               let image = UIImage(data: data) {
+                poster = image
+                posterFailed = false
+                if VideoFit.recorded(attachment) == nil, found == nil { remember(image.size) }
+            } else if !Task.isCancelled {
+                posterFailed = true
+            }
         }
-        guard VideoFit.recorded(attachment) == nil, found == nil else { return }
-        // Downloaded before (this launch or an earlier one): its header says.
+        guard model.readsVideoOnDevice(posterFailed: posterFailed) else { return }
+        // Downloaded before (this launch or an earlier one): its header says, and a frame stands in for the poster.
         let file = AttachmentFileCache.destination(for: attachment, in: FileManager.default.temporaryDirectory.appendingPathComponent("attachments", isDirectory: true))
-        if FileManager.default.fileExists(atPath: file.path), let size = await VideoFit.naturalSize(of: file) { remember(size) }
+        guard FileManager.default.fileExists(atPath: file.path) else { return }
+        await readVideo(file)
+    }
+
+    /// The fallback: the shape from the file's header where the server did not record it, and a frame for the poster.
+    private func readVideo(_ file: URL) async {
+        if VideoFit.recorded(attachment) == nil, found == nil, let size = await VideoFit.naturalSize(of: file) { remember(size) }
+        if poster == nil, let frame = await VideoFit.frame(of: file), !Task.isCancelled { poster = frame }
     }
 
     private func remember(_ size: CGSize) {
@@ -270,7 +294,7 @@ struct VideoTile: View {
         Task {
             await loader.load { await controller.downloadAttachment(attachment) }
             guard let url = loader.url else { return }
-            if VideoFit.recorded(attachment) == nil, found == nil, let size = await VideoFit.naturalSize(of: url) { remember(size) }
+            if model.readsVideoOnDevice(posterFailed: posterFailed) { await readVideo(url) }
             playing = url
         }
     }
@@ -503,7 +527,8 @@ private struct PendingTile: View {
                 .accessibilityLabel("\(item.filename) を取り消す")
             }
             .task(id: item.id) {
-                guard item.isImage, let controller else { return }
+                // M82: a video's server poster too (the upload's answer says whether there is one).
+                guard item.isImage || item.showsServerPoster, let controller else { return }
                 await thumbnail.load {
                     guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
                     return try await api.fetchData("/api/v1/attachments/\(item.id)/thumbnail")
@@ -524,7 +549,10 @@ private struct PendingTile: View {
             Color.secondary.opacity(0.12)
             if let image = thumbnail.image {
                 Image(uiImage: image).resizable().scaledToFill()
-            } else if item.isImage && !thumbnail.failed {
+                if item.isVideo {
+                    Image(systemName: "play.circle.fill").font(.system(size: 22)).foregroundStyle(.white.opacity(0.9))
+                }
+            } else if (item.isImage || item.showsServerPoster) && !thumbnail.failed {
                 ProgressView()
             } else {
                 VStack(spacing: 3) {

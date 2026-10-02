@@ -107,15 +107,18 @@ struct FileRowView: View {
                 RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemBackground))
                 if let image {
                     Image(uiImage: image).resizable().scaledToFill()
+                    if attachment.isVideo {
+                        Image(systemName: "play.circle.fill").font(.system(size: 18)).foregroundStyle(.white.opacity(0.9))
+                    }
                 } else {
-                    Image(systemName: attachment.hasThumbnail ? "photo" : "doc").foregroundStyle(.secondary)
+                    Image(systemName: attachment.isVideo ? "film" : attachment.hasThumbnail ? "photo" : "doc").foregroundStyle(.secondary)
                 }
             }
             .frame(width: 48, height: 48)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 2) {
                 Text(attachment.filename).font(.subheadline).fontWeight(.medium).lineLimit(1)
-                Text("\(formatSize(attachment.sizeBytes)) · \(uploader) · \(channel) · \(Timeline.timeLabel(item.attachedAt))")
+                Text("\(VideoTileModel(attachment: attachment).caption) · \(uploader) · \(channel) · \(Timeline.timeLabel(item.attachedAt))")
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
@@ -124,7 +127,8 @@ struct FileRowView: View {
         .padding(.vertical, 2)
         .contentShape(Rectangle())  // the Spacer counts too: the whole row opens the file
         .task(id: attachment.id) {
-            guard attachment.hasThumbnail, image == nil else { return }
+            // M82: a video's server poster as well (`has_poster`; its `has_thumbnail` is false).
+            guard attachment.hasThumbnail || attachment.showsServerPoster, image == nil else { return }
             if let data = try? await controller.api?.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail") { image = UIImage(data: data) }
         }
     }

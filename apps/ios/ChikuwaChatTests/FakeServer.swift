@@ -360,6 +360,17 @@ final class FakeServer {
         return updated
     }
 
+    /// M79: the server filled in a message's videos later (`app.cli probe-videos`): a new seq and message.updated with
+    /// `change` (normally "attachments"; tests send unknown ones too).
+    @discardableResult
+    func setAttachments(channelId: String, messageId: String, _ attachments: [AttachmentOut], change: String = "attachments") -> MessageOut? {
+        guard let message = channels[channelId]?.messages.first(where: { $0.id == messageId }) else { return nil }
+        var updated = rebuild(message, updatedSeq: bumpSeq(channelId))
+        updated.attachments = attachments
+        replace(channelId, updated, event: "message.updated", change: change)
+        return updated
+    }
+
     /// user → saved message ids, newest first.
     var bookmarks: [String: [String]] = [:]
     /// Custom emoji by name (M12f); everyone gets emoji.updated.

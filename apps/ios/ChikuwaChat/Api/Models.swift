@@ -520,10 +520,35 @@ struct AttachmentOut: Codable, Equatable, Identifiable {
     let hasThumbnail: Bool
     let status: String
     let createdAt: String
+    /// M79: the server made a poster frame for this video (served at /thumbnail like a photo's thumbnail; a video's
+    /// `hasThumbnail` stays false). Absent from servers before M79: false.
+    var hasPoster: Bool = false
+    /// M79: a video's length; nil when the server does not know it (or is older).
+    var durationMs: Int? = nil
 
     /// A picture: it has a thumbnail. A video with one (its poster) stays a video (M38).
     var isImage: Bool { hasThumbnail && !isVideo }
     var isVideo: Bool { contentType.hasPrefix("video/") }
+    /// M82: a video whose poster the server serves at /thumbnail.
+    var showsServerPoster: Bool { isVideo && hasPoster }
+}
+
+extension AttachmentOut {
+    /// By hand only so that `has_poster` may be missing (servers before M79); otherwise as synthesized.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        filename = try c.decode(String.self, forKey: .filename)
+        contentType = try c.decode(String.self, forKey: .contentType)
+        sizeBytes = try c.decode(Int64.self, forKey: .sizeBytes)
+        width = try c.decodeIfPresent(Int.self, forKey: .width)
+        height = try c.decodeIfPresent(Int.self, forKey: .height)
+        hasThumbnail = try c.decode(Bool.self, forKey: .hasThumbnail)
+        status = try c.decode(String.self, forKey: .status)
+        createdAt = try c.decode(String.self, forKey: .createdAt)
+        hasPoster = try c.decodeIfPresent(Bool.self, forKey: .hasPoster) ?? false
+        durationMs = try c.decodeIfPresent(Int.self, forKey: .durationMs)
+    }
 }
 
 struct MessageOut: Codable, Identifiable, Equatable {

@@ -44,6 +44,59 @@ enum VideoFit {
         let size = displaySize(natural: natural, transform: transform)
         return size.width > 0 && size.height > 0 ? size : nil
     }
+
+    /// M82: a frame of a video file on this device, upright, at most 512 px: the tile's poster when the server has
+    /// none (or it did not load). Near the start, as the server's poster is (1 s, else the first frame).
+    static func frame(of url: URL) async -> UIImage? {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 512, height: 512)
+        generator.requestedTimeToleranceBefore = .positiveInfinity
+        generator.requestedTimeToleranceAfter = .positiveInfinity
+        for seconds in [1.0, 0] {
+            if let (image, _) = try? await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600)) {
+                return UIImage(cgImage: image)
+            }
+        }
+        return nil
+    }
+}
+
+/// M82 (the phone half of M79): what a message's video tile shows, from the attachment and what this device knows.
+struct VideoTileModel: Equatable {
+    let attachment: AttachmentOut
+
+    /// The video's shape: the server's (from the first layout, so the row never changes height in the upside-down
+    /// conversation), else one this device found (its poster, its downloaded file) or remembered.
+    func shape(found: CGSize? = nil, remembered: CGSize? = nil) -> CGSize? {
+        VideoFit.recorded(attachment) ?? found ?? remembered
+    }
+
+    func box(found: CGSize? = nil, remembered: CGSize? = nil) -> CGSize {
+        VideoFit.box(for: shape(found: found, remembered: remembered))
+    }
+
+    /// The tile asks /thumbnail for the server's poster (`has_poster`, not `has_thumbnail`: false for videos).
+    var fetchesPoster: Bool { attachment.showsServerPoster }
+
+    /// Frames or the shape are read from the video on this device only without a server poster or when it did not load.
+    func readsVideoOnDevice(posterFailed: Bool) -> Bool { !fetchesPoster || posterFailed }
+
+    var duration: String? { VideoDuration.text(attachment.durationMs) }
+
+    /// Bottom left of the tile: 「0:42 · 1.9 MB」, the size alone without a length.
+    var caption: String { [duration, formatSize(attachment.sizeBytes)].compactMap { $0 }.joined(separator: " · ") }
+}
+
+/// M82: a video's length as tiles show it (Desktop's formatDuration): 「0:07」「12:34」「1:02:03」, under a second but
+/// more than nothing 0:01; nil when unknown.
+enum VideoDuration {
+    static func text(_ ms: Int?) -> String? {
+        guard let ms, ms >= 0 else { return nil }
+        let total = ms > 0 ? max(1, Int((Double(ms) / 1000).rounded())) : 0
+        let hours = total / 3600, minutes = total % 3600 / 60, seconds = total % 60
+        return hours > 0 ? String(format: "%d:%02d:%02d", hours, minutes, seconds) : String(format: "%d:%02d", minutes, seconds)
+    }
 }
 
 /// M38: videos' shapes found on this device (from their poster or their downloaded file), by attachment id, so a
@@ -92,6 +145,8 @@ enum VideoSizes {
 struct VideoViewer: View {
     let attachment: AttachmentOut
     let url: URL
+    /// M82: the tile's poster, over the player until its first frame is ready.
+    var poster: UIImage? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// 0…1 while the video is dragged away: the header goes first.
@@ -100,7 +155,7 @@ struct VideoViewer: View {
     var body: some View {
         VStack(spacing: 0) {
             header.opacity(1 - min(1, dragged * 4))
-            VideoPlayerPage(url: url, reduceMotion: reduceMotion,
+            VideoPlayerPage(url: url, poster: poster, reduceMotion: reduceMotion,
                             onDrag: { progress in
                                 if progress == 0 { withAnimation(.easeOut(duration: 0.2)) { dragged = 0 } } else { dragged = progress }
                             },
@@ -144,12 +199,13 @@ struct VideoViewer: View {
 
 struct VideoPlayerPage: UIViewControllerRepresentable {
     let url: URL
+    var poster: UIImage? = nil
     let reduceMotion: Bool
     var onDrag: (CGFloat) -> Void = { _ in }
     var onClose: () -> Void = {}
 
     func makeUIViewController(context: Context) -> VideoPlayerPageController {
-        let page = VideoPlayerPageController(url: url)
+        let page = VideoPlayerPageController(url: url, poster: poster)
         page.reduceMotion = reduceMotion
         page.onDrag = onDrag
         page.onClose = onClose
@@ -172,10 +228,14 @@ final class VideoPlayerPageController: UIViewController, UIGestureRecognizerDele
     let player: AVPlayer
     let playerController = AVPlayerViewController()
     let closePan = UIPanGestureRecognizer()
+    /// M82: the poster over the video (under the player's controls) until the first frame shows.
+    let posterView = UIImageView()
     private var closing = false
+    private var readyObservation: NSKeyValueObservation?
 
-    init(url: URL) {
+    init(url: URL, poster: UIImage? = nil) {
         player = AVPlayer(url: url)
+        posterView.image = poster
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -198,10 +258,28 @@ final class VideoPlayerPageController: UIViewController, UIGestureRecognizerDele
         playerController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(playerController.view)
         playerController.didMove(toParent: self)
+        if posterView.image != nil, let overlay = playerController.contentOverlayView {
+            posterView.contentMode = .scaleAspectFit
+            posterView.frame = overlay.bounds
+            posterView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            posterView.isAccessibilityElement = false
+            overlay.addSubview(posterView)
+            readyObservation = playerController.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] _, change in
+                guard change.newValue == true else { return }
+                Task { @MainActor in self?.hidePoster() }
+            }
+        }
         closePan.addTarget(self, action: #selector(closePanned(_:)))
         closePan.delegate = self
         closePan.maximumNumberOfTouches = 1
         view.addGestureRecognizer(closePan)
+    }
+
+    private func hidePoster() {
+        readyObservation = nil
+        guard !posterView.isHidden else { return }
+        UIView.animate(withDuration: reduceMotion ? 0 : 0.15, animations: { self.posterView.alpha = 0 },
+                       completion: { _ in self.posterView.isHidden = true })
     }
 
     override func viewDidAppear(_ animated: Bool) {

@@ -1420,6 +1420,15 @@ ffmpeg の無いサーバや M79 より前の動画は `video_probed_at` が NUL
 運用コマンド) が後から埋める。メッセージに付いた動画はそのメッセージの `updated_seq` を進めて `message.updated`
 (`change = "attachments"`) を出すので、端末は差分で受け取る (SYNC_PROTOCOL.md §7.3)。
 
+M82 iOS (build 75): `AttachmentOut` は `has_poster` (無ければ false) と `duration_ms` (無ければ nil) を読む。動画のタイル
+(`VideoTileModel`) はサーバの `width` / `height` で最初から最終の箱 (逆さのリストの行の高さが後から変わらない)、`has_poster`
+なら `/thumbnail` のポスターを出して動画本体は開いたときだけ落とす。端末で動画を読む (ヘッダの縦横、`AVAssetImageGenerator`
+のフレーム) のはポスターが無いか取得に失敗したときだけで、それも端末に既にある複製か開くために落とした複製だけ (タイルの
+ために落とさない)。タイルの左下に「0:42 · 1.9 MB」、プレーヤーは最初のフレームが出るまでポスターを
+`contentOverlayView` に重ねる。送信前のタイルとファイル一覧にもポスター (ファイル一覧は長さも)。`message.updated` は
+change で分岐せずメッセージ全体を置き換える (`attachments` も知らない値も)。タイルの task は `has_poster` が変わると
+やり直すので、backfill の後のポスターもそのまま出る。
+
 M82 Android: 動画の判定は `content_type` (`video/`) で、写真の判定も `content_type` が `image/` かつ `has_thumbnail`
 (出荷版の `isImage = hasThumbnail` を直した。動画は `has_thumbnail` が立っていても写真にならない)。`has_poster` /
 `duration_ms` は省略可 (false / null) でデコードし、端末の保存も同じ形。メッセージの動画は `width` / `height` から
