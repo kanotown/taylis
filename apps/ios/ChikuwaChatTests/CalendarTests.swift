@@ -63,6 +63,11 @@ final class FakeCalendarApi: CalendarApi {
     private(set) var creates: [CalendarEventCreate] = []
     private(set) var alarmCalls: [(id: String, minutes: Int?, tz: String?)] = []
     private(set) var deletes: [String] = []
+    /// M69: the occurrence calls.
+    private(set) var occurrenceUpdates: [(seriesId: String, occurrenceStart: String, body: CalendarOccurrenceUpdate)] = []
+    private(set) var occurrenceDeletes: [(seriesId: String, occurrenceStart: String, scope: OccurrenceScope)] = []
+    /// What the next occurrence change answers (else the series' first row).
+    var occurrenceAnswer: CalendarEventOut?
 
     init(_ rows: [CalendarEventOut] = []) { self.rows = rows }
 
@@ -109,6 +114,20 @@ final class FakeCalendarApi: CalendarApi {
 
     func clearCalendarAlarm(id: String) async throws {
         alarmCalls.append((id, nil, nil))
+    }
+
+    func updateCalendarOccurrence(seriesId: String, occurrenceStart: String, _ body: CalendarOccurrenceUpdate) async throws -> CalendarEventOut {
+        occurrenceUpdates.append((seriesId, occurrenceStart, body))
+        if let occurrenceAnswer { return occurrenceAnswer }
+        guard let row = rows.first(where: { $0.series == seriesId }) else { throw ApiError.api(status: 404, code: "calendar_event_not_found", message: "") }
+        return row
+    }
+
+    func deleteCalendarOccurrence(seriesId: String, occurrenceStart: String, scope: OccurrenceScope) async throws {
+        occurrenceDeletes.append((seriesId, occurrenceStart, scope))
+        rows.removeAll {
+            $0.series == seriesId && (scope == .all || (scope == .this ? $0.occurrenceKey == occurrenceStart : $0.occurrenceKey >= occurrenceStart))
+        }
     }
 }
 
@@ -797,4 +816,8 @@ extension FakeServer.Api: CalendarApi {
     func deleteCalendarEvent(id: String) async throws {}
     func setCalendarAlarm(id: String, minutesBefore: Int, tz: String) async throws -> CalendarEventOut { try await calendarEvent(id: id) }
     func clearCalendarAlarm(id: String) async throws {}
+    func updateCalendarOccurrence(seriesId: String, occurrenceStart: String, _ body: CalendarOccurrenceUpdate) async throws -> CalendarEventOut {
+        throw ApiError.api(status: 501, code: "unused", message: "")
+    }
+    func deleteCalendarOccurrence(seriesId: String, occurrenceStart: String, scope: OccurrenceScope) async throws {}
 }

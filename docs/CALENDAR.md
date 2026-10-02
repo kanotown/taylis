@@ -336,3 +336,9 @@ M68 はサーバと Desktop / Web、スマホ (iOS / Android) は M69。
 iOS と Android に同じもの: フォームの「繰り返し」(Web と同じ選択肢と要約、`apps/shared` に規則 → 要約の共通の例を置く)、
 保存・削除の 3 通りの確認、回の id と `series_id`、`recurring` のイベントで読み直す、通知の `occurrence_start`。購読 URL の作成・一覧・削除は
 「自分 → カレンダーを購読」に。
+
+- iOS (M69、ビルド 70): 規則 ↔ 選択 ↔ 要約は `UI/CalendarRecurrence.swift` (Web の calendarRecurrence.ts をそのまま移し、テストも同じ例。
+  `apps/shared` の共通の例はまだ置いていないので、Android と合わせるときに JSON へ移す)。「繰り返し」は時刻・日付の下の節 (曜日は丸い
+  ボタン、カスタムの間隔と回数はステッパー、終了日は日付ピッカー、要約は節の下に 🔁 で)。範囲の確認は `confirmationDialog`。
+  購読 URL の画面は §10.9 の「自分」ではなくカレンダーの ⋯ →「カレンダーを購読 (iCal)」に置き (予定を見ている場所から開けるため)、
+  作った URL は `webcal://` で「この iPhone のカレンダーに追加」もできる。単発 → 繰り返しの `tz` は端末のゾーン。
