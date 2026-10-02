@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import type { AdminUserOut, Role } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
-import { AiTab } from "./AiTab";
+import { AiTab, USERNAME_FIXED_HINT } from "./AiTab";
 import { Avatar } from "./Avatar";
 import { fullTimestamp } from "./format";
 import { CanvasTemplatesTab } from "./CanvasTemplatesTab";
@@ -137,7 +137,7 @@ function UsersTab({ controller }: { controller: AppController }) {
       </div>
       {creating && (
         <form className="grid grid-cols-2 gap-3 rounded-xl border border-line p-3" onSubmit={create}>
-          <Field label="ユーザー名 (3〜32 文字、a-z 0-9 . _ -)">
+          <Field label="ユーザー名 (3〜32 文字、a-z 0-9 . _ -)" hint={USERNAME_FIXED_HINT}>
             <Input value={form.username} pattern="[a-z0-9._-]{3,32}" required autoFocus onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} />
           </Field>
           <Field label="表示名">

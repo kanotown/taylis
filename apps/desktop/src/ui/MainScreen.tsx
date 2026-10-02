@@ -1,5 +1,5 @@
-import { ArrowLeft, ArrowRight, AtSign, Bell, BellOff, Files, Hash, Keyboard, Lock, Megaphone, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, AtSign, Bell, BellOff, ChevronDown, Files, Hash, Keyboard, Lock, Megaphone, MessagesSquare, MoreHorizontal, Pin, Star, Users } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ActivityItem, ChannelLinkOut, MessageOut } from "../api/types";
@@ -54,7 +54,7 @@ import { presenceLabel } from "./Avatar";
 import { StatusGlyph } from "./UserPopover";
 import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
-import { CONVERSATION_MIN, paneLayout } from "./paneLayout";
+import { CONVERSATION_MIN, headerFit, paneLayout } from "./paneLayout";
 import { useNavigationHistory } from "./navigationHistory";
 import { canGo, emptyHistory, go, type Place, type PlaceHistory, placeKey, visit } from "./placeHistory";
 import { historyStep, historyShortcutLabels, mouseHistoryStep } from "./historyShortcuts";
@@ -159,6 +159,21 @@ export function MainScreen({ controller }: { controller: AppController }) {
     return () => observer.disconnect();
   }, [compact]);
   const columns = paneLayout(availableWidth, sidebarWidth, paneWidth, !!threadId || pinsOpen);
+  // The conversation header's own width: with the thread pane open the centre narrows and its tabs and buttons fold
+  // (headerFit) instead of overlapping (2026-10-02).
+  const [headerWidth, setHeaderWidth] = useState(0);
+  const headerObserver = useRef<ResizeObserver | null>(null);
+  const headerRef = useCallback((el: HTMLElement | null) => {
+    headerObserver.current?.disconnect();
+    headerObserver.current = null;
+    if (!el) return;
+    const measure = () => setHeaderWidth(el.getBoundingClientRect().width);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    headerObserver.current = new ResizeObserver(measure);
+    headerObserver.current.observe(el);
+  }, []);
+  const fit = headerFit(headerWidth);
   const [pane, setPane] = useState<"list" | "main">(() => (controller.messageFocus ? "main" : "list"));
   // M29, phones only: the conversation's tab (the timeline stays mounted under the others) and its details page.
   // M43: 「キャンバス」 is a tab on the wide layout too.
@@ -996,6 +1011,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const showDetails = tabbed && detailsOpen && view === "channel";
   // M43: the wide layout has 「メッセージ | キャンバス」 in the header (its pins and files stay a pane and a view).
   const canvasTab = !!current && current.isMember && !previewing;
+  const headerTabs: ReadonlyArray<readonly [ConversationTab, string]> = [
+    ["messages", "メッセージ"],
+    ["canvas", "キャンバス"],
+    ...(isChannel ? [["events", eventsTabLabel(upcomingCount)] as const, ["tasks", "タスク"] as const] : []),
+  ];
+  // Too narrow a header moves pins, files, members and the shortcuts button into ⋯ (headerFit).
+  const tightHeader = !compact && fit === "tight";
   const shownTab: ConversationTab = tabbed
     ? (tab === "events" || tab === "tasks") && !isChannel ? "messages" : tab
     : canvasTab && (tab === "canvas" || ((tab === "events" || tab === "tasks") && isChannel)) ? tab : "messages";
@@ -1089,12 +1111,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
               <span className="min-w-0 truncate font-normal opacity-80">{describeSearch(controller, search)}</span>
             </button>
           )}
-          <header className="flex h-[52px] items-center gap-3 border-b border-line px-4 max-md:gap-2 max-md:pr-2">
+          <header ref={headerRef} className="flex h-[52px] items-center gap-3 border-b border-line px-4 max-md:gap-2 max-md:pr-2">
             {/* On a phone, Back from 「ピン留め」 / 「ファイル」 returns to 「メッセージ」 first (M29). */}
             <BackToList.Provider value={tabbed && tab !== "messages" ? () => setTab("messages") : back}>
               <BackButton />
             </BackToList.Provider>
-            <div className="flex min-w-0 flex-1 items-center gap-2">
+            {/* The left part gives way to the buttons (shrink-0): the topic first, then mostly the tabs (they scroll
+                sideways) and a little the title (an ellipsis), so nothing slides under the buttons when the thread pane
+                narrows the column (2026-10-02). Narrower still, the tabs and some buttons fold (headerFit). */}
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
               {tabbed ? (
                 // M29: the name opens the conversation's details page.
                 <button type="button" className="flex min-w-0 items-center gap-2 rounded-md text-left" title={isChannel ? "チャンネル情報" : "会話の情報"} onClick={openDetails}>
@@ -1105,23 +1130,45 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 </button>
               ) : (
                 <>
-                  <span className="text-muted">
+                  <span className="shrink-0 text-muted">
                     {isChannel ? (current.type === "private" ? <Lock size={18} /> : <Hash size={18} />) : <AtSign size={18} />}
                   </span>
-                  <strong className="truncate text-[15px]">{channelTitle(current, controller).replace(/^#/, "")}</strong>
+                  <strong className="min-w-0 truncate text-[15px]" title={channelTitle(current, controller)}>{channelTitle(current, controller).replace(/^#/, "")}</strong>
                 </>
               )}
               {current.archived && <Badge>アーカイブ済み</Badge>}
-              {canvasTab && !compact && (
-                <div role="tablist" aria-label="会話の表示" className="ml-1 flex shrink-0 rounded-lg bg-panel-2 p-0.5 text-xs font-medium">
-                  {([["messages", "メッセージ"], ["canvas", "キャンバス"], ...(isChannel ? [["events", eventsTabLabel(upcomingCount)] as const, ["tasks", "タスク"] as const] : [])] as const).map(([value, label]) => (
+              {canvasTab && !compact && fit !== "full" && (
+                // Too narrow for the strip: one button with the shown tab's name opens the same choices.
+                <Menu>
+                  <MenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`会話の表示: ${headerTabs.find(([value]) => value === shownTab)?.[1] ?? "メッセージ"}`}
+                      className="ml-1 inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-panel-2 px-2.5 text-xs font-medium text-ink transition-colors hover:bg-ink/6"
+                    >
+                      {headerTabs.find(([value]) => value === shownTab)?.[1] ?? "メッセージ"}
+                      <ChevronDown size={13} className="text-muted" />
+                    </button>
+                  </MenuTrigger>
+                  <MenuContent align="start">
+                    <MenuRadioGroup value={shownTab} onValueChange={(value) => setTab(value as ConversationTab)}>
+                      {headerTabs.map(([value, label]) => (
+                        <MenuRadioItem key={value} value={value}>{label}</MenuRadioItem>
+                      ))}
+                    </MenuRadioGroup>
+                  </MenuContent>
+                </Menu>
+              )}
+              {canvasTab && !compact && fit === "full" && (
+                <div role="tablist" aria-label="会話の表示" className="ml-1 flex min-w-[6rem] shrink-[4] overflow-x-auto rounded-lg bg-panel-2 p-0.5 text-xs font-medium [scrollbar-width:none]">
+                  {headerTabs.map(([value, label]) => (
                     <button
                       key={value}
                       type="button"
                       role="tab"
                       aria-selected={shownTab === value}
                       onClick={() => setTab(value)}
-                      className={cn("rounded-md px-2.5 py-1 transition-colors", shownTab === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
+                      className={cn("shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 transition-colors", shownTab === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
                     >
                       {label}
                     </button>
@@ -1133,10 +1180,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   <Megaphone size={15} />
                 </span>
               )}
-              {isChannel && current.isMember && !current.archived && (
+              {/* A tight header leaves the topic to ⋯ 「トピックを編集」 (the name comes first). */}
+              {isChannel && current.isMember && !current.archived && !tightHeader && (
                 <button
                   type="button"
-                  className={cn("min-w-0 truncate text-sm hover:underline max-md:hidden", current.topic ? "text-muted" : "text-muted/70")}
+                  className={cn("min-w-0 shrink-[100] truncate text-sm hover:underline max-md:hidden", current.topic ? "text-muted" : "text-muted/70")}
                   onClick={() => setDialog("topic")}
                   title="トピックを編集"
                 >
@@ -1167,15 +1215,19 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   >
                     <Star size={18} className={cn(store.isFavorite(current.id) && "fill-current")} />
                   </IconButton>
-                  <IconButton label="ピン留め" className={cn(pinsOpen && "bg-ink/6 text-warning")} onClick={() => setPinsOpen((open) => !open)}>
-                    <Pin size={18} />
-                  </IconButton>
-                  <IconButton label="ファイル" onClick={() => openFiles(current.id)}>
-                    <Files size={18} />
-                  </IconButton>
+                  {!tightHeader && (
+                    <>
+                      <IconButton label="ピン留め" className={cn(pinsOpen && "bg-ink/6 text-warning")} onClick={() => setPinsOpen((open) => !open)}>
+                        <Pin size={18} />
+                      </IconButton>
+                      <IconButton label="ファイル" onClick={() => openFiles(current.id)}>
+                        <Files size={18} />
+                      </IconButton>
+                    </>
+                  )}
                 </>
               )}
-              {isChannel && current.isMember && !compact && (
+              {isChannel && current.isMember && !compact && !tightHeader && (
                 <IconButton label="メンバー" onClick={() => setDialog("members")}>
                   <Users size={18} />
                 </IconButton>
@@ -1215,7 +1267,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   </MenuContent>
                 </Menu>
               )}
-              {current.isMember && (isChannel || compact || summaryAvailable(controller)) && (
+              {current.isMember && (isChannel || compact || tightHeader || summaryAvailable(controller)) && (
                 <Menu>
                   <MenuTrigger asChild>
                     <button type="button" aria-label={isChannel ? "チャンネルの操作" : "会話の操作"} title={isChannel ? "チャンネルの操作" : "会話の操作"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
@@ -1233,14 +1285,25 @@ export function MainScreen({ controller }: { controller: AppController }) {
                         <MenuItem onSelect={openDetails}>{isChannel ? "チャンネル情報" : "会話の情報"}</MenuItem>
                       </>
                     ) : (
-                      isChannel && channelMenuItems
+                      <>
+                        {/* A narrow header (headerFit "tight"): the buttons it left out. Members are below already. */}
+                        {tightHeader && (
+                          <>
+                            <MenuItem onSelect={() => setPinsOpen((open) => !open)}>{pinsOpen ? "ピン留めを閉じる" : "ピン留め"}</MenuItem>
+                            <MenuItem onSelect={() => openFiles(current.id)}>ファイル</MenuItem>
+                            <MenuItem onSelect={() => setDialog("shortcuts")}>キーボードショートカット</MenuItem>
+                            {isChannel && <MenuSeparator />}
+                          </>
+                        )}
+                        {isChannel && channelMenuItems}
+                      </>
                     )}
                     {/* M65: 「要約」 (docs/AI.md §6), only to the one who asks. */}
-                    <SummaryMenuItems controller={controller} channel={current} onSummary={(target) => startSummary(controller, target)} separator={compact || isChannel} />
+                    <SummaryMenuItems controller={controller} channel={current} onSummary={(target) => startSummary(controller, target)} separator={compact || isChannel || tightHeader} />
                   </MenuContent>
                 </Menu>
               )}
-              {!compact && (
+              {!compact && !tightHeader && (
                 <IconButton label={`キーボードショートカット (${modKey()}+/)`} onClick={() => setDialog("shortcuts")}>
                   <Keyboard size={18} />
                 </IconButton>

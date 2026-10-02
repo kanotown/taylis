@@ -138,6 +138,30 @@ it("a row shows its message in its channel; the times' name opens the channel; t
   w.engine.stop();
 });
 
+it("the sidebar's 「フィード」 looks like the other rows: highlighted only while the feed is open (2026-10-02)", async () => {
+  const { w } = await setup();
+  const row = () => screen.getByRole("button", { name: "フィード" });
+  const threads = () => screen.getByRole("button", { name: "スレッド" });
+  const looksActive = (el: HTMLElement) => el.getAttribute("aria-current") === "page" || el.className.split(/\s+/).includes("bg-sidebar-active");
+  // A channel is open: neither the feed row nor its header icon is highlighted, as 「スレッド」 is not.
+  expect(looksActive(row())).toBe(false);
+  expect(row().className).toBe(threads().className.replace(/\s*font-semibold text-white/, ""));
+  expect(looksActive(screen.getByRole("button", { name: "Times フィード" }))).toBe(false);
+  fireEvent.click(row());
+  await settle(w);
+  expect(looksActive(row())).toBe(true);
+  // Another view, then a channel: the highlight goes with the feed.
+  fireEvent.click(threads());
+  await settle(w);
+  expect(looksActive(row())).toBe(false);
+  fireEvent.click(row());
+  await settle(w);
+  fireEvent.click(screen.getByRole("button", { name: /^#?c$/ }));
+  await settle(w);
+  expect(looksActive(row())).toBe(false);
+  w.engine.stop();
+});
+
 it("a reply also sent to the channel: its body shows the channel's row (no thread); 「スレッドに返信」 opens the thread (review #13)", async () => {
   const { w, controller, carol, carolTimes } = await setup();
   const parent = w.server.messageByBody(carolTimes, "論文を読む");
