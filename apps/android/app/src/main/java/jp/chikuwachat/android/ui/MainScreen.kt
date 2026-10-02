@@ -888,6 +888,17 @@ fun MainScreen(controller: AppController) {
                             controller.messageFocus = null
                             stack = MainNav.openFromThreadList(stack, entry.state.channelId, entry.parent.id)
                         },
+                        // M77 (CANVAS.md §20.7): a canvas row opens its conversation's 「キャンバス」 tab on this tab's
+                        // stack, like the message rows (back returns here). A conversation the store does not know yet
+                        // lands like the canvas push (M73) once it does.
+                        onOpenCanvas = { channelId, canvasId ->
+                            if (store.channel(channelId) != null) {
+                                controller.messageFocus = null
+                                stack = MainNav.openCanvas(stack, channelId, canvasId)
+                            } else {
+                                controller.openCanvasFromActivity(channelId, canvasId)
+                            }
+                        },
                     )
                 } else if (top == Route.You || top is Route.Settings) {
                     // M40 (MOBILE_UI.md §6.5): the list and its screens; wide, the list with the chosen screen beside it.

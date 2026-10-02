@@ -70,7 +70,7 @@ class ActivityTest {
         assertEquals(listOf("u3", "u4"), page.items[0].actorIds)
         assertEquals(listOf("👍", "🎉"), page.items[0].emojis)
         assertEquals(emptyList<String>(), page.items[1].emojis)
-        assertEquals("<@u2> 見て", page.items[1].message.body)
+        assertEquals("<@u2> 見て", page.items[1].message?.body)
         assertEquals("2026-09-30T00:59:00Z", page.nextCursor)
         assertEquals("2026-09-30T00:00:00Z", page.readAt)
         assertEquals("reaction:m1", page.items[0].key)
@@ -156,15 +156,15 @@ class ActivityTest {
         assertNull(ActivityText.newestAt(emptyList()))
         // A new item on top of a paged list: the page, then the older rows it did not reach.
         val fresh = item("mention", listOf("u2"), at = "2026-09-30T04:00:00Z", id = "d")
-        assertEquals(listOf("d", "a", "b", "c"), ActivityText.merge(listOf(a, b, c), listOf(fresh, a), pageIsWhole = false).map { it.message.id })
+        assertEquals(listOf("d", "a", "b", "c"), ActivityText.merge(listOf(a, b, c), listOf(fresh, a), pageIsWhole = false).map { it.message?.id })
         // A row within the page's span that the page no longer has (a reaction taken away) goes.
         val x = item("mention", listOf("u1"), at = "2026-09-30T01:30:00Z", id = "x")
-        assertEquals(listOf("d", "x", "c"), ActivityText.merge(listOf(a, b, c), listOf(fresh, x), pageIsWhole = false).map { it.message.id })
+        assertEquals(listOf("d", "x", "c"), ActivityText.merge(listOf(a, b, c), listOf(fresh, x), pageIsWhole = false).map { it.message?.id })
         // More reactions on the same message: its row moves up, once.
         val again = b.copy(at = "2026-09-30T05:00:00Z", actorIds = listOf("u2", "u1"))
-        assertEquals(listOf("b", "a", "c"), ActivityText.merge(listOf(a, b, c), listOf(again, a), pageIsWhole = false).map { it.message.id })
+        assertEquals(listOf("b", "a", "c"), ActivityText.merge(listOf(a, b, c), listOf(again, a), pageIsWhole = false).map { it.message?.id })
         // A page that is the whole list replaces it (a reaction taken away is gone).
-        assertEquals(listOf("a"), ActivityText.merge(listOf(a, b, c), listOf(a), pageIsWhole = true).map { it.message.id })
+        assertEquals(listOf("a"), ActivityText.merge(listOf(a, b, c), listOf(a), pageIsWhole = true).map { it.message?.id })
     }
 
     @Test fun theFiltersAreTheServersAndOldSavedRoutesStillOpen() {
@@ -310,10 +310,11 @@ class ActivityTest {
         client.listActivity("reactions", cursor = "2026-09-30T01:00:00.5+00:00")
         val summary = client.markActivityRead("2026-09-30T05:00:00Z")
         client.activitySummary()
-        assertEquals("GET /api/v1/activity?filter=reactions&limit=50&cursor=2026-09-30T01%3A00%3A00.5%2B00%3A00", requests[0].first)
-        assertEquals("PUT /api/v1/activity/read?", requests[1].first)
+        // M77: every activity call names the canvas items (CANVAS.md §20.5; ActivityCanvasTest checks bootstrap too).
+        assertEquals("GET /api/v1/activity?filter=reactions&limit=50&include=canvas_mention&cursor=2026-09-30T01%3A00%3A00.5%2B00%3A00", requests[0].first)
+        assertEquals("PUT /api/v1/activity/read?include=canvas_mention", requests[1].first)
         assertEquals("2026-09-30T05:00:00Z", Codec.plain.parseToJsonElement(requests[1].second!!).jsonObject["read_at"]?.jsonPrimitive?.content)
-        assertEquals("GET /api/v1/activity/summary?", requests[2].first)
+        assertEquals("GET /api/v1/activity/summary?include=canvas_mention", requests[2].first)
         assertEquals(0, summary.unreadCount)
     }
 

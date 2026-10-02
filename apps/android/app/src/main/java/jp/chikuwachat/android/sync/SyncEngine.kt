@@ -723,7 +723,13 @@ class SyncEngine(
                 store.setChannelLinks(id, Codec.snake.decodeFromJsonElement(ListSerializer(ChannelLinkOut.serializer()), frame.data["links"] ?: return))
             }
             "canvas.created", "canvas.updated", "canvas.deleted" -> canvases.applyEvent(frame.event, frame.data)
-            "canvas.mentioned" -> maybeNotifyCanvasMention(frame.data)
+            "canvas.mentioned" -> {
+                // M77 (CANVAS.md §20.5): the save wrote (or moved) my canvas activity item: the badge and the list on
+                // screen read again, collapsed like a message mention.
+                store.noteActivity()
+                scheduleActivityRefresh()
+                maybeNotifyCanvasMention(frame.data)
+            }
             // M52 (CALENDAR.md §5): outside the channel seq; the ranges on screen take them.
             "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated" -> calendar.applyEvent(frame.event, frame.data)
             // M56 (SYNC_PROTOCOL.md §16): outside the channel seq too; the windows on screen take them.

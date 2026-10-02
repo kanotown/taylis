@@ -210,7 +210,8 @@ class ApiClient(
 
     suspend fun users(): List<UserPublic> = request("GET", "/api/v1/users")
 
-    override suspend fun bootstrap(): BootstrapOut = request("GET", "/api/v1/sync/bootstrap")
+    /** M77: `activity_include` makes its `activity` badge count the canvas items too (CANVAS.md §20.3). */
+    override suspend fun bootstrap(): BootstrapOut = request("GET", "/api/v1/sync/bootstrap?activity_include=${ActivityInclude.VALUE}")
 
     suspend fun channels(includePublic: Boolean): List<ChannelOut> =
         request("GET", "/api/v1/channels" + if (includePublic) "?include=public" else "")
@@ -498,16 +499,18 @@ class ApiClient(
         request("GET", "/api/v1/mentions?limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
 
     // --- activity (M39, MOBILE_UI.md §7.2) -----------------------------------------------------
+    // M77 (CANVAS.md §20.5): all three calls and bootstrap name the canvas items (`include=canvas_mention`), so the
+    // list and the badge count the same items. A server before M76 ignores the parameter.
 
     /** GET /activity: `filter` all / mentions / reactions / threads; `cursor` is the previous page's next_cursor. */
     suspend fun listActivity(filter: String = "all", cursor: String? = null, limit: Int = 50): ActivityListOut =
-        request("GET", "/api/v1/activity?filter=$filter&limit=$limit" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
+        request("GET", "/api/v1/activity?filter=$filter&limit=$limit&include=${ActivityInclude.VALUE}" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
 
-    override suspend fun activitySummary(): ActivitySummaryOut = request("GET", "/api/v1/activity/summary")
+    override suspend fun activitySummary(): ActivitySummaryOut = request("GET", "/api/v1/activity/summary?include=${ActivityInclude.VALUE}")
 
     /** PUT /activity/read: everything up to `readAt` is read (the server only moves it forward, never past now). */
     suspend fun markActivityRead(readAt: String): ActivitySummaryOut =
-        request("PUT", "/api/v1/activity/read", buildJsonObject { put("read_at", readAt) })
+        request("PUT", "/api/v1/activity/read?include=${ActivityInclude.VALUE}", buildJsonObject { put("read_at", readAt) })
 
     /**
      * GET /times/feed (L8, TIMES_FEED.md §3): the timeline rows of my unmuted times, newest first; `cursor` is the

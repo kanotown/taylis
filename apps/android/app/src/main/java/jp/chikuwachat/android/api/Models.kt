@@ -1,7 +1,15 @@
 package jp.chikuwachat.android.api
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -626,22 +634,74 @@ data class MentionListOut(val items: List<MessageOut>, val nextCursor: String? =
  * M39 (MOBILE_UI.md §7.2): one row of the activity tab. `kind` "mention" (a message mentioning me), "reaction" (my
  * message, with everyone who reacted and the distinct emoji, the newest reaction's time as `at`) or "thread_reply" (a
  * reply by someone else in a thread I follow). `actorIds`: who did it (never me).
+ *
+ * M77 (CANVAS.md §20.5): "canvas_mention" (a canvas save mentioned me) has no `message` but a [canvas]; the server sends
+ * it only when asked with `include=canvas_mention` ([ActivityInclude]). Items are read one at a time
+ * ([ActivityItemsSerializer]): an unknown kind or a malformed item is skipped, never the whole page.
  */
 @Serializable
 data class ActivityItem(
     val kind: String,
     val at: String,
-    val message: MessageOut,
+    val message: MessageOut? = null,
     val actorIds: List<String>,
     val emojis: List<String> = emptyList(),
+    val canvas: ActivityCanvas? = null,
 ) {
-    /** One row per kind and message (a reaction row is per message, whoever reacts next). */
-    val key: String get() = "$kind:${message.id}"
+    /** One row per kind and message (a reaction row is per message, whoever reacts next); a canvas one per item. */
+    val key: String get() = canvas?.let { "canvas_mention:${it.itemId}" } ?: "$kind:${message?.id}"
+
+    /** Whether this device can show the item: a kind it knows, with the part that kind needs. */
+    val isShown: Boolean get() = when (kind) {
+        "mention", "reaction", "thread_reply" -> message != null
+        "canvas_mention" -> canvas != null
+        else -> false
+    }
+
+    companion object {
+        /** One item from the wire, or null when it is malformed or not one this device shows. */
+        fun decodeOrNull(json: Json, element: JsonElement): ActivityItem? =
+            runCatching { json.decodeFromJsonElement(serializer(), element) }.getOrNull()?.takeIf { it.isShown }
+    }
+}
+
+/** M77 (CANVAS.md §20.3): a canvas_mention item's canvas. `title` is the current one; `excerpt` the line as saved. */
+@Serializable
+data class ActivityCanvas(
+    val itemId: String,
+    val canvasId: String,
+    val channelId: String,
+    val title: String,
+    val excerpt: String,
+    val revId: String,
+)
+
+/** M77 (CANVAS.md §20.3): the kinds beyond M39's this device reads, sent on every activity call (`include=`). */
+object ActivityInclude {
+    const val VALUE = "canvas_mention"
+}
+
+/** The activity items one at a time: a bad or unknown one is dropped, the others stay (CANVAS.md §20.5). */
+object ActivityItemsSerializer : KSerializer<List<ActivityItem>> {
+    private val list = ListSerializer(ActivityItem.serializer())
+    override val descriptor: SerialDescriptor = list.descriptor
+
+    override fun deserialize(decoder: Decoder): List<ActivityItem> {
+        val input = decoder as? JsonDecoder ?: throw SerializationException("activity items are JSON only")
+        val array = input.decodeJsonElement() as? JsonArray ?: throw SerializationException("activity items: not an array")
+        return array.mapNotNull { ActivityItem.decodeOrNull(input.json, it) }
+    }
+
+    override fun serialize(encoder: Encoder, value: List<ActivityItem>) = encoder.encodeSerializableValue(list, value)
 }
 
 /** GET /activity: newest first; `nextCursor` (the oldest row's time) goes back as `cursor`, null at the end. */
 @Serializable
-data class ActivityListOut(val items: List<ActivityItem>, val nextCursor: String? = null, val readAt: String)
+data class ActivityListOut(
+    @Serializable(with = ActivityItemsSerializer::class) val items: List<ActivityItem>,
+    val nextCursor: String? = null,
+    val readAt: String,
+)
 
 /** GET /activity/summary, PUT /activity/read and bootstrap `activity`: the items after `readAt` (at most 99). */
 @Serializable

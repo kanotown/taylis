@@ -1174,6 +1174,15 @@ class AppController(private val app: Application) {
         bringWorkspace { pendingCanvas = target }
     }
 
+    /**
+     * M77 (CANVAS.md §20.7): a canvas row of the activity tab whose conversation the store does not know yet: it lands like
+     * a tapped canvas push in the workspace on screen, once the conversation is known (a known one goes on the activity
+     * tab's stack instead; MainScreen).
+     */
+    fun openCanvasFromActivity(channelId: String, canvasId: String) {
+        pendingCanvas = channelId to canvasId
+    }
+
     /** The pending workspace on screen (switching if needed); `after` restores what the switch cleared. */
     private fun bringWorkspace(after: () -> Unit) {
         scope.launch {
