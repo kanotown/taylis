@@ -44,8 +44,9 @@ struct TaskAssigneeStack: View {
     private func name(_ id: String) -> String { controller.store.users[id]?.displayName ?? "?" }
 }
 
-/// A card's title and its marks: 進行中 (in 「自分のタスク」), the due date (red when overdue and not done, bold today),
-/// メモ, 元のメッセージ, the assignees.
+/// A card's title and its marks: 進行中 (in 「自分のタスク」), the due date (red when overdue and not done, bold today;
+/// M81 with its time, 「10/9 14:00」), 🔁 when it repeats, the checklist's 「☑ 2/5」 (green when all done), メモ,
+/// 元のメッセージ, the assignees.
 struct TaskCardContent: View {
     @Bindable var controller: AppController
     let task: TaskOut
@@ -58,7 +59,9 @@ struct TaskCardContent: View {
         let source = TaskRules.sourceState(task.source)
         let hasSource = if case .link = source { true } else { false }
         let hasCanvas = if case .link = TaskRules.canvasSourceState(task.canvasSource) { true } else { false }
+        let progress = TaskRules.subtaskProgress(task)
         let hasMeta = task.dueOn != nil || task.notes != nil || hasSource || hasCanvas || !task.assigneeIds.isEmpty || (showStatus && task.status == .doing)
+            || progress != nil || task.rrule != nil
         VStack(alignment: .leading, spacing: 5) {
             Text(task.title)
                 .font(.subheadline)
@@ -75,13 +78,24 @@ struct TaskCardContent: View {
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 4))
                     }
-                    if let due = task.dueOn {
-                        Label(TaskRules.dueLabel(due, today: today), systemImage: "calendar")
+                    if task.dueOn != nil, let label = TaskRules.dueLabel(task, today: today) {
+                        let isToday = TaskRules.dueDay(task) == today
+                        Label(label, systemImage: "calendar")
                             .labelStyle(TightLabelStyle())
                             .monospacedDigit()
-                            .fontWeight(overdue || (due == today && !done) ? .semibold : .regular)
-                            .foregroundStyle(overdue ? Color.red : due == today && !done ? Color.primary : Color.secondary)
-                            .accessibilityLabel("期限 " + TaskRules.dueText(due, today: today) + (overdue ? "、過ぎています" : ""))
+                            .fontWeight(overdue || (isToday && !done) ? .semibold : .regular)
+                            .foregroundStyle(overdue ? Color.red : isToday && !done ? Color.primary : Color.secondary)
+                            .accessibilityLabel("期限 " + TaskRules.dueText(task.dueOn, today: today, dueAt: task.dueAt) + (overdue ? "、過ぎています" : ""))
+                    }
+                    if task.rrule != nil {  // M81
+                        Image(systemName: "repeat").accessibilityLabel("繰り返し")
+                    }
+                    if let progress, let text = TaskRules.subtaskText(task) {  // M81
+                        let all = progress.done == progress.total
+                        Text(text)
+                            .monospacedDigit()
+                            .foregroundStyle(all ? Color.green : Color.secondary)
+                            .accessibilityLabel("サブタスク \(progress.total) 個中 \(progress.done) 個完了")
                     }
                     if task.notes != nil {
                         Image(systemName: "note.text").accessibilityLabel("メモあり")
@@ -169,15 +183,19 @@ struct TaskInlineAdd: View {
 /// 完了 are switched at the top (with their counts), the chosen column's cards below in the server's order, 「＋ 追加」
 /// under them. A card's long press (or its ⋯) moves it to another column, up or down, or deletes it (who may). Read-only,
 /// with the reason over it, for those who may not post in the channel.
+/// M84 (TASKS.md §11.8 2.): the switch has one segment per column of the board (GET /tasks/columns, left to right; a
+/// server before M81: the three built-in ones), cards go by `column_id`, 「移動」 lists the columns, and those who may post
+/// add, rename, move and delete columns (the switch's long press, or the ⋯ beside it: 「列を編集」).
 struct ChannelTasksPane: View {
     @Bindable var controller: AppController
     let channel: ChannelState
-    /// Tests pass their own hub, day and column.
+    /// Tests pass their own hub, day and column (a column's id, or a status for its built-in column).
     var hub: TaskHub? = nil
     var today: DayKey? = nil
-    @State var column: TaskStatus = .todo
+    @State var column: String = TaskStatus.todo.rawValue
     @State private var form: TaskFormTarget?
     @State private var deleting: TaskOut?
+    @State private var editingColumns = false
 
     private var taskHub: TaskHub? { hub ?? controller.taskHub }
     private var now: DayKey { today ?? CalendarDates.today() }
@@ -186,18 +204,30 @@ struct ChannelTasksPane: View {
         let hub = taskHub
         let board = hub?.board(channel.id)
         let tasks = board?.tasks ?? []
+        let columns = board?.columns ?? TaskRules.fallbackColumns
         let canEdit = TaskRules.canEditBoard(channel, isAdmin: controller.isAdmin) && hub?.available == true
-        let cards = TaskRules.column(tasks, column)
+        let shown = TaskRules.chosenColumn(columns, column) ?? TaskRules.fallbackColumns[0]
+        let cards = TaskRules.boardColumn(tasks, shown, columns)
         let note = TaskRules.boardNote(board?.state, channel: channel, canEdit: canEdit)
+        let canEditColumns = canEdit && board?.columnsSupported == true
         VStack(spacing: 0) {
-            Picker("列", selection: $column) {
-                ForEach(TaskStatus.allCases, id: \.self) { status in
-                    Text(segmentTitle(status, tasks: tasks, board: board)).tag(status)
+            HStack(spacing: 6) {
+                columnSwitch(columns, shown: shown, tasks: tasks, board: board)
+                if canEditColumns {
+                    Menu {
+                        Button("列を編集", systemImage: "rectangle.split.3x1") { editingColumns = true }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.body)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("ボードの操作")
                 }
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
+            .contextMenu { if canEditColumns { Button("列を編集", systemImage: "rectangle.split.3x1") { editingColumns = true } } }
             if let note {
                 Text(note)
                     .font(.caption)
@@ -214,19 +244,21 @@ struct ChannelTasksPane: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        ForEach(cards) { task in card(task, column: cards, canEdit: canEdit) }
+                        ForEach(cards) { task in card(task, column: cards, columns: columns, canEdit: canEdit) }
                         if cards.isEmpty {
-                            Text(board == nil || board?.state == .loading ? "読み込み中…" : emptyText(canEdit: canEdit))
+                            Text(board == nil || board?.state == .loading ? "読み込み中…" : emptyText(shown, canEdit: canEdit))
                                 .font(.subheadline).foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity).padding(.vertical, 20)
                         }
-                        if column == .done && board?.allDone != true && cards.count >= TaskRules.boardDoneLimit {
+                        // Every 完了 column with cards offers it (any of them reads all the completed cards).
+                        if shown.status == .done && board?.allDone != true && tasks.filter({ $0.status == .done }).count >= TaskRules.boardDoneLimit
+                            && !cards.isEmpty {
                             Button("完了をすべて表示") { Task { await hub?.openBoard(channel.id, allDone: true) } }
                                 .font(.subheadline)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         if canEdit {
-                            TaskInlineAdd { title in await add(title) }
+                            TaskInlineAdd { title in await add(title, into: shown) }
                         }
                     }
                     .padding(.horizontal, 16)
@@ -236,7 +268,7 @@ struct ChannelTasksPane: View {
             }
         }
         .task(id: channel.id) { await taskHub?.openBoard(channel.id) }
-        .onDisappear { if form == nil { taskHub?.closeBoard(channel.id) } }
+        .onDisappear { if form == nil && !editingColumns { taskHub?.closeBoard(channel.id) } }
         .onChange(of: controller.taskOpen, initial: true) { _, open in
             // A task's notification (M56): shown over this channel's tab, in its column.
             guard let open, open.channelId == channel.id, let taskId = open.taskId, let hub = taskHub else { return }
@@ -244,7 +276,7 @@ struct ChannelTasksPane: View {
             Task {
                 do {
                     let task = try await hub.load(taskId)
-                    column = task.status
+                    column = TaskRules.columnOf(task, hub.board(channel.id)?.columns ?? TaskRules.fallbackColumns)?.id ?? task.status.rawValue
                     form = .task(task)
                 } catch {
                     controller.error = controller.describe(error)
@@ -254,6 +286,9 @@ struct ChannelTasksPane: View {
         .fullScreenCover(item: $form) { target in
             TaskForm(controller: controller, hub: taskHub, target: target)
         }
+        .sheet(isPresented: $editingColumns) {
+            TaskColumnsEditor(controller: controller, channelId: channel.id, hub: taskHub)
+        }
         .alert("このタスクを削除しますか？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { task in
             Button("キャンセル", role: .cancel) {}
             Button("削除する", role: .destructive) { Task { await remove(task) } }
@@ -262,21 +297,57 @@ struct ChannelTasksPane: View {
         }
     }
 
-    /// 「未着手 3」「進行中 1」「完了」 (TASKS.md §6: the completed column has no count, it holds only the latest 100).
-    private func segmentTitle(_ status: TaskStatus, tasks: [TaskOut], board: TaskList?) -> String {
-        guard status != .done, board?.state == .ready || !tasks.isEmpty else { return status.label }
-        return "\(status.label) \(tasks.filter { $0.status == status }.count)"
-    }
-
-    private func emptyText(canEdit: Bool) -> String {
-        switch column {
-        case .todo: canEdit ? "未着手のタスクはありません。下の「追加」から足せます" : "未着手のタスクはありません"
-        case .doing: "進行中のタスクはありません"
-        case .done: "完了したタスクはありません"
+    /// Three columns: the segmented switch (as before M84); more: a row of capsules that scrolls sideways (names stay whole).
+    @ViewBuilder
+    private func columnSwitch(_ columns: [TaskColumnOut], shown: TaskColumnOut, tasks: [TaskOut], board: TaskList?) -> some View {
+        if columns.count <= 3 {
+            Picker("列", selection: Binding(get: { shown.id }, set: { column = $0 })) {
+                ForEach(columns) { item in
+                    Text(segmentTitle(item, columns: columns, tasks: tasks, board: board)).tag(item.id)
+                }
+            }
+            .pickerStyle(.segmented)
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(columns) { item in
+                            let on = item.id == shown.id
+                            Button { column = item.id } label: {
+                                Text(segmentTitle(item, columns: columns, tasks: tasks, board: board))
+                                    .font(.subheadline.weight(on ? .semibold : .regular))
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
+                                    .foregroundStyle(on ? Color.white : Color.primary)
+                                    .background(Capsule().fill(on ? Color.accentColor : Color(.tertiarySystemFill)))
+                            }
+                            .buttonStyle(.plain)
+                            .id(item.id)
+                            .accessibilityAddTraits(on ? [.isSelected] : [])
+                        }
+                    }
+                }
+                .onAppear { proxy.scrollTo(shown.id) }
+            }
         }
     }
 
-    private func card(_ task: TaskOut, column cards: [TaskOut], canEdit: Bool) -> some View {
+    /// 「未着手 3」「レビュー待ち 1」「完了」 (TASKS.md §6: a 完了 column has no count, it holds only the latest 100).
+    private func segmentTitle(_ item: TaskColumnOut, columns: [TaskColumnOut], tasks: [TaskOut], board: TaskList?) -> String {
+        let counted = board?.state == .ready || !tasks.isEmpty
+        return TaskRules.columnTitle(item, count: counted ? TaskRules.boardColumn(tasks, item, columns).count : nil)
+    }
+
+    private func emptyText(_ shown: TaskColumnOut, canEdit: Bool) -> String {
+        if !shown.builtin { return canEdit ? "「\(shown.name)」のタスクはありません。下の「追加」から足せます" : "「\(shown.name)」のタスクはありません" }
+        switch shown.status {
+        case .todo: return canEdit ? "未着手のタスクはありません。下の「追加」から足せます" : "未着手のタスクはありません"
+        case .doing: return "進行中のタスクはありません"
+        case .done: return "完了したタスクはありません"
+        }
+    }
+
+    private func card(_ task: TaskOut, column cards: [TaskOut], columns: [TaskColumnOut], canEdit: Bool) -> some View {
         HStack(alignment: .top, spacing: 4) {
             Button { form = .task(task) } label: {
                 TaskCardContent(controller: controller, task: task, today: now)
@@ -284,7 +355,7 @@ struct ChannelTasksPane: View {
             .buttonStyle(.plain)
             .accessibilityHint("タスクを開く")
             if canEdit || task.canDelete || canvasOf(task) != nil {
-                Menu { menu(task, column: cards, canEdit: canEdit) } label: {
+                Menu { menu(task, column: cards, columns: columns, canEdit: canEdit) } label: {
                     Image(systemName: "ellipsis")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -298,7 +369,7 @@ struct ChannelTasksPane: View {
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color(.separator).opacity(0.5), lineWidth: 0.5))
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .contextMenu { if canEdit || task.canDelete || canvasOf(task) != nil { menu(task, column: cards, canEdit: canEdit) } }
+        .contextMenu { if canEdit || task.canDelete || canvasOf(task) != nil { menu(task, column: cards, columns: columns, canEdit: canEdit) } }
     }
 
     /// M73: the canvas a card was made from, while it is there.
@@ -307,21 +378,22 @@ struct ChannelTasksPane: View {
         return nil
     }
 
-    /// The card's actions: 移動 (another column), 上へ / 下へ, 削除 (who may) — what dragging does on the web.
+    /// The card's actions: 移動 (another column of the board), 上へ / 下へ, 削除 (who may) — what dragging does on the web.
     @ViewBuilder
-    private func menu(_ task: TaskOut, column cards: [TaskOut], canEdit: Bool) -> some View {
+    private func menu(_ task: TaskOut, column cards: [TaskOut], columns: [TaskColumnOut], canEdit: Bool) -> some View {
         if canEdit {
+            let current = TaskRules.columnOf(task, columns)
             Menu {
-                ForEach(TaskStatus.allCases.filter { $0 != task.status }, id: \.self) { status in
-                    Button(status.label) { move(task, to: status, .none) }
+                ForEach(columns.filter { $0.id != current?.id }) { target in
+                    Button(target.name) { move(task, to: target.status, .none, column: target) }
                 }
             } label: {
                 Label("移動", systemImage: "arrow.left.arrow.right")
             }
             let up = TaskRules.moveWithin(cards, task.id, -1)
             let down = TaskRules.moveWithin(cards, task.id, 1)
-            Button("上へ", systemImage: "arrow.up") { if let up { move(task, to: task.status, up) } }.disabled(up == nil)
-            Button("下へ", systemImage: "arrow.down") { if let down { move(task, to: task.status, down) } }.disabled(down == nil)
+            Button("上へ", systemImage: "arrow.up") { if let up { move(task, to: task.status, up, column: current) } }.disabled(up == nil)
+            Button("下へ", systemImage: "arrow.down") { if let down { move(task, to: task.status, down, column: current) } }.disabled(down == nil)
         }
         if let canvasId = canvasOf(task) {
             Button("元のキャンバスを開く", systemImage: "doc.text") { Task { await controller.openCanvas(canvasId, channelId: channel.id, navigate: false) } }
@@ -331,18 +403,21 @@ struct ChannelTasksPane: View {
         }
     }
 
-    private func move(_ task: TaskOut, to status: TaskStatus, _ neighbors: TaskNeighbors) {
+    private func move(_ task: TaskOut, to status: TaskStatus, _ neighbors: TaskNeighbors, column: TaskColumnOut?) {
         guard let hub = taskHub else { return }
         Task {
-            do { try await hub.move(task.id, to: status, neighbors) } catch { controller.error = controller.describe(error) }
+            do { try await hub.move(task.id, to: status, neighbors, column: column) } catch { controller.error = controller.describe(error) }
         }
     }
 
-    private func add(_ title: String) async -> Bool {
+    /// 「＋ 追加」: made in the column's status (its built-in column), then into an added column (TASKS.md §11.7: POST
+    /// /tasks takes no column).
+    private func add(_ title: String, into target: TaskColumnOut) async -> Bool {
         guard let hub = taskHub else { return false }
         do {
-            _ = try await hub.create(TaskCreate(channelId: channel.id, title: title, status: column, clientTaskId: UUID().uuidString.lowercased(),
-                                                tz: CalendarDates.zoneId))
+            let task = try await hub.create(TaskCreate(channelId: channel.id, title: title, status: target.status, clientTaskId: UUID().uuidString.lowercased(),
+                                                       tz: CalendarDates.zoneId))
+            if !target.builtin { try await hub.move(task.id, to: target.status, .none, column: target) }
             return true
         } catch {
             controller.error = controller.describe(error)
@@ -352,6 +427,142 @@ struct ChannelTasksPane: View {
 
     private func remove(_ task: TaskOut) async {
         do { try await taskHub?.remove(task.id) } catch { controller.error = controller.describe(error) }
+    }
+}
+
+/// M84 (TASKS.md §11.8 2.): 「列を編集」 — the board's columns left to right, each with 名前を変更 / 左へ / 右へ / 削除 (an
+/// added column only, asked first: where its cards go), and 「列を追加」 (a name and its 種類: 未着手 / 進行中 / 完了).
+struct TaskColumnsEditor: View {
+    @Bindable var controller: AppController
+    let channelId: String
+    let hub: TaskHub?
+    @State private var newName = ""
+    @State private var newStatus: TaskStatus = .doing
+    @State private var renaming: TaskColumnOut?
+    @State private var renameText = ""
+    @State private var deleting: TaskColumnOut?
+    @State private var busy = false
+    @State private var error: String?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let columns = hub?.board(channelId)?.columns ?? TaskRules.fallbackColumns
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach(Array(columns.enumerated()), id: \.element.id) { index, item in
+                        row(item, index: index, count: columns.count, columns: columns)
+                    }
+                } header: {
+                    Text("列 (左から)")
+                } footer: {
+                    Text("最初からある 3 つの列は名前の変更と並べ替えだけできます。列の種類は後から変えられません。")
+                }
+                Section {
+                    TextField("列の名前 (例: レビュー待ち)", text: $newName)
+                        .submitLabel(.done)
+                        .onSubmit { Task { await add() } }
+                    Picker("種類", selection: $newStatus) {
+                        ForEach(TaskStatus.allCases, id: \.self) { Text(TaskRules.columnKindLabel($0)).tag($0) }
+                    }
+                    Button("列を追加", systemImage: "plus") { Task { await add() } }
+                        .disabled(busy || TaskRules.columnNameProblem(newName) != nil || columns.count >= TaskRules.maxColumns)
+                } header: {
+                    Text("列を追加")
+                } footer: {
+                    if columns.count >= TaskRules.maxColumns {
+                        Text("1 つのボードに \(TaskRules.maxColumns) 列までです")
+                    } else if !newName.isEmpty, let problem = TaskRules.columnNameProblem(newName) {
+                        Text(problem).foregroundStyle(.red)
+                    }
+                }
+                if let error {
+                    Section { Text(error).foregroundStyle(.red).font(.footnote) }
+                }
+            }
+            .navigationTitle("列を編集")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("完了") { dismiss() } }
+            }
+            .alert("列の名前を変更", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }), presenting: renaming) { item in
+                TextField("列の名前", text: $renameText)
+                Button("キャンセル", role: .cancel) {}
+                Button("変更") { Task { await rename(item) } }
+                    .disabled(TaskRules.columnNameProblem(renameText) != nil)
+            }
+            .alert("列「\(deleting?.name ?? "")」を削除しますか？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                   presenting: deleting) { item in
+                Button("キャンセル", role: .cancel) {}
+                Button("削除する", role: .destructive) { Task { await remove(item) } }
+            } message: { item in
+                Text(TaskRules.deleteColumnMessage(columns, item))
+            }
+        }
+    }
+
+    private func row(_ item: TaskColumnOut, index: Int, count: Int, columns: [TaskColumnOut]) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name)
+                Text(item.builtin ? "\(item.status.label) · 最初からある列" : item.status.label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Menu {
+                Button("名前を変更", systemImage: "pencil") {
+                    renameText = item.name
+                    renaming = item
+                }
+                Button("左へ", systemImage: "arrow.left") { Task { await place(item, -1, columns) } }.disabled(index == 0)
+                Button("右へ", systemImage: "arrow.right") { Task { await place(item, 1, columns) } }.disabled(index == count - 1)
+                if !item.builtin {
+                    Button("削除", systemImage: "trash", role: .destructive) { deleting = item }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle").font(.body).frame(width: 32, height: 32).contentShape(Rectangle())
+            }
+            .disabled(busy)
+            .accessibilityLabel("列「\(item.name)」の操作")
+        }
+    }
+
+    private func run(_ action: (TaskHub) async throws -> Void) async {
+        guard let hub else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            try await action(hub)
+            error = nil
+        } catch {
+            self.error = controller.describe(error)
+        }
+    }
+
+    private func add() async {
+        guard TaskRules.columnNameProblem(newName) == nil, !busy else { return }
+        let name = TaskRules.cleanTitle(newName)
+        await run { hub in
+            _ = try await hub.addColumn(TaskColumnCreate(channelId: channelId, name: name, status: newStatus))
+            newName = ""
+        }
+    }
+
+    private func rename(_ item: TaskColumnOut) async {
+        guard TaskRules.columnNameProblem(renameText) == nil else { return }
+        let name = TaskRules.cleanTitle(renameText)
+        guard name != item.name else { return }
+        await run { hub in try await hub.changeColumn(channelId, item.id, TaskColumnUpdate(name: name)) }
+    }
+
+    private func place(_ item: TaskColumnOut, _ direction: Int, _ columns: [TaskColumnOut]) async {
+        guard let target = TaskRules.columnMoveTarget(columns, item.id, direction) else { return }
+        await run { hub in try await hub.changeColumn(channelId, item.id, TaskColumnUpdate(afterId: .some(target))) }
+    }
+
+    private func remove(_ item: TaskColumnOut) async {
+        await run { hub in try await hub.removeColumn(channelId, item.id) }
     }
 }
 
@@ -590,7 +801,8 @@ struct CalendarTaskRow: View {
                 .padding(.top, 2)
             RoundedRectangle(cornerRadius: 2).fill(CalendarDates.color(task.channelId)).frame(width: 4)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(done ? "☑" : "☐") \(Text(task.title).strikethrough(done))")
+                // M81: a due time goes before the title (「☐ 14:00 題名」).
+                Text("\(done ? "☑" : "☐") \(Self.time(task))\(Text(task.title).strikethrough(done))")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(done ? Color.secondary : Color.primary)
                     .lineLimit(2)
@@ -603,7 +815,13 @@ struct CalendarTaskRow: View {
         .fixedSize(horizontal: false, vertical: true)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel((done ? "完了したタスク " : "タスク ") + task.title)
+        .accessibilityLabel((done ? "完了したタスク " : "タスク ") + Self.time(task) + task.title)
+    }
+
+    /// 「14:00 」 for a due time (the device's clock), nothing for the whole day.
+    static func time(_ task: TaskOut) -> String {
+        guard let dueAt = task.dueAt, parseIsoDate(dueAt) != nil else { return "" }
+        return CalendarDates.clock(dueAt) + " "
     }
 }
 

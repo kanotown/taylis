@@ -21,6 +21,8 @@ struct TaskForm: View {
     @State private var answered: TaskOut?
     /// The creation's idempotency key: a retry after a failure never makes a second task (SYNC_PROTOCOL.md §16).
     @State private var clientTaskId = UUID().uuidString.lowercased()
+    /// The task as opened, what 保存 compares the form with (M84: with the checkboxes sent one by one since).
+    @State private var basis: TaskOut?
     @Environment(\.dismiss) private var dismiss
 
     init(controller: AppController, hub: TaskHub?, target: TaskFormTarget, memberIds: [String]? = nil, today: DayKey? = nil) {
@@ -35,6 +37,7 @@ struct TaskForm: View {
         case .task(let task):
             self.task = task
             _draft = State(initialValue: TaskDraft(task: task))
+            _basis = State(initialValue: task)
         }
     }
 
@@ -172,11 +175,99 @@ struct TaskForm: View {
             } else {
                 DatePicker(due, selection: Binding(get: { CalendarDates.parseDay(draft.dueOn) }, set: { draft.dueOn = CalendarDates.dayKey($0) }),
                            displayedComponents: [.date])
-                Button("\(due)をなくす", systemImage: "xmark.circle", role: .destructive) { draft.dueOn = "" }
+                // M84 (TASKS.md §11.8 4.): a time on the device's clock, or none (the whole day).
+                if draft.dueTime.isEmpty {
+                    Button("時刻を設定", systemImage: "clock") { draft.dueTime = "09:00" }
+                } else {
+                    DatePicker("時刻", selection: Binding(get: { dueTimeDate }, set: { draft.dueTime = Self.hhmm($0) }),
+                               displayedComponents: [.hourAndMinute])
+                    Button("時刻なし", systemImage: "clock.badge.xmark") { draft.dueTime = "" }
+                }
+                Button("\(due)をなくす", systemImage: "xmark.circle", role: .destructive) { draft.clearDue() }
                     .tint(.red)
             }
         }
+        // M84: 「繰り返し」 once there is a due date (the calendar's picker, starting on it); never for a review request.
+        if !isReview && !draft.dueOn.isEmpty {
+            RepeatPickerSection(repetition: Binding(get: { draft.repetition }, set: { draft.repetition = $0; error = nil }), start: draft.dueOn,
+                                note: "完了にすると、次の回のタスクができます")
+        }
+        if !(task == nil && isReview) { subtaskSection }
         if !isReview { assigneeSection }
+    }
+
+    /// The due time on the due date, for the picker.
+    private var dueTimeDate: Date {
+        let parts = draft.dueTime.split(separator: ":").compactMap { Int($0) }
+        return CalendarDates.at(draft.dueOn, hour: parts.first ?? 9, minute: parts.count > 1 ? parts[1] : 0)
+    }
+
+    static func hhmm(_ date: Date) -> String {
+        let p = CalendarDates.local.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", p.hour ?? 0, p.minute ?? 0)
+    }
+
+    /// M84 (TASKS.md §11.8 4.): 「サブタスク」 — a checkbox, the title (editable), 上へ / 下へ / 削除, and 「サブタスクを追加」.
+    /// The list goes with 保存; a saved item's checkbox goes at once (one item: someone else's change of the list stays).
+    @ViewBuilder
+    private var subtaskSection: some View {
+        let doneCount = draft.subtasks.filter(\.done).count
+        Section {
+            ForEach(Array(draft.subtasks.enumerated()), id: \.element.key) { index, item in
+                HStack(spacing: 8) {
+                    Button { Task { await toggleSubtask(at: index) } } label: {
+                        Image(systemName: item.done ? "checkmark.square.fill" : "square")
+                            .font(.title3)
+                            .foregroundStyle(item.done ? Color.accentColor : Color.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(item.done ? "「\(item.title)」を未完了に戻す" : "「\(item.title)」を完了にする")
+                    TextField("サブタスク", text: Binding(get: { draft.subtasks.indices.contains(index) ? draft.subtasks[index].title : "" },
+                                                     set: { if draft.subtasks.indices.contains(index) { draft.subtasks[index].title = $0 } }), axis: .vertical)
+                        .strikethrough(item.done)
+                        .foregroundStyle(item.done ? Color.secondary : Color.primary)
+                        .accessibilityLabel("サブタスクの題名")
+                    Menu {
+                        Button("上へ", systemImage: "arrow.up") { swapSubtasks(index, index - 1) }.disabled(index == 0)
+                        Button("下へ", systemImage: "arrow.down") { swapSubtasks(index, index + 1) }.disabled(index == draft.subtasks.count - 1)
+                        Button("削除", systemImage: "trash", role: .destructive) { draft.subtasks.remove(at: index) }
+                    } label: {
+                        Image(systemName: "ellipsis").foregroundStyle(.secondary).frame(width: 28, height: 28).contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("サブタスクの操作")
+                }
+            }
+            if draft.subtasks.count < TaskRules.maxSubtasks {
+                Button("サブタスクを追加", systemImage: "plus") { draft.subtasks.append(SubtaskDraft(title: "")) }
+            }
+        } header: {
+            Text(draft.subtasks.isEmpty ? "サブタスク" : "サブタスク (\(doneCount)/\(draft.subtasks.count))")
+        }
+    }
+
+    private func swapSubtasks(_ a: Int, _ b: Int) {
+        guard draft.subtasks.indices.contains(a), draft.subtasks.indices.contains(b) else { return }
+        draft.subtasks.swapAt(a, b)
+    }
+
+    /// A checkbox: shown at once; a saved task's saved item goes to the server alone (PATCH …/subtasks/{sid}) and comes
+    /// back unticked when refused.
+    private func toggleSubtask(at index: Int) async {
+        guard draft.subtasks.indices.contains(index) else { return }
+        let item = draft.subtasks[index]
+        let done = !item.done
+        draft.subtasks[index].done = done
+        guard let task, let hub, let subtaskId = item.id, let base = basis, base.subtasks.contains(where: { $0.id == subtaskId }) else { return }
+        do {
+            let answer = try await hub.toggleSubtask(task.id, subtaskId, done: done)
+            // What I compare with on 保存: the item as the server has it now (so it is not sent again).
+            basis = TaskRules.withSubtask(base, subtaskId, done: answer.subtasks.first { $0.id == subtaskId }?.done ?? done)
+            answered = answer
+            error = nil
+        } catch {
+            if let at = draft.subtasks.firstIndex(where: { $0.id == subtaskId }) { draft.subtasks[at].done = item.done }
+            self.error = controller.describe(error)
+        }
     }
 
     /// 担当者 (依頼先 for a review request, shown first): the conversation's members.
@@ -251,7 +342,22 @@ struct TaskForm: View {
                 .foregroundStyle(task.status == .done ? Color.secondary : Color.primary)
                 .textSelection(.enabled)
             LabeledContent("状態", value: TaskRules.statusLabel(task.status, kind: task.kind))
-            LabeledContent(isReview ? "希望日" : "期限", value: TaskRules.dueText(task.dueOn, today: now))
+            LabeledContent(isReview ? "希望日" : "期限", value: TaskRules.dueText(task.dueOn, today: now, dueAt: task.dueAt))
+            if let rrule = task.rrule {  // M84
+                LabeledContent("繰り返し") {
+                    Label(CalendarRecurrence.describe(rrule, start: TaskRules.dueDay(task) ?? now), systemImage: "repeat")
+                }
+            }
+            if let progress = TaskRules.subtaskProgress(task) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("サブタスク (\(progress.done)/\(progress.total))").font(.subheadline).foregroundStyle(.secondary)
+                    ForEach(task.subtasks) { item in
+                        Text("\(item.done ? "☑" : "☐") \(Text(item.title).strikethrough(item.done))")
+                            .font(.subheadline)
+                            .foregroundStyle(item.done ? Color.secondary : Color.primary)
+                    }
+                }
+            }
             if task.channelId != nil {
                 LabeledContent(assigneeLabel) {
                     Text(task.assigneeIds.isEmpty ? "なし" : task.assigneeIds.map { controller.store.users[$0]?.displayName ?? "?" }.joined(separator: "、"))
@@ -356,7 +462,7 @@ struct TaskForm: View {
             if let task {
                 // Against the task as it was opened: only what I changed goes out (not a revert of someone else's change
                 // that arrived while the form was open).
-                let patch = draft.patch(from: task, tz: CalendarDates.zoneId)
+                let patch = draft.patch(from: basis ?? task, tz: CalendarDates.zoneId)
                 if !patch.isEmpty { _ = try await hub.update(task.id, patch) }
             } else {
                 // M73: the server looks for a checklist item's line in the saved body, so what is typed goes first.

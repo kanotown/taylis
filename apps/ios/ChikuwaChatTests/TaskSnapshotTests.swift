@@ -111,7 +111,7 @@ final class TaskSnapshotTests: XCTestCase {
         return NavigationStack {
             VStack(spacing: 0) {
                 ChannelTabsRow(controller: controller, channel: channel, tab: .constant(.tasks), onAddLink: {}, onEditLink: { _ in })
-                ChannelTasksPane(controller: controller, channel: channel, hub: hub, today: today, column: column)
+                ChannelTasksPane(controller: controller, channel: channel, hub: hub, today: today, column: column.rawValue)
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
@@ -212,6 +212,33 @@ final class TaskSnapshotTests: XCTestCase {
             _ = try render(NavigationStack { CalendarView(controller: controller, hub: calendar, tasks: hub(api), today: today) }, style: style,
                            name: "tasks-calendar-month-\(suffix).png")
             XCTAssertEqual(api.dueCalls.last?.from, "2026-09-27") // the month's grid, Sunday first
+        }
+    }
+
+    /// M84 (TASKS.md §11.8): a board with an added column, cards with a time, a checklist and 🔁, the column editor, and
+    /// the form's time, repeat and subtasks.
+    func testColumnsTimesRepeatsAndSubtasks() throws {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let suffix = style == .dark ? "dark" : "light"
+            let (controller, api) = world()
+            func column(_ id: String, _ name: String, _ status: TaskStatus, _ builtin: Bool, _ position: Double) -> TaskColumnOut {
+                TaskColumnOut(id: id, channelId: labId, name: name, status: status, builtin: builtin, position: position)
+            }
+            api.columns = [column("k-todo", "未着手", .todo, true, 1), column("k-review", "レビュー待ち", .doing, false, 1.5),
+                           column("k-doing", "進行中", .doing, true, 2), column("k-done", "完了", .done, true, 3)]
+            api.board[0].dueAt = "2026-10-01T05:00:00Z"
+            api.board[0].dueOn = today
+            api.board[0].subtasks = [SubtaskOut(id: "s1", title: "Google Scholar で探す", done: true), SubtaskOut(id: "s2", title: "要点を 1 枚に"),
+                                     SubtaskOut(id: "s3", title: "ゼミで共有")]
+            api.board[0].rrule = "FREQ=WEEKLY;BYDAY=TH"
+            api.board[2].subtasks = [SubtaskOut(id: "s4", title: "図", done: true), SubtaskOut(id: "s5", title: "本文", done: true)]
+            api.board[4].columnId = "k-review"
+            _ = try render(pane(controller, api, channelId: labId, column: .todo, title: "#lab"), style: style, name: "m84-board-\(suffix).png")
+            let hub = hub(api)
+            Task { await hub.openBoard(labId) }
+            _ = try render(TaskColumnsEditor(controller: controller, channelId: labId, hub: hub), style: style, name: "m84-columns-\(suffix).png")
+            _ = try render(TaskForm(controller: controller, hub: hub, target: .task(api.board[0]), memberIds: people.map(\.0), today: today),
+                           size: CGSize(width: 393, height: 1700), style: style, name: "m84-form-\(suffix).png")
         }
     }
 }

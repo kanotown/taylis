@@ -48,6 +48,7 @@
 		2C1FC428F01A262CAFD3A2B5 /* PeopleList.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8D41462A5457300887E01A5 /* PeopleList.swift */; };
 		2D611B9798C698881239F77F /* ActivityCanvasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE00BEB3C4DC26A083C4E0B /* ActivityCanvasTests.swift */; };
 		2E40AA56FDEDED6D38F856E7 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551D58741D5F426321F75F3F /* AppDelegate.swift */; };
+		2F5B461B632592951AF2C2BF /* TaskExtrasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 633990131B9691497EFE1819 /* TaskExtrasTests.swift */; };
 		31A71FBD946D4C44D10260B2 /* PriorityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6E2C35053163BBEF50E5E4 /* PriorityViews.swift */; };
 		3254F9BB576535AC2148731D /* PollFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9506961B0BB337D742C6CD06 /* PollFormView.swift */; };
 		33C334AFCDB06C0347861DED /* DNDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC121C06BFAA7AB89AC54106 /* DNDTests.swift */; };
@@ -318,6 +319,7 @@
 		61625940E4B9AF742CAD4291 /* TotpTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TotpTests.swift; sourceTree = "<group>"; };
 		62B9AE41DC03738ACC485851 /* ProfileSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSheet.swift; sourceTree = "<group>"; };
 		62FE985820768A158A80CBAC /* JumpMatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JumpMatch.swift; sourceTree = "<group>"; };
+		633990131B9691497EFE1819 /* TaskExtrasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskExtrasTests.swift; sourceTree = "<group>"; };
 		641DB9B7141B76FE2E307C64 /* CalendarEventForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarEventForm.swift; sourceTree = "<group>"; };
 		6511D58639F80B71BAF90EC5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		655FD54581298599A2C6A675 /* RecurringModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringModels.swift; sourceTree = "<group>"; };
@@ -609,6 +611,7 @@
 				C33F1DBF33E0FF6DC5A31FAD /* SsoTests.swift */,
 				B8B608469889F53E3FF7E26C /* SyncEngineTests.swift */,
 				FDB0793555FA5BCB926C99F4 /* TabsTests.swift */,
+				633990131B9691497EFE1819 /* TaskExtrasTests.swift */,
 				7C8A7F7E100BB442252F52DC /* TaskSnapshotTests.swift */,
 				F8340FEBA780A3A7BF118790 /* TaskTests.swift */,
 				B5F2726C9A1A5967B40BDC4A /* TemplatesTests.swift */,
@@ -936,6 +939,7 @@
 				1EFC86F754C971D184B62E46 /* SsoTests.swift in Sources */,
 				BE0EEC433E91E58BC53EFB48 /* SyncEngineTests.swift in Sources */,
 				7659EB83F6CE2DB2E96D0F61 /* TabsTests.swift in Sources */,
+				2F5B461B632592951AF2C2BF /* TaskExtrasTests.swift in Sources */,
 				4A7672ACA0C9D91772B5CE9D /* TaskSnapshotTests.swift in Sources */,
 				09042AACA7B7FC70CC71C09F /* TaskTests.swift in Sources */,
 				18705BA325204C3824490358 /* TemplatesTests.swift in Sources */,
