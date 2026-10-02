@@ -14,6 +14,22 @@ protocol TaskApi: AnyObject {
     func updateTask(id: String, _ patch: TaskPatch) async throws -> TaskOut
     func moveTask(id: String, _ move: TaskMove) async throws -> TaskOut
     func deleteTask(id: String) async throws
+    /// M81 (TASKS.md §11.3): a checklist item, a board's columns. The fakes that leave them out answer 404 (a server
+    /// before M81): a board then has the three built-in columns.
+    func updateSubtask(taskId: String, subtaskId: String, _ patch: SubtaskUpdate) async throws -> TaskOut
+    func listTaskColumns(channelId: String) async throws -> [TaskColumnOut]
+    func createTaskColumn(_ body: TaskColumnCreate) async throws -> TaskColumnOut
+    func updateTaskColumn(id: String, _ patch: TaskColumnUpdate) async throws -> TaskColumnOut
+    func deleteTaskColumn(id: String) async throws
+}
+
+extension TaskApi {
+    private var missing: ApiError { ApiError.api(status: 404, code: "not_found", message: "Not Found") }
+    func updateSubtask(taskId: String, subtaskId: String, _ patch: SubtaskUpdate) async throws -> TaskOut { throw missing }
+    func listTaskColumns(channelId: String) async throws -> [TaskColumnOut] { throw missing }
+    func createTaskColumn(_ body: TaskColumnCreate) async throws -> TaskColumnOut { throw missing }
+    func updateTaskColumn(id: String, _ patch: TaskColumnUpdate) async throws -> TaskColumnOut { throw missing }
+    func deleteTaskColumn(id: String) async throws { throw missing }
 }
 
 /// One screen's tasks: a channel's board, 「自分のタスク」, a calendar range.
@@ -32,6 +48,10 @@ struct TaskList: Equatable {
     /// A calendar range: dates [from, to).
     var from: DayKey = ""
     var to: DayKey = ""
+    /// M81: a board's columns, left to right — the fallback three (ids = statuses) until read, or from a server before
+    /// M81 (`columnsSupported` false: no adding, renaming or moving columns).
+    var columns: [TaskColumnOut] = TaskRules.fallbackColumns
+    var columnsSupported = false
 }
 
 /// What task.assigned / task.due say to me (the app says them while it is open; the push covers the background).
@@ -81,7 +101,8 @@ final class TaskHub {
     func openBoard(_ channelId: String, allDone: Bool = false) async {
         let current = boards[channelId]
         if let current, current.state == .ready, current.allDone == allDone { return }
-        boards[channelId] = TaskList(state: .loading, tasks: current?.tasks ?? [], allDone: allDone)
+        boards[channelId] = TaskList(state: .loading, tasks: current?.tasks ?? [], allDone: allDone,
+                                     columns: current?.columns ?? TaskRules.fallbackColumns, columnsSupported: current?.columnsSupported ?? false)
         await readBoard(channelId)
     }
 
@@ -165,13 +186,28 @@ final class TaskHub {
         let key = "board:\(channelId)"
         let ticket = ticket(key)
         do {
+            // M81: the columns with the cards (a reconnect reads both again).
+            async let columns = readColumns(channelId)
             let tasks = try await api.listTasks(channelId: channelId, includeDone: board.allDone ? "all" : "recent")
+            let read = try await columns
             guard reads[key] == ticket, boards[channelId] != nil else { return }
             boards[channelId]?.state = .ready
             boards[channelId]?.tasks = tasks
+            boards[channelId]?.columns = read ?? TaskRules.fallbackColumns
+            boards[channelId]?.columnsSupported = read != nil
         } catch {
             guard reads[key] == ticket, boards[channelId] != nil else { return }
             boards[channelId]?.state = failure(error)
+        }
+    }
+
+    /// M81: a board's columns; nil from a server before M81 (no route: 404, or 422 where "columns" reads as a task id).
+    private func readColumns(_ channelId: String) async throws -> [TaskColumnOut]? {
+        guard let api else { return nil }
+        do {
+            return TaskRules.sortColumns(try await api.listTaskColumns(channelId: channelId))
+        } catch ApiError.api(let status, _, _) where status == 404 || status == 422 {
+            return nil
         }
     }
 
@@ -230,14 +266,18 @@ final class TaskHub {
     }
 
     /// Into `status` between `neighbors`: shown at once at a guessed place, then where the server put it. A refusal puts
-    /// the card back and throws (the screen says why).
+    /// the card back and throws (the screen says why). M81: into `column` of the board — an added column (or a built-in
+    /// one the server named) sends its `column_id`, a fallback one (id = its status) the status alone.
     @discardableResult
-    func move(_ taskId: String, to status: TaskStatus, _ neighbors: TaskNeighbors) async throws -> TaskOut {
+    func move(_ taskId: String, to status: TaskStatus, _ neighbors: TaskNeighbors, column: TaskColumnOut? = nil) async throws -> TaskOut {
         let api = try requireApi()
         let before = find(taskId)
-        if let before { putLocalMove(before, status, neighbors) }
+        let columnId = column.flatMap { $0.id == $0.status.rawValue ? nil : $0.id }
+        let localColumn: String?? = column.map { TaskRules.columnIdFor($0) }
+        if let before { putLocalMove(before, status, neighbors, columnId: localColumn) }
         do {
-            let task = try await api.moveTask(id: taskId, TaskMove(status: status, neighbors: neighbors))
+            let move = TaskMove(status: columnId == nil ? status : nil, neighbors: neighbors, columnId: columnId)
+            let task = try await api.moveTask(id: taskId, move)
             put(task)
             return task
         } catch {
@@ -246,17 +286,60 @@ final class TaskHub {
         }
     }
 
-    private func putLocalMove(_ task: TaskOut, _ status: TaskStatus, _ neighbors: TaskNeighbors) {
+    private func putLocalMove(_ task: TaskOut, _ status: TaskStatus, _ neighbors: TaskNeighbors, columnId: String??) {
         // The guess is made among the cards of the window that holds the task (its board, else 「自分のタスク」).
         var pool = task.channelId.flatMap { boards[$0]?.tasks } ?? mine?.tasks ?? [task]
         if !pool.contains(where: { $0.id == task.id }) { pool.append(task) }
-        let moved = TaskRules.applyLocalMove(pool, task.id, status, neighbors, now: now(), me: me())
+        let moved = TaskRules.applyLocalMove(pool, task.id, status, neighbors, now: now(), me: me(), columnId: columnId)
         if let local = moved.first(where: { $0.id == task.id }) { put(local) }
     }
 
     func remove(_ taskId: String) async throws {
         try await requireApi().deleteTask(id: taskId)
         drop(taskId)
+    }
+
+    /// M81: one checklist item's checkbox of a saved task — shown at once, put back when refused (and the error thrown).
+    @discardableResult
+    func toggleSubtask(_ taskId: String, _ subtaskId: String, done: Bool) async throws -> TaskOut {
+        let api = try requireApi()
+        let before = find(taskId)
+        if let before { put(TaskRules.withSubtask(before, subtaskId, done: done)) }  // keeps its updated_at: put lets it in
+        do {
+            let task = try await api.updateSubtask(taskId: taskId, subtaskId: subtaskId, SubtaskUpdate(done: done))
+            put(task)
+            return task
+        } catch {
+            if let before { put(before) }
+            throw error
+        }
+    }
+
+    // MARK: columns (M81, TASKS.md §11.5)
+
+    func addColumn(_ body: TaskColumnCreate) async throws -> TaskColumnOut {
+        let column = try await requireApi().createTaskColumn(body)
+        await refreshColumns(body.channelId)
+        return column
+    }
+
+    func changeColumn(_ channelId: String, _ columnId: String, _ patch: TaskColumnUpdate) async throws {
+        _ = try await requireApi().updateTaskColumn(id: columnId, patch)
+        await refreshColumns(channelId)
+    }
+
+    /// An added column; its cards come back (task.updated) in the built-in column of their status.
+    func removeColumn(_ channelId: String, _ columnId: String) async throws {
+        try await requireApi().deleteTaskColumn(id: columnId)
+        await refreshColumns(channelId)
+    }
+
+    /// After my own change (task.columns.updated comes too; whichever lands last is the same list).
+    private func refreshColumns(_ channelId: String) async {
+        guard boards[channelId] != nil else { return }
+        guard let columns = try? await readColumns(channelId), boards[channelId] != nil else { return }
+        boards[channelId]?.columns = columns
+        boards[channelId]?.columnsSupported = true
     }
 
     /// The task as held here, else read (a notification, a calendar row outside every window).
@@ -289,6 +372,10 @@ final class TaskHub {
         case "task.review_done":  // L9
             guard let payload = try? data.decode(TaskReviewDone.self) else { return }
             onNotice?(.reviewDone(payload))
+        case "task.columns.updated":  // M81: the board's columns, all of them
+            guard let payload = try? data.decode(TaskColumnsUpdated.self), boards[payload.channelId] != nil else { return }
+            boards[payload.channelId]?.columns = TaskRules.sortColumns(payload.columns)
+            boards[payload.channelId]?.columnsSupported = true
         default:
             break
         }

@@ -284,6 +284,8 @@ struct RecurrenceLine: View {
 struct RepeatPickerSection: View {
     @Binding var repetition: RepeatDraft
     let start: DayKey
+    /// M84: a line under the rule while it repeats (a task's 「完了にすると、次の回のタスクができます」).
+    var note: String? = nil
 
     private var rrule: String? { CalendarRecurrence.toRrule(repetition, start: start) }
 
@@ -346,7 +348,10 @@ struct RepeatPickerSection: View {
             if let problem = CalendarRecurrence.problem(repetition, start: start) {
                 Text(problem).foregroundStyle(.red)
             } else if let rrule {
-                Label(CalendarRecurrence.describe(rrule, start: start), systemImage: "repeat")
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(CalendarRecurrence.describe(rrule, start: start), systemImage: "repeat")
+                    if let note { Text(note) }
+                }
             }
         }
     }

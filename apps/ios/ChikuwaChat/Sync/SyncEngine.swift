@@ -661,7 +661,7 @@ final class SyncEngine {
             scheduleActivityRefresh()
         case "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated":  // M52 (CALENDAR.md §5)
             calendar.applyEvent(frame.event, frame.data)
-        case "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done":  // M56 (TASKS.md §4), L9
+        case "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done", "task.columns.updated":  // M56 (TASKS.md §4), L9, M81
             tasks.applyEvent(frame.event, frame.data)
         case "ai.run_updated":  // M66 (docs/AI.md §5): my summary's state; M71: my question's
             ai.applyEvent(frame.data)

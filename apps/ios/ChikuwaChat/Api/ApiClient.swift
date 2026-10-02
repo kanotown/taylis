@@ -1026,6 +1026,32 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         _ = try await requestRaw("DELETE", "/api/v1/tasks/\(id)", body: nil, auth: true, retry401: true)
     }
 
+    // MARK: M81 (TASKS.md §11.3): a checklist item, a board's columns
+
+    /// One item of a task's checklist (its checkbox): the rest of the list stays as it is on the server.
+    func updateSubtask(taskId: String, subtaskId: String, _ patch: SubtaskUpdate) async throws -> TaskOut {
+        try await request("PATCH", "/api/v1/tasks/\(taskId)/subtasks/\(subtaskId)", body: patch.json)
+    }
+
+    /// A board's columns, left to right (a board never changed: the three built-in ones). A server before M81 answers
+    /// 404 or 422 (the path reads as /tasks/{task_id}).
+    func listTaskColumns(channelId: String) async throws -> [TaskColumnOut] {
+        try await request("GET", Self.pathWithQuery("/api/v1/tasks/columns", [URLQueryItem(name: "channel_id", value: channelId)]))
+    }
+
+    func createTaskColumn(_ body: TaskColumnCreate) async throws -> TaskColumnOut {
+        try await request("POST", "/api/v1/tasks/columns", body: body.json)
+    }
+
+    func updateTaskColumn(id: String, _ patch: TaskColumnUpdate) async throws -> TaskColumnOut {
+        try await request("PATCH", "/api/v1/tasks/columns/\(id)", body: patch.json)
+    }
+
+    /// An added column; its cards go to the built-in column of their status.
+    func deleteTaskColumn(id: String) async throws {
+        _ = try await requestRaw("DELETE", "/api/v1/tasks/columns/\(id)", body: nil, auth: true, retry401: true)
+    }
+
     // MARK: recurring posts (L6, M59/M60, RECURRING.md §3)
 
     /// The channel's recurring posts (whoever reads the channel), oldest first.

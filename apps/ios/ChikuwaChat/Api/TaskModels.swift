@@ -86,12 +86,154 @@ struct TaskOut: Identifiable, Equatable, Hashable {
     var kind: TaskKind = .task
     /// M73: the canvas it was made from (absent from a server before M72, and for every other task).
     var canvasSource: TaskCanvasSourceOut? = nil
+    /// M81 (TASKS.md §11.3): the due time (UTC, whole minutes) and the zone its wall-clock time is in; nil: the whole day
+    /// of `dueOn` (and always from a server before M81). `dueOn` stays the date, in `dueTz`.
+    var dueAt: String? = nil
+    var dueTz: String? = nil
+    /// M81: the checklist, in its order (empty: none, or a server before M81).
+    var subtasks: [SubtaskOut] = []
+    /// M81: the repeat rule (the calendar's RRULE subset, CALENDAR.md §10.1); completing makes the next occurrence.
+    var rrule: String? = nil
+    /// M81: the added column the card is in; nil: the built-in column of its status (and always from before M81).
+    var columnId: String? = nil
+}
+
+/// M81: an item of a task's checklist.
+struct SubtaskOut: Codable, Equatable, Hashable, Identifiable {
+    let id: String
+    var title: String
+    var done: Bool
+
+    init(id: String, title: String, done: Bool = false) {
+        self.id = id
+        self.title = title
+        self.done = done
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, title, done }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        title = (try? c.decodeIfPresent(String.self, forKey: .title)) ?? ""
+        done = (try? c.decodeIfPresent(Bool.self, forKey: .done)) ?? false
+    }
+
+    /// The list as a task carries it: missing or unreadable is none, an odd item is left out.
+    static func list<K: CodingKey>(_ c: KeyedDecodingContainer<K>, forKey key: K) -> [SubtaskOut] {
+        ((try? c.decodeIfPresent([Lenient].self, forKey: key)) ?? []).compactMap(\.value)
+    }
+
+    private struct Lenient: Decodable {
+        let value: SubtaskOut?
+        init(from decoder: Decoder) throws { value = try? SubtaskOut(from: decoder) }
+    }
+}
+
+/// M81 (TASKS.md §11.2): a column of a channel's board (GET /tasks/columns, task.columns.updated). Every column belongs to
+/// one of the three statuses (a card in a 完了 column is done); the three built-in ones cannot be deleted.
+struct TaskColumnOut: Decodable, Equatable, Hashable, Identifiable {
+    let id: String
+    var channelId: String = ""
+    var name: String
+    var status: TaskStatus
+    var builtin: Bool
+    var position: Double
+
+    init(id: String, channelId: String = "", name: String, status: TaskStatus, builtin: Bool, position: Double) {
+        self.id = id
+        self.channelId = channelId
+        self.name = name
+        self.status = status
+        self.builtin = builtin
+        self.position = position
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, channelId, name, status, builtin, position }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        channelId = (try? c.decodeIfPresent(String.self, forKey: .channelId)) ?? ""
+        name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
+        status = (try? c.decodeIfPresent(TaskStatus.self, forKey: .status)) ?? .todo
+        builtin = (try? c.decodeIfPresent(Bool.self, forKey: .builtin)) ?? false
+        position = (try? c.decodeIfPresent(Double.self, forKey: .position)) ?? 0
+    }
+}
+
+/// task.columns.updated (M81): a board's columns, all of them.
+struct TaskColumnsUpdated: Decodable {
+    let channelId: String
+    let columns: [TaskColumnOut]
+
+    private enum CodingKeys: String, CodingKey { case channelId, columns }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        channelId = try c.decode(String.self, forKey: .channelId)
+        columns = try c.decodeIfPresent([TaskColumnOut].self, forKey: .columns) ?? []
+    }
+}
+
+/// POST /tasks/columns.
+struct TaskColumnCreate: Equatable {
+    var channelId: String
+    var name: String
+    var status: TaskStatus
+    /// nil: the right end.
+    var afterId: String? = nil
+
+    var json: JSONValue {
+        var fields: [String: JSONValue] = ["channel_id": .string(channelId), "name": .string(name), "status": .string(status.rawValue)]
+        if let afterId { fields["after_id"] = .string(afterId) }
+        return .object(fields)
+    }
+}
+
+/// PATCH /tasks/columns/{id}: a new name, or a place (`afterId` `.some(nil)`: the left end).
+struct TaskColumnUpdate: Equatable {
+    var name: String? = nil
+    var afterId: String?? = nil
+
+    var json: JSONValue {
+        var fields: [String: JSONValue] = [:]
+        if let name { fields["name"] = .string(name) }
+        if let afterId { fields["after_id"] = afterId.map(JSONValue.string) ?? .null }
+        return .object(fields)
+    }
+}
+
+/// M81: an item as the form sends it (POST / PATCH `subtasks`, the whole list): a known id keeps its item.
+struct SubtaskIn: Equatable {
+    var id: String?
+    var title: String
+    var done: Bool
+
+    var json: JSONValue {
+        var fields: [String: JSONValue] = ["title": .string(title), "done": .bool(done)]
+        if let id { fields["id"] = .string(id) }
+        return .object(fields)
+    }
+}
+
+/// PATCH /tasks/{id}/subtasks/{sid}: one item (its checkbox) without touching the rest of the list.
+struct SubtaskUpdate: Equatable {
+    var title: String? = nil
+    var done: Bool? = nil
+
+    var json: JSONValue {
+        var fields: [String: JSONValue] = [:]
+        if let title { fields["title"] = .string(title) }
+        if let done { fields["done"] = .bool(done) }
+        return .object(fields)
+    }
 }
 
 extension TaskOut: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, channelId, channelName, ownerId, title, notes, status, position, dueOn, assigneeIds, source, completedAt, completedBy,
-             createdAt, updatedAt, canDelete, kind, canvasSource
+             createdAt, updatedAt, canDelete, kind, canvasSource, dueAt, dueTz, subtasks, rrule, columnId
     }
 
     init(from decoder: Decoder) throws {
@@ -114,6 +256,12 @@ extension TaskOut: Decodable {
         canDelete = try c.decodeIfPresent(Bool.self, forKey: .canDelete) ?? false
         kind = (try? c.decodeIfPresent(TaskKind.self, forKey: .kind)) ?? .task
         canvasSource = (try? c.decodeIfPresent(TaskCanvasSourceOut.self, forKey: .canvasSource))
+        // M81: all optional (a server before M81 sends none of them).
+        dueAt = (try? c.decodeIfPresent(String.self, forKey: .dueAt)) ?? nil
+        dueTz = (try? c.decodeIfPresent(String.self, forKey: .dueTz)) ?? nil
+        subtasks = SubtaskOut.list(c, forKey: .subtasks)
+        rrule = (try? c.decodeIfPresent(String.self, forKey: .rrule)) ?? nil
+        columnId = (try? c.decodeIfPresent(String.self, forKey: .columnId)) ?? nil
     }
 }
 
@@ -168,16 +316,20 @@ struct MessageTaskOut: Codable, Equatable, Hashable, Identifiable {
     /// "YYYY-MM-DD".
     var dueOn: String? = nil
     var ownerId: String = ""
+    /// M81: the due time (nil: the whole day, or a server before M81).
+    var dueAt: String? = nil
 
-    private enum CodingKeys: String, CodingKey { case id, kind, status, assigneeIds, dueOn, ownerId }
+    private enum CodingKeys: String, CodingKey { case id, kind, status, assigneeIds, dueOn, ownerId, dueAt }
 
-    init(id: String, kind: TaskKind = .task, status: TaskStatus = .todo, assigneeIds: [String] = [], dueOn: String? = nil, ownerId: String = "") {
+    init(id: String, kind: TaskKind = .task, status: TaskStatus = .todo, assigneeIds: [String] = [], dueOn: String? = nil, ownerId: String = "",
+         dueAt: String? = nil) {
         self.id = id
         self.kind = kind
         self.status = status
         self.assigneeIds = assigneeIds
         self.dueOn = dueOn
         self.ownerId = ownerId
+        self.dueAt = dueAt
     }
 
     init(from decoder: Decoder) throws {
@@ -188,6 +340,7 @@ struct MessageTaskOut: Codable, Equatable, Hashable, Identifiable {
         assigneeIds = (try? c.decodeIfPresent([String].self, forKey: .assigneeIds)) ?? []
         dueOn = try? c.decodeIfPresent(String.self, forKey: .dueOn)
         ownerId = (try? c.decodeIfPresent(String.self, forKey: .ownerId)) ?? ""
+        dueAt = (try? c.decodeIfPresent(String.self, forKey: .dueAt)) ?? nil
     }
 
     /// The list as a message carries it: missing (a server before M63, a row persisted earlier) or unreadable is none,
@@ -202,13 +355,16 @@ struct MessageTaskOut: Codable, Equatable, Hashable, Identifiable {
     }
 }
 
-/// task.due (to me only): one of my open tasks is due today (8:00 in my zone), sent once.
+/// task.due (to me only): one of my open tasks is due today (8:00 in my zone), sent once; M81: a task with a due time
+/// at that time (`dueAt`, read in `tz`).
 struct TaskDue: Decodable, Equatable {
     let taskId: String
     let channelId: String?
     let channelName: String?
     let title: String
     let dueOn: String?
+    var dueAt: String? = nil
+    var tz: String? = nil
 }
 
 /// POST /tasks (§3). `clientTaskId` makes a retry return the same task (200 instead of 201); `tz` is the zone the due
@@ -228,6 +384,11 @@ struct TaskCreate: Equatable {
     /// M73 (TASKS.md §10): a canvas's checklist item — the canvas and the line as it is in its body (both or neither).
     var sourceCanvasId: String? = nil
     var sourceCanvasLine: String? = nil
+    /// M81 (TASKS.md §11.3): a due time with the device's offset (the server takes `due_on` from it), a repeat rule, a
+    /// checklist (each sent only when set: a server before M81 knows none of them).
+    var dueAt: String? = nil
+    var rrule: String? = nil
+    var subtasks: [SubtaskIn] = []
 
     /// Only what is set (the web's body: absent rather than null).
     var json: JSONValue {
@@ -243,6 +404,9 @@ struct TaskCreate: Equatable {
             fields["source_canvas_id"] = .string(sourceCanvasId)
             fields["source_canvas_line"] = .string(sourceCanvasLine)
         }
+        if let dueAt { fields["due_at"] = .string(dueAt) }
+        if let rrule { fields["rrule"] = .string(rrule) }
+        if !subtasks.isEmpty { fields["subtasks"] = .array(subtasks.map(\.json)) }
         return .object(fields)
     }
 }
@@ -256,8 +420,15 @@ struct TaskPatch: Equatable {
     var dueOn: String??
     var assigneeIds: [String]?
     var tz: String?
+    /// M81: the due time (`.some(nil)`: back to the whole day), the repeat rule (`.some(nil)`: no longer repeats), the
+    /// whole checklist.
+    var dueAt: String?? = nil
+    var rrule: String?? = nil
+    var subtasks: [SubtaskIn]? = nil
 
-    var isEmpty: Bool { title == nil && notes == nil && status == nil && dueOn == nil && assigneeIds == nil }
+    var isEmpty: Bool {
+        title == nil && notes == nil && status == nil && dueOn == nil && assigneeIds == nil && dueAt == nil && rrule == nil && subtasks == nil
+    }
 
     var json: JSONValue {
         var fields: [String: JSONValue] = [:]
@@ -267,6 +438,9 @@ struct TaskPatch: Equatable {
         if let dueOn { fields["due_on"] = dueOn.map(JSONValue.string) ?? .null }
         if let assigneeIds { fields["assignee_ids"] = .array(assigneeIds.map(JSONValue.string)) }
         if let tz { fields["tz"] = .string(tz) }
+        if let dueAt { fields["due_at"] = dueAt.map(JSONValue.string) ?? .null }
+        if let rrule { fields["rrule"] = rrule.map(JSONValue.string) ?? .null }
+        if let subtasks { fields["subtasks"] = .array(subtasks.map(\.json)) }
         return .object(fields)
     }
 }
@@ -280,12 +454,21 @@ struct TaskNeighbors: Equatable {
     static let none = TaskNeighbors(afterId: nil, beforeId: nil)
 }
 
+/// POST /tasks/{id}/move: into a status (its built-in column, or the card's own column while the status stays) or, M81,
+/// into a column (`columnId`, sent without the status: the column says it).
 struct TaskMove: Equatable {
-    var status: TaskStatus
+    var status: TaskStatus?
     var neighbors: TaskNeighbors
+    var columnId: String? = nil
 
     var json: JSONValue {
-        .object(["status": .string(status.rawValue), "after_id": neighbors.afterId.map(JSONValue.string) ?? .null,
-                 "before_id": neighbors.beforeId.map(JSONValue.string) ?? .null])
+        var fields: [String: JSONValue] = ["after_id": neighbors.afterId.map(JSONValue.string) ?? .null,
+                                           "before_id": neighbors.beforeId.map(JSONValue.string) ?? .null]
+        if let columnId {
+            fields["column_id"] = .string(columnId)
+        } else if let status {
+            fields["status"] = .string(status.rawValue)
+        }
+        return .object(fields)
     }
 }

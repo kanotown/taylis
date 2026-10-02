@@ -122,13 +122,61 @@ final class FakeTaskApi: TaskApi {
         let task = try await self.task(id: id)
         if let moveAnswer { return moveAnswer(task, move) }
         var moved = task
-        moved.status = move.status
+        moved.status = move.status ?? task.status
         moved.updatedAt = "2026-10-01T05:00:00Z"
         return moved
     }
 
     func deleteTask(id: String) async throws {
         deletes.append(id)
+    }
+
+    // M84 (TASKS.md §11.3): nil columns answer 404, as a server before M81.
+    var columns: [TaskColumnOut]?
+    var columnsError: Error?
+    var subtaskError: Error?
+    private(set) var subtaskCalls: [(taskId: String, subtaskId: String, patch: SubtaskUpdate)] = []
+    /// "list c-lab", "create …", "update <id>", "delete <id>".
+    private(set) var columnCalls: [String] = []
+    private(set) var columnCreates: [TaskColumnCreate] = []
+    private(set) var columnUpdates: [(id: String, patch: TaskColumnUpdate)] = []
+
+    func updateSubtask(taskId: String, subtaskId: String, _ patch: SubtaskUpdate) async throws -> TaskOut {
+        subtaskCalls.append((taskId, subtaskId, patch))
+        if let subtaskError { throw subtaskError }
+        var task = try await self.task(id: taskId)
+        if let done = patch.done { task = TaskRules.withSubtask(task, subtaskId, done: done) }
+        task.updatedAt = "2026-10-01T09:30:00Z"
+        return task
+    }
+
+    func listTaskColumns(channelId: String) async throws -> [TaskColumnOut] {
+        columnCalls.append("list \(channelId)")
+        if let columnsError { throw columnsError }
+        guard let columns else { throw ApiError.api(status: 404, code: "not_found", message: "") }
+        return columns.filter { $0.channelId == channelId }
+    }
+
+    func createTaskColumn(_ body: TaskColumnCreate) async throws -> TaskColumnOut {
+        columnCalls.append("create \(body.name)")
+        columnCreates.append(body)
+        let column = TaskColumnOut(id: "col-new-\(columnCreates.count)", channelId: body.channelId, name: body.name, status: body.status, builtin: false,
+                                   position: (columns?.map(\.position).max() ?? 0) + 1)
+        columns = (columns ?? []) + [column]
+        return column
+    }
+
+    func updateTaskColumn(id: String, _ patch: TaskColumnUpdate) async throws -> TaskColumnOut {
+        columnCalls.append("update \(id)")
+        columnUpdates.append((id, patch))
+        guard let index = columns?.firstIndex(where: { $0.id == id }) else { throw ApiError.api(status: 404, code: "task_column_not_found", message: "") }
+        if let name = patch.name { columns?[index].name = name }
+        return columns![index]
+    }
+
+    func deleteTaskColumn(id: String) async throws {
+        columnCalls.append("delete \(id)")
+        columns?.removeAll { $0.id == id }
     }
 }
 
@@ -496,7 +544,7 @@ final class TaskHubTests: XCTestCase {
         api.holdMoves = true
         api.moveAnswer = { task, move in
             var moved = task
-            moved.status = move.status
+            moved.status = move.status ?? task.status
             moved.position = 0.5
             moved.updatedAt = "2026-10-01T05:00:00Z"
             return moved
