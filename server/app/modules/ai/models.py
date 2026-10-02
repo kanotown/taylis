@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -66,23 +68,29 @@ class AiAgent(Base):
 
 
 class AiRun(Base):
-    """One call to the model (docs/AI.md §2.2-§2.3): a mention's reply or a summary. Kept for
-    audit and cost; `input` (the prompt text) is dropped after 90 days."""
+    """One call to the model (docs/AI.md §2.2-§2.3, §13): a mention's reply, a summary, or an
+    answer to a question about past conversations (ask). Kept for audit and cost; `input` (the
+    prompt text) is dropped after 90 days."""
 
     __tablename__ = "ai_runs"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
-    kind: Mapped[str] = mapped_column(String(16))  # mention | summary
+    kind: Mapped[str] = mapped_column(String(16))  # mention | summary | ask
     # pending | running | done | failed
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
     agent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ai_agents.id"))
     requester_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
-    channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("channels.id"))
+    # NULL only for a question (ask) not narrowed to one conversation (docs/AI.md §13).
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("channels.id"))
     thread_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id"))
     source_message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("messages.id"))
     scope: Mapped[str | None] = mapped_column(String(16))  # unread | thread | recent
     days: Mapped[int | None] = mapped_column(SmallInteger)
     input: Mapped[str | None] = mapped_column(Text)
+    # ask (docs/AI.md §13): the question as typed, and the numbered messages sent with it
+    # ([{n, message_id, channel_id, parent_id, sender_id, created_at, excerpt}]).
+    question: Mapped[str | None] = mapped_column(Text)
+    sources: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     output: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
     omitted_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -116,7 +124,7 @@ class AiRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
-        CheckConstraint("kind IN ('mention', 'summary')", name="kind_values"),
+        CheckConstraint("kind IN ('mention', 'summary', 'ask')", name="kind_values"),
         CheckConstraint("status IN ('pending', 'running', 'done', 'failed')", name="status_values"),
         CheckConstraint(
             "reply_state IN ('pending', 'posted', 'failed')", name="reply_state_values"

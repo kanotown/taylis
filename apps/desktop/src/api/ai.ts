@@ -12,7 +12,8 @@ export type AiModel = "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-
 /** docs/AI.md §12: the model decides the provider. */
 export type AiProviderName = "anthropic" | "openai";
 export type AiEffort = "low" | "medium" | "high";
-export type AiRunKind = "mention" | "summary";
+/** M70 (docs/AI.md §13): "ask" = 「AI に聞く」. */
+export type AiRunKind = "mention" | "summary" | "ask";
 export type AiRunStatus = "pending" | "running" | "done" | "failed";
 export type AiSummaryScope = "unread" | "thread" | "recent";
 
@@ -47,7 +48,8 @@ export interface AiRunOut {
   id: string;
   kind: AiRunKind;
   status: AiRunStatus;
-  channel_id: string;
+  /** null only for a question (ask) not narrowed to one conversation. */
+  channel_id: string | null;
   thread_id: string | null;
   scope: AiSummaryScope | null;
   days: number | null;
@@ -60,6 +62,29 @@ export interface AiRunOut {
   /** Review v0.1.18 #2: where the run is sent (fixed when it was asked for). Absent on an older server. */
   provider?: AiProviderName | null;
   model?: string | null;
+  /** M70: the question of an ask run (null for the other kinds). Absent on an older server. */
+  question?: string | null;
+  /** M70: the messages a done ask run's answer cites as [n] (empty otherwise). Absent on an older server. */
+  sources?: AiSourceOut[];
+}
+
+/** M70 (docs/AI.md §13.3): a message an answer cites as [n]. */
+export interface AiSourceOut {
+  n: number;
+  message_id: string;
+  channel_id: string;
+  parent_id: string | null;
+  sender_id: string;
+  created_at: string;
+  /** Plain text around the first matching word. */
+  excerpt: string;
+}
+
+/** POST /ai/ask (docs/AI.md §13.5): the question with its modifiers (in:# from:@ before: after: …). */
+export interface AiAskCreate {
+  q: string;
+  tz_offset_minutes?: number;
+  channel_id?: string | null;
 }
 
 /**
@@ -74,6 +99,9 @@ export interface AiSummaryTargetOut {
   agent_name: string | null;
   reason: string | null;
 }
+
+/** GET /ai/ask/target?q=&channel_id= (M70): the same shape and reasons as the summary's target. */
+export type AiAskTargetOut = AiSummaryTargetOut;
 
 export interface AiUsageByAgent {
   agent_id: string;
@@ -196,6 +224,37 @@ export function aiRunCaption(run: Pick<AiRunOut, "provider" | "model">): string 
   const provider = run.provider ?? (run.model ? aiProviderOf(run.model) : null);
   if (!provider) return null;
   return run.model ? `${aiProviderLabel(provider)} · ${run.model}` : aiProviderLabel(provider);
+}
+
+/** M70: the line before asking: where the question goes, or why it cannot be asked (null: nothing to say). */
+export function askTargetLine(target: AiAskTargetOut): string | null {
+  if (!target.available) {
+    const reason = target.reason ?? "";
+    if (reason === "ai_private_not_allowed") return "この会話のボットは非公開の会話を読めないため、ここでは聞けません";
+    if (reason === "ai_budget_exceeded") return "今月の AI の利用上限に達しました";
+    return ERROR_MESSAGES[reason] ?? AI_ERROR_MESSAGES[reason] ?? "今は AI に聞けません";
+  }
+  if (!target.provider) return null;
+  const provider = aiProviderLabel(target.provider);
+  const where = target.agent_name ? `${target.agent_name} (${provider})` : provider;
+  return `質問と見つかったメッセージは ${where} に送られます`;
+}
+
+/** An answer's citations: [3], [1][4], [1, 4], [1、4]. */
+const CITATION = /\[(\d+(?:\s*[,、]\s*\d+)*)\]/g;
+
+/**
+ * M70 (docs/AI.md §13.3): the answer's citations as message links on this server (`<base>/m/<id>`, which MessageBody
+ * opens in place), one link per number. A group with a number that is not among the sources stays as it was.
+ */
+export function linkCitations(output: string, sources: readonly AiSourceOut[], baseUrl: string): string {
+  const byNumber = new Map(sources.map((s) => [s.n, s]));
+  const base = baseUrl.replace(/\/+$/, "");
+  return output.replace(CITATION, (whole, group: string) => {
+    const numbers = group.split(/\s*[,、]\s*/).map(Number);
+    if (!numbers.every((n) => byNumber.has(n))) return whole;
+    return numbers.map((n) => `[${n}](${base}/m/${byNumber.get(n)!.message_id})`).join(" ");
+  });
 }
 
 /** What the reader sees for an error of the AI routes: the AI texts above, else the usual ones (describeError). */

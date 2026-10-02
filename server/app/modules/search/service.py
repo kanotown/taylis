@@ -4,7 +4,8 @@ channels (SECURITY.md §3)."""
 import asyncio
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
+from dataclasses import dataclass, replace
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -104,10 +105,29 @@ async def _in_time[T](
         ) from exc
 
 
-async def _search_in_time(
-    db: AsyncSession, actor: User, params: SearchQuery, timeout_ms: int | None
-) -> SearchOut:
-    await _limit_time(db, timeout_ms)
+@dataclass
+class Resolved:
+    """What a message search covers once its query is understood (SECURITY.md §3): the words,
+    the filters said back, the scope, and the channels in reach. Shared by the search and by
+    「AI に聞く」 (docs/AI.md §13), so both read exactly the same messages."""
+
+    text: str
+    filters: SearchFilters
+    scope: repo.Scope
+    # Every conversation in reach: the caller's own, and (is:times) the public times they have
+    # not joined, by id.
+    channels: dict[uuid.UUID, ChannelOut]
+    # The public times found by is:times that the caller is not a member of.
+    others: list[ChannelOut]
+    # The one conversation the search was narrowed to (channel_id or in:#), else None.
+    narrowed_to: uuid.UUID | None
+    # Whether anything besides the words says what to look for.
+    has_conditions: bool
+
+
+async def resolve(db: AsyncSession, actor: User, params: SearchQuery) -> Resolved:
+    """The scope of a message search for `actor` (403 not_a_member for a `channel_id` they may
+    not search). Modifiers that name nothing they can see are listed in `filters.unresolved`."""
     mine = await channels.list_channels(db, actor, include_public=False)
     parsed = parse_query(params.q, tz_offset_minutes=params.tz_offset_minutes)
     is_times = parsed.is_times or params.is_times
@@ -118,6 +138,7 @@ async def _search_in_time(
         others = await channels.list_public_times_not_member(db, actor)
         mine = [c for c in mine if c.times_owner_id is not None]
     pool = [*mine, *others]
+    narrowed_to: uuid.UUID | None = None
     if params.channel_id is not None:
         if not any(c.id == params.channel_id for c in others):
             await channels.require_member(db, actor.id, params.channel_id)
@@ -127,6 +148,7 @@ async def _search_in_time(
             if any(c.id == params.channel_id for c in pool) or not is_times
             else []
         )
+        narrowed_to = params.channel_id
     else:
         channel_ids = [uuid.UUID(str(c.id)) for c in pool]
 
@@ -154,6 +176,7 @@ async def _search_in_time(
         else:
             filters.in_channel = match.name
             channel_ids = [uuid.UUID(str(match.id))]
+            narrowed_to = channel_ids[0]
     structured = bool(
         params.channel_id
         or params.from_user_id
@@ -163,7 +186,32 @@ async def _search_in_time(
         or params.is_thread
         or params.is_times
     )
-    if not parsed.text and not parsed.has_modifiers and not structured and not filters.unresolved:
+    scope = repo.Scope(
+        channel_ids=channel_ids,
+        from_user_id=from_user_id,
+        after=filters.after,
+        before=filters.before,
+        has=filters.has,
+        is_thread=filters.is_thread,
+    )
+    return Resolved(
+        text=parsed.text,
+        filters=filters,
+        scope=scope,
+        channels={uuid.UUID(str(c.id)): c for c in pool},
+        others=others,
+        narrowed_to=narrowed_to,
+        has_conditions=parsed.has_modifiers or structured,
+    )
+
+
+async def _search_in_time(
+    db: AsyncSession, actor: User, params: SearchQuery, timeout_ms: int | None
+) -> SearchOut:
+    await _limit_time(db, timeout_ms)
+    resolved = await resolve(db, actor, params)
+    filters, scope, others = resolved.filters, resolved.scope, resolved.others
+    if not resolved.text and not resolved.has_conditions and not filters.unresolved:
         raise bad_request("empty_query", "Enter words to search or a modifier such as from:@name")
 
     empty = SearchOut(
@@ -177,17 +225,9 @@ async def _search_in_time(
     if filters.unresolved:
         return empty  # a modifier named nothing the caller can see: no guessing
 
-    scope = repo.Scope(
-        channel_ids=channel_ids,
-        from_user_id=from_user_id,
-        after=filters.after,
-        before=filters.before,
-        has=filters.has,
-        is_thread=filters.is_thread,
-    )
-    if parsed.text:
+    if resolved.text:
         try:
-            rows, keywords, total = await _run(db, parsed.text, scope, params, escaped=False)
+            rows, keywords, total = await _run(db, resolved.text, scope, params, escaped=False)
         except DBAPIError as exc:
             if _cancelled(exc):
                 raise
@@ -195,7 +235,7 @@ async def _search_in_time(
             log.info("search query fell back to escaped form: %s", exc.orig)
             await db.rollback()
             await _limit_time(db, timeout_ms)  # the rollback ended the transaction, and its limit
-            rows, keywords, total = await _run(db, parsed.text, scope, params, escaped=True)
+            rows, keywords, total = await _run(db, resolved.text, scope, params, escaped=True)
     else:
         # Modifiers only (e.g. from:@alice on:2026-09-26): newest first, no ranking.
         rows = [
@@ -222,6 +262,82 @@ async def _search_in_time(
         total=min(total, repo.TOTAL_CAP),
         total_capped=total > repo.TOTAL_CAP,
     )
+
+
+# --- top hits for 「AI に聞く」 (docs/AI.md §13) ------------------------------------------------
+
+
+@dataclass
+class TopHits:
+    """The best matches of a resolved search: most relevant first (ties: newest first)."""
+
+    messages: list[Message]
+    # What PGroonga matched on (for the excerpts).
+    keywords: list[str]
+    # Matches in the conversations left out (`leave_out`), counted to TOTAL_CAP.
+    left_out: int = 0
+
+
+async def _unlimit_time(db: AsyncSession) -> None:
+    """Undoes _limit_time for the rest of the transaction (the caller goes on writing)."""
+    await db.execute(text("SET LOCAL enable_seqscan TO DEFAULT"))
+    await db.execute(text("SET LOCAL statement_timeout TO DEFAULT"))
+
+
+async def top_hits(
+    db: AsyncSession,
+    resolved: Resolved,
+    *,
+    words: str,
+    limit: int,
+    leave_out: Collection[uuid.UUID] = (),
+    timeout_ms: int | None = None,
+    gate: asyncio.Semaphore | None = None,
+) -> TopHits:
+    """The `limit` best matches of `words` (Groonga query syntax) within `resolved`, with the
+    search's own rules, indexes, time limit and gate. Without words, the newest messages the
+    modifiers select. The conversations in `leave_out` are not searched; how many of their
+    messages would have matched is counted instead. Unresolved modifiers find nothing, as in the
+    search. Afterwards the transaction runs without the search's limits again."""
+    if resolved.filters.unresolved or (not words and not resolved.has_conditions):
+        return TopHits(messages=[], keywords=[])
+    excluded = set(leave_out)
+    inside = replace(
+        resolved.scope, channel_ids=[c for c in resolved.scope.channel_ids if c not in excluded]
+    )
+    outside = replace(
+        resolved.scope, channel_ids=[c for c in resolved.scope.channel_ids if c in excluded]
+    )
+
+    async def find(escaped: bool) -> TopHits:
+        if not words:
+            found = await repo.list_filtered(db, scope=inside, limit=limit, offset=0)
+            left = await repo.count(db, query=None, scope=outside, escaped=False)
+            return TopHits(messages=found, keywords=[], left_out=left)
+        rows = await repo.search_messages(
+            db, query=words, scope=inside, sort="relevance", limit=limit, offset=0, escaped=escaped
+        )
+        keywords = await repo.extract_keywords(db, words, escaped=escaped)
+        left = await repo.count(db, query=words, scope=outside, escaped=escaped)
+        return TopHits(messages=[m for m, _ in rows], keywords=keywords, left_out=left)
+
+    async def in_time() -> TopHits:
+        await _limit_time(db, timeout_ms)
+        try:
+            return await find(False)
+        except DBAPIError as exc:
+            if _cancelled(exc):
+                raise
+            log.info("AI search query fell back to escaped form: %s", exc.orig)
+            await db.rollback()
+            await _limit_time(db, timeout_ms)
+            return await find(True)
+
+    found = await _gated(
+        lambda: _in_time(db, in_time, timeout_ms), timeout_ms=timeout_ms, gate=gate
+    )
+    await _unlimit_time(db)
+    return found
 
 
 # --- canvases (M42, CANVAS.md §4.8) ---------------------------------------------------------------

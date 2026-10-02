@@ -31,9 +31,16 @@
           "AiRunOut": {
             "properties": {
               "channel_id": {
-                "format": "uuid",
-                "title": "Channel Id",
-                "type": "string"
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Channel Id"
               },
               "created_at": {
                 "format": "date-time",
@@ -82,7 +89,8 @@
               "kind": {
                 "enum": [
                   "mention",
-                  "summary"
+                  "summary",
+                  "ask"
                 ],
                 "title": "Kind",
                 "type": "string"
@@ -128,6 +136,18 @@
                 ],
                 "title": "Provider"
               },
+              "question": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Question"
+              },
               "scope": {
                 "anyOf": [
                   {
@@ -143,6 +163,13 @@
                   }
                 ],
                 "title": "Scope"
+              },
+              "sources": {
+                "items": {
+                  "$ref": "#/$defs/AiSourceOut"
+                },
+                "title": "Sources",
+                "type": "array"
               },
               "status": {
                 "enum": [
@@ -184,6 +211,62 @@
               "model"
             ],
             "title": "AiRunOut",
+            "type": "object"
+          },
+          "AiSourceOut": {
+            "description": "A message an answer cites as [n] (docs/AI.md §13.3).",
+            "properties": {
+              "channel_id": {
+                "format": "uuid",
+                "title": "Channel Id",
+                "type": "string"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "excerpt": {
+                "title": "Excerpt",
+                "type": "string"
+              },
+              "message_id": {
+                "format": "uuid",
+                "title": "Message Id",
+                "type": "string"
+              },
+              "n": {
+                "title": "N",
+                "type": "integer"
+              },
+              "parent_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Parent Id"
+              },
+              "sender_id": {
+                "format": "uuid",
+                "title": "Sender Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "n",
+              "message_id",
+              "channel_id",
+              "parent_id",
+              "sender_id",
+              "created_at",
+              "excerpt"
+            ],
+            "title": "AiSourceOut",
             "type": "object"
           }
         },

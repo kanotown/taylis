@@ -420,6 +420,50 @@ export interface paths {
         patch: operations["update_webhook_api_v1_admin_webhooks__webhook_id__patch"];
         trace?: never;
     };
+    "/api/v1/ai/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ask
+         * @description 「AI に聞く」 (docs/AI.md §13): an answer only the requester sees, from the messages the
+         *     search finds for the question (the search's scope and modifiers), citing them as [n]
+         *     (`sources`). The result arrives as ai.run_updated and through GET /ai/runs/{id}.
+         */
+        post: operations["create_ask_api_v1_ai_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/ask/target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ask Target
+         * @description Where a question would be sent (provider, model, bot), shown before asking: the bot of the
+         *     one conversation the question is narrowed to (channel_id or in:#), else the default bot
+         *     (docs/AI.md §13.4). 404 channel_not_found for a conversation one cannot search.
+         */
+        get: operations["get_ask_target_api_v1_ai_ask_target_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/runs": {
         parameters: {
             query?: never;
@@ -3241,6 +3285,36 @@ export interface components {
             name?: string | null;
         };
         /**
+         * AiAskCreate
+         * @description POST /ai/ask (docs/AI.md §13): the question as typed in the search box, modifiers
+         *     (in:# from:@ before: after: on: has: is:) included; they limit what is looked through.
+         */
+        AiAskCreate: {
+            /** Channel Id */
+            channel_id?: string | null;
+            /** Q */
+            q: string;
+            /** Tz Offset Minutes */
+            tz_offset_minutes?: number | null;
+        };
+        /**
+         * AiAskTargetOut
+         * @description GET /ai/ask/target (docs/AI.md §13.5): where a question would be sent, shown before
+         *     asking; the same shape and reasons as AiSummaryTargetOut.
+         */
+        AiAskTargetOut: {
+            /** Agent Name */
+            agent_name: string | null;
+            /** Available */
+            available: boolean;
+            /** Model */
+            model: string | null;
+            /** Provider */
+            provider: ("anthropic" | "openai") | null;
+            /** Reason */
+            reason: string | null;
+        };
+        /**
          * AiProviderOut
          * @description docs/AI.md §12 (admin only): a provider, whether its key file is configured, its models.
          */
@@ -3257,11 +3331,8 @@ export interface components {
         };
         /** AiRunOut */
         AiRunOut: {
-            /**
-             * Channel Id
-             * Format: uuid
-             */
-            channel_id: string;
+            /** Channel Id */
+            channel_id: string | null;
             /**
              * Created At
              * Format: date-time
@@ -3282,7 +3353,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mention" | "summary";
+            kind: "mention" | "summary" | "ask";
             /** Model */
             model: string | null;
             /** Omitted Count */
@@ -3291,8 +3362,12 @@ export interface components {
             output: string | null;
             /** Provider */
             provider: ("anthropic" | "openai") | null;
+            /** Question */
+            question?: string | null;
             /** Scope */
             scope: ("unread" | "thread" | "recent") | null;
+            /** Sources */
+            sources?: components["schemas"]["AiSourceOut"][];
             /**
              * Status
              * @enum {string}
@@ -3300,6 +3375,38 @@ export interface components {
             status: "pending" | "running" | "done" | "failed";
             /** Thread Id */
             thread_id: string | null;
+        };
+        /**
+         * AiSourceOut
+         * @description A message an answer cites as [n] (docs/AI.md §13.3).
+         */
+        AiSourceOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Excerpt */
+            excerpt: string;
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+            /** N */
+            n: number;
+            /** Parent Id */
+            parent_id: string | null;
+            /**
+             * Sender Id
+             * Format: uuid
+             */
+            sender_id: string;
         };
         /** AiStatusOut */
         AiStatusOut: {
@@ -7399,10 +7506,75 @@ export interface operations {
             };
         };
     };
+    create_ask_api_v1_ai_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiAskCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ask_target_api_v1_ai_ask_target_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                channel_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiAskTargetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_runs_api_v1_ai_runs_get: {
         parameters: {
             query?: {
-                kind?: ("mention" | "summary") | null;
+                kind?: ("mention" | "summary" | "ask") | null;
             };
             header?: never;
             path?: never;

@@ -35,7 +35,7 @@ from app.events.envelope import Audience
 from app.events.models import OutboxEvent
 from app.events.outbox import write_outbox
 from app.modules.admin import service as admin
-from app.modules.ai import prompts
+from app.modules.ai import ask, prompts
 from app.modules.ai import repository as repo
 from app.modules.ai.events import AI_RUN_UPDATED, AiRunUpdatedData
 from app.modules.ai.llm import (
@@ -55,6 +55,8 @@ from app.modules.ai.schemas import (
     AiAgentCreate,
     AiAgentOut,
     AiAgentUpdate,
+    AiAskCreate,
+    AiAskTargetOut,
     AiProviderOut,
     AiRunOut,
     AiStatusOut,
@@ -76,6 +78,8 @@ from app.modules.messages.events import MESSAGE_CREATED
 from app.modules.messages.models import Message
 from app.modules.messages.schemas import MAX_BODY_LENGTH, MessageCreate
 from app.modules.reads import service as reads
+from app.modules.search import service as search
+from app.modules.search.schemas import SearchQuery
 from app.modules.users import service as users
 from app.modules.users.events import USER_UPDATED, emit_user_event
 from app.modules.users.models import User
@@ -105,6 +109,7 @@ INBOX_MAX_ATTEMPTS = 5
 # Why a run stops before anything is sent (review v0.1.18 #2, #3).
 AGENT_GONE = "このボットは無効になっています"
 SUMMARY_AGENT_GONE = "要約に使うボットが無効になりました"
+ASK_AGENT_GONE = "質問に使うボットが無効になりました"
 BOT_REMOVED = "ボットがこの会話から外されました"
 CHANNEL_ARCHIVED = "この会話はアーカイブされています"
 PRIVATE_REVOKED = "このボットは非公開の会話を扱えなくなりました"
@@ -139,8 +144,8 @@ async def _username(db: AsyncSession, user_id: uuid.UUID) -> str:
 
 
 async def _emit_run(db: AsyncSession, run: AiRun) -> None:
-    """ai.run_updated to the requester's devices (summaries only)."""
-    if run.kind != "summary":
+    """ai.run_updated to the requester's devices (summaries and questions; not mentions)."""
+    if run.kind == "mention":
         return
     await write_outbox(
         db,
@@ -173,7 +178,10 @@ def estimate_run(kind: str, model: str, input_text: str | None, system: str) -> 
     output allowance, OpenAI's reasoning room included), times the attempts it may make."""
     if input_text is None:
         return Decimal(0)
-    max_output = prompts.REPLY_MAX_TOKENS if kind == "mention" else prompts.SUMMARY_MAX_TOKENS
+    max_output = {
+        "mention": prompts.REPLY_MAX_TOKENS,
+        "ask": prompts.ASK_MAX_TOKENS,
+    }.get(kind, prompts.SUMMARY_MAX_TOKENS)
     if provider_of(model) == OPENAI:
         max_output += OPENAI_REASONING_ROOM
     per_attempt = estimate_usd(
@@ -571,6 +579,160 @@ async def list_runs(db: AsyncSession, actor: User, kind: str | None) -> list[AiR
     return [to_run_out(r) for r in await repo.recent_runs(db, actor.id, kind, RECENT_RUNS)]
 
 
+# --- 「AI に聞く」 (docs/AI.md §13) ------------------------------------------------------------
+
+NOTHING_FOUND = "関係のありそうなメッセージが見つかりませんでした。"
+NO_TERMS = (
+    "質問から検索の語を取り出せませんでした。キーワード (名詞や名前) を含めて聞いてください。"
+)
+
+
+async def _ask_scope(
+    db: AsyncSession, actor: User, q: str, channel_id: uuid.UUID | None, tz_offset_minutes: int
+) -> search.Resolved:
+    """What a question looks through: the search's own scope for the asker (§13.2)."""
+    params = SearchQuery(q=q, channel_id=channel_id, tz_offset_minutes=tz_offset_minutes)
+    try:
+        return await search.resolve(db, actor, params)
+    except AppError as exc:
+        if exc.code in ("not_a_member", "channel_not_found"):
+            raise not_found("channel_not_found", "Channel not found") from exc
+        raise
+
+
+async def _ask_agent(
+    db: AsyncSession, runtime: AiRuntime, resolved: search.Resolved
+) -> tuple[AiAgent | None, str | None]:
+    """§13.4: narrowed to one conversation, the summary's choice for it (that conversation's bot,
+    else the default; a private one only with allow_private); otherwise the default bot (private
+    conversations are then left out unless it has allow_private)."""
+    if resolved.narrowed_to is not None:
+        channel = await channels.find_channel(db, resolved.narrowed_to)
+        if channel is not None:
+            return await _summary_agent(db, runtime, channel)
+    usable = await _usable_agents(db, runtime)
+    if not usable:
+        return None, "ai_unavailable"
+    return usable[0], None
+
+
+def _tz(value: int | None) -> int:
+    return value if value is not None else prompts.DEFAULT_TZ_OFFSET
+
+
+async def ask_target(
+    db: AsyncSession,
+    runtime: AiRuntime,
+    actor: User,
+    q: str,
+    channel_id: uuid.UUID | None,
+) -> AiAskTargetOut:
+    """GET /ai/ask/target: where a question would go, before asking."""
+    resolved = await _ask_scope(db, actor, q, channel_id, prompts.DEFAULT_TZ_OFFSET)
+    agent, problem = await _ask_agent(db, runtime, resolved)
+    if problem is None and await month_committed(db, utcnow()) >= _budget(runtime):
+        problem = "ai_budget_exceeded"
+    return AiAskTargetOut(
+        available=problem is None,
+        provider=provider_of(agent.model) if agent else None,  # type: ignore[arg-type]
+        model=agent.model if agent else None,
+        agent_name=agent.name if agent else None,
+        reason=problem,
+    )
+
+
+def _nothing_found(resolved: search.Resolved, had_terms: bool) -> str:
+    unresolved = resolved.filters.unresolved
+    if unresolved:
+        named = " ".join(unresolved)
+        return f"条件 {named} に当たるものが見つからなかったため、検索できませんでした。"
+    if not had_terms and not resolved.has_conditions:
+        return NO_TERMS
+    return NOTHING_FOUND
+
+
+async def create_ask(
+    db: AsyncSession,
+    runtime: AiRuntime,
+    actor: User,
+    data: AiAskCreate,
+    *,
+    timeout_ms: int | None = None,
+    gate: asyncio.Semaphore | None = None,
+) -> AiRunOut:
+    """POST /ai/ask (docs/AI.md §13): the search finds what the asker can read now (the search's
+    scope and modifiers), each hit gets its context, and the numbered messages go to the chosen
+    bot's model with the question. Nothing found: done at once, without a call."""
+    question = " ".join(data.q.split())
+    if not question:
+        raise bad_request("validation_error", "Enter a question")
+    tz = _tz(data.tz_offset_minutes)
+    now = utcnow()
+    actor_id = actor.id
+    visible = await channels.visible_user_ids(db, actor)
+    resolved = await _ask_scope(db, actor, question, data.channel_id, tz)
+    agent, problem = await _ask_agent(db, runtime, resolved)
+    if problem == "ai_private_not_allowed":
+        raise conflict(
+            "ai_private_not_allowed",
+            "The AI bot for this conversation may not read private conversations",
+        )
+    if agent is None or problem is not None:
+        raise conflict("ai_unavailable", "AI is not available on this server")
+    # Kept apart from the ORM row: the search may roll back (a query Groonga rejects).
+    agent_id, model, allow_private = agent.id, agent.model, agent.allow_private
+    leave_out = (
+        []
+        if allow_private
+        else [cid for cid, channel in resolved.channels.items() if channel.type != "public"]
+    )
+    terms = ask.question_terms(resolved.text)
+    found = await search.top_hits(
+        db,
+        resolved,
+        words=ask.groonga_query(terms),
+        limit=prompts.ASK_HITS,
+        leave_out=leave_out,
+        timeout_ms=timeout_ms,
+        gate=gate,
+    )
+    gathered = await ask.gather(
+        db,
+        found.messages,
+        keywords=found.keywords or terms,
+        channels=resolved.channels,
+        tz_offset_minutes=tz,
+        visible=visible,
+    )
+    text = None if gathered.empty else prompts.ask_prompt(question, gathered.blocks, found.left_out)
+    reserve = estimate_run("ask", model, text, prompts.ask_system())
+    problem = await _admit(db, runtime, actor_id, now, reserve)
+    if problem is not None:
+        raise AppError(429, problem, _LIMIT_NOTICES[problem])
+    run = AiRun(
+        kind="ask",
+        agent_id=agent_id,
+        model=model,
+        provider=provider_of(model),
+        reserved_usd=reserve,
+        requester_id=actor_id,
+        channel_id=resolved.narrowed_to,
+        question=question,
+        sources=gathered.sources or None,
+        input=text,
+        omitted_count=found.left_out,
+        created_at=now,
+    )
+    if text is None:  # nothing to send: done at once, no call
+        run.status = "done"
+        run.output = _nothing_found(resolved, bool(terms))
+        run.finished_at = now
+    db.add(run)
+    await db.flush()
+    await db.commit()
+    return to_run_out(run)
+
+
 # --- mentions -----------------------------------------------------------------------------------
 
 
@@ -832,10 +994,8 @@ async def _cancel_open_runs(
     A mention's notice is posted by the worker (when the bot still can)."""
     cancelled = 0
     for run in await repo.open_runs(db, agent_id, channel_id=channel_id, kind=kind):
-        if private_only:
-            channel = await channels.find_channel(db, run.channel_id)
-            if channel is not None and channel.type == "public":
-                continue
+        if private_only and not await _touches_private(db, run):
+            continue
         await _finish(db, run, output=None, error=reason, now=now, post_now=False)
         cancelled += 1
     if cancelled:
@@ -862,7 +1022,7 @@ async def _finish(
     run.next_attempt_at = None
     run.reserved_usd = Decimal(0)
     await db.flush()
-    if run.kind == "summary":
+    if run.kind != "mention":  # a summary or a question: its requester is told
         await _emit_run(db, run)
         return
     run.reply_state = "pending"
@@ -881,7 +1041,7 @@ async def _post_reply(db: AsyncSession, run: AiRun, now: datetime) -> None:
     run_id, attempts = run.id, run.reply_attempts + 1
     agent = await repo.get_agent_any(db, run.agent_id) if run.agent_id else None
     refused: str | None
-    if agent is None or run.thread_id is None:
+    if agent is None or run.thread_id is None or run.channel_id is None:
         refused = BOT_INACTIVE
     else:
         if run.status == "done" and run.output:
@@ -958,7 +1118,7 @@ async def _mention_problem(db: AsyncSession, agent: AiAgent | None, run: AiRun) 
     bot = await users.get_user(db, agent.bot_user_id)
     if bot is None or not bot.is_active:
         return AGENT_GONE
-    channel = await channels.find_channel(db, run.channel_id)
+    channel = await channels.find_channel(db, run.channel_id) if run.channel_id else None
     if channel is None or channel.is_archived:
         return CHANNEL_ARCHIVED
     if await channels.membership_of(db, agent.bot_user_id, channel.id) is None:
@@ -968,12 +1128,25 @@ async def _mention_problem(db: AsyncSession, agent: AiAgent | None, run: AiRun) 
     return None
 
 
+async def _touches_private(db: AsyncSession, run: AiRun) -> bool:
+    """Whether a run sends something from a private channel, DM or group DM (its conversation,
+    and for a question the conversations of its sources), as they are now."""
+    ids = {uuid.UUID(str(s["channel_id"])) for s in run.sources or []}
+    if run.channel_id is not None:
+        ids.add(run.channel_id)
+    for channel_id in ids:
+        channel = await channels.find_channel(db, channel_id)
+        if channel is not None and channel.type != "public":
+            return True
+    return False
+
+
 async def _summary_problem(db: AsyncSession, agent: AiAgent | None, run: AiRun) -> str | None:
-    """Review v0.1.18 #2: a summary goes to the bot fixed when it was asked for, or nowhere."""
+    """Review v0.1.18 #2: a summary (or a question, docs/AI.md §13.4) goes to the bot fixed when
+    it was asked for, or nowhere; private conversations only while the bot may read them."""
     if agent is None or agent.deleted_at is not None or not agent.enabled:
-        return SUMMARY_AGENT_GONE
-    channel = await channels.find_channel(db, run.channel_id)
-    if channel is not None and channel.type != "public" and not agent.allow_private:
+        return ASK_AGENT_GONE if run.kind == "ask" else SUMMARY_AGENT_GONE
+    if not agent.allow_private and await _touches_private(db, run):
         return PRIVATE_REVOKED
     return None
 
@@ -992,10 +1165,10 @@ async def _prepare(
         if run.input is None:
             return None, "送る内容がありません"
         agent = await repo.get_agent_any(db, run.agent_id) if run.agent_id else None
-        if run.kind == "summary":
-            problem = await _summary_problem(db, agent, run)
-        else:
+        if run.kind == "mention":
             problem = await _mention_problem(db, agent, run)
+        else:
+            problem = await _summary_problem(db, agent, run)
         if problem is not None:
             return None, problem
         assert agent is not None
@@ -1005,6 +1178,17 @@ async def _prepare(
             return None, _LIMIT_NOTICES["ai_unavailable"]
         if await month_committed(db, run.created_at) > _budget(runtime):
             return None, _LIMIT_NOTICES["ai_budget_exceeded"]
+        if run.kind == "ask":
+            return (
+                LlmRequest(
+                    model=model,
+                    effort="low",
+                    system=prompts.ask_system(),
+                    user=run.input,
+                    max_tokens=prompts.ASK_MAX_TOKENS,
+                ),
+                None,
+            )
         if run.kind == "summary":
             return (
                 LlmRequest(

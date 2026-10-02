@@ -6,7 +6,7 @@
 import { ApiError } from "../src/api/errors";
 import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { LastMessageOut } from "../src/api/types";
-import { aiProviderOf, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiProviderOut, type AiRunOut, type AiStatusOut, type AiSummaryCreate, type AiSummaryTargetOut, type AiUsageOut } from "../src/api/ai";
+import { aiProviderOf, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiAskCreate, type AiAskTargetOut, type AiProviderOut, type AiRunOut, type AiStatusOut, type AiSummaryCreate, type AiSummaryTargetOut, type AiUsageOut } from "../src/api/ai";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import { lastMessageOf } from "../src/ui/dmPreview";
@@ -1838,9 +1838,65 @@ export class FakeServer {
     return { ...run };
   }
 
+  /** M70: GET /ai/ask/target exists (false: a server before M70, 404); an object overrides the answer. */
+  aiAskRoute = true;
+  aiAskTargetAnswer: AiAskTargetOut | null = null;
+  /** Every POST /ai/ask that reached the server. */
+  readonly aiAsks: AiAskCreate[] = [];
+
+  private askTarget(userId: string, q: string, channelId: string | null): AiAskTargetOut {
+    this.aiGate();
+    if (!this.aiAskRoute) throw new ApiError(404, "http_404", "Not Found");
+    if (channelId) {
+      const record = this.channels.get(channelId);
+      if (!record || !record.members.has(userId)) throw new ApiError(404, "channel_not_found", "not found");
+    }
+    if (this.aiAskTargetAnswer) return { ...this.aiAskTargetAnswer };
+    const agent = this.aiKey ? (channelId ? this.summaryAgent(channelId) : this.aiAgents.find((a) => a.enabled)) : undefined;
+    if (!agent) return { available: false, provider: null, model: null, agent_name: null, reason: "ai_unavailable" };
+    const sent = { provider: aiProviderOf(agent.model), model: agent.model, agent_name: agent.name };
+    void q;
+    return this.aiBudgetLeft ? { available: true, ...sent, reason: null } : { available: false, ...sent, reason: "ai_budget_exceeded" };
+  }
+
+  private createAiAsk(userId: string, body: AiAskCreate): AiRunOut {
+    this.aiGate();
+    if (!this.aiAskRoute) throw new ApiError(404, "http_404", "Not Found");
+    this.aiAsks.push({ ...body });
+    const target = this.askTarget(userId, body.q, body.channel_id ?? null);
+    if (!target.available) throw new ApiError(target.reason === "ai_budget_exceeded" ? 429 : 409, target.reason ?? "ai_unavailable", "refused");
+    if (this.aiRefuseNext) {
+      const err = this.aiRefuseNext;
+      this.aiRefuseNext = null;
+      throw err;
+    }
+    const run: AiRunOut = {
+      id: nextId(),
+      kind: "ask",
+      status: "pending",
+      channel_id: body.channel_id ?? null,
+      thread_id: null,
+      scope: null,
+      days: null,
+      output: null,
+      error: null,
+      omitted_count: 0,
+      created_at: now(),
+      finished_at: null,
+      provider: target.provider,
+      model: target.model,
+      question: body.q,
+      sources: [],
+    };
+    this.aiRuns.set(run.id, { run, userId });
+    return { ...run };
+  }
+
   aiApiFor(userId: string): FakeAiApi {
     const admin = (): void => this.aiAdmin(userId);
     return {
+      createAiAsk: async (body) => this.createAiAsk(userId, body),
+      aiAskTarget: async (q, channelId) => this.askTarget(userId, q, channelId),
       aiStatus: async () => {
         this.aiGate();
         return this.aiStatusOut();
@@ -1853,9 +1909,9 @@ export class FakeServer {
         if (!entry || entry.userId !== userId) throw new ApiError(404, "ai_run_not_found", "not found");
         return { ...entry.run };
       },
-      aiRuns: async () => {
+      aiRuns: async (kind = "summary") => {
         this.aiGate();
-        return [...this.aiRuns.values()].filter((e) => e.userId === userId).map((e) => ({ ...e.run })).reverse().slice(0, 20);
+        return [...this.aiRuns.values()].filter((e) => e.userId === userId && e.run.kind === kind).map((e) => ({ ...e.run })).reverse().slice(0, 20);
       },
       adminAiAgents: async () => {
         admin();
@@ -1910,7 +1966,9 @@ export interface FakeAiApi {
   createAiSummary(body: AiSummaryCreate): Promise<AiRunOut>;
   aiSummaryTarget(channelId: string): Promise<AiSummaryTargetOut>;
   getAiRun(runId: string): Promise<AiRunOut>;
-  aiRuns(): Promise<AiRunOut[]>;
+  aiRuns(kind?: "summary" | "mention" | "ask"): Promise<AiRunOut[]>;
+  createAiAsk(body: AiAskCreate): Promise<AiRunOut>;
+  aiAskTarget(q: string, channelId: string | null): Promise<AiAskTargetOut>;
   adminAiAgents(): Promise<AiAgentOut[]>;
   adminCreateAiAgent(body: AiAgentCreate): Promise<AiAgentOut>;
   adminUpdateAiAgent(agentId: string, patch: AiAgentUpdate): Promise<AiAgentOut>;

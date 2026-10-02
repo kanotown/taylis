@@ -157,6 +157,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
   メンションの run はイベントを出さない (返事はふつうのメッセージとして届く)。
 - 端末は再接続のあと、開いている要約のダイアログがあれば `GET /ai/runs/{id}` で読み直す (イベントは取りこぼしうる)。
 - 古いサーバ (`/ai/status` が 404) では AI の入口を出さない。
+- (M70) 「AI に聞く」: `POST /ai/ask`・`GET /ai/ask/target`・`AiRunOut.question` / `sources`・`kind = "ask"`。§13.5。
 
 ## 6. 画面
 
@@ -172,7 +173,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
 - **M65**: サーバ (表と移行、SDK、worker、ハンドラ、API、上限と費用、テストは FakeProvider) と Desktop / Web。
 - **M66**: iOS と Android。
 
-あとで: 過去の会話への質問 (全文検索で拾ったメッセージを渡し、出典付きで答える)、スレッドから決定・タスクを取り出す
+あとで: 過去の会話への質問 (全文検索で拾ったメッセージを渡し、出典付きで答える。M70 で作った: §13)、スレッドから決定・タスクを取り出す
 (タスクにする前に確認)、前日までの要約を貯めて使い回す、times からの週報の下書き。
 
 ## 8. 実装で決めたこと (M65 サーバ)
@@ -339,3 +340,121 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
   「(キー未設定)」、そのボットの行に「API キー未設定」を出す。
 - **注意書き (§4)**: Desktop / Web は、チャンネルにいるボットのモデルから事業者名 (Anthropic / OpenAI / 両方) を出す。
   iOS / Android の文言は「Anthropic」のまま (要対応。管理画面はスマホに無いので、ほかは変えなくてよい)。
+
+## 13. AI に聞く (M70)
+
+過去の会話への質問。§1 で「後で」にした「過去の会話への質問 (検索 + 回答)」。利用者の決定 (2026-10-02):「推奨の案で進める」。
+埋め込み (ベクトル検索) は使わない。拾うのは今の全文検索 (PGroonga) で、モデルは拾わない (道具を持たない。§4)。
+
+### 13.1 決めたこと
+
+| 項目 | 決めた案 | 採らなかった案 |
+|---|---|---|
+| 入口 | 検索画面の検索欄の横の「AI に聞く」。欄に打った文が質問。切り替えのスイッチは無い | 専用の画面、チャットのボットに聞く |
+| 範囲 | 検索の条件 (`in:#` `from:@` `before:` `after:` `on:` `has:` `is:thread` `is:times`) がそのまま拾う範囲になる | 範囲を別に選ぶ |
+| 結果 | 頼んだ人にだけ見える (要約と同じ)。会話には投稿しない | チャンネルに投稿 |
+| 拾い方 | サーバが本人として検索し、上位 30 件 + 文脈を渡す | モデルに検索させる (道具) |
+| 送り先 | 既定のボット。`in:#` などで 1 つの会話に絞ったときは、要約と同じくその会話のボット | 質問ごとに選ぶ |
+| 出典 | 番号 [1]..[n] で引用させ、番号とメッセージの対応をサーバが返す | 出典なし |
+
+### 13.2 拾い方 (サーバ)
+
+1. **語**: 質問から条件 (`in:#` など) を外した文を、検索の語に分ける (`app/modules/ai/ask.py` の `question_terms`)。空白・記号で区切り、
+   さらに字の種類 (漢字・カタカナ・英数字・ひらがな) の変わり目で区切る。ひらがなだけの塊 (助詞・活用) は捨て、2 字以上の
+   漢字・カタカナ・英数字の塊を語にする (「の」「何」「教えて」は語にならない)。英語のよくある語 (what, the, did …) と、
+   質問によく出る語 (方法・内容・最近 …) も捨てる。最大 8 語。語は Groonga の `"語1" OR "語2" …` にする (どれかを含めば
+   当たり、多く含むほど関連度が高い)。語が 1 つも無く条件も無ければ、何も拾わない。
+2. **検索**: `app/modules/search` の `resolve` (検索と同じ範囲の決め方: 自分がメンバーの会話。`is:times` は公開の times
+   に広がる (ゲストは広がらない)。`in:#` / `from:@` の名前の解決、`has:` / `is:thread`、日付) と `top_hits` (関連度順、
+   同点は新しい順) を使う。SQL は検索と同じもの (PGroonga の索引、時間の上限、同時実行の門)。上位 30 件。
+3. **文脈**: 各ヒットに、返信なら親を、そして同じ流れ (トップレベルならチャンネルのタイムライン、返信ならスレッド) の
+   直前と直後の 1 件ずつ (最大 2 件) を足す。削除済みと `type` が user 以外は入れない。重複は除く。
+4. **並べ方**: ヒットの関連度順にまとまり (親・前・ヒット・後、時刻順) を作り、まとまりの順に番号 [1]..[n] を振る (前の
+   まとまりに出たメッセージは番号を使い回さない)。1 件は 2000 字まで、全体は 4 万字まで (超えたまとまりは入れない)。
+5. **非公開**: 選んだボットに `allow_private` が無ければ、非公開チャンネル・DM・グループ DM は拾う範囲から外し (公開の
+   会話だけで上位 30 件)、外した会話で当たった件数 (1000 で打ち切り) を `omitted_count` に入れる。端末は「非公開の会話の
+   N 件は、このボットに送れないため除きました」と出す。1 つの会話に絞り、それが非公開なら要約と同じく `409 ai_private_not_allowed`。
+6. **何も無いとき**: 拾ったものが 0 件なら、モデルを呼ばずに `done` (「関係のありそうなメッセージが見つかりませんでした。」、
+   条件の名前が解決できなかったときはその条件も書く)。費用は 0、1 日の回数には数える (要約の「メッセージはありません」と同じ)。
+
+### 13.3 送る文と答え
+
+- システムプロンプト = 共通の決まり (§2.4) + 質問の決まり: 資料のメッセージだけを根拠に答える、根拠の番号を文中に `[3]`
+  (複数は `[1][4]`) で書く、資料に無い番号は書かない、資料に答えが無ければそう言う、簡潔に。ボットの性格は使わない
+  (要約と同じ)。考える量は low、`max_tokens` は 3000。
+- 送る本文: 質問と、`<sources>` の中に `[n] 場所 / 名前 (日時): 本文` の行 (場所は `#名前`、DM は「ダイレクトメッセージ」、
+  返信は行頭に「↳」)。時刻は `tz_offset_minutes` (無ければ +540)。
+- 出典 (`sources`): 送った番号ごとに `{n, message_id, channel_id, parent_id, sender_id, created_at, excerpt}` を
+  `ai_runs.sources` (jsonb) に残す。`excerpt` は本文 (メンションは名前に) の語のまわり 60 字ずつ (検索の抜粋と同じ作り)。
+  `AiRunOut.sources` は **done の run で、答えが引用した番号だけ** (番号順)。待っている間・失敗・引用が無いときは空。
+- 答えの中の外の URL はただのリンク (プレビューは取らない)。[n] は端末の中のリンク (そのメッセージを開く) にする。
+
+### 13.4 送り先・上限・プライバシー
+
+- ボット: 1 つの会話に絞ったとき (`channel_id`、または `in:#` が 1 つに解決) は §2.3 と同じ選び方 (その会話のメンバーの
+  ボット、無ければ既定)。それ以外は既定のボット (有効でキーのある最初の 1 体)。送り先は作るときに決めて残す
+  (`agent_id` / `provider` / `model`)。
+- 予算の予約・1 日の回数 (メンション・要約と合わせて数える)・worker・再試行・リース・世代は要約と同じ (§3、§8)。run の
+  `kind = "ask"`。
+- 送る直前の確かめ (§8 #3): ボットが有効か。出典に非公開の会話が含まれるなら、ボットがまだ `allow_private` か (管理者が
+  外したら、その run を取り消す)。
+- 本文は頼んだ時点で本人が読めたものだけ。結果 (答え・出典の抜粋) は本人にだけ (`ai.run_updated` と `GET /ai/runs/{id}`)。
+  送った本文 (`input`) は 90 日で消す (§4)。質問・答え・出典は履歴として残る (要約の答えと同じ)。
+
+### 13.5 API (§5 への追加。これまでの形は変えない)
+
+```
+AiAskCreate     = {q: string (1〜200 字。検索欄と同じ), tz_offset_minutes?: int, channel_id?: uuid}
+AiSourceOut     = {n: int, message_id, channel_id, parent_id: uuid|null, sender_id, created_at, excerpt: string}
+AiRunOut        += {question: string|null, sources: AiSourceOut[]}   // ask 以外は null と []
+                   kind に "ask"、channel_id は ask で 1 つの会話に絞らなかったとき null
+AiAskTargetOut  = AiSummaryTargetOut と同じ形 {available, provider, model, agent_name, reason}
+```
+
+- `POST /ai/ask {q, tz_offset_minutes?, channel_id?}` → `202 AiRunOut` (`kind = "ask"`)。`channel_id` は検索画面で
+  チャンネルに絞っているとき (検索の `channel_id` と同じ)。エラー: 空の質問 `400 validation_error`、読めない会話
+  `404 channel_not_found`、AI が使えない `409 ai_unavailable`、1 つの非公開の会話でボットに `allow_private` が無い
+  `409 ai_private_not_allowed`、上限 `429 ai_budget_exceeded` / `429 ai_daily_limit`、検索の混雑・時間切れ
+  `503 search_busy` / `503 search_timeout`。
+- `GET /ai/ask/target?q=&channel_id=` → `AiAskTargetOut`: その質問の送り先 (§13.4 の選び方)。`reason` は
+  `ai_unavailable` / `ai_private_not_allowed` / `ai_budget_exceeded`。読めない `channel_id` は `404 channel_not_found`。
+  古いサーバでは 404 (端末は「AI に聞く」を出さない)。
+- `GET /ai/runs?kind=ask` → 自分の最近の質問 20 件 (新しい順)。`GET /ai/runs/{id}` は今までどおり。
+- `ai.run_updated` は要約と同じ (running、done / failed のたび、頼んだ人の全端末)。iOS / Android (M71 まで) は
+  `kind = "summary"` 以外を捨てる (今の作りのまま)。
+
+### 13.6 画面 (Desktop / Web)
+
+- 検索画面 (「メッセージ」のタブ): 結果の一番上に「AI に聞く」の帯 (`summary_available` で、`/ai/ask/target` が読めた
+  ときだけ)。ボタンの横に送り先の 1 行 (「質問と見つかったメッセージは <ボット名> (<事業者>) に送られます」、聞けない
+  ときは理由を赤で、ボタンは無効)。押すと検索の語と、メニューで選んだ条件 (送信者・期間・種類・スレッド内・Times) を
+  修飾子 (`from:@` `after:` `before:` `has:` `is:thread` `is:times`) にした文を質問として、絞っている会話は `channel_id` で送る。
+- 結果 (帯の中): 質問、進み具合、Markdown の答え ([n] は出典のメッセージへのリンク (アプリの中で開く。外の URL は
+  ふつうのリンクでプレビューなし))、`omitted_count` の注記、出典の一覧 (送り手・会話・日時・抜粋。押すとその
+  メッセージを開く (返信ならスレッドも))、「この答えはあなたにだけ表示されます」と「Anthropic · claude-opus-5-5」。
+- 過去の質問: パネルの「履歴」に `GET /ai/runs?kind=ask` の一覧 (質問と日時)。押すとその答えを開く。
+- 同時に 1 つ。状態は戻らない。POST より先に届いた `ai.run_updated` は覚えておく。再接続のあと、終わっていない run を
+  `GET /ai/runs/{id}` で読み直す (要約と同じ)。
+
+### 13.7 順番
+
+- **M70**: この節の設計、サーバ、Desktop / Web。
+- **M71**: iOS と Android (検索画面の「AI に聞く」、結果のシート、出典から開く、履歴)。
+
+### 13.8 実装で決めたこと (M70)
+
+- **移行 0064** (`ai_runs.kind` に `ask`、`channel_id` を NULL 可に、`question` と `sources` (jsonb) を足す)。カレンダーの 0063 と
+  並行に作ったので、両方が main に入ったら 0064 の `down_revision` を 0063 にする。戻すと ask の run は消える。
+- **検索の再利用**: `app/modules/search/service.py` に `resolve` (検索の範囲の決め方を取り出したもの。検索もこれを使う) と
+  `top_hits` (関連度順の上位 N 件、除く会話で当たった件数、検索と同じ門と時間の上限。終わったら時間の上限を外す) を足した。
+  SQL は増やしていない (`repository.search_messages` / `list_filtered` / `count` / `extract_keywords`)。文脈 (親・前後) は
+  ai の repository が読む (`neighbours`、`live_message`)。
+- **語の取り出し**: `app/modules/ai/ask.py`。NFKC で幅をそろえ、英数字の中の `.` `-` `_` はつなぐ (`v0.1.18`)。語が全部
+  「質問の語」なら、それを使う (「最近どう?」)。それも無ければ 1 字の漢字。
+- **出典の番号**: 引用の形は `[3]`・`[1][4]`・`[1, 4]`・`[1、4]` を読む (サーバの `cited_numbers`、Desktop の `linkCitations`)。
+  出典に無い番号はリンクにしない。
+- **送り先の確かめ**: worker は要約と同じ道 (`_summary_problem`) で、ボットが無効なら「質問に使うボットが無効になりました」、
+  出典の会話 (今の種類で見る) に非公開があってボットに `allow_private` が無ければ失敗。管理者が `allow_private` を外すと、
+  非公開の出典を含む待っている質問だけを取り消す。
+- **Desktop / Web**: `ui/AskPanel.tsx` (帯・結果・出典・履歴)、`sync/ai.ts` の `AiHub` に質問の状態 (`ask`、要約と別に 1 つ)。
+  [n] は `<server>/m/<id>` のリンクにして MessageBody で開く (メッセージを開くボタンの形)。テスト: vitest aiAsk 9。
