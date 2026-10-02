@@ -5,6 +5,7 @@ import jp.chikuwachat.android.api.AiRunOut
 import jp.chikuwachat.android.api.AiRunUpdated
 import jp.chikuwachat.android.api.AiStatusOut
 import jp.chikuwachat.android.api.AiSummaryIn
+import jp.chikuwachat.android.api.AiSummaryTargetOut
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.ErrorMessages
@@ -20,6 +21,8 @@ interface AiApi {
     suspend fun aiStatus(): AiStatusOut
     suspend fun createSummary(body: AiSummaryIn): AiRunOut
     suspend fun aiRun(runId: String): AiRunOut
+    /** Review v0.1.18 #2: GET /ai/summaries/target (404 on an older server). */
+    suspend fun summaryTarget(channelId: String): AiSummaryTargetOut
 }
 
 /** What to summarize: `scope` "unread" / "recent" (with `days` 1 or 7) / "thread" (with `threadId`, the parent). */
@@ -62,6 +65,12 @@ class AiHub(
         private set
     var summary: AiSummaryState? = null
         private set
+    /**
+     * Review v0.1.18 #2: where a summary of each conversation would go, read when its 「要約」 choices open. Absent: not
+     * known (not read yet, an older server's 404, a failure) — the choices then show as before, with no line.
+     */
+    var targets: Map<String, AiSummaryTargetOut> = emptyMap()
+        private set
     /** Runs seen in events, so one that arrives before its POST answer is not lost (the latest few only). */
     private val seen = LinkedHashMap<String, AiRunOut>()
     private var ticket = 0
@@ -96,6 +105,25 @@ class AiHub(
         }
         changed()
     }
+
+    // --- the summary target --------------------------------------------------------------------------
+
+    /** GET /ai/summaries/target when the 「要約」 choices open. Any failure (an older server's 404 too) forgets it. */
+    suspend fun loadTarget(channelId: String) {
+        val api = api ?: return
+        val target = try {
+            api.summaryTarget(channelId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!(e is ApiException.Api && e.status == 404)) Log.w("AiHub", "could not read the summary target", e)
+            null
+        }
+        targets = if (target != null) targets + (channelId to target) else targets - channelId
+        changed()
+    }
+
+    fun target(channelId: String): AiSummaryTargetOut? = targets[channelId]
 
     // --- the summary sheet ---------------------------------------------------------------------------
 
@@ -185,6 +213,7 @@ class AiHub(
     fun stop() {
         status = null
         summary = null
+        targets = emptyMap()
         seen.clear()
         ticket += 1
         changed()

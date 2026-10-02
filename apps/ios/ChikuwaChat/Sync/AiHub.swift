@@ -7,6 +7,8 @@ protocol AiApi: AnyObject {
     func aiStatus() async throws -> AiStatusOut
     func createSummary(_ request: AiSummaryRequest) async throws -> AiRunOut
     func aiRun(id: String) async throws -> AiRunOut
+    /// Review v0.1.18 #2: GET /ai/summaries/target (404 on an older server).
+    func summaryTarget(channelId: String) async throws -> AiSummaryTargetOut
 }
 
 /// The summary sheet's one request and what came of it.
@@ -48,6 +50,9 @@ final class AiHub {
     /// nil until the server answered: every AI entry point stays hidden until then (and for good after a 404).
     private(set) var status: AiStatusOut?
     private(set) var summary: AiSummarySession?
+    /// Review v0.1.18 #2: where a summary of each conversation would go, read where its 「要約」 choices show. Absent:
+    /// not known (not read yet, an older server's 404, a failure) — the choices then show as before, with no line.
+    private(set) var targets: [String: AiSummaryTargetOut] = [:]
     /// Runs heard of (events) before the POST that made them answered.
     @ObservationIgnored private var early: [String: AiRunOut] = [:]
     @ObservationIgnored private let api: AiApi?
@@ -91,6 +96,22 @@ final class AiHub {
         await refreshStatus()
     }
 
+    // MARK: the summary target
+
+    /// GET /ai/summaries/target for a conversation whose 「要約」 choices are on screen. Any failure (a 404 on a server
+    /// without the route included) forgets what was known, so the choices fall back to today's behaviour.
+    func loadTarget(_ channelId: String) async {
+        guard let api else { return }
+        do {
+            targets[channelId] = try await api.summaryTarget(channelId: channelId)
+        } catch {
+            if case ApiError.api(404, _, _) = error {} else { print("could not read the summary target: \(error)") }
+            targets[channelId] = nil
+        }
+    }
+
+    func target(_ channelId: String) -> AiSummaryTargetOut? { targets[channelId] }
+
     // MARK: the summary sheet
 
     /// 「要約」: the sheet shows `starting` at once, then the run.
@@ -109,6 +130,7 @@ final class AiHub {
             guard summary?.request.id == request.id else { return }
             summary?.failure = AiRules.errorText(error)
             if AiRules.refreshesStatus(error) { await refreshStatus() } // the menu then hides what cannot work
+            if case ApiError.api(_, let code, _) = error, code.hasPrefix("ai_") { await loadTarget(request.channelId) }
         }
     }
 
@@ -179,6 +201,38 @@ enum AiRules {
     static func refreshesStatus(_ error: Error) -> Bool {
         guard case ApiError.api(_, let code, _) = error else { return false }
         return code == "ai_unavailable" || code == "ai_budget_exceeded"
+    }
+
+    /// "openai" → OpenAI, "anthropic" → Anthropic (another name as it is).
+    static func providerLabel(_ provider: String) -> String {
+        switch provider {
+        case "openai": return "OpenAI"
+        case "anthropic": return "Anthropic"
+        default: return provider
+        }
+    }
+
+    /// Review v0.1.18 #2: the 「要約」 choices are disabled while the server says a summary cannot be asked for (an
+    /// unknown target — an older server — leaves them as before).
+    static func choicesDisabled(_ target: AiSummaryTargetOut?) -> Bool { target.map { !$0.available } ?? false }
+
+    /// Review v0.1.18 #2: the line under the 「要約」 choices — 「要約は <bot> (<provider>) に送られます」, or the reason
+    /// it cannot be asked for now (the shared error texts). nil: nothing to say.
+    static func targetLine(_ target: AiSummaryTargetOut) -> String? {
+        if !target.available {
+            return target.reason.flatMap { ErrorMessages.byCode[$0] } ?? "今は要約できません"
+        }
+        guard let provider = target.provider, !provider.isEmpty else { return nil }
+        if let name = target.agentName, !name.isEmpty { return "要約は \(name) (\(providerLabel(provider))) に送られます" }
+        return "要約は \(providerLabel(provider)) に送られます"
+    }
+
+    /// The summary sheet's caption: the provider and model the run actually used, e.g. 「OpenAI · gpt-6.1-sol」.
+    static func runCaption(_ run: AiRunOut) -> String? {
+        let model = run.model.flatMap { $0.isEmpty ? nil : $0 }
+        let provider = run.provider.flatMap { $0.isEmpty ? nil : $0 } ?? model.map { $0.hasPrefix("gpt-") ? "openai" : "anthropic" }
+        guard let provider else { return nil }
+        return model.map { "\(providerLabel(provider)) · \($0)" } ?? providerLabel(provider)
     }
 
     /// A run that failed on the server: its reason when it gave one.

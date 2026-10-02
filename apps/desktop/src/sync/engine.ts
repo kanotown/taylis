@@ -100,6 +100,7 @@ export interface SyncApi {
   aiStatus?: AiApi["aiStatus"];
   createAiSummary?: AiApi["createAiSummary"];
   getAiRun?: AiApi["getAiRun"];
+  aiSummaryTarget?: AiApi["aiSummaryTarget"];
 }
 
 export interface WsLike {
@@ -309,7 +310,7 @@ export class SyncEngine {
     deps.store.onMyVotes = (message) => this.timesFeed.applyMyVotes(message);
     this.ai = new AiHub({
       api: api.aiStatus && api.createAiSummary && api.getAiRun
-        ? { aiStatus: () => api.aiStatus!(), createAiSummary: (body) => api.createAiSummary!(body), getAiRun: (id) => api.getAiRun!(id) }
+        ? { aiStatus: () => api.aiStatus!(), createAiSummary: (body) => api.createAiSummary!(body), getAiRun: (id) => api.getAiRun!(id), aiSummaryTarget: api.aiSummaryTarget ? (channelId) => api.aiSummaryTarget!(channelId) : undefined }
         : null,
       setStatus: (status) => deps.store.setAiStatus(status),
     });

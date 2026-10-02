@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -702,10 +703,15 @@ fun MainScreen(controller: AppController) {
                                     }
                                     BarMenuItem.SUMMARIZE_THREAD -> selectedChannel?.let { open ->
                                         threadId?.let { parentId ->
+                                            // Review v0.1.18 #2: the menu's content composes as it opens: read where the summary would go.
+                                            LaunchedEffect(open.id) { controller.loadSummaryTarget(open.id) }
+                                            val target = controller.aiSummaryTargets[open.id]
                                             DropdownMenuItem(
                                                 text = { Text("このスレッドを要約") }, leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                                                enabled = !AiTexts.choicesDisabled(target),
                                                 onClick = { menuOpen = false; controller.requestSummary(AiTexts.threadRequest(open.id, parentId)) },
                                             )
+                                            AiSummaryTargetLine(target, Modifier.widthIn(max = 280.dp).padding(horizontal = 12.dp, vertical = 4.dp))
                                         }
                                     }
                                     BarMenuItem.ADD_MEMBER -> DropdownMenuItem(

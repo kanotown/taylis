@@ -20,6 +20,7 @@ import jp.chikuwachat.android.api.AiRunOut
 import jp.chikuwachat.android.api.AiRunUpdated
 import jp.chikuwachat.android.api.AiStatusOut
 import jp.chikuwachat.android.api.AiSummaryIn
+import jp.chikuwachat.android.api.AiSummaryTargetOut
 import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.ui.previewExcerpt
 import jp.chikuwachat.android.sync.ChannelLinksApi
@@ -156,6 +157,11 @@ class FakeServer {
             )
             aiRuns[run.id] = userId to run
             return run
+        }
+
+        override suspend fun summaryTarget(channelId: String): AiSummaryTargetOut {
+            maybeFail()
+            return this@FakeServer.aiSummaryTarget ?: throw ApiException.Api(404, "http_404", "no such route before review v0.1.18")
         }
 
         override suspend fun aiRun(runId: String): AiRunOut {
@@ -936,6 +942,8 @@ class FakeServer {
 
     /** M66: GET /ai/status's answer; null is a server before M65 (every /ai route answers 404). */
     var aiStatus: AiStatusOut? = null
+    /** GET /ai/summaries/target's answer; null: a server without the route (404). */
+    var aiSummaryTarget: AiSummaryTargetOut? = null
     /** Run id → (who asked, the run as it is now). */
     val aiRuns = LinkedHashMap<String, Pair<String, AiRunOut>>()
     /** Refusals for the next POST /ai/summaries calls, in order (after the request is recorded). */

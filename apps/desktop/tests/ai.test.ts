@@ -1,7 +1,7 @@
 /** M65 (docs/AI.md §5): the AI rules (pure) and the hub on a real SyncEngine against the fake server. */
 import { describe, expect, it } from "vitest";
 
-import { describeAiError, type AiRunOut } from "../src/api/ai";
+import { aiRunCaption, describeAiError, type AiRunOut, summaryTargetLine } from "../src/api/ai";
 import { ERROR_MESSAGES } from "../src/api/errorMessages";
 import { ApiError, NetworkError } from "../src/api/errors";
 import { laterRun, summaryBody, summaryTitle } from "../src/sync/ai";
@@ -229,5 +229,37 @@ describe("the hub on the engine", () => {
     await pending;
     expect(engine.ai.summary).toBeNull();
     expect(server.lastAiRun()?.thread_id).toBe(parent.id);
+  });
+});
+
+describe("review v0.1.18 #2: the summary target and the run's caption", () => {
+  const target = (patch: Partial<Parameters<typeof summaryTargetLine>[0]> = {}) => ({ available: true, provider: "anthropic" as const, model: "claude-opus-5-5", agent_name: "ちくわ", reason: null, ...patch });
+
+  it("the line names the bot and the provider, or the reason in Japanese", () => {
+    expect(summaryTargetLine(target())).toBe("要約は ちくわ (Anthropic) に送られます");
+    expect(summaryTargetLine(target({ provider: "openai", model: "gpt-6-luna", agent_name: "ルナ" }))).toBe("要約は ルナ (OpenAI) に送られます");
+    expect(summaryTargetLine(target({ agent_name: null }))).toBe("要約は Anthropic に送られます");
+    expect(summaryTargetLine(target({ provider: null }))).toBeNull();
+    for (const reason of ["ai_unavailable", "ai_budget_exceeded", "ai_private_not_allowed"]) {
+      expect(summaryTargetLine(target({ available: false, reason }))).toBe(ERROR_MESSAGES[reason]);
+    }
+    expect(summaryTargetLine(target({ available: false, reason: "something_new" }))).toBe("今は要約できません");
+  });
+
+  it("the caption is the run's provider and model (none from an older server)", () => {
+    expect(aiRunCaption(run({ provider: "openai", model: "gpt-6.1-sol" }))).toBe("OpenAI · gpt-6.1-sol");
+    expect(aiRunCaption(run({ provider: "anthropic", model: "claude-haiku-4-5" }))).toBe("Anthropic · claude-haiku-4-5");
+    expect(aiRunCaption(run())).toBeNull();
+  });
+
+  it("the hub reads the target; a 404 without a code (an older server) gives null", async () => {
+    const server = new FakeServer();
+    const alice = server.addUser("alice");
+    const channelId = server.createChannel("lab", alice.id).id;
+    server.createAiAgent({ username: "ai-sol", name: "ソル", character: "", model: "gpt-6.1-sol" });
+    const engine = new SyncEngine({ api: server.apiFor(alice.id), connect: server.connectorFor(alice.id), store: new Store(), getAccessToken: () => "t", sleep: async () => {}, random: () => 0.5, isActive: () => true }, { reconnectMinMs: 0 });
+    expect(await engine.ai.summaryTarget(channelId)).toEqual({ available: true, provider: "openai", model: "gpt-6.1-sol", agent_name: "ソル", reason: null });
+    server.aiSummaryTargetRoute = false;
+    expect(await engine.ai.summaryTarget(channelId)).toBeNull();
   });
 });

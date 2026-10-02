@@ -172,11 +172,14 @@ struct ThreadView: View {
             if controller.canSummarize(channelId) {  // M66 (docs/AI.md §6)
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        let target = controller.aiHub?.target(channelId)
                         Button("このスレッドを要約", systemImage: "sparkles") {
                             let request = AiSummaryRequest(channelId: channelId, scope: .thread(parentId: parentId))
                             aiSummary = request
                             controller.summarize(request)
                         }
+                        .disabled(AiRules.choicesDisabled(target))
+                        AiSummaryTargetLine(target: target)
                     } label: {
                         Image(systemName: "ellipsis")
                     }
@@ -185,6 +188,7 @@ struct ThreadView: View {
             }
         }
         .aiSummarySheet(controller, request: $aiSummary)
+        .loadsSummaryTarget(controller, channelId: channelId)
         .task(id: "\(controller.engine?.status.rawValue ?? ""):\(controller.engine?.threadComplete(parentId) ?? false):\(loadAttempt)") {
             guard let engine = controller.engine else { return }
             guard engine.status == .online else { fetchedOnline = false; return }

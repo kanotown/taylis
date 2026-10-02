@@ -773,6 +773,9 @@ class ApiClient(
 
     override suspend fun aiRun(runId: String): AiRunOut = request("GET", "/api/v1/ai/runs/$runId")
 
+    override suspend fun summaryTarget(channelId: String): AiSummaryTargetOut =
+        request("GET", "/api/v1/ai/summaries/target?channel_id=$channelId")
+
     // --- acknowledgements (M15e) ----------------------------------------------------------------
 
     suspend fun acknowledge(messageId: String, present: Boolean): MessageOut =

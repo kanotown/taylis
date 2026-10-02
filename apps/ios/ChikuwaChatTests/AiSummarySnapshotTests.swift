@@ -64,7 +64,8 @@ final class AiSummarySnapshotTests: XCTestCase {
 
     func testSheet() async throws {
         let request = AiSummaryRequest(channelId: channelId, scope: .recent(days: 7))
-        let done = AiRunOut(id: "r1", status: "done", channelId: channelId, scope: "recent", days: 7, output: output, omittedCount: 42)
+        let done = AiRunOut(id: "r1", status: "done", channelId: channelId, scope: "recent", days: 7, output: output, omittedCount: 42,
+                            provider: "openai", model: "gpt-6.1-sol")
         for style in [UIUserInterfaceStyle.light, .dark] {
             let suffix = style == .dark ? "dark" : "light"
             let doneHub = await hub(done, request: request)

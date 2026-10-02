@@ -6,7 +6,7 @@
 import { ApiError } from "../src/api/errors";
 import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { LastMessageOut } from "../src/api/types";
-import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiUsageOut } from "../src/api/ai";
+import { aiProviderOf, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiProviderOut, type AiRunOut, type AiStatusOut, type AiSummaryCreate, type AiSummaryTargetOut, type AiUsageOut } from "../src/api/ai";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
 import { lastMessageOf } from "../src/ui/dmPreview";
@@ -1714,6 +1714,9 @@ export class FakeServer {
   aiBudgetLeft = true;
   /** The next POST /ai/summaries is refused with this (429 ai_daily_limit …). */
   aiRefuseNext: ApiError | null = null;
+  /** GET /ai/summaries/target: false is a server before review v0.1.18 (404 without a code); an object overrides the answer. */
+  aiSummaryTargetRoute = true;
+  aiSummaryTargetAnswer: AiSummaryTargetOut | null = null;
   readonly aiAgents: AiAgentOut[] = [];
   readonly aiRuns = new Map<string, { run: AiRunOut; userId: string }>();
   aiUsage: AiUsageOut = { month: "2026-10", budget_usd: 30, total_cost_usd: 0, total_runs: 0, by_agent: [], by_user: [] };
@@ -1781,6 +1784,25 @@ export class FakeServer {
     return [...this.aiRuns.values()].pop()?.run;
   }
 
+  /** §2.3: the conversation's first enabled bot, else the first enabled one. */
+  private summaryAgent(channelId: string): AiAgentOut | undefined {
+    const enabled = this.aiAgents.filter((a) => a.enabled);
+    const members = this.channels.get(channelId)?.members;
+    return enabled.find((a) => members?.has(a.bot_user_id)) ?? enabled[0];
+  }
+
+  private summaryTarget(userId: string, channelId: string): AiSummaryTargetOut {
+    this.aiGate();
+    if (!this.aiSummaryTargetRoute) throw new ApiError(404, "http_404", "Not Found");
+    const record = this.channels.get(channelId);
+    if (!record || !record.members.has(userId)) throw new ApiError(404, "channel_not_found", "not found");
+    if (this.aiSummaryTargetAnswer) return { ...this.aiSummaryTargetAnswer };
+    const agent = this.aiKey ? this.summaryAgent(channelId) : undefined;
+    if (!agent) return { available: false, provider: null, model: null, agent_name: null, reason: "ai_unavailable" };
+    const sent = { provider: aiProviderOf(agent.model), model: agent.model, agent_name: agent.name };
+    return this.aiBudgetLeft ? { available: true, ...sent, reason: null } : { available: false, ...sent, reason: "ai_budget_exceeded" };
+  }
+
   private createAiSummary(userId: string, body: AiSummaryCreate): AiRunOut {
     this.aiGate();
     const record = this.channels.get(body.channel_id);
@@ -1809,6 +1831,8 @@ export class FakeServer {
       omitted_count: 0,
       created_at: now(),
       finished_at: null,
+      provider: aiProviderOf(this.summaryAgent(body.channel_id)!.model),
+      model: this.summaryAgent(body.channel_id)!.model,
     };
     this.aiRuns.set(run.id, { run, userId });
     return { ...run };
@@ -1822,6 +1846,7 @@ export class FakeServer {
         return this.aiStatusOut();
       },
       createAiSummary: async (body) => this.createAiSummary(userId, body),
+      aiSummaryTarget: async (channelId) => this.summaryTarget(userId, channelId),
       getAiRun: async (runId) => {
         this.aiGate();
         const entry = this.aiRuns.get(runId);
@@ -1883,6 +1908,7 @@ export class FakeServer {
 export interface FakeAiApi {
   aiStatus(): Promise<AiStatusOut>;
   createAiSummary(body: AiSummaryCreate): Promise<AiRunOut>;
+  aiSummaryTarget(channelId: string): Promise<AiSummaryTargetOut>;
   getAiRun(runId: string): Promise<AiRunOut>;
   aiRuns(): Promise<AiRunOut[]>;
   adminAiAgents(): Promise<AiAgentOut[]>;

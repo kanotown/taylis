@@ -7,13 +7,15 @@
  *   running / done / failed. Events can be lost, so after reconnecting an unfinished run is read again (GET /ai/runs/{id}).
  *   A run never goes back (an older answer that arrives late does not replace a newer state).
  */
-import type { AiRunOut, AiRunUpdated, AiStatusOut, AiSummaryCreate, AiSummaryScope } from "../api/ai";
+import type { AiRunOut, AiRunUpdated, AiStatusOut, AiSummaryCreate, AiSummaryScope, AiSummaryTargetOut } from "../api/ai";
 import { ApiError } from "../api/errors";
 
 export interface AiApi {
   aiStatus(): Promise<AiStatusOut>;
   createAiSummary(body: AiSummaryCreate): Promise<AiRunOut>;
   getAiRun(runId: string): Promise<AiRunOut>;
+  /** Review v0.1.18 #2 (GET /ai/summaries/target). Optional: older fakes. */
+  aiSummaryTarget?(channelId: string): Promise<AiSummaryTargetOut>;
 }
 
 /** What a summary is of (the menu's choice). */
@@ -112,6 +114,22 @@ export class AiHub {
       // 404: a server without AI. Any other refusal hides it too; a network or 5xx failure keeps what was known.
       if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 429) this.deps.setStatus(null);
       else console.warn("could not load the AI status", err);
+    }
+  }
+
+  /**
+   * Where a summary of the conversation would go (review v0.1.18 #2), read when the 「要約」 choices open. null when it
+   * cannot be told — a server without the route (404), or any failure: the choices then stay as before, with no line.
+   */
+  async summaryTarget(channelId: string): Promise<AiSummaryTargetOut | null> {
+    const api = this.deps.api;
+    if (!api?.aiSummaryTarget) return null;
+    try {
+      const target = await api.aiSummaryTarget(channelId);
+      return target && typeof target.available === "boolean" ? target : null;
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 404)) console.warn("could not read the summary target", err);
+      return null;
     }
   }
 

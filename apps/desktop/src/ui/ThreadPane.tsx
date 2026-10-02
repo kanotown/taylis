@@ -10,8 +10,8 @@ import { Composer } from "./Composer";
 import { continuesGroup, rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
 import { PaneBackButton, PaneCloseButton } from "./compact";
-import { Button, Menu, MenuContent, MenuItem, MenuTrigger } from "./primitives";
-import { startSummary, summaryAvailable } from "./ai";
+import { Button, Menu, MenuContent, MenuTrigger } from "./primitives";
+import { SummaryChoices, summaryAvailable } from "./ai";
 import { useListAnchor } from "./scrollAnchor";
 import { MessageRow, screenRows } from "./Timeline";
 import { TypingIndicator } from "./Typing";
@@ -241,7 +241,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
               </button>
             </MenuTrigger>
             <MenuContent align="end">
-              <MenuItem onSelect={() => startSummary(controller, { channelId: channel.id, scope: "thread", threadId: parentId })}>このスレッドを要約</MenuItem>
+              <SummaryChoices controller={controller} channelId={channel.id} choices={[{ label: "このスレッドを要約", target: { channelId: channel.id, scope: "thread", threadId: parentId } }]} />
             </MenuContent>
           </Menu>
         )}

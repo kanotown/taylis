@@ -269,6 +269,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
 - **入口**: チャンネルの ⋯ に「未読を要約 / 直近 1 日を要約 / 直近 7 日を要約」。広い画面の DM は ⋯ が無かったので、要約が
   使えるときだけ ⋯ を出す。スレッドの見出しに ⋯ を新設 (「このスレッドを要約」)。どちらも `summary_available` のときだけ。
 - **注意書き (§4)**: 広い画面はメンバーのダイアログ、スマホ幅はチャンネル情報のメンバー欄の上。
+- **送り先 (レビュー v0.1.18 #2)**: 「要約」の選択肢 (チャンネルの ⋯・スレッドの ⋯) を開くと `GET /ai/summaries/target` を読み、選択肢の下に「要約は <ボット名> (<OpenAI|Anthropic>) に送られます」。`available = false` なら選択肢を無効にして理由 (共有の表の文言) を出す。404・失敗はこれまでどおり (行なし)。結果のダイアログには run の `provider` / `model` を小さく (「OpenAI · gpt-6.1-sol」)。
 
 ## 10. 実装で決めたこと (M66 iOS)
 
@@ -286,6 +287,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
   ほかは共通の表。`ai_unavailable` と `ai_budget_exceeded` のあとは状態を読み直し、メニューから「要約」が消える。
   失敗した run は「要約できませんでした: (サーバの error)」。「もう一度」は新しい POST。
 - 結果は MessageBodyView で描き、選択とコピーができる。`omitted_count` > 0 なら「古い N 件は省きました」。
+- 送り先 (レビュー v0.1.18 #2): 「要約」が出る画面 (会話・スレッド・チャンネルの詳細) を開いたとき (と再接続のたび) に `GET /ai/summaries/target` を読み (`AiHub.targets`)、選択肢の下に「要約は <ボット名> (<OpenAI|Anthropic>) に送られます」、`available = false` なら選択肢を無効にして理由 (共有の表)。404・失敗は行なしで今までどおり。要約が `ai_*` で断られたら読み直す。シートの下に run の「OpenAI · gpt-6.1-sol」。build 68。
 
 ## 11. 実装で決めたこと (M66 Android)
 
@@ -303,6 +305,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
 - エラーの文言は共有の表 (`ErrorMessages`) を先に引き、AI のコードが無いうちは `AiHub.texts` の日本語を使う。`409 ai_unavailable`
   と `429 ai_budget_exceeded` のあとは状態を読み直す (入口が消える)。失敗したシートには「もう一度」を出す。
 - チャンネルの詳細の §4 の注意書きは、読み込んだメンバー一覧に AI のボットがいるときに出す (複数なら名前を「、」でつなぐ)。
+- 送り先 (レビュー v0.1.18 #2): 「要約」の選択のシートとスレッドの ⋮ が開くときに `GET /ai/summaries/target` を読み、選択肢の下に「要約は <ボット名> (<OpenAI|Anthropic>) に送られます」、`available = false` なら選択肢を無効にして理由 (共有の表)。404・失敗は行なしで今までどおり。結果のシートに run の「OpenAI · gpt-6.1-sol」。
 
 ## 12. OpenAI (2026-10-02)
 

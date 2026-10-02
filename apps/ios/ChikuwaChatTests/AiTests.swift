@@ -12,6 +12,9 @@ final class FakeAiApi: AiApi {
     private(set) var created: [AiSummaryRequest] = []
     private(set) var statusReads = 0
     private(set) var runReads: [String] = []
+    /// GET /ai/summaries/target (default: a server without the route).
+    var target: Result<AiSummaryTargetOut, Error> = .failure(ApiError.api(status: 404, code: "http_404", message: ""))
+    private(set) var targetReads: [String] = []
 
     func aiStatus() async throws -> AiStatusOut {
         statusReads += 1
@@ -22,6 +25,11 @@ final class FakeAiApi: AiApi {
         created.append(request)
         beforeCreateAnswers?()
         return try createResult.get()
+    }
+
+    func summaryTarget(channelId: String) async throws -> AiSummaryTargetOut {
+        targetReads.append(channelId)
+        return try target.get()
     }
 
     func aiRun(id: String) async throws -> AiRunOut {
@@ -82,6 +90,22 @@ final class AiDecodingTests: XCTestCase {
         XCTAssertFalse(bare.isFinished)
     }
 
+    func testRunProviderAndModelAreLenient() throws {
+        let run = try decode(AiRunOut.self, #"{"id": "r1", "status": "done", "provider": "openai", "model": "gpt-6.1-sol"}"#)
+        XCTAssertEqual(run.provider, "openai")
+        XCTAssertEqual(run.model, "gpt-6.1-sol")
+        let old = try decode(AiRunOut.self, #"{"id": "r2", "provider": null}"#)
+        XCTAssertNil(old.provider)
+        XCTAssertNil(old.model)
+    }
+
+    func testSummaryTargetDecodesLeniently() throws {
+        let target = try decode(AiSummaryTargetOut.self, #"{"available": false, "provider": "anthropic", "model": "claude-opus-5-5", "agent_name": "ちくわ", "reason": "ai_private_not_allowed", "extra": 1}"#)
+        XCTAssertEqual(target, AiSummaryTargetOut(available: false, provider: "anthropic", model: "claude-opus-5-5", agentName: "ちくわ",
+                                                  reason: "ai_private_not_allowed"))
+        XCTAssertEqual(try decode(AiSummaryTargetOut.self, "{}"), AiSummaryTargetOut(available: true))
+    }
+
     func testRequestBodies() {
         let unread = AiSummaryRequest(channelId: "c1", scope: .unread, id: "x", tzOffsetMinutes: 540)
         XCTAssertEqual(unread.json, .object(["channel_id": .string("c1"), "scope": .string("unread"), "tz_offset_minutes": .number(540)]))
@@ -127,6 +151,34 @@ final class AiRulesTests: XCTestCase {
                        "AI (そる) が参加しています。メンションしたときと要約のときに、会話の一部が OpenAI の API に送られます")
         XCTAssertTrue(AiRules.notice([AiAgentPublic(id: "a", botUserId: "b", name: "ちくわ", model: "claude-opus-5-5"),
                                       AiAgentPublic(id: "c", botUserId: "d", name: "そる", model: "gpt-6.1-sol")])!.contains("Anthropic と OpenAI の API"))
+    }
+
+    func testSummaryTargetLine() {
+        XCTAssertEqual(AiRules.targetLine(AiSummaryTargetOut(available: true, provider: "anthropic", model: "claude-opus-5-5", agentName: "ちくわ")),
+                       "要約は ちくわ (Anthropic) に送られます")
+        XCTAssertEqual(AiRules.targetLine(AiSummaryTargetOut(available: true, provider: "openai", model: "gpt-6.1-sol", agentName: "そる")),
+                       "要約は そる (OpenAI) に送られます")
+        XCTAssertEqual(AiRules.targetLine(AiSummaryTargetOut(available: true, provider: "openai")), "要約は OpenAI に送られます")
+        XCTAssertNil(AiRules.targetLine(AiSummaryTargetOut(available: true)))
+        XCTAssertFalse(AiRules.choicesDisabled(AiSummaryTargetOut(available: true, provider: "openai")))
+        XCTAssertFalse(AiRules.choicesDisabled(nil))  // an older server: as before
+    }
+
+    func testUnavailableTargetsDisableTheChoicesWithTheReason() {
+        for reason in ["ai_unavailable", "ai_budget_exceeded", "ai_private_not_allowed"] {
+            let target = AiSummaryTargetOut(available: false, provider: reason == "ai_unavailable" ? nil : "anthropic", reason: reason)
+            XCTAssertTrue(AiRules.choicesDisabled(target), reason)
+            XCTAssertEqual(AiRules.targetLine(target), ErrorMessages.byCode[reason], reason)
+            XCTAssertNotNil(ErrorMessages.byCode[reason], reason)
+        }
+        XCTAssertEqual(AiRules.targetLine(AiSummaryTargetOut(available: false, reason: "new_reason")), "今は要約できません")
+    }
+
+    func testRunCaption() {
+        XCTAssertEqual(AiRules.runCaption(AiRunOut(id: "r", status: "done", channelId: "c", provider: "openai", model: "gpt-6.1-sol")), "OpenAI · gpt-6.1-sol")
+        XCTAssertEqual(AiRules.runCaption(AiRunOut(id: "r", status: "done", channelId: "c", provider: "anthropic", model: "claude-haiku-4-5")),
+                       "Anthropic · claude-haiku-4-5")
+        XCTAssertNil(AiRules.runCaption(AiRunOut(id: "r", status: "done", channelId: "c")))  // an older server
     }
 
     func testMentionCandidatesMarkAiBots() {
@@ -259,6 +311,29 @@ final class AiHubTests: XCTestCase {
         await hub.resync()
         XCTAssertEqual(api.runReads, ["r1"])
         XCTAssertEqual(api.statusReads, 3)
+    }
+
+    func testSummaryTargetIsReadAndFallsBackOnAnOlderServer() async {
+        let api = FakeAiApi()
+        let hub = AiHub(api: api)
+        await hub.loadTarget("c1")
+        XCTAssertNil(hub.target("c1"))  // 404: no line, the choices as before
+        let openai = AiSummaryTargetOut(available: true, provider: "openai", model: "gpt-6.1-sol", agentName: "そる")
+        api.target = .success(openai)
+        await hub.loadTarget("c1")
+        XCTAssertEqual(hub.target("c1"), openai)
+        XCTAssertNil(hub.target("c2"))
+        // A failure forgets it (not a stale line).
+        api.target = .failure(ApiError.network(URLError(.timedOut)))
+        await hub.loadTarget("c1")
+        XCTAssertNil(hub.target("c1"))
+        // A refused summary reads the target again (the reason then shows under the choices).
+        api.target = .success(AiSummaryTargetOut(available: false, provider: "anthropic", reason: "ai_private_not_allowed"))
+        api.createResult = .failure(ApiError.api(status: 409, code: "ai_private_not_allowed", message: ""))
+        await hub.startSummary(AiSummaryRequest(channelId: "c1", scope: .unread))
+        XCTAssertEqual(api.targetReads, ["c1", "c1", "c1", "c1"])
+        XCTAssertTrue(AiRules.choicesDisabled(hub.target("c1")))
+        XCTAssertEqual(hub.summary?.phase, .failed(ErrorMessages.byCode["ai_private_not_allowed"]!))
     }
 
     func testMentionRunsAndUnreadablePayloadsAreIgnored() async {

@@ -57,6 +57,22 @@ export interface AiRunOut {
   omitted_count: number;
   created_at: string;
   finished_at: string | null;
+  /** Review v0.1.18 #2: where the run is sent (fixed when it was asked for). Absent on an older server. */
+  provider?: AiProviderName | null;
+  model?: string | null;
+}
+
+/**
+ * GET /ai/summaries/target?channel_id= (review v0.1.18 #2, docs/AI.md §5): where a summary of this conversation would
+ * go, shown before asking. `reason` (ai_unavailable / ai_private_not_allowed / ai_budget_exceeded) when it cannot be
+ * asked now; provider / model / agent_name are given whenever a bot was chosen.
+ */
+export interface AiSummaryTargetOut {
+  available: boolean;
+  provider: AiProviderName | null;
+  model: string | null;
+  agent_name: string | null;
+  reason: string | null;
 }
 
 export interface AiUsageByAgent {
@@ -163,6 +179,24 @@ export const AI_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   ai_private_not_allowed: "このボットは非公開チャンネルと DM には参加できません (管理画面の「非公開チャンネルと DM を許す」)",
   ai_run_not_found: "要約が見つかりません",
 };
+
+/** The line under the 「要約」 choices: where the summary goes, or why it cannot be asked for (null: nothing to say). */
+export function summaryTargetLine(target: AiSummaryTargetOut): string | null {
+  if (!target.available) {
+    const reason = target.reason ?? "";
+    return ERROR_MESSAGES[reason] ?? AI_ERROR_MESSAGES[reason] ?? "今は要約できません";
+  }
+  if (!target.provider) return null;
+  const provider = aiProviderLabel(target.provider);
+  return target.agent_name ? `要約は ${target.agent_name} (${provider}) に送られます` : `要約は ${provider} に送られます`;
+}
+
+/** The caption of a run's result: the provider and model it actually used, e.g. 「OpenAI · gpt-6.1-sol」 (null: unknown). */
+export function aiRunCaption(run: Pick<AiRunOut, "provider" | "model">): string | null {
+  const provider = run.provider ?? (run.model ? aiProviderOf(run.model) : null);
+  if (!provider) return null;
+  return run.model ? `${aiProviderLabel(provider)} · ${run.model}` : aiProviderLabel(provider);
+}
 
 /** What the reader sees for an error of the AI routes: the AI texts above, else the usual ones (describeError). */
 export function describeAiError(err: unknown): string {
