@@ -14,6 +14,7 @@ import type { MessageOut } from "../src/api/types";
 import { AppController } from "../src/state/app";
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
+import { clearScrollMemories } from "../src/ui/scrollMemory";
 import { ThreadPane } from "../src/ui/ThreadPane";
 import { Timeline } from "../src/ui/Timeline";
 import { rowMenuLabels, tick } from "./rowMenu";
@@ -27,6 +28,7 @@ const scrolled: Array<{ seq: number | null; block: string | undefined; text: str
 const rowSeqs = (el: Element): number[] => [...el.querySelectorAll<HTMLElement>("article[data-seq]")].map((row) => Number(row.dataset["seq"]));
 
 beforeEach(() => {
+  clearScrollMemories();
   layout.first = 1;
   layout.rows = 15;
   layout.shift = 0;
@@ -545,6 +547,8 @@ describe("new rows never carry unread rows above the screen unseen (§10.1)", { 
     await act(async () => {
       await w.engine.send(w.channelId, "refused again"); // e.g. forwarded there from another conversation
     });
+    // M75 would bring the conversation back where it was left (101): this is about landing as on opening.
+    clearScrollMemories();
     await act(async () => {
       shown.show(w.channelId);
       await w.engine.openChannel(w.channelId);

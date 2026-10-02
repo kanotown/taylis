@@ -14,14 +14,29 @@ import { AppController } from "../src/state/app";
 import { COMPACT_QUERY } from "../src/ui/compact";
 import { historyStep } from "../src/ui/historyShortcuts";
 import { MainScreen } from "../src/ui/MainScreen";
+import { clearScrollMemories } from "../src/ui/scrollMemory";
 import { world, type World } from "./unreadWorld";
 
 let compact = false;
 let platform = "MacIntel";
 const env = vi.hoisted(() => ({ web: true }));
 vi.mock("../src/platform/env", async (original) => ({ ...(await original<typeof import("../src/platform/env")>()), isWeb: () => env.web }));
+// M75: which centre views were asked to come back where they were scrolled to (the real hook underneath).
+const viewRestores = vi.hoisted(() => [] as Array<{ key: string; restore: boolean }>);
+vi.mock("../src/ui/viewScrollMemory", async (original) => {
+  const real = await original<typeof import("../src/ui/viewScrollMemory")>();
+  const useViewScrollMemory: typeof real.useViewScrollMemory = (root, memory, key, restore) =>
+    real.useViewScrollMemory(root, memory, key, () => {
+      const asked = restore();
+      if (key) viewRestores.push({ key, restore: asked });
+      return asked;
+    });
+  return { ...real, useViewScrollMemory };
+});
 
 beforeEach(() => {
+  clearScrollMemories();
+  viewRestores.length = 0;
   compact = false;
   platform = "MacIntel";
   env.web = true;
@@ -319,6 +334,32 @@ it("a message revealed in a conversation is that conversation's entry: back land
   await settle(w);
   expect(title()).toBe("d");
   expect(controller.messageFocus).toBeNull();
+  w.engine.stop();
+});
+
+it("M75: back / forward to a centre view asks it back where it was scrolled to; the sidebar opens it at its top", async () => {
+  const { w } = await setup();
+  fireEvent.click(sidebar().getByRole("button", { name: "スレッド" }));
+  await settle(w);
+  await openRow(w, "d");
+  fireEvent.click(backButton());
+  await settle(w);
+  expect(viewActive("スレッド")).toBe(true);
+  fireEvent.click(forwardButton());
+  await settle(w);
+  expect(title()).toBe("d");
+  await press(w, { key: "[", metaKey: true });
+  expect(viewActive("スレッド")).toBe(true);
+  // A conversation in between, then the view again from the sidebar: a fresh open.
+  await openRow(w, "e");
+  fireEvent.click(sidebar().getByRole("button", { name: "スレッド" }));
+  await settle(w);
+  expect(viewRestores).toEqual([
+    { key: "view:threads", restore: false },
+    { key: "view:threads", restore: true },
+    { key: "view:threads", restore: true },
+    { key: "view:threads", restore: false },
+  ]);
   w.engine.stop();
 });
 

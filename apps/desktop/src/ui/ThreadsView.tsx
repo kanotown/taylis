@@ -66,7 +66,7 @@ export function ThreadsView({ controller, selectedId, onOpen, embedded = false }
           ))}
         </div>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
@@ -104,7 +104,7 @@ function ThreadRow({ entry, controller, selected, onOpen }: { entry: ThreadEntry
   const excerpt = plainText(mentionsToNames(parent.body, store.users, store.groups), 200) || attachmentText(parent.attachments);
   const others = state.participant_ids.filter((id) => id !== parent.sender_id).slice(0, 3);
   return (
-    <li>
+    <li data-row-key={parent.id}>
       <button
         type="button"
         onClick={onOpen}

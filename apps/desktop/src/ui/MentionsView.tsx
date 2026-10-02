@@ -41,7 +41,7 @@ export function MentionsView({ controller, onOpen, embedded = false }: {
           <span className="min-w-0 truncate text-xs text-muted">自分宛てと @channel</span>
         </header>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {items === null ? (
           <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
         ) : items.length === 0 ? (

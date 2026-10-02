@@ -20,7 +20,7 @@ export function RemindersView({ controller, onOpen }: { controller: AppControlle
         {items.map((row) => {
           const channel = store.getChannel(row.channel_id);
           return (
-            <li key={row.id} className="flex items-start gap-3 px-3 py-2.5">
+            <li key={row.id} data-row-key={row.id} className="flex items-start gap-3 px-3 py-2.5">
               <button type="button" className="min-w-0 flex-1 text-left" title="メッセージを表示" onClick={() => onOpen(row)}>
                 <div className="flex items-center gap-2 text-xs text-muted">
                   {/* L4: asked by the author or an admin (the note names who). */}
@@ -48,7 +48,7 @@ export function RemindersView({ controller, onOpen }: { controller: AppControlle
         <strong className="shrink-0 whitespace-nowrap text-[15px]">リマインダー</strong>
         <span className="min-w-0 truncate text-xs text-muted">{rows.length} 件</span>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {rows.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted">リマインダーはありません。メッセージの「リマインド」から設定できます。</div>
         ) : (

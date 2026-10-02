@@ -174,7 +174,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
       ) : tab === "canvases" && onOpenCanvas ? (
         <CanvasResults controller={controller} params={params} onOpen={onOpenCanvas} />
       ) : (
-        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-3" onKeyDown={onListKey} onScroll={rememberScroll}>
+        <div ref={scroller} data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3" onKeyDown={onListKey} onScroll={rememberScroll}>
           {/* M70: 「AI に聞く」 with these words and filters (docs/AI.md §13.6). */}
           <AskPanel controller={controller} params={params} onOpenMessage={(id) => void openById(id)} />
           {unresolved.length > 0 && (
@@ -188,7 +188,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
           ) : (
             <ul className="max-w-3xl space-y-1">
               {hits.map((hit) => (
-                <li key={hit.message.id}>
+                <li key={hit.message.id} data-row-key={hit.message.id}>
                   <ResultRow
                     controller={controller}
                     message={hit.message}
@@ -584,7 +584,7 @@ function FileResults({ controller, params, onOpen }: { controller: AppController
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.q, params.channelId, controller.api]);
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+    <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
       {items === null ? (
         <div className="py-8 text-center text-sm text-muted">検索しています…</div>
       ) : items.length === 0 ? (

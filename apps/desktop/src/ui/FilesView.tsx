@@ -40,7 +40,7 @@ function FileItemsList({ controller, items, cursor, onMore, empty, onOpen }: {
   onOpen: (message: MessageOut) => void;
 }) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+    <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
       {items === null ? (
         <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
       ) : items.length === 0 ? (
@@ -139,7 +139,7 @@ export function FileRow({ item, controller, onOpen }: { item: FileItem; controll
   const uploader = store.users.get(item.uploader_id)?.display_name ?? "?";
   const reveal = () => onOpen({ id: item.message_id, channel_id: item.channel_id, parent_id: item.parent_id ?? null } as MessageOut);
   return (
-    <li className="flex items-center gap-3 px-3 py-2.5">
+    <li data-row-key={attachment.id} className="flex items-center gap-3 px-3 py-2.5">
       <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" title="メッセージを表示" onClick={reveal}>
         <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-line bg-panel">
           {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : <FileText size={20} className="text-muted" />}

@@ -57,6 +57,8 @@ import { StatusDialog } from "./StatusDialog";
 import { CONVERSATION_MIN, headerFit, paneLayout } from "./paneLayout";
 import { useNavigationHistory } from "./navigationHistory";
 import { canGo, emptyHistory, go, type Place, type PlaceHistory, placeKey, restore, visit } from "./placeHistory";
+import { scrollMemoryFor } from "./scrollMemory";
+import { useViewScrollMemory } from "./viewScrollMemory";
 import { historyStep, historyShortcutLabels, mouseHistoryStep } from "./historyShortcuts";
 import { focusChatRegion } from "./messageKeyboard";
 import { ActivityView } from "./ActivityView";
@@ -229,9 +231,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // M67 / review v0.1.18 #13: the place a browser Back / Forward put back (its liveKey), until the places history takes
   // it as a move to its entry rather than a new visit.
   const browserRestored = useRef<string | null>(null);
+  /** M75: the centre view (its place key) that back / forward just put back: its list returns to where it was. */
+  const restoreView = useRef<string | null>(null);
   useNavigationHistory(navigationKey, { ...navigation, focus, results: searchSnapshot.current, mobileTab, savedTabs }, (previous) => {
     const restored = placeOf(previous, previous.focus, compactRef.current);
     const restoredKey = restored ? liveKey(restored) : null;
+    // M75: a centre view the browser's Back / Forward put back comes back where it was scrolled to.
+    restoreView.current = restored?.kind === "view" ? placeKey(restored) : null;
     browserRestored.current = restoredKey !== null && restoredKey !== livePlaceKeyRef.current ? restoredKey : null;
     controller.messageFocus = previous.focus;
     controller.setEditing(null);
@@ -762,6 +768,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   };
   /** A place back on screen as a plain open shows it (a conversation lands as on opening, or at the message it was revealed at). */
   const showPlace = (place: Place<Focus>) => {
+    restoreView.current = place.kind === "view" ? placeKey(place) : null;
     setSearchOpen(false);
     setSwitcher(false);
     if (place.kind === "channel") {
@@ -788,6 +795,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
     if (place.view === "files") setFilesChannelId(place.filesChannelId);
     setView(place.view);
   };
+  // M75: a centre view's list position, recorded while it is on screen (the wide layout) and put back when back /
+  // forward returns to it (opened from the sidebar, it starts at its top). A conversation keeps its own (Timeline).
+  const viewRoot = useRef<HTMLDivElement>(null);
+  const viewScrollKey = livePlace?.kind === "view" ? placeKey(livePlace) : null;
+  useViewScrollMemory(viewRoot, scrollMemoryFor(controller.activeServer ?? ""), viewScrollKey, () => {
+    const asked = restoreView.current !== null && restoreView.current === viewScrollKey;
+    restoreView.current = null;
+    return asked;
+  });
   const canGoBack = !compact && canGo(places, -1, placeAvailable);
   const canGoForward = !compact && canGo(places, 1, placeAvailable);
   const goHistory = (step: -1 | 1) => {
@@ -1063,6 +1079,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
           {banner === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}
         </div>
       )}
+      {/* M75: box-less, only to find the centre view's list (useViewScrollMemory). */}
+      <div ref={viewRoot} className="contents">
       {view === "search" && search ? (
         <SearchView
           controller={controller}
@@ -1403,6 +1421,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           <span className="text-sm text-muted">左のリストから選ぶか、{modKey()}+K で移動できます。</span>
         </div>
       )}
+      </div>
     </>
   );
   const overlays = (

@@ -73,7 +73,7 @@ export function MessageCard({ message, controller, onOpen, onRemove, removeLabel
   const sender = store.users.get(message.sender_id)?.display_name ?? "?";
   const text = plainText(mentionsToNames(message.body, store.users, store.groups), 300) || message.attachments.map((a) => a.filename).join(", ");
   return (
-    <div className="group relative rounded-xl border border-transparent transition-colors hover:border-line hover:bg-panel">
+    <div data-row-key={message.id} className="group relative rounded-xl border border-transparent transition-colors hover:border-line hover:bg-panel">
       <button type="button" className="block w-full px-3 py-2 text-left" onClick={onOpen}>
         <div className="flex items-center gap-2 text-xs text-muted">
           <Avatar id={message.sender_id} name={sender} size={18} className="rounded-md text-[9px]" />

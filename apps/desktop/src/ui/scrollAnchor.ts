@@ -136,6 +136,25 @@ export class ListAnchor {
     else this.keep();
   }
 
+  /** M75: the topmost row on screen now (its element id) and its offset from the top of the viewport, to come back to. */
+  snapshot(): { id: string; offset: number } | null {
+    this.remember();
+    const anchor = this.row;
+    return anchor && anchor.row.id ? { id: anchor.row.id, offset: anchor.offset } : null;
+  }
+
+  /**
+   * M75: the view puts `row` back at `offset` below the top of the viewport (a remembered position coming back); it is
+   * then the anchor, as after a landing.
+   */
+  placeAt(row: HTMLElement, offset: number): void {
+    const el = this.scroller();
+    if (!el) return;
+    const delta = anchorCorrection(offset, row.getBoundingClientRect().top - el.getBoundingClientRect().top);
+    if (delta !== 0) el.scrollTop += delta;
+    this.placed();
+  }
+
   /** Another conversation in the same scroller: at the end until it places itself. */
   reset(): void {
     this.atBottom = true;

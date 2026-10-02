@@ -175,7 +175,7 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
           ))}
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+      <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto pb-3">
         {list === undefined || (list.loading && items.length === 0 && !failed) ? (
           <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
         ) : items.length === 0 ? (
@@ -190,7 +190,7 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
         ) : (
           <ul className="mx-auto max-w-3xl" aria-label={`${ACTIVITY_FILTER_LABELS[filter]}のアクティビティ`}>
             {items.map((item) => (
-              <li key={activityKey(item)}>
+              <li key={activityKey(item)} data-row-key={activityKey(item)}>
                 <ActivityRow controller={controller} item={item} unread={isActivityUnread(item, seenFrom)} onOpen={() => onOpen(item)} />
               </li>
             ))}
