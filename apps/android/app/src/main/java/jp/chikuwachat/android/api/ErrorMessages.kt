@@ -15,7 +15,7 @@ object ErrorMessages {
         "ai_agent_not_found" to "AI のボットが見つかりません",
         "ai_budget_exceeded" to "今月の AI の利用上限に達しました",
         "ai_daily_limit" to "今日の AI の利用回数の上限に達しました。明日またお試しください",
-        "ai_private_not_allowed" to "この AI のボットは公開チャンネルにだけ参加できます",
+        "ai_private_not_allowed" to "この AI のボットは公開チャンネルでだけ使えます (非公開チャンネルと DM には参加・要約できません)",
         "ai_run_not_found" to "AI の結果が見つかりません",
         "ai_unavailable" to "このサーバーでは AI を使えません",
         "already_authenticated" to "すでにログインしています",

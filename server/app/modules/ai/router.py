@@ -14,6 +14,7 @@ from app.modules.ai.schemas import (
     AiRunOut,
     AiStatusOut,
     AiSummaryCreate,
+    AiSummaryTargetOut,
     AiUsageOut,
 )
 from app.modules.auth.deps import CurrentAdmin, CurrentUser
@@ -77,6 +78,16 @@ async def list_providers(_: CurrentAdmin, request: Request) -> list[AiProviderOu
 async def get_status(_: CurrentUser, db: Db, request: Request) -> AiStatusOut:
     """Whether the AI can be used here, and the AI bots (for the 「AI」 badge)."""
     return await service.status(db, _runtime(request))
+
+
+@router.get("/ai/summaries/target", response_model=AiSummaryTargetOut)
+async def get_summary_target(
+    channel_id: UUID, user: CurrentUser, db: Db, request: Request
+) -> AiSummaryTargetOut:
+    """Where a summary of this conversation would be sent (provider, model, bot), shown before
+    asking; `available = false` with `reason` when it cannot be asked now (404 channel_not_found
+    for a conversation one cannot read)."""
+    return await service.summary_target(db, _runtime(request), user, channel_id)
 
 
 @router.post("/ai/summaries", response_model=AiRunOut, status_code=202)

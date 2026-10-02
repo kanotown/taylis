@@ -63,3 +63,22 @@ def cost_usd(
         + Decimal(cache_write_tokens) * price.cache_write
     ) / _MILLION
     return total.quantize(_PLACES)
+
+
+# A conservative token count for text not yet sent (docs/AI.md §3, the budget reservation): two
+# tokens per character (Japanese is about one, English a quarter; rare kanji may take more), plus
+# room for the message framing.
+TOKENS_PER_CHAR = 2
+FRAMING_TOKENS = 500
+
+
+def estimate_usd(model: str, *, input_chars: int, max_output_tokens: int) -> Decimal:
+    """The most one attempt is expected to cost: every input token at the dearer of the input and
+    the cache-write price, and the whole output allowance (reasoning included) used."""
+    price = PRICES[price_model("", model)]
+    input_tokens = Decimal(input_chars * TOKENS_PER_CHAR + FRAMING_TOKENS)
+    total = (
+        input_tokens * max(price.input, price.cache_write)
+        + Decimal(max_output_tokens) * price.output
+    ) / _MILLION
+    return total.quantize(_PLACES)

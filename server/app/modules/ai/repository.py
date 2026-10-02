@@ -5,11 +5,11 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.models import AiAgent, AiRun
+from app.modules.ai.models import AiAgent, AiMentionInbox, AiRun
 from app.modules.messages.models import Message, timeline_filter
 
 # --- agents -------------------------------------------------------------------------------------
@@ -77,6 +77,105 @@ async def has_run_for(db: AsyncSession, kind: str, source_message_id: uuid.UUID)
     return (await db.execute(stmt)).first() is not None
 
 
+async def lock_new_runs(db: AsyncSession, requester_id: uuid.UUID) -> None:
+    """Serialises the checks before a new run until the transaction ends (review v0.1.18 #4, #8):
+    first the month's budget (one lock for everyone: the reservation is shared), then the
+    requester's daily count (summaries and mentions alike). Always in this order, so two
+    transactions never wait on each other in a circle (the relay takes several requesters' locks
+    in one transaction, always with the budget lock already held)."""
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('ai_runs:budget'))"))
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext('ai_runs:requester:' || :requester))"),
+        {"requester": str(requester_id)},
+    )
+
+
+async def committed_between(db: AsyncSession, start: datetime, end: datetime) -> Decimal:
+    """What runs created in [start, end) cost or may still cost: the recorded cost plus what the
+    open ones hold in reserve (docs/AI.md §3)."""
+    stmt = select(func.coalesce(func.sum(AiRun.cost_usd + AiRun.reserved_usd), 0)).where(
+        AiRun.created_at >= start, AiRun.created_at < end
+    )
+    return Decimal((await db.execute(stmt)).scalar_one())
+
+
+async def open_runs(
+    db: AsyncSession,
+    agent_id: uuid.UUID,
+    *,
+    channel_id: uuid.UUID | None = None,
+    kind: str | None = None,
+) -> list[AiRun]:
+    """A bot's pending and running runs, locked (to cancel them)."""
+    stmt = select(AiRun).where(AiRun.agent_id == agent_id, AiRun.status.in_(("pending", "running")))
+    if channel_id is not None:
+        stmt = stmt.where(AiRun.channel_id == channel_id)
+    if kind is not None:
+        stmt = stmt.where(AiRun.kind == kind)
+    stmt = (
+        stmt.order_by(AiRun.created_at).with_for_update().execution_options(populate_existing=True)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def due_replies(db: AsyncSession, now: datetime, limit: int) -> list[AiRun]:
+    """Finished mention runs whose reply still waits to be posted, locked."""
+    stmt = (
+        select(AiRun)
+        .where(
+            AiRun.reply_state == "pending",
+            AiRun.reply_next_at.is_(None) | (AiRun.reply_next_at <= now),
+        )
+        .order_by(AiRun.created_at)
+        .limit(limit)
+        .with_for_update(skip_locked=True)
+        .execution_options(populate_existing=True)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def add_to_inbox(
+    db: AsyncSession, message_id: uuid.UUID, error: str, next_attempt_at: datetime
+) -> None:
+    stmt = (
+        insert(AiMentionInbox)
+        .values(message_id=message_id, last_error=error, next_attempt_at=next_attempt_at)
+        .on_conflict_do_nothing(index_elements=["message_id"])
+    )
+    await db.execute(stmt)
+
+
+async def due_inbox(db: AsyncSession, now: datetime, limit: int) -> list[tuple[uuid.UUID, int]]:
+    """(message_id, attempts so far) of the mentions due to be tried again, locked."""
+    stmt = (
+        select(AiMentionInbox.message_id, AiMentionInbox.attempts)
+        .where(AiMentionInbox.next_attempt_at <= now)
+        .order_by(AiMentionInbox.next_attempt_at)
+        .limit(limit)
+        .with_for_update(skip_locked=True)
+    )
+    return [(r[0], int(r[1])) for r in (await db.execute(stmt)).all()]
+
+
+async def postpone_inbox(
+    db: AsyncSession, message_id: uuid.UUID, attempts: int, error: str, next_attempt_at: datetime
+) -> None:
+    await db.execute(
+        update(AiMentionInbox)
+        .where(AiMentionInbox.message_id == message_id)
+        .values(attempts=attempts, last_error=error, next_attempt_at=next_attempt_at)
+        .execution_options(synchronize_session=False)
+    )
+
+
+async def remove_from_inbox(db: AsyncSession, message_id: uuid.UUID) -> None:
+    await db.execute(
+        delete(AiMentionInbox)
+        .where(AiMentionInbox.message_id == message_id)
+        .execution_options(synchronize_session=False)
+    )
+
+
 async def cost_between(db: AsyncSession, start: datetime, end: datetime) -> Decimal:
     stmt = select(func.coalesce(func.sum(AiRun.cost_usd), 0)).where(
         AiRun.created_at >= start, AiRun.created_at < end
@@ -115,16 +214,20 @@ _CLAIM = text(
         LIMIT :limit
         FOR UPDATE SKIP LOCKED
     )
-    RETURNING id
+    RETURNING id, attempts
     """
 )
 
 
-async def claim(db: AsyncSession, now: datetime, lease: datetime, limit: int) -> list[uuid.UUID]:
+async def claim(
+    db: AsyncSession, now: datetime, lease: datetime, limit: int
+) -> list[tuple[uuid.UUID, int]]:
     """Open runs (pending and due, or running with a lease that ran out: the process that held
-    it died), marked running under a new lease, oldest first."""
+    it died), marked running under a new lease, oldest first. Each with its generation (the
+    `attempts` this claim set): the claimer's results count only while it is still the same
+    (review v0.1.18 #9)."""
     rows = await db.execute(_CLAIM, {"now": now, "lease": lease, "limit": limit})
-    return [row[0] for row in rows.all()]
+    return [(row[0], int(row[1])) for row in rows.all()]
 
 
 async def usage_by_agent(

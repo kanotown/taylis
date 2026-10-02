@@ -96,7 +96,19 @@ class AiRun(Base):
     cost_usd: Mapped[Decimal] = mapped_column(
         Numeric(12, 6), default=Decimal(0), server_default="0"
     )
+    # The target, fixed when the run is created (review v0.1.18 #2): the worker calls this model
+    # of this provider or fails the run, it never switches.
     model: Mapped[str | None] = mapped_column(String(64))
+    provider: Mapped[str | None] = mapped_column(String(16))  # anthropic | openai
+    # The budget held while the run is open (docs/AI.md §3); 0 once it ends (cost_usd is actual).
+    reserved_usd: Mapped[Decimal] = mapped_column(
+        Numeric(12, 6), default=Decimal(0), server_default="0"
+    )
+    # A mention's reply (or notice) is posted apart from getting it (review v0.1.18 #11):
+    # pending (to post, again at reply_next_at) | posted | failed. NULL for summaries.
+    reply_state: Mapped[str | None] = mapped_column(String(8))
+    reply_attempts: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
+    reply_next_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
@@ -106,6 +118,9 @@ class AiRun(Base):
     __table_args__ = (
         CheckConstraint("kind IN ('mention', 'summary')", name="kind_values"),
         CheckConstraint("status IN ('pending', 'running', 'done', 'failed')", name="status_values"),
+        CheckConstraint(
+            "reply_state IN ('pending', 'posted', 'failed')", name="reply_state_values"
+        ),
         Index(
             "ai_runs_source_uniq",
             "kind",
@@ -124,4 +139,31 @@ class AiRun(Base):
         Index("ai_runs_requester_idx", "requester_id", text("created_at DESC")),
         # The input purge.
         Index("ai_runs_input_idx", "created_at", postgresql_where=text("input IS NOT NULL")),
+        # Replies to post (again).
+        Index(
+            "ai_runs_reply_due_idx",
+            "reply_next_at",
+            postgresql_where=text("reply_state = 'pending'"),
+        ),
     )
+
+
+class AiMentionInbox(Base):
+    """A mention whose handling failed in the outbox relay (review v0.1.18 #10): the AI worker
+    tries it again later, with a pause, and tells the thread when it gives up."""
+
+    __tablename__ = "ai_mention_inbox"
+
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True
+    )
+    attempts: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+    __table_args__ = (Index("ai_mention_inbox_due_idx", "next_attempt_at"),)

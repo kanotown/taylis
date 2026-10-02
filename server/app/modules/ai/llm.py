@@ -8,7 +8,7 @@ network. Each bot's model decides its provider (`provider_of`); each provider ha
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -55,15 +55,25 @@ class LlmResult:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
 
+    @property
+    def has_tokens(self) -> bool:
+        return any(
+            (self.input_tokens, self.output_tokens, self.cache_read_tokens, self.cache_write_tokens)
+        )
+
 
 class LlmError(Exception):
     """A call that did not produce a result. `retryable`: a rate limit, an overload or a network
-    problem (the worker tries again later); otherwise trying again would fail the same way."""
+    problem (the worker tries again later); otherwise trying again would fail the same way.
+    `usage`: the tokens the provider still reports for the failed attempt (an OpenAI response
+    that ended failed / cancelled is billed), recorded on the run like a result's (review v0.1.18
+    #7)."""
 
-    def __init__(self, reason: str, *, retryable: bool) -> None:
+    def __init__(self, reason: str, *, retryable: bool, usage: "LlmResult | None" = None) -> None:
         super().__init__(reason)
         self.reason = reason
         self.retryable = retryable
+        self.usage = usage
 
 
 class LlmProvider(Protocol):
@@ -207,10 +217,16 @@ def parse_openai_response(response: Any, requested_model: str) -> LlmResult:
     response stopped by the content filter → stop_reason "refusal"; out of output tokens →
     "max_tokens" (with whatever text came); a failed / cancelled response → LlmError."""
     status = getattr(response, "status", None)
+    usage = _openai_usage(response, requested_model)
     if status in ("failed", "cancelled"):
+        # The usage first: a failed or cancelled response may still have been billed.
         error = getattr(response, "error", None)
         detail = getattr(error, "code", None) or status
-        raise LlmError(f"API の応答が失敗しました ({detail})", retryable=status == "failed")
+        raise LlmError(
+            f"API の応答が失敗しました ({detail})",
+            retryable=status == "failed",
+            usage=usage if usage.has_tokens else None,
+        )
     refused = any(
         getattr(item, "type", None) == "refusal"
         for output in (response.output or [])
@@ -229,6 +245,11 @@ def parse_openai_response(response: Any, requested_model: str) -> LlmResult:
             stop_reason = str(reason or "incomplete")
     if refused:
         stop_reason = "refusal"
+    return replace(usage, text=response.output_text or "", stop_reason=stop_reason)
+
+
+def _openai_usage(response: Any, requested_model: str) -> LlmResult:
+    """The token counts of a Response (whatever its status), as an LlmResult without text."""
     usage = getattr(response, "usage", None)
     total_in = cached = written = out = 0
     if usage is not None:
@@ -238,8 +259,8 @@ def parse_openai_response(response: Any, requested_model: str) -> LlmResult:
         cached = _tokens(getattr(details_in, "cached_tokens", None))
         written = _tokens(getattr(details_in, "cache_write_tokens", None))
     return LlmResult(
-        text=response.output_text or "",
-        stop_reason=stop_reason,
+        text="",
+        stop_reason=None,
         model=str(getattr(response, "model", None) or requested_model),
         # OpenAI's input_tokens includes the cached and the cache-write tokens.
         input_tokens=max(total_in - cached - written, 0),
