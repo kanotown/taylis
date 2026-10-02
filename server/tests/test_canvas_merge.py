@@ -12,7 +12,18 @@ from typing import Any
 
 import pytest
 
-from app.modules.canvases.merge import Conflict, merge3, tokenize
+from app.modules.canvases.merge import Conflict, tokenize
+from app.modules.canvases.merge import merge3 as _merge3
+
+
+def merge3(*args: Any, **kwargs: Any) -> Any:
+    """The merge with a generous time budget: these tests check what is merged, and the shared CI
+    runner can be slow enough to pass the real 200 ms budget (the whole document then becomes one
+    conflict, which made test_random_edits_at_both_ends_of_one_line fail once). Tests of the budget
+    itself pass budget_seconds explicitly."""
+    kwargs.setdefault("budget_seconds", 30.0)
+    return _merge3(*args, **kwargs)
+
 
 FIXTURES = Path(__file__).parent / "fixtures" / "canvas_merge"
 DOCS = Path(__file__).resolve().parents[2] / "docs"
