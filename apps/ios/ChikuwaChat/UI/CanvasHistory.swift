@@ -4,7 +4,8 @@ import SwiftUI
 /// first (who, when, lines added / removed, the name given to one, 「現在の版」); a version opens on its comparison with
 /// the version before it, with the current one, or as it was. Who may change the body may make a version the current one
 /// again (a new version: nothing is lost) and name it (「提出版」). Everyone who reads the canvas reads its history.
-/// Erasing a version's body stays on the desktop.
+/// M74: owners and administrators (in a DM the canvas's creator) may erase an older version's body (a secret pasted by
+/// mistake; not undoable, audited by the server).
 @MainActor
 @Observable
 final class CanvasHistoryModel {
@@ -54,6 +55,18 @@ final class CanvasHistoryModel {
         do { bodies[id] = try await api.canvasRevision(id: canvasId, revisionId: id).body } catch {
             controller.error = controller.describe(error)
         }
+    }
+
+    /// M74: a version whose body was erased, as the server answered it: the row says so and its body is not kept.
+    func erased(_ meta: CanvasRevisionMeta) {
+        replace(meta)
+        bodies[meta.id] = nil
+    }
+
+    /// M74 (§4.7, the desktop's CanvasHistory): 「本文を消去」 on a version — for who may erase, never on the current
+    /// version (the server refuses it: canvas_revision_is_head) nor on one already erased.
+    static func offersErase(_ revision: CanvasRevisionMeta, headId: String?, rights: CanvasRights) -> Bool {
+        rights.erase && revision.kind != "erased" && revision.id != headId
     }
 
     /// A version's new name, as the server answered it.
@@ -214,6 +227,7 @@ struct CanvasRevisionDetail: View {
     @State private var mode: Mode
     @State private var diff: [CanvasDiff.Row]?
     @State private var confirmRestore = false
+    @State private var confirmErase = false
     @State private var labelling = false
     @State private var labelText = ""
     @State private var busy = false
@@ -261,6 +275,17 @@ struct CanvasRevisionDetail: View {
         .navigationTitle(revision.map { CanvasHistoryModel.kindLabel($0.kind) } ?? "版")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if let revision, CanvasHistoryModel.offersErase(revision, headId: headId, rights: rights) {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("本文を消去", systemImage: "eraser", role: .destructive) { confirmErase = true }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .disabled(busy)
+                    .accessibilityLabel("この版の操作")
+                }
+            }
             if let revision, !erased, rights.edit {
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button {
@@ -286,6 +311,12 @@ struct CanvasRevisionDetail: View {
             if let otherId { await model.body(otherId, controller) }
         }
         .task(id: diffKey) { await makeDiff() }
+        .confirmationDialog("この版の本文を消去しますか？", isPresented: $confirmErase, titleVisibility: .visible) {
+            Button("消去する", role: .destructive) { Task { await erase() } }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("誤って書いた秘密などを履歴から消します。消した本文は戻せません。消去したことは監査ログに残ります。")
+        }
         .confirmationDialog("この版に戻しますか？", isPresented: $confirmRestore, titleVisibility: .visible) {
             Button("この版に戻す") { Task { await restore() } }
             Button("キャンセル", role: .cancel) {}
@@ -376,6 +407,16 @@ struct CanvasRevisionDetail: View {
         guard restored != nil else { return }
         controller.notice = "この版を復元しました"
         dismiss() // back to the list, read again with the new current version on top
+    }
+
+    private func erase() async {
+        busy = true
+        let erased = await controller.eraseCanvasRevision(model.canvasId, revisionId: revisionId)
+        busy = false
+        guard let erased else { return }
+        model.erased(erased)
+        diff = nil
+        controller.notice = "この版の本文を消去しました"
     }
 
     private func saveLabel(_ label: String?) async {

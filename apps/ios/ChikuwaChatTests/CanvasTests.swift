@@ -187,8 +187,9 @@ final class CanvasRightsTests: XCTestCase {
         XCTAssertEqual(CanvasRights.of(channel(), actor: me, canvas: alices), CanvasRights(create: true, edit: true, tick: true, manage: false, trash: false, share: true))
         XCTAssertEqual(CanvasRights.of(channel(), actor: me, canvas: owners), CanvasRights(create: true, edit: false, tick: true, manage: false, trash: false, share: true))
         // Its creator, the conversation's owner, an administrator: everything.
-        let all = CanvasRights(create: true, edit: true, tick: true, manage: true, trash: true, share: true)
-        XCTAssertEqual(CanvasRights.of(channel(), actor: me, canvas: mine), all)
+        // (M74: erasing a version's body is the owners' and administrators' only, not the creator's.)
+        let all = CanvasRights(create: true, edit: true, tick: true, manage: true, trash: true, share: true, erase: true)
+        XCTAssertEqual(CanvasRights.of(channel(), actor: me, canvas: mine), CanvasRights(create: true, edit: true, tick: true, manage: true, trash: true, share: true))
         XCTAssertEqual(CanvasRights.of(channel(role: "owner"), actor: me, canvas: owners), all)
         XCTAssertEqual(CanvasRights.of(channel(), actor: admin, canvas: owners), all)
         // A guest reads, and shares (posting a message is open to a guest in a channel they are in, M58).

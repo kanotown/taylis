@@ -311,7 +311,29 @@ protocol Persistence {
     func deleteOlderMessages(channelId: String, beforeSeq: Int) throws
     func saveOutbox(_ item: OutboxItem) throws
     func deleteOutbox(clientMsgId: String) throws
+    /// M74: the cached canvases' metadata (their bodies stay on disk until one opens).
+    func loadCachedCanvasIndex() throws -> [CachedCanvasEntry]
+    func loadCachedCanvasBody(id: String) throws -> String?
+    /// A nil body only moves `savedAt` (a 304: the copy is still the current one).
+    func saveCachedCanvas(_ entry: CachedCanvasEntry, body: String?) throws
+    func deleteCachedCanvas(id: String) throws
 }
+
+/// M74 (CANVAS.md §19.1): a canvas as this device last received it from the server.
+struct CachedCanvasEntry: Equatable {
+    var meta: CanvasMeta
+    /// When the server last gave (or confirmed) this copy: 「最後に読み込んだ時点」.
+    var savedAt: Date
+}
+
+struct CachedCanvas: Equatable {
+    var canvas: CanvasOut
+    var savedAt: Date
+}
+
+/// M74: at most this many canvases are kept to read offline (the ones most recently read or saved here), and only of
+/// conversations I am a member of.
+let cachedCanvasLimit = 200
 
 let localPrefix = "local:"
 
@@ -396,7 +418,7 @@ final class Store {
 
     /// M45 (CANVAS.md §4.6): the canvases of the conversations opened so far, without bodies, most recently updated
     /// first. Loaded when a conversation opens and after reconnecting; canvas.* events keep them current (the larger
-    /// version wins). Not persisted.
+    /// version wins). Not persisted (M74: when it cannot be loaded, the cached canvases stand in).
     private(set) var canvasLists: [String: [CanvasMeta]] = [:]
     /// nil: not loaded yet.
     func canvasesOf(_ channelId: String) -> [CanvasMeta]? { canvasLists[channelId] }
@@ -451,6 +473,80 @@ final class Store {
         canvasPending[canvasId] = state
         let encoded = state.flatMap { try? JSON.plainEncoder.encode($0) }.flatMap { String(data: $0, encoding: .utf8) }
         persist { try $0.saveMeta(key: Self.canvasPrefix + canvasId, value: encoded) }
+    }
+
+    // MARK: M74 cached canvases (CANVAS.md §19.1)
+
+    /// The canvases kept to read offline: their metadata here, their bodies in SQLite (in memory without persistence,
+    /// the tests). Written whenever the server sends a canvas with its body (a read, a save's answer, a conflict's head).
+    @ObservationIgnored private var canvasCache: [String: CachedCanvasEntry] = [:]
+    @ObservationIgnored private var canvasCacheBodies: [String: String] = [:]
+
+    func cachedCanvas(_ canvasId: String) -> CachedCanvas? {
+        guard let entry = canvasCache[canvasId] else { return nil }
+        let body: String?
+        if let persistence {
+            body = (try? persistence.loadCachedCanvasBody(id: canvasId)) ?? nil
+        } else {
+            body = canvasCacheBodies[canvasId]
+        }
+        guard let body else { return nil }
+        let meta = entry.meta
+        let canvas = CanvasOut(id: meta.id, channelId: meta.channelId, title: meta.title, version: meta.version, headRevId: meta.headRevId,
+                               isChannelTab: meta.isChannelTab, editPolicy: meta.editPolicy, templateKey: meta.templateKey,
+                               shareMessageId: meta.shareMessageId, taskTotal: meta.taskTotal, taskDone: meta.taskDone,
+                               createdBy: meta.createdBy, updatedBy: meta.updatedBy, createdAt: meta.createdAt, updatedAt: meta.updatedAt,
+                               deletedAt: meta.deletedAt, body: body)
+        return CachedCanvas(canvas: canvas, savedAt: entry.savedAt)
+    }
+
+    /// The cached canvases of a conversation (the tab's list when it cannot be loaded), most recently updated first.
+    func cachedCanvases(of channelId: String) -> [CanvasMeta] {
+        Self.sortedCanvases(canvasCache.values.filter { $0.meta.channelId == channelId }.map(\.meta))
+    }
+
+    var cachedCanvasIds: Set<String> { Set(canvasCache.keys) }
+    func cachedCanvasMeta(_ canvasId: String) -> CanvasMeta? { canvasCache[canvasId]?.meta }
+
+    /// The server's copy of a canvas: kept (an older version than the kept one is not), and the oldest past the cap go.
+    func cacheCanvas(_ canvas: CanvasOut, now: Date = Date()) {
+        guard channels[canvas.channelId]?.isMember == true, canvas.deletedAt == nil else { return }
+        if let kept = canvasCache[canvas.id], kept.meta.version > canvas.version { return }
+        var meta = canvas.meta
+        meta.deletedAt = nil
+        let entry = CachedCanvasEntry(meta: meta, savedAt: now)
+        canvasCache[canvas.id] = entry
+        if persistence == nil { canvasCacheBodies[canvas.id] = canvas.body }
+        persist { try $0.saveCachedCanvas(entry, body: canvas.body) }
+        trimCanvasCache()
+    }
+
+    /// A 304: the kept copy is still the current one, as of now.
+    func touchCachedCanvas(_ canvasId: String, now: Date = Date()) {
+        guard var entry = canvasCache[canvasId] else { return }
+        entry.savedAt = now
+        canvasCache[canvasId] = entry
+        persist { try $0.saveCachedCanvas(entry, body: nil) }
+    }
+
+    func dropCachedCanvas(_ canvasId: String) {
+        guard canvasCache.removeValue(forKey: canvasId) != nil else { return }
+        canvasCacheBodies[canvasId] = nil
+        persist { try $0.deleteCachedCanvas(id: canvasId) }
+    }
+
+    private func trimCanvasCache() {
+        guard canvasCache.count > cachedCanvasLimit else { return }
+        let oldest = canvasCache.values.sorted { a, b in a.savedAt != b.savedAt ? a.savedAt < b.savedAt : a.meta.id < b.meta.id }
+        for entry in oldest.prefix(canvasCache.count - cachedCanvasLimit) { dropCachedCanvas(entry.meta.id) }
+    }
+
+    /// At start: the kept canvases of conversations still mine (one left while the app was closed goes).
+    private func loadCanvasCache() {
+        guard let persistence, let entries = try? persistence.loadCachedCanvasIndex() else { return }
+        for entry in entries { canvasCache[entry.meta.id] = entry }
+        for entry in entries where channels[entry.meta.channelId]?.isMember != true { dropCachedCanvas(entry.meta.id) }
+        trimCanvasCache()
     }
 
     private func draftKey(_ channelId: String, _ parentId: String?) -> String { "draft:\(channelId):\(parentId ?? "")" }
@@ -553,6 +649,7 @@ final class Store {
     func load() {
         guard let persistence, let snapshot = try? persistence.loadAll() else { return }
         apply(snapshot)
+        loadCanvasCache()
     }
 
     /// Sign-out: the database is closed before its files are deleted; later writes fail quietly.
@@ -988,6 +1085,7 @@ final class Store {
         canvasLists[id] = nil
         canvasListFailures[id] = nil
         for (canvasId, state) in canvasPending where state.channelId == id { setPendingCanvas(canvasId, nil) }
+        for (canvasId, entry) in canvasCache where entry.meta.channelId == id { dropCachedCanvas(canvasId) } // M74
         persist {
             try $0.clearMessages(channelId: id)
             try $0.deleteChannel(id: id)

@@ -40,7 +40,14 @@ final class CanvasHub {
             store.setCanvases(channelId, try await api.listCanvases(channelId: channelId, trashed: false))
         } catch {
             print("could not load the canvases: \(error)")
-            store.setCanvasListFailure(channelId, Self.listFailure(error))
+            let failure = Self.listFailure(error)
+            // M74: never loaded (offline since the app started): the canvases kept here stand in, to read offline.
+            let kept = store.cachedCanvases(of: channelId)
+            if failure == .failed, store.canvasesOf(channelId) == nil, !kept.isEmpty, CanvasSaver.retryable(error) {
+                store.setCanvases(channelId, kept)
+                return
+            }
+            store.setCanvasListFailure(channelId, failure)
         }
     }
 
@@ -55,8 +62,13 @@ final class CanvasHub {
     func saver(_ canvasId: String, channelId: String) -> CanvasSaver? {
         guard let api else { return nil }
         if let existing = savers[canvasId] { return existing }
-        let saver = CanvasSaver(id: canvasId, channelId: channelId, api: api, clock: clock, options: options, restored: store.pendingCanvas(canvasId))
+        let saver = CanvasSaver(id: canvasId, channelId: channelId, api: api, clock: clock, options: options, restored: store.pendingCanvas(canvasId),
+                                cached: store.cachedCanvas(canvasId))
         saver.persist = { [weak store] state in store?.setPendingCanvas(canvasId, state) }
+        // M74 (CANVAS.md §19.1): the server's copy is kept to read offline; a 404 drops it.
+        saver.received = { [weak store] canvas in store?.cacheCanvas(canvas) }
+        saver.confirmed = { [weak store] in store?.touchCachedCanvas(canvasId) }
+        saver.vanished = { [weak store] in store?.dropCachedCanvas(canvasId) }
         savers[canvasId] = saver
         saver.load()
         return saver
@@ -115,6 +127,7 @@ final class CanvasHub {
             saver.gone()
         }
         store.setPendingCanvas(canvasId, nil)
+        store.dropCachedCanvas(canvasId) // M74
     }
 
     /// After (re)connecting: failed saves go out, open canvases are read again, edits kept from before a relaunch resume.

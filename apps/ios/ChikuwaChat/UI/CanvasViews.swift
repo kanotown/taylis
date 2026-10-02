@@ -378,6 +378,8 @@ struct CanvasDocument: View {
         case .blocked: return ("保存できませんでした: " + (saver.error.map { controller.describe($0) } ?? ErrorMessages.unknown), true, true)
         default: break
         }
+        // M74 (§19.1): the copy kept on this device, the server out of reach.
+        if saver.offlineCopy, let savedAt = saver.cachedAt { return (CanvasOffline.notice(savedAt: savedAt), true, false) }
         if channel.channel.archived { return ("アーカイブされた会話のキャンバスは閲覧だけです。", false, false) }
         if saver.status == .loading || meta == nil { return nil }
         if !rights.edit && rights.tick { return ("チェックだけ付けられます。本文を変更できるのは作成者・オーナー・管理者です。", false, false) }
@@ -995,6 +997,11 @@ struct CanvasOpenView: View {
 
     private func load() async {
         guard let api = controller.api else { return }
+        // M74 (§19.1): a canvas kept here opens at once; its screen asks the server whether the copy is current.
+        if let channelId = CanvasOffline.openFromCache(canvasId, store: controller.store) {
+            state = .open(channelId: channelId)
+            return
+        }
         state = .loading
         do {
             if let canvas = try await api.getCanvas(id: canvasId, knownVersion: nil) {
@@ -1007,5 +1014,21 @@ struct CanvasOpenView: View {
         } catch {
             state = .failed(controller.describe(error))
         }
+    }
+}
+
+/// M74 (CANVAS.md §19.1): reading a canvas without the server.
+enum CanvasOffline {
+    /// The line under the bar while the kept copy is shown and the server cannot be reached.
+    static func notice(savedAt: Date, calendar: Calendar = .current) -> String {
+        "オフライン — 最後に読み込んだ時点 (\(Timeline.fullLabel(savedAt, calendar: calendar))) の内容です"
+    }
+
+    /// A canvas opened by its id (a link, a search hit): the conversation of its kept copy when I am still a member of
+    /// it (the screen opens at once and reads the server after); nil asks the server first.
+    @MainActor
+    static func openFromCache(_ canvasId: String, store: Store) -> String? {
+        guard let meta = store.cachedCanvasMeta(canvasId), store.channel(meta.channelId)?.isMember == true else { return nil }
+        return meta.channelId
     }
 }
