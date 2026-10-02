@@ -31,10 +31,40 @@ data class AiRunOut(
     /** Review v0.1.18 #2: where the run is sent ("anthropic" | "openai"), fixed when asked. Null on an older server. */
     val provider: String? = null,
     val model: String? = null,
+    /** M70 (docs/AI.md §13.5): the question of an "ask" run (null for the other kinds and on an older server). */
+    val question: String? = null,
+    /** M70: the messages a done ask run's answer cites as [n]; null or empty otherwise (lenient: null is accepted). */
+    val sources: List<AiSourceOut>? = null,
 ) {
     /** "done" and "failed" are final: nothing changes the run after them. */
     val finished: Boolean get() = status == "done" || status == "failed"
+
+    /** The cited messages that can be opened (an entry without a message id or number is dropped), by number. */
+    val citedSources: List<AiSourceOut> get() = sources.orEmpty().filter { it.messageId.isNotBlank() && it.n > 0 }.sortedBy { it.n }
 }
+
+/** M70 (docs/AI.md §13.3): a message an answer cites as [n]; `excerpt` is plain text around the first matching word. */
+@Serializable
+data class AiSourceOut(
+    val n: Int = 0,
+    val messageId: String = "",
+    val channelId: String = "",
+    val parentId: String? = null,
+    val senderId: String = "",
+    val createdAt: String = "",
+    val excerpt: String = "",
+)
+
+/** POST /ai/ask (M70, docs/AI.md §13.5): the question with its modifiers; `channel_id` when the search is narrowed to one. */
+@Serializable
+data class AiAskIn(
+    val q: String,
+    val tzOffsetMinutes: Int? = null,
+    val channelId: String? = null,
+)
+
+/** GET /ai/ask/target?q=&channel_id= (M70): the same shape and reasons as the summary's target. */
+typealias AiAskTargetOut = AiSummaryTargetOut
 
 /**
  * GET /ai/summaries/target?channel_id= (review v0.1.18 #2, docs/AI.md §5): where a summary of this conversation would go.

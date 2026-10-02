@@ -78,8 +78,10 @@ fun MessageBody(
     version: Int = 0,
     /** M58: a canvas link on a line of its own (`<base>/c/<id>`) drawn as this card (CANVAS.md §4.13); null: a link. */
     canvasCard: (@Composable (canvasId: String) -> Unit)? = null,
+    /** M70: message links read as citations — 「[3]」 instead of 「💬 3」 (an AI answer's sources, AiTexts.linkCitations). */
+    citations: Boolean = false,
 ) {
-    val inline = bodyInline(users, internalBase, onOpenMessage, onOpenCanvas, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, groups, version)
+    val inline = bodyInline(users, internalBase, onOpenMessage, onOpenCanvas, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, groups, version, citations)
     // The parse depends on the text alone (M28c: keyed on the version too, every keystroke in the composer parsed every
     // row on screen again).
     val blocks = remember(text) { parseBlocks(text) }
@@ -120,6 +122,7 @@ fun bodyInline(
     onNeedEmojiImage: ((CustomEmojiOut) -> Unit)? = null,
     groups: Map<String, GroupOut> = emptyMap(),
     version: Int = 0,
+    citations: Boolean = false,
 ): BodyInline {
     // The Store's maps change in place, so `version` is read here on purpose: the Compose compiler leaves a parameter the
     // body never reads out of the skip check, and the body was never drawn again when only the maps had changed (custom
@@ -164,7 +167,9 @@ fun bodyInline(
                     val canvas = internalBase?.let { Permalink.canvasId(it, token.url) }
                     if (internal != null && onOpenMessage != null) {
                         withLink(LinkAnnotation.Clickable("message:$internal", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenMessage(internal) }) {
-                            append("💬 " + (token.label?.takeIf { it != token.url } ?: "メッセージを表示"))
+                            val label = token.label?.takeIf { it != token.url }
+                            if (citations && label != null) append("[$label]")
+                            else append("💬 " + (label ?: "メッセージを表示"))
                         }
                     } else if (canvas != null && onOpenCanvas != null) {
                         withLink(LinkAnnotation.Clickable("canvas:$canvas", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenCanvas(canvas) }) {

@@ -458,3 +458,10 @@ AiAskTargetOut  = AiSummaryTargetOut と同じ形 {available, provider, model, a
   非公開の出典を含む待っている質問だけを取り消す。
 - **Desktop / Web**: `ui/AskPanel.tsx` (帯・結果・出典・履歴)、`sync/ai.ts` の `AiHub` に質問の状態 (`ask`、要約と別に 1 つ)。
   [n] は `<server>/m/<id>` のリンクにして MessageBody で開く (メッセージを開くボタンの形)。テスト: vitest aiAsk 9。
+
+### 13.9 実装で決めたこと (M71 Android)
+
+- **入口**: 検索の「メッセージ」の結果の一番上の帯 (`ui/AskViews.kt` の `AskBar`。帯は常に LazyColumn の最初の項目で、隠れているときは空。後から出ても一覧の位置がずれない)。`summary_available` で、質問が空でなく 200 字以内で、`GET /ai/ask/target` が読めたときだけ出す (404・422・失敗は出さない)。横に「質問は <ボット名> (<事業者>) に送られます」、聞けないときは理由を赤で (Desktop と同じ文言) ボタンを無効に。質問は `Search.askQuery` (Desktop の askQuery と同じ: 打った語 + チップを `from:@` `after:` `before:` `has:` `is:thread` `is:times` に。会話は `channel_id`)。
+- **状態**: `AiHub` に `ask` (要約と別に 1 つ) と `askTarget` (質問と会話ごとに最後に読んだ 1 つ)。`put` は `kind = "ask"` の run を質問へ、ほかを要約へ。POST より先に届いた `ai.run_updated` は要約と同じ `seen` で合わせ、終わった run は戻さない。再接続で終わっていない質問を `GET /ai/runs/{id}` で読み直す。`ai_unavailable` / `ai_budget_exceeded` / `ai_private_not_allowed` で断られたら状態と送り先を読み直す。`AiApi` の新しい 3 つは既定で 404 (古いサーバーと同じ扱い)。
+- **結果**: 下からのシート (進み具合「メッセージを探しています…」→「答えを書いています…」、Markdown の答え、非公開の注記、出典 (送り手・会話・スレッド・日時・抜粋)、「この答えはあなたにだけ表示されます…」、「Anthropic · claude-opus-5-5」、失敗は「もう一度」)。[n] は `<server>/m/<id>` のリンクにして MessageBody の `citations` で「[n]」と描く (💬 を付けない)。出典や [n] を押すとシートを下げ (質問は残す。帯の「答え」で戻る)、検索の結果と同じく会話 (返信ならスレッド) で開く。閉じると質問を捨てる。
+- **履歴**: 帯の「履歴」でシートに `GET /ai/runs?kind=ask` (質問・日時・作成中 / 失敗)。押すとその答えを開き、終わっていなければ読み直す。テスト: AiAskTest 15。

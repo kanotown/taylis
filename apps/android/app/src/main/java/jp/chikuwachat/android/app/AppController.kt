@@ -172,6 +172,44 @@ class AppController(private val app: Application) {
     fun closeSummary() {
         engine?.ai?.closeSummary()
     }
+
+    // --- 「AI に聞く」 (M71, docs/AI.md §13): the engine's AiHub.ask / askTarget, mirrored for the search screen ---
+    var aiAsk by mutableStateOf<jp.chikuwachat.android.sync.AiAskState?>(null)
+        private set
+    var aiAskTarget by mutableStateOf<jp.chikuwachat.android.sync.AiAskTargetRead?>(null)
+        private set
+    /** The answer sheet is on screen; false while the question is kept behind it (a cited message opened). */
+    var aiAskShown by mutableStateOf(false)
+
+    fun loadAskTarget(question: String, channelId: String?) {
+        val engine = engine ?: return
+        scope.launch { engine.ai.loadAskTarget(question, channelId) }
+    }
+
+    fun startAsk(question: String, channelId: String?) {
+        val engine = engine ?: return
+        aiAskShown = true
+        scope.launch { engine.ai.startAsk(question, channelId) }
+    }
+
+    fun retryAsk() {
+        val engine = engine ?: return
+        scope.launch { engine.ai.retryAsk() }
+    }
+
+    fun showAskRun(run: jp.chikuwachat.android.api.AiRunOut) {
+        val engine = engine ?: return
+        engine.ai.showAskRun(run)
+        aiAskShown = true
+    }
+
+    fun closeAsk() {
+        aiAskShown = false
+        engine?.ai?.closeAsk()
+    }
+
+    /** My recent questions, newest first; null when they cannot be read. */
+    suspend fun askHistory(): List<jp.chikuwachat.android.api.AiRunOut>? = engine?.ai?.askHistory()
     /** Channel to open once the store knows it (from a tapped notification). */
     var pendingChannelId by mutableStateOf<String?>(null)
     /**
@@ -457,6 +495,9 @@ class AppController(private val app: Application) {
         aiSummary = null
         aiSummaryChooser = null
         aiSummaryTargets = emptyMap()
+        aiAsk = null
+        aiAskTarget = null
+        aiAskShown = false
         messageFocus = null
         pendingReveal = null
         pendingCanvas = null
@@ -939,12 +980,18 @@ class AppController(private val app: Application) {
         aiSummary = null
         aiSummaryChooser = null
         aiSummaryTargets = emptyMap()
+        aiAsk = null
+        aiAskTarget = null
+        aiAskShown = false
         scope.launch {
             engine.ai.version.collect {
                 if (this@AppController.engine !== engine) return@collect
                 aiStatus = engine.ai.status
                 aiSummary = engine.ai.summary
                 aiSummaryTargets = engine.ai.targets
+                aiAsk = engine.ai.ask // M71
+                aiAskTarget = engine.ai.askTarget
+                if (aiAsk == null) aiAskShown = false
             }
         }
         scope.launch {
