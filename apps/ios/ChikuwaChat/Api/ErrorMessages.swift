@@ -145,6 +145,7 @@ enum ErrorMessages {
         "task_delete_restricted": "このタスクを削除できるのは作成者・担当者・チャンネルのオーナー・管理者だけです",
         "task_invalid_assignee": "担当者にできるのはチャンネルのメンバーだけです (自分のタスクには担当者を付けられません)",
         "task_invalid_column": "このボードの列ではありません",
+        "task_invalid_deadline": "この締切は設定できません (チャンネルのボードに、日付を付けて作ります。繰り返しはできません)",
         "task_invalid_range": "表示する期間の指定が正しくありません (100 日まで)",
         "task_invalid_rrule": "この繰り返しは設定できません (期限が必要です。レビュー依頼は繰り返せません)",
         "task_invalid_source": "このメッセージからはこのチャンネルのタスクを作れません",

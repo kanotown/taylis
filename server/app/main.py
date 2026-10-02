@@ -68,6 +68,7 @@ from app.modules.sso import service as sso_service
 from app.modules.sso.oidc import build_google
 from app.modules.sso.router import router as sso_router
 from app.modules.sync.router import router as sync_router
+from app.modules.tasks import deadlines as task_deadlines
 from app.modules.tasks import service as tasks_service
 from app.modules.tasks.router import router as tasks_router
 from app.modules.templates.router import router as templates_router
@@ -198,7 +199,8 @@ async def _presence_sweep_loop(app: FastAPI, stop: asyncio.Event) -> None:
 async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
     """Posts scheduled messages (M12d) and fires reminders (M12e), calendar alarms (M51) and
     task due dates (M55) whose time has come; posts recurring posts and nudges those who have
-    not submitted to a collection past its due time (L6, M59)."""
+    not submitted to a collection past its due time (L6, M59); posts deadlines' advance notices
+    (L5, M85)."""
     settings: Settings = app.state.settings
     while not stop.is_set():
         try:
@@ -234,6 +236,11 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     await recurring.remind_due(session)
             except Exception:
                 log.exception("collection nudging failed")
+            try:
+                async with app.state.db.session_factory() as session:
+                    await task_deadlines.fire_notices(session)
+            except Exception:
+                log.exception("deadline notices failed")
 
 
 async def _ai_loop(app: FastAPI, stop: asyncio.Event) -> None:

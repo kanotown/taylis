@@ -9,13 +9,16 @@ from app.modules.tasks.models import (
     MAX_CLIENT_ID_LENGTH,
     MAX_COLUMN_NAME_LENGTH,
     MAX_NOTES_LENGTH,
+    MAX_NOTICE_DAYS_BEFORE,
+    MAX_NOTICES,
     MAX_SUBTASKS,
     MAX_TITLE_LENGTH,
 )
 
 TaskStatus = Literal["todo", "doing", "done"]
-# L9: "review" is a review request made from a message (REVIEWS.md).
-TaskKind = Literal["task", "review"]
+# L9: "review" is a review request made from a message (REVIEWS.md). M85: "deadline" is a
+# channel's deadline (DEADLINES.md).
+TaskKind = Literal["task", "review", "deadline"]
 # A shared task's assignees at most (a channel of several dozen people).
 MAX_ASSIGNEES = 50
 
@@ -51,6 +54,16 @@ def _distinct(value: list[UUID] | None) -> list[UUID] | None:
     if value is None:
         return None
     return list(dict.fromkeys(value))
+
+
+def _notice_days(value: list[int] | None) -> list[int] | None:
+    """M85: distinct days before, 0 to 60, largest first."""
+    if value is None:
+        return None
+    for day in value:
+        if not 0 <= day <= MAX_NOTICE_DAYS_BEFORE:
+            raise ValueError(f"Notices are 0 to {MAX_NOTICE_DAYS_BEFORE} days before")
+    return sorted(set(value), reverse=True)
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -137,6 +150,9 @@ class TaskData(BaseModel):
     rrule: str | None = None
     # M81: a column added to the board; null: the built-in column of `status`.
     column_id: UUID | None = None
+    # M85: a deadline's advance notices in its channel, as days before (largest first; [] none).
+    # null unless kind = deadline.
+    notice_days: list[int] | None = None
     # Members of the channel; always empty on a personal task (it is its owner's).
     assignee_ids: list[UUID]
     source: TaskSourceOut | None
@@ -180,8 +196,11 @@ class TaskCreate(BaseModel):
     # must be in the same conversation.
     source_canvas_id: UUID | None = None
     source_canvas_line: str | None = Field(default=None, min_length=1, max_length=1000)
-    # L9: "review" (「レビューを依頼」) changes the wording of its chip and pushes.
+    # L9: "review" (「レビューを依頼」) changes the wording of its chip and pushes. M85: "deadline"
+    # (a channel's board, with a due date; not from a message or a canvas, never repeating).
     kind: TaskKind = "task"
+    # M85: a deadline's advance notices (days before, 0 = the day). Left out: 7, 3, 1 and 0.
+    notice_days: list[int] | None = Field(default=None, max_length=MAX_NOTICES)
     # Idempotency key: a retry returns the task made by the first request (200).
     client_task_id: str | None = Field(default=None, min_length=1, max_length=MAX_CLIENT_ID_LENGTH)
     # The device's IANA zone: my due-date notification goes out at 8:00 in it. Left out: my
@@ -193,6 +212,7 @@ class TaskCreate(BaseModel):
     _assignees = field_validator("assignee_ids")(_distinct)
     _tz = field_validator("tz")(_valid_zone)
     _due_at = field_validator("due_at")(_aware)
+    _notice = field_validator("notice_days")(_notice_days)
 
 
 class TaskUpdate(BaseModel):
@@ -215,6 +235,8 @@ class TaskUpdate(BaseModel):
     # M81: null stops repeating.
     rrule: str | None = Field(default=None, max_length=200)
     assignee_ids: list[UUID] | None = Field(default=None, max_length=MAX_ASSIGNEES)
+    # M85: a deadline's advance notices (the whole set; [] for none).
+    notice_days: list[int] | None = Field(default=None, max_length=MAX_NOTICES)
     tz: str | None = Field(default=None, max_length=64)
 
     _title = field_validator("title")(_clean_title)
@@ -222,6 +244,7 @@ class TaskUpdate(BaseModel):
     _assignees = field_validator("assignee_ids")(_distinct)
     _tz = field_validator("tz")(_valid_zone)
     _due_at = field_validator("due_at")(_aware)
+    _notice = field_validator("notice_days")(_notice_days)
 
 
 class TaskMove(BaseModel):

@@ -21,7 +21,9 @@ import { type ConversationTab, ConversationTabs, eventsTabLabel } from "./Conver
 import { CalendarView, ChannelEvents, useCalendarHub } from "./CalendarView";
 import { ChannelTasks } from "./TaskBoard";
 import { MyTasksView } from "./MyTasksView";
+import { DeadlineChip, DeadlinesView, newDeadlineInit } from "./DeadlinesView";
 import { TaskDialog } from "./TaskDialog";
+import { canEditBoard, type TaskCreateInit } from "./tasks";
 import type { TaskOut } from "../api/types";
 import { MentionsView } from "./MentionsView";
 import { DirectoryDialog } from "./DirectoryDialog";
@@ -72,7 +74,8 @@ import { YouView } from "./YouView";
 // "activity": the wide layout's 「アクティビティ」 (M39; the mentions list for a server before it).
 // "canvases" (M44): the canvases of all my conversations. "calendar" (M51): my calendar and my channels'.
 // "tasks" (M55): 「自分のタスク」 and 「自分の担当」. "times" (L8): the Times feed (TIMES_FEED.md §7).
-type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "times";
+// "deadlines" (M85): 「締切」, my channels' deadlines (DEADLINES.md).
+type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times";
 /** A message revealed in its conversation (the controller's focus): kept by a conversation's history entry (M67). */
 type Focus = NonNullable<AppController["messageFocus"]>;
 
@@ -530,6 +533,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
 
   /** M55: the task a notification asked for, in its dialog over its board's tab (a personal one over 「タスク」). */
   const [taskDialog, setTaskDialog] = useState<TaskOut | null>(null);
+  /** M85: ⋯ 「締切を追加…」 (a new deadline on the open channel's board). */
+  const [deadlineInit, setDeadlineInit] = useState<TaskCreateInit | null>(null);
   useEffect(() => {
     const request = controller.openTaskRequest;
     if (!request) return;
@@ -644,7 +649,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "times") => {
+  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -1013,6 +1018,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       calendarActive={view === "calendar"}
       onTasks={() => openView("tasks")}
       tasksActive={view === "tasks"}
+      onDeadlines={() => openView("deadlines")}
+      deadlinesActive={view === "deadlines"}
       onReadAll={() => void controller.markAllRead()}
       onReminders={() => openView("reminders")}
       remindersActive={view === "reminders"}
@@ -1025,6 +1032,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {canManage && !current.archived && <MenuItem onSelect={() => setDialog("rename")}>名前を変更</MenuItem>}
       <MenuItem onSelect={() => setDialog("members")}>メンバー</MenuItem>
       {(current.type === "public" || current.type === "private") && current.isMember && <MenuItem onSelect={() => setDialog("recurring")}>定期投稿…</MenuItem>}
+      {(current.type === "public" || current.type === "private") && current.isMember && canEditBoard(current, controller.isAdmin) && !!controller.engine?.tasks?.available && (
+        <MenuItem onSelect={() => setDeadlineInit(newDeadlineInit(controller, current.id))}>締切を追加…</MenuItem>
+      )}
       {canEditLinks(current, controller) && <MenuItem onSelect={() => { setEditingLink(null); setDialog("link"); }}>リンクを追加…</MenuItem>}
       {canManage && !current.archived && (
         <MenuItem onSelect={() => void controller.setPostingPolicy(current.id, current.posting_policy === "owners" ? "everyone" : "owners")}>
@@ -1134,6 +1144,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <CalendarView controller={controller} />
       ) : view === "tasks" ? (
         <MyTasksView controller={controller} onOpenBoard={openTasksTab} />
+      ) : view === "deadlines" ? (
+        <DeadlinesView controller={controller} />
       ) : view === "drafts" ? (
         <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
       ) : current && (current.isMember || previewing) ? (
@@ -1220,6 +1232,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   ))}
                 </div>
               )}
+              {/* M85: the channel's next open deadline (opens it). */}
+              {isChannel && current.isMember && !previewing && <DeadlineChip controller={controller} channel={current} onOpen={setTaskDialog} />}
               {isChannel && current.posting_policy === "owners" && (
                 <span className="text-muted" title="アナウンス: 投稿できるのはオーナーと管理者だけです">
                   <Megaphone size={15} />
@@ -1490,6 +1504,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
       {dialog === "recurring" && current && <RecurringPostsDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {taskDialog && <TaskDialog controller={controller} task={controller.engine?.tasks?.find(taskDialog.id) ?? taskDialog} onClose={() => setTaskDialog(null)} onOpenMessage={openTaskMessage} />}
+      {deadlineInit && <TaskDialog controller={controller} task={null} init={deadlineInit} onClose={() => setDeadlineInit(null)} onOpenMessage={openTaskMessage} />}
     </>
   );
 
@@ -1518,6 +1533,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onCanvases={() => openView("canvases")}
           onCalendar={() => openView("calendar")}
           onTasks={() => openView("tasks")}
+          onDeadlines={() => openView("deadlines")}
           onBrowse={() => setDialog("browse")}
           onNewChannel={() => setDialog("channel")}
           onDirectory={() => setDialog("directory")}

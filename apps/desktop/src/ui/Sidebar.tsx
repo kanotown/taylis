@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Users } from "lucide-react";
+import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Timer, Users } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -59,6 +59,9 @@ interface Props {
   /** M55: 「自分のタスク」 and 「自分の担当」. */
   onTasks?: () => void;
   tasksActive?: boolean;
+  /** M85 「締切」. */
+  onDeadlines?: () => void;
+  deadlinesActive?: boolean;
   /** M12a: every channel read to its end. */
   onReadAll?: () => void;
   /** M12e: reminders; listed while any is open. */
@@ -67,7 +70,7 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -345,6 +348,23 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
               >
                 <ListTodo size={15} className="shrink-0 opacity-70" />
                 <span className="flex-1 truncate">タスク</span>
+              </button>
+            </li>
+          )}
+          {onDeadlines && (
+            <li>
+              <button
+                type="button"
+                onClick={onDeadlines}
+                aria-current={deadlinesActive ? "page" : undefined}
+                title="参加しているチャンネルの締切"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                  deadlinesActive ? "bg-sidebar-active text-white" : "hover:bg-sidebar-hover hover:text-white",
+                )}
+              >
+                <Timer size={15} className="shrink-0 opacity-70" />
+                <span className="flex-1 truncate">締切</span>
               </button>
             </li>
           )}

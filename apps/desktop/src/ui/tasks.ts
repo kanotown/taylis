@@ -379,6 +379,8 @@ export interface TaskDraft {
   repeat?: RepeatDraft;
   /** M81: 「サブタスク」. */
   subtasks?: SubtaskDraft[];
+  /** M85: a deadline's 「事前の通知」 (days before; the server's default for a new one is 7, 3, 1 and 0). */
+  noticeDays?: number[];
   assigneeIds: string[];
 }
 
@@ -397,6 +399,7 @@ export function draftFromTask(task: TaskOut): TaskDraft {
     dueTime: task.due_at ? hhmmLocal(task.due_at) : "",
     repeat: rruleToRepeat(task.rrule ?? null, dueOn || todayKey()),
     subtasks: (task.subtasks ?? []).map((i) => ({ id: i.id, title: i.title, done: i.done })),
+    ...(task.notice_days ? { noticeDays: [...task.notice_days] } : {}),
     assigneeIds: [...task.assignee_ids],
   };
 }
@@ -429,9 +432,11 @@ export function cleanTitle(title: string): string {
   return title.replace(/\s+/g, " ").trim();
 }
 
-export function taskDraftProblem(draft: TaskDraft): string | null {
+export function taskDraftProblem(draft: TaskDraft, kind: TaskKind = "task"): string | null {
   const title = cleanTitle(draft.title);
   if (!title) return "題名を入れてください";
+  // M85: a deadline has a date (and never repeats: the dialog offers no 「繰り返し」).
+  if (kind === "deadline" && !draft.dueOn) return "締切の日付を入れてください";
   if (title.length > MAX_TASK_TITLE) return `題名は ${MAX_TASK_TITLE} 文字までです`;
   if (draft.notes.length > MAX_TASK_NOTES) return `メモは ${MAX_TASK_NOTES} 文字までです`;
   if (draft.repeat && draft.repeat.kind !== "none") {
@@ -467,7 +472,11 @@ export function taskPatch(task: TaskOut, draft: TaskDraft, tz: string): TaskUpda
     }
     if (due && task.due_at) patch.due_at = null; // back to the whole day
   }
-  if (draft.repeat) {
+  if (draft.noticeDays && task.kind === "deadline") {
+    const days = [...new Set(draft.noticeDays)].sort((a, b) => b - a);
+    if (JSON.stringify(days) !== JSON.stringify(task.notice_days ?? [])) patch.notice_days = days;
+  }
+  if (draft.repeat && task.kind !== "deadline") {
     const changed = due ? ruleChanged(draft.repeat, due, task.rrule ?? null) : !!task.rrule;
     if (changed) patch.rrule = repeatRule(draft);
   }
@@ -543,17 +552,21 @@ export function newTaskChannel(init: TaskCreateInit | undefined, board: string, 
 /** POST /tasks for the dialog's draft. */
 export function taskCreateBody(draft: TaskDraft, init: TaskCreateInit | undefined, board: string, clientTaskId: string, tz: string): TaskCreate {
   const channelId = newTaskChannel(init, board, draft.assigneeIds);
+  const kind = init?.kind ?? "task";
+  const deadline = kind === "deadline";
   return {
     title: cleanTitle(draft.title),
     status: draft.status,
-    kind: init?.kind ?? "task",
+    kind,
     client_task_id: clientTaskId,
     tz,
     ...(channelId ? { channel_id: channelId } : {}),
     ...(draft.notes.trim() ? { notes: draft.notes } : {}),
     ...(draft.dueOn ? { due_on: draft.dueOn } : {}),
     ...(dueAtOf(draft) ? { due_at: dueAtOf(draft) } : {}),
-    ...(repeatRule(draft) ? { rrule: repeatRule(draft) } : {}),
+    ...(!deadline && repeatRule(draft) ? { rrule: repeatRule(draft) } : {}),
+    // M85: the server's default (7, 3, 1, 0) unless the dialog chose others.
+    ...(deadline && draft.noticeDays ? { notice_days: [...new Set(draft.noticeDays)].sort((a, b) => b - a) } : {}),
     ...(subtasksBody(draft.subtasks).length > 0 ? { subtasks: subtasksBody(draft.subtasks) } : {}),
     ...(channelId && draft.assigneeIds.length > 0 ? { assignee_ids: [...new Set(draft.assigneeIds)] } : {}),
     ...(init?.sourceMessageId ? { source_message_id: init.sourceMessageId } : {}),

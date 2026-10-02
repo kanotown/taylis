@@ -65,6 +65,19 @@ async def list_due(
     return await service.list_due(db, user, start, end)
 
 
+@router.get("/tasks/deadlines", response_model=list[TaskOut])
+async def list_deadlines(
+    user: CurrentUser,
+    db: Db,
+    channel_id: UUID | None = Query(
+        default=None, description="Only this channel's (left out: every channel I am in)"
+    ),
+) -> list[TaskOut]:
+    """M85 (DEADLINES.md): the deadlines (kind `deadline`) of my channels due from 30 days ago
+    on, open and done, by due date (then time); at most 500. 「締切」 and the header's chip."""
+    return await service.list_deadlines(db, user, channel_id)
+
+
 # --- M81 (TASKS.md §11): a board's columns (before /tasks/{task_id}) ------------------------------
 
 

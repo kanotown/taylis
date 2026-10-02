@@ -10,12 +10,13 @@ from sqlalchemy import (
     Double,
     ForeignKey,
     Index,
+    SmallInteger,
     String,
     Text,
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -31,6 +32,10 @@ MAX_CLIENT_ID_LENGTH = 64
 MAX_SUBTASKS = 50
 MAX_COLUMN_NAME_LENGTH = 50
 MAX_COLUMNS_PER_BOARD = 20
+# M85 (DEADLINES.md): a deadline's advance notices, as days before it (0 = the day itself).
+DEFAULT_NOTICE_DAYS = (7, 3, 1, 0)
+MAX_NOTICES = 6
+MAX_NOTICE_DAYS_BEFORE = 60
 
 
 class Task(Base):
@@ -50,6 +55,8 @@ class Task(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(8), default="todo", server_default="todo")
     # L9 (REVIEWS.md): "review" = a review request made from a message (its chip and pushes say so).
+    # M85 (DEADLINES.md): "deadline" = a channel's deadline (the header chip, 「締切」, the bot's
+    # advance notices in the channel).
     kind: Mapped[str] = mapped_column(String(8), default="task", server_default="task")
     position: Mapped[float] = mapped_column(Double)
     due_on: Mapped[date | None] = mapped_column(Date)
@@ -69,6 +76,10 @@ class Task(Base):
     column_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("task_columns.id", ondelete="SET NULL")
     )
+    # M85: a deadline's advance notices (days before, largest first) and the zone whose 9:00 they
+    # go out at (due_tz when it has a due time). Both NULL unless kind = deadline.
+    notice_days: Mapped[list[int] | None] = mapped_column(ARRAY(SmallInteger))
+    notice_tz: Mapped[str | None] = mapped_column(String(64))
     # Made from a message: the link, its channel and a one-line excerpt. An edit of the message
     # refreshes the excerpt; its deletion clears the link and the excerpt (no copy of a deleted
     # body is kept). The task itself outlives the message.
@@ -103,7 +114,15 @@ class Task(Base):
             f"notes IS NULL OR char_length(notes) <= {MAX_NOTES_LENGTH}", name="notes_length"
         ),
         CheckConstraint("status IN ('todo', 'doing', 'done')", name="status_values"),
-        CheckConstraint("kind IN ('task', 'review')", name="kind_values"),
+        CheckConstraint("kind IN ('task', 'review', 'deadline')", name="kind_values"),
+        CheckConstraint(
+            "(kind = 'deadline') = (notice_days IS NOT NULL)", name="deadline_notice_days"
+        ),
+        CheckConstraint("(notice_days IS NULL) = (notice_tz IS NULL)", name="deadline_notice_tz"),
+        CheckConstraint(
+            "kind <> 'deadline' OR (channel_id IS NOT NULL AND due_on IS NOT NULL)",
+            name="deadline_has_channel_and_date",
+        ),
         CheckConstraint(
             "(status = 'done') = (completed_at IS NOT NULL)", name="completed_when_done"
         ),
@@ -142,6 +161,13 @@ class Task(Base):
             "tasks_source_canvas_idx",
             "source_canvas_id",
             postgresql_where=text("source_canvas_id IS NOT NULL"),
+        ),
+        # M85: GET /tasks/deadlines (「締切」).
+        Index(
+            "tasks_deadline_idx",
+            "channel_id",
+            "due_on",
+            postgresql_where=text("kind = 'deadline' AND deleted_at IS NULL"),
         ),
         # GET /tasks/due (the calendar).
         Index(
@@ -244,4 +270,53 @@ class TaskDueAlarm(Base):
     __table_args__ = (
         CheckConstraint("status IN ('pending', 'fired', 'cancelled')", name="status_values"),
         Index("task_due_alarms_due_idx", "fire_at", postgresql_where=text("status = 'pending'")),
+    )
+
+
+class TaskDeadlineNotice(Base):
+    """M85 (DEADLINES.md §3): one advance notice of a deadline, posted by the deadline bot in its
+    channel. The key holds the time it was planned for, so moving the deadline plans new rows
+    (and posts again for the new date) while a time already posted is never posted twice.
+
+    pending → fired (the message it posted) or cancelled (moved, completed, deleted, the channel
+    archived, the deadline passed, or the time had passed when planned)."""
+
+    __tablename__ = "task_deadline_notices"
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    days_before: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    fire_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'fired', 'cancelled')", name="status_values"),
+        Index(
+            "task_deadline_notices_due_idx",
+            "fire_at",
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+
+class SystemBot(Base):
+    """M85: a bot account the server posts as on its own (key "deadlines": the deadline bot,
+    「締切」), made the first time it is needed."""
+
+    __tablename__ = "system_bots"
+
+    key: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

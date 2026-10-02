@@ -8671,7 +8671,8 @@
             "default": "task",
             "enum": [
               "task",
-              "review"
+              "review",
+              "deadline"
             ],
             "title": "Kind",
             "type": "string"
@@ -8687,6 +8688,21 @@
               }
             ],
             "title": "Notes"
+          },
+          "notice_days": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 6,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice Days"
           },
           "rrule": {
             "anyOf": [
@@ -8971,7 +8987,8 @@
             "default": "task",
             "enum": [
               "task",
-              "review"
+              "review",
+              "deadline"
             ],
             "title": "Kind",
             "type": "string"
@@ -8986,6 +9003,20 @@
               }
             ],
             "title": "Notes"
+          },
+          "notice_days": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice Days"
           },
           "owner_id": {
             "format": "uuid",
@@ -9159,6 +9190,21 @@
               }
             ],
             "title": "Notes"
+          },
+          "notice_days": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 6,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice Days"
           },
           "rrule": {
             "anyOf": [
@@ -20276,6 +20322,68 @@
           }
         ],
         "summary": "Update Column",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/deadlines": {
+      "get": {
+        "description": "M85 (DEADLINES.md): the deadlines (kind `deadline`) of my channels due from 30 days ago\non, open and done, by due date (then time); at most 500. 「締切」 and the header's chip.",
+        "operationId": "list_deadlines_api_v1_tasks_deadlines_get",
+        "parameters": [
+          {
+            "description": "Only this channel's (left out: every channel I am in)",
+            "in": "query",
+            "name": "channel_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this channel's (left out: every channel I am in)",
+              "title": "Channel Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskOut"
+                  },
+                  "title": "Response List Deadlines Api V1 Tasks Deadlines Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Deadlines",
         "tags": [
           "tasks"
         ]

@@ -2807,6 +2807,27 @@ export interface paths {
         patch: operations["update_column_api_v1_tasks_columns__column_id__patch"];
         trace?: never;
     };
+    "/api/v1/tasks/deadlines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Deadlines
+         * @description M85 (DEADLINES.md): the deadlines (kind `deadline`) of my channels due from 30 days ago
+         *     on, open and done, by due date (then time); at most 500. 「締切」 and the header's chip.
+         */
+        get: operations["list_deadlines_api_v1_tasks_deadlines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/due": {
         parameters: {
             query?: never;
@@ -6425,9 +6446,11 @@ export interface components {
              * @default task
              * @enum {string}
              */
-            kind: "task" | "review";
+            kind: "task" | "review" | "deadline";
             /** Notes */
             notes?: string | null;
+            /** Notice Days */
+            notice_days?: number[] | null;
             /** Rrule */
             rrule?: string | null;
             /** Source Canvas Id */
@@ -6508,9 +6531,11 @@ export interface components {
              * @default task
              * @enum {string}
              */
-            kind: "task" | "review";
+            kind: "task" | "review" | "deadline";
             /** Notes */
             notes: string | null;
+            /** Notice Days */
+            notice_days?: number[] | null;
             /**
              * Owner Id
              * Format: uuid
@@ -6567,6 +6592,8 @@ export interface components {
             due_on?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Notice Days */
+            notice_days?: number[] | null;
             /** Rrule */
             rrule?: string | null;
             /** Status */
@@ -12869,6 +12896,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskColumnOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_deadlines_api_v1_tasks_deadlines_get: {
+        parameters: {
+            query?: {
+                /** @description Only this channel's (left out: every channel I am in) */
+                channel_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"][];
                 };
             };
             /** @description Validation Error */

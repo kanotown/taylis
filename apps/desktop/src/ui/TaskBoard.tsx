@@ -7,8 +7,10 @@
  * M81 (TASKS.md §11): the board's columns come from GET /tasks/columns (each belongs to a status; the built-in three
  * stay, renamed and moved; added ones are deleted from the column's ⋯), 「＋ 列を追加」 at the right end, and on the
  * cards the due time, the checklist's progress and 🔁 for a repeating task.
+ *
+ * M85 (docs/DEADLINES.md): a deadline's card has ⏰; 「＋ 締切を追加」 above the columns opens the dialog as a 締切.
  */
-import { CalendarDays, CheckSquare, FileText, MessageSquareText, MoreHorizontal, Plus, Repeat, StickyNote } from "lucide-react";
+import { AlarmClock, CalendarDays, CheckSquare, FileText, MessageSquareText, MoreHorizontal, Plus, Repeat, StickyNote } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { describeError } from "../api/errors";
@@ -117,7 +119,8 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
   const canvasSource = canvasSourceState(task);
   const progress = subtaskProgress(task);
   const due = dueDay(task);
-  const hasMeta = !!place || !!task.due_on || !!task.notes || !!progress || !!task.rrule || source.kind === "link" || canvasSource.kind === "link" || task.assignee_ids.length > 0 || (showStatus && task.status === "doing");
+  const deadline = task.kind === "deadline";
+  const hasMeta = deadline || !!place || !!task.due_on || !!task.notes || !!progress || !!task.rrule || source.kind === "link" || canvasSource.kind === "link" || task.assignee_ids.length > 0 || (showStatus && task.status === "doing");
   return (
     <div
       data-task-card={task.id}
@@ -139,13 +142,18 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
       </div>
       {hasMeta && (
         <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs text-muted">
+          {deadline && (
+            <span className="inline-flex items-center gap-0.5 font-medium text-warning" title="締切 (前もってチャンネルに知らせます)" aria-label="締切" data-deadline>
+              <AlarmClock size={12} />
+            </span>
+          )}
           {showStatus && task.status === "doing" && <span className="rounded bg-accent-soft px-1.5 py-px text-[11px] font-medium text-accent">{statusLabel(task.kind, "doing")}</span>}
           {place && <span className="min-w-0 truncate" data-task-place>{place}</span>}
           {due && (
             <span
               data-due={task.due_on}
               data-overdue={overdue || undefined}
-              title={`期限 ${dueText(task, "")}${overdue ? " (過ぎています)" : ""}`}
+              title={`${deadline ? "締切" : "期限"} ${dueText(task, "")}${overdue ? " (過ぎています)" : ""}`}
               className={cn("inline-flex items-center gap-0.5 tabular-nums", overdue && "font-semibold text-danger", !overdue && due === today && !done && "font-semibold text-ink")}
             >
               <CalendarDays size={12} /> {dueText(task, today)}
@@ -375,6 +383,8 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
   const hub = useTaskHub(controller);
   const today = useToday();
   const [dialog, setDialog] = useState<TaskOut | null>(null);
+  /** M85: 「＋ 締切を追加」. */
+  const [addingDeadline, setAddingDeadline] = useState(false);
   const [confirm, setConfirm] = useState<TaskOut | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ column: string; index: number } | null>(null);
@@ -432,6 +442,13 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
   return (
     <div className="flex min-h-0 flex-1 flex-col" aria-label="タスク">
       {note && <div className="border-b border-line bg-warning/10 px-4 py-1.5 text-xs text-muted">{note}</div>}
+      {canEdit && (
+        <div className="flex shrink-0 justify-end px-3 pt-2">
+          <Button variant="secondary" size="sm" onClick={() => setAddingDeadline(true)} aria-label="締切を追加">
+            <AlarmClock size={14} /> 締切を追加
+          </Button>
+        </div>
+      )}
       {/* A phone: the columns side by side, scrolled sideways inside the board (snapping to a column). */}
       <div className="flex min-h-0 flex-1 snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden p-3 md:snap-none">
         {boardColumns.map((target) => {
@@ -564,6 +581,15 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
       )}
       {dialog && <TaskDialog controller={controller} task={hub?.find(dialog.id) ?? dialog} onClose={() => setDialog(null)} onOpenMessage={onOpenMessage} />}
       {confirm && <DeleteTaskConfirm controller={controller} task={confirm} onClose={() => setConfirm(null)} />}
+      {addingDeadline && (
+        <TaskDialog
+          controller={controller}
+          task={null}
+          init={{ channelId: channel.id, status: "todo", title: "", kind: "deadline", boardChoices: [channel.id] }}
+          onClose={() => setAddingDeadline(false)}
+          onOpenMessage={onOpenMessage}
+        />
+      )}
     </div>
   );
 }
