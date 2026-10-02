@@ -25,8 +25,10 @@ BACKUP_ROOT="${BACKUP_ROOT:-$HERE/backups}"
 # Optional secret files (the AI keys, docs/AI.md): compose bind-mounts each one, and a missing file would
 # make Docker create an empty root-owned directory in its place, which then stands in the way of the key.
 # An empty file means "not configured" to the app; the administrator writes the key into it later.
+# Mode 644: the app in the container runs as uid 10001 and must read it; secrets/ itself is 700 (deploy only),
+# so nobody else on the host can reach the file.
 for optional in anthropic_api_key openai_api_key; do
-  [ -e "secrets/$optional" ] || install -m 600 /dev/null "secrets/$optional"
+  [ -e "secrets/$optional" ] || install -m 644 /dev/null "secrets/$optional"
 done
 
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml)

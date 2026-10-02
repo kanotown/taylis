@@ -9,6 +9,8 @@
 | `openai_api_key` | OpenAI の API キー (1 行。docs/AI.md §12)。モデルが OpenAI のボット用。無ければそのボットが「使えない」になるだけ | `AI_OPENAI_API_KEY_FILE` (既定 `/run/secrets/openai_api_key`。compose が `infra/.env` の `OPENAI_API_KEY_FILE` のファイルをマウント) |
 | `fcm_service_account.json` | FCM のサービスアカウント鍵 (Firebase コンソール → プロジェクトの設定 → サービス アカウント → 新しい秘密鍵の生成) | `PUSH_FCM_SERVICE_ACCOUNT_PATH` (compose で `/run/secrets/fcm_service_account.json` にマウント) |
 
-- ファイルの権限は `600`、ディレクトリは `700` にする。
+- ディレクトリは `700` (deploy ユーザーだけ) にする。ファイルは `600` が基本だが、コンテナのアプリ (uid 10001) が読むもの
+  (`anthropic_api_key`、`openai_api_key`) は `644` にする。ディレクトリが `700` なので、ほかの利用者からは読めない。
+  `600` のままだとアプリが読めず、AI は「使えない」になる (エラーにはならない)。
 - Key ID / Team ID / Bundle ID などの識別子は `infra/.env` (これも除外済み) に書く。docs には書かない。
 - `.p8` はリポジトリ外 (パスワードマネージャ等) にも控えを置くこと。
