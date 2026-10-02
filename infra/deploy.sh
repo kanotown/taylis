@@ -28,7 +28,13 @@ BACKUP_ROOT="${BACKUP_ROOT:-$HERE/backups}"
 # Mode 644: the app in the container runs as uid 10001 and must read it; secrets/ itself is 700 (deploy only),
 # so nobody else on the host can reach the file.
 for optional in anthropic_api_key openai_api_key; do
-  [ -e "secrets/$optional" ] || install -m 644 /dev/null "secrets/$optional"
+  if [ ! -e "secrets/$optional" ]; then
+    install -m 644 /dev/null "secrets/$optional"
+  elif [ -f "secrets/$optional" ] && [ ! -L "secrets/$optional" ]; then
+    chmod 644 "secrets/$optional" 2>/dev/null || log "cannot make secrets/$optional readable (mode 644): fix it by hand"
+  else
+    log "secrets/$optional is not a regular file (a directory left by Docker?): remove it and write the key into a file"
+  fi
 done
 
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml)
