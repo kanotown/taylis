@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Movie
@@ -39,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -65,7 +67,8 @@ fun formatSize(bytes: Long): String = when {
 }
 
 /**
- * Images show their thumbnail; other files show a row that downloads and opens them. Several photos sit side by side
+ * Images show their thumbnail; videos a tile with the server's poster (M82, [VideoAttachment]); other files show a row
+ * that downloads and opens them. A video is told by its `content_type`, never by its thumbnail flags. Several photos sit side by side
  * as square tiles (testers, 2026-09-29: they came one under another), two in a row for two or four, three otherwise.
  */
 @Composable
@@ -84,23 +87,77 @@ fun AttachmentList(attachments: List<AttachmentOut>, controller: AppController) 
             }
         }
         attachments.forEach { attachment ->
-            if (attachment.isImage) { if (photos.size == 1) ThumbnailImage(attachment, controller) } else FileRow(attachment, controller)
+            when {
+                attachment.isImage -> if (photos.size == 1) ThumbnailImage(attachment, controller)
+                attachment.isVideo -> VideoAttachment(attachment, controller)
+                else -> FileRow(attachment, controller)
+            }
         }
     }
 }
 
 private val PHOTO_GRID_WIDTH = 280.dp
 
+/**
+ * The picture at `/attachments/{id}/thumbnail` (an image's thumbnail, a video's poster since M79), with the session;
+ * null when it cannot be fetched or decoded (the caller shows its fallback).
+ */
+internal suspend fun fetchThumbnail(controller: AppController, attachmentId: String): ImageBitmap? = try {
+    val bytes = controller.fetchBytes("/api/v1/attachments/$attachmentId/thumbnail")
+    withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+} catch (e: kotlinx.coroutines.CancellationException) {
+    throw e
+} catch (e: Exception) {
+    null
+}
+
+/**
+ * M82: a video in a message. With the server's size and poster (M79) it is a tile of the clip's final shape showing the
+ * poster, a play mark and 「0:42 · 1.9 MB」 at the bottom left; the clip is fetched only when the tile is tapped (the
+ * in-app player). Without a poster the tile shows a film icon; with nothing known (an older server) it is the file row
+ * it was before. No frame is read on the device.
+ */
+@Composable
+private fun VideoAttachment(attachment: AttachmentOut, controller: AppController) {
+    var poster by remember(attachment.id) { mutableStateOf<ImageBitmap?>(null) }
+    var posterFailed by remember(attachment.id) { mutableStateOf(false) }
+    var viewing by remember(attachment.id) { mutableStateOf(false) }
+    if (attachment.hasPoster) LaunchedEffect(attachment.id) {
+        poster = fetchThumbnail(controller, attachment.id)
+        posterFailed = poster == null
+    }
+    val look = VideoTiles.look(attachment, posterFailed)
+    if (look == VideoTiles.Look.ROW) {
+        FileRow(attachment, controller, onClick = { viewing = true })
+    } else {
+        val box = VideoTiles.box(attachment)
+        Box(
+            Modifier.size(box.width.dp, box.height.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable(onClickLabel = "再生") { viewing = true }
+                .semantics { contentDescription = VideoTiles.description(attachment) },
+            contentAlignment = Alignment.Center,
+        ) {
+            val image = poster
+            if (image != null) Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+            else if (look == VideoTiles.Look.PLAIN) Icon(Icons.Outlined.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(32.dp).offset(y = (-14).dp))
+            Box(Modifier.size(44.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))
+            }
+            Text(
+                VideoTiles.label(attachment), color = Color.White, fontSize = 11.sp, maxLines = 1,
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 5.dp, vertical = 1.dp),
+            )
+        }
+    }
+    if (viewing) VideoViewer(attachment, controller, poster, onDismiss = { viewing = false })
+}
+
 @Composable
 private fun ThumbnailImage(attachment: AttachmentOut, controller: AppController, square: Dp? = null) {
     var bitmap by remember(attachment.id) { mutableStateOf<ImageBitmap?>(null) }
     var viewing by remember(attachment.id) { mutableStateOf(false) }
-    LaunchedEffect(attachment.id) {
-        bitmap = runCatching {
-            val bytes = controller.fetchBytes("/api/v1/attachments/${attachment.id}/thumbnail")
-            withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
-        }.getOrNull()
-    }
+    LaunchedEffect(attachment.id) { bitmap = fetchThumbnail(controller, attachment.id) }
     val image = bitmap
     val shape = RoundedCornerShape(8.dp)
     val modifier = (if (square != null) Modifier.size(square) else Modifier.widthIn(max = 280.dp).heightIn(max = 240.dp))
@@ -116,16 +173,16 @@ private fun ThumbnailImage(attachment: AttachmentOut, controller: AppController,
 }
 
 @Composable
-private fun FileRow(attachment: AttachmentOut, controller: AppController) {
+private fun FileRow(attachment: AttachmentOut, controller: AppController, onClick: () -> Unit = { controller.openAttachment(attachment) }) {
     val shape = RoundedCornerShape(8.dp)
     Row(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, shape).clickable { controller.openAttachment(attachment) }.padding(10.dp),
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, shape).clickable(onClick = onClick).padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(if (attachment.contentType.startsWith("video/")) Icons.Outlined.Movie else Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(if (attachment.isVideo) Icons.Outlined.Movie else Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Column {
             Text(attachment.filename, style = MaterialTheme.typography.bodyMedium)
-            Text(formatSize(attachment.sizeBytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (attachment.isVideo) VideoTiles.label(attachment) else formatSize(attachment.sizeBytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -158,25 +215,34 @@ private val PENDING_TILE = 64.dp
 private fun PendingTile(item: AttachmentOut, controller: AppController, onRemove: () -> Unit) {
     var bitmap by remember(item.id) { mutableStateOf<ImageBitmap?>(null) }
     var viewing by remember(item.id) { mutableStateOf(false) }
-    if (item.isImage) LaunchedEffect(item.id) {
-        bitmap = runCatching {
-            val bytes = controller.fetchBytes("/api/v1/attachments/${item.id}/thumbnail")
-            withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
-        }.getOrNull()
+    var posterFailed by remember(item.id) { mutableStateOf(false) }
+    // M82: a video's poster from the server, as a photo's thumbnail.
+    if (item.hasPreviewPicture) LaunchedEffect(item.id) {
+        bitmap = fetchThumbnail(controller, item.id)
+        posterFailed = bitmap == null
     }
-    val video = item.contentType.startsWith("video/")
+    val video = item.isVideo
     val shape = RoundedCornerShape(10.dp)
     // Room above and to the right for the × over the corner.
     Box(Modifier.padding(top = 6.dp, end = 6.dp)) {
         Box(
             Modifier.size(PENDING_TILE).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)
-                .clickable(onClickLabel = "プレビュー") { if (item.isImage) viewing = true else controller.openAttachment(item) }
-                .semantics { contentDescription = "${if (item.isImage) "写真" else if (video) "動画" else "ファイル"} ${item.filename}" },
+                .clickable(onClickLabel = "プレビュー") { if (item.isImage || video) viewing = true else controller.openAttachment(item) }
+                .semantics { contentDescription = if (video) VideoTiles.description(item) else "${if (item.isImage) "写真" else "ファイル"} ${item.filename}" },
             contentAlignment = Alignment.Center,
         ) {
             val image = bitmap
-            if (image != null) Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(PENDING_TILE))
-            else if (item.isImage) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            if (image != null) {
+                Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(PENDING_TILE))
+                if (video) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)))
+                    formatDuration(item.durationMs)?.let {
+                        Text(it, color = Color.White, fontSize = 9.sp, lineHeight = 10.sp, modifier = Modifier.align(Alignment.BottomStart).padding(3.dp)
+                            .clip(RoundedCornerShape(3.dp)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 3.dp))
+                    }
+                }
+            }
+            else if (item.hasPreviewPicture && !posterFailed) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             else Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(4.dp)) {
                 Icon(if (video) Icons.Outlined.Movie else Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(item.filename, fontSize = 9.sp, lineHeight = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -194,7 +260,10 @@ private fun PendingTile(item: AttachmentOut, controller: AppController, onRemove
             Icon(Icons.Outlined.Close, contentDescription = null, tint = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.size(14.dp))
         }
     }
-    if (viewing) ImageViewer(item, controller, onDismiss = { viewing = false })
+    if (viewing) {
+        if (video) VideoViewer(item, controller, bitmap, onDismiss = { viewing = false })
+        else ImageViewer(item, controller, onDismiss = { viewing = false })
+    }
 }
 
 /**
@@ -219,6 +288,11 @@ suspend fun openDownloaded(context: android.content.Context, attachment: Attachm
         file.parentFile?.mkdirs()
         file.writeBytes(bytes)
     }
+    openCachedFile(context, attachment, file)
+}
+
+/** Hand a file already in the cache's `downloads/` to another app. */
+fun openCachedFile(context: android.content.Context, attachment: AttachmentOut, file: File) {
     val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
     val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, attachment.contentType).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
     context.startActivity(Intent.createChooser(intent, attachment.filename).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

@@ -410,6 +410,33 @@ class ApiClient(
         } ?: run { refresh(); fetchBytes(path) }
     }
 
+    /**
+     * M82: stream a download into `target` (a video for the in-app player: it never sits in memory as a whole). Written
+     * to a sibling `.part` first and moved into place only once complete, so a cut-off download is never taken for the file.
+     */
+    suspend fun downloadTo(path: String, target: java.io.File) {
+        if (accessToken == null && refreshToken != null) ensureAccessToken()
+        val request = Request.Builder().url(baseUrl.trimEnd('/') + path)
+        accessToken?.let { request.header("Authorization", "Bearer $it") }
+        val done = withContext(Dispatchers.IO) {
+            val part = java.io.File(target.parentFile, target.name + ".part")
+            try {
+                http.newCall(request.build()).execute().use { response ->
+                    if (response.code == 401) return@use false
+                    if (response.code !in 200..299) throw ApiException.Api(response.code, "http_${response.code}", "Download failed")
+                    target.parentFile?.mkdirs()
+                    part.outputStream().use { out -> response.body.byteStream().copyTo(out) }
+                    if (!part.renameTo(target)) { target.delete(); if (!part.renameTo(target)) throw IOException("could not save the download") }
+                    true
+                }
+            } catch (e: IOException) {
+                part.delete()
+                throw ApiException.Network(e)
+            }
+        }
+        if (!done) { refresh(); downloadTo(path, target) }
+    }
+
     private suspend fun execute(request: Request): Pair<Int, String> = withContext(Dispatchers.IO) {
         try {
             http.newCall(request).execute().use { response -> response.code to response.body.string() }

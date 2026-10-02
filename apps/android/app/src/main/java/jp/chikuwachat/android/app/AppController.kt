@@ -74,6 +74,8 @@ import kotlinx.coroutines.sync.withLock
 import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.platform.SharedPrefsStore
 import jp.chikuwachat.android.ui.openDownloaded
+import jp.chikuwachat.android.ui.openCachedFile
+import jp.chikuwachat.android.ui.DownloadCache
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.platform.Notifier
@@ -1936,10 +1938,27 @@ class AppController(private val app: Application) {
     fun openAttachment(attachment: AttachmentOut) {
         scope.launch {
             attempt {
-                val bytes = fetchBytes("/api/v1/attachments/${attachment.id}/content")
-                openDownloaded(app as Context, attachment, bytes)
+                if (attachment.isVideo) {
+                    // A video the player fetched already is handed over as it is (and one opened here streams to disk).
+                    openCachedFile(app as Context, attachment, videoFile(attachment))
+                } else {
+                    val bytes = fetchBytes("/api/v1/attachments/${attachment.id}/content")
+                    openDownloaded(app as Context, attachment, bytes)
+                }
             }.onFailure { error = describe(it) }
         }
+    }
+
+    /**
+     * M82: the clip of a video attachment as a file in the download cache, fetched (streamed) only the first time it is
+     * opened; the tile shows the server's poster and never downloads it. A cached file of the attachment's size is reused.
+     */
+    suspend fun videoFile(attachment: AttachmentOut): java.io.File {
+        val api = api ?: throw Refusal("ログインが必要です")
+        val file = java.io.File(java.io.File(app.cacheDir, "downloads"), DownloadCache.path(attachment.id, attachment.filename))
+        if (withContext(Dispatchers.IO) { file.isFile && file.length() == attachment.sizeBytes }) return file
+        api.downloadTo("/api/v1/attachments/${attachment.id}/content", file)
+        return file
     }
 
     suspend fun members(channelId: String): Result<List<String>> = attempt { api!!.members(channelId).map { it.userId } }
