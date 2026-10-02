@@ -733,7 +733,7 @@ class SyncEngine(
             // M52 (CALENDAR.md §5): outside the channel seq; the ranges on screen take them.
             "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated" -> calendar.applyEvent(frame.event, frame.data)
             // M56 (SYNC_PROTOCOL.md §16): outside the channel seq too; the windows on screen take them.
-            "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done" -> tasks.applyEvent(frame.event, frame.data)
+            "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done", "task.columns.updated" -> tasks.applyEvent(frame.event, frame.data)
             // M66 (docs/AI.md §5): my summary's run moved on (to me only, outside the channel seq).
             "ai.run_updated" -> ai.applyEvent(frame.event, frame.data)
             "draft.updated" -> drafts.applyEvent(Codec.snake.decodeFromJsonElement(DraftUpdated.serializer(), frame.data))

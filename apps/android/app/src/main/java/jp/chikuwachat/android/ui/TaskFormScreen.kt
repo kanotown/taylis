@@ -21,9 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.AlertDialog
@@ -52,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
@@ -61,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -71,8 +76,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
+import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.MemberOut
-import jp.chikuwachat.android.api.TaskCreate
 import jp.chikuwachat.android.api.TaskKind
 import jp.chikuwachat.android.api.TaskOut
 import jp.chikuwachat.android.api.TaskStatus
@@ -80,17 +85,35 @@ import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.builtins.ListSerializer
 import java.text.Collator
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.util.Locale
 import java.util.UUID
 
 /** The form's fields across a rotation (the form itself stays open: the controller holds it). */
 private val TaskDraftSaver = listSaver<TaskDraft, String>(
-    save = { listOf(it.title, it.notes, it.status, it.dueOn, it.assigneeIds.joinToString(",")) },
-    restore = { TaskDraft(it[0], it[1], it[2], it[3], it[4].split(",").filter { id -> id.isNotEmpty() }) },
+    save = {
+        listOf(
+            it.title, it.notes, it.status, it.dueOn, it.assigneeIds.joinToString(","), it.dueTime, CalendarRecurrence.save(it.repeat),
+            Codec.plain.encodeToString(ListSerializer(SubtaskDraft.serializer()), it.subtasks),
+        )
+    },
+    restore = {
+        val start = runCatching { LocalDate.parse(it[3]) }.getOrElse { CalendarDates.today() }
+        TaskDraft(
+            it[0], it[1], it[2], it[3], it[4].split(",").filter { id -> id.isNotEmpty() },
+            dueTime = it.getOrElse(5) { "" },
+            repeat = it.getOrNull(6)?.let { text -> CalendarRecurrence.restore(text, start) } ?: CalendarRecurrence.noRepeat(start),
+            subtasks = it.getOrNull(7)?.let { text -> runCatching { Codec.plain.decodeFromString(ListSerializer(SubtaskDraft.serializer()), text) }.getOrNull() } ?: emptyList(),
+        )
+    },
 )
+
+/** M84: which picker is open over the form. */
+private enum class TaskPicker { DATE, TIME, UNTIL }
 
 /** 追加先's value for 「自分のタスク」. */
 private const val MINE = ""
@@ -118,14 +141,17 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
     val init = form.init
     val initial = remember(form) {
         form.task?.let { TaskRules.draftFromTask(it) }
-            ?: TaskDraft(title = init?.title ?: "", status = init?.status ?: TaskStatus.TODO, dueOn = init?.dueOn ?: "", assigneeIds = init?.assigneeIds ?: emptyList())
+            ?: TaskRules.withDueOn(
+                TaskDraft(title = init?.title ?: "", status = init?.status ?: TaskStatus.TODO, assigneeIds = init?.assigneeIds ?: emptyList()),
+                init?.dueOn ?: "",
+            )
     }
     var draft by rememberSaveable(form, stateSaver = TaskDraftSaver) { mutableStateOf(initial) }
     var board by rememberSaveable(form) { mutableStateOf(init?.channelId ?: MINE) }
     var busy by remember(form) { mutableStateOf(false) }
     var error by rememberSaveable(form) { mutableStateOf<String?>(null) }
     var confirmDelete by rememberSaveable(form) { mutableStateOf(false) }
-    var picking by rememberSaveable(form) { mutableStateOf(false) }
+    var picking by rememberSaveable(form) { mutableStateOf<TaskPicker?>(null) }
     // The idempotency key of this form's create: a retry after a lost answer returns the same task.
     val clientId = rememberSaveable(form) { UUID.randomUUID().toString() }
     // A new task's conversation: the chosen board, or (L9) the DM once someone there is assigned.
@@ -172,16 +198,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             withTimeoutOrNull(5_000) { saver.settled() }
                         }
                     }
-                    hub.create(
-                        TaskCreate(
-                            channelId = channelId, title = TaskRules.cleanTitle(draft.title), notes = draft.notes.takeIf { it.isNotBlank() },
-                            status = draft.status, dueOn = draft.dueOn.ifEmpty { null },
-                            assigneeIds = draft.assigneeIds.distinct().takeIf { channelId != null && it.isNotEmpty() },
-                            sourceMessageId = init?.sourceMessageId, clientTaskId = clientId, tz = zone,
-                            kind = if (review) TaskKind.REVIEW else null,
-                            sourceCanvasId = init?.sourceCanvasId, sourceCanvasLine = init?.sourceCanvasLine?.takeIf { init.sourceCanvasId != null },
-                        ),
-                    )
+                    hub.create(TaskRules.taskCreateBody(draft, channelId, init, clientId, zone))
                     controller.notice = if (review) "レビューを依頼しました" else "タスクを作成しました"
                 } else {
                     val patch = TaskRules.taskPatch(task, draft, zone)
@@ -194,6 +211,30 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                 error = controller.describe(e)
             } finally {
                 busy = false
+            }
+        }
+    }
+
+    /**
+     * M84: a saved item's checkbox goes out at once (PATCH /tasks/{id}/subtasks/{sid}), shown first and put back when
+     * refused; a new item (or a new task) waits for 保存 with the rest.
+     */
+    fun tick(item: SubtaskDraft, done: Boolean) {
+        fun set(value: Boolean) {
+            draft = draft.copy(subtasks = draft.subtasks.map { if (it.key == item.key) it.copy(done = value) else it })
+        }
+        set(done)
+        val existing = task ?: return
+        val id = item.id?.takeIf { sid -> existing.subtasks.any { it.id == sid } } ?: return
+        if (hub == null) return
+        controller.scope.launch {
+            try {
+                hub.toggleSubtask(existing.id, id, done)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                set(!done)
+                error = controller.describe(e)
             }
         }
     }
@@ -327,14 +368,35 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                         Column {
                             FieldLabel(dueName)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick = { picking = true }, modifier = Modifier.weight(1f)) {
+                                OutlinedButton(onClick = { picking = TaskPicker.DATE }, modifier = Modifier.weight(1f)) {
                                     Text(draft.dueOn.takeIf { it.isNotEmpty() }?.let { dueText(it) } ?: "なし", maxLines = 1)
                                 }
+                                // M84: the time beside the date (none: the whole day).
                                 if (draft.dueOn.isNotEmpty()) {
-                                    TextButton(onClick = { change(draft.copy(dueOn = "")) }) { Text(dueName + "をなくす") }
+                                    OutlinedButton(onClick = { picking = TaskPicker.TIME }) {
+                                        Text(draft.dueTime.takeIf { it.isNotEmpty() }?.let { clockText(it) } ?: "時刻なし", maxLines = 1)
+                                    }
+                                }
+                            }
+                            if (draft.dueOn.isNotEmpty()) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    if (draft.dueTime.isNotEmpty()) TextButton(onClick = { change(draft.copy(dueTime = "")) }) { Text("時刻をなくす") }
+                                    // Without a due date nothing repeats: the save sends `rrule: null` with it.
+                                    TextButton(onClick = { change(TaskRules.withDueOn(draft, "")) }) { Text(dueName + "をなくす") }
                                 }
                             }
                         }
+                        // M84: 「繰り返し」, the calendar's picker (M69) from the due date; not for a review request.
+                        val dueDate = draft.dueOn.takeIf { it.isNotEmpty() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                        if (dueDate != null && !review) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                RepeatSection(draft.repeat, dueDate, onChange = { change(draft.copy(repeat = it)) }, onPickUntil = { picking = TaskPicker.UNTIL })
+                                if (draft.repeat.kind != RepeatKind.NONE) {
+                                    Text("完了にすると、次の回のタスクができます", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                        SubtaskEditor(draft.subtasks, enabled = !busy, onChange = { change(draft.copy(subtasks = it)) }, onTick = ::tick)
                         if (channelId != null && !(task == null && (review || init?.dmChannelId != null))) {
                             AssigneePicker(controller, channelId, version, draft.assigneeIds, label = assigneeName, onChange = { change(draft.copy(assigneeIds = it)) })
                         }
@@ -382,20 +444,35 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                 }
             }
         }
-        if (picking) {
-            val state = rememberDatePickerState(
-                initialSelectedDateMillis = Schedule.pickerMillis(draft.dueOn.takeIf { it.isNotEmpty() }?.let { LocalDate.parse(it) } ?: CalendarDates.today()),
-            )
-            DatePickerDialog(
-                onDismissRequest = { picking = false },
-                confirmButton = {
-                    TextButton(enabled = state.selectedDateMillis != null, onClick = {
-                        state.selectedDateMillis?.let { change(draft.copy(dueOn = Schedule.pickerDate(it).toString())) }
-                        picking = false
-                    }) { Text("決定") }
-                },
-                dismissButton = { TextButton(onClick = { picking = false }) { Text("キャンセル") } },
-            ) { DatePicker(state = state) }
+        when (picking) {
+            TaskPicker.DATE, TaskPicker.UNTIL -> {
+                val until = picking == TaskPicker.UNTIL
+                val due = draft.dueOn.takeIf { it.isNotEmpty() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                val shown = if (until) draft.repeat.until ?: due?.plusMonths(1) else due
+                val state = rememberDatePickerState(initialSelectedDateMillis = Schedule.pickerMillis(shown ?: CalendarDates.today()))
+                DatePickerDialog(
+                    onDismissRequest = { picking = null },
+                    confirmButton = {
+                        TextButton(enabled = state.selectedDateMillis != null, onClick = {
+                            state.selectedDateMillis?.let { millis ->
+                                val day = Schedule.pickerDate(millis)
+                                change(if (until) draft.copy(repeat = draft.repeat.copy(until = day)) else TaskRules.withDueOn(draft, day.toString()))
+                            }
+                            picking = null
+                        }) { Text("決定") }
+                    },
+                    dismissButton = { TextButton(onClick = { picking = null }) { Text("キャンセル") } },
+                ) { DatePicker(state = state) }
+            }
+            TaskPicker.TIME -> {
+                // A new time starts at 9:00 (the desktop's empty time field picks the hour).
+                val time = draft.dueTime.takeIf { it.isNotEmpty() }?.let { runCatching { LocalTime.parse(it) }.getOrNull() } ?: LocalTime.of(9, 0)
+                TimePickDialog(time.hour, time.minute, title = dueName + "の時刻", onDismiss = { picking = null }) { hour, minute ->
+                    change(draft.copy(dueTime = LocalTime.of(hour, minute).toString()))
+                    picking = null
+                }
+            }
+            null -> Unit
         }
         if (confirmDelete && task != null) {
             AlertDialog(
@@ -449,6 +526,50 @@ private fun CanvasSourceBox(controller: AppController, source: CanvasTaskSource,
 private fun dueText(dueOn: String): String {
     val day = runCatching { LocalDate.parse(dueOn) }.getOrNull() ?: return dueOn
     return CalendarDates.dayLabel(day) + if (day == CalendarDates.today()) " (今日)" else ""
+}
+
+/** "14:30" → 「14:30」, "09:00" → 「9:00」 (the calendar's clock). */
+private fun clockText(hhmm: String): String = runCatching { CalendarDates.clock(LocalTime.parse(hhmm)) }.getOrDefault(hhmm)
+
+/**
+ * M84 (TASKS.md §11.8 4.): 「サブタスク」 — each item's checkbox, its title, ↑ / ↓ and 削除, and 「＋ サブタスクを追加」. The list
+ * goes out whole with 保存 (ids kept); `onTick` is a checkbox (a saved item's goes out at once).
+ */
+@Composable
+private fun SubtaskEditor(items: List<SubtaskDraft>, enabled: Boolean, onChange: (List<SubtaskDraft>) -> Unit, onTick: (SubtaskDraft, Boolean) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        val doneCount = items.count { it.done }
+        FieldLabel("サブタスク" + if (items.isNotEmpty()) " ($doneCount/${items.size})" else "")
+        items.forEachIndexed { index, item ->
+            key(item.key) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = item.done, enabled = enabled, onCheckedChange = { onTick(item, it) },
+                    modifier = Modifier.semantics { contentDescription = "「${item.title}」" + if (item.done) "を未完了に戻す" else "を完了にする" },
+                )
+                OutlinedTextField(
+                    value = item.title, singleLine = true, enabled = enabled, placeholder = { Text("サブタスク") },
+                    onValueChange = { text -> onChange(items.map { if (it.key == item.key) it.copy(title = text.take(TaskRules.MAX_TITLE)) else it }) },
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(textDecoration = if (item.done) TextDecoration.LineThrough else null),
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(enabled = enabled && index > 0, onClick = { onChange(TaskRules.moveSubtask(items, index, -1)) }) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "上へ")
+                }
+                IconButton(enabled = enabled && index < items.size - 1, onClick = { onChange(TaskRules.moveSubtask(items, index, 1)) }) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "下へ")
+                }
+                IconButton(enabled = enabled, onClick = { onChange(items.filter { it.key != item.key }) }) {
+                    Icon(Icons.Default.Close, contentDescription = "削除")
+                }
+            }
+            }
+        }
+        TextButton(enabled = enabled && items.size < TaskRules.MAX_SUBTASKS, onClick = { onChange(items + SubtaskDraft(null, "")) }) {
+            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(" サブタスクを追加")
+        }
+    }
 }
 
 @Composable
@@ -543,7 +664,25 @@ private fun ReadOnlyTask(controller: AppController, task: TaskOut, version: Int)
         }
         val review = task.kind == TaskKind.REVIEW
         Text("状態: " + TaskRules.label(task.kind, task.status), style = MaterialTheme.typography.bodyLarge)
-        Text((if (review) "希望日: " else "期限: ") + (task.dueOn?.let { dueText(it) } ?: "なし"), style = MaterialTheme.typography.bodyLarge)
+        // M84: with its time (this device's clock), the rule and the checklist.
+        val dueDay = TaskRules.dueDay(task.dueOn, task.dueAt)
+        val time = TaskRules.dueTimeOf(task.dueAt).takeIf { it.isNotEmpty() }?.let { " " + clockText(it) } ?: ""
+        Text((if (review) "希望日: " else "期限: ") + (dueDay?.let { dueText(it) + time } ?: "なし"), style = MaterialTheme.typography.bodyLarge)
+        if (task.rrule != null) {
+            val start = dueDay?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: CalendarDates.today()
+            Text("🔁 " + CalendarRecurrence.describeRrule(task.rrule, start), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (task.subtasks.isNotEmpty()) {
+            Column {
+                Text("サブタスク (${task.subtasks.count { it.done }}/${task.subtasks.size})", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                task.subtasks.forEach { item ->
+                    Text(
+                        (if (item.done) "☑ " else "☐ ") + item.title, style = MaterialTheme.typography.bodyLarge,
+                        textDecoration = if (item.done) TextDecoration.LineThrough else null,
+                    )
+                }
+            }
+        }
         if (task.channelId != null) {
             Text(
                 (if (review) "依頼先: " else "担当者: ") + task.assigneeIds.joinToString("、") { users[it]?.displayName ?: "?" }.ifEmpty { "なし" },

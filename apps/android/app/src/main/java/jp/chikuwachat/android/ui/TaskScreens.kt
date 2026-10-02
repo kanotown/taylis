@@ -1,7 +1,12 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -43,9 +48,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,12 +70,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import jp.chikuwachat.android.api.TaskColumnOut
 import jp.chikuwachat.android.api.TaskCreate
 import jp.chikuwachat.android.api.TaskKind
 import jp.chikuwachat.android.api.TaskNeighbors
@@ -106,9 +111,13 @@ private fun listNote(state: TaskListState?, available: Boolean): String? = when 
 }
 
 /**
- * M56 (TASKS.md §6, phone column): a channel's 「タスク」 tab. The three columns as a switch on top (「未着手 3」 「進行中 1」
+ * M56 (TASKS.md §6, phone column): a channel's 「タスク」 tab. The columns as a switch on top (「未着手 3」 「進行中 1」
  * 「完了」), that column's cards under it in the server's order, and 「＋ 追加」 after the last card. A card's ⋮ (or a long
  * press) moves it to another column, one place up or down, or deletes it. A board I may not change says why.
+ *
+ * M84 (TASKS.md §11.8 2.): one switch per column of the board (GET /tasks/columns, left to right; a server before M81 has
+ * the three built-in ones), cards by `column_id` (null or unknown: their status's built-in column). For those who may post,
+ * a long press on a column (or ⋯ 「列を編集」) renames it, moves it left / right, deletes an added one, or adds a column.
  */
 @Composable
 fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: Int) {
@@ -119,19 +128,32 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
     DisposableEffect(hub, channel.id) { onDispose { hub?.closeBoard(channel.id) } }
     val board = remember(changes, hub, channel.id) { hub?.board(channel.id) }
     val tasks = board?.tasks ?: emptyList()
-    var column by rememberSaveable(channel.id) { mutableStateOf(TaskStatus.TODO) }
+    val columns = board?.columns ?: TaskRules.FALLBACK_COLUMNS
+    // The column shown: its id, and its status for when the id is gone (the fallback ids before the columns are read).
+    var selectedId by rememberSaveable(channel.id) { mutableStateOf(TaskStatus.TODO) }
+    var selectedStatus by rememberSaveable(channel.id) { mutableStateOf(TaskStatus.TODO) }
+    val column = TaskRules.pickColumn(columns, selectedId, selectedStatus) ?: TaskRules.FALLBACK_COLUMNS.first()
     val current = remember(version, channel.id) { controller.store.channel(channel.id) ?: channel }
     val canEdit = hub?.available == true && TaskRules.canEditBoard(current, controller.isAdmin)
-    val cards = remember(tasks, column) { TaskRules.sortColumn(tasks, column) }
+    val canEditColumns = canEdit && board?.columnsSupported == true
+    val cards = remember(tasks, column, columns) { TaskRules.sortBoardColumn(tasks, column, columns) }
     var confirmDelete by remember { mutableStateOf<TaskOut?>(null) }
+    var columnDialog by remember { mutableStateOf<ColumnDialog?>(null) }
+    var deleteColumn by remember { mutableStateOf<TaskColumnOut?>(null) }
+    var boardMenu by remember { mutableStateOf(false) }
     val note = listNote(board?.state, hub?.available == true)
         ?: TaskRules.boardNote(unsupported = false, failed = false, channel = current, canEdit = canEdit || hub?.available != true)
 
-    fun move(task: TaskOut, status: String, neighbors: TaskNeighbors) {
+    fun select(target: TaskColumnOut) {
+        selectedId = target.id
+        selectedStatus = target.status
+    }
+
+    fun move(task: TaskOut, target: TaskColumnOut, neighbors: TaskNeighbors) {
         val tasksHub = hub ?: return
         controller.scope.launch {
             try {
-                tasksHub.move(task.id, status, neighbors)
+                tasksHub.move(task.id, target.status, neighbors, target)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -140,18 +162,48 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
         }
     }
 
+    fun columnChange(change: suspend (TaskHub) -> Unit) {
+        val tasksHub = hub ?: return
+        controller.scope.launch {
+            try {
+                change(tasksHub)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                controller.report(e)
+            }
+        }
+    }
+
+    val columnMenu: @Composable (TaskColumnOut, () -> Unit) -> Unit = { target, dismiss ->
+        ColumnMenuItems(
+            target, columns, dismiss,
+            onRename = { columnDialog = ColumnDialog(target) },
+            onMove = { place -> columnChange { it.moveColumn(channel.id, target.id, place) } },
+            onDelete = { deleteColumn = target },
+            onAdd = { columnDialog = ColumnDialog(null) },
+        )
+    }
+
     Column(Modifier.fillMaxSize()) {
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-            TaskStatus.all.forEachIndexed { index, status ->
-                val count = tasks.count { it.status == status }
-                // 「完了」 without a number: the board holds only the latest 100 of them (TASKS.md §6).
-                val label = TaskRules.label(status) + if (status != TaskStatus.DONE) " $count" else ""
-                SegmentedButton(
-                    selected = column == status,
-                    onClick = { column = status },
-                    shape = SegmentedButtonDefaults.itemShape(index, TaskStatus.all.size),
-                    icon = {},
-                ) { Text(label, maxLines = 1) }
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.weight(1f).horizontalScroll(rememberScrollState()).selectableGroup(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
+                columns.forEach { item ->
+                    val count = tasks.count { TaskRules.columnOfTask(it, columns)?.id == item.id }
+                    ColumnSwitch(
+                        TaskRules.columnLabel(item, count), selected = item.id == column.id, onClick = { select(item) },
+                        menu = if (canEditColumns) ({ dismiss -> columnMenu(item, dismiss) }) else null,
+                    )
+                }
+            }
+            if (canEditColumns) {
+                Box {
+                    IconButton(onClick = { boardMenu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "列を編集") }
+                    DropdownMenu(expanded = boardMenu, onDismissRequest = { boardMenu = false }) { columnMenu(column) { boardMenu = false } }
+                }
             }
         }
         note?.let { NoteStrip(it) }
@@ -161,7 +213,7 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
                 item(key = "empty") {
                     val loading = hub?.available == true && (board == null || board.state == TaskListState.LOADING)
                     Text(
-                        if (loading) "読み込み中…" else "${TaskRules.label(column)}のタスクはありません",
+                        if (loading) "読み込み中…" else "${column.name}のタスクはありません",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 16.dp, horizontal = 4.dp),
                     )
@@ -173,16 +225,16 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
                     modifier = Modifier.padding(bottom = 6.dp),
                     menu = if (canEdit || task.canDelete) { dismiss ->
                         if (canEdit) {
-                            TaskStatus.all.filter { it != task.status }.forEach { status ->
+                            columns.filter { it.id != column.id }.forEach { target ->
                                 DropdownMenuItem(
-                                    text = { Text("「${TaskRules.label(status)}」へ移動") },
-                                    onClick = { dismiss(); move(task, status, TaskNeighbors.NONE) },
+                                    text = { Text("「${target.name}」へ移動") },
+                                    onClick = { dismiss(); move(task, target, TaskNeighbors.NONE) },
                                 )
                             }
                             val up = TaskRules.moveWithin(cards, task.id, -1)
                             val down = TaskRules.moveWithin(cards, task.id, 1)
-                            DropdownMenuItem(text = { Text("上へ") }, enabled = up != null, onClick = { dismiss(); up?.let { move(task, task.status, it) } })
-                            DropdownMenuItem(text = { Text("下へ") }, enabled = down != null, onClick = { dismiss(); down?.let { move(task, task.status, it) } })
+                            DropdownMenuItem(text = { Text("上へ") }, enabled = up != null, onClick = { dismiss(); up?.let { move(task, column, it) } })
+                            DropdownMenuItem(text = { Text("下へ") }, enabled = down != null, onClick = { dismiss(); down?.let { move(task, column, it) } })
                         }
                         if (task.canDelete) {
                             DropdownMenuItem(
@@ -193,21 +245,172 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
                     } else null,
                 )
             }
-            if (column == TaskStatus.DONE && board != null && !board.allDone && cards.size >= TaskRules.BOARD_DONE_LIMIT) {
+            // Every completed column reads the same 「all」 (TASKS.md §11.7).
+            val doneCount = tasks.count { it.status == TaskStatus.DONE }
+            if (column.status == TaskStatus.DONE && board != null && !board.allDone && doneCount >= TaskRules.BOARD_DONE_LIMIT) {
                 item(key = "all-done") {
                     TextButton(onClick = { controller.scope.launch { hub?.openBoard(channel.id, allDone = true) } }) { Text("完了をすべて表示") }
                 }
             }
             if (canEdit && hub != null) {
-                item(key = "add:$column") {
+                item(key = "add:${column.id}") {
                     InlineAdd(controller) { title ->
-                        hub.create(TaskCreate(channelId = channel.id, title = title, status = column, clientTaskId = UUID.randomUUID().toString(), tz = ZoneId.systemDefault().id))
+                        val created = hub.create(
+                            TaskCreate(channelId = channel.id, title = title, status = column.status, clientTaskId = UUID.randomUUID().toString(), tz = ZoneId.systemDefault().id),
+                        )
+                        // An added column: made in its status's built-in column, then moved in (TASKS.md §11.7).
+                        if (TaskRules.columnIdFor(column) != null) hub.move(created.id, column.status, TaskNeighbors.NONE, column)
                     }
                 }
             }
         }
     }
     confirmDelete?.let { task -> DeleteTaskDialog(controller, task, onDismiss = { confirmDelete = null }) }
+    columnDialog?.let { dialog ->
+        ColumnNameDialog(
+            controller, dialog.column, atLimit = columns.size >= TaskRules.MAX_COLUMNS, onDismiss = { columnDialog = null },
+            onSave = { name, status ->
+                val tasksHub = hub ?: return@ColumnNameDialog
+                val editing = dialog.column
+                if (editing == null) select(tasksHub.addColumn(channel.id, name, status)) else tasksHub.renameColumn(channel.id, editing.id, name)
+            },
+        )
+    }
+    deleteColumn?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteColumn = null },
+            title = { Text("列「${target.name}」を削除しますか？") },
+            text = { Text(TaskRules.deleteColumnText(target, columns)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteColumn = null
+                    if (column.id == target.id) TaskRules.builtinFor(columns, target.status)?.let { select(it) }
+                    columnChange { it.removeColumn(channel.id, target.id) }
+                }) { Text("削除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteColumn = null }) { Text("キャンセル") } },
+        )
+    }
+}
+
+/** M84: the column dialog — `column` null: 「列を追加」, else 「名前を変更」 of it. */
+private data class ColumnDialog(val column: TaskColumnOut?)
+
+/** M84: a column on the board's switch (a tap shows it; a long press, when given, opens its menu). */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ColumnSwitch(label: String, selected: Boolean, onClick: () -> Unit, menu: (@Composable (dismiss: () -> Unit) -> Unit)?) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.outline),
+            modifier = Modifier
+                .heightIn(min = TouchTarget.MIN)
+                .combinedClickable(
+                    role = Role.Tab, onClick = onClick,
+                    onLongClickLabel = if (menu != null) "列の操作" else null, onLongClick = if (menu != null) ({ open = true }) else null,
+                )
+                .semantics { this.selected = selected },
+        ) {
+            Box(Modifier.heightIn(min = TouchTarget.MIN).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    label, style = MaterialTheme.typography.labelLarge, maxLines = 1,
+                    color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+        if (menu != null) DropdownMenu(expanded = open, onDismissRequest = { open = false }) { menu { open = false } }
+    }
+}
+
+/** M84: a column's operations — 名前を変更, 左へ / 右へ, 削除 (added columns only), and 列を追加. */
+@Composable
+private fun ColumnMenuItems(
+    column: TaskColumnOut, columns: List<TaskColumnOut>, dismiss: () -> Unit, onRename: () -> Unit, onMove: (ColumnPlace) -> Unit,
+    onDelete: () -> Unit, onAdd: () -> Unit,
+) {
+    val left = TaskRules.columnMoveTarget(columns, column.id, -1)
+    val right = TaskRules.columnMoveTarget(columns, column.id, 1)
+    DropdownMenuItem(text = { Text("「${column.name}」の名前を変更") }, onClick = { dismiss(); onRename() })
+    DropdownMenuItem(text = { Text("左へ") }, enabled = left != null, onClick = { dismiss(); left?.let(onMove) })
+    DropdownMenuItem(text = { Text("右へ") }, enabled = right != null, onClick = { dismiss(); right?.let(onMove) })
+    if (!column.builtin) {
+        DropdownMenuItem(text = { Text("列を削除", color = MaterialTheme.colorScheme.error) }, onClick = { dismiss(); onDelete() })
+    }
+    HorizontalDivider()
+    DropdownMenuItem(
+        text = { Text(if (columns.size >= TaskRules.MAX_COLUMNS) "列を追加 (${TaskRules.MAX_COLUMNS} 列まで)" else "列を追加") },
+        enabled = columns.size < TaskRules.MAX_COLUMNS, onClick = { dismiss(); onAdd() },
+    )
+}
+
+/**
+ * M84: 「列を追加」 (名前 and 種類: 未着手 / 進行中 / 完了) or 「名前を変更」 (`column`; its kind cannot change, TASKS.md §11.7).
+ * `onSave` throws when the server refuses (the reason shows; the dialog stays).
+ */
+@Composable
+private fun ColumnNameDialog(
+    controller: AppController, column: TaskColumnOut?, atLimit: Boolean, onDismiss: () -> Unit, onSave: suspend (name: String, status: String) -> Unit,
+) {
+    var name by rememberSaveable { mutableStateOf(column?.name ?: "") }
+    var status by rememberSaveable { mutableStateOf(column?.status ?: TaskStatus.DOING) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    fun save() {
+        val problem = TaskRules.columnNameProblem(name) ?: if (column == null && atLimit) "列は ${TaskRules.MAX_COLUMNS} 列までです" else null
+        if (problem != null) {
+            error = problem
+            return
+        }
+        busy = true
+        scope.launch {
+            try {
+                onSave(TaskRules.cleanTitle(name), status)
+                onDismiss()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = controller.describe(e)
+            } finally {
+                busy = false
+            }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (column == null) "列を追加" else "列の名前を変更") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it.take(TaskRules.MAX_COLUMN_NAME); error = null }, label = { Text("名前") },
+                    placeholder = { Text("レビュー待ち") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { save() }),
+                )
+                if (column == null) {
+                    Text("種類", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.selectableGroup()) {
+                        TaskStatus.all.forEach { kind ->
+                            Row(
+                                Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).selectable(selected = status == kind, role = Role.RadioButton) { status = kind },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(selected = status == kind, onClick = null)
+                                Text(" " + (TaskRules.COLUMN_KIND_LABELS[kind] ?: kind), style = MaterialTheme.typography.bodyLarge)
+                            }
+                        }
+                    }
+                } else {
+                    Text("種類: ${TaskRules.label(column.status)} (変えられません)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            }
+        },
+        confirmButton = { TextButton(enabled = !busy, onClick = ::save) { Text(if (column == null) "追加" else "保存") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+    )
 }
 
 /** 「このタスクを削除しますか？」, then the delete (the hub drops it everywhere). */
@@ -302,12 +505,18 @@ fun TaskCard(
     var menuOpen by remember { mutableStateOf(false) }
     val done = task.status == TaskStatus.DONE
     val overdue = TaskRules.isOverdue(task, today)
+    val progress = TaskRules.subtaskProgress(task)
     val names = remember(version, task.assigneeIds) { task.assigneeIds.map { store.users[it]?.displayName ?: "?" } }
     val summary = buildString {
         append(task.title)
         if (done) append("、完了")
         badge?.let { append("、").append(it) }
-        task.dueOn?.let { append(if (task.kind == TaskKind.REVIEW) "、希望日 " else "、期限 ").append(TaskRules.dueLabel(it, today)); if (overdue) append(" (過ぎています)") }
+        if (task.dueOn != null) {
+            append("、").append(TaskRules.cardDueText(task, today))
+            if (overdue) append(" (過ぎています)")
+        }
+        if (task.rrule != null) append("、繰り返し")
+        progress?.let { append("、サブタスク ${it.first}/${it.second} 完了") }
         if (names.isNotEmpty()) append("、担当 ").append(names.joinToString("、"))
         if (!task.notes.isNullOrBlank()) append("、メモあり")
         if (task.source?.messageId != null) append("、元のメッセージあり")
@@ -337,7 +546,8 @@ fun TaskCard(
                     color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 )
                 val canvasId = task.canvasSource?.canvasId
-                val marks = badge != null || task.dueOn != null || !task.notes.isNullOrBlank() || task.source?.messageId != null || canvasId != null || names.isNotEmpty()
+                val marks = badge != null || task.dueOn != null || !task.notes.isNullOrBlank() || task.source?.messageId != null || canvasId != null ||
+                    names.isNotEmpty() || progress != null || task.rrule != null
                 if (marks) {
                     Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         badge?.let {
@@ -346,11 +556,20 @@ fun TaskCard(
                                 color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
                             )
                         }
-                        task.dueOn?.let { due ->
+                        if (task.dueOn != null) {
                             val color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                             Text(
-                                (if (task.kind == TaskKind.REVIEW) "希望日 " else "期限 ") + TaskRules.dueLabel(due, today), style = MaterialTheme.typography.labelMedium, color = color,
-                                fontWeight = if (overdue || due == today) FontWeight.SemiBold else FontWeight.Normal,
+                                TaskRules.cardDueText(task, today), style = MaterialTheme.typography.labelMedium, color = color,
+                                fontWeight = if (overdue || TaskRules.dueDay(task.dueOn, task.dueAt) == today) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        }
+                        // M84: the repeat mark and the checklist's progress (green once every item is done).
+                        if (task.rrule != null) Text("🔁", style = MaterialTheme.typography.labelMedium)
+                        progress?.let { (doneItems, total) ->
+                            Text(
+                                TaskRules.progressText(doneItems to total), style = MaterialTheme.typography.labelMedium,
+                                color = if (doneItems == total) ProgressDone else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = if (doneItems == total) FontWeight.SemiBold else FontWeight.Normal,
                             )
                         }
                         if (!task.notes.isNullOrBlank()) {
@@ -383,6 +602,9 @@ fun TaskCard(
         }
     }
 }
+
+/** M84: a checklist with every item done (「☑ 5/5」). */
+private val ProgressDone = Color(0xFF16A34A)
 
 /** Up to [TaskRules.CARD_AVATARS] faces, overlapping, then 「+N」. */
 @Composable
@@ -602,15 +824,23 @@ fun TaskDayRow(task: TaskOut, onOpen: (TaskOut) -> Unit, showBoard: Boolean = tr
     val done = task.status == TaskStatus.DONE
     val color = Color(CalendarDates.channelColor(task.channelId))
     val board = if (task.channelId == null) "自分" else TaskRules.placeLabel(task)
+    // M84: a due time shows before the title (「☐ 14:00 題名」).
+    val time = TaskRules.calendarTime(task)
     Row(
         Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = "開く") { onOpen(task) }
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .semantics(mergeDescendants = true) { contentDescription = "期限 ${task.title}、$board" + if (done) "、完了" else "" },
+            .semantics(mergeDescendants = true) {
+                contentDescription = "期限 " + (if (time.isNotEmpty()) "$time " else "") + "${task.title}、$board" + if (done) "、完了" else ""
+            },
         verticalAlignment = Alignment.Top,
     ) {
         Text("期限", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(92.dp).padding(top = 2.dp))
         Text(if (done) "☑" else "☐", color = color, style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.width(8.dp))
+        if (time.isNotEmpty()) {
+            Text(time, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(6.dp))
+        }
         Column(Modifier.weight(1f)) {
             Text(
                 task.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis,

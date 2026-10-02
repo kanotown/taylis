@@ -366,7 +366,7 @@ private val REPEAT_UNITS = RepeatFreq.entries
  * カスタム (間隔), 終了 (なし / 日付 / 回数) whenever it repeats, and the rule in words under it.
  */
 @Composable
-private fun RepeatSection(repeat: RepeatDraft, start: LocalDate, onChange: (RepeatDraft) -> Unit, onPickUntil: () -> Unit) {
+internal fun RepeatSection(repeat: RepeatDraft, start: LocalDate, onChange: (RepeatDraft) -> Unit, onPickUntil: () -> Unit) {
     val freq = CalendarRecurrence.freq(repeat)
     val rrule = CalendarRecurrence.repeatToRrule(repeat, start)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -4,7 +4,10 @@ import jp.chikuwachat.android.api.CalendarEventOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.MessageTaskOut
+import jp.chikuwachat.android.api.SubtaskIn
 import jp.chikuwachat.android.api.TaskAssigned
+import jp.chikuwachat.android.api.TaskColumnOut
+import jp.chikuwachat.android.api.TaskCreate
 import jp.chikuwachat.android.api.TaskDue
 import jp.chikuwachat.android.api.TaskKind
 import jp.chikuwachat.android.api.TaskNeighbors
@@ -14,9 +17,14 @@ import jp.chikuwachat.android.api.TaskStatus
 import jp.chikuwachat.android.api.TaskUpdate
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.ChannelState
+import kotlinx.serialization.Serializable
 import java.text.Collator
+import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.UUID
 
 /** The task form's fields (TASKS.md §6). `dueOn` "" = none. */
 data class TaskDraft(
@@ -25,7 +33,20 @@ data class TaskDraft(
     val status: String = TaskStatus.TODO,
     val dueOn: String = "",
     val assigneeIds: List<String> = emptyList(),
+    /** M84: "HH:mm" in the device's zone, "" = the whole day. */
+    val dueTime: String = "",
+    /** M84: 「繰り返し」 (only with a due date; its start is the due date). */
+    val repeat: RepeatDraft = RepeatDraft(),
+    /** M84: 「サブタスク」, in order. */
+    val subtasks: List<SubtaskDraft> = emptyList(),
 )
+
+/** M84: a checklist item in the form (`id` null: new). `key` keeps a row's identity across edits (new ones have no id). */
+@Serializable
+data class SubtaskDraft(val id: String?, val title: String, val done: Boolean = false, val key: String = id ?: UUID.randomUUID().toString())
+
+/** M84: 「左へ」 / 「右へ」's place: right of the column `afterId` (null: the left end), as PATCH /tasks/columns/{id} takes it. */
+data class ColumnPlace(val afterId: String?)
 
 /**
  * What the form starts a new task with. `channelId` null: 「自分のタスク」. 「タスクにする」 adds the message, its one-line
@@ -125,7 +146,10 @@ object TaskRules {
      * The chip of a task made from a message: its kind, the assignees (2 names, then 「ほか N 人」; none: left out), the state
      * in its kind's words, and the due date (「10/9 まで」, 「今日まで」) while not done. Done is grey; open past its due date red.
      */
-    fun chip(task: MessageTaskOut, today: String, nameOf: (String) -> String?): TaskChip {
+    fun chip(task: MessageTaskOut, today: String, nameOf: (String) -> String?): TaskChip = chipAt(task, today, Instant.now(), nameOf)
+
+    /** [chip] at `now` (a due time is late once it has passed). */
+    fun chipAt(task: MessageTaskOut, today: String, now: Instant, nameOf: (String) -> String?): TaskChip {
         val names = task.assigneeIds.take(CHIP_NAMES).map { nameOf(it) ?: "?" }
         val rest = task.assigneeIds.size - names.size
         val who = names.joinToString("、") + if (rest > 0) " ほか $rest 人" else ""
@@ -134,9 +158,10 @@ object TaskRules {
             add(kindLabel(task.kind))
             if (who.isNotEmpty()) add(who)
             add(label(task.kind, task.status))
-            if (!done) task.dueOn?.let { dueLabel(it, today).let { day -> add(if (day == "今日") "今日まで" else "$day まで") } }
+            // M84: with its time when it has one (「10/9 14:00 まで」).
+            if (!done && task.dueOn != null) dueText(task.dueOn, task.dueAt, today).let { due -> add(if (due == "今日") "今日まで" else "$due まで") }
         }
-        val overdue = !done && task.dueOn != null && task.dueOn < today
+        val overdue = !done && overdue(task.dueOn, task.dueAt, today, now)
         return TaskChip(task.id, parts.joinToString(" · "), if (done) TaskChipTone.DONE else if (overdue) TaskChipTone.OVERDUE else TaskChipTone.OPEN)
     }
 
@@ -232,16 +257,121 @@ object TaskRules {
         return if (status == TaskStatus.DONE) column.first().position - 1 else column.last().position + 1
     }
 
-    /** The optimistic move: the card in its new column at its guessed position (completion as the server would set it). */
-    fun applyLocalMove(tasks: List<TaskOut>, taskId: String, status: String, neighbors: TaskNeighbors, now: String, me: String?): List<TaskOut> {
+    /**
+     * The optimistic move: the card in its new column at its guessed position (completion as the server would set it).
+     * M84: `into` is the board's column it goes to (its id when added, else the built-in one: null `column_id`); without
+     * one, the server's rule for a status alone — the card's column while the status stays, else the built-in one.
+     */
+    fun applyLocalMove(
+        tasks: List<TaskOut>, taskId: String, status: String, neighbors: TaskNeighbors, now: String, me: String?, into: TaskColumnOut? = null,
+    ): List<TaskOut> {
         val task = tasks.firstOrNull { it.id == taskId } ?: return tasks
-        val position = guessPosition(tasks, taskId, status, neighbors)
+        val columnId = when {
+            into != null -> columnIdFor(into)
+            status == task.status -> task.columnId
+            else -> null
+        }
+        // The neighbours are among the cards of that column (a board's columns are numbered apart).
+        val position = guessPosition(tasks.filter { it.id == taskId || it.columnId == columnId }, taskId, status, neighbors)
         val moved = when {
-            status == task.status -> task.copy(position = position)
-            status == TaskStatus.DONE -> task.copy(status = status, position = position, completedAt = now, completedBy = me)
-            else -> task.copy(status = status, position = position, completedAt = null, completedBy = null)
+            status == task.status -> task.copy(position = position, columnId = columnId)
+            status == TaskStatus.DONE -> task.copy(status = status, position = position, completedAt = now, completedBy = me, columnId = columnId)
+            else -> task.copy(status = status, position = position, completedAt = null, completedBy = null, columnId = columnId)
         }
         return tasks.map { if (it.id == taskId) moved else it }
+    }
+
+    // --- M84: a board's columns (TASKS.md §11.5) ---------------------------------------------------
+
+    const val MAX_COLUMNS = 20
+    const val MAX_COLUMN_NAME = 50
+    const val MAX_SUBTASKS = 50
+
+    /**
+     * The three built-in columns before the server's answer, or from a server before M81 (GET /tasks/columns 404 / 422).
+     * Their ids are the statuses: a move into one sends the status alone.
+     */
+    val FALLBACK_COLUMNS: List<TaskColumnOut> = TaskStatus.all.mapIndexed { i, status ->
+        TaskColumnOut(id = status, name = label(status), status = status, builtin = true, position = (i + 1).toDouble())
+    }
+
+    /** 「種類」 of a new column: the status its cards get. */
+    val COLUMN_KIND_LABELS: Map<String, String> = mapOf(
+        TaskStatus.TODO to "未着手 (まだ始めていない)", TaskStatus.DOING to "進行中", TaskStatus.DONE to "完了 (カードは完了になる)",
+    )
+
+    /** Whether these are the fallback columns (ids = statuses: no adding, renaming or moving columns). */
+    fun isFallbackColumns(columns: List<TaskColumnOut>): Boolean = columns.all { it.builtin && it.id == it.status }
+
+    /** Left to right (position, then id). */
+    fun sortColumns(columns: List<TaskColumnOut>): List<TaskColumnOut> = columns.sortedWith(compareBy<TaskColumnOut> { it.position }.thenBy { it.id })
+
+    /** The column a card shows in: its added column, else (or when that column is unknown here) the built-in one of its status. */
+    fun columnOfTask(task: TaskOut, columns: List<TaskColumnOut>): TaskColumnOut? =
+        task.columnId?.let { id -> columns.firstOrNull { it.id == id && !it.builtin } } ?: builtinFor(columns, task.status)
+
+    /** A column's cards in the server's order. */
+    fun sortBoardColumn(tasks: List<TaskOut>, column: TaskColumnOut, columns: List<TaskColumnOut>): List<TaskOut> =
+        tasks.filter { columnOfTask(it, columns)?.id == column.id }.sortedWith(order)
+
+    /** A task's `column_id` once in `column` (null: a built-in one). */
+    fun columnIdFor(column: TaskColumnOut): String? = if (column.builtin) null else column.id
+
+    /** The built-in column of a status (where a deleted column's cards go). */
+    fun builtinFor(columns: List<TaskColumnOut>, status: String): TaskColumnOut? = columns.firstOrNull { it.builtin && it.status == status }
+
+    /** The column shown when `selected` (an id, or a status from before the columns were read) is gone: its status's, else the first. */
+    fun pickColumn(columns: List<TaskColumnOut>, selected: String?, selectedStatus: String?): TaskColumnOut? =
+        columns.firstOrNull { it.id == selected }
+            ?: selectedStatus?.let { builtinFor(columns, it) }
+            ?: selected?.let { builtinFor(columns, it) }
+            ?: columns.firstOrNull()
+
+    fun columnNameProblem(name: String): String? {
+        val cleaned = cleanTitle(name)
+        return when {
+            cleaned.isEmpty() -> "列の名前を入れてください"
+            cleaned.length > MAX_COLUMN_NAME -> "列の名前は $MAX_COLUMN_NAME 文字までです"
+            else -> null
+        }
+    }
+
+    /** 「左へ」 (-1) / 「右へ」 (1): the place to go to, or null when it cannot move that way. */
+    fun columnMoveTarget(columns: List<TaskColumnOut>, columnId: String, direction: Int): ColumnPlace? {
+        val sorted = sortColumns(columns)
+        val index = sorted.indexOfFirst { it.id == columnId }
+        if (index < 0) return null
+        val to = index + direction
+        if (to < 0 || to >= sorted.size) return null
+        val rest = sorted.filter { it.id != columnId }
+        return ColumnPlace(if (to == 0) null else rest[to - 1].id)
+    }
+
+    /** A column's count on the switch: the open ones (a completed column holds only the latest 100: no number). */
+    fun columnLabel(column: TaskColumnOut, count: Int): String = column.name + if (column.status != TaskStatus.DONE) " $count" else ""
+
+    /** 「カードは『未着手』へ移ります」: where a deleted column's cards go. */
+    fun deleteColumnText(column: TaskColumnOut, columns: List<TaskColumnOut>): String =
+        "カードは『${builtinFor(columns, column.status)?.name ?: label(column.status)}』へ移ります"
+
+    // --- M84: checklists ---------------------------------------------------------------------------
+
+    /** A card's checklist progress (done, total), or null without one. */
+    fun subtaskProgress(task: TaskOut): Pair<Int, Int>? =
+        task.subtasks.takeIf { it.isNotEmpty() }?.let { items -> items.count { it.done } to items.size }
+
+    /** 「☑ 2/5」. */
+    fun progressText(progress: Pair<Int, Int>): String = "☑ ${progress.first}/${progress.second}"
+
+    /** The checklist as sent (titles cleaned, blank items left out; ids kept). */
+    fun subtasksBody(items: List<SubtaskDraft>): List<SubtaskIn> =
+        items.map { it.copy(title = cleanTitle(it.title)) }.filter { it.title.isNotEmpty() }.map { SubtaskIn(it.id, it.title.take(MAX_TITLE), it.done) }
+
+    /** ↑ (-1) / ↓ (1): the list with the item at `index` moved one place (unchanged at an end). */
+    fun moveSubtask(items: List<SubtaskDraft>, index: Int, direction: Int): List<SubtaskDraft> {
+        val to = index + direction
+        if (index !in items.indices || to !in items.indices) return items
+        return items.toMutableList().also { list -> list[index] = items[to]; list[to] = items[index] }
     }
 
     /** A task as it is now (an event, an answer): replaces the one held, or joins the list. */
@@ -261,7 +391,44 @@ object TaskRules {
 
     // --- due dates ---------------------------------------------------------------------------------
 
-    fun isOverdue(task: TaskOut, today: String): Boolean = task.dueOn != null && task.status != TaskStatus.DONE && task.dueOn < today
+    /** Past due while open: a due time once it has passed (M84), a date once the day is over. */
+    fun isOverdue(task: TaskOut, today: String, now: Instant = Instant.now()): Boolean =
+        task.status != TaskStatus.DONE && overdue(task.dueOn, task.dueAt, today, now)
+
+    private fun overdue(dueOn: String?, dueAt: String?, today: String, now: Instant): Boolean {
+        if (dueOn == null) return false
+        if (dueAt != null) return runCatching { CalendarDates.instant(dueAt).isBefore(now) }.getOrDefault(false)
+        return dueOn < today
+    }
+
+    /** M84: the local day a task is due on — a due time's date in the device's zone, else `due_on`. */
+    fun dueDay(dueOn: String?, dueAt: String?): String? =
+        dueAt?.let { runCatching { CalendarDates.local(it).toLocalDate().toString() }.getOrNull() } ?: dueOn
+
+    /** M84: a card's due — 「今日」 / 「10/9」, with the time (device's zone) when it has one: 「今日 14:00」, 「10/9 14:00」. */
+    fun dueText(dueOn: String?, dueAt: String?, today: String): String {
+        val day = dueDay(dueOn, dueAt) ?: return ""
+        val label = dueLabel(day, today)
+        return if (dueAt != null) "$label ${CalendarDates.clock(dueAt)}" else label
+    }
+
+    fun dueText(task: TaskOut, today: String): String = dueText(task.dueOn, task.dueAt, today)
+
+    /** A card's due line: 「期限 10/9 14:00」 (a review request's 「希望日 …」). */
+    fun cardDueText(task: TaskOut, today: String): String = (if (task.kind == TaskKind.REVIEW) "希望日 " else "期限 ") + dueText(task, today)
+
+    private val HHMM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+    /** M84: the form's "HH:mm" of a due time (device's zone), "" without one. */
+    fun dueTimeOf(dueAt: String?): String = dueAt?.let { runCatching { CalendarDates.local(it).toLocalTime().format(HHMM) }.getOrNull() } ?: ""
+
+    /** M84: the due time as the server takes it — the date and "HH:mm" on the device's wall clock, with its offset. */
+    fun dueAtOf(dueOn: String, dueTime: String): String? {
+        if (dueOn.isEmpty() || dueTime.isEmpty()) return null
+        val day = runCatching { LocalDate.parse(dueOn) }.getOrNull() ?: return null
+        val time = runCatching { LocalTime.parse(dueTime) }.getOrNull() ?: return null
+        return CalendarDates.isoLocal(day.atTime(time).atZone(CalendarDates.zone()))
+    }
 
     /** A card's due date: 「今日」, else M/D (with the year when not this year's). */
     fun dueLabel(dueOn: String, today: String): String {
@@ -271,12 +438,22 @@ object TaskRules {
         return if (dueOn.take(4) == today.take(4)) md else "${date.year}/$md"
     }
 
-    /** The tasks due on a day (the calendar's rows), open ones first, then by title. */
-    fun tasksForDay(tasks: List<TaskOut>, day: String): List<TaskOut> =
-        tasks.filter { it.dueOn == day }.sortedWith { a, b ->
+    /** The tasks due on a day (the calendar's rows), open ones first, then (M84) the whole-day ones before the timed ones by time, then by title. */
+    fun tasksForDay(tasks: List<TaskOut>, day: String): List<TaskOut> {
+        fun time(task: TaskOut): Long = task.dueAt?.let { runCatching { CalendarDates.instant(it).toEpochMilli() }.getOrNull() } ?: Long.MIN_VALUE
+        return tasks.filter { it.dueOn == day }.sortedWith { a, b ->
             val done = (a.status == TaskStatus.DONE).compareTo(b.status == TaskStatus.DONE)
-            if (done != 0) done else collator.compare(a.title, b.title).takeIf { it != 0 } ?: a.id.compareTo(b.id)
+            val byTime = time(a).compareTo(time(b))
+            when {
+                done != 0 -> done
+                byTime != 0 -> byTime
+                else -> collator.compare(a.title, b.title).takeIf { it != 0 } ?: a.id.compareTo(b.id)
+            }
         }
+    }
+
+    /** M84: a calendar row's 「☐ 14:00 題名」 time ("" for a whole-day one). */
+    fun calendarTime(task: TaskOut): String = task.dueAt?.let { runCatching { CalendarDates.clock(it) }.getOrNull() } ?: ""
 
     /**
      * The agenda's days (the calendar's 一覧): the days with events, and those of [start, end) with a task due (with no
@@ -357,7 +534,32 @@ object TaskRules {
 
     // --- the form ----------------------------------------------------------------------------------
 
-    fun draftFromTask(task: TaskOut): TaskDraft = TaskDraft(task.title, task.notes ?: "", task.status, task.dueOn ?: "", task.assigneeIds)
+    fun draftFromTask(task: TaskOut): TaskDraft {
+        // M84: a due time's date and time on this device's clock (its zone may differ from the task's `due_tz`).
+        val dueOn = dueDay(task.dueOn, task.dueAt) ?: ""
+        val start = runCatching { LocalDate.parse(dueOn) }.getOrNull() ?: CalendarDates.today()
+        return TaskDraft(
+            task.title, task.notes ?: "", task.status, dueOn, task.assigneeIds,
+            dueTime = dueTimeOf(task.dueAt),
+            repeat = CalendarRecurrence.rruleToRepeat(task.rrule, start),
+            subtasks = task.subtasks.map { SubtaskDraft(it.id, it.title, it.done) },
+        )
+    }
+
+    /** M84: what a due date picked in the form does to the rest (before a rule is picked, 毎週's weekday follows the date). */
+    fun withDueOn(draft: TaskDraft, dueOn: String): TaskDraft {
+        // No due date, nothing to repeat from (the patch sends `rrule: null` with it).
+        if (dueOn.isEmpty()) return draft.copy(dueOn = "", dueTime = "", repeat = draft.repeat.copy(kind = RepeatKind.NONE))
+        val day = runCatching { LocalDate.parse(dueOn) }.getOrNull() ?: return draft.copy(dueOn = dueOn)
+        val repeat = if (draft.repeat.kind == RepeatKind.NONE) CalendarRecurrence.noRepeat(day) else draft.repeat
+        return draft.copy(dueOn = dueOn, repeat = repeat)
+    }
+
+    /** M84: the rule the form says (null: しない, or no due date to repeat from). */
+    fun repeatRule(draft: TaskDraft): String? {
+        val day = runCatching { LocalDate.parse(draft.dueOn) }.getOrNull() ?: return null
+        return CalendarRecurrence.repeatToRrule(draft.repeat, day)
+    }
 
     /** The title as the server keeps it (whitespace collapsed). */
     fun cleanTitle(title: String): String = title.replace(Regex("\\s+"), " ").trim()
@@ -370,8 +572,33 @@ object TaskRules {
             title.isEmpty() -> "題名を入れてください"
             title.length > MAX_TITLE -> "題名は $MAX_TITLE 文字までです"
             draft.notes.length > MAX_NOTES -> "メモは $MAX_NOTES 文字までです"
-            else -> null
+            // M84: a rule needs a due date to start from; the checklist's limits are the server's.
+            draft.repeat.kind != RepeatKind.NONE && draft.dueOn.isEmpty() -> "繰り返すには期限を入れてください"
+            subtasksBody(draft.subtasks).size > MAX_SUBTASKS -> "サブタスクは $MAX_SUBTASKS 個までです"
+            draft.subtasks.any { cleanTitle(it.title).length > MAX_TITLE } -> "サブタスクは $MAX_TITLE 文字までです"
+            else -> runCatching { LocalDate.parse(draft.dueOn) }.getOrNull()?.let { CalendarRecurrence.repeatProblem(draft.repeat, it) }
         }
+    }
+
+    /**
+     * M84: POST /tasks from the form — the due date, the time (the device's offset; the server takes `due_on` from it), the
+     * rule (not for a review request), the checklist (blank items left out), and what was there before (the target, the
+     * source, the idempotency key, the zone).
+     */
+    fun taskCreateBody(draft: TaskDraft, channelId: String?, init: TaskCreateInit?, clientId: String, tz: String): TaskCreate {
+        val review = init?.isReview == true
+        val subtasks = subtasksBody(draft.subtasks)
+        return TaskCreate(
+            channelId = channelId, title = cleanTitle(draft.title), notes = draft.notes.takeIf { it.isNotBlank() },
+            status = draft.status, dueOn = draft.dueOn.ifEmpty { null },
+            assigneeIds = draft.assigneeIds.distinct().takeIf { channelId != null && it.isNotEmpty() },
+            sourceMessageId = init?.sourceMessageId, clientTaskId = clientId, tz = tz,
+            kind = if (review) TaskKind.REVIEW else null,
+            sourceCanvasId = init?.sourceCanvasId, sourceCanvasLine = init?.sourceCanvasLine?.takeIf { init.sourceCanvasId != null },
+            dueAt = dueAtOf(draft.dueOn, draft.dueTime),
+            rrule = if (review) null else repeatRule(draft),
+            subtasks = subtasks.takeIf { it.isNotEmpty() },
+        )
     }
 
     /** PATCH /tasks/{id} with only what changed (`tz` with a new due date: its notification is read in my zone). */
@@ -381,15 +608,40 @@ object TaskRules {
         val notesChanged = notes != task.notes
         val status = draft.status.takeIf { it != task.status }
         val due = draft.dueOn.ifEmpty { null }
-        val dueChanged = due != task.dueOn
+        // M84: a due time (its date goes with it), or the whole day (`due_at: null` drops a time, the date kept).
+        val dueAt = dueAtOf(draft.dueOn, draft.dueTime)
+        var setDueOn = false
+        var setDueAt = false
+        var sendTz = false
+        if (dueAt != null) {
+            val same = task.dueAt != null && runCatching { CalendarDates.instant(task.dueAt) == CalendarDates.instant(dueAt) }.getOrDefault(false)
+            if (!same) {
+                setDueAt = true
+                sendTz = true
+            }
+        } else {
+            if (due != dueDay(task.dueOn, task.dueAt)) {
+                setDueOn = true
+                sendTz = true
+            }
+            if (due != null && task.dueAt != null) setDueAt = true
+        }
+        // The rule: compared through the picker (CalendarRecurrence.ruleChanged); no due date stops it.
+        val start = due?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val ruleChanged = if (start != null) CalendarRecurrence.ruleChanged(draft.repeat, start, task.rrule) else task.rrule != null
+        val subtasks = subtasksBody(draft.subtasks).takeIf { body ->
+            body.map { Triple(it.id, it.title, it.done) } != task.subtasks.map { Triple(it.id, it.title, it.done) }
+        }
         var assignees: List<String>? = null
         if (task.channelId != null) {
             val after = draft.assigneeIds.distinct().sorted()
             if (task.assigneeIds.sorted() != after) assignees = after
         }
         return TaskUpdate(
-            title = title, setNotes = notesChanged, notes = notes, status = status, setDueOn = dueChanged, dueOn = due,
-            tz = if (dueChanged) tz else null, assigneeIds = assignees,
+            title = title, setNotes = notesChanged, notes = notes, status = status, setDueOn = setDueOn, dueOn = due,
+            tz = if (sendTz) tz else null, assigneeIds = assignees,
+            setDueAt = setDueAt, dueAt = dueAt, setRrule = ruleChanged, rrule = if (ruleChanged) repeatRule(draft) else null,
+            subtasks = subtasks,
         )
     }
 
@@ -474,6 +726,8 @@ object TaskRules {
     /** task.due while the app is open: 「今日が期限: 題名」 (+ the channel for a shared one). */
     fun dueText(data: TaskDue): TaskNoticeText {
         val where = if (data.channelId != null && !data.channelName.isNullOrEmpty()) " (#${data.channelName})" else ""
-        return TaskNoticeText("今日が期限: ${data.title}$where", data.taskId, data.channelId)
+        // M84: a due time (the notification went out at it): 「14:00 が期限: 題名」.
+        val time = data.dueAt?.let { runCatching { CalendarDates.clock(it) }.getOrNull() }
+        return TaskNoticeText("${if (time != null) "$time が期限" else "今日が期限"}: ${data.title}$where", data.taskId, data.channelId)
     }
 }
