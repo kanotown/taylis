@@ -304,6 +304,29 @@ M42: キャンバスの画像 (`attachments.canvas_id`) も会話のメンバー
 - アップロードの本体はメモリに二重に持たず、一時ファイル (8 MB までメモリ、以降ディスク) に流してから
   同じファイルをサムネイルとオブジェクトストレージに渡す (M28a)。
 
+### 動画 (M79)
+
+アップロードされた `video/*` (先頭バイトで判定した型。受け付ける型は今までどおり) の縦横・長さ・ポスターを、
+サーバが ffprobe と ffmpeg で読む (DATA_MODEL.md 「attachments」)。他人が送ったファイルを複雑なデコーダに
+通すので、次のように閉じ込める (`app/modules/attachments/videos.py`)。
+
+- **サブプロセス**: 引数の配列で起動し、シェルを通さない。stdin は `/dev/null` (`-nostdin`)。環境変数は `PATH` と
+  `LC_ALL` だけ (アプリの秘密を子プロセスに渡さない)。1 回ごとに `VIDEO_PROBE_TIMEOUT_SECONDS` (既定 20 秒) で打ち切り、
+  過ぎたら kill する。同時に動かすのはプロセスあたり `VIDEO_PROBE_MAX_CONCURRENT` (既定 2) 本まで。
+  ffmpeg のデコードは 2 スレッド。出力は ffprobe 64 KB、フレーム 16 MB を超えたら捨てる。
+- **入力**: アップロードの一時ファイル (名前付き、終われば消える) だけを `file:` で渡す。`-protocol_whitelist file` と
+  `-format_whitelist` (MP4 / MOV / 3GP、Matroska / WebM、AVI、ASF、MPEG-PS / TS、FLV) で、HLS のプレイリストや
+  concat のような他のファイル・URL を開く形式を読まない (ローカルファイルの読み出しや SSRF に使われる)。
+- **出力**: ffmpeg は 1 フレームを `attachment_thumbnail_px` (512 px) 以下に縮めた PNG で標準出力に書き、Pillow が
+  画像のサムネイルと同じ手順 (`images.make_thumbnail`: 画素数の上限、メタデータを持ち越さない JPEG) で作り直す。
+  ffprobe の値は 16384 px を超える縦横や負の長さを「不明」として扱う。
+- **失敗**: 起動できない・時間切れ・異常終了・読めない値は「縦横もポスターも無し」で、アップロードは失敗させない
+  (今までどおり普通の動画として保存される)。ffmpeg が無い (または `VIDEO_PROBE_ENABLED=false`) ときは何もしない。
+- **場所**: アップロードの応答の前に同期で行う (この時点の添付は pending で、まだ誰の端末にも無いので、後からイベントを
+  出す必要が無い)。動画 1 本で数百 ms (一時ファイルへの複写を含む)。重くなったら outbox の worker に移せる。
+- **backfill**: M79 より前の動画は `app.cli probe-videos` が 1 本ずつオブジェクトストアから一時ファイルに落として
+  同じ手順で調べる (上限 `--limit` 件、`video_probed_at` で再開でき、何度流しても同じ)。
+
 ### ダウンロード
 
 - `GET /attachments/{id}/content`: `status = attached` なら `channel_id` のメンバーのみ。

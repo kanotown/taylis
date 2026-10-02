@@ -76,7 +76,7 @@ describe("the store keeps last_message (§7.8)", () => {
     expect(last(store)?.id).toBe("m2");
     store.upsertMessage(message(4, "also in the channel", { parent_id: "m2", also_in_channel: true }));
     expect(last(store)).toMatchObject({ id: "m4", seq: 4, excerpt: "also in the channel", sender_id: "you", type: "user", has_attachments: false });
-    store.upsertMessage(message(5, "", { attachments: [{ id: "a", filename: "p.png", content_type: "image/png", size_bytes: 1, width: 1, height: 1, has_thumbnail: true, status: "attached", created_at: "" }] }));
+    store.upsertMessage(message(5, "", { attachments: [{ id: "a", filename: "p.png", content_type: "image/png", size_bytes: 1, width: 1, height: 1, has_thumbnail: true, has_poster: false, duration_ms: null, status: "attached", created_at: "" }] }));
     expect(last(store)).toMatchObject({ id: "m5", excerpt: "画像を送信しました", has_attachments: true });
 
     store.upsertChannel({ ...dm(), id: "p", type: "public", name: "p", dm_user_ids: null } as ChannelOut, { isMember: false });

@@ -42,7 +42,13 @@ class Attachment(Base):
     storage_key: Mapped[str] = mapped_column(Text)
     width: Mapped[int | None] = mapped_column(Integer)
     height: Mapped[int | None] = mapped_column(Integer)
+    # An image's thumbnail, or (M79) a video's poster frame: the same JPEG, the same endpoint.
     thumbnail_key: Mapped[str | None] = mapped_column(Text)
+    # M79: a video's length; width / height are its upright display size, as for an image.
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    # M79: when the server looked at the video (found something or not). NULL: not yet (uploaded
+    # before M79 or without ffmpeg); `app.cli probe-videos` takes those.
+    video_probed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

@@ -3631,8 +3631,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Duration Ms */
+            duration_ms: number | null;
             /** Filename */
             filename: string;
+            /** Has Poster */
+            has_poster: boolean;
             /** Has Thumbnail */
             has_thumbnail: boolean;
             /** Height */

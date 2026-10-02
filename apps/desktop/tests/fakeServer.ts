@@ -540,7 +540,7 @@ export class FakeServer {
       mentioned_user_ids: mentionedIds(body),
       mention_all: MENTION_ALL.test(body),
       reactions: [],
-      attachments: attachmentIds.map((id) => ({ id, filename: `file-${id}`, content_type: "application/octet-stream", size_bytes: 1, width: null, height: null, has_thumbnail: false, status: "attached", created_at: now() })),
+      attachments: attachmentIds.map((id) => ({ id, filename: `file-${id}`, content_type: "application/octet-stream", size_bytes: 1, width: null, height: null, has_thumbnail: false, has_poster: false, duration_ms: null, status: "attached", created_at: now() })),
       reply_count: 0,
       last_reply_at: null,
       reply_user_ids: [],
@@ -1239,7 +1239,7 @@ export class FakeServer {
   readonly uploads = new Map<string, AttachmentOut & { uploader: string }>();
 
   upload(userId: string, filename: string, contentType: string): AttachmentOut {
-    const attachment: AttachmentOut = { id: nextId(), filename, content_type: contentType, size_bytes: 10, width: 40, height: 30, has_thumbnail: contentType.startsWith("image/"), status: "pending", created_at: now() };
+    const attachment: AttachmentOut = { id: nextId(), filename, content_type: contentType, size_bytes: 10, width: 40, height: 30, has_thumbnail: contentType.startsWith("image/"), has_poster: false, duration_ms: null, status: "pending", created_at: now() };
     this.uploads.set(attachment.id, { ...attachment, uploader: userId });
     return attachment;
   }

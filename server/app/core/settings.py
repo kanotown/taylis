@@ -106,6 +106,14 @@ class Settings(BaseSettings):
     attachment_pending_ttl_hours: int = 24
     attachment_gc_interval_seconds: int = 3600
     attachment_thumbnail_px: int = 512
+    # M79 (SECURITY.md §4 「動画」): a video's shape, length and poster frame, read at upload with
+    # ffprobe / ffmpeg (subprocesses with a timeout, at most this many at once). Without the tools
+    # (or disabled) videos upload as before and `app.cli probe-videos` fills them in later.
+    video_probe_enabled: bool = True
+    ffprobe_path: str = "ffprobe"
+    ffmpeg_path: str = "ffmpeg"
+    video_probe_timeout_seconds: float = 20.0
+    video_probe_max_concurrent: int = 2
     upload_rate_limit_per_user: int = 20
     search_rate_limit_per_user: int = 30
     # M19: a search running longer is cancelled (503 search_timeout, the client may retry), and at

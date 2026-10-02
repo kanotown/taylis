@@ -83,7 +83,7 @@ export function resetVideoCache() {
   listeners.forEach((listener) => listener());
 }
 
-// --- the shape each video turned out to have, so its tile keeps it when redrawn (the server does not know it) ---
+// --- the shape each video turned out to have, so its tile keeps it when redrawn (where the server does not know it: before M79) ---
 
 const sizes = new Map<string, Box>();
 const listeners = new Set<() => void>();

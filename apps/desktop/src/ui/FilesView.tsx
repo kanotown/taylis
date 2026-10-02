@@ -134,7 +134,7 @@ export function ChannelFiles({ controller, channel, onOpen }: { controller: AppC
 export function FileRow({ item, controller, onOpen }: { item: FileItem; controller: AppController; onOpen: (message: MessageOut) => void }) {
   const store = controller.store;
   const { attachment } = item;
-  const url = useAttachmentUrl(controller, attachment, "thumbnail", attachment.has_thumbnail);
+  const url = useAttachmentUrl(controller, attachment, "thumbnail", attachment.has_thumbnail || attachment.has_poster === true);
   const channel = store.getChannel(item.channel_id);
   const uploader = store.users.get(item.uploader_id)?.display_name ?? "?";
   const reveal = () => onOpen({ id: item.message_id, channel_id: item.channel_id, parent_id: item.parent_id ?? null } as MessageOut);

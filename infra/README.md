@@ -225,6 +225,7 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    | `create-admin` / `create-user` | アカウント作成 (仮パスワード表示は一度だけ) |
    | `push-test --user <name>` | プッシュ疎通 |
    | `verify-attachments` | 添付のバイト列欠損を報告 |
+   | `probe-videos [--limit 1000]` | M79 より前 (または ffmpeg の無いサーバ) の動画の縦横・長さ・ポスターを埋める。1 本ずつ確定するので途中で止めても再開でき、何度流しても同じ。「more videos are left」と出たらもう一度流す。メッセージに付いた動画はそのメッセージを差分で端末に届け直す |
    | `anonymize-user --username <name>` | 退会: 氏名・メール・資格情報・端末を消し、履歴は「退会したユーザー」名義で残す |
    | `export-channel --channel <name|id> --out <file.jsonl>` | チャンネルの履歴を JSONL で書き出す (添付はメタデータのみ) |
 

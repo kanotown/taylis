@@ -6,6 +6,11 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
+# M79: ffprobe / ffmpeg read a video's size and poster frame at upload (SECURITY.md §4 「動画」).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /srv/server
 
 COPY pyproject.toml uv.lock ./

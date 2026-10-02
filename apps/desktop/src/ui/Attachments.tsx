@@ -4,7 +4,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState, useSyncExtern
 
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { fitBox, groupAttachments, loadsInlineVideo, mediaKind, photoBox, photoLayout, VIDEO_TILE_MAX, VIDEO_TILE_PLACEHOLDER } from "./attachmentLayout";
+import { fitBox, formatDuration, groupAttachments, hasPoster, loadsInlineVideo, mediaKind, photoBox, photoLayout, VIDEO_TILE_MAX, VIDEO_TILE_PLACEHOLDER } from "./attachmentLayout";
 import { scrollParent } from "./LinkPreviewCard";
 import { Button, cn } from "./primitives";
 import { acquireVideo, knownVideoSize, rememberVideoSize, subscribeVideoSizes } from "./videoSource";
@@ -257,13 +257,16 @@ export function useVideoShape(attachment: AttachmentOut) {
 }
 
 /**
- * A video in a message (M38): a tile in the clip's own shape (a portrait clip stands upright) showing its first frame,
- * with a play mark; a click opens the viewer. Clips up to VIDEO_INLINE_MAX_BYTES are fetched once the row nears the
- * screen (the timeline renders every row it holds); a larger one shows a plain tile until it is opened.
+ * A video in a message (M38): a tile in the clip's own shape (a portrait clip stands upright) showing a frame, with a
+ * play mark and its length; a click opens the viewer. M79: with the server's size and poster the tile has its final
+ * size at once and shows the poster, and the clip is fetched only when opened. Without them, clips up to
+ * VIDEO_INLINE_MAX_BYTES are fetched once the row nears the screen (the timeline renders every row it holds) for
+ * their first frame; a larger one shows a plain tile until it is opened.
  */
 function VideoTile({ attachment, controller }: { attachment: AttachmentOut; controller: AppController }) {
   const probe = useRef<HTMLButtonElement>(null);
-  const inline = loadsInlineVideo(attachment);
+  const poster = useAttachmentImage(controller, attachment, "thumbnail", hasPoster(attachment));
+  const inline = loadsInlineVideo(attachment, poster.failed);
   const [near, setNear] = useState(false);
   const [open, setOpen] = useState(false);
   const [broken, setBroken] = useState(false);
@@ -312,6 +315,8 @@ function VideoTile({ attachment, controller }: { attachment: AttachmentOut; cont
             onError={() => setBroken(true)}
             className="pointer-events-none block h-full w-full object-cover"
           />
+        ) : poster.url ? (
+          <img data-video-poster="" src={poster.url} alt="" onError={poster.onError} className="pointer-events-none block h-full w-full object-cover" />
         ) : (
           <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-3 pb-8 text-white/80">
             {loading ? <Loader2 size={18} className="animate-spin" aria-label="動画を読み込み中" /> : <Film size={22} />}
@@ -323,8 +328,8 @@ function VideoTile({ attachment, controller }: { attachment: AttachmentOut; cont
             <Play size={22} fill="currentColor" className="translate-x-px" />
           </span>
         </span>
-        <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
-          {formatSize(attachment.size_bytes)}
+        <span data-video-badge="" className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+          {[formatDuration(attachment.duration_ms), formatSize(attachment.size_bytes)].filter(Boolean).join(" · ")}
         </span>
       </button>
       {open && <VideoViewer attachment={attachment} controller={controller} onClose={() => setOpen(false)} />}
@@ -337,12 +342,15 @@ export function VideoViewer({ attachment, controller, onClose }: { attachment: A
   const { url, failed, retry } = useVideoSource(controller, attachment);
   const [unplayable, setUnplayable] = useState(false);
   const shape = useVideoShape(attachment);
+  // M79: the server's poster while the clip downloads and until it plays.
+  const poster = useAttachmentImage(controller, attachment, "thumbnail", hasPoster(attachment)).url;
   return (
     <ViewerShell attachment={attachment} description="動画のプレビュー" shape={shape} controller={controller} onClose={onClose}>
       {url && !unplayable ? (
         <video
           data-video-player=""
           src={url}
+          poster={poster ?? undefined}
           controls
           autoPlay
           playsInline
@@ -360,7 +368,8 @@ export function VideoViewer({ attachment, controller, onClose }: { attachment: A
           </div>
         </div>
       ) : (
-        <div role="status" className="flex flex-col items-center gap-2 text-sm text-white/70">
+        <div role="status" className="flex min-h-0 max-h-full flex-col items-center gap-2 text-sm text-white/70">
+          {poster && <img data-video-poster="" src={poster} alt="" className="min-h-0 max-w-full flex-1 object-contain opacity-60" />}
           <Loader2 size={28} className="animate-spin" />
           動画を読み込み中… ({formatSize(attachment.size_bytes)})
         </div>
@@ -398,7 +407,7 @@ function PendingTile({ item, controller, onRemove }: { item: AttachmentOut; cont
   const kind = mediaKind(item);
   const image = kind === "photo";
   const video = kind === "video";
-  const { url } = useAttachmentImage(controller, item, "thumbnail", image);
+  const { url } = useAttachmentImage(controller, item, "thumbnail", image || (video && hasPoster(item)));
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
@@ -411,6 +420,11 @@ function PendingTile({ item, controller, onRemove }: { item: AttachmentOut; cont
       >
         {image && url ? (
           <img src={url} alt="" className="h-full w-full object-cover" />
+        ) : video && url ? (
+          <span className="relative block h-full w-full">
+            <img data-video-poster="" src={url} alt="" className="h-full w-full object-cover" />
+            <span className="absolute inset-0 flex items-center justify-center text-white"><Play size={16} fill="currentColor" /></span>
+          </span>
         ) : image ? (
           <Loader2 size={16} className="animate-spin" />
         ) : (
