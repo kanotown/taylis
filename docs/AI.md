@@ -465,3 +465,12 @@ AiAskTargetOut  = AiSummaryTargetOut と同じ形 {available, provider, model, a
 - **状態**: `AiHub` に `ask` (要約と別に 1 つ) と `askTarget` (質問と会話ごとに最後に読んだ 1 つ)。`put` は `kind = "ask"` の run を質問へ、ほかを要約へ。POST より先に届いた `ai.run_updated` は要約と同じ `seen` で合わせ、終わった run は戻さない。再接続で終わっていない質問を `GET /ai/runs/{id}` で読み直す。`ai_unavailable` / `ai_budget_exceeded` / `ai_private_not_allowed` で断られたら状態と送り先を読み直す。`AiApi` の新しい 3 つは既定で 404 (古いサーバーと同じ扱い)。
 - **結果**: 下からのシート (進み具合「メッセージを探しています…」→「答えを書いています…」、Markdown の答え、非公開の注記、出典 (送り手・会話・スレッド・日時・抜粋)、「この答えはあなたにだけ表示されます…」、「Anthropic · claude-opus-5-5」、失敗は「もう一度」)。[n] は `<server>/m/<id>` のリンクにして MessageBody の `citations` で「[n]」と描く (💬 を付けない)。出典や [n] を押すとシートを下げ (質問は残す。帯の「答え」で戻る)、検索の結果と同じく会話 (返信ならスレッド) で開く。閉じると質問を捨てる。
 - **履歴**: 帯の「履歴」でシートに `GET /ai/runs?kind=ask` (質問・日時・作成中 / 失敗)。押すとその答えを開き、終わっていなければ読み直す。テスト: AiAskTest 15。
+- **iOS (M71、build 69)**: 検索の「メッセージ」タブの結果の上 (リストの外。「見つかりませんでした」に隠れない) に「AI に聞く」の帯
+  (`summary_available` で `/ai/ask/target` が読めたとき、または答えを追っている間)。送り先の行・理由 (赤、ボタン無効) は Desktop と同じ文言。
+  質問は Desktop の `askQuery` と同じ作り (`AskRules.question`、会話は `channel_id`)。結果はシート (`AiAskView.swift`): 進み具合 →
+  Markdown (`AskRules.linkCitations` で [n] を `<server>/m/<id>` に、MessageBodyView の `citations` で「[n]」と描く)・非公開の注記・
+  出典・「あなたにだけ」・「Anthropic · claude-opus-5-5」、ツールバーに「履歴」(`GET /ai/runs?kind=ask`)。[n] と出典を押すとシートを
+  閉じて検索画面の中でその会話 (返信はスレッド) を開く。答えは閉じても `AiHub.ask` に残り、帯の「「…」の答え」で戻れる (× と検索画面を
+  閉じたときに捨てる)。`ai.run_updated` の `kind = "ask"` を受け、再接続で終わっていない run を読み直す。`question` / `sources` が
+  無いサーバーでは nil / []。エラーは共有の表 → AiRules の文言。`ai_*` で断られたら送り先を読み直し、`ai_unavailable` /
+  `ai_budget_exceeded` では状態も読み直す。

@@ -155,8 +155,8 @@ class AiAskTest {
     // --- the words --------------------------------------------------------------------------------------
 
     @Test fun targetLineProgressAndNotes() {
-        assertEquals("質問は ちくわ (Anthropic) に送られます", AiTexts.askTargetLine(AiSummaryTargetOut(true, "anthropic", "claude-opus-5-5", "ちくわ")))
-        assertEquals("質問は OpenAI に送られます", AiTexts.askTargetLine(AiSummaryTargetOut(true, "openai")))
+        assertEquals("質問と見つかったメッセージは ちくわ (Anthropic) に送られます", AiTexts.askTargetLine(AiSummaryTargetOut(true, "anthropic", "claude-opus-5-5", "ちくわ")))
+        assertEquals("質問と見つかったメッセージは OpenAI に送られます", AiTexts.askTargetLine(AiSummaryTargetOut(true, "openai")))
         assertNull(AiTexts.askTargetLine(AiSummaryTargetOut(true)))
         assertNull(AiTexts.askTargetLine(null))
         assertEquals("この会話のボットは非公開の会話を読めないため、ここでは聞けません", AiTexts.askTargetLine(AiSummaryTargetOut(false, "anthropic", reason = "ai_private_not_allowed")))

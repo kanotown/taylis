@@ -9,6 +9,17 @@ protocol AiApi: AnyObject {
     func aiRun(id: String) async throws -> AiRunOut
     /// Review v0.1.18 #2: GET /ai/summaries/target (404 on an older server).
     func summaryTarget(channelId: String) async throws -> AiSummaryTargetOut
+    /// M71 「AI に聞く」 (docs/AI.md §13.5): POST /ai/ask, GET /ai/ask/target, GET /ai/runs?kind=.
+    func createAsk(_ request: AiAskRequest) async throws -> AiRunOut
+    func askTarget(question: String, channelId: String?) async throws -> AiAskTargetOut
+    func aiRuns(kind: String) async throws -> [AiRunOut]
+}
+
+extension AiApi {
+    /// A fake without 「AI に聞く」 answers as a server before M70 does (404).
+    func createAsk(_ request: AiAskRequest) async throws -> AiRunOut { throw ApiError.api(status: 404, code: "http_404", message: "") }
+    func askTarget(question: String, channelId: String?) async throws -> AiAskTargetOut { throw ApiError.api(status: 404, code: "http_404", message: "") }
+    func aiRuns(kind: String) async throws -> [AiRunOut] { throw ApiError.api(status: 404, code: "http_404", message: "") }
 }
 
 /// The summary sheet's one request and what came of it.
@@ -53,8 +64,13 @@ final class AiHub {
     /// Review v0.1.18 #2: where a summary of each conversation would go, read where its 「要約」 choices show. Absent:
     /// not known (not read yet, an older server's 404, a failure) — the choices then show as before, with no line.
     private(set) var targets: [String: AiSummaryTargetOut] = [:]
+    /// M71: the question followed on the search screen (one at a time, like the summary).
+    private(set) var ask: AiAskSession?
+    /// M71: bumped when a question was refused for an AI reason, so the 「AI に聞く」 line reads its target again.
+    private(set) var askTargetEpoch = 0
     /// Runs heard of (events) before the POST that made them answered.
     @ObservationIgnored private var early: [String: AiRunOut] = [:]
+    @ObservationIgnored private var earlyAsk: [String: AiRunOut] = [:]
     @ObservationIgnored private let api: AiApi?
 
     init(api: AiApi?) {
@@ -93,6 +109,7 @@ final class AiHub {
 
     func resync() async {
         if let run = summary?.run, !run.isFinished { await reread(run.id) }
+        if let run = ask?.run, !run.isFinished { await rereadAsk(run.id) }
         await refreshStatus()
     }
 
@@ -145,10 +162,15 @@ final class AiHub {
         early = [:]
     }
 
-    /// ai.run_updated `{run}`.
+    /// ai.run_updated `{run}`: a summary's or (M71) a question's state.
     func applyEvent(_ data: JSONValue) {
         struct Payload: Decodable { let run: AiRunOut }
-        guard let run = try? data.decode(Payload.self).run, run.kind == "summary" else { return }
+        guard let run = try? data.decode(Payload.self).run else { return }
+        if run.kind == "ask" {
+            applyAsk(run)
+            return
+        }
+        guard run.kind == "summary" else { return }
         guard var session = summary else { return }
         if let current = session.run {
             guard current.id == run.id else { return }
@@ -163,6 +185,89 @@ final class AiHub {
         guard let api, let run = try? await api.aiRun(id: id) else { return }
         guard let current = summary?.run, current.id == id else { return }
         summary?.run = Self.newer(current, run)
+    }
+
+    // MARK: 「AI に聞く」 (M71, docs/AI.md §13)
+
+    /// GET /ai/ask/target for the question on screen. nil when it cannot be told: a server without 「AI に聞く」 (404,
+    /// the entry then stays hidden), a failure.
+    func loadAskTarget(question: String, channelId: String?) async -> AiAskTargetOut? {
+        guard let api else { return nil }
+        do {
+            return try await api.askTarget(question: question, channelId: channelId)
+        } catch {
+            if case ApiError.api(let status, _, _) = error, status == 404 || status == 422 {} else { print("could not read the ask target: \(error)") }
+            return nil
+        }
+    }
+
+    /// My recent questions (GET /ai/runs?kind=ask), newest first; nil when they cannot be read.
+    func askHistory() async -> [AiRunOut]? {
+        guard let api else { return nil }
+        do {
+            return try await api.aiRuns(kind: "ask").filter { $0.kind == "ask" }
+        } catch {
+            print("could not read the questions: \(error)")
+            return nil
+        }
+    }
+
+    /// 「AI に聞く」: replaces the question followed before; the sheet shows `starting` at once, then the run.
+    func startAsk(_ request: AiAskRequest) async {
+        ask = AiAskSession(request: request)
+        earlyAsk = [:]
+        guard let api else {
+            ask?.failure = AskRules.errorText(ApiError.api(status: 409, code: "ai_unavailable", message: ""))
+            return
+        }
+        do {
+            let run = try await api.createAsk(request)
+            guard ask?.request.id == request.id else { return } // closed (or another asked) meanwhile
+            ask?.run = Self.newer(run, earlyAsk.removeValue(forKey: run.id))
+            earlyAsk = [:]
+        } catch {
+            guard ask?.request.id == request.id else { return }
+            ask?.failure = AskRules.errorText(error)
+            if AiRules.refreshesStatus(error) { await refreshStatus() } // the entry then hides
+            if case ApiError.api(_, let code, _) = error, code.hasPrefix("ai_") { askTargetEpoch += 1 }
+        }
+    }
+
+    /// 「もう一度」: the same question, a fresh request.
+    func retryAsk() async {
+        guard let request = ask?.request else { return }
+        await startAsk(AiAskRequest(question: request.question, channelId: request.channelId, tzOffsetMinutes: request.tzOffsetMinutes))
+    }
+
+    /// A past question from the history: shown, and followed while it is not finished.
+    func showAskRun(_ run: AiRunOut) {
+        let request = AiAskRequest(question: run.question ?? "", channelId: run.channelId.isEmpty ? nil : run.channelId, id: "run:\(run.id)")
+        ask = AiAskSession(request: request, run: run)
+        earlyAsk = [:]
+        if !run.isFinished { Task { await rereadAsk(run.id) } }
+    }
+
+    /// The answer forgotten (the 「AI に聞く」 row's ×, the search screen closed); a late answer is dropped.
+    func closeAsk() {
+        ask = nil
+        earlyAsk = [:]
+    }
+
+    private func applyAsk(_ run: AiRunOut) {
+        guard var session = ask else { return }
+        if let current = session.run {
+            guard current.id == run.id else { return }
+            session.run = Self.newer(current, run)
+            ask = session
+        } else if session.failure == nil {
+            earlyAsk[run.id] = Self.newer(run, earlyAsk[run.id]) // the POST has not answered yet
+        }
+    }
+
+    private func rereadAsk(_ id: String) async {
+        guard let api, let run = try? await api.aiRun(id: id) else { return }
+        guard let current = ask?.run, current.id == id else { return }
+        ask?.run = Self.newer(current, run)
     }
 
     /// The later of two copies of one run: a state never goes back.

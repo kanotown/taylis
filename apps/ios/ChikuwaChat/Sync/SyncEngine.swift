@@ -645,7 +645,7 @@ final class SyncEngine {
             calendar.applyEvent(frame.event, frame.data)
         case "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done":  // M56 (TASKS.md §4), L9
             tasks.applyEvent(frame.event, frame.data)
-        case "ai.run_updated":  // M66 (docs/AI.md §5): my summary's state
+        case "ai.run_updated":  // M66 (docs/AI.md §5): my summary's state; M71: my question's
             ai.applyEvent(frame.data)
         case "sidebar.updated":
             struct Payload: Decodable { let sections: [SidebarSectionOut] }

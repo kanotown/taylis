@@ -60,12 +60,14 @@ private struct Lenient<T: Decodable>: Decodable {
     init(from decoder: Decoder) throws { value = try? T(from: decoder) }
 }
 
-/// One AI run (`AiRunOut`): a summary the phone asked for (a mention's run sends no events to the phones).
+/// One AI run (`AiRunOut`): a summary or a question (M71, kind "ask") the phone asked for (a mention's run sends no
+/// events to the phones).
 struct AiRunOut: Decodable, Equatable {
     let id: String
     var kind: String
     /// "pending" | "running" | "done" | "failed" (an unknown status counts as still working).
     var status: String
+    /// "" for a question not narrowed to one conversation (the server sends null).
     var channelId: String
     var threadId: String?
     var scope: String?
@@ -79,10 +81,14 @@ struct AiRunOut: Decodable, Equatable {
     /// Review v0.1.18 #2: where the run is sent ("anthropic" | "openai"), fixed when it was asked for. nil on an older server.
     var provider: String?
     var model: String?
+    /// M71 (docs/AI.md §13.5): a question's words (nil for the other kinds, and on an older server).
+    var question: String?
+    /// M71: the messages a done question's answer cites as [n] (empty otherwise, and on an older server).
+    var sources: [AiSourceOut]
 
     init(id: String, kind: String = "summary", status: String, channelId: String, threadId: String? = nil, scope: String? = nil,
          days: Int? = nil, output: String? = nil, error: String? = nil, omittedCount: Int = 0, createdAt: String = "", finishedAt: String? = nil,
-         provider: String? = nil, model: String? = nil) {
+         provider: String? = nil, model: String? = nil, question: String? = nil, sources: [AiSourceOut] = []) {
         self.id = id
         self.kind = kind
         self.status = status
@@ -97,10 +103,12 @@ struct AiRunOut: Decodable, Equatable {
         self.finishedAt = finishedAt
         self.provider = provider
         self.model = model
+        self.question = question
+        self.sources = sources
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, status, channelId, threadId, scope, days, output, error, omittedCount, createdAt, finishedAt, provider, model
+        case id, kind, status, channelId, threadId, scope, days, output, error, omittedCount, createdAt, finishedAt, provider, model, question, sources
     }
 
     init(from decoder: Decoder) throws {
@@ -119,6 +127,9 @@ struct AiRunOut: Decodable, Equatable {
         finishedAt = try c.decodeIfPresent(String.self, forKey: .finishedAt)
         provider = try? c.decodeIfPresent(String.self, forKey: .provider)
         model = try? c.decodeIfPresent(String.self, forKey: .model)
+        question = try? c.decodeIfPresent(String.self, forKey: .question)
+        // One malformed source does not hide the others.
+        sources = (try? c.decodeIfPresent([Lenient<AiSourceOut>].self, forKey: .sources))?.compactMap(\.value) ?? []
     }
 
     var isFinished: Bool { status == "done" || status == "failed" }
@@ -151,6 +162,68 @@ struct AiSummaryTargetOut: Decodable, Equatable {
         model = try? c.decodeIfPresent(String.self, forKey: .model)
         agentName = try? c.decodeIfPresent(String.self, forKey: .agentName)
         reason = try? c.decodeIfPresent(String.self, forKey: .reason)
+    }
+}
+
+/// GET /ai/ask/target?q=&channel_id= (M71, docs/AI.md §13.5): the same shape and reasons as the summary's target.
+typealias AiAskTargetOut = AiSummaryTargetOut
+
+/// M71 (docs/AI.md §13.3): a message a question's answer cites as [n]. Lenient: only `n` and `message_id` are needed.
+struct AiSourceOut: Decodable, Equatable {
+    var n: Int
+    var messageId: String
+    var channelId: String
+    var parentId: String?
+    var senderId: String
+    var createdAt: String
+    /// Plain text around the first matching word.
+    var excerpt: String
+
+    init(n: Int, messageId: String, channelId: String, parentId: String? = nil, senderId: String = "", createdAt: String = "", excerpt: String = "") {
+        self.n = n
+        self.messageId = messageId
+        self.channelId = channelId
+        self.parentId = parentId
+        self.senderId = senderId
+        self.createdAt = createdAt
+        self.excerpt = excerpt
+    }
+
+    enum CodingKeys: String, CodingKey { case n, messageId, channelId, parentId, senderId, createdAt, excerpt }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        n = try c.decode(Int.self, forKey: .n)
+        messageId = try c.decode(String.self, forKey: .messageId)
+        channelId = (try? c.decodeIfPresent(String.self, forKey: .channelId)) ?? ""
+        parentId = try? c.decodeIfPresent(String.self, forKey: .parentId)
+        senderId = (try? c.decodeIfPresent(String.self, forKey: .senderId)) ?? ""
+        createdAt = (try? c.decodeIfPresent(String.self, forKey: .createdAt)) ?? ""
+        excerpt = (try? c.decodeIfPresent(String.self, forKey: .excerpt)) ?? ""
+    }
+}
+
+/// One tap on 「AI に聞く」 (POST /ai/ask): the question with its modifiers, and the conversation the search is narrowed
+/// to (each tap a new id, so a retry is a fresh request).
+struct AiAskRequest: Identifiable, Equatable {
+    let id: String
+    let question: String
+    let channelId: String?
+    /// Minutes east of UTC (search's convention): the days of typed before: / after: and the sources' times.
+    var tzOffsetMinutes: Int
+
+    init(question: String, channelId: String? = nil, id: String = UUID().uuidString.lowercased(),
+         tzOffsetMinutes: Int = TimeZone.current.secondsFromGMT() / 60) {
+        self.id = id
+        self.question = question
+        self.channelId = channelId
+        self.tzOffsetMinutes = tzOffsetMinutes
+    }
+
+    var json: JSONValue {
+        var fields: [String: JSONValue] = ["q": .string(question), "tz_offset_minutes": .number(Double(tzOffsetMinutes))]
+        if let channelId { fields["channel_id"] = .string(channelId) }
+        return .object(fields)
     }
 }
 

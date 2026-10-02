@@ -132,7 +132,7 @@ object AiTexts {
         val provider = target.provider?.takeIf { it.isNotBlank() } ?: return null
         val name = target.agentName?.takeIf { it.isNotBlank() }
         val where = if (name != null) "$name (${providerLabel(provider)})" else providerLabel(provider)
-        return "質問は $where に送られます"
+        return "質問と見つかったメッセージは $where に送られます" // AI.md §13.6, the same words on the three clients
     }
 
     /** Too long for the server (1〜200 字, counted in characters): not asked (the entry stays hidden, as on the web). */

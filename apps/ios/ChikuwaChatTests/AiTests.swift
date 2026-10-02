@@ -32,6 +32,31 @@ final class FakeAiApi: AiApi {
         return try target.get()
     }
 
+    // M71 「AI に聞く」
+    var askResult: Result<AiRunOut, Error> = .success(AiRunOut(id: "q1", kind: "ask", status: "pending", channelId: ""))
+    var beforeAskAnswers: (() -> Void)?
+    private(set) var asked: [AiAskRequest] = []
+    var askTargetResult: Result<AiAskTargetOut, Error> = .failure(ApiError.api(status: 404, code: "http_404", message: ""))
+    private(set) var askTargetReads: [String] = []
+    var history: Result<[AiRunOut], Error> = .success([])
+    private(set) var historyReads: [String] = []
+
+    func createAsk(_ request: AiAskRequest) async throws -> AiRunOut {
+        asked.append(request)
+        beforeAskAnswers?()
+        return try askResult.get()
+    }
+
+    func askTarget(question: String, channelId: String?) async throws -> AiAskTargetOut {
+        askTargetReads.append("\(question)|\(channelId ?? "")")
+        return try askTargetResult.get()
+    }
+
+    func aiRuns(kind: String) async throws -> [AiRunOut] {
+        historyReads.append(kind)
+        return try history.get()
+    }
+
     func aiRun(id: String) async throws -> AiRunOut {
         runReads.append(id)
         guard let run = runs[id] else { throw ApiError.api(status: 404, code: "ai_run_not_found", message: "") }

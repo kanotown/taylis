@@ -288,6 +288,8 @@ struct MessageBodyView: View {
     /// M45: blocks parsed already (a canvas draws its own blocks and hands the others over one by one); `text` is then
     /// only read for its custom emoji.
     var preparsed: [BodyBlock]? = nil
+    /// M71: a message link labelled with a number is an AI answer's citation, drawn as 「[n]」.
+    var citations = false
 
     /// The animated custom emoji in this text, by id.
     private var animatedHere: [String: EmojiAnimation] {
@@ -468,6 +470,12 @@ struct MessageBodyView: View {
                 return Text(attributed)
             }
             if let id = Permalink.messageId(base: internalBase, url: url) {
+                if citations, let label, !label.isEmpty, label.allSatisfy(\.isASCII), Int(label) != nil {
+                    // M71: an AI answer's [n], a link to the cited message (AskRules.linkCitations).
+                    var attributed = AttributedString("[\(label)]")
+                    attributed.link = Permalink.internalLink(messageId: id)
+                    return Text(attributed).foregroundStyle(Color.accentColor)
+                }
                 var attributed = AttributedString("💬 " + ((label != nil && label != url) ? label! : "メッセージを表示"))
                 attributed.link = Permalink.internalLink(messageId: id)
                 return Text(attributed)
