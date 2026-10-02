@@ -1617,6 +1617,17 @@
             "title": "Minutes Before",
             "type": "integer"
           },
+          "occurrence_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurrence Start"
+          },
           "status": {
             "enum": [
               "pending",
@@ -1725,6 +1736,18 @@
               }
             ],
             "title": "Location"
+          },
+          "rrule": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rrule"
           },
           "start_date": {
             "anyOf": [
@@ -1873,9 +1896,33 @@
             ],
             "title": "Location"
           },
+          "occurrence_start": {
+            "title": "Occurrence Start",
+            "type": "string"
+          },
           "owner_id": {
             "format": "uuid",
             "title": "Owner Id",
+            "type": "string"
+          },
+          "recurring": {
+            "title": "Recurring",
+            "type": "boolean"
+          },
+          "rrule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rrule"
+          },
+          "series_id": {
+            "format": "uuid",
+            "title": "Series Id",
             "type": "string"
           },
           "start_date": {
@@ -1906,6 +1953,17 @@
             "title": "Title",
             "type": "string"
           },
+          "tz": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -1927,6 +1985,11 @@
           "description",
           "created_at",
           "updated_at",
+          "series_id",
+          "occurrence_start",
+          "recurring",
+          "rrule",
+          "tz",
           "can_edit",
           "alarm"
         ],
@@ -1996,6 +2059,18 @@
             ],
             "title": "Location"
           },
+          "rrule": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rrule"
+          },
           "start_date": {
             "anyOf": [
               {
@@ -2031,9 +2106,236 @@
               }
             ],
             "title": "Title"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
           }
         },
         "title": "CalendarEventUpdate",
+        "type": "object"
+      },
+      "CalendarFeedCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "default": "all",
+            "enum": [
+              "all",
+              "personal"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "title": "CalendarFeedCreate",
+        "type": "object"
+      },
+      "CalendarFeedCreated": {
+        "properties": {
+          "feed": {
+            "$ref": "#/components/schemas/CalendarFeedOut"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "feed",
+          "url"
+        ],
+        "title": "CalendarFeedCreated",
+        "type": "object"
+      },
+      "CalendarFeedOut": {
+        "description": "A private iCal feed (CALENDAR.md §10.6), without its token.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "scope": {
+            "enum": [
+              "all",
+              "personal"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scope",
+          "created_at",
+          "last_used_at"
+        ],
+        "title": "CalendarFeedOut",
+        "type": "object"
+      },
+      "CalendarOccurrenceUpdate": {
+        "additionalProperties": false,
+        "description": "M68: PATCH /calendar/events/{series_id}/occurrences/{occurrence_start}. The times are the\noccurrence's new ones. this: only this occurrence (no rrule, all_day unchanged); following:\nthis one and the later ones become a new series; all: the whole series (shifted by as much\nas this occurrence moved).",
+        "properties": {
+          "all_day": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All Day"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "rrule": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rrule"
+          },
+          "scope": {
+            "enum": [
+              "this",
+              "following",
+              "all"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "title": "CalendarOccurrenceUpdate",
         "type": "object"
       },
       "CanvasConflictDetails": {
@@ -12603,6 +12905,300 @@
           }
         ],
         "summary": "Set Alarm",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/api/v1/calendar/events/{series_id}/occurrences/{occurrence_start}": {
+      "delete": {
+        "operationId": "delete_occurrence_api_v1_calendar_events__series_id__occurrences__occurrence_start__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Series Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The occurrence's original start: `2030-01-10T05:00:00Z` (timed; any offset is read) or `2030-01-10` (all-day)",
+            "in": "path",
+            "name": "occurrence_start",
+            "required": true,
+            "schema": {
+              "description": "The occurrence's original start: `2030-01-10T05:00:00Z` (timed; any offset is read) or `2030-01-10` (all-day)",
+              "maxLength": 40,
+              "title": "Occurrence Start",
+              "type": "string"
+            }
+          },
+          {
+            "description": "this, following or all",
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "description": "this, following or all",
+              "enum": [
+                "this",
+                "following",
+                "all"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Occurrence",
+        "tags": [
+          "calendar"
+        ]
+      },
+      "patch": {
+        "description": "Changes one occurrence (`this`), it and the later ones (`following`: a new series from it)\nor the whole series (`all`: moved by as much as this occurrence moved). The answer: the\noccurrence (`this`) or the first occurrence of the series changed or made.",
+        "operationId": "update_occurrence_api_v1_calendar_events__series_id__occurrences__occurrence_start__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Series Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The occurrence's original start: `2030-01-10T05:00:00Z` (timed; any offset is read) or `2030-01-10` (all-day)",
+            "in": "path",
+            "name": "occurrence_start",
+            "required": true,
+            "schema": {
+              "description": "The occurrence's original start: `2030-01-10T05:00:00Z` (timed; any offset is read) or `2030-01-10` (all-day)",
+              "maxLength": 40,
+              "title": "Occurrence Start",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarOccurrenceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarEventOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Occurrence",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/api/v1/calendar/ical-feeds": {
+      "get": {
+        "operationId": "list_feeds_api_v1_calendar_ical_feeds_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CalendarFeedOut"
+                  },
+                  "title": "Response List Feeds Api V1 Calendar Ical Feeds Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Feeds",
+        "tags": [
+          "calendar"
+        ]
+      },
+      "post": {
+        "description": "A private feed URL of my calendars (at most 5). The URL is in this answer only: anyone\nwho has it sees the events.",
+        "operationId": "create_feed_api_v1_calendar_ical_feeds_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarFeedCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarFeedCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Feed",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/api/v1/calendar/ical-feeds/{feed_id}": {
+      "delete": {
+        "description": "The URL stops working at once (make a new one to change it).",
+        "operationId": "delete_feed_api_v1_calendar_ical_feeds__feed_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "feed_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Feed Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Feed",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/api/v1/calendar/ical/{token}.ics": {
+      "get": {
+        "description": "No login: the token is the secret. Rate limited per IP; unknown or deleted tokens are\n404.",
+        "operationId": "ical_feed_api_v1_calendar_ical__token__ics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/calendar": {}
+            },
+            "description": "The calendar"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ical Feed",
         "tags": [
           "calendar"
         ]

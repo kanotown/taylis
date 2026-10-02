@@ -67,8 +67,11 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 access_log = logging.getLogger("app.access")
 
 
-# Paths whose last segment is a secret (SECURITY.md §7): webhook URLs and invite links.
-_SECRET_PATH = re.compile(r"^(/api/v1/hooks/|/invite/|/api/v1/invites/)[^/]+")
+# Paths whose last segment is a secret (SECURITY.md §7): webhook URLs, invite links and iCal
+# feed URLs (M68).
+_SECRET_PATH = re.compile(
+    r"^(/api/v1/hooks/|/invite/|/api/v1/invites/|/api/v1/calendar/ical/)[^/]+"
+)
 
 
 def redact_path(path: str) -> str:

@@ -970,6 +970,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/events/{series_id}/occurrences/{occurrence_start}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Occurrence */
+        delete: operations["delete_occurrence_api_v1_calendar_events__series_id__occurrences__occurrence_start__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Occurrence
+         * @description Changes one occurrence (`this`), it and the later ones (`following`: a new series from it)
+         *     or the whole series (`all`: moved by as much as this occurrence moved). The answer: the
+         *     occurrence (`this`) or the first occurrence of the series changed or made.
+         */
+        patch: operations["update_occurrence_api_v1_calendar_events__series_id__occurrences__occurrence_start__patch"];
+        trace?: never;
+    };
+    "/api/v1/calendar/ical-feeds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Feeds */
+        get: operations["list_feeds_api_v1_calendar_ical_feeds_get"];
+        put?: never;
+        /**
+         * Create Feed
+         * @description A private feed URL of my calendars (at most 5). The URL is in this answer only: anyone
+         *     who has it sees the events.
+         */
+        post: operations["create_feed_api_v1_calendar_ical_feeds_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/ical-feeds/{feed_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Feed
+         * @description The URL stops working at once (make a new one to change it).
+         */
+        delete: operations["delete_feed_api_v1_calendar_ical_feeds__feed_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/ical/{token}.ics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ical Feed
+         * @description No login: the token is the secret. Rate limited per IP; unknown or deleted tokens are
+         *     404.
+         */
+        get: operations["ical_feed_api_v1_calendar_ical__token__ics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/upcoming": {
         parameters: {
             query?: never;
@@ -3668,6 +3754,8 @@ export interface components {
             fire_at: string;
             /** Minutes Before */
             minutes_before: number;
+            /** Occurrence Start */
+            occurrence_start?: string | null;
             /**
              * Status
              * @enum {string}
@@ -3695,6 +3783,8 @@ export interface components {
             ends_at?: string | null;
             /** Location */
             location?: string | null;
+            /** Rrule */
+            rrule?: string | null;
             /** Start Date */
             start_date?: string | null;
             /** Starts At */
@@ -3733,17 +3823,30 @@ export interface components {
             id: string;
             /** Location */
             location: string | null;
+            /** Occurrence Start */
+            occurrence_start: string;
             /**
              * Owner Id
              * Format: uuid
              */
             owner_id: string;
+            /** Recurring */
+            recurring: boolean;
+            /** Rrule */
+            rrule: string | null;
+            /**
+             * Series Id
+             * Format: uuid
+             */
+            series_id: string;
             /** Start Date */
             start_date: string | null;
             /** Starts At */
             starts_at: string | null;
             /** Title */
             title: string;
+            /** Tz */
+            tz: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -3765,12 +3868,88 @@ export interface components {
             ends_at?: string | null;
             /** Location */
             location?: string | null;
+            /** Rrule */
+            rrule?: string | null;
             /** Start Date */
             start_date?: string | null;
             /** Starts At */
             starts_at?: string | null;
             /** Title */
             title?: string | null;
+            /** Tz */
+            tz?: string | null;
+        };
+        /** CalendarFeedCreate */
+        CalendarFeedCreate: {
+            /**
+             * Scope
+             * @default all
+             * @enum {string}
+             */
+            scope: "all" | "personal";
+        };
+        /** CalendarFeedCreated */
+        CalendarFeedCreated: {
+            feed: components["schemas"]["CalendarFeedOut"];
+            /** Url */
+            url: string;
+        };
+        /**
+         * CalendarFeedOut
+         * @description A private iCal feed (CALENDAR.md §10.6), without its token.
+         */
+        CalendarFeedOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "all" | "personal";
+        };
+        /**
+         * CalendarOccurrenceUpdate
+         * @description M68: PATCH /calendar/events/{series_id}/occurrences/{occurrence_start}. The times are the
+         *     occurrence's new ones. this: only this occurrence (no rrule, all_day unchanged); following:
+         *     this one and the later ones become a new series; all: the whole series (shifted by as much
+         *     as this occurrence moved).
+         */
+        CalendarOccurrenceUpdate: {
+            /** All Day */
+            all_day?: boolean | null;
+            /** Description */
+            description?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Ends At */
+            ends_at?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Rrule */
+            rrule?: string | null;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "this" | "following" | "all";
+            /** Start Date */
+            start_date?: string | null;
+            /** Starts At */
+            starts_at?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Tz */
+            tz?: string | null;
         };
         /** CanvasConflictDetails */
         CanvasConflictDetails: {
@@ -8466,6 +8645,190 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_occurrence_api_v1_calendar_events__series_id__occurrences__occurrence_start__delete: {
+        parameters: {
+            query: {
+                /** @description this, following or all */
+                scope: "this" | "following" | "all";
+            };
+            header?: never;
+            path: {
+                series_id: string;
+                /** @description The occurrence's original start: `2030-01-10T05:00:00Z` (timed; any offset is read) or `2030-01-10` (all-day) */
+                occurrence_start: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_occurrence_api_v1_calendar_events__series_id__occurrences__occurrence_start__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                series_id: string;
+                /** @description The occurrence's original start: `2030-01-10T05:00:00Z` (timed; any offset is read) or `2030-01-10` (all-day) */
+                occurrence_start: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarOccurrenceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_feeds_api_v1_calendar_ical_feeds_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarFeedOut"][];
+                };
+            };
+        };
+    };
+    create_feed_api_v1_calendar_ical_feeds_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarFeedCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarFeedCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_feed_api_v1_calendar_ical_feeds__feed_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ical_feed_api_v1_calendar_ical__token__ics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The calendar */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/calendar": unknown;
+                };
             };
             /** @description Validation Error */
             422: {

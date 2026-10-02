@@ -1,7 +1,7 @@
 """AI runs of kind "ask": questions about past conversations (M70)
 
 Revision ID: 0064
-Revises: 0062
+Revises: 0063
 Create Date: 2026-10-02
 
 docs/AI.md §13 「AI に聞く」:
@@ -22,7 +22,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0064"
-down_revision: str | None = "0062"
+down_revision: str | None = "0063"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

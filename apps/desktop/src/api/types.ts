@@ -268,6 +268,13 @@ export type CalendarEventOut = components["schemas"]["CalendarEventOut"];
 export type CalendarEventCreate = components["schemas"]["CalendarEventCreate"];
 export type CalendarEventUpdate = components["schemas"]["CalendarEventUpdate"];
 export type CalendarAlarmOut = components["schemas"]["CalendarAlarmOut"];
+/** M68 (CALENDAR.md §10): a change or delete of a recurring event's occurrence and which ones it touches. */
+export type CalendarOccurrenceUpdate = components["schemas"]["CalendarOccurrenceUpdate"];
+export type OccurrenceScope = CalendarOccurrenceUpdate["scope"];
+/** M68: private iCal feed URLs (the URL itself only in the answer that makes one). */
+export type CalendarFeedOut = components["schemas"]["CalendarFeedOut"];
+export type CalendarFeedCreated = components["schemas"]["CalendarFeedCreated"];
+export type CalendarFeedScope = CalendarFeedOut["scope"];
 export type CalendarEventData = Omit<CalendarEventOut, "can_edit" | "alarm">;
 /** calendar.event.updated: a new or changed event, and who may change it now. */
 export interface CalendarEventUpdated {

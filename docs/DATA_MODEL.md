@@ -952,7 +952,43 @@ CREATE TABLE calendar_event_alarms (
 );
 CREATE INDEX calendar_event_alarms_due_idx  ON calendar_event_alarms (fire_at) WHERE status = 'pending';
 CREATE INDEX calendar_event_alarms_user_idx ON calendar_event_alarms (user_id) WHERE status = 'pending';
+
+-- M68 (移行 0063、CALENDAR.md §10): 繰り返し、この予定だけの変更、iCal の購読 URL
+ALTER TABLE calendar_events
+  ADD COLUMN rrule      text,                                -- 正規化した RRULE の一部 (NULL = 単発)
+  ADD COLUMN tz         varchar(64),                         -- 繰り返しの壁時計のゾーン
+  ADD COLUMN series_end timestamptz,                         -- 最後の回の終わりの上限 (NULL = 終わりなし)。期間の検索で親を絞る
+  ADD CONSTRAINT rrule_tz CHECK (rrule IS NULL OR tz IS NOT NULL);
+CREATE INDEX calendar_events_recurring_idx ON calendar_events (owner_id, channel_id) WHERE rrule IS NOT NULL AND deleted_at IS NULL;
+
+CREATE TABLE calendar_event_overrides (
+  series_id        uuid NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+  occurrence_start varchar(32) NOT NULL,                     -- 回の元の開始: '2030-01-10T05:00:00Z' / 終日 '2030-01-10'
+  cancelled        boolean NOT NULL DEFAULT false,           -- この回は無い (iCal の EXDATE)
+  changed          varchar(16)[] NOT NULL DEFAULT '{}',      -- title / time / location / description
+  title text, location text, description text,               -- changed にあるときの値
+  all_day boolean, starts_at timestamptz, ends_at timestamptz, start_date date, end_date date,  -- time のときの日時
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (series_id, occurrence_start)
+  -- CHECK: 長さは calendar_events と同じ。日時は全部 NULL か calendar_events と同じ形
+);
+
+ALTER TABLE calendar_event_alarms ADD COLUMN occurrence_start varchar(32);  -- 繰り返しでどの回の fire_at か (NULL: 単発か目覚まし)
+
+CREATE TABLE calendar_feeds (
+  id           uuid PRIMARY KEY,
+  user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash   bytea NOT NULL UNIQUE,                        -- トークン (32 バイトの乱数) の SHA-256。トークンは保存しない
+  scope        varchar(16) NOT NULL CHECK (scope IN ('all', 'personal')),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz                                   -- 1 時間に 1 回だけ書く
+);
+CREATE INDEX calendar_feeds_user_idx ON calendar_feeds (user_id);
 ```
+
+- **繰り返し** (M68): 単発の索引と検索は `rrule IS NULL` の行だけ。繰り返しの親は、期間に始まりが来ていて `series_end` が期間の前に
+  終わっていないものと、動かした回 (`calendar_event_overrides` の日時) が期間に重なるものを読み、サーバが期間の中で展開する。
 
 - **期間の読み出し** (`GET /calendar/events`): 時刻の予定は `starts_at < to AND ends_at > from`、終日は `from` の日付と `to` の
   直前の日付 (どちらも渡された offset で読む) に重なるもの。予定の長さに上限があるので、開始の下限 (`from - 14 日` / `first - 59 日`)

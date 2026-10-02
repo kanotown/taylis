@@ -1022,6 +1022,11 @@ base・送られた本文・head を 3-way マージする。
   自分) ら、そのチャンネルの予定を手元から外す。
 - **自分の変更**: POST / PATCH / PUT alarm の応答 (`CalendarEventOut`) をそのまま手元に入れる。後から届く自分の変更のイベントは
   同じ内容なので二重にならない。作成の再送は `client_event_id` で同じ予定が返る (201 の代わりに 200)。
+- **繰り返し (M68、CALENDAR.md §10.4)**: 繰り返しの予定は回ごとに 1 件 (`id` は回の id、`series_id` は親、`occurrence_start` は回の鍵)。
+  展開はサーバだけがする。`recurring: true` の `calendar.event.updated` (親・例外・分割のどれが変わっても親の内容で届く) と、自分の
+  繰り返しの変更の応答では、開いている期間 (そのチャンネルと全部の窓) と件数を**読み直す**。`calendar.event.deleted` は `series_id` が
+  一致する回を全部外す。単発に戻った予定 (`recurring: false`) は、同じ `series_id` のほかの回を外して入れる。通知 (`calendar.alarm.updated`)
+  は系列に 1 つで、`alarm.occurrence_start` がどの回の通知か。手元のその系列の回すべてに当てる。
 
 ## 16. タスク (M55、TASKS.md §4)
 

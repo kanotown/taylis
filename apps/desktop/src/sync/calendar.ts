@@ -4,6 +4,11 @@
  * update the windows they overlap (the rest are dropped: the next read has them). A channel's header count comes
  * from GET /calendar/upcoming, read again when one of its events changes. After reconnecting every window and count is
  * read again, which fills whatever events were missed.
+ *
+ * M68 (CALENDAR.md §10.4): a recurring event comes as one entry per occurrence (its own `id`, the series' `series_id`).
+ * The server alone expands a series: any change to one (its calendar.event.updated has `recurring`, as do the answers to
+ * my own changes) reads the windows it may touch again instead of patching them here. A series' alarm is one per person
+ * and applies to all its occurrences.
  */
 import { ApiError } from "../api/errors";
 import type {
@@ -13,6 +18,8 @@ import type {
   CalendarEventOut,
   CalendarEventUpdate,
   CalendarEventUpdated,
+  CalendarOccurrenceUpdate,
+  OccurrenceScope,
 } from "../api/types";
 import { compareEvents, localZone, overlapsRange } from "../ui/calendarDates";
 
@@ -25,7 +32,12 @@ export interface CalendarApi {
   setCalendarAlarm(eventId: string, minutesBefore: number, tz: string): Promise<CalendarEventOut>;
   clearCalendarAlarm(eventId: string): Promise<void>;
   getCalendarEvent(eventId: string): Promise<CalendarEventOut>;
+  updateCalendarOccurrence(seriesId: string, occurrenceStart: string, body: CalendarOccurrenceUpdate): Promise<CalendarEventOut>;
+  deleteCalendarOccurrence(seriesId: string, occurrenceStart: string, scope: OccurrenceScope): Promise<void>;
 }
+
+/** The series an entry belongs to (a one-off event is its own). */
+export const seriesOf = (event: Pick<CalendarEventOut, "id" | "series_id">): string => event.series_id ?? event.id;
 
 export type CalendarWindowState = "loading" | "ready" | "failed" | "unsupported";
 
@@ -139,31 +151,70 @@ export class CalendarHub {
 
   async create(body: CalendarEventCreate): Promise<CalendarEventOut> {
     const event = await this.requireApi().createCalendarEvent(body);
-    this.put(event);
+    this.settle(event);
     return event;
   }
 
+  /** A whole event (a series: all its occurrences, 「すべての予定」 without moving it from an occurrence). */
   async update(eventId: string, patch: CalendarEventUpdate): Promise<CalendarEventOut> {
     const event = await this.requireApi().updateCalendarEvent(eventId, patch);
-    this.put(event);
+    this.settle(event);
     return event;
   }
 
+  /** A whole event (a series: every occurrence). */
   async remove(eventId: string): Promise<void> {
     const known = this.find(eventId);
     await this.requireApi().deleteCalendarEvent(eventId);
     this.drop(eventId, known?.channel_id ?? null);
   }
 
-  /** My alarm: minutes before (null removes it). */
+  /** M68: one occurrence of a series, it and the later ones, or all of them (the windows are read again). */
+  async updateOccurrence(seriesId: string, occurrenceStart: string, body: CalendarOccurrenceUpdate): Promise<CalendarEventOut> {
+    const known = this.find(seriesId);
+    const event = await this.requireApi().updateCalendarOccurrence(seriesId, occurrenceStart, body);
+    this.reloadFor(event.channel_id ?? known?.channel_id ?? null);
+    return event;
+  }
+
+  async removeOccurrence(seriesId: string, occurrenceStart: string, scope: OccurrenceScope): Promise<void> {
+    const known = this.find(seriesId);
+    await this.requireApi().deleteCalendarOccurrence(seriesId, occurrenceStart, scope);
+    const channelId = known?.channel_id ?? null;
+    if (scope === "all") this.drop(seriesId, channelId);
+    else {
+      // The occurrence (or the later ones) leave at once; the windows' next read confirms it.
+      const gone = (e: CalendarEventOut) => seriesOf(e) === seriesId && (scope === "this" ? e.occurrence_start === occurrenceStart : e.occurrence_start >= occurrenceStart);
+      this.dropWhere(gone, channelId);
+      this.reloadFor(channelId);
+    }
+  }
+
+  /** My alarm (minutes before; null removes it). On a series it is the series' (every occurrence's): pass its id. */
   async setAlarm(eventId: string, minutes: number | null): Promise<void> {
     const api = this.requireApi();
     if (minutes === null) {
       await api.clearCalendarAlarm(eventId);
       this.patchAlarm(eventId, null);
     } else {
-      this.put(await api.setCalendarAlarm(eventId, minutes, this.tz));
+      const event = await api.setCalendarAlarm(eventId, minutes, this.tz);
+      if (event.recurring) this.patchAlarm(seriesOf(event), event.alarm);
+      else this.put(event);
     }
+  }
+
+  /** My change's answer: a one-off event goes in as it is; a series is read again where it may show. */
+  private settle(event: CalendarEventOut): void {
+    if (event.recurring) this.reloadFor(event.channel_id);
+    else this.put(event);
+  }
+
+  /** Reads again every window that may hold the channel's events (null: my own calendar), and its count. */
+  private reloadFor(channelId: string | null): void {
+    for (const [key, window] of this.windows) {
+      if (window.channelId === null || window.channelId === channelId) void this.read(key);
+    }
+    if (channelId) this.refreshUpcoming(channelId);
   }
 
   private requireApi(): CalendarApi {
@@ -176,6 +227,11 @@ export class CalendarHub {
   applyEvent(event: string, data: unknown): void {
     if (event === "calendar.event.updated") {
       const { event: shared, editor_ids: editors } = data as CalendarEventUpdated;
+      if (shared.recurring) {
+        // A series changed (its rule, an occurrence, a split): only the server expands it.
+        this.reloadFor(shared.channel_id);
+        return;
+      }
       const me = this.deps.me();
       const known = this.find(shared.id);
       this.put({ ...shared, can_edit: me !== null && editors.includes(me), alarm: known?.alarm ?? null });
@@ -185,16 +241,17 @@ export class CalendarHub {
       this.drop(id, channelId);
     } else if (event === "calendar.alarm.updated") {
       const { event_id: eventId, alarm } = data as CalendarAlarmUpdated;
-      const before = this.find(eventId)?.alarm?.status;
+      const before = this.findSeries(eventId)?.alarm;
       this.patchAlarm(eventId, alarm);
-      if (alarm?.status === "fired" && before !== "fired") void this.announce(eventId);
+      const again = before?.status === "fired" && (before.occurrence_start ?? null) === (alarm?.occurrence_start ?? null);
+      if (alarm?.status === "fired" && !again) void this.announce(eventId, alarm.occurrence_start ?? null);
     }
   }
 
-  /** A fired alarm: its event as known here, else read (it may be outside every window). */
-  private async announce(eventId: string): Promise<void> {
+  /** A fired alarm: its event (a series: the occurrence it is for) as known here, else read (it may be outside every window). */
+  private async announce(eventId: string, occurrenceStart: string | null): Promise<void> {
     if (!this.deps.onAlarm) return;
-    let event = this.find(eventId);
+    let event = (occurrenceStart ? this.findOccurrence(eventId, occurrenceStart) : undefined) ?? this.find(eventId);
     if (!event && this.deps.api) {
       try {
         event = await this.deps.api.getCalendarEvent(eventId);
@@ -205,11 +262,14 @@ export class CalendarHub {
     if (event) this.deps.onAlarm(event);
   }
 
-  /** An event as it is now: into every window it overlaps (out of those it left). */
+  /** An event as it is now: into every window it overlaps (out of those it left). A one-off event also replaces what was
+   * left of its series (it no longer repeats). */
   put(event: CalendarEventOut): void {
+    const series = seriesOf(event);
+    const other = (e: CalendarEventOut) => e.id !== event.id && !(!event.recurring && seriesOf(e) === series);
     for (const [key, window] of this.windows) {
       const fits = (window.channelId === null || window.channelId === event.channel_id) && overlapsRange(event, window.from, window.to);
-      const rest = window.events.filter((e) => e.id !== event.id);
+      const rest = window.events.filter(other);
       if (!fits && rest.length === window.events.length) continue;
       this.windows.set(key, { ...window, events: fits ? [...rest, event].sort(compareEvents) : rest });
     }
@@ -220,24 +280,54 @@ export class CalendarHub {
     this.changed();
   }
 
+  /** An event gone (a series: every occurrence). */
   private drop(eventId: string, channelId: string | null): void {
+    this.dropWhere((e) => e.id === eventId || seriesOf(e) === eventId, channelId);
+  }
+
+  private dropWhere(gone: (event: CalendarEventOut) => boolean, channelId: string | null): void {
     for (const [key, window] of this.windows) {
-      if (window.events.some((e) => e.id === eventId)) this.windows.set(key, { ...window, events: window.events.filter((e) => e.id !== eventId) });
+      if (window.events.some(gone)) this.windows.set(key, { ...window, events: window.events.filter((e) => !gone(e)) });
     }
     for (const [id, list] of this.upcoming) {
-      if (list.some((e) => e.id === eventId)) this.upcoming.set(id, list.filter((e) => e.id !== eventId));
+      if (list.some(gone)) this.upcoming.set(id, list.filter((e) => !gone(e)));
     }
     if (channelId) this.refreshUpcoming(channelId);
     this.changed();
   }
 
+  /** My alarm on an event, or on every occurrence of a series. */
   private patchAlarm(eventId: string, alarm: CalendarEventOut["alarm"]): void {
-    const known = this.find(eventId);
-    if (known) this.put({ ...known, alarm });
+    const mine = (e: CalendarEventOut) => e.id === eventId || seriesOf(e) === eventId;
+    let found = false;
+    for (const [key, window] of this.windows) {
+      if (!window.events.some(mine)) continue;
+      found = true;
+      this.windows.set(key, { ...window, events: window.events.map((e) => (mine(e) ? { ...e, alarm } : e)) });
+    }
+    for (const [id, list] of this.upcoming) {
+      if (!list.some(mine)) continue;
+      found = true;
+      this.upcoming.set(id, list.map((e) => (mine(e) ? { ...e, alarm } : e)));
+    }
+    if (found) this.changed();
   }
 
   private refreshUpcoming(channelId: string): void {
     if (this.upcoming.has(channelId)) void this.loadUpcoming(channelId);
+  }
+
+  /** Any occurrence of a series (or the one-off event) known here. */
+  findSeries(seriesId: string): CalendarEventOut | undefined {
+    return this.find(seriesId) ?? this.all().find((e) => seriesOf(e) === seriesId);
+  }
+
+  findOccurrence(seriesId: string, occurrenceStart: string): CalendarEventOut | undefined {
+    return this.all().find((e) => seriesOf(e) === seriesId && e.occurrence_start === occurrenceStart);
+  }
+
+  private all(): CalendarEventOut[] {
+    return [...[...this.windows.values()].flatMap((w) => w.events), ...[...this.upcoming.values()].flat()];
   }
 
   find(eventId: string): CalendarEventOut | undefined {

@@ -5,6 +5,7 @@
  * zone.
  */
 import type { CalendarEventCreate, CalendarEventOut, CalendarEventUpdate } from "../api/types";
+import { noRepeat, type RepeatDraft, repeatProblem, repeatToRrule, rruleToRepeat } from "./calendarRecurrence";
 
 export type DayKey = string;
 export type CalendarMode = "month" | "week" | "list";
@@ -287,6 +288,8 @@ export interface EventDraft {
   location: string;
   description: string;
   alarm: number | null;
+  /** M68: 「繰り返し」 (the rule of the series an occurrence belongs to). */
+  repeat: RepeatDraft;
 }
 
 /** A new event on `day`: the next whole hour for an hour (today), else 10:00. */
@@ -305,6 +308,7 @@ export function newDraft(day: DayKey, calendar: CalendarChoice = "me", now: Date
     location: "",
     description: "",
     alarm: null,
+    repeat: noRepeat(day),
   };
 }
 
@@ -321,6 +325,7 @@ export function draftFromEvent(event: CalendarEventOut): EventDraft {
       location: event.location ?? "",
       description: event.description ?? "",
       alarm: event.alarm?.minutes_before ?? null,
+      repeat: rruleToRepeat(event.rrule, event.start_date!),
     };
   }
   return {
@@ -334,6 +339,7 @@ export function draftFromEvent(event: CalendarEventOut): EventDraft {
     location: event.location ?? "",
     description: event.description ?? "",
     alarm: event.alarm?.minutes_before ?? null,
+    repeat: rruleToRepeat(event.rrule, dayKey(new Date(event.starts_at!))),
   };
 }
 
@@ -349,6 +355,8 @@ export function draftProblem(draft: EventDraft): string | null {
   if (draft.location.trim().length > MAX_LOCATION) return `場所は ${MAX_LOCATION} 文字までです`;
   if (draft.description.trim().length > MAX_DESCRIPTION) return `説明は ${MAX_DESCRIPTION} 文字までです`;
   if (!draft.startDay || !draft.endDay) return "日付を入れてください";
+  const repeat = draft.repeat ? repeatProblem(draft.repeat, draft.startDay) : null;
+  if (repeat) return repeat;
   if (draft.allDay) {
     if (draft.endDay < draft.startDay) return "終了日は開始日より後にしてください";
     if (daysBetween(draft.startDay, draft.endDay) >= MAX_ALL_DAY_DAYS) return `終日の予定は ${MAX_ALL_DAY_DAYS} 日までです`;
@@ -363,7 +371,7 @@ export function draftProblem(draft: EventDraft): string | null {
   return null;
 }
 
-function timing(draft: EventDraft): Pick<CalendarEventCreate, "all_day" | "starts_at" | "ends_at" | "start_date" | "end_date"> {
+export function timing(draft: EventDraft): Pick<CalendarEventCreate, "all_day" | "starts_at" | "ends_at" | "start_date" | "end_date"> {
   if (draft.allDay) return { all_day: true, starts_at: null, ends_at: null, start_date: draft.startDay, end_date: draft.endDay };
   return {
     all_day: false,
@@ -385,7 +393,24 @@ export function draftToCreate(draft: EventDraft, tz: string, clientEventId: stri
     alarm_minutes: draft.alarm,
     tz,
     client_event_id: clientEventId,
+    rrule: draft.repeat ? repeatToRrule(draft.repeat, draft.startDay) : null,
   };
+}
+
+/**
+ * M68: what the form changed against the event as it was opened, and only that (an occurrence's 「この予定」 must not
+ * mark the fields it left alone as its own). The time goes whole when any of it changed.
+ */
+export function draftChanges(draft: EventDraft, before: EventDraft): CalendarEventUpdate {
+  const out: CalendarEventUpdate = {};
+  if (draft.title.trim() !== before.title.trim()) out.title = draft.title.trim();
+  if (draft.location.trim() !== before.location.trim()) out.location = draft.location.trim() || null;
+  if (draft.description.trim() !== before.description.trim()) out.description = draft.description.trim() || null;
+  const now = timing(draft);
+  const then = timing(before);
+  const keys = ["all_day", "starts_at", "ends_at", "start_date", "end_date"] as const;
+  if (keys.some((key) => now[key] !== then[key])) Object.assign(out, now);
+  return out;
 }
 
 /** PATCH /calendar/events/{id}: the whole form (its calendar cannot move). */

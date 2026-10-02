@@ -3,7 +3,7 @@
 import logging
 import uuid
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -196,7 +196,14 @@ class PushPlanner:
         now = utcnow()
         if user is None or dnd_active(user, now):
             return
-        notice = await calendar.alarm_notice(db, uuid.UUID(str(event.payload["event_id"])), user_id)
+        fired_at = alarm.get("fire_at")
+        notice = await calendar.alarm_notice(
+            db,
+            uuid.UUID(str(event.payload["event_id"])),
+            user_id,
+            occurrence_start=alarm.get("occurrence_start"),
+            fire_at=datetime.fromisoformat(str(fired_at)) if fired_at else None,
+        )
         if notice is None:
             return
         devices = await repo.push_devices_for_users(db, [user_id])
