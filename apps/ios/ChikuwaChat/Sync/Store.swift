@@ -341,6 +341,8 @@ final class Store {
     var presence: [String: String] = [:]
     /// "channel[:parent]" → user id → expiry; volatile typing indicators.
     var typing: [String: [String: Date]] = [:]
+    /// M73 (CANVAS.md §18.2): who else edits which canvas (volatile `canvas_presence` frames, 45 s without a refresh).
+    private(set) var canvasEditing = CanvasEditors()
     /// My saved message ids (M11c); from bootstrap and bookmark.updated, not persisted.
     var bookmarks: Set<String> = []
     /// My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted.
@@ -928,6 +930,13 @@ final class Store {
     func clearTyping(_ channelId: String, parentId: String?, userId: String) {
         typing[typingKey(channelId, parentId)]?[userId] = nil
     }
+
+    /// M73: a `canvas_presence` frame from someone else (true for 45 s unless refreshed, false ends it).
+    func noteCanvasEditing(_ canvasId: String, userId: String, editing: Bool, section: String?, now: Date = Date()) {
+        canvasEditing.note(canvasId, userId: userId, editing: editing, section: section, now: now)
+    }
+
+    func canvasEditors(_ canvasId: String, now: Date = Date()) -> [CanvasEditingUser] { canvasEditing.of(canvasId, now: now) }
 
     /// Users typing in this conversation right now (expired entries are skipped, not removed).
     func typingUsers(_ channelId: String, parentId: String?, now: Date = Date()) -> [String] {

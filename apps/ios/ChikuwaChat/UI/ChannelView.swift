@@ -678,6 +678,10 @@ struct ChannelView: View {
             tab = .tasks
             if open.taskId == nil { controller.taskOpen = nil }
         }
+        .onChange(of: controller.canvasOpen, initial: true) { _, open in
+            // M73: a canvas mention's notification, a task's 元のキャンバス: the 「キャンバス」 tab (which selects the canvas).
+            if let open, open.channelId == channelId { tab = .canvas }
+        }
         .onChange(of: controller.messageFocus?.messageId) { _, _ in
             // M56: a message of this conversation to show (a task's 「メッセージを開く」): back to the messages.
             if focus != nil, tab == .tasks { tab = .messages }

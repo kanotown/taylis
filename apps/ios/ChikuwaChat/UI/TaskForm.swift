@@ -291,6 +291,46 @@ struct TaskForm: View {
                 Label(draft.sourceExcerpt ?? "メッセージ", systemImage: "text.bubble").font(.subheadline).lineLimit(3)
             }
         }
+        canvasSourceSection
+    }
+
+    /// M73 (CANVAS.md §18.3): 「元のキャンバス」 — its title and the item, opening the canvas; 「元のキャンバスは削除されました」
+    /// once it was purged. A new task from a checklist item shows the item.
+    @ViewBuilder
+    private var canvasSourceSection: some View {
+        if let current {
+            switch TaskRules.canvasSourceState(current.canvasSource) {
+            case .link(let canvasId, let excerpt):
+                Section(canvasHeader(canvasId)) {
+                    if let excerpt { Text(excerpt).font(.subheadline).lineLimit(3) }
+                    Button("キャンバスを開く", systemImage: "doc.text") {
+                        dismiss()
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(350)) // the form is gone before the conversation moves
+                            // A shared task comes from its own conversation's canvas (§18.3); a personal one's is looked up.
+                            await controller.openCanvas(canvasId, channelId: current.channelId)
+                        }
+                    }
+                }
+            case .deleted(let excerpt):
+                Section("元のキャンバス") {
+                    if let excerpt { Text(excerpt).font(.subheadline).foregroundStyle(.secondary).lineLimit(3) }
+                    Label("元のキャンバスは削除されました", systemImage: "doc.text").font(.subheadline).foregroundStyle(.secondary)
+                }
+            case .none:
+                EmptyView()
+            }
+        } else if let canvasId = draft.sourceCanvasId {
+            Section(canvasHeader(canvasId)) {
+                Label(draft.sourceCanvasExcerpt ?? "チェックリストの項目", systemImage: "checklist").font(.subheadline).lineLimit(3)
+            }
+        }
+    }
+
+    /// 「元のキャンバス: 議事録」 when this device knows its title.
+    private func canvasHeader(_ canvasId: String) -> String {
+        guard let title = controller.store.canvasMeta(canvasId)?.title, !title.isEmpty else { return "元のキャンバス" }
+        return "元のキャンバス: " + title
     }
 
     private func loadMembers() async {
@@ -319,6 +359,8 @@ struct TaskForm: View {
                 let patch = draft.patch(from: task, tz: CalendarDates.zoneId)
                 if !patch.isEmpty { _ = try await hub.update(task.id, patch) }
             } else {
+                // M73: the server looks for a checklist item's line in the saved body, so what is typed goes first.
+                if let canvasId = draft.sourceCanvasId { await controller.engine?.canvases.current(canvasId)?.flush() }
                 _ = try await hub.create(draft.create(clientTaskId: clientTaskId, tz: CalendarDates.zoneId))
                 controller.notice = draft.kind == .review ? "レビューを依頼しました" : "タスクを作成しました"
             }

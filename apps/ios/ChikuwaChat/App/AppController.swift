@@ -22,6 +22,10 @@ final class AppController {
     var messageFocus: MessageFocus?
     /// M45: a canvas link (`<server>/c/<id>`) tapped in a message: its screen shows over everything (MainView).
     var canvasLink: CanvasLinkTarget?
+    /// M73: a canvas to show in its conversation's 「キャンバス」 tab (a canvas mention's notification, a task's 元のキャンバス).
+    var canvasOpen: CanvasOpen?
+    /// M73: the notice on screen opens this canvas when tapped (an in-app canvas mention); kept with its text.
+    var noticeCanvas: (notice: String, target: CanvasOpen)?
     /// L8: the Times feed's rows while the app runs (TIMES_FEED.md §5), one per open workspace.
     private(set) var timesFeed = TimesFeedModel()
     /// M52: an event to show (a calendar alarm's notification): its channel's 「予定」 tab or the calendar takes it.
@@ -221,6 +225,8 @@ final class AppController {
         me = nil
         messageFocus = nil
         canvasLink = nil
+        canvasOpen = nil
+        noticeCanvas = nil
         timesFeed = TimesFeedModel()
         previewLoads = [:]
         emojiLoads = []
@@ -472,6 +478,8 @@ final class AppController {
         engine.onCalendarAlarm = { [weak self] event in self?.notice = "📅 " + CalendarDates.alarmText(event) }
         // M56: an assignment or a due date while the app is open, worded like the push (not with notify_tasks off or in DND).
         engine.onTaskNotice = { [weak self] notice in self?.sayTaskNotice(notice) }
+        // M73: a canvas mention while the app is open, worded like the push; the notice opens the canvas.
+        engine.onCanvasMention = { [weak self] mention, _ in self?.sayCanvasMention(mention) }
         // L8: the Times feed keeps its rows with the live message events (TIMES_FEED.md §5).
         timesFeed = TimesFeedModel()
         engine.onTimelineMessage = { [weak self, weak engine] event, message, thread in
@@ -661,6 +669,16 @@ final class AppController {
             // the channel (as a message's conversation), or in the calendar for my own (no channel).
             calendarOpen = CalendarOpen(eventId: eventId, channelId: payload.channelId)
             if payload.channelId == nil { PushCenter.shared.pendingCalendar = true }
+        }
+        if payload.opensCanvas, let canvasId = payload.canvasId {
+            // M73 (CANVAS.md §18.5, kind = canvas): the canvas, in its conversation's 「キャンバス」 tab once the store knows
+            // the conversation; without one (not expected) its own sheet.
+            guard let channelId = payload.channelId else {
+                canvasLink = CanvasLinkTarget(id: canvasId)
+                engine?.reconnectNow()
+                return
+            }
+            canvasOpen = CanvasOpen(canvasId: canvasId, channelId: channelId)
         }
         if payload.opensTask, let taskId = payload.taskId {
             // M56 (PUSH_NOTIFICATIONS.md §4, kind = task): the task, in its channel's 「タスク」 tab once the store knows the

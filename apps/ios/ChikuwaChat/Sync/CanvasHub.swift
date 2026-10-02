@@ -81,6 +81,9 @@ final class CanvasHub {
 
     func current(_ canvasId: String) -> CanvasSaver? { savers[canvasId] }
 
+    /// M73: a screen shows the canvas now (its mention needs no notice).
+    func isShown(_ canvasId: String) -> Bool { holds[canvasId] != nil }
+
     private func dropIfIdle(_ canvasId: String) {
         guard let saver = savers[canvasId], holds[canvasId] == nil, !saver.unsaved else { return }
         saver.dispose()

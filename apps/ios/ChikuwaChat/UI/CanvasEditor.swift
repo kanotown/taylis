@@ -18,6 +18,9 @@ struct CanvasEditor: View {
     @State private var showCamera = false
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var uploading = 0
+    /// M73: 「タスクにする」 from the edit menu of an open checklist item (CANVAS.md §18.3).
+    @State private var taskForm: TaskFormTarget?
+    @Environment(\.scenePhase) private var scenePhase
     private static let hasCamera = UIImagePickerController.isSourceTypeAvailable(.camera)
 
     var body: some View {
@@ -67,8 +70,33 @@ struct CanvasEditor: View {
             Divider()
             toolbar
         }
-        .onAppear { model.attach(saver: saver, store: controller.store, sectionLine: sectionLine) }
+        .onAppear {
+            model.attach(saver: saver, store: controller.store, sectionLine: sectionLine)
+            // M73 (§18.2): 「編集中」 for the others while the text view has the focus.
+            let canvasId = saver.id
+            model.onPresence = { [weak app = controller] editing, section in
+                app?.engine?.setCanvasEditing(canvasId, editing: editing, section: section)
+            }
+            let channelId = saver.channelId
+            model.onMakeTask = controller.serverHasTasks ? { [weak app = controller] body, line in
+                guard let app, let draft = app.canvasTaskDraft(canvasId: canvasId, channelId: channelId, body: body, line: line) else { return }
+                KeyboardBehavior.dismiss()
+                taskForm = .new(draft)
+            } : nil
+        }
         .onDisappear { model.detach() }
+        .onChange(of: scenePhase) { _, phase in model.sceneActive(phase == .active) }
+        .task {
+            // The refresh every 20 s (the sender holds back repeats until then): ticks of 5 s keep it within the 45 s.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                model.refreshPresence()
+            }
+        }
+        // A sheet, not a full-screen cover: a cover ends the canvas screen under it (onDisappear lets go of the canvas).
+        .sheet(item: $taskForm) { target in
+            TaskForm(controller: controller, hub: controller.taskHub, target: target)
+        }
         .onChange(of: saver.textRevision) { _, _ in model.external() }
         .fullScreenCover(item: $model.table) { target in
             CanvasTableEditor(target: target, onDone: { model.finishTable($0) }, onCancel: { model.cancelTable() })
@@ -182,6 +210,14 @@ final class CanvasEditorModel {
     @ObservationIgnored private var wire = ""
     /// The section being edited, in `wire` (nil: the whole body).
     @ObservationIgnored private(set) var section: NSRange?
+    /// M73 (CANVAS.md §18.2): tells the others I edit (true, with the caret's heading) or stopped (false).
+    @ObservationIgnored var onPresence: ((Bool, String?) -> Void)?
+    /// M73 (§18.3): 「タスクにする」 on an open checklist item: the stored body and the item's line in it.
+    @ObservationIgnored var onMakeTask: ((String, Int) -> Void)?
+    /// The text view has the focus (and the app is in front).
+    @ObservationIgnored private(set) var focused = false
+    @ObservationIgnored private var inFront = true
+    @ObservationIgnored private var lastAnnounced: Date?
 
     func attach(saver: CanvasSaver, store: Store, sectionLine: Int?) {
         self.saver = saver
@@ -195,6 +231,8 @@ final class CanvasEditorModel {
     }
 
     func detach() {
+        focused = false
+        announce(false)
         saver?.canReplace = { true }
         if let saver { Task { await saver.flush() } }
     }
@@ -221,6 +259,7 @@ final class CanvasEditorModel {
         }
         saver?.edit(wire)
         updateCandidates()
+        if focused { announce(true, soon: true) }
     }
 
     /// The loop replaced the body (a merge, someone else's version): shown with the caret kept.
@@ -341,6 +380,59 @@ final class CanvasEditorModel {
     func selectionChanged() {
         if textView?.isFirstResponder == true { caretPlaced = true }
         updateCandidates()
+        if focused { announce(true, soon: true) }
+    }
+
+    // MARK: 「編集中」 (M73, CANVAS.md §18.2)
+
+    /// `soon`: from typing or the caret moving — looked at every 2 s at most (the heading is found by a scan).
+    func announce(_ editing: Bool, soon: Bool = false, now: Date = Date()) {
+        if editing && soon, let lastAnnounced, now.timeIntervalSince(lastAnnounced) < CanvasPresence.throttle { return }
+        lastAnnounced = now
+        onPresence?(editing, editing ? caretSection() : nil)
+    }
+
+    /// The heading over the caret, in the text shown (a section's text starts with its heading).
+    func caretSection() -> String? {
+        guard let tv = textView else { return nil }
+        return CanvasText.sectionAt(tv.text, caret: tv.selectedRange.location)
+    }
+
+    func focusChanged(_ on: Bool) {
+        focused = on
+        announce(on && inFront)
+    }
+
+    /// The app went to the background (false) or came back: editing stops and starts again with it.
+    func sceneActive(_ active: Bool) {
+        inFront = active
+        if focused { announce(active) }
+    }
+
+    /// The 20-second refresh while editing (the sender sends nothing new before then).
+    func refreshPresence() {
+        if focused && inFront { announce(true) }
+    }
+
+    // MARK: 「タスクにする」 (M73, §18.3)
+
+    /// The line of the stored body that UTF-16 offset `location` of the shown text is on, when it is an open checklist
+    /// item. Mentions shown as names keep the lines; a section's lines start where it does in the body.
+    func checklistLine(at location: Int) -> Int? {
+        let local = CanvasText.lineIndex(shown, at: location)
+        let offset = section.map { CanvasText.lineIndex(wire, at: $0.location) } ?? 0
+        let line = offset + local
+        guard let item = TaskRules.checklistItem(wire, line: line), !item.done else { return nil }
+        return line
+    }
+
+    /// The edit menu's 「タスクにする」 for the item at the selection, or nil.
+    func makeTaskAction(at location: Int) -> UIAction? {
+        guard onMakeTask != nil, textView?.markedTextRange == nil, let line = checklistLine(at: location) else { return nil }
+        return UIAction(title: "タスクにする", image: UIImage(systemName: "checklist")) { [weak self] _ in
+            guard let self else { return }
+            self.onMakeTask?(self.wire, line)
+        }
     }
 
     /// `@prefix` before the caret: the people and groups it may name (not @channel: a canvas notifies nobody).
@@ -414,6 +506,22 @@ struct CanvasTextView: UIViewRepresentable {
 
         func textViewDidChangeSelection(_ textView: UITextView) {
             MainActor.assumeIsolated { model.selectionChanged() }
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            MainActor.assumeIsolated { model.focusChanged(true) }
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            MainActor.assumeIsolated { model.focusChanged(false) }
+        }
+
+        /// M73: the long press's menu on an open checklist item adds 「タスクにする」.
+        func textView(_ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
+            MainActor.assumeIsolated {
+                guard let action = model.makeTaskAction(at: range.location) else { return nil }
+                return UIMenu(children: suggestedActions + [action])
+            }
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {

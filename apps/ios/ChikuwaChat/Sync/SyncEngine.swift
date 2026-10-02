@@ -116,6 +116,8 @@ final class SyncEngine {
     private var activityRefreshTask: Task<Void, Never>?
     /// "channel[:parent]" → when the last typing frame went out.
     private var typingSent: [String: Date] = [:]
+    /// M73: what this device last said of the canvases it edits (`canvas_presence`, CANVAS.md §18.2).
+    @ObservationIgnored private var canvasPresence = CanvasPresenceSender()
     var isActive: () -> Bool = { true }
     /// Runs before every connection (§7.2). `refresh` is true when the server refused the access token (close 4001),
     /// so it has to be renewed even if it looks valid; an auth error thrown here signs out.
@@ -435,8 +437,12 @@ final class SyncEngine {
             if userId != store.me?.id { store.noteTyping(channelId, parentId: parentId, userId: userId, until: Date().addingTimeInterval(options.typingTtl)) }
         case .presence(let userId, let status):
             store.setPresence(userId, status: status)
+        case .canvasPresence(let canvasId, _, let userId, let editing, let section):
+            // M73: volatile 「編集中」 (CANVAS.md §18.2), dropped after 45 s without a refresh.
+            if userId != store.me?.id { store.noteCanvasEditing(canvasId, userId: userId, editing: editing, section: section) }
         case .hello(_, let interval):
             helloReceived = true
+            canvasPresence.reset() // a new connection knows nothing of what the last one said
             resumeHello(true)
             startHeartbeat(interval: options.heartbeatInterval ?? TimeInterval(max(interval, 1)))
             // The server counts a new connection as in use (PUSH_NOTIFICATIONS.md §4.1): one that is not (connected from
@@ -551,6 +557,14 @@ final class SyncEngine {
         Task { try? await ws.send(ClientFrame.ping(active: active)) }
     }
 
+    /// M73 (CANVAS.md §18.2): I edit this canvas (the editor has the focus and is used; `section` is the caret's heading)
+    /// or stopped. Repeats go out at most every 20 s, changes at once; a stop only after a start went out.
+    func setCanvasEditing(_ canvasId: String, editing: Bool, section: String? = nil, now: Date = Date()) {
+        guard status == .online, let ws else { return }
+        guard let frame = canvasPresence.next(canvasId, editing: editing, section: section, now: now) else { return }
+        Task { try? await ws.send(frame.json) }
+    }
+
     func sendTyping(_ channelId: String, parentId: String? = nil) {
         guard status == .online, let ws else { return }
         let key = parentId.map { "\(channelId):\($0)" } ?? channelId
@@ -641,6 +655,8 @@ final class SyncEngine {
             drafts.applyEvent(try frame.data.decode(DraftUpdated.self))
         case "canvas.created", "canvas.updated", "canvas.deleted":  // M45 (CANVAS.md §4.6)
             canvases.applyEvent(frame.event, frame.data)
+        case "canvas.mentioned":  // M73 (CANVAS.md §18.1): the push's words while the app is open
+            if let mention = try? frame.data.decode(CanvasMentioned.self) { maybeNotifyCanvasMention(mention) }
         case "calendar.event.updated", "calendar.event.deleted", "calendar.alarm.updated":  // M52 (CALENDAR.md §5)
             calendar.applyEvent(frame.event, frame.data)
         case "task.updated", "task.deleted", "task.assigned", "task.due", "task.review_done":  // M56 (TASKS.md §4), L9
@@ -828,6 +844,8 @@ final class SyncEngine {
     var onCalendarAlarm: ((CalendarEventOut) -> Void)?
     /// M56: task.assigned / task.due while the app is open (likewise).
     var onTaskNotice: ((TaskNotice) -> Void)?
+    /// M73: canvas.mentioned while the app is open (likewise), when the conversation's level would push it.
+    var onCanvasMention: ((CanvasMentioned, ChannelState) -> Void)?
 
     /// M12d: the pending scheduled messages; refreshed after every bootstrap (a reconnect may have missed events).
     func loadScheduled() async {
@@ -877,6 +895,14 @@ final class SyncEngine {
         if !NotificationRules.notifies(level: level, facts) { return }
         if isActive() && currentChannelId == channel.id { return }
         onNotify?(message, channel)
+    }
+
+    /// M73 (CANVAS.md §18.1): a save newly mentions me. The push's rule: not by me, a conversation I am in whose level
+    /// is not none and that is not muted (a mention notifies at level mentions too). DND is the controller's.
+    private func maybeNotifyCanvasMention(_ mention: CanvasMentioned) {
+        guard let me = store.me, mention.byUserId != me.id, let channel = store.channel(mention.channelId), channel.isMember else { return }
+        if channel.pushLevel(overall: me.overallNotification, meId: me.id) == "none" || channel.isMuted { return }
+        onCanvasMention?(mention, channel)
     }
 
     /// Opening a thread: fetch its replies (live ones keep arriving as timeline events). True only when the fetch

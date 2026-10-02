@@ -74,9 +74,11 @@ struct PushPayload: Equatable, Sendable {
     var eventId: String?
     /// M56: an assigned or due task (`kind = task`; its `channel_id` is null for my own list).
     var taskId: String?
+    /// M73: a canvas that newly mentions me (`kind = canvas`, CANVAS.md §18.1).
+    var canvasId: String?
 
     init(workspaceId: String? = nil, channelId: String? = nil, messageId: String? = nil, parentId: String? = nil, badge: Int? = nil,
-         kind: String? = nil, eventId: String? = nil, taskId: String? = nil) {
+         kind: String? = nil, eventId: String? = nil, taskId: String? = nil, canvasId: String? = nil) {
         self.workspaceId = workspaceId
         self.channelId = channelId
         self.messageId = messageId
@@ -85,6 +87,7 @@ struct PushPayload: Equatable, Sendable {
         self.kind = kind
         self.eventId = eventId
         self.taskId = taskId
+        self.canvasId = canvasId
     }
 
     /// M52: a calendar alarm opens its event (in its channel's 「予定」 tab, or in the calendar for my own).
@@ -92,6 +95,9 @@ struct PushPayload: Equatable, Sendable {
 
     /// M56: a task's notification opens the task (in its channel's 「タスク」 tab, or in 「自分のタスク」 for my own).
     var opensTask: Bool { kind == "task" && taskId != nil }
+
+    /// M73: a canvas mention opens that canvas (its conversation's 「キャンバス」 tab).
+    var opensCanvas: Bool { kind == "canvas" && canvasId != nil }
 
     /// M39: a reaction to my message opens that message (it may be far above the conversation's unread position); a
     /// message push opens its conversation (and a reply's thread) as before.
@@ -109,6 +115,7 @@ struct PushPayload: Equatable, Sendable {
         kind = text("kind")
         eventId = text("event_id")
         taskId = text("task_id")
+        canvasId = text("canvas_id")
         badge = (userInfo["aps"] as? [AnyHashable: Any])?["badge"] as? Int
     }
 }
@@ -227,7 +234,8 @@ enum Workspaces {
     /// in the workspace on screen (its WebSocket delivered the message already).
     /// A calendar alarm and a task's notification (M56) always show: the open conversation says nothing of them.
     static func shouldPresent(_ payload: PushPayload, target: Workspace?, active: String?, openChannelId: String?) -> Bool {
-        if payload.kind == "calendar" || payload.kind == "task" { return true }
+        // A canvas mention (M73) is not the conversation's messages: shown even while that conversation is open.
+        if payload.kind == "calendar" || payload.kind == "task" || payload.kind == "canvas" { return true }
         guard let target, target.serverUrl == active, let channelId = payload.channelId, let openChannelId else { return true }
         return channelId != openChannelId
     }

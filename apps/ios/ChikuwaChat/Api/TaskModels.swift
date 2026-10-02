@@ -39,6 +39,26 @@ struct TaskSourceOut: Codable, Equatable, Hashable {
     var excerpt: String?
 }
 
+/// M73 (CANVAS.md §18.3, TASKS.md §10): the canvas (and checklist item) a task was made from. `canvasId` is null once
+/// the canvas was purged (a canvas in the trash keeps its id); `excerpt` is the item as it was then.
+struct TaskCanvasSourceOut: Decodable, Equatable, Hashable {
+    var canvasId: String?
+    var excerpt: String?
+
+    init(canvasId: String?, excerpt: String?) {
+        self.canvasId = canvasId
+        self.excerpt = excerpt
+    }
+
+    private enum CodingKeys: String, CodingKey { case canvasId, excerpt }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        canvasId = try? c.decodeIfPresent(String.self, forKey: .canvasId)
+        excerpt = try? c.decodeIfPresent(String.self, forKey: .excerpt)
+    }
+}
+
 /// A task as I see it (GET /tasks…, the answers to my changes). task.updated carries the same fields without
 /// `can_delete` (it differs per person, §8 4.): it then decodes as false and the hub sets it from `deleter_ids`.
 /// Decoding is tolerant: a missing list or flag takes its empty value, so a field added or left out later does not
@@ -64,12 +84,14 @@ struct TaskOut: Identifiable, Equatable, Hashable {
     var canDelete: Bool
     /// L9: absent from a server before M63 (a task).
     var kind: TaskKind = .task
+    /// M73: the canvas it was made from (absent from a server before M72, and for every other task).
+    var canvasSource: TaskCanvasSourceOut? = nil
 }
 
 extension TaskOut: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, channelId, channelName, ownerId, title, notes, status, position, dueOn, assigneeIds, source, completedAt, completedBy,
-             createdAt, updatedAt, canDelete, kind
+             createdAt, updatedAt, canDelete, kind, canvasSource
     }
 
     init(from decoder: Decoder) throws {
@@ -91,6 +113,7 @@ extension TaskOut: Decodable {
         updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt) ?? ""
         canDelete = try c.decodeIfPresent(Bool.self, forKey: .canDelete) ?? false
         kind = (try? c.decodeIfPresent(TaskKind.self, forKey: .kind)) ?? .task
+        canvasSource = (try? c.decodeIfPresent(TaskCanvasSourceOut.self, forKey: .canvasSource))
     }
 }
 
@@ -202,6 +225,9 @@ struct TaskCreate: Equatable {
     var tz: String
     /// L9: a review request (sent only then: a server before M63 knows no kind).
     var kind: TaskKind = .task
+    /// M73 (TASKS.md §10): a canvas's checklist item — the canvas and the line as it is in its body (both or neither).
+    var sourceCanvasId: String? = nil
+    var sourceCanvasLine: String? = nil
 
     /// Only what is set (the web's body: absent rather than null).
     var json: JSONValue {
@@ -213,6 +239,10 @@ struct TaskCreate: Equatable {
         if channelId != nil && !assigneeIds.isEmpty { fields["assignee_ids"] = .array(assigneeIds.map(JSONValue.string)) }
         if let sourceMessageId { fields["source_message_id"] = .string(sourceMessageId) }
         if kind == .review { fields["kind"] = .string(kind.rawValue) }
+        if let sourceCanvasId, let sourceCanvasLine {
+            fields["source_canvas_id"] = .string(sourceCanvasId)
+            fields["source_canvas_line"] = .string(sourceCanvasLine)
+        }
         return .object(fields)
     }
 }
