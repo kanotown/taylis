@@ -148,6 +148,8 @@ class APNsPushProvider:
             "event_id": payload.get("event_id"),
             # kind task (M55): the task to open.
             "task_id": payload.get("task_id"),
+            # kind canvas (M72): the canvas to open.
+            "canvas_id": payload.get("canvas_id"),
         }
         return url, headers, body
 
@@ -269,6 +271,7 @@ class FCMPushProvider:
                 "parent_id",
                 "event_id",
                 "task_id",
+                "canvas_id",
                 "seq",
                 "title",
                 "subtitle",

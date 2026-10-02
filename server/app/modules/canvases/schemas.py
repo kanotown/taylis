@@ -258,6 +258,19 @@ class CanvasDeletedData(BaseModel):
     channel_id: UUID
 
 
+class CanvasMentionedData(BaseModel):
+    """canvas.mentioned (M72, CANVAS.md §18.1): to one person, whom a save of the canvas newly
+    mentions (directly or through a group). The push planner turns it into a notification; the
+    open apps show one."""
+
+    canvas_id: UUID
+    channel_id: UUID
+    # The version that added the mention.
+    rev_id: UUID
+    title: str
+    by_user_id: UUID
+
+
 def to_meta(row: Canvas, *, trashed: bool = False) -> CanvasMeta:
     return CanvasMeta(
         id=row.id,

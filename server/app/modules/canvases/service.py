@@ -14,6 +14,11 @@ an ordinary message with the permalink `<server>/c/<id>` whose thread holds the 
 and `housekeeping` (run by the hourly purge loop) thins old versions (§4.9), purges the trash
 after 30 days (audited as canvas.purge) and lets go of images no version refers to any more.
 Search lives in the search module (read-only access to canvases, ARCHITECTURE.md §5).
+
+M72 (CANVAS.md §18.1): a save, a merge or a create whose body mentions someone (`<@id>`, or a
+`<@group:id>` with them in it) who was not mentioned in the head before writes canvas.mentioned to
+each such member of the conversation (not the author), in the same transaction; the push planner
+notifies them. A restore or a tick never does.
 """
 
 import asyncio
@@ -37,7 +42,12 @@ from app.modules.audit import service as audit
 from app.modules.canvases import merge
 from app.modules.canvases import repository as repo
 from app.modules.canvases import templates as tpl
-from app.modules.canvases.events import CANVAS_CREATED, CANVAS_DELETED, CANVAS_UPDATED
+from app.modules.canvases.events import (
+    CANVAS_CREATED,
+    CANVAS_DELETED,
+    CANVAS_MENTIONED,
+    CANVAS_UPDATED,
+)
 from app.modules.canvases.models import Canvas, CanvasRevision, CanvasTemplate
 from app.modules.canvases.schemas import (
     MAX_BODY_LENGTH,
@@ -48,6 +58,7 @@ from app.modules.canvases.schemas import (
     CanvasCreate,
     CanvasCreatedData,
     CanvasDeletedData,
+    CanvasMentionedData,
     CanvasMeta,
     CanvasOut,
     CanvasPage,
@@ -72,8 +83,11 @@ from app.modules.canvases.schemas import (
 )
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel, ChannelMember
+from app.modules.groups import service as groups
 from app.modules.messages import service as messages
+from app.modules.messages.mentions import MAX_MENTIONS, MENTION_GROUP, MENTION_USER
 from app.modules.messages.schemas import MessageCreate
+from app.modules.users import service as users
 from app.modules.users.models import User
 
 DEFAULT_TITLE = "無題のキャンバス"
@@ -167,6 +181,54 @@ def attachment_refs(body: str) -> list[uuid.UUID]:
 def permalink(base_url: str, canvas_id: uuid.UUID) -> str:
     """`<server>/c/<canvas_id>` (CANVAS.md §4.13), like a message's `<server>/m/<id>`."""
     return f"{base_url.rstrip('/')}/c/{canvas_id}"
+
+
+def mention_tokens(body: str) -> tuple[set[uuid.UUID], set[uuid.UUID]]:
+    """(users, groups) the body mentions (`<!channel>` / `<!here>` never notify in a canvas)."""
+    return (
+        {uuid.UUID(raw) for raw in MENTION_USER.findall(body)},
+        {uuid.UUID(raw) for raw in MENTION_GROUP.findall(body)},
+    )
+
+
+async def _mentioned_people(db: AsyncSession, body: str) -> set[uuid.UUID]:
+    user_ids, group_ids = mention_tokens(body)
+    if group_ids:
+        user_ids |= set(await groups.expand(db, sorted(group_ids)))
+    return user_ids
+
+
+async def _notify_mentions(
+    db: AsyncSession, canvas: Canvas, actor: User, before: str, revision_id: uuid.UUID
+) -> None:
+    """canvas.mentioned to the members newly mentioned by this version (CANVAS.md §18.1)."""
+    after_users, after_groups = mention_tokens(canvas.body)
+    before_users, before_groups = mention_tokens(before)
+    if after_users <= before_users and after_groups <= before_groups:
+        return  # no mention was added
+    added = await _mentioned_people(db, canvas.body) - await _mentioned_people(db, before)
+    added.discard(actor.id)
+    if not added:
+        return
+    members = set(await channels.member_ids_of(db, canvas.channel_id))
+    people = await users.get_users(db, sorted(added & members))
+    targets = sorted(uid for uid, user in people.items() if user.deactivated_at is None)
+    for user_id in targets[:MAX_MENTIONS]:
+        data = CanvasMentionedData(
+            canvas_id=canvas.id,
+            channel_id=canvas.channel_id,
+            rev_id=revision_id,
+            title=canvas.title,
+            by_user_id=actor.id,
+        )
+        await write_outbox(
+            db,
+            event_type=CANVAS_MENTIONED,
+            audience_type="user",
+            audience_id=user_id,
+            channel_id=canvas.channel_id,
+            payload=data.model_dump(mode="json"),
+        )
 
 
 async def _merge(base: str, ours: str, theirs: str, resolve: merge.Resolve) -> merge.MergeResult:
@@ -473,6 +535,7 @@ async def create(
         canvas.share_message_id = await _post_share(db, actor, canvas, base_url)
         await db.flush()
     await _emit_created(db, canvas)
+    await _notify_mentions(db, canvas, actor, "", revision_id)
     await db.commit()
     return to_out(canvas), True
 
@@ -596,8 +659,11 @@ async def _set_body(
     parent: uuid.UUID,
     client_save_id: uuid.UUID | None,
     change: CanvasChange,
+    notify: bool = True,
 ) -> CanvasRevision:
-    """A new head version: the revision, the canvas row and canvas.updated, in one transaction."""
+    """A new head version: the revision, the canvas row and canvas.updated, in one transaction;
+    `notify`: canvas.mentioned to whom it newly mentions (not for a restore, §18.1)."""
+    before = canvas.body
     revision = _revision(
         canvas,
         actor,
@@ -617,6 +683,8 @@ async def _set_body(
     await db.flush()
     await _bind_images(db, actor, canvas)
     await _emit_updated(db, canvas, change)
+    if notify:
+        await _notify_mentions(db, canvas, actor, before, revision.id)
     return revision
 
 
@@ -880,6 +948,7 @@ async def restore_revision(
             parent=canvas.head_rev_id,
             client_save_id=data.client_save_id,
             change="restore",
+            notify=False,
         )
     out = to_out(canvas)
     await db.commit()

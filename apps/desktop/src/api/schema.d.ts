@@ -6191,6 +6191,18 @@ export interface components {
             /** Verifier */
             verifier: string;
         };
+        /**
+         * TaskCanvasSourceOut
+         * @description M72 (CANVAS.md §18.3): the canvas a task was made from, and its checklist item's text as it
+         *     was then (one line; it does not follow later edits). canvas_id is null once the canvas was
+         *     purged from the trash (「元のキャンバスは削除されました」).
+         */
+        TaskCanvasSourceOut: {
+            /** Canvas Id */
+            canvas_id: string | null;
+            /** Excerpt */
+            excerpt: string | null;
+        };
         /** TaskCreate */
         TaskCreate: {
             /** Assignee Ids */
@@ -6209,6 +6221,10 @@ export interface components {
             kind: "task" | "review";
             /** Notes */
             notes?: string | null;
+            /** Source Canvas Id */
+            source_canvas_id?: string | null;
+            /** Source Canvas Line */
+            source_canvas_line?: string | null;
             /** Source Message Id */
             source_message_id?: string | null;
             /**
@@ -6246,6 +6262,7 @@ export interface components {
             assignee_ids: string[];
             /** Can Delete */
             can_delete: boolean;
+            canvas_source?: components["schemas"]["TaskCanvasSourceOut"] | null;
             /** Channel Id */
             channel_id: string | null;
             /** Channel Name */

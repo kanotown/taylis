@@ -7,12 +7,13 @@ import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
 import { CalendarHub, type CalendarApi } from "./calendar";
 import { CanvasHub } from "./canvases";
+import { CanvasPresenceSender } from "./canvasPresence";
 import { type TaskApi, TaskHub, type TaskNotice } from "./tasks";
 import { TimesFeedHub } from "./timesFeed";
 import { type AiApi, AiHub } from "./ai";
 import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
-import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded } from "../api/types";
+import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
@@ -165,6 +166,11 @@ export interface EngineDeps {
   onCalendarAlarm?: (event: CalendarEventOut) => void;
   /** M55: task.assigned / task.due to me (the server pushes to phones; the app shows it while open). */
   onTaskNotice?: (notice: TaskNotice) => void;
+  /**
+   * M72 (CANVAS.md §18.1): a save of a canvas newly mentions me, in a conversation that is not silent or muted (the
+   * server pushes to phones; the app shows it while open).
+   */
+  onCanvasMention?: (mention: CanvasMentioned, channel: ChannelState) => void;
   /** A channel became fully read (here or on another device). */
   onRead?: (channelId: string) => void;
   isActive?: () => boolean;
@@ -232,6 +238,8 @@ export class SyncEngine {
   private threadRefresh: Promise<void> | null = null;
   /** "channel[:parent]" → when the last typing frame went out. */
   private readonly typingSent = new Map<string, number>();
+  /** M72: what this device last said of the canvases it edits (`canvas_presence`, CANVAS.md §18.2). */
+  private readonly canvasPresence = new CanvasPresenceSender();
   private ws: WsLike | null = null;
   /** Bumped by every connection attempt, stop and sign-out: the work of an older attempt is dropped (§5.3). */
   private connection = 0;
@@ -591,6 +599,7 @@ export class SyncEngine {
       return;
     }
     if (frame.type === "hello") {
+      this.canvasPresence.reset(); // a new connection knows nothing of what the last one said
       this.helloResolve?.();
       this.helloResolve = null;
       this.startHeartbeat(ws, (frame.heartbeat_interval_sec || 30) * 1000);
@@ -607,6 +616,28 @@ export class SyncEngine {
         this.deps.store.noteTyping(frame.channel_id, frame.parent_id ?? null, frame.user_id, (this.deps.now ? Date.parse(this.deps.now()) : Date.now()) + this.opts.typingTtlMs);
       }
     } else if (frame.type === "presence") this.deps.store.setPresence(frame.user_id, frame.status);
+    else if (frame.type === "canvas_presence") {
+      // M72: volatile 「編集中」 (CANVAS.md §18.2), dropped after 45 s without a refresh.
+      if (frame.user_id !== this.deps.store.me?.id) {
+        this.deps.store.noteCanvasEditing(frame.canvas_id, frame.user_id, frame.editing, frame.section ?? null, this.deps.now ? Date.parse(this.deps.now()) : Date.now());
+      }
+    }
+  }
+
+  /**
+   * M72 (CANVAS.md §18.2): I edit this canvas (the editor has the focus and is used; `section` is the caret's heading) or
+   * stopped. Repeats go out at most every 20 s, changes at once; a stop only after a start went out.
+   */
+  setCanvasEditing(canvasId: string, editing: boolean, section: string | null = null): void {
+    const ws = this.ws;
+    if (!ws || this.status !== "online") return;
+    const frame = this.canvasPresence.next(canvasId, editing, section, Date.now());
+    if (!frame) return;
+    try {
+      ws.send(JSON.stringify(frame));
+    } catch {
+      /* volatile: the receivers drop it after 45 s anyway */
+    }
   }
 
   /** The composer changed: tell the other members, at most once per typingIntervalMs per conversation. */
@@ -931,6 +962,9 @@ export class SyncEngine {
         this.maybeNotifyReaction(data);
         return;
       }
+      case "canvas.mentioned":
+        this.maybeNotifyCanvasMention(frame.data as unknown as CanvasMentioned);
+        return;
       case "ai.run_updated":
         this.ai.applyEvent(frame.data as unknown as AiRunUpdated);
         return;
@@ -1135,6 +1169,19 @@ export class SyncEngine {
     if (effectiveNotificationLevel(channel, me.id, overallLevel(me)) === "none" || isMutedChannel(channel)) return;
     if (this.deps.isActive?.() && this.currentChannelId === channel.id) return;
     this.deps.onReaction?.(reaction, channel);
+  }
+
+  /**
+   * M72 (CANVAS.md §18.1): a canvas newly mentions me. Like a message's mention: never in a conversation whose level comes
+   * to "none" or that is muted (the level "mentions" lets it through: it is one).
+   */
+  private maybeNotifyCanvasMention(mention: CanvasMentioned): void {
+    const me = this.deps.store.me;
+    if (!me || mention.by_user_id === me.id) return;
+    const channel = this.deps.store.getChannel(mention.channel_id);
+    if (!channel || !channel.isMember) return;
+    if (effectiveNotificationLevel(channel, me.id, overallLevel(me)) === "none" || isMutedChannel(channel)) return;
+    this.deps.onCanvasMention?.(mention, channel);
   }
 
   private scheduleActivityRefresh(): void {

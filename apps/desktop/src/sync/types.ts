@@ -130,12 +130,23 @@ export interface PresenceFrame {
   status: PresenceStatus;
 }
 
+/** M72 (CANVAS.md §18.2): someone edits a canvas (or stopped); dropped after 45 s without a refresh. */
+export interface CanvasPresenceFrame {
+  type: "canvas_presence";
+  canvas_id: string;
+  channel_id: string;
+  user_id: string;
+  editing: boolean;
+  section: string | null;
+}
+
 export type ServerFrame =
   | HelloFrame
   | { type: "pong"; server_time: string }
   | { type: "error"; code: string; message: string }
   | EventFrame
   | TypingFrame
-  | PresenceFrame;
+  | PresenceFrame
+  | CanvasPresenceFrame;
 
 export const LOCAL_PREFIX = "local:";

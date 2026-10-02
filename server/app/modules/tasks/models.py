@@ -54,6 +54,12 @@ class Task(Base):
     )
     source_channel_id: Mapped[uuid.UUID | None] = mapped_column()
     source_excerpt: Mapped[str | None] = mapped_column(Text)
+    # M72 (CANVAS.md §18.3): made from a canvas's checklist item: the canvas (NULL once it is purged
+    # from the trash) and the item's text as one line, copied when made (a one-way link).
+    source_canvas_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("canvases.id", ondelete="SET NULL")
+    )
+    source_canvas_excerpt: Mapped[str | None] = mapped_column(Text)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     # Idempotency key of the POST that made it (unique per creator; a retry returns this task).
@@ -98,6 +104,12 @@ class Task(Base):
             "tasks_source_idx",
             "source_message_id",
             postgresql_where=text("source_message_id IS NOT NULL"),
+        ),
+        # A canvas purged from the trash clears its tasks' link (ON DELETE SET NULL).
+        Index(
+            "tasks_source_canvas_idx",
+            "source_canvas_id",
+            postgresql_where=text("source_canvas_id IS NOT NULL"),
         ),
         # GET /tasks/due (the calendar).
         Index(

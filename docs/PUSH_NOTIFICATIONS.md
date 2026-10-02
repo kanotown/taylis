@@ -105,6 +105,7 @@ NULL) 本人の全体設定 `users.notification_default` (`all` / `mentions` / `
 | `calendar.alarm.updated` (alarm.status=fired、M51) | 本人の端末へ `kind = calendar` (タイトル「予定」、本文「14:00 ゼミ (#m2-進捗)」、終日は「終日 学会 (#…)」、前日の通知は先頭に「明日 」(2 日以上前なら「10/3 」)、自分用はチャンネル名なし。時刻は通知を付けた端末の `tz` で書く)。`channel_id` (自分用は null) と `event_id` で予定を開く。`collapse_key = calendar:<event_id>`。本文は送る時点の予定から作る。DND 中は出さない (リマインダーと同じく、後で送り直さない)。`PUSH_INCLUDE_CONTENT=false` なら本文は「予定の時間です」 | M51 |
 | `task.assigned` (M55、ほかの人が自分をタスクの担当に加えた) | 本人の `notify_tasks` (既定オン) がオンのときだけ `kind = task` (タイトル「タスク」、本文「〇〇 がタスクを割り当てました: 題名 (#チャンネル)」)。`channel_id` と `task_id` でそのタスクを開く。`collapse_key = task:<task_id>`。リアクションと同じく、その会話の level が none・ミュート中・DND・別端末でアクティブなら出さない。計画の時点でタスクが消えている・完了していれば出さない。自分で自分を加えたときはイベント自体が無い | M55 |
 | `task.due` (M55、担当のタスクの期限の日の 8:00) | `notify_tasks` がオンのときだけ本人の端末へ `kind = task` (タイトル「タスク」、本文「今日が期限: 題名 (#チャンネル)」、自分用はチャンネル名なし)。worker (リマインダー・予定と同じループ) が `task_due_alarms` の時刻 (期限の日の 8:00、本人のゾーン: 変更した端末の `tz` → おやすみ時間のゾーン → Asia/Tokyo) に 1 回だけ発火する。予定の通知と同じく、会話の level・ミュートは見ず、DND 中は出さない (後で送り直さない)。未完了・担当のまま・メンバーのまま・アーカイブされていないことを送る直前に確かめる。`PUSH_INCLUDE_CONTENT=false` なら本文は「タスクが割り当てられました」/「今日が期限のタスクがあります」 | M55 |
+| `canvas.mentioned` (M72、キャンバスの保存で新しくメンションされた。CANVAS.md §18.1) | `kind = canvas` (タイトル「キャンバス」、サブタイトル「#チャンネル」(DM は無し)、本文「〇〇 が「題名」であなたをメンションしました」)。`channel_id` と `canvas_id` でそのキャンバスを開く。`collapse_key = canvas:<canvas_id>`。メッセージのメンションと同じく、その会話の level が none・ミュート中・DND・別端末でアクティブなら出さない (level が mentions なら出す)。計画の時点でキャンバスがゴミ箱にある・本人が会話から抜けていれば出さない。`PUSH_INCLUDE_CONTENT=false` なら本文は「キャンバスでメンションされました」。アクティビティには入れない (CANVAS.md §18.1) | M72 |
 | 本人の `dnd_until > now()`、または quiet hours の時間帯 (本人のタイムゾーン、`users.quiet_hours_*`) | 除外 (M12c 「通知を一時停止」。バッジは次のプッシュ / 起動時に追いつく) | M12c |
 | `level = all` | 対象 | M5 |
 | `level = mentions` | `mentioned_user_ids` か `keyword_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
@@ -171,7 +172,8 @@ Hub は接続した時点を使用中と数える。使っていない状態で�
 行にはこの他に `expires_at` (有効期限) と、スレッドの返信なら `parent_id` (送信直前の既読の再判定に使う。M28a) を
 payload と並べて保存する。プロバイダは `parent_id` も端末へ送り (APNs の本体、FCM の data)、返信の通知をタップすると
 そのスレッドが開く (M28d。以前はチャンネルだけが開いた)。`kind = calendar` (M51) は `event_id` も送る (APNs の本体、FCM の
-data)。`kind = task` (M55) は `task_id` を送る (同じく。自分用のタスクは `channel_id` が null)。クライアントは知らない項目を無視する。
+data)。`kind = task` (M55) は `task_id` を送る (同じく。自分用のタスクは `channel_id` が null)。`kind = canvas` (M72) は `canvas_id`
+を送る (同じく)。クライアントは知らない項目を無視する。
 
 | 項目 | APNs | FCM (Android) |
 | --- | --- | --- |

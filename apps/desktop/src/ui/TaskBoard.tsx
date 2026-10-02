@@ -4,7 +4,7 @@
  * and per card a menu (移動 / 上へ / 下へ / 削除) that does the same from the keyboard. Read-only for those who may not
  * post in the channel. The cards (TaskCard) are shared with 「自分のタスク」.
  */
-import { CalendarDays, MessageSquareText, MoreHorizontal, Plus, StickyNote } from "lucide-react";
+import { CalendarDays, FileText, MessageSquareText, MoreHorizontal, Plus, StickyNote } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { TaskOut, TaskStatus } from "../api/types";
@@ -29,6 +29,7 @@ import {
   type Neighbors,
   sortColumn,
   sourceState,
+  canvasSourceState,
   STATUS_LABELS,
   statusLabel,
   TASK_STATUSES,
@@ -96,7 +97,8 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
   const done = task.status === "done";
   const overdue = isOverdue(task, today);
   const source = sourceState(task);
-  const hasMeta = !!place || !!task.due_on || !!task.notes || source.kind === "link" || task.assignee_ids.length > 0 || (showStatus && task.status === "doing");
+  const canvasSource = canvasSourceState(task);
+  const hasMeta = !!place || !!task.due_on || !!task.notes || source.kind === "link" || canvasSource.kind === "link" || task.assignee_ids.length > 0 || (showStatus && task.status === "doing");
   return (
     <div
       data-task-card={task.id}
@@ -147,6 +149,21 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
               }}
             >
               <MessageSquareText size={12} />
+            </button>
+          )}
+          {canvasSource.kind === "link" && (
+            <button
+              type="button"
+              title="元のキャンバスを開く"
+              aria-label="元のキャンバスを開く"
+              data-canvas-source
+              className="rounded p-0.5 hover:bg-ink/6 hover:text-ink"
+              onClick={(e) => {
+                e.stopPropagation();
+                void controller.openCanvasLink(canvasSource.canvasId);
+              }}
+            >
+              <FileText size={12} />
             </button>
           )}
           <span className="ml-auto" />

@@ -78,6 +78,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     canvas_events.CANVAS_CREATED: (canvas_events.CanvasCreatedData, "channel", False),
     canvas_events.CANVAS_UPDATED: (canvas_events.CanvasUpdatedData, "channel", False),
     canvas_events.CANVAS_DELETED: (canvas_events.CanvasDeletedData, "channel", False),
+    canvas_events.CANVAS_MENTIONED: (canvas_events.CanvasMentionedData, "user", False),
     calendar_events.CALENDAR_EVENT_UPDATED: (
         calendar_events.CalendarEventUpdatedData,
         "channel (a personal event: user)",

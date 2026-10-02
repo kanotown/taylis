@@ -12,7 +12,8 @@ import type { CanvasSaver } from "../sync/canvasSave";
 import type { AppController } from "../state/app";
 import { anchorLine, findTable, insertTable, lineOf, lineStart, NEW_TABLE, parseTable, sameTable, type Table, type TableOrigin, writeBackTable } from "./canvasTable";
 import { CanvasTableDialog } from "./CanvasTableDialog";
-import { attachmentRefs, insertImageLine, insertRule, MAX_CANVAS_IMAGES, preserveCaret, setHeading, toggleTasks } from "./canvasText";
+import { CANVAS_PRESENCE_REFRESH_MS } from "../sync/canvasPresence";
+import { attachmentRefs, insertImageLine, insertRule, MAX_CANVAS_IMAGES, preserveCaret, sectionAt, setHeading, toggleTasks } from "./canvasText";
 import { continueStructure, type EditState, indentListLine, insertLink, replaceThroughBrowser, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { decodeMentions, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { cn, IconButton, modKey } from "./primitives";
@@ -70,6 +71,29 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   useEffect(() => {
     if (autoFocus) area.current?.focus();
   }, [autoFocus]);
+
+  // M72 (CANVAS.md §18.2): 「編集中」 for the conversation's other members — while the text area has the focus (said
+  // again on typing and when the caret's heading changes, else every 20 s), stopped on blur and when the editor goes.
+  const engine = controller.engine;
+  const focused = useRef(false);
+  const lastAnnounced = useRef(0);
+  /** `soon`: from typing or the caret moving — looked at once a second at most (the heading is found by a scan). */
+  const announce = (editing: boolean, soon = false) => {
+    const now = Date.now();
+    if (editing && soon && now - lastAnnounced.current < 1000) return;
+    lastAnnounced.current = now;
+    const el = area.current;
+    engine?.setCanvasEditing(saver.id, editing, editing && el ? sectionAt(el.value, el.selectionStart ?? 0) : null);
+  };
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (focused.current) announce(true);
+    }, CANVAS_PRESENCE_REFRESH_MS);
+    return () => {
+      clearInterval(timer);
+      engine?.setCanvasEditing(saver.id, false);
+    };
+  }, [engine, saver]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const change = (next: string) => {
     setText(next);
@@ -316,8 +340,17 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
         onChange={(event) => {
           change(event.target.value);
           setCaret(event.target.selectionStart ?? event.target.value.length);
+          focused.current = true;
+          announce(true, true);
         }}
-        onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+        onSelect={(event) => {
+          setCaret(event.currentTarget.selectionStart ?? 0);
+          if (focused.current) announce(true, true); // a new heading goes out; the same one is not repeated
+        }}
+        onFocus={() => {
+          focused.current = true;
+          announce(true);
+        }}
         onKeyDown={onKeyDown}
         onCompositionStart={() => {
           composing.current = true;
@@ -328,6 +361,8 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
         }}
         onBlur={(event) => {
           lastCaret.current = event.currentTarget.selectionStart ?? null;
+          focused.current = false;
+          announce(false);
           void saver.flush();
         }}
         onPaste={(event) => {

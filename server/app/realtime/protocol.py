@@ -29,7 +29,19 @@ class TypingFrame(BaseModel):
     parent_id: UUID | None = None
 
 
-ClientFrame = Annotated[AuthFrame | PingFrame | TypingFrame, Field(discriminator="type")]
+class CanvasPresenceFrame(BaseModel):
+    """Volatile (M72, CANVAS.md §18.2): I am editing this canvas (or stopped); relayed to the other
+    members of its conversation, never stored. `section`: the heading the caret is under."""
+
+    type: Literal["canvas_presence"]
+    canvas_id: UUID
+    editing: bool
+    section: str | None = Field(default=None, max_length=120)
+
+
+ClientFrame = Annotated[
+    AuthFrame | PingFrame | TypingFrame | CanvasPresenceFrame, Field(discriminator="type")
+]
 
 PresenceStatus = Literal["online", "away", "offline"]
 
@@ -69,6 +81,17 @@ class TypingOut(BaseModel):
     user_id: UUID
 
 
+class CanvasPresenceOut(BaseModel):
+    """Someone is editing a canvas (or stopped). Clients drop it after 45 s without a refresh."""
+
+    type: Literal["canvas_presence"] = "canvas_presence"
+    canvas_id: UUID
+    channel_id: UUID
+    user_id: UUID
+    editing: bool
+    section: str | None
+
+
 class PresenceOut(BaseModel):
     type: Literal["presence"] = "presence"
     user_id: UUID
@@ -76,6 +99,6 @@ class PresenceOut(BaseModel):
 
 
 ServerFrame = Annotated[
-    HelloFrame | PongFrame | ErrorFrame | EventFrame | TypingOut | PresenceOut,
+    HelloFrame | PongFrame | ErrorFrame | EventFrame | TypingOut | PresenceOut | CanvasPresenceOut,
     Field(discriminator="type"),
 ]
