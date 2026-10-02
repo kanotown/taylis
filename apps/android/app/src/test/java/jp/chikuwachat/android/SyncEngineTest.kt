@@ -318,6 +318,34 @@ class SyncEngineTest {
         w.engine.stop(); w.scope.cancel()
     }
 
+    /**
+     * Review v0.1.18 #6 (PUSH_NOTIFICATIONS.md §4, notify-rules.json): at level "all" a reply only in its thread notifies
+     * its followers and the people it names, not everyone; one who unfollowed by hand is not woken even by a mention.
+     */
+    @Test fun threadOnlyRepliesNotifyOnlyFollowersAtLevelAll() = runBlocking {
+        val w = world()
+        w.server.notificationDefaults[w.bob] = "all"
+        w.engine.start(); settle(w.engine)
+        val (parent, _) = w.server.post(w.channelId, w.alice, "topic"); settle(w.engine)
+        assertEquals(listOf("topic"), w.notifications)
+        w.server.post(w.channelId, w.alice, "not my thread", parentId = parent.id); settle(w.engine)
+        assertEquals(listOf("topic"), w.notifications) // bob does not follow it
+        w.server.post(w.channelId, w.alice, "shared", parentId = parent.id, options = SendOptions(alsoInChannel = true)); settle(w.engine)
+        assertEquals(listOf("topic", "shared"), w.notifications) // also in the channel: a channel message
+        w.server.setThreadFollow(w.bob, parent.id, true); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "followed", parentId = parent.id); settle(w.engine)
+        assertEquals(listOf("topic", "shared", "followed"), w.notifications)
+        w.server.setThreadFollow(w.bob, parent.id, false); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "after unfollowing", parentId = parent.id); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "still quiet <@${w.bob}>", parentId = parent.id); settle(w.engine)
+        assertEquals(listOf("topic", "shared", "followed"), w.notifications) // unfollowed by hand: not even a mention
+        // Someone who never unfollowed is woken by a mention (and follows from then on).
+        val (other, _) = w.server.post(w.channelId, w.alice, "other topic"); settle(w.engine)
+        w.server.post(w.channelId, w.alice, "look <@${w.bob}>", parentId = other.id); settle(w.engine)
+        assertEquals(listOf("topic", "shared", "followed", "other topic", "look <@${w.bob}>"), w.notifications)
+        w.engine.stop(); w.scope.cancel()
+    }
+
     @Test fun theOverallSettingNoneSilencesChannelsWithoutALevel() = runBlocking { // M35
         val w = world()
         w.server.notificationDefaults[w.bob] = "none"

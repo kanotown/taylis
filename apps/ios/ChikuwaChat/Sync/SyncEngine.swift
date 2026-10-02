@@ -870,8 +870,11 @@ final class SyncEngine {
         // "none", a mute until unmuted or a timed mute silences everything.
         let level = channel.pushLevel(overall: me.overallNotification, meId: me.id)
         if level == "none" || channel.isMuted { return }
-        let involved = message.mentionsMe(me) || (thread?.participantIds.contains(me.id) ?? false)
-        if level == "mentions" && !involved { return }
+        // A reply only in its thread: its followers and those it addresses, never after unfollowing it by hand (review
+        // v0.1.18 #6; NotificationRules.notifies, the same vectors as the server).
+        let following = message.parentId.flatMap { store.threads[$0]?.state.following }
+        let facts = NotificationRules.facts(of: message, me: me, thread: thread, storedFollowing: following)
+        if !NotificationRules.notifies(level: level, facts) { return }
         if isActive() && currentChannelId == channel.id { return }
         onNotify?(message, channel)
     }

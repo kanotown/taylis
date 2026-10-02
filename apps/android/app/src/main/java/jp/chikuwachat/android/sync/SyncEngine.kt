@@ -915,13 +915,17 @@ class SyncEngine(
         if (updated.unreadCount == 0) onRead?.invoke(channelId)
     }
 
-    /** DMs always notify; channels when I am mentioned or take part in the thread (PUSH_NOTIFICATIONS.md §4). */
+    /**
+     * DMs always notify; channels by their level, a reply only in its thread only when I follow it or it names me (and
+     * never once I unfollowed it by hand). The server's PushPlanner rule (PUSH_NOTIFICATIONS.md §4, notify-rules.json).
+     */
     private fun maybeNotify(message: MessageOut, channel: ChannelState, thread: ParentThread? = null) {
         val me = store.me ?: return
         if (message.senderId == me.id) return
-        // Same rule as the server's PushPlanner (§4): the level resolved with my overall setting (M35), and a mute.
-        val involved = message.mentions(me.id, me.notifyKeywords) || (thread != null && me.id in thread.participantIds)
-        if (!NotificationLevels.notifies(channel, me.notificationDefault, me.id, involved)) return
+        // The level resolved with my overall setting (M35), and a mute.
+        val followingHeld = message.parentId?.let { store.threads[it]?.state?.following } == true
+        val facts = NotificationLevels.facts(message, me.id, me.notifyKeywords, thread, followingHeld)
+        if (!NotificationLevels.notifies(channel, me.notificationDefault, me.id, facts)) return
         if (isActive() && currentChannelId == channel.id) return
         onNotify?.invoke(message, channel)
     }

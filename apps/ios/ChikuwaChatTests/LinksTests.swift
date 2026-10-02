@@ -111,6 +111,36 @@ final class LinkPreviewRowTests: XCTestCase {
         XCTAssertEqual(height(), before, accuracy: 0.5, "the card fills the frame: the row does not grow")
     }
 
+    /// Review v0.1.18 #5: a bot's link (an AI reply may carry the conversation in its URL) is not sent to the server
+    /// for a preview until 「プレビューを表示」; the plain link's line keeps its height meanwhile.
+    func testABotsLinkIsPreviewedOnlyWhenAskedFor() throws {
+        let link = "https://www.python.org/?q=secret"
+        var asked: [String] = []
+        StubProtocol.handler = { request in
+            guard request.url?.path == "/api/v1/link-previews" else { return (404, Data(#"{"detail":"Not Found"}"#.utf8)) }
+            let url = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "url" }?.value
+            DispatchQueue.main.async { asked.append(url ?? "") }
+            return (200, Data(Self.python.utf8))
+        }
+        let controller = controller()
+        controller.store.upsertUser(UserPublic(id: "bot1", username: "ai-chikuwa", displayName: "ちくわ AI", role: "bot", deactivatedAt: nil,
+                                               createdAt: "", updatedAt: ""))
+        var row = message("こちらです \(link)")
+        row.senderId = "bot1"
+        XCTAssertFalse(controller.autoLoadsLinkPreview(row))
+        let height = show(MessageRow(message: row, controller: controller).equatable())
+        let before = height()
+        spin(0.5)
+        XCTAssertEqual(asked, [], "no request without a tap")
+        XCTAssertNil(controller.linkPreviews[link])
+        XCTAssertEqual(height(), before, accuracy: 0.5, "the plain link's line keeps its height")
+
+        controller.revealLinkPreview("m1")
+        spin(until: { controller.linkPreviews[link] != nil })
+        XCTAssertEqual(asked, [link], "asked for once the preview was asked for")
+        XCTAssertEqual(controller.linkPreviews[link]??.title, "Welcome to Python.org")
+    }
+
     func testARowLeavingTheScreenDoesNotCancelThePreviewAnotherRowWaitsFor() throws {
         // The landing scrolls the newest rows away: the row that asked first goes, another with the same link stays.
         let link = "https://www.python.org/"
@@ -185,6 +215,20 @@ final class LinkPreviewSlotTests: XCTestCase {
         XCTAssertEqual(LinkPreviewSlot.of(.some(nil), failed: false), .none)
         XCTAssertEqual(LinkPreviewSlot.of(nil, failed: false), .placeholder)
         XCTAssertEqual(LinkPreviewSlot.of(nil, failed: true), .none, "offline: no frame that stays empty")
+    }
+
+    /// Review v0.1.18 #5: who gets a preview without asking, decided by the sender when the row is drawn.
+    func testOnlyPeoplesLinksArePreviewedWithoutAsking() {
+        let ai: Set<String> = ["ai1"]
+        XCTAssertFalse(LinkPreviewRules.autoLoads(senderId: "ai1", senderRole: "bot", aiBotIds: ai), "an AI bot")
+        XCTAssertFalse(LinkPreviewRules.autoLoads(senderId: "ai1", senderRole: nil, aiBotIds: ai), "an AI bot, its user not known yet")
+        XCTAssertTrue(LinkPreviewRules.autoLoads(senderId: "u1", senderRole: "member", aiBotIds: ai), "a person")
+        XCTAssertTrue(LinkPreviewRules.autoLoads(senderId: "u1", senderRole: "admin", aiBotIds: []), "a person, AI status not loaded")
+        XCTAssertTrue(LinkPreviewRules.autoLoads(senderId: "u1", senderRole: nil, aiBotIds: []), "an unknown sender")
+        XCTAssertFalse(LinkPreviewRules.autoLoads(senderId: "ai1", senderRole: "bot", aiBotIds: []), "role bot before the AI status came")
+        // A webhook or scheduled-post bot that is not an agent: no automatic preview either (the row's height does not
+        // change when the status comes, and a disabled agent, gone from the status, stays covered).
+        XCTAssertFalse(LinkPreviewRules.autoLoads(senderId: "hook", senderRole: "bot", aiBotIds: ai), "a webhook bot")
     }
 
     func testAKeptPreviewIsAskedForAgainAfterTheServersOwnCacheTime() {

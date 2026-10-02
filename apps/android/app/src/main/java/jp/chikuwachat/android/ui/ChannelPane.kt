@@ -669,7 +669,10 @@ fun MessageRow(
                 if (message.tasks.isNotEmpty()) MessageTaskChips(message, controller, version)  // L9 (M64)
                 AttachmentList(message.attachments, controller)
                 // Not for this server's /m/ and /c/ links: a message shows in place, a canvas as its card (M58).
-                if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null && !CanvasCards.isCanvasLink(controller.serverBase, link) }?.let { LinkPreviewCard(controller, it) }
+                if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null && !CanvasCards.isCanvasLink(controller.serverBase, link) }?.let { link ->
+                    // Review v0.1.18 #5: an AI bot's link is not previewed until tapped (decided by the sender, here).
+                    LinkPreviewCard(controller, link, message.id, auto = LinkPreviewPolicy.autoLoads(message.senderId, store.users[message.senderId]?.role, controller.aiStatus))
+                }
                 ReactionChips(
                     message, store, onToggle = if (readOnly) null else onReact, onNeedEmojiImage = { controller.loadEmojiImage(it) },
                     onAdd = if (message.pending || readOnly) null else ({ pickingReaction = true }), version = version,  // M25 「＋」

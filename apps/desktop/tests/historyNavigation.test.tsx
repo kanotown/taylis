@@ -223,6 +223,61 @@ it("the web build leaves the mouse's back / forward buttons to the browser (its 
   w.engine.stop();
 });
 
+it("web: the browser's Back / Forward move the ← → history to the entry they restore, not a new visit (review v0.1.18 #13)", async () => {
+  const { w } = await setup();
+  const states: Record<string, unknown> = { c: history.state };
+  await openRow(w, "d");
+  states.d = history.state;
+  await openRow(w, "e");
+  states.e = history.state;
+  const browser = async (name: string) => {
+    await act(async () => { window.dispatchEvent(new PopStateEvent("popstate", { state: states[name] })); });
+    await settle(w);
+    expect(title()).toBe(name);
+  };
+
+  // C → D → E, browser Back to D: in-app Forward goes to E, in-app Back to C (not C, D, E, D).
+  await browser("d");
+  expect(forwardButton().disabled).toBe(false);
+  expect(backButton().disabled).toBe(false);
+  fireEvent.click(forwardButton());
+  await settle(w);
+  expect(title()).toBe("e");
+  expect(forwardButton().disabled).toBe(true);
+  await browser("d");
+  fireEvent.click(backButton());
+  await settle(w);
+  expect(title()).toBe("c");
+  expect(backButton().disabled).toBe(true);
+
+  // Then the browser's Forward and the in-app arrows / shortcuts alternately.
+  await browser("d");
+  expect(backButton().disabled).toBe(false);
+  expect(forwardButton().disabled).toBe(false);
+  await browser("e");
+  expect(forwardButton().disabled).toBe(true);
+  await press(w, { key: "[", metaKey: true });
+  expect(title()).toBe("d");
+  await press(w, { key: "[", metaKey: true });
+  expect(title()).toBe("c");
+  await browser("d");
+  await press(w, { key: "]", metaKey: true });
+  expect(title()).toBe("e");
+  expect(forwardButton().disabled).toBe(true);
+  fireEvent.click(backButton());
+  await settle(w);
+  expect(title()).toBe("d");
+
+  // Somewhere new is still a visit: it drops what is ahead.
+  await browser("c");
+  await openRow(w, "e");
+  fireEvent.click(backButton());
+  await settle(w);
+  expect(title()).toBe("c");
+  expect(backButton().disabled).toBe(true);
+  w.engine.stop();
+});
+
 it("opening and closing the thread pane is no entry; a conversation that is gone is skipped", async () => {
   const { w, d } = await setup();
   fireEvent.click(screen.getByRole("button", { name: /1 件の返信/ }));

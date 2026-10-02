@@ -1,7 +1,20 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { openExternalLink } from "../platform/external";
 import type { AppController } from "../state/app";
+import type { Store } from "../sync/store";
+
+/**
+ * Whether a message's link card is fetched without asking (docs/AI.md §4): not for an AI bot's posts (its user is a
+ * bot of `/ai/status`), decided by the sender at render time so history, delta and the local cache behave alike. While
+ * the AI status is unknown (not read yet, or a server without AI), no bot's post fetches by itself, to be safe.
+ */
+export function autoLinkPreview(store: Pick<Store, "aiStatus" | "aiAgentOf" | "users">, senderId: string): boolean {
+  // Review v0.1.18 #5, the same rule on the three clients: no bot's link is fetched by itself (an AI reply could
+  // carry a prompt-injected URL; a disabled AI bot drops out of the status; the row's height must not change when
+  // the status arrives). A webhook's card is one click away.
+  return store.users.get(senderId)?.role !== "bot" && store.aiAgentOf(senderId) === undefined;
+}
 
 /**
  * Open Graph card under a message for its first link (M11g); nothing while loading or when the page had no data.
@@ -9,16 +22,17 @@ import type { AppController } from "../state/app";
  * viewport: 「最初の未読へ」 can add 800 rows at once, and asking for all of them hits the server's rate limit (429),
  * after which no card shows for the rest of the session (SYNC_PROTOCOL.md §10.1 6.).
  */
-export function LinkPreviewCard({ controller, url }: { controller: AppController; url: string }) {
+export function LinkPreviewCard({ controller, url, auto = true }: { controller: AppController; url: string; auto?: boolean }) {
   // Its own subscription (M21): the rows are memoized, and a preview arriving re-renders only the cards.
   const subscribe = useCallback((listener: () => void) => controller.subscribeLinkPreviews(listener), [controller]);
   // undefined: not fetched yet; null: the page had no preview.
   const preview = useSyncExternalStore(subscribe, () => controller.linkPreviews.get(url));
   const probe = useRef<HTMLSpanElement>(null);
+  const [asked, setAsked] = useState(false);
   const known = preview !== undefined;
   useEffect(() => {
     const element = probe.current;
-    if (known || !element) return;
+    if (known || !element || !auto) return;
     if (typeof IntersectionObserver === "undefined") {
       controller.linkPreview(url);
       return;
@@ -30,7 +44,27 @@ export function LinkPreviewCard({ controller, url }: { controller: AppController
     }, { root: scrollParent(element), rootMargin: "100% 0px" });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [url, known]);
+  }, [url, known, auto]);
+  if (!known && !auto) {
+    // An AI bot's post (docs/AI.md §4): the server would fetch the URL for the card, and a link the model was steered
+    // into writing can carry the conversation out in its path or query. The link stays a plain link in the body; the
+    // card is fetched only when asked for here.
+    if (asked) return null;
+    return (
+      <button
+        type="button"
+        data-link-preview-ask=""
+        className="mt-1 block text-xs text-muted hover:text-ink hover:underline"
+        title={`${hostOf(url)} のプレビューを取得します`}
+        onClick={() => {
+          setAsked(true);
+          controller.linkPreview(url);
+        }}
+      >
+        プレビューを表示
+      </button>
+    );
+  }
   if (!known) return <span ref={probe} aria-hidden className="block h-0" />;
   if (!preview) return null;
   return (

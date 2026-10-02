@@ -2,7 +2,9 @@ package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
+import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.NotificationPreferenceOut
+import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.NotificationLevels
@@ -12,7 +14,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import kotlinx.serialization.Serializable
 import org.junit.Test
+import java.io.File
 import java.time.Instant
 
 /** M35: the overall setting, a channel's own level and the mute until unmuted (PUSH_NOTIFICATIONS.md §4). */
@@ -130,5 +134,90 @@ class NotificationLevelsTest {
         assertEquals(listOf("すべてのメッセージ", "メンションのみ", "通知しない"), NotificationLevels.levels.map(NotificationLabels::label))
         assertEquals("既定 (メンションと DM のみ)", NotificationLabels.defaultChoice("mentions"))
         assertEquals("既定 (なし)", NotificationLabels.defaultChoice("none"))
+    }
+
+    /** One message seen by "me" (apps/shared/notify-rules.json, PUSH_NOTIFICATIONS.md §4). */
+    @Serializable
+    private data class NotifyCase(
+        val name: String, val level: String, val reply: String, val follower: Boolean, val unfollowed: Boolean,
+        val mentioned: Boolean, val mentionAll: Boolean, val keyword: Boolean, val expect: NotifyExpected,
+    )
+
+    @Serializable
+    private data class NotifyExpected(val notify: Boolean)
+
+    @Serializable
+    private data class NotifyVectors(val cases: List<NotifyCase>)
+
+    /** The file the server and the other clients test against: from the module (apps/android/app), ../../shared. */
+    private fun notifyVectors(): List<NotifyCase> {
+        val file = File("../../shared/notify-rules.json")
+        check(file.isFile) { "apps/shared/notify-rules.json not found from ${File("").absolutePath}" }
+        return Codec.snake.decodeFromString(NotifyVectors.serializer(), file.readText()).cases
+    }
+
+    private fun replyKind(reply: String) = when (reply) {
+        "none" -> NotificationLevels.Reply.NONE
+        "thread_only" -> NotificationLevels.Reply.THREAD_ONLY
+        "also_in_channel" -> NotificationLevels.Reply.ALSO_IN_CHANNEL
+        else -> error("unknown reply kind $reply")
+    }
+
+    @Test fun sharedNotifyRules() {
+        val cases = notifyVectors()
+        assertTrue(cases.isNotEmpty())
+        for (case in cases) {
+            val facts = NotificationLevels.Facts(
+                replyKind(case.reply), follower = case.follower, unfollowed = case.unfollowed,
+                mentioned = case.mentioned, mentionAll = case.mentionAll, keyword = case.keyword,
+            )
+            assertEquals(case.name, case.expect.notify, NotificationLevels.messageNotifies(case.level, facts))
+            // The same level as a channel's own one, not muted: the channel entry point gives the same answer.
+            assertEquals(case.name, case.expect.notify, NotificationLevels.notifies(channel(own = case.level), "mentions", "me", facts, now))
+        }
+    }
+
+    /**
+     * The same cases from what the client really sees: the message and its event's parent_thread. The server auto-follows
+     * everyone a reply names (by id or keyword) unless they unfollowed by hand, so such a "me" is in participant_ids
+     * unless unfollowed; the facts the engine infers must give the vector's answer.
+     */
+    @Test fun sharedNotifyRulesFromTheEvent() {
+        for (case in notifyVectors()) {
+            val kind = replyKind(case.reply)
+            val named = case.mentioned || case.keyword
+            val inThread = !case.unfollowed && (case.follower || (kind != NotificationLevels.Reply.NONE && named))
+            val message = MessageOut(
+                id = "m", channelId = "c", senderId = "alice", seq = 5, updatedSeq = 5,
+                parentId = if (kind == NotificationLevels.Reply.NONE) null else "p",
+                alsoInChannel = kind == NotificationLevels.Reply.ALSO_IN_CHANNEL,
+                body = "hello" + if (case.keyword) " deploy" else "", type = "user",
+                mentionedUserIds = if (case.mentioned) listOf("me") else emptyList(), mentionAll = case.mentionAll,
+                createdAt = "2026-10-02T00:00:00Z", deleted = false,
+            )
+            val thread = if (kind == NotificationLevels.Reply.NONE) null
+            else ParentThread("p", 2, null, 5, participantIds = listOf("alice") + if (inThread) listOf("me") else emptyList())
+            val facts = NotificationLevels.facts(message, "me", listOf("Deploy"), thread, followingHeld = false)
+            assertEquals(case.name, case.expect.notify, NotificationLevels.messageNotifies(case.level, facts))
+        }
+    }
+
+    @Test fun factsFromAnEvent() {
+        fun reply(mentioned: Boolean = false, also: Boolean = false, parent: String? = "p") = MessageOut(
+            id = "m", channelId = "c", senderId = "alice", seq = 5, updatedSeq = 5, parentId = parent, alsoInChannel = also,
+            body = "hi", type = "user", mentionedUserIds = if (mentioned) listOf("me") else emptyList(), createdAt = "", deleted = false,
+        )
+        val without = ParentThread("p", 1, null, 5, participantIds = listOf("alice"))
+        val with = ParentThread("p", 1, null, 5, participantIds = listOf("alice", "me"))
+        // Named but left out of the followers: unfollowed by hand.
+        assertTrue(NotificationLevels.facts(reply(mentioned = true), "me", emptyList(), without, false).unfollowed)
+        assertFalse(NotificationLevels.facts(reply(mentioned = true), "me", emptyList(), with, false).unfollowed)
+        // A reply also in the channel, or no parent_thread: never inferred.
+        assertFalse(NotificationLevels.facts(reply(mentioned = true, also = true), "me", emptyList(), without, false).unfollowed)
+        assertFalse(NotificationLevels.facts(reply(mentioned = true), "me", emptyList(), null, false).unfollowed)
+        // Without parent_thread the thread state held here says whether I follow.
+        assertTrue(NotificationLevels.facts(reply(), "me", emptyList(), null, followingHeld = true).follower)
+        assertFalse(NotificationLevels.facts(reply(), "me", emptyList(), null, followingHeld = false).follower)
+        assertFalse(NotificationLevels.facts(reply(parent = null), "me", emptyList(), null, followingHeld = true).follower)
     }
 }

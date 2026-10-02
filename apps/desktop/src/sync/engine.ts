@@ -13,7 +13,7 @@ import { type AiApi, AiHub } from "./ai";
 import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
 import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded } from "../api/types";
-import { effectiveNotificationLevel, isMutedChannel, overallLevel } from "./notifications";
+import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
@@ -1063,15 +1063,34 @@ export class SyncEngine {
   /**
    * Same rule as the server's PushPlanner (PUSH_NOTIFICATIONS.md §4): the conversation's own level, else my overall
    * setting (M35: DMs every message unless it is "none", someone else's times mentions); "none", a mute until unmuted or
-   * a timed mute silence everything; "mentions" when I am mentioned or take part in the thread.
+   * a timed mute silence everything; "mentions" when I am mentioned or take part in the thread. A reply only in its
+   * thread notifies its followers and the people it mentions only, and never one who unfollowed it by hand (notifies()).
    */
   private maybeNotify(message: MessageOut, channel: ChannelState, thread: ParentThread | null = null): void {
-    const me = this.deps.store.me;
+    const store = this.deps.store;
+    const me = store.me;
     if (!me || message.sender_id === me.id) return;
-    const level = effectiveNotificationLevel(channel, me.id, overallLevel(me));
-    if (level === "none" || isMutedChannel(channel)) return;
-    const involved = mentionsMe(message, me) || (thread?.participant_ids ?? []).includes(me.id);
-    if (level === "mentions" && !involved) return;
+    const parentId = message.parent_id ?? null;
+    const reply: ReplyKind = !parentId ? "none" : message.also_in_channel ? "also_in_channel" : "thread_only";
+    const participants = thread?.participant_ids;
+    const mentioned = (message.mentioned_user_ids ?? []).includes(me.id);
+    const keyword = mentionsMe({ body: message.body }, me);
+    // The event's followers; without them (no parent_thread, an older server) what the store knows of the thread.
+    const follower = participants ? participants.includes(me.id) : !!parentId && store.threads.get(parentId)?.state.following === true;
+    // The server makes everyone a mention or keyword hit names a follower unless they unfollowed by hand: such a hit
+    // that left me out of the followers means I did (keyword hits of others are private, so only mine can tell).
+    const unfollowed = reply === "thread_only" && !!participants && (mentioned || keyword) && !participants.includes(me.id);
+    const ok = notifies({
+      level: effectiveNotificationLevel(channel, me.id, overallLevel(me)),
+      muted: isMutedChannel(channel),
+      reply,
+      follower,
+      unfollowed,
+      mentioned,
+      mentionAll: message.mention_all === true,
+      keyword,
+    });
+    if (!ok) return;
     if (this.deps.isActive?.() && this.currentChannelId === channel.id) return;
     this.deps.onNotify?.(message, channel);
   }
