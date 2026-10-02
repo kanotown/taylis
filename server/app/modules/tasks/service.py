@@ -66,6 +66,7 @@ from app.modules.messages.mentions import (
     extract_mentions,
     notification_text,
 )
+from app.modules.tasks import deadlines
 from app.modules.tasks import repository as repo
 from app.modules.tasks.events import (
     TASK_ASSIGNED,
@@ -76,6 +77,7 @@ from app.modules.tasks.events import (
     TASK_UPDATED,
 )
 from app.modules.tasks.models import (
+    DEFAULT_NOTICE_DAYS,
     MAX_COLUMNS_PER_BOARD,
     STATUSES,
     Task,
@@ -118,6 +120,9 @@ MAX_DUE_RANGE_DAYS = 100
 MAX_DUE_TASKS = 1000
 # Open tasks one board (or one person's own list) may hold: it bounds GET /tasks (SECURITY.md §5).
 MAX_OPEN_PER_BOARD = 1000
+# M85: 「締切」 lists my channels' deadlines from this many days ago on, at most this many.
+DEADLINES_PAST_DAYS = 30
+MAX_DEADLINES = 500
 # The due-date notification goes out at 8:00 of the day, in the person's zone.
 DUE_ALARM_TIME = time(8, 0)
 # M81: the built-in columns' fixed ids are uuid5(this, "<channel id>:<status>"), and their names.
@@ -177,6 +182,7 @@ def to_data(task: Task, channel: Channel | None, assignee_ids: list[uuid.UUID]) 
         subtasks=[SubtaskOut(**item) for item in (task.subtasks or [])],
         rrule=task.rrule,
         column_id=task.column_id,
+        notice_days=list(task.notice_days) if task.notice_days is not None else None,
         assignee_ids=assignee_ids,
         source=source,
         canvas_source=canvas_source,
@@ -644,6 +650,8 @@ def _check_repeat(task: Task) -> None:
         raise _invalid_rrule("A repeating task needs a due date (send rrule: null to stop it)")
     if task.kind == "review":
         raise _invalid_rrule("A review request does not repeat")
+    if task.kind == "deadline":
+        raise _invalid_rrule("A deadline does not repeat")
 
 
 def _normalized_rrule(text: str | None) -> str | None:
@@ -718,6 +726,39 @@ async def _spawn_next(
     zones = {row.user_id: row.tz for row in await repo.alarms_of_task(db, task.id)}
     await _sync_alarms(db, nxt, assignee_ids, actor, tz, now, zones)
     await _emit_updated(db, nxt, channel, assignee_ids)
+
+
+# --- M85: deadlines (DEADLINES.md) --------------------------------------------------------------
+
+
+def _invalid_deadline(message: str) -> Exception:
+    return bad_request("task_invalid_deadline", message)
+
+
+def _check_new_deadline(actor: User, data: TaskCreate) -> None:
+    """A deadline is on a channel's board (not a guest's to set: the bot posts it), has a date,
+    and is not made from a message or a canvas."""
+    channels.require_not_guest(actor)
+    if data.channel_id is None:
+        raise _invalid_deadline("A deadline belongs to a channel's board")
+    if data.due_on is None and data.due_at is None:
+        raise _invalid_deadline("A deadline needs a due date")
+    if data.source_message_id is not None or data.source_canvas_id is not None:
+        raise bad_request("task_invalid_source", "A deadline is not made from a message")
+
+
+def _apply_deadline(task: Task, sent: set[str], notice_days: list[int] | None) -> None:
+    """A deadline keeps a date; its notices follow a due time's zone."""
+    if "notice_days" in sent:
+        if task.kind != "deadline":
+            raise _invalid_deadline("Only a deadline has advance notices")
+        task.notice_days = list(notice_days or [])
+    if task.kind != "deadline":
+        return
+    if task.due_on is None:
+        raise _invalid_deadline("A deadline needs a due date")
+    if task.due_tz is not None:
+        task.notice_tz = task.due_tz
 
 
 # --- M81: board columns ---------------------------------------------------------------------------
@@ -997,6 +1038,22 @@ async def list_due(db: AsyncSession, actor: User, start: date, end: date) -> lis
     return await _outs(db, actor, rows, joined)
 
 
+async def list_deadlines(
+    db: AsyncSession, actor: User, channel_id: uuid.UUID | None = None
+) -> list[TaskOut]:
+    """M85 (DEADLINES.md §4): the deadlines of my channels (or of one) due from 30 days ago on,
+    open or done, by date: 「締切」 and the channel header's chip."""
+    joined = await _joined(db, actor)
+    if channel_id is not None:
+        channel, role = await _board_channel(db, actor, channel_id)
+        joined = {channel.id: (channel, role)}
+    ids = [cid for cid, (channel, _role) in joined.items() if not channel.is_dm]
+    today = utcnow().astimezone(ZoneInfo(zone_for(None, actor))).date()
+    since = today - timedelta(days=DEADLINES_PAST_DAYS)
+    rows = await repo.deadlines(db, ids, since, MAX_DEADLINES)
+    return await _outs(db, actor, rows, joined)
+
+
 async def get_task(db: AsyncSession, actor: User, task_id: uuid.UUID) -> TaskOut:
     seen = await _load(db, actor, task_id)
     assignees = (await repo.assignees_of(db, [task_id])).get(task_id, [])
@@ -1074,6 +1131,10 @@ async def create(db: AsyncSession, actor: User, data: TaskCreate) -> tuple[TaskO
     role: str | None = None
     if data.kind == "review" and data.source_message_id is None:
         raise bad_request("task_invalid_source", "A review request is made from a message")
+    if data.kind == "deadline":
+        _check_new_deadline(actor, data)
+    elif data.notice_days is not None:
+        raise _invalid_deadline("Only a deadline has advance notices")
     from_canvas = data.source_canvas_id is not None
     if from_canvas != (data.source_canvas_line is not None) or (
         from_canvas and data.source_message_id is not None
@@ -1134,6 +1195,10 @@ async def create(db: AsyncSession, actor: User, data: TaskCreate) -> tuple[TaskO
     )
     if data.due_at is not None:
         _set_due_time(task, data.due_at, data.tz or zone_for(None, actor))
+    if data.kind == "deadline":
+        days = data.notice_days if data.notice_days is not None else list(DEFAULT_NOTICE_DAYS)
+        task.notice_days = list(days)
+        task.notice_tz = task.due_tz or zone_for(data.tz, actor)
     _check_repeat(task)
     task.position = await _default_position(db, data.channel_id, actor_id, data.status)
     db.add(task)
@@ -1152,6 +1217,7 @@ async def create(db: AsyncSession, actor: User, data: TaskCreate) -> tuple[TaskO
     if assignees:
         await repo.set_assignees(db, task.id, [], assignees)
     await _sync_alarms(db, task, assignees, actor, data.tz, now)
+    await deadlines.sync_notices(db, task, now)
     await _emit_updated(db, task, channel, assignees)
     if channel is not None:
         await _emit_assigned(db, task, channel, actor_id, assignees)
@@ -1203,6 +1269,7 @@ async def update(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskUp
     if "notes" in sent:
         task.notes = data.notes
     _apply_due(task, sent, data.due_on, data.due_at, data.tz, actor)
+    _apply_deadline(task, sent, data.notice_days)
     if "subtasks" in sent:
         task.subtasks = _merge_subtasks(task.subtasks or [], data.subtasks or [])
     if "rrule" in sent:
@@ -1228,6 +1295,7 @@ async def update(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskUp
         await repo.set_assignees(db, task.id, current, assignees)
     await db.flush()
     await _sync_alarms(db, task, assignees, actor, data.tz, now)
+    await deadlines.sync_notices(db, task, now)
     if completed:
         await _spawn_next(db, task, seen.channel, assignees, actor, data.tz, now)
     await _emit_changes(db, task, seen.channel, assignees, renumbered)
@@ -1294,6 +1362,7 @@ async def move(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskMove
     assignees = (await repo.assignees_of(db, [task.id])).get(task.id, [])
     if status_changed:
         await _sync_alarms(db, task, assignees, actor, None, now)
+        await deadlines.sync_notices(db, task, now)
         if status == "done":
             await _spawn_next(db, task, seen.channel, assignees, actor, None, now)
     await _emit_changes(db, task, seen.channel, assignees, renumbered)
@@ -1355,6 +1424,7 @@ async def delete(db: AsyncSession, actor: User, task_id: uuid.UUID) -> None:
     task.deleted_at = now
     task.updated_at = now
     await _sync_alarms(db, task, assignees, actor, None, now)
+    await deadlines.sync_notices(db, task, now)
     await _emit_deleted(db, task)
     await db.flush()
     await _announce_source(db, task)
@@ -1392,6 +1462,7 @@ async def follow_canvas_ticks(
         await db.flush()
         assignees = (await repo.assignees_of(db, [task.id])).get(task.id, [])
         await _sync_alarms(db, task, assignees, actor, None, now)
+        await deadlines.sync_notices(db, task, now)
         if done:
             await _spawn_next(db, task, seen.channel, assignees, actor, None, now)
         await _emit_changes(db, task, seen.channel, assignees, renumbered)

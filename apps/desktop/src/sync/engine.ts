@@ -88,6 +88,8 @@ export interface SyncApi {
   /** L9 「自分が依頼した」. */
   requestedTasks?: TaskApi["requestedTasks"];
   dueTasks?: TaskApi["dueTasks"];
+  /** M85 「締切」. */
+  deadlineTasks?: TaskApi["deadlineTasks"];
   getTask?: TaskApi["getTask"];
   createTask?: TaskApi["createTask"];
   updateTask?: TaskApi["updateTask"];

@@ -4,7 +4,13 @@ from datetime import date, datetime
 from sqlalchemy import ColumnElement, and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.tasks.models import Task, TaskAssignee, TaskColumn, TaskDueAlarm
+from app.modules.tasks.models import (
+    Task,
+    TaskAssignee,
+    TaskColumn,
+    TaskDeadlineNotice,
+    TaskDueAlarm,
+)
 
 
 async def get(db: AsyncSession, task_id: uuid.UUID, *, lock: bool = False) -> Task | None:
@@ -298,5 +304,49 @@ async def in_column(db: AsyncSession, column_id: uuid.UUID) -> list[Task]:
         .where(Task.column_id == column_id, Task.deleted_at.is_(None))
         .order_by(Task.position, Task.id)
         .with_for_update()
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+# --- deadlines (M85, DEADLINES.md) ---------------------------------------------------------------
+
+
+async def deadlines(
+    db: AsyncSession, channel_ids: list[uuid.UUID], since: date, limit: int
+) -> list[Task]:
+    """The live deadlines of the given channels due on or after `since`, by date and time."""
+    if not channel_ids:
+        return []
+    stmt = (
+        select(Task)
+        .where(
+            Task.kind == "deadline",
+            Task.deleted_at.is_(None),
+            Task.channel_id.in_(channel_ids),
+            Task.due_on >= since,
+        )
+        .order_by(Task.due_on, Task.due_at.asc().nulls_last(), Task.id)
+        .limit(limit)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def notices_of(db: AsyncSession, task_id: uuid.UUID) -> list[TaskDeadlineNotice]:
+    stmt = (
+        select(TaskDeadlineNotice)
+        .where(TaskDeadlineNotice.task_id == task_id)
+        .order_by(TaskDeadlineNotice.fire_at, TaskDeadlineNotice.days_before)
+        .with_for_update()
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def due_notices(db: AsyncSession, now: datetime, limit: int) -> list[TaskDeadlineNotice]:
+    stmt = (
+        select(TaskDeadlineNotice)
+        .where(TaskDeadlineNotice.status == "pending", TaskDeadlineNotice.fire_at <= now)
+        .order_by(TaskDeadlineNotice.fire_at, TaskDeadlineNotice.task_id)
+        .limit(limit)
+        .with_for_update(skip_locked=True)
     )
     return list((await db.execute(stmt)).scalars().all())

@@ -1025,6 +1025,7 @@ CREATE TABLE tasks (
   title              text NOT NULL,                          -- 1〜200 文字 (空白は 1 つにまとめる)
   notes              text,                                   -- ≤ 4000 (Markdown)
   status             varchar(8) NOT NULL DEFAULT 'todo',     -- 列: todo / doing / done
+  kind               varchar(8) NOT NULL DEFAULT 'task',     -- task / review (L9、0056) / deadline (M85 締切、0070。DEADLINES.md)
   position           double precision NOT NULL,              -- 列の中の並び (小さいほど上)
   due_on             date,                                   -- 期限の日。時刻付きなら due_at の due_tz での日付
   due_at             timestamptz,                            -- M81: 時刻付きの期限 (分まで)。NULL = 日付だけ (0069)
@@ -1033,6 +1034,8 @@ CREATE TABLE tasks (
   rrule              text,                                   -- M81: 繰り返し (CALENDAR.md §10.1 の RRULE の一部、正規化)。due_on が要る
   next_task_id       uuid,                                   -- M81: 完了で作った次の回 (冪等の印)
   column_id          uuid REFERENCES task_columns(id) ON DELETE SET NULL,  -- M81: 足した列。NULL = status の組み込みの列
+  notice_days        smallint[],                             -- M85: 締切の事前の通知 (何日前、大きい順、0〜60 を 6 個まで)。締切だけ
+  notice_tz          varchar(64),                            -- M85: 通知の 9:00 を読むゾーン (時刻付きなら due_tz)。締切だけ
   source_message_id  uuid REFERENCES messages(id) ON DELETE SET NULL,  -- メッセージから作ったとき
   source_channel_id  uuid,                                   -- そのメッセージのチャンネル
   source_excerpt     text,                                   -- 作った時の 1 行の抜粋 (DM の一覧・通知と同じ規則、140 文字)
@@ -1050,9 +1053,36 @@ CREATE TABLE tasks (
   CHECK ((status = 'done') = (completed_at IS NOT NULL)),
   CHECK ((due_at IS NULL) = (due_tz IS NULL)),               -- M81
   CHECK (due_at IS NULL OR due_on IS NOT NULL),
-  CHECK (rrule IS NULL OR due_on IS NOT NULL)
+  CHECK (rrule IS NULL OR due_on IS NOT NULL),
+  CHECK (kind IN ('task', 'review', 'deadline')),
+  CHECK ((kind = 'deadline') = (notice_days IS NOT NULL)),  -- M85
+  CHECK ((notice_days IS NULL) = (notice_tz IS NULL)),
+  CHECK (kind <> 'deadline' OR (channel_id IS NOT NULL AND due_on IS NOT NULL))
 );
 CREATE INDEX tasks_column_idx ON tasks (column_id) WHERE column_id IS NOT NULL;  -- M81
+CREATE INDEX tasks_deadline_idx ON tasks (channel_id, due_on) WHERE kind = 'deadline' AND deleted_at IS NULL;  -- M85 「締切」
+
+-- M85 (DEADLINES.md §3): a deadline's advance notices, one row per planned time. The key holds the time: moving the
+-- deadline plans new rows (posted again for the new date), a time already posted is never posted twice.
+CREATE TABLE task_deadline_notices (
+  task_id      uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  days_before  smallint NOT NULL,                           -- 7 / 3 / 1 / 0 …
+  fire_at      timestamptz NOT NULL,                        -- その日の 9:00 (notice_tz)
+  status       varchar(16) NOT NULL DEFAULT 'pending',      -- pending → fired (投稿した)、または cancelled
+  message_id   uuid REFERENCES messages(id) ON DELETE SET NULL,  -- ボットが投稿したメッセージ
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (task_id, days_before, fire_at),
+  CHECK (status IN ('pending', 'fired', 'cancelled'))
+);
+CREATE INDEX task_deadline_notices_due_idx ON task_deadline_notices (fire_at) WHERE status = 'pending';
+
+-- M85: bot accounts the server posts as by itself (key "deadlines": 「締切」, made the first time it is needed).
+CREATE TABLE system_bots (
+  key         varchar(32) PRIMARY KEY,
+  user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
 
 -- M81 (TASKS.md §11.2): a channel board's columns. The three built-in ones (builtin, one per status) have ids
 -- uuid5(namespace, "<channel_id>:<status>") and get rows the first time the layout changes.

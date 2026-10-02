@@ -434,6 +434,11 @@ export class ApiClient {
     return this.request("GET", `/api/v1/tasks/due?${new URLSearchParams({ from, to })}`);
   }
 
+  /** M85 「締切」: the deadlines of my channels (or of one) due from 30 days ago on, open and done, by date. */
+  deadlineTasks(channelId?: string): Promise<TaskOut[]> {
+    return this.request("GET", `/api/v1/tasks/deadlines${channelId ? `?${new URLSearchParams({ channel_id: channelId })}` : ""}`);
+  }
+
   getTask(taskId: string): Promise<TaskOut> {
     return this.request("GET", `/api/v1/tasks/${taskId}`);
   }

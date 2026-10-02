@@ -180,6 +180,10 @@ ALTER TABLE messages ADD COLUMN report jsonb;  -- {group_id, due_at, nudged_at}�
 
 ### E. 締切 (学会・奨学金・修論提出など)
 
+> **M85 で変えた (2026-10-03)**: 下の葉モジュール `deadlines` (表 `deadlines` / `deadline_notices`、`deadline.updated`、bootstrap の
+> 90 日分) は作らず、**タスクの種類 `kind = deadline`** として作った (L9 と同じ考え。docs/DEADLINES.md §1・§2)。事前の通知は
+> `task_deadline_notices`、一覧とチップは `GET /tasks/deadlines`、作れるのはボードを変えられるゲスト以外のメンバー。下は設計時の案として残す。
+
 **画面と操作**
 - チャンネルの見出しに、次の締切のチップを出す (例: 「全国大会 原稿 あと 3 日」)。
 - サイドバーに「締切」: 参加中のチャンネルの締切を、今週 / 今月 / それ以降 / 過ぎたもの に分けて並べる。
@@ -386,7 +390,7 @@ CREATE TABLE deadline_notices (   -- 投稿済みの通知 = 冪等性の記録
 | L2 | times (基本) | サーバ: channels.times_owner_id と一意インデックス、POST /users/me/times (冪等)、POST /admin/users/{id}/times、ChannelOut.times_owner_id、指導教員の自動フォロー、/sync/summary の静かな未読規則。3 端末: Times 節 (sectionChannels と同等の関数)、作成ボタン、Times 一覧 (フォロー / 全員フォロー)、hasUnread の静かな未読、共有テストベクタ。 | M | 実装済み (M24) |
 | L3 | 投稿テンプレートと /日程 | サーバ: message_templates、API、bootstrap の templates、template.updated。3 端末: 入力欄のテンプレートボタン、/日報 /週報、{date}/{weekday}/{week} の置換 (apps/shared のテストベクタ)、/日程 で日付の選択肢の投票を作るヘルパ (クライアントのみ)。 | S | 実装済み (M30) |
 | L4 | 確認の拡張・教員の権限・プライバシー | サーバ: reminders.create_system_in_tx、POST /messages/{id}/ack/remind (1 時間に 1 回)、PATCH /channels/{id}/members/{user_id} (ロール)、非公開→公開をメンバーの admin に限定、users.presence_hidden (Hub で絞る)。3 端末: 未確認の人の一覧とリマインドボタン、メンバーのロール変更、在席を隠す設定。 | M | 実装済み (M31) |
-| L5 | 締切 (学会・提出物) | サーバ: 葉モジュール deadlines (deadlines、deadline_notices)、CRUD API、deadline.updated、bootstrap に 90 日分、研究室 bot、scheduled ループでの事前通知 (冪等)。3 端末: 見出しのチップ、「締切」一覧、作成と編集。 | L | 未着手 |
+| L5 | 締切 (学会・提出物) | サーバ: 葉モジュール deadlines (deadlines、deadline_notices)、CRUD API、deadline.updated、bootstrap に 90 日分、研究室 bot、scheduled ループでの事前通知 (冪等)。3 端末: 見出しのチップ、「締切」一覧、作成と編集。**M85 で葉モジュールではなくタスクの種類 `deadline` として作った (docs/DEADLINES.md)** | L | サーバと Desktop / Web は実装済み (M85)、スマホは M86 |
 | L6 | 定期投稿と週報の回収 | サーバ: recurring_posts、messages.report、ワーカー (uuid5 の冪等キー、tz を使った次回計算)、GET /messages/{id}/report、MessageOut の report_summary、期限後の未提出者へ本人だけのリマインダー。Desktop: チャンネル ⋯ の「定期投稿」設定画面。3 端末: 提出状況のカード。 | L | 未着手 |
 | L7 | 年度更新・受け入れプリセット・卒業処理 | サーバ: rollover の preview と apply、lab_rollovers (二重適用は 409、before で取り消し)、招待プリセット (身分・学年・指導教員・times)、卒業処理 (alumni、ゲスト化、指定外のチャンネルから外す、times のアーカイブ)、監査ログ。Desktop: 年度更新の画面、招待プリセット。モバイル: 受諾時の表示。2027 年 2 月までに終える。 | M | 実装済み (M32) |
 | L8 | Times フィードと times の検索 | サーバ: GET /times/feed (LATERAL で上位 N 件、(created_at, id) カーソル)、検索修飾子 is:times。3 端末: フィード画面 (モバイルはスマホ UI の見直しに合わせてタブかホームの上部)。 | M | 未着手 |

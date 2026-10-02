@@ -11,6 +11,9 @@
  * M81 (TASKS.md §11): a time beside the due date (empty: the whole day), 「繰り返し」 once there is a due date (the
  * calendar's picker; completing makes the next occurrence on the server), and 「サブタスク」 (a checklist: a checkbox of a
  * saved task goes at once, the rest with 保存).
+ *
+ * M85 (docs/DEADLINES.md): a new task on a channel's board may be a 締切 (the 「タスク / 締切」 switch): a date is
+ * required, it does not repeat, and 「事前の通知」 picks the days the 「締切」 bot posts in the channel beforehand.
  */
 import { ArrowDown, ArrowUp, CheckCircle2, FileText, MessageSquareText, PlayCircle, Plus, Repeat, Trash2, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
@@ -22,6 +25,7 @@ import { Avatar } from "./Avatar";
 import { localZone, today as todayKey } from "./calendarDates";
 import { RepeatPicker } from "./CalendarEventDialog";
 import { describeRrule } from "./calendarRecurrence";
+import { DEFAULT_NOTICE_DAYS, noticeLabel, NOTICE_CHOICES, noticeSummary } from "./deadlines";
 import { conversationTitle } from "./channels";
 import { useMembers } from "./Dialogs";
 import { Button, cn, Field, Input, Modal, Textarea } from "./primitives";
@@ -75,16 +79,31 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const clientId = useRef(crypto.randomUUID());
-  const kind = task ? task.kind : (init?.kind ?? "task");
+  /** M85: a new task's kind (the 「タスク / 締切」 switch). */
+  const [newKind, setNewKind] = useState(init?.kind ?? "task");
+  const kind = task ? task.kind : newKind;
   const review = kind === "review";
+  const deadline = kind === "deadline";
   const creatingReview = !task && review;
   const channelId = task ? task.channel_id : newTaskChannel(init, board, draft.assigneeIds);
   /** Whose members the assignee picker offers: the task's conversation, the board chosen, or the DM it may be shared in. */
   const pickerChannelId = task ? task.channel_id : board !== "me" ? board : (init?.shareChannelId ?? null);
   const channel = channelId ? store.getChannel(channelId) : undefined;
   const editable = task ? canEditTask(task, channel, controller.isAdmin) : true;
-  const problem = editable ? (creatingReview && draft.assigneeIds.length === 0 ? "依頼先を選んでください" : taskDraftProblem(draft)) : null;
+  const problem = editable ? (creatingReview && draft.assigneeIds.length === 0 ? "依頼先を選んでください" : taskDraftProblem(draft, kind)) : null;
   const boards = useMemo(() => (init?.boardChoices ?? []).filter((id) => canEditBoard(store.getChannel(id), controller.isAdmin)), [init, store, controller.isAdmin]);
+  // M85: a deadline is a channel board's (not from a message, a canvas or a DM).
+  const canBeDeadline = !task && !review && !init?.shareChannelId && !init?.sourceMessageId && !init?.sourceCanvasId && boards.length > 0;
+  const chooseKind = (next: "task" | "deadline") => {
+    setNewKind(next);
+    if (next === "deadline") {
+      if (board === "me" && boards[0]) {
+        setBoard(boards[0]);
+        set({ assigneeIds: [] });
+      }
+      set({ noticeDays: draft.noticeDays ?? [...DEFAULT_NOTICE_DAYS], repeat: draft.repeat ? { ...draft.repeat, kind: "none" } : draft.repeat });
+    }
+  };
   // L9: an assignee of an open shared task acts on it in one click.
   const actsOn = !!task && editable && task.channel_id !== null && me !== null && task.assignee_ids.includes(me) && task.status !== "done";
   const set = (patch: Partial<TaskDraft>) => {
@@ -116,8 +135,8 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
     setBusy(true);
     try {
       if (!task) {
-        await hub.create(taskCreateBody(draft, init, board, clientId.current, localZone()));
-        controller.setNotice(creatingReview ? "レビューを依頼しました" : "タスクを作成しました");
+        await hub.create(taskCreateBody(draft, { ...(init ?? { channelId: null, status: draft.status, title: "" }), kind: newKind }, board, clientId.current, localZone()));
+        controller.setNotice(creatingReview ? "レビューを依頼しました" : deadline ? "締切を追加しました" : "タスクを作成しました");
       } else {
         const patch = taskPatch(task, draft, localZone());
         if (Object.keys(patch).length > 0) await hub.update(task.id, patch);
@@ -163,7 +182,16 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
     if (!conversation && task?.channel_id === id && !task.channel_name) return "DM";
     return `#${conversation?.name ?? task?.channel_name ?? "?"} のボード`;
   };
-  const title = creatingReview ? "レビューを依頼" : !task ? "タスクを追加" : review ? (editable ? "レビュー依頼を編集" : "レビュー依頼") : editable ? "タスクを編集" : "タスク";
+  const title = creatingReview
+    ? "レビューを依頼"
+    : !task
+      ? deadline ? "締切を追加" : "タスクを追加"
+      : review
+        ? (editable ? "レビュー依頼を編集" : "レビュー依頼")
+        : deadline
+          ? (editable ? "締切を編集" : "締切")
+          : editable ? "タスクを編集" : "タスク";
+  const dueName = review ? "希望日" : deadline ? "締切日" : "期限";
   const source = task ? sourceState(task) : init?.sourceMessageId ? { kind: "link" as const, messageId: init.sourceMessageId, excerpt: init.sourceExcerpt ?? null } : { kind: "none" as const };
   // M72 (CANVAS.md §18.3): the canvas a task came from (a one-way link).
   const canvasSource = task ? canvasSourceState(task) : init?.sourceCanvasId ? { kind: "link" as const, canvasId: init.sourceCanvasId, excerpt: init.sourceCanvasExcerpt ?? null } : { kind: "none" as const };
@@ -194,13 +222,29 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
           void save();
         }}
       >
+        {canBeDeadline && (
+          <div role="radiogroup" aria-label="種類" className="flex w-full rounded-lg bg-panel-2 p-0.5 text-sm font-medium" data-task-kind>
+            {(["task", "deadline"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={newKind === value}
+                onClick={() => chooseKind(value)}
+                className={cn("flex-1 rounded-md px-2.5 py-1.5 transition-colors", newKind === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
+              >
+                {value === "task" ? "タスク" : "⏰ 締切"}
+              </button>
+            ))}
+          </div>
+        )}
         {!task && !review && !init?.shareChannelId && (
           <Field label="追加先">
             <select className={SELECT} aria-label="追加先" value={board} disabled={boards.length === 0} onChange={(e) => { setBoard(e.target.value); set({ assigneeIds: [] }); }}>
               {boards.map((id) => (
                 <option key={id} value={id}>{boardName(id)}</option>
               ))}
-              <option value="me">自分のタスク (自分だけに表示)</option>
+              {!deadline && <option value="me">自分のタスク (自分だけに表示)</option>}
             </select>
           </Field>
         )}
@@ -251,20 +295,21 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
               </div>
             )}
             <div className="space-y-1">
-              <span className="text-xs font-medium text-muted">{review ? "希望日" : "期限"}</span>
+              <span className="text-xs font-medium text-muted">{dueName}</span>
               <div className="flex flex-wrap items-center gap-2">
-                <Input type="date" aria-label={review ? "希望日" : "期限"} className="w-44" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value, ...(e.target.value ? {} : { dueTime: "" }) })} />
+                <Input type="date" aria-label={dueName} className="w-44" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value, ...(e.target.value ? {} : { dueTime: "" }) })} />
                 {draft.dueOn && (
                   <Input type="time" aria-label="期限の時刻" title="時刻 (空なら終日)" className="w-32" value={draft.dueTime ?? ""} onChange={(e) => set({ dueTime: e.target.value })} />
                 )}
-                {draft.dueOn && (
+                {draft.dueOn && !deadline && (
                   <Button variant="ghost" size="sm" onClick={() => set({ dueOn: "", dueTime: "", repeat: draft.repeat ? { ...draft.repeat, kind: "none" } : draft.repeat })}>
                     <X size={14} /> {review ? "希望日をなくす" : "期限をなくす"}
                   </Button>
                 )}
               </div>
             </div>
-            {!review && draft.dueOn && draft.repeat && (
+            {deadline && <NoticeDaysPicker days={draft.noticeDays ?? [...DEFAULT_NOTICE_DAYS]} onChange={(noticeDays) => set({ noticeDays })} />}
+            {!review && !deadline && draft.dueOn && draft.repeat && (
               <div className="space-y-1" data-task-repeat>
                 <span className="text-xs font-medium text-muted">繰り返し</span>
                 <RepeatPicker repeat={draft.repeat} start={draft.dueOn} onChange={(repeat) => set({ repeat })} />
@@ -316,7 +361,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         {confirmDelete ? (
           <div className="flex items-center justify-end gap-2 rounded-lg bg-danger/10 px-3 py-2">
-            <span className="mr-auto text-sm">{review ? "このレビュー依頼を削除しますか？" : "このタスクを削除しますか？"}</span>
+            <span className="mr-auto text-sm">{review ? "このレビュー依頼を削除しますか？" : deadline ? "この締切を削除しますか？ (前もっての通知も止まります)" : "このタスクを削除しますか？"}</span>
             <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>キャンセル</Button>
             <Button variant="danger" size="sm" disabled={busy} onClick={() => void remove()}>削除する</Button>
           </div>
@@ -400,8 +445,14 @@ function ReadOnlyTask({ controller, task }: { controller: AppController; task: T
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
         <dt className="text-muted">状態</dt>
         <dd>{statusLabel(task.kind, task.status as TaskStatus)}</dd>
-        <dt className="text-muted">{task.kind === "review" ? "希望日" : "期限"}</dt>
+        <dt className="text-muted">{task.kind === "review" ? "希望日" : task.kind === "deadline" ? "締切日" : "期限"}</dt>
         <dd>{task.due_on ? `${dueText(task, "")}${task.due_on === today ? " (今日)" : ""}` : "なし"}</dd>
+        {task.kind === "deadline" && (
+          <>
+            <dt className="text-muted">事前の通知</dt>
+            <dd>{noticeSummary(task.notice_days)}</dd>
+          </>
+        )}
         {task.rrule && (
           <>
             <dt className="text-muted">繰り返し</dt>
@@ -503,6 +554,27 @@ function SubtaskEditor({ items, onChange, onToggle }: { items: SubtaskDraft[]; o
           />
         </div>
       )}
+    </div>
+  );
+}
+
+/** M85: 「事前の通知」 — the days before a deadline the 「締切」 bot posts in its channel (at 9:00). */
+function NoticeDaysPicker({ days, onChange }: { days: number[]; onChange: (days: number[]) => void }) {
+  // The usual choices, and any other day the deadline already has (set elsewhere).
+  const choices = [...new Set([...NOTICE_CHOICES, ...days])].sort((a, b) => b - a);
+  const toggle = (day: number) => onChange(days.includes(day) ? days.filter((d) => d !== day) : [...days, day].sort((a, b) => b - a));
+  return (
+    <div className="space-y-1" data-notice-days>
+      <span className="text-xs font-medium text-muted">事前の通知</span>
+      <div role="group" aria-label="事前の通知" className="flex flex-wrap gap-x-3 gap-y-1">
+        {choices.map((day) => (
+          <label key={day} className="inline-flex cursor-pointer items-center gap-1.5 text-sm">
+            <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={days.includes(day)} onChange={() => toggle(day)} />
+            {noticeLabel(day)}
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-muted">{days.length === 0 ? "チャンネルには知らせません" : "「締切」のボットがこのチャンネルに、その日の 9:00 に投稿します (時刻付きの締切は、その時刻より前のものだけ)"}</p>
     </div>
   );
 }

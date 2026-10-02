@@ -5622,7 +5622,8 @@
             "default": "task",
             "enum": [
               "task",
-              "review"
+              "review",
+              "deadline"
             ],
             "title": "Kind",
             "type": "string"
@@ -6072,7 +6073,8 @@
                 "default": "task",
                 "enum": [
                   "task",
-                  "review"
+                  "review",
+                  "deadline"
                 ],
                 "title": "Kind",
                 "type": "string"
@@ -6087,6 +6089,21 @@
                   }
                 ],
                 "title": "Notes"
+              },
+              "notice_days": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Notice Days"
               },
               "owner_id": {
                 "format": "uuid",

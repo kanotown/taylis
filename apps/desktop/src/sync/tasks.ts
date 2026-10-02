@@ -18,6 +18,8 @@ export interface TaskApi {
   /** L9 「自分が依頼した」 (GET /tasks/requested). Optional: without it (an older fake) the list is "unsupported". */
   requestedTasks?(): Promise<TaskOut[]>;
   dueTasks(from: string, to: string): Promise<TaskOut[]>;
+  /** M85 「締切」 and the header chips (GET /tasks/deadlines). Optional: without it the window is "unsupported". */
+  deadlineTasks?(channelId?: string): Promise<TaskOut[]>;
   getTask(taskId: string): Promise<TaskOut>;
   createTask(body: TaskCreate): Promise<TaskOut>;
   updateTask(taskId: string, patch: TaskUpdate): Promise<TaskOut>;
@@ -62,12 +64,28 @@ export type TaskNotice = { kind: "assigned"; data: TaskAssigned } | { kind: "due
 
 const MINE = "mine";
 const REQUESTED = "requested";
+const DEADLINES = "deadlines";
+/** GET /tasks/deadlines brings the deadlines due from this many days ago on (the server's rule). */
+export const DEADLINES_PAST_DAYS = 30;
+
+/** M85: whether a task belongs in the deadlines window (a live channel deadline due from 30 days ago on). */
+export function inDeadlineWindow(task: Pick<TaskOut, "kind" | "channel_id" | "due_on">, now: Date = new Date()): boolean {
+  if (task.kind !== "deadline" || !task.channel_id || !task.due_on) return false;
+  const since = new Date(now.getFullYear(), now.getMonth(), now.getDate() - DEADLINES_PAST_DAYS);
+  const key = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`;
+  return task.due_on >= key;
+}
 
 export class TaskHub {
   private readonly boards = new Map<string, TaskBoard>();
   private mine: TaskList | null = null;
   /** L9 「自分が依頼した」. */
   private requested: TaskList | null = null;
+  /**
+   * M85: my channels' deadlines (「締切」 and every channel header's chip). Opened once the app is online and kept
+   * (unlike the other windows) while it runs: the chip of whichever channel is open reads it.
+   */
+  private deadlines: TaskList | null = null;
   private readonly due = new Map<string, TaskDueWindow>();
   /** A read in flight per window: an older answer never replaces a newer one. */
   private readonly reads = new Map<string, number>();
@@ -108,6 +126,10 @@ export class TaskHub {
 
   requestedList(): TaskList | null {
     return this.requested;
+  }
+
+  deadlineList(): TaskList | null {
+    return this.deadlines;
   }
 
   dueWindow(key: string): TaskDueWindow | undefined {
@@ -161,6 +183,14 @@ export class TaskHub {
     if (!this.requested) return;
     this.requested = null;
     this.changed();
+  }
+
+  /** M85: 「締切」 or a channel's header chip is on screen (read once; kept up to date by the events). */
+  async openDeadlines(): Promise<void> {
+    if (this.deadlines && this.deadlines.state !== "failed") return;
+    this.deadlines = { state: "loading", tasks: this.deadlines?.tasks ?? [] };
+    this.changed();
+    await this.readDeadlines();
   }
 
   /** A calendar shows the dates [from, to): the tasks due then. */
@@ -248,6 +278,24 @@ export class TaskHub {
     } catch (err) {
       if (this.reads.get(REQUESTED) !== ticket || !this.requested) return;
       this.requested = { ...this.requested, state: this.failure(err) };
+    }
+    this.changed();
+  }
+
+  private async readDeadlines(): Promise<void> {
+    const api = this.deps.api;
+    if (!api || !this.deadlines) return;
+    const ticket = this.ticket(DEADLINES);
+    try {
+      if (!api.deadlineTasks) throw new ApiError(404, "not_found", "GET /tasks/deadlines is not available");
+      const tasks = await api.deadlineTasks();
+      if (this.reads.get(DEADLINES) !== ticket || !this.deadlines) return;
+      this.deadlines = { state: "ready", tasks };
+    } catch (err) {
+      if (this.reads.get(DEADLINES) !== ticket || !this.deadlines) return;
+      // Before M85 the route is /tasks/{task_id}: "deadlines" is no task id (422).
+      const old = err instanceof ApiError && err.status === 422;
+      this.deadlines = { ...this.deadlines, state: old ? "unsupported" : this.failure(err) };
     }
     this.changed();
   }
@@ -423,6 +471,12 @@ export class TaskHub {
     if (this.requested && newer(this.requested.tasks)) {
       this.requested = { ...this.requested, tasks: isRequestedByMe(task, this.deps.me()) ? upsertTask(this.requested.tasks, task) : removeTask(this.requested.tasks, task.id) };
     }
+    if (this.deadlines && newer(this.deadlines.tasks)) {
+      const fits = inDeadlineWindow(task, this.deps.now ? new Date(this.deps.now()) : new Date());
+      if (fits || this.deadlines.tasks.some((t) => t.id === task.id)) {
+        this.deadlines = { ...this.deadlines, tasks: fits ? upsertTask(this.deadlines.tasks, task) : removeTask(this.deadlines.tasks, task.id) };
+      }
+    }
     for (const [key, window] of this.due) {
       if (!newer(window.tasks)) continue;
       const fits = dueInRange(task, window.from, window.to);
@@ -438,6 +492,7 @@ export class TaskHub {
     }
     if (this.mine?.tasks.some((t) => t.id === taskId)) this.mine = { ...this.mine, tasks: removeTask(this.mine.tasks, taskId) };
     if (this.requested?.tasks.some((t) => t.id === taskId)) this.requested = { ...this.requested, tasks: removeTask(this.requested.tasks, taskId) };
+    if (this.deadlines?.tasks.some((t) => t.id === taskId)) this.deadlines = { ...this.deadlines, tasks: removeTask(this.deadlines.tasks, taskId) };
     for (const [key, window] of this.due) {
       if (window.tasks.some((t) => t.id === taskId)) this.due.set(key, { ...window, tasks: removeTask(window.tasks, taskId) });
     }
@@ -449,7 +504,7 @@ export class TaskHub {
       const task = board.tasks.find((t) => t.id === taskId);
       if (task) return task;
     }
-    const mine = this.mine?.tasks.find((t) => t.id === taskId) ?? this.requested?.tasks.find((t) => t.id === taskId);
+    const mine = this.mine?.tasks.find((t) => t.id === taskId) ?? this.requested?.tasks.find((t) => t.id === taskId) ?? this.deadlines?.tasks.find((t) => t.id === taskId);
     if (mine) return mine;
     for (const window of this.due.values()) {
       const task = window.tasks.find((t) => t.id === taskId);
@@ -465,6 +520,7 @@ export class TaskHub {
     for (const channelId of this.boards.keys()) void this.readBoard(channelId);
     if (this.mine) void this.readMine();
     if (this.requested) void this.readRequested();
+    if (this.deadlines) void this.readDeadlines();
     for (const key of this.due.keys()) void this.readDue(key);
   }
 
@@ -473,6 +529,7 @@ export class TaskHub {
     this.boards.delete(channelId);
     if (this.mine) this.mine = { ...this.mine, tasks: this.mine.tasks.filter((t) => t.channel_id !== channelId) };
     if (this.requested) this.requested = { ...this.requested, tasks: this.requested.tasks.filter((t) => t.channel_id !== channelId) };
+    if (this.deadlines) this.deadlines = { ...this.deadlines, tasks: this.deadlines.tasks.filter((t) => t.channel_id !== channelId) };
     for (const [key, window] of this.due) this.due.set(key, { ...window, tasks: window.tasks.filter((t) => t.channel_id !== channelId) });
     this.changed();
   }
@@ -481,6 +538,7 @@ export class TaskHub {
     this.boards.clear();
     this.mine = null;
     this.requested = null;
+    this.deadlines = null;
     this.due.clear();
     this.changed();
   }

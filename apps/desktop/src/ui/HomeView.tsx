@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BellOff, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Plus, Search, SquarePen } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Plus, Search, SquarePen, Timer } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -38,6 +38,8 @@ export interface HomeViewProps {
   onCalendar?: () => void;
   /** M55: 「自分のタスク」 (a tile, TASKS.md §6). Optional (older callers). */
   onTasks?: () => void;
+  /** M85 「締切」. */
+  onDeadlines?: () => void;
   onBrowse: () => void;
   onNewChannel: () => void;
   onDirectory: () => void;
@@ -254,7 +256,7 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
 }
 
 /** The tiles across the top (MOBILE_UI.md §6.1): the views the wide sidebar lists as rows. A zero is dimmed, still a tap. */
-function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onReminders, onFiles, onCanvases, onCalendar, onTasks }: HomeViewProps) {
+function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onReminders, onFiles, onCanvases, onCalendar, onTasks, onDeadlines }: HomeViewProps) {
   const store = controller.store;
   const threads = store.threadSummary;
   const drafts = store.listDrafts().length + store.scheduled.size;
@@ -267,6 +269,7 @@ function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onRemind
     { key: "reminders", label: "リマインダー", icon: <AlarmClock size={20} />, count: fired, danger: fired > 0, onClick: onReminders },
     ...(onCalendar ? [{ key: "calendar", label: "カレンダー", icon: <CalendarDays size={20} />, count: null, danger: false, onClick: onCalendar }] : []),
     ...(onTasks ? [{ key: "tasks", label: "タスク", icon: <ListTodo size={20} />, count: null, danger: false, onClick: onTasks }] : []),
+    ...(onDeadlines ? [{ key: "deadlines", label: "締切", icon: <Timer size={20} />, count: null, danger: false, onClick: onDeadlines }] : []),
     { key: "files", label: "ファイル", icon: <Files size={20} />, count: null, danger: false, onClick: onFiles },
     ...(onCanvases ? [{ key: "canvases", label: "キャンバス", icon: <NotebookText size={20} />, count: null, danger: false, onClick: onCanvases }] : []),
   ];

@@ -158,7 +158,7 @@ it("the tiles replace the chips: スレッド with its unread count, a zero dimm
   const { w } = await setup();
   expect(within(home()).queryByRole("button", { name: "未読" })).toBeNull(); // the old unread-only chip
   const tile = (key: string) => home().querySelector<HTMLButtonElement>(`[data-tile="${key}"]`)!;
-  expect([...home().querySelectorAll("[data-tile]")].map((t) => t.getAttribute("data-tile"))).toEqual(["threads", "times", "drafts", "saved", "reminders", "calendar", "tasks", "files", "canvases"]);
+  expect([...home().querySelectorAll("[data-tile]")].map((t) => t.getAttribute("data-tile"))).toEqual(["threads", "times", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "files", "canvases"]);
   expect(tile("threads").getAttribute("aria-label")).toBe("スレッド (1)");
   expect(tile("threads").hasAttribute("data-empty")).toBe(false);
   expect(tile("drafts").hasAttribute("data-empty")).toBe(true);
