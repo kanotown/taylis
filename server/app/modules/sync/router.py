@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
 from app.core.db import Db
 from app.modules.auth.deps import CurrentUser
@@ -9,9 +9,17 @@ router = APIRouter(prefix="/sync", tags=["sync"])
 
 
 @router.get("/bootstrap", response_model=BootstrapOut)
-async def bootstrap(request: Request, user: CurrentUser, db: Db) -> BootstrapOut:
+async def bootstrap(
+    request: Request,
+    user: CurrentUser,
+    db: Db,
+    activity_include: list[str] = Query(default=[]),
+) -> BootstrapOut:
+    """`activity_include`: as GET /activity/summary's `include` (M76: canvas_mention)."""
     state = request.app.state
-    return await service.bootstrap(db, user, state.settings, state.hub.presence_snapshot())
+    return await service.bootstrap(
+        db, user, state.settings, state.hub.presence_snapshot(), activity_include
+    )
 
 
 @router.get("/summary", response_model=UnreadSummaryOut)

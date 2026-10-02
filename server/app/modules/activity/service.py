@@ -1,5 +1,9 @@
-"""Activity (M39): the feed, its summary and the read position (MOBILE_UI.md §7.2)."""
+"""Activity (M39): the feed, its summary and the read position (MOBILE_UI.md §7.2).
 
+M76 (CANVAS.md §20): canvas mentions are items too, for the clients that ask for them by name
+(`include=canvas_mention`): the phones of M39-M76 fail on an item without a message."""
+
+from collections.abc import Collection
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +13,7 @@ from app.events.outbox import write_outbox
 from app.modules.activity import repository as repo
 from app.modules.activity.events import ACTIVITY_READ
 from app.modules.activity.schemas import (
+    ActivityCanvas,
     ActivityFilter,
     ActivityItem,
     ActivityListOut,
@@ -19,11 +24,42 @@ from app.modules.messages.service import messages_out
 from app.modules.users.models import User
 
 
+def _item_key(item: ActivityItem) -> tuple[datetime, str, str]:
+    """Newest first; ties in a fixed order (kind, then the message or the canvas item)."""
+    ref = item.message.id if item.message else item.canvas.item_id if item.canvas else ""
+    return item.at, item.kind, str(ref)
+
+
 async def list_activity(
-    db: AsyncSession, actor: User, *, kind: ActivityFilter, cursor: datetime | None, limit: int
+    db: AsyncSession,
+    actor: User,
+    *,
+    kind: ActivityFilter,
+    cursor: datetime | None,
+    limit: int,
+    include: Collection[str] = (),
 ) -> ActivityListOut:
-    """Newest first, the kinds merged by time; `cursor` is the previous page's `next_cursor`."""
+    """Newest first, the kinds merged by time; `cursor` is the previous page's `next_cursor`.
+    `include`: the kinds a client asks for by name (M76: canvas_mention, under all and
+    mentions)."""
     items: list[ActivityItem] = []
+    if "canvas_mention" in include and kind in ("all", "mentions"):
+        for row, canvas in await repo.canvas_mentions(db, actor.id, before=cursor, limit=limit):
+            items.append(
+                ActivityItem(
+                    kind="canvas_mention",
+                    at=row.at,
+                    canvas=ActivityCanvas(
+                        item_id=row.id,
+                        canvas_id=canvas.id,
+                        channel_id=canvas.channel_id,
+                        title=canvas.title,
+                        excerpt=row.excerpt,
+                        rev_id=row.rev_id,
+                    ),
+                    actor_ids=[row.actor_id],
+                )
+            )
     if kind in ("all", "mentions"):
         rows = await repo.mentions(db, actor.id, before=cursor, limit=limit)
         for message in await messages_out(db, rows, actor.id):
@@ -61,7 +97,7 @@ async def list_activity(
                         emojis=emojis,
                     )
                 )
-    items.sort(key=lambda item: (item.at, item.kind, str(item.message.id)), reverse=True)
+    items.sort(key=_item_key, reverse=True)
     page = items[:limit]
     full = len(items) >= limit
     return ActivityListOut(
@@ -71,14 +107,23 @@ async def list_activity(
     )
 
 
-async def summary(db: AsyncSession, actor: User) -> ActivitySummaryOut:
-    count, mention = await repo.unread(db, actor.id, actor.activity_read_at)
+async def summary(
+    db: AsyncSession, actor: User, include: Collection[str] = ()
+) -> ActivitySummaryOut:
+    count, mention = await repo.unread(
+        db, actor.id, actor.activity_read_at, canvas="canvas_mention" in include
+    )
     return ActivitySummaryOut(
         read_at=actor.activity_read_at, unread_count=count, mention_unread=mention
     )
 
 
-async def mark_read(db: AsyncSession, actor: User, read_at: datetime) -> ActivitySummaryOut:
+async def mark_read(
+    db: AsyncSession,
+    actor: User,
+    read_at: datetime,
+    include: Collection[str] = (),
+) -> ActivitySummaryOut:
     """Moves the read position forward only (max-merge, like read states), never past now; my other
     devices follow."""
     target = min(read_at, utcnow())
@@ -92,4 +137,4 @@ async def mark_read(db: AsyncSession, actor: User, read_at: datetime) -> Activit
             payload=ActivityReadData(read_at=target).model_dump(mode="json"),
         )
         await db.commit()
-    return await summary(db, actor)
+    return await summary(db, actor, include)

@@ -963,6 +963,8 @@ export class SyncEngine {
         return;
       }
       case "canvas.mentioned":
+        // M76: an activity item too (the badge comes from the server, like a message's mention).
+        this.scheduleActivityRefresh();
         this.maybeNotifyCanvasMention(frame.data as unknown as CanvasMentioned);
         return;
       case "ai.run_updated":

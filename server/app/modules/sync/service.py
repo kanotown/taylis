@@ -44,6 +44,7 @@ async def bootstrap(
     actor: User,
     settings: Settings,
     presence: Sequence[tuple[uuid.UUID, str]] = (),
+    activity_include: Sequence[str] = (),
 ) -> BootstrapOut:
     listed = await channels.list_channels(db, actor, include_public=False)
     visible = await channels.visible_user_ids(db, actor)  # M13e: None = everyone
@@ -83,7 +84,7 @@ async def bootstrap(
         roster=await lab.roster(db, visible),
         sidebar_sections=await sidebar.list_for(db, actor.id),
         drafts=await drafts.list_for(db, actor.id),
-        activity=await activity.summary(db, actor),
+        activity=await activity.summary(db, actor, activity_include),
         presence=[
             PresenceEntry(user_id=user_id, status=status)  # type: ignore[arg-type]
             for user_id, status in presence

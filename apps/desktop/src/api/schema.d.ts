@@ -14,7 +14,8 @@ export interface paths {
         /**
          * List Activity
          * @description Mentions of me, reactions to my messages and replies in threads I follow, newest first
-         *     (M39).
+         *     (M39); with `include=canvas_mention`, canvases that mention me too (M76, under all and
+         *     mentions).
          */
         get: operations["list_activity_api_v1_activity_get"];
         put?: never;
@@ -35,7 +36,8 @@ export interface paths {
         get?: never;
         /**
          * Mark Activity Read
-         * @description Everything up to `read_at` is read (it only moves forward).
+         * @description Everything up to `read_at` is read (it only moves forward); every kind shares the one
+         *     position.
          */
         put: operations["mark_activity_read_api_v1_activity_read_put"];
         post?: never;
@@ -54,7 +56,7 @@ export interface paths {
         };
         /**
          * Activity Summary
-         * @description The activity tab's badge: items after my read position.
+         * @description The activity tab's badge: items after my read position (the `include`d kinds too).
          */
         get: operations["activity_summary_api_v1_activity_summary_get"];
         put?: never;
@@ -2699,7 +2701,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Bootstrap */
+        /**
+         * Bootstrap
+         * @description `activity_include`: as GET /activity/summary's `include` (M76: canvas_mention).
+         */
         get: operations["bootstrap_api_v1_sync_bootstrap_get"];
         put?: never;
         post?: never;
@@ -3143,6 +3148,36 @@ export interface components {
             /** Reminded */
             reminded: number;
         };
+        /**
+         * ActivityCanvas
+         * @description A canvas_mention item's canvas (M76): it opens the canvas in its conversation.
+         */
+        ActivityCanvas: {
+            /**
+             * Canvas Id
+             * Format: uuid
+             */
+            canvas_id: string;
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Excerpt */
+            excerpt: string;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /**
+             * Rev Id
+             * Format: uuid
+             */
+            rev_id: string;
+            /** Title */
+            title: string;
+        };
         /** ActivityItem */
         ActivityItem: {
             /** Actor Ids */
@@ -3152,6 +3187,7 @@ export interface components {
              * Format: date-time
              */
             at: string;
+            canvas?: components["schemas"]["ActivityCanvas"] | null;
             /**
              * Emojis
              * @default []
@@ -3161,8 +3197,8 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mention" | "reaction" | "thread_reply";
-            message: components["schemas"]["MessageOut"];
+            kind: "mention" | "reaction" | "thread_reply" | "canvas_mention";
+            message?: components["schemas"]["MessageOut"] | null;
         };
         /** ActivityListOut */
         ActivityListOut: {
@@ -6833,6 +6869,8 @@ export interface operations {
                 filter?: "all" | "mentions" | "reactions" | "threads";
                 cursor?: string | null;
                 limit?: number;
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored. */
+                include?: string[];
             };
             header?: never;
             path?: never;
@@ -6862,7 +6900,10 @@ export interface operations {
     };
     mark_activity_read_api_v1_activity_read_put: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored. */
+                include?: string[];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6895,7 +6936,10 @@ export interface operations {
     };
     activity_summary_api_v1_activity_summary_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored. */
+                include?: string[];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6909,6 +6953,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivitySummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -12381,7 +12434,9 @@ export interface operations {
     };
     bootstrap_api_v1_sync_bootstrap_get: {
         parameters: {
-            query?: never;
+            query?: {
+                activity_include?: string[];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -12395,6 +12450,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BootstrapOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

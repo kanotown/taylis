@@ -269,3 +269,62 @@ it("「自分」: 「リアクションのバナー」 (off at first, 「オフ�
   expect(toggle.checked).toBe(true);
   w.engine.stop();
 });
+
+it("M76: a canvas that mentions me is a row (📝, 「Alice が「議事録」であなたをメンションしました」, the excerpt) that counts as a mention and opens the canvas", async () => {
+  compact = false;
+  const { w, controller } = await setup();
+  const canvas = { id: "cv1", channel_id: w.channelId, title: "議事録" };
+  await act(async () => {
+    w.server.mentionInCanvas(w.bob.id, w.alice.id, canvas, "予稿 @Bob");
+  });
+  await settle(w);
+  // canvas.mentioned brings the badge from the server: four unread, a mention among them.
+  expect(w.store.activity).toMatchObject({ unread_count: 4, mention_unread: true });
+  fireEvent.click(screen.getByRole("button", { name: "アクティビティ (未読 4)" }));
+  await settle(w);
+  const view = screen.getByRole("region", { name: "アクティビティ" });
+  expect(labels(view)[0]).toBe("未読 Alice が「議事録」であなたをメンションしました · #c");
+  const row = rows(view)[0]!;
+  expect(row.dataset["activity"]).toBe("canvas_mention");
+  expect(row.querySelector("[data-kind-icon=canvas]")?.textContent).toBe("📝");
+  expect(within(row).getByText("#c のキャンバス")).toBeTruthy();
+  expect(within(row).getByText("予稿 @Bob")).toBeTruthy();
+  fireEvent.click(within(view).getByRole("radio", { name: "メンション" }));
+  await settle(w);
+  expect(labels(view)).toEqual(["未読 Alice が「議事録」であなたをメンションしました · #c", "未読 Alice がメンション · #c"]);
+  fireEvent.click(within(view).getByRole("radio", { name: "スレッド" }));
+  await settle(w);
+  expect(labels(view)).toEqual(["未読 Alice がスレッドに返信 · #c"]);
+
+  // Mentioned again while unread: the same row moves (one per canvas), with the new excerpt.
+  fireEvent.click(within(view).getByRole("radio", { name: "メンション" }));
+  await settle(w);
+  await act(async () => {
+    w.server.mentionInCanvas(w.bob.id, w.alice.id, canvas, "確認 @Bob");
+  });
+  await settle(w);
+  await settle(w);
+  expect(w.server.canvasMentions.get(w.bob.id)).toHaveLength(1);
+  expect(rows(view).filter((r) => r.dataset["activity"] === "canvas_mention")).toHaveLength(1);
+
+  // The row opens the canvas: its conversation's 「キャンバス」 tab.
+  fireEvent.click(rows(view)[0]!);
+  await settle(w);
+  expect(screen.queryByRole("region", { name: "アクティビティ" })).toBeNull();
+  expect(w.engine.currentChannelId).toBe(w.channelId);
+  expect(screen.getByRole("tab", { name: "キャンバス" }).getAttribute("aria-selected")).toBe("true");
+  expect(controller.error).toBeNull();
+  w.engine.stop();
+});
+
+it("M76: an item of a kind this version does not know (a newer server) is skipped, not shown broken", async () => {
+  const { w } = await setup();
+  const real = w.server.listActivity.bind(w.server);
+  w.server.listActivity = (...args: Parameters<typeof real>) => {
+    const page = real(...args);
+    return { ...page, items: [{ kind: "later_kind" as never, at: new Date().toISOString(), message: null, actor_ids: [w.alice.id], emojis: [] }, ...page.items] };
+  };
+  await tap("activity");
+  expect(labels(root("activity"))).toHaveLength(3);
+  w.engine.stop();
+});

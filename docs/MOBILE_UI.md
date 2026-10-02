@@ -358,6 +358,8 @@ Aa → 書式バー [B][I][S][`][```][🔗][•][1.][❝] (選択範囲を記法
 - `PUT /api/v1/activity/read {read_at}` を足す。read_state と同じく大きい方にだけ進める (max-merge)。
   - 自分の他の端末には `activity.read` (audience=user) を送る
   - bootstrap に `activity: {read_at, unread_count}` を足す。他のワークスペースのバッジ用に `GET /sync/summary` にも足す
+- M76: `kind: "canvas_mention"` (キャンバスでのメンション、`message` は null で `canvas` がある) は `include=canvas_mention`
+  を付けた端末にだけ返し、数える (CANVAS.md §20)。
 - 保存するのは `users.activity_read_at timestamptz` の 1 列だけ (マイグレーション 1 本)。
   - 項目ごとに既読の行は作らない (CLAUDE.md の ReadState と同じ考え方)
 - 接続中の件数:

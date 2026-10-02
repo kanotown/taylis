@@ -14,6 +14,16 @@ from app.modules.auth.deps import CurrentUser
 
 router = APIRouter(tags=["activity"])
 
+# M76 (CANVAS.md §20): kinds only a client that names them gets (the phones before M77 fail on
+# an item without `message`); the summary counts them only then, so the badge matches the list.
+Include = Query(
+    default=[],
+    description=(
+        "Extra kinds this client shows (repeat for several): canvas_mention (M76). "
+        "Unknown values are ignored."
+    ),
+)
+
 
 @router.get("/activity", response_model=ActivityListOut)
 async def list_activity(
@@ -22,19 +32,31 @@ async def list_activity(
     filter: ActivityFilter = "all",
     cursor: datetime | None = None,
     limit: int = Query(default=50, ge=1, le=100),
+    include: list[str] = Include,
 ) -> ActivityListOut:
     """Mentions of me, reactions to my messages and replies in threads I follow, newest first
-    (M39)."""
-    return await service.list_activity(db, user, kind=filter, cursor=cursor, limit=limit)
+    (M39); with `include=canvas_mention`, canvases that mention me too (M76, under all and
+    mentions)."""
+    return await service.list_activity(
+        db, user, kind=filter, cursor=cursor, limit=limit, include=include
+    )
 
 
 @router.get("/activity/summary", response_model=ActivitySummaryOut)
-async def activity_summary(user: CurrentUser, db: Db) -> ActivitySummaryOut:
-    """The activity tab's badge: items after my read position."""
-    return await service.summary(db, user)
+async def activity_summary(
+    user: CurrentUser, db: Db, include: list[str] = Include
+) -> ActivitySummaryOut:
+    """The activity tab's badge: items after my read position (the `include`d kinds too)."""
+    return await service.summary(db, user, include)
 
 
 @router.put("/activity/read", response_model=ActivitySummaryOut)
-async def mark_activity_read(user: CurrentUser, body: ActivityReadIn, db: Db) -> ActivitySummaryOut:
-    """Everything up to `read_at` is read (it only moves forward)."""
-    return await service.mark_read(db, user, body.read_at)
+async def mark_activity_read(
+    user: CurrentUser,
+    body: ActivityReadIn,
+    db: Db,
+    include: list[str] = Include,
+) -> ActivitySummaryOut:
+    """Everything up to `read_at` is read (it only moves forward); every kind shares the one
+    position."""
+    return await service.mark_read(db, user, body.read_at, include)

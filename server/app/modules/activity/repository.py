@@ -4,6 +4,8 @@ from datetime import datetime
 from sqlalchemy import and_, func, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.activity.models import CanvasMention
+from app.modules.canvases.models import Canvas
 from app.modules.channels.models import ChannelMember
 from app.modules.messages.models import Message, Reaction, mentions_of
 from app.modules.threads.models import ThreadFollow
@@ -70,6 +72,29 @@ def _reactions(user_id: uuid.UUID):  # type: ignore[no-untyped-def]
     ), at
 
 
+def _canvas_mentions(user_id: uuid.UUID):  # type: ignore[no-untyped-def]
+    """M76: my canvas mention items, of canvases I can read (not in the trash, a conversation
+    I am in)."""
+    return (
+        select(CanvasMention, Canvas)
+        .join(Canvas, Canvas.id == CanvasMention.canvas_id)
+        .join(
+            ChannelMember,
+            and_(ChannelMember.channel_id == Canvas.channel_id, ChannelMember.user_id == user_id),
+        )
+        .where(CanvasMention.user_id == user_id, Canvas.deleted_at.is_(None))
+    )
+
+
+async def canvas_mentions(
+    db: AsyncSession, user_id: uuid.UUID, *, before: datetime | None, limit: int
+) -> list[tuple[CanvasMention, Canvas]]:
+    stmt = _canvas_mentions(user_id).order_by(CanvasMention.at.desc()).limit(limit)
+    if before is not None:
+        stmt = stmt.where(CanvasMention.at < before)
+    return [(row[0], row[1]) for row in (await db.execute(stmt)).all()]
+
+
 async def mentions(
     db: AsyncSession, user_id: uuid.UUID, *, before: datetime | None, limit: int
 ) -> list[Message]:
@@ -104,8 +129,11 @@ async def messages_by_ids(db: AsyncSession, ids: list[uuid.UUID]) -> list[Messag
     return list((await db.execute(select(Message).where(Message.id.in_(ids)))).scalars().all())
 
 
-async def unread(db: AsyncSession, user_id: uuid.UUID, since: datetime) -> tuple[int, bool]:
-    """(items after `since`, capped; whether a mention is among them)."""
+async def unread(
+    db: AsyncSession, user_id: uuid.UUID, since: datetime, *, canvas: bool = False
+) -> tuple[int, bool]:
+    """(items after `since`, capped; whether a mention is among them). `canvas`: canvas mention
+    items count too (M76), as mentions."""
     mention_count = await db.scalar(
         select(func.count()).select_from(
             _mentions(user_id).where(Message.created_at > since).limit(UNREAD_CAP).subquery()
@@ -120,5 +148,20 @@ async def unread(db: AsyncSession, user_id: uuid.UUID, since: datetime) -> tuple
     reaction_count = await db.scalar(
         select(func.count()).select_from(stmt.having(at > since).limit(UNREAD_CAP).subquery())
     )
-    total = (mention_count or 0) + (reply_count or 0) + (reaction_count or 0)
-    return min(total, UNREAD_CAP), (mention_count or 0) > 0
+    canvas_count = 0
+    if canvas:
+        canvas_count = (
+            await db.scalar(
+                select(func.count()).select_from(
+                    _canvas_mentions(user_id)
+                    .with_only_columns(CanvasMention.id)
+                    .where(CanvasMention.at > since)
+                    .limit(UNREAD_CAP)
+                    .subquery()
+                )
+            )
+            or 0
+        )
+    mentioned = (mention_count or 0) + canvas_count
+    total = mentioned + (reply_count or 0) + (reaction_count or 0)
+    return min(total, UNREAD_CAP), mentioned > 0

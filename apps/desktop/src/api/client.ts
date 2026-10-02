@@ -3,6 +3,12 @@ import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut
 import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
 
+/**
+ * M76 (CANVAS.md §20): the activity kinds this client shows beyond M39's (the server sends canvas_mention items, and
+ * counts them in the badge, only to clients that name them; an older server ignores the parameter).
+ */
+export const ACTIVITY_INCLUDE = "canvas_mention";
+
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
 export const COOKIE_SESSION = "cookie";
 /** Sent with cookie refreshes; a cross-site form cannot add it (SECURITY.md §2.3). */
@@ -181,7 +187,7 @@ export class ApiClient {
   }
 
   bootstrap(): Promise<BootstrapOut> {
-    return this.request("GET", "/api/v1/sync/bootstrap");
+    return this.request("GET", `/api/v1/sync/bootstrap?activity_include=${ACTIVITY_INCLUDE}`);
   }
 
   channels(includePublic: boolean): Promise<ChannelOut[]> {
@@ -678,19 +684,19 @@ export class ApiClient {
 
   /** Mentions, reactions to my messages and replies in threads I follow, newest first; `cursor` is `next_cursor`. */
   listActivity(options: { filter?: ActivityFilter; cursor?: string | null; limit?: number } = {}): Promise<ActivityListOut> {
-    const params = new URLSearchParams({ filter: options.filter ?? "all", limit: String(options.limit ?? 50) });
+    const params = new URLSearchParams({ filter: options.filter ?? "all", limit: String(options.limit ?? 50), include: ACTIVITY_INCLUDE });
     if (options.cursor) params.set("cursor", options.cursor);
     return this.request("GET", `/api/v1/activity?${params}`);
   }
 
   /** The activity badge: items after my read position (at most 99), and whether a mention is among them. */
   activitySummary(): Promise<ActivitySummaryOut> {
-    return this.request("GET", "/api/v1/activity/summary");
+    return this.request("GET", `/api/v1/activity/summary?include=${ACTIVITY_INCLUDE}`);
   }
 
   /** Everything up to `readAt` is read (the server only moves it forward, never past its own now). */
   markActivityRead(readAt: string): Promise<ActivitySummaryOut> {
-    return this.request("PUT", "/api/v1/activity/read", { read_at: readAt });
+    return this.request("PUT", `/api/v1/activity/read?include=${ACTIVITY_INCLUDE}`, { read_at: readAt });
   }
 
   // --- files (M11i) ----------------------------------------------------------------------
