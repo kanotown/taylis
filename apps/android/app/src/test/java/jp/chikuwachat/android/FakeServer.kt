@@ -463,6 +463,20 @@ class FakeServer {
         return updated
     }
 
+    /**
+     * M79 (`app.cli probe-videos`): the server fills in a message's video (size, length, poster) after the fact; the
+     * message takes a seq of its own and goes out as message.updated with `change` (normally "attachments").
+     */
+    fun setAttachments(channelId: String, messageId: String, attachments: List<AttachmentOut>, change: String = "attachments"): MessageOut {
+        val record = channels.getValue(channelId)
+        val message = record.messages.first { it.id == messageId }
+        val seq = record.channel.lastSeq + 1
+        record.channel = record.channel.copy(lastSeq = seq)
+        val updated = message.copy(updatedSeq = seq, attachments = attachments)
+        replace(record, updated, "message.updated", change)
+        return updated
+    }
+
     // --- pins and bookmarks (M11c) --------------------------------------------------------------------
 
     /** PUT / DELETE /messages/{id}/pin: any member; a change consumes a seq (message.updated change=pin). */

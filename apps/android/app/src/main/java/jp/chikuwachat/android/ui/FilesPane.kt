@@ -1,6 +1,5 @@
 package jp.chikuwachat.android.ui
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,12 +15,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -39,8 +41,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -48,10 +50,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.FileItem
 import jp.chikuwachat.android.app.AppController
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** 「ファイル」 (M11i): attachments in my channels (or one channel), newest first; a row reveals its message. */
 @Composable
@@ -124,11 +124,9 @@ fun FileRow(item: FileItem, controller: AppController, onClick: () -> Unit) {
     val attachment = item.attachment
     var bitmap by remember(attachment.id) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(attachment.id) {
-        if (!attachment.isImage) return@LaunchedEffect
-        bitmap = runCatching {
-            val bytes = controller.fetchBytes("/api/v1/attachments/${attachment.id}/thumbnail")
-            withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
-        }.getOrNull()
+        // A photo's thumbnail, or since M79 / M82 a video's poster (never the clip itself).
+        if (!attachment.hasPreviewPicture) return@LaunchedEffect
+        bitmap = fetchThumbnail(controller, attachment.id)
     }
     val uploader = store.users[item.uploaderId]?.displayName ?: "?"
     val channel = store.channel(item.channelId)?.let { channelTitle(it, store) } ?: "?"
@@ -138,15 +136,16 @@ fun FileRow(item: FileItem, controller: AppController, onClick: () -> Unit) {
             val image = bitmap
             if (image != null) {
                 Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                if (attachment.isVideo) Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)))
             } else {
-                Icon(if (attachment.isImage) Icons.Outlined.Image else Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(if (attachment.isImage) Icons.Outlined.Image else if (attachment.isVideo) Icons.Outlined.Movie else Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(attachment.filename, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                "${formatSize(attachment.sizeBytes)} · $uploader · $channel · ${Timeline.timeLabel(item.attachedAt)}",
+                "${if (attachment.isVideo) VideoTiles.label(attachment) else formatSize(attachment.sizeBytes)} · $uploader · $channel · ${Timeline.timeLabel(item.attachedAt)}",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }

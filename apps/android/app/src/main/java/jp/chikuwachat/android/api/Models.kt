@@ -285,8 +285,18 @@ data class AttachmentOut(
     val hasThumbnail: Boolean = false,
     val status: String = "attached",
     val createdAt: String = "",
+    /**
+     * M79 / M82: a video's poster frame, served by `GET /attachments/{id}/thumbnail` like an image's thumbnail (a video's
+     * `has_thumbnail` stays false), and its length. Both absent from a server before M79 (and rows stored before): false / null.
+     */
+    val hasPoster: Boolean = false,
+    val durationMs: Long? = null,
 ) {
-    val isImage: Boolean get() = hasThumbnail
+    /** By the type the server sniffed (M82): a video is never a photo, whatever thumbnail flags it carries. */
+    val isVideo: Boolean get() = contentType.startsWith("video/", ignoreCase = true)
+    val isImage: Boolean get() = hasThumbnail && contentType.startsWith("image/", ignoreCase = true)
+    /** Whether `/thumbnail` has a picture for this attachment: an image's thumbnail or a video's poster. */
+    val hasPreviewPicture: Boolean get() = isImage || (isVideo && hasPoster)
 }
 
 /**

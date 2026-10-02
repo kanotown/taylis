@@ -1393,6 +1393,18 @@ ffmpeg の無いサーバや M79 より前の動画は `video_probed_at` が NUL
 運用コマンド) が後から埋める。メッセージに付いた動画はそのメッセージの `updated_seq` を進めて `message.updated`
 (`change = "attachments"`) を出すので、端末は差分で受け取る (SYNC_PROTOCOL.md §7.3)。
 
+M82 Android: 動画の判定は `content_type` (`video/`) で、写真の判定も `content_type` が `image/` かつ `has_thumbnail`
+(出荷版の `isImage = hasThumbnail` を直した。動画は `has_thumbnail` が立っていても写真にならない)。`has_poster` /
+`duration_ms` は省略可 (false / null) でデコードし、端末の保存も同じ形。メッセージの動画は `width` / `height` から
+最初から最終の大きさ (280 × 240 dp 以内、拡大しない) のタイルで、`has_poster` なら `/thumbnail` のポスター、再生マーク、
+左下に「0:42 · 1.9 MB」。動画の本体はタップして開いたときだけ、キャッシュの `downloads/` に流し込んで (メモリに全体を
+持たない) アプリ内のプレーヤー (プラットフォームの VideoView と MediaController。ライブラリは足さない) で再生し、
+最初のフレームが出るまでポスターと読み込み中を重ねる。ツールバーから他のアプリでも開ける (同じキャッシュを渡す)。
+ポスターが無い・読めないときは映画のアイコンのタイル、縦横もポスターも無い (M79 より前のサーバ、未調査の動画) ときは
+今までどおりのファイル行で、端末で動画からフレームや縦横を読むことはしない。送信前のタイルとファイル一覧にも
+ポスター (と長さ)。`message.updated` は `change` で分岐せずメッセージを置き換えるだけなので、`"attachments"` も
+知らない値もそのまま効く (`VideoAttachmentsTest`)。
+
 ### outbox_events
 
 ```sql
