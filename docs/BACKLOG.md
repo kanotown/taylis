@@ -30,7 +30,7 @@ M58 で画像の挿入・検索・履歴の比較/復元/ラベル・共有と�
 
 ## 4. ロードマップ Phase 5
 
-2026-10-01 に決めた順: ~~L6 定期投稿と週報の回収~~ (M59・M60 で完了、docs/RECURRING.md) → ~~L8 Times フィード~~ (M61・M62 で完了、docs/TIMES_FEED.md) → ~~L9 添削・レビュー依頼~~ (M63・M64 で完了、docs/REVIEWS.md)。Phase 5 はここまで。その後 AI (docs/AI.md、M65・M66) を足した。L5 締切はタスクの種類として M85・M86 で入れた (docs/DEADLINES.md)。Canvas Phase 2 は M72 (サーバと Desktop / Web、2026-10-02) で入れた (CANVAS.md §18: メンション通知・編集中の表示・チェックリストからタスク。範囲に付けるコメントは入れない)。スマホは M73。Slack からの取り込みは必要になったら。
+2026-10-01 に決めた順: ~~L6 定期投稿と週報の回収~~ (M59・M60 で完了、docs/RECURRING.md) → ~~L8 Times フィード~~ (M61・M62 で完了、docs/TIMES_FEED.md) → ~~L9 添削・レビュー依頼~~ (M63・M64 で完了、docs/REVIEWS.md)。Phase 5 はここまで。その後 AI (docs/AI.md、M65・M66) を足した。L5 締切はタスクの種類として M85・M86 で入れた (docs/DEADLINES.md)。Canvas Phase 2 は M72 (サーバと Desktop / Web、2026-10-02) で入れた (CANVAS.md §18: メンション通知・編集中の表示・チェックリストからタスク。範囲に付けるコメントは入れない)。スマホは M73。Slack からの取り込みは M87 で CLI を作った (`import-slack`、infra/README.md「Slack からの移行」)。
 
 元の表 (ROADMAP §5):
 
@@ -63,7 +63,12 @@ ROADMAP.md §5 の表。実際の番号は着手したときに空いている�
 | 締切の細かいところ | カレンダーの行に ⏰ が無い、通知の時刻は 9:00 で選べない、投稿に失敗した通知は再送しない (DEADLINES.md §9) |
 | iOS のシミュレータ (Debug) で会話を横向きにすると固まる | 実機 (Release) では起きない。直す予定なし |
 
+## 5.1 Slack からの取り込みの残り
+
+- 取り込み先は本番の別のワークスペース (2026-10-03 の利用者の決定、WORKSPACES.md): VPS に 2 つ目のサーバを立てる。ドメインと共有の nginx のサイトは利用者に確かめてから。infra/README.md の手順は今の本番 (/srv/chikuwachat) 向けに書いてあるので、2 つ目のサーバの置き場所に合わせて直す
+- 書き出し ZIP は利用者が用意する。本物の書き出しではまだ試していない (合成した書き出しだけ)
+
 ## 6. リリースと片付け
 
-- 本番は v0.1.20 (9f3c7dc、2026-10-02): M68〜M73 (カレンダーの繰り返しと iCal、「AI に聞く」、Canvas Phase 2)、移行 0063〜0065、iOS build 71。次の v0.1.21: M74〜M86 (スマホのキャンバスのオフライン・ホームの一覧、Desktop のスクロール位置、アクティビティのキャンバス、動画のポスター、行とタスクの双方向、タスクの 4 つの追加、締切)、移行 0066〜0070、iOS build 78〜。本番に入れたら `probe-videos` を一度流す (infra/README.md)。
+- 本番は v0.1.21 (2b426f7、2026-10-03): M74〜M86 (スマホのキャンバスのオフライン・ホームの一覧、Desktop のスクロール位置、アクティビティのキャンバス、動画のポスター、行とタスクの双方向、タスクの 4 つの追加、締切)、移行 0066〜0070、iOS build 78〜。本番で `probe-videos` を流すのは利用者の了承待ち (infra/README.md)。次は v0.1.22 (M87 Slack の取り込み)。
 - 開発サーバのテスト用のチャンネル (#canvas-m43、#canvas-m44、m46-private、#quote-test、#tab-test、#tab-sp、#tab-tt、#arrival-test、#arrival-android、#link-test など) は、利用者の了承を得てから片付ける。
