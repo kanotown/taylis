@@ -837,13 +837,15 @@ CREATE TABLE canvases (
 CREATE INDEX canvases_channel_idx ON canvases (channel_id, updated_at DESC) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX canvases_tab_uniq ON canvases (channel_id) WHERE is_channel_tab AND deleted_at IS NULL;
 -- M42 (0047): 題名と本文を 1 つの式で。`title &@~ q OR body &@~ q` の形は索引を使わない (CANVAS.md §7、§4.8)
-CREATE INDEX canvases_search_idx ON canvases USING pgroonga ((ARRAY[title::text, body]));
+-- M80 (0068): 本文からタスクの印 (` <!--task:<id>-->`、CANVAS.md §22) を除いた式に作り直した (検索が印に当たらないように)
+CREATE INDEX canvases_search_idx ON canvases USING pgroonga
+  ((ARRAY[title::text, regexp_replace(body, ' ?<!--task:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-->', '', 'g')]));
 
 CREATE TABLE canvas_revisions (
   id              uuid PRIMARY KEY,                         -- UUIDv7
   canvas_id       uuid NOT NULL REFERENCES canvases(id) ON DELETE CASCADE,
   version         bigint,                                   -- この版で canvases.version がいくつになったか。side は NULL
-  kind            varchar(16) NOT NULL,                     -- create | save | merge | side | restore | erased
+  kind            varchar(16) NOT NULL,                     -- create | save | merge | side | restore | erased | task (M80: タスクに合わせてサーバが作った版、CANVAS.md §22)
   parent_rev_id   uuid,                                     -- save / side: 元にした版。merge / restore: その時点の head
   author_id       uuid NOT NULL REFERENCES users(id),
   title           varchar(200) NOT NULL,                    -- その時点の題名
@@ -853,7 +855,7 @@ CREATE TABLE canvas_revisions (
   lines_added     integer NOT NULL DEFAULT 0,               -- 親との差 (行の多重集合の差)。履歴の一覧に本文なしで出す
   lines_removed   integer NOT NULL DEFAULT 0,
   created_at      timestamptz NOT NULL DEFAULT now(),
-  CHECK (kind IN ('create', 'save', 'merge', 'side', 'restore', 'erased'))
+  CHECK (kind IN ('create', 'save', 'merge', 'side', 'restore', 'erased', 'task'))  -- 'task' は 0068
 );
 CREATE INDEX canvas_revisions_canvas_idx ON canvas_revisions (canvas_id, created_at);
 CREATE UNIQUE INDEX canvas_revisions_save_uniq ON canvas_revisions (author_id, client_save_id) WHERE client_save_id IS NOT NULL;

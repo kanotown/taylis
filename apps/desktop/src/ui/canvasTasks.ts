@@ -10,6 +10,7 @@
  */
 import type { GroupOut, UserPublic } from "../api/types";
 import type { ChannelState } from "../sync/types";
+import { stripTaskMarkers } from "./canvasMarkers";
 import { TASK_LINE, plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
 import { canEditBoard, canEditConversationTasks, hasBoard, MAX_TASK_TITLE, type TaskCreateInit } from "./tasks";
@@ -18,9 +19,9 @@ const DUE = /📅\s*(\d{4}-\d{2}-\d{2})/u;
 const USER_TOKEN = /<@([0-9a-f-]{36})>/g;
 
 export interface ChecklistItem {
-  /** The line as it is in the body (`- [ ] …`): the server finds it there (§18.3). */
+  /** The line as it is in the body (`- [ ] …`, M80: with any task marker): the server finds it there (§18.3). */
   line: string;
-  /** The text after the box. */
+  /** The text after the box (without task markers). */
   text: string;
   done: boolean;
 }
@@ -31,7 +32,7 @@ export function checklistItem(body: string, index: number): ChecklistItem | null
   if (line === undefined) return null;
   const match = TASK_LINE.exec(line);
   if (!match) return null;
-  return { line, text: (match[3] ?? "").trim(), done: match[2] !== " " };
+  return { line, text: stripTaskMarkers(match[3] ?? "").trim(), done: match[2] !== " " };
 }
 
 /** A real calendar date in `YYYY-MM-DD` (not 2026-02-30). */

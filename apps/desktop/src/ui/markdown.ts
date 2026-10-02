@@ -11,8 +11,11 @@
  * The canvas dialect (CANVAS.md §4.2, `{ canvas: true }`) adds tasks ("- [ ] item" / "- [x] item", "*" too, two leading
  * spaces nest), images of the canvas ("![alt](attachment:<uuid>)" on a line of its own; other image URLs stay text) and
  * rules ("---" between blank lines). Messages keep showing all of these as text. apps/shared/canvas_markdown.json holds
- * the cases the three clients share.
+ * the cases the three clients share. M80: the hidden task markers (` <!--task:<id>-->`, canvasMarkers.ts) are left out
+ * in the canvas dialect.
  */
+import { stripTaskMarkers } from "./canvasMarkers";
+
 export type Token =
   | { kind: "text"; text: string }
   | { kind: "bold"; text: string }
@@ -145,10 +148,11 @@ const HEADING = /^(#{1,3})\s+(\S.*)$/;
 /** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order. */
 export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
   const blocks: Block[] = [];
-  const lines = body.replace(/\r\n?/g, "\n").split("\n");
+  const canvas = options.canvas === true;
+  // M80 (CANVAS.md §22): a canvas's hidden task markers are never shown (each line keeps its place).
+  const lines = body.replace(/\r\n?/g, "\n").split("\n").map((line) => (canvas ? stripTaskMarkers(line) : line));
   let i = 0;
   const push = (block: Block) => blocks.push(block);
-  const canvas = options.canvas === true;
   const blank = (index: number) => index < 0 || index >= lines.length || (lines[index] ?? "").trim() === "";
   const isTask = (index: number) => canvas && TASK_LINE.test(lines[index] ?? "");
   const isImage = (index: number) => canvas && IMAGE_LINE.test(lines[index] ?? "");

@@ -26,6 +26,7 @@ import asyncio
 import re
 import uuid
 from collections import Counter
+from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from functools import partial
@@ -41,7 +42,7 @@ from app.events.outbox import write_outbox
 from app.modules.activity import canvas_mentions
 from app.modules.attachments import service as attachments
 from app.modules.audit import service as audit
-from app.modules.canvases import merge
+from app.modules.canvases import markers, merge
 from app.modules.canvases import repository as repo
 from app.modules.canvases import templates as tpl
 from app.modules.canvases.events import (
@@ -104,8 +105,8 @@ MAX_REVISION_PAGE = 100
 MERGE_BUDGET_SECONDS = merge.DEFAULT_BUDGET_SECONDS
 _merge_pool: ThreadPoolExecutor | None = None
 
-# `- [ ] item` / `* [x] item`, nested with leading spaces (CANVAS.md §4.2).
-TASK_LINE = re.compile(r"^([ \t]*[-*] \[)([ xX])(\](?: .*)?)$")
+# `- [ ] item` / `* [x] item`, nested with leading spaces (CANVAS.md §4.2), in markers.py.
+TASK_LINE = markers.TASK_LINE
 # An image or file in the body: `![説明](attachment:<uuid>)` (CANVAS.md §4.2, §4.10). Any case:
 # a client may print the id in capitals (Swift's uuidString).
 ATTACHMENT_REF = re.compile(
@@ -124,6 +125,19 @@ THIN_LOOKBACK = timedelta(days=7)
 # version that could refer to it is older than KEEP_ALL_REVISIONS or still kept).
 IMAGE_GRACE = timedelta(hours=24)
 PURGE_BATCH = 100
+
+
+# M80 (CANVAS.md §22): what follows when a save ticks or unticks the box of an item linked to a
+# task — tasks.service.follow_canvas_ticks, injected by main.py (tasks depends on canvases, not
+# the other way round). Called in the save's transaction with {task_id: ticked}; it never fails
+# the save (a task the saver may not change is left as it is).
+TaskTicks = Callable[[AsyncSession, User, uuid.UUID, dict[uuid.UUID, bool]], Awaitable[None]]
+_task_ticks: TaskTicks | None = None
+
+
+def set_task_ticks_handler(handler: TaskTicks | None) -> None:
+    global _task_ticks
+    _task_ticks = handler
 
 
 # --- body helpers --------------------------------------------------------------------------------
@@ -217,7 +231,7 @@ async def _record_activity(
 ) -> None:
     """M76 (CANVAS.md §20): the person's activity item, with the line around the mention (names
     as the person sees them)."""
-    found = canvas_mentions.find_mention(canvas.body, person.id, groups_with_person)
+    found = canvas_mentions.find_mention(markers.strip(canvas.body), person.id, groups_with_person)
     excerpt = ""
     if found is not None:
         line, position = found
@@ -742,6 +756,11 @@ async def _set_body(
     await _emit_updated(db, canvas, change)
     if notify:
         await _notify_mentions(db, canvas, actor, before, revision.id)
+    if kind in ("save", "merge") and _task_ticks is not None:
+        # M80 (§22): a box ticked or unticked on a linked item; the task follows (as the saver).
+        ticks = markers.ticks_changed(before, body)
+        if ticks:
+            await _task_ticks(db, actor, canvas.id, ticks)
     return revision
 
 
@@ -835,6 +854,82 @@ async def _unchanged(db: AsyncSession, canvas: Canvas) -> SaveOut:
     out = to_out(canvas)
     await db.commit()
     return SaveOut(canvas=out, submitted_rev_id=canvas.head_rev_id, merged=False)
+
+
+# --- items linked to tasks (M80, CANVAS.md §22) ---------------------------------------------------
+
+
+async def _tickable(db: AsyncSession, actor: User, canvas_id: uuid.UUID) -> Canvas | None:
+    """The canvas, locked, when the actor may tick its boxes (a member, not a guest outside a DM,
+    a conversation not archived, the canvas not in the trash, §4.7); else None."""
+    canvas = await repo.get(db, canvas_id, lock=True)
+    if canvas is None or canvas.is_deleted:
+        return None
+    if await channels.membership_of(db, actor.id, canvas.channel_id) is None:
+        return None
+    channel = await channels.require_channel(db, canvas.channel_id)
+    if channel.is_archived or (not channel.is_dm and actor.is_guest):
+        return None
+    return canvas
+
+
+async def link_task_in_tx(
+    db: AsyncSession, actor: User, canvas_id: uuid.UUID, line: str, task_id: uuid.UUID
+) -> bool:
+    """A task was made from the checklist item `line` (§18.3): its marker goes at the end of that
+    line, as a new version by the task's maker (kind task) on top of the head, under the canvas's
+    lock — a device editing meanwhile merges it like anyone's save. The box is left as it is.
+    Nothing happens (False) when the maker may not tick here or the item is gone by now."""
+    canvas = await _tickable(db, actor, canvas_id)
+    if canvas is None:
+        return False
+    index = markers.find_item(canvas.body, line)
+    if index is None:
+        return False
+    body = markers.with_marker(canvas.body, index, task_id)
+    if body == canvas.body:
+        return True
+    if len(body) > MAX_BODY_LENGTH:
+        return False
+    await _set_body(
+        db,
+        canvas,
+        actor,
+        body,
+        kind="task",
+        parent=canvas.head_rev_id,
+        client_save_id=None,
+        change="content",
+        notify=False,
+    )
+    return True
+
+
+async def follow_task_in_tx(
+    db: AsyncSession, actor: User, canvas_id: uuid.UUID, task_id: uuid.UUID, done: bool
+) -> bool:
+    """The task was completed (done) or reopened: the boxes of the items carrying its marker
+    follow, as a new version by whoever changed the task (kind task, on top of the head under the
+    lock). Nothing (False) when no box changes, the items are gone, or that person may not tick
+    in this canvas. A version of kind task never moves a task (no loop back)."""
+    canvas = await _tickable(db, actor, canvas_id)
+    if canvas is None:
+        return False
+    body = markers.set_box(canvas.body, task_id, done)
+    if body == canvas.body:
+        return False
+    await _set_body(
+        db,
+        canvas,
+        actor,
+        body,
+        kind="task",
+        parent=canvas.head_rev_id,
+        client_save_id=None,
+        change="content",
+        notify=False,
+    )
+    return True
 
 
 # --- settings, trash -----------------------------------------------------------------------------

@@ -13,6 +13,7 @@ import type { AppController } from "../state/app";
 import { Avatar } from "./Avatar";
 import { CanvasBody } from "./CanvasBody";
 import type { CanvasRights } from "./canvasAccess";
+import { stripTaskMarkers } from "./canvasMarkers";
 import { type DiffLine, type DiffRow, diffCounts, diffLines, diffRows } from "./canvasDiff";
 import { useCompact } from "./compact";
 import { fullTimestamp } from "./format";
@@ -26,6 +27,7 @@ const KIND_LABELS: Record<CanvasRevisionMeta["kind"], string> = {
   side: "送信した版",
   restore: "復元",
   erased: "本文を消去",
+  task: "タスクと連動", // M80 (§22): the server ticked an item, or tied it to a task
 };
 
 type View = "previous" | "current" | "body";
@@ -79,7 +81,7 @@ export function CanvasHistoryDialog({ controller, canvas, rights, onClose }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id, selected?.kind, otherId]);
 
-  const names = (text: string) => mentionsToNames(text, controller.store.users, controller.store.groups);
+  const names = (text: string) => mentionsToNames(stripTaskMarkers(text), controller.store.users, controller.store.groups); // M80: markers hidden
   const selectedBody = selected ? bodies[selected.id] : undefined;
   const otherBody = otherId ? bodies[otherId] : view === "previous" ? "" : undefined;
   const rows = useMemo<DiffRow[] | null>(() => {

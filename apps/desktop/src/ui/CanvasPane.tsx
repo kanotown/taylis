@@ -14,6 +14,7 @@ import type { CanvasSaver, CanvasSaveStatus } from "../sync/canvasSave";
 import type { ChannelState } from "../sync/types";
 import { CanvasBody, headingAnchor } from "./CanvasBody";
 import { Avatar } from "./Avatar";
+import { stripTaskMarkers } from "./canvasMarkers";
 import { canvasTaskInit } from "./canvasTasks";
 import { TaskDialog } from "./TaskDialog";
 import type { TaskCreateInit } from "./tasks";
@@ -417,7 +418,7 @@ function CanvasEditing({ controller, canvasId }: { controller: AppController; ca
 /** A line under the bar: why this canvas cannot be changed here, or what happened to it. */
 function noticeFor(channel: ChannelState, rights: CanvasRights, saver: CanvasSaver, controller: AppController): { text: string; tone: "info" | "warn"; action?: ReactNode } | null {
   const copy = (
-    <button type="button" className="ml-auto inline-flex shrink-0 items-center gap-1 text-accent hover:underline" onClick={() => void controller.copyMessageText(saver.text)}>
+    <button type="button" className="ml-auto inline-flex shrink-0 items-center gap-1 text-accent hover:underline" onClick={() => void controller.copyMessageText(stripTaskMarkers(saver.text))}>
       <Copy size={12} /> 本文をコピー
     </button>
   );
@@ -733,7 +734,7 @@ function ConflictDialog({ controller, saver, tickOnly, conflicts, timedOut, onCl
   onClose: () => void;
 }) {
   const store = controller.store;
-  const names = (text: string) => mentionsToNames(text, store.users, store.groups);
+  const names = (text: string) => mentionsToNames(stripTaskMarkers(text), store.users, store.groups);
   const shown = conflicts.slice(0, 5);
   return (
     <Modal
@@ -781,7 +782,7 @@ function ExpiredDialog({ controller, saver, head, canOverwrite, onClose }: {
   onClose: () => void;
 }) {
   const store = controller.store;
-  const names = (text: string) => mentionsToNames(text, store.users, store.groups);
+  const names = (text: string) => mentionsToNames(stripTaskMarkers(text), store.users, store.groups);
   return (
     <Modal title="編集の元にした版がなくなりました" description="長くオフラインだった間に版が整理されました。自分の本文と今の本文を見比べて選んでください。" onClose={onClose} className="w-[760px]">
       <div className="mt-4 grid max-h-[50dvh] gap-2 overflow-y-auto text-[13px] md:grid-cols-2">
@@ -789,7 +790,7 @@ function ExpiredDialog({ controller, saver, head, canOverwrite, onClose }: {
         <ConflictSide label="今の本文" text={names(head.body)} tone="neutral" />
       </div>
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <Button variant="secondary" onClick={() => void controller.copyMessageText(saver.text)}><Copy size={14} /> 自分の本文をコピー</Button>
+        <Button variant="secondary" onClick={() => void controller.copyMessageText(stripTaskMarkers(saver.text))}><Copy size={14} /> 自分の本文をコピー</Button>
         <Button variant="secondary" onClick={() => { onClose(); void saver.resolveExpired("theirs"); }}>今の本文にする</Button>
         {canOverwrite && <Button onClick={() => { onClose(); void saver.resolveExpired("mine"); }}>自分の本文で上書き</Button>}
       </div>

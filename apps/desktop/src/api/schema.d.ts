@@ -5754,7 +5754,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "create" | "save" | "merge" | "side" | "restore" | "erased";
+            kind: "create" | "save" | "merge" | "side" | "restore" | "erased" | "task";
             /** Label */
             label: string | null;
             /** Lines Added */
@@ -5796,7 +5796,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "create" | "save" | "merge" | "side" | "restore" | "erased";
+            kind: "create" | "save" | "merge" | "side" | "restore" | "erased" | "task";
             /** Label */
             label: string | null;
             /** Lines Added */

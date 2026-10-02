@@ -444,10 +444,11 @@ async def test_task_from_a_checklist_item(
     )
     assert hidden.status_code == 404 and hidden.json()["error"]["code"] == "canvas_not_found"
 
-    # One-way: ticking the box does not complete the task.
+    # M80 (§22): both ways now — ticking the box completes the task (test_canvas_task_links.py).
     as_user(bob)
-    await _save(client, canvas, canvas["body"].replace(line, line.replace("[ ]", "[x]")))
-    assert (await client.get(f"{API}/tasks/{task['id']}")).json()["status"] == "todo"
+    current = (await client.get(f"{API}/canvases/{canvas['id']}")).json()
+    await _save(client, current, current["body"].replace("- [ ] **予稿**", "- [x] **予稿**"))
+    assert (await client.get(f"{API}/tasks/{task['id']}")).json()["status"] == "done"
 
     # Trashed: still linked; purged: the link goes, the excerpt stays.
     as_user(alice)

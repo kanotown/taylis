@@ -1,0 +1,82 @@
+{
+  "_comment": "M80 (CANVAS.md §22): the hidden marker ` <!--task:<id>-->` the server puts at the end of a checklist item a task was made from. `strip`: what a reader sees (the server's markers.strip, Desktop's stripTaskMarkers; the space before a marker goes with it; only a lower-case, well-formed id is a marker). `blocks`: the canvas dialect leaves markers out (descriptors as in canvas_markdown.json). `editor`: the editor shows each marker as an invisible stand-in, written here ⟦n⟧ = the tag character U+E0020 + n, n numbering the markers in order of first appearance; `shown` is hide(wire), and an edited text `edited` is stored as `expected` (stand-ins removed, their markers at the end of their line, one space before each). `delete`: Backspace (backward) / Delete beside a stand-in, nothing selected; `|` is the caret; null = no stand-in involved (the platform's own deletion).",
+  "strip": [
+    { "text": "- [ ] 資料を集める <!--task:0190a2b4-0000-7000-8000-000000000001-->", "expected": "- [ ] 資料を集める" },
+    { "text": "- [x] 二つ <!--task:0190a2b4-0000-7000-8000-000000000001--> <!--task:0190a2b4-0000-7000-8000-000000000002-->", "expected": "- [x] 二つ" },
+    { "text": "前<!--task:0190a2b4-0000-7000-8000-000000000001-->後", "expected": "前後" },
+    { "text": "途中 <!--task:0190a2b4-0000-7000-8000-000000000001--> の印", "expected": "途中 の印" },
+    { "text": "大文字 <!--task:0190A2B4-0000-7000-8000-000000000001-->", "expected": "大文字 <!--task:0190A2B4-0000-7000-8000-000000000001-->" },
+    { "text": "短い <!--task:123-->", "expected": "短い <!--task:123-->" },
+    { "text": "ふつうの <!-- コメント -->", "expected": "ふつうの <!-- コメント -->" }
+  ],
+  "blocks": [
+    {
+      "name": "linked items show their text only",
+      "body": "## TODO\n- [ ] 資料を集める <!--task:0190a2b4-0000-7000-8000-000000000001-->\n- [x] 発表練習 <!--task:0190a2b4-0000-7000-8000-000000000002-->\n- [ ] ふつう",
+      "blocks": [
+        { "kind": "heading", "level": 2, "text": "TODO" },
+        { "kind": "task", "items": [
+          { "level": 0, "done": false, "text": "資料を集める", "line": 1 },
+          { "level": 0, "done": true, "text": "発表練習", "line": 2 },
+          { "level": 0, "done": false, "text": "ふつう", "line": 3 }
+        ] }
+      ]
+    },
+    {
+      "name": "a marker anywhere else is hidden too",
+      "body": "本文 <!--task:0190a2b4-0000-7000-8000-000000000001-->\n- 箇条 <!--task:0190a2b4-0000-7000-8000-000000000002-->",
+      "blocks": [
+        { "kind": "paragraph", "lines": ["本文"] },
+        { "kind": "list", "ordered": false, "items": ["箇条"] }
+      ]
+    }
+  ],
+  "editor": [
+    {
+      "name": "each marker one stand-in, numbered as they come",
+      "wire": "- [ ] a <!--task:0190a2b4-0000-7000-8000-000000000001-->\n- [x] b <!--task:0190a2b4-0000-7000-8000-000000000002-->\n- [ ] c",
+      "shown": "- [ ] a⟦0⟧\n- [x] b⟦1⟧\n- [ ] c",
+      "edited": "- [ ] a⟦0⟧\n- [x] b⟦1⟧\n- [ ] c",
+      "expected": "- [ ] a <!--task:0190a2b4-0000-7000-8000-000000000001-->\n- [x] b <!--task:0190a2b4-0000-7000-8000-000000000002-->\n- [ ] c"
+    },
+    {
+      "name": "lines swapped: each marker stays with its line",
+      "wire": "- [ ] a <!--task:0190a2b4-0000-7000-8000-000000000001-->\n- [ ] b <!--task:0190a2b4-0000-7000-8000-000000000002-->",
+      "shown": "- [ ] a⟦0⟧\n- [ ] b⟦1⟧",
+      "edited": "- [ ] b⟦1⟧\n- [ ] a⟦0⟧",
+      "expected": "- [ ] b <!--task:0190a2b4-0000-7000-8000-000000000002-->\n- [ ] a <!--task:0190a2b4-0000-7000-8000-000000000001-->"
+    },
+    {
+      "name": "text typed after the stand-in: the marker goes back to the end",
+      "wire": "- [ ] a <!--task:0190a2b4-0000-7000-8000-000000000001-->",
+      "shown": "- [ ] a⟦0⟧",
+      "edited": "- [ ] a⟦0⟧ を直す",
+      "expected": "- [ ] a を直す <!--task:0190a2b4-0000-7000-8000-000000000001-->"
+    },
+    {
+      "name": "two markers on one item; a stand-in deleted with its line's text loses only that link",
+      "wire": "- [ ] a <!--task:0190a2b4-0000-7000-8000-000000000001--> <!--task:0190a2b4-0000-7000-8000-000000000002-->\n- [ ] b <!--task:0190a2b4-0000-7000-8000-000000000003-->",
+      "shown": "- [ ] a⟦0⟧⟦1⟧\n- [ ] b⟦2⟧",
+      "edited": "- [ ] a⟦0⟧⟦1⟧\n",
+      "expected": "- [ ] a <!--task:0190a2b4-0000-7000-8000-000000000001--> <!--task:0190a2b4-0000-7000-8000-000000000002-->\n"
+    },
+    {
+      "name": "a marker without the space before it gets one when stored",
+      "wire": "- [ ] a<!--task:0190a2b4-0000-7000-8000-000000000001-->",
+      "shown": "- [ ] a⟦0⟧",
+      "edited": "- [ ] a!⟦0⟧",
+      "expected": "- [ ] a! <!--task:0190a2b4-0000-7000-8000-000000000001-->"
+    }
+  ],
+  "delete": [
+    { "text": "- [ ] foo⟦0⟧|", "backward": true, "expected": "- [ ] fo⟦0⟧|" },
+    { "text": "- [ ] foo⟦0⟧|\nbar", "backward": true, "expected": "- [ ] fo⟦0⟧|\nbar" },
+    { "text": "- [ ] foo⟦0⟧⟦1⟧|", "backward": true, "expected": "- [ ] fo⟦0⟧⟦1⟧|" },
+    { "text": "- [ ] fo|o⟦0⟧", "backward": false, "expected": "- [ ] fo⟦0⟧|" },
+    { "text": "- [ ] fo|o⟦0⟧", "backward": true, "expected": null },
+    { "text": "- [ ] foo|", "backward": true, "expected": null },
+    { "text": "- [ ] foo⟦0⟧|", "backward": false, "expected": null },
+    { "text": "- [ ] foo|⟦0⟧\nbar", "backward": false, "expected": "- [ ] foo⟦0⟧|bar" },
+    { "text": "⟦0⟧|abc", "backward": true, "expected": "⟦0⟧|abc" }
+  ]
+}

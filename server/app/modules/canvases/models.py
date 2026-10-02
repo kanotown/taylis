@@ -82,9 +82,10 @@ class Canvas(Base):
 class CanvasRevision(Base):
     """One version of a canvas's body (CANVAS.md §4.3, §4.9).
 
-    kind: create | save | merge | restore (each made the canvas's head; `version` is the
-    canvas's version it produced), side (a submitted body that was merged into the head: the
-    base of that device's next save; `version` NULL), erased (its body was erased)."""
+    kind: create | save | merge | restore | task (each made the canvas's head; `version` is the
+    canvas's version it produced; task, M80: the server's change for a linked task), side (a
+    submitted body that was merged into the head: the base of that device's next save; `version`
+    NULL), erased (its body was erased)."""
 
     __tablename__ = "canvas_revisions"
 
@@ -109,7 +110,7 @@ class CanvasRevision(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('create', 'save', 'merge', 'side', 'restore', 'erased')",
+            "kind IN ('create', 'save', 'merge', 'side', 'restore', 'erased', 'task')",
             name="kind_values",
         ),
         Index("canvas_revisions_canvas_idx", "canvas_id", "created_at"),

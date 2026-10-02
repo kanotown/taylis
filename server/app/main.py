@@ -363,6 +363,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # M49: the last message of a member's conversations (ChannelOut.last_message); channels does
     # not depend on messages (the other way round), so its router gets the lookup here.
     app.state.last_messages = messages_service.last_messages
+    # M80 (CANVAS.md §22): a box ticked on an item made a task moves that task; tasks depends on
+    # canvases (not the other way round), so the canvas service gets the step here.
+    canvases.set_task_ticks_handler(tasks_service.follow_canvas_ticks)
     # M65: an AI bot without allow_private stays out of private channels and DMs; channels does
     # not depend on ai, so its router gets the check here.
     app.state.ai_private_guard = ai_service.check_private_allowed
