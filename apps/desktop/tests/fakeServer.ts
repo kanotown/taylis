@@ -388,6 +388,32 @@ export class FakeServer {
   /** GET /activity requests (filter and cursor) by user. */
   readonly activityRequests: Array<{ userId: string; filter: ActivityFilter; cursor: string | null }> = [];
 
+  /** M76: canvas mention items by user (canvas_mentions), shown under 「すべて」 and 「メンション」. */
+  readonly canvasMentions = new Map<string, ActivityItem[]>();
+
+  /**
+   * M76: a save of a canvas newly mentions `userId`: their unread item for that canvas moves, else a new one; and
+   * canvas.mentioned to them (as the server writes both in the save's transaction).
+   */
+  mentionInCanvas(userId: string, by: string, canvas: { id: string; channel_id: string; title: string }, excerpt: string): ActivityItem {
+    const at = now();
+    const held = this.canvasMentions.get(userId) ?? [];
+    const readAt = this.activityReadAt.get(userId)!;
+    const unread = held.find((item) => item.canvas?.canvas_id === canvas.id && item.at > readAt);
+    const revId = `rev-${++this.eventId}`;
+    const fields = { canvas_id: canvas.id, channel_id: canvas.channel_id, title: canvas.title, excerpt, rev_id: revId };
+    let item: ActivityItem;
+    if (unread) {
+      Object.assign(unread, { at, actor_ids: [by], canvas: { ...unread.canvas!, ...fields } });
+      item = unread;
+    } else {
+      item = { kind: "canvas_mention", at, message: null, actor_ids: [by], emojis: [], canvas: { item_id: `cm-${held.length + 1}-${userId}`, ...fields } };
+      this.canvasMentions.set(userId, [...held, item]);
+    }
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "canvas.mentioned", ts: at, channel_id: canvas.channel_id, seq: null, data: { canvas_id: canvas.id, channel_id: canvas.channel_id, rev_id: revId, title: canvas.title, by_user_id: by } } as EventFrame);
+    return item;
+  }
+
   private mentions(message: MessageOut, userId: string): boolean {
     return message.mention_all === true || (message.mentioned_user_ids ?? []).includes(userId);
   }
@@ -413,7 +439,11 @@ export class FakeServer {
         }
       }
     }
-    return items.sort((a, b) => b.at.localeCompare(a.at) || b.kind.localeCompare(a.kind) || b.message.id.localeCompare(a.message.id));
+    if (filter === "all" || filter === "mentions") {
+      for (const item of this.canvasMentions.get(userId) ?? []) if (this.channels.get(item.canvas!.channel_id)?.members.has(userId)) items.push({ ...item });
+    }
+    const ref = (item: ActivityItem) => item.message?.id ?? item.canvas?.item_id ?? "";
+    return items.sort((a, b) => b.at.localeCompare(a.at) || b.kind.localeCompare(a.kind) || ref(b).localeCompare(ref(a)));
   }
 
   listActivity(userId: string, filter: ActivityFilter, cursor: string | null, limit: number): ActivityListOut {
@@ -426,7 +456,7 @@ export class FakeServer {
   activitySummary(userId: string): ActivitySummaryOut {
     const readAt = this.activityReadAt.get(userId)!;
     const unread = this.activityItems(userId).filter((item) => item.at > readAt);
-    return { read_at: readAt, unread_count: Math.min(unread.length, 99), mention_unread: unread.some((item) => item.kind === "mention") };
+    return { read_at: readAt, unread_count: Math.min(unread.length, 99), mention_unread: unread.some((item) => item.kind === "mention" || item.kind === "canvas_mention") };
   }
 
   /** PUT /activity/read: forward only, never past now; activity.read to the user's devices when it moved. */

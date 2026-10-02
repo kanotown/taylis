@@ -8,7 +8,7 @@ import type { ActivityItem, ActivitySummaryOut, MessageOut, ReactionAdded } from
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import type { ChannelState } from "../src/sync/types";
-import { activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, movesActivityRead, newestActivityAt } from "../src/ui/activity";
+import { activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isShownActivity, movesActivityRead, newestActivityAt } from "../src/ui/activity";
 import { activityBadge } from "../src/ui/mobileTabs";
 import { FakeServer, MemoryPersistence } from "./fakeServer";
 
@@ -50,6 +50,24 @@ describe("activity rows", () => {
     const first = [item("mention", "a", "3"), item("reaction", "b", "2")];
     const next = [item("reaction", "b", "2"), item("mention", "b", "2"), item("thread_reply", "c", "1")];
     expect(appendActivityPage(first, next).map(activityKey)).toEqual(["mention:a", "reaction:b", "mention:b", "thread_reply:c"]);
+  });
+
+  it("M76: a canvas mention has no message: keyed by its own id, worded with the canvas's title, shown only with its canvas", () => {
+    const canvasItem: ActivityItem = {
+      kind: "canvas_mention",
+      at: "2026-10-02T01:00:00Z",
+      message: null,
+      actor_ids: ["u2"],
+      emojis: [],
+      canvas: { item_id: "cm1", canvas_id: "cv1", channel_id: "c1", title: "議事録", excerpt: "予稿 @山田", rev_id: "r1" },
+    };
+    expect(activityKey(canvasItem)).toBe("canvas_mention:cm1");
+    expect(activityHeadlineText(canvasItem, nameOf)).toBe("佐藤 が「議事録」であなたをメンションしました");
+    expect(isShownActivity(canvasItem)).toBe(true);
+    expect(isShownActivity({ ...canvasItem, canvas: null })).toBe(false);
+    expect(isShownActivity({ ...canvasItem, kind: "later" as never })).toBe(false);
+    expect(isShownActivity(item("mention", "m1", "1"))).toBe(true);
+    expect(appendActivityPage([canvasItem], [{ ...canvasItem }, item("mention", "m1", "1")]).map(activityKey)).toEqual(["canvas_mention:cm1", "mention:m1"]);
   });
 });
 

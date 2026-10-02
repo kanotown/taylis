@@ -18,7 +18,8 @@ Search lives in the search module (read-only access to canvases, ARCHITECTURE.md
 M72 (CANVAS.md §18.1): a save, a merge or a create whose body mentions someone (`<@id>`, or a
 `<@group:id>` with them in it) who was not mentioned in the head before writes canvas.mentioned to
 each such member of the conversation (not the author), in the same transaction; the push planner
-notifies them. A restore or a tick never does.
+notifies them. A restore or a tick never does. M76 (§20): the same people (not bots) get an
+activity item (activity/canvas_mentions.py), one per canvas while unread.
 """
 
 import asyncio
@@ -37,6 +38,7 @@ from app.core.errors import AppError, bad_request, conflict, forbidden, not_foun
 from app.core.ids import uuid7
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
+from app.modules.activity import canvas_mentions
 from app.modules.attachments import service as attachments
 from app.modules.audit import service as audit
 from app.modules.canvases import merge
@@ -85,7 +87,13 @@ from app.modules.channels import service as channels
 from app.modules.channels.models import Channel, ChannelMember
 from app.modules.groups import service as groups
 from app.modules.messages import service as messages
-from app.modules.messages.mentions import MAX_MENTIONS, MENTION_GROUP, MENTION_USER
+from app.modules.messages.mentions import (
+    MAX_MENTIONS,
+    MENTION_GROUP,
+    MENTION_USER,
+    extract_group_mentions,
+    extract_mentions,
+)
 from app.modules.messages.schemas import MessageCreate
 from app.modules.users import service as users
 from app.modules.users.models import User
@@ -198,6 +206,38 @@ async def _mentioned_people(db: AsyncSession, body: str) -> set[uuid.UUID]:
     return user_ids
 
 
+async def _record_activity(
+    db: AsyncSession,
+    canvas: Canvas,
+    actor: User,
+    person: User,
+    revision_id: uuid.UUID,
+    groups_with_person: list[uuid.UUID],
+    at: datetime,
+) -> None:
+    """M76 (CANVAS.md §20): the person's activity item, with the line around the mention (names
+    as the person sees them)."""
+    found = canvas_mentions.find_mention(canvas.body, person.id, groups_with_person)
+    excerpt = ""
+    if found is not None:
+        line, position = found
+        visible = await channels.visible_user_ids(db, person)
+        shown = [uid for uid in extract_mentions(line)[0] if visible is None or uid in visible]
+        names = {uid: user.display_name for uid, user in (await users.get_users(db, shown)).items()}
+        names.update(await groups.names_for(db, extract_group_mentions(line)))
+        excerpt = canvas_mentions.excerpt_around(line, position, names)
+    await canvas_mentions.record(
+        db,
+        user_id=person.id,
+        read_at=person.activity_read_at,
+        canvas_id=canvas.id,
+        rev_id=revision_id,
+        actor_id=actor.id,
+        excerpt=excerpt,
+        at=at,
+    )
+
+
 async def _notify_mentions(
     db: AsyncSession, canvas: Canvas, actor: User, before: str, revision_id: uuid.UUID
 ) -> None:
@@ -213,7 +253,24 @@ async def _notify_mentions(
     members = set(await channels.member_ids_of(db, canvas.channel_id))
     people = await users.get_users(db, sorted(added & members))
     targets = sorted(uid for uid, user in people.items() if user.deactivated_at is None)
+    group_members: dict[uuid.UUID, set[uuid.UUID]] | None = None
+    now = utcnow()
     for user_id in targets[:MAX_MENTIONS]:
+        person = people[user_id]
+        if person.role != "bot":  # M76 (§20): the activity item; bots have no activity
+            if group_members is None and f"<@{user_id}>" not in canvas.body:
+                group_members = {
+                    gid: set(await groups.expand(db, [gid])) for gid in sorted(after_groups)
+                }
+            await _record_activity(
+                db,
+                canvas,
+                actor,
+                person,
+                revision_id,
+                [gid for gid, ids in (group_members or {}).items() if user_id in ids],
+                now,
+            )
         data = CanvasMentionedData(
             canvas_id=canvas.id,
             channel_id=canvas.channel_id,

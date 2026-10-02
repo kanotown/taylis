@@ -705,7 +705,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
    * that tab's screens.
    */
   const openActivityItem = (item: ActivityItem) => {
+    // M76: a canvas mention opens the canvas (as its notification does).
+    if (item.canvas) {
+      openCanvas(item.canvas.channel_id, item.canvas.canvas_id);
+      return;
+    }
     const message = item.message;
+    if (!message) return;
     if (!compactRef.current || !message.parent_id) {
       revealFromList(message);
       return;

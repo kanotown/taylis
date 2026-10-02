@@ -53,6 +53,49 @@
         "title": "AckRemindOut",
         "type": "object"
       },
+      "ActivityCanvas": {
+        "description": "A canvas_mention item's canvas (M76): it opens the canvas in its conversation.",
+        "properties": {
+          "canvas_id": {
+            "format": "uuid",
+            "title": "Canvas Id",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "rev_id": {
+            "format": "uuid",
+            "title": "Rev Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "canvas_id",
+          "channel_id",
+          "title",
+          "excerpt",
+          "rev_id"
+        ],
+        "title": "ActivityCanvas",
+        "type": "object"
+      },
       "ActivityItem": {
         "properties": {
           "actor_ids": {
@@ -68,6 +111,16 @@
             "title": "At",
             "type": "string"
           },
+          "canvas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivityCanvas"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "emojis": {
             "default": [],
             "items": {
@@ -80,19 +133,26 @@
             "enum": [
               "mention",
               "reaction",
-              "thread_reply"
+              "thread_reply",
+              "canvas_mention"
             ],
             "title": "Kind",
             "type": "string"
           },
           "message": {
-            "$ref": "#/components/schemas/MessageOut"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "kind",
           "at",
-          "message",
           "actor_ids"
         ],
         "title": "ActivityItem",
@@ -10121,7 +10181,7 @@
   "paths": {
     "/api/v1/activity": {
       "get": {
-        "description": "Mentions of me, reactions to my messages and replies in threads I follow, newest first\n(M39).",
+        "description": "Mentions of me, reactions to my messages and replies in threads I follow, newest first\n(M39); with `include=canvas_mention`, canvases that mention me too (M76, under all and\nmentions).",
         "operationId": "list_activity_api_v1_activity_get",
         "parameters": [
           {
@@ -10168,6 +10228,21 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Include",
+              "type": "array"
+            }
           }
         ],
         "responses": {
@@ -10205,8 +10280,25 @@
     },
     "/api/v1/activity/read": {
       "put": {
-        "description": "Everything up to `read_at` is read (it only moves forward).",
+        "description": "Everything up to `read_at` is read (it only moves forward); every kind shares the one\nposition.",
         "operationId": "mark_activity_read_api_v1_activity_read_put",
+        "parameters": [
+          {
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Include",
+              "type": "array"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -10252,8 +10344,25 @@
     },
     "/api/v1/activity/summary": {
       "get": {
-        "description": "The activity tab's badge: items after my read position.",
+        "description": "The activity tab's badge: items after my read position (the `include`d kinds too).",
         "operationId": "activity_summary_api_v1_activity_summary_get",
+        "parameters": [
+          {
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "default": [],
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Include",
+              "type": "array"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -10264,6 +10373,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -19379,7 +19498,23 @@
     },
     "/api/v1/sync/bootstrap": {
       "get": {
+        "description": "`activity_include`: as GET /activity/summary's `include` (M76: canvas_mention).",
         "operationId": "bootstrap_api_v1_sync_bootstrap_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "activity_include",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Activity Include",
+              "type": "array"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -19390,6 +19525,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [

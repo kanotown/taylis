@@ -858,6 +858,20 @@ CREATE TABLE canvas_revisions (
 CREATE INDEX canvas_revisions_canvas_idx ON canvas_revisions (canvas_id, created_at);
 CREATE UNIQUE INDEX canvas_revisions_save_uniq ON canvas_revisions (author_id, client_save_id) WHERE client_save_id IS NOT NULL;
 
+-- M76 (CANVAS.md §20、移行 0066): キャンバスでメンションされた人のアクティビティの項目。未読の間は 1 キャンバス 1 行 (動かす)
+CREATE TABLE canvas_mentions (
+  id          uuid PRIMARY KEY,
+  user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  canvas_id   uuid NOT NULL REFERENCES canvases(id) ON DELETE CASCADE,  -- 完全削除で消える。ゴミ箱の間は返さない
+  rev_id      uuid NOT NULL,                 -- メンションを足した版 (外部キーなし: 版は間引かれる)
+  actor_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  excerpt     text NOT NULL DEFAULT '',      -- メンションの前後の 1 行 (名前に置き換え、200 文字)
+  at          timestamptz NOT NULL DEFAULT now(),  -- activity_read_at と比べる
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX canvas_mentions_user_idx ON canvas_mentions (user_id, at DESC);
+CREATE INDEX canvas_mentions_canvas_idx ON canvas_mentions (canvas_id, user_id);
+
 CREATE TABLE canvas_templates (
   id          uuid PRIMARY KEY,
   key         varchar(40) NOT NULL UNIQUE,  -- 組み込み: weekly_report | minutes | research_plan | conference_checklist | thesis_schedule。admin が足したものは custom_…

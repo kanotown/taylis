@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ActivityFilter, ActivityItem, MessageOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ThreadEntry } from "../sync/types";
-import { ACTIVITY_FILTER_LABELS, ACTIVITY_FILTERS, activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, movesActivityRead, newestActivityAt } from "./activity";
+import { ACTIVITY_FILTER_LABELS, ACTIVITY_FILTERS, activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isShownActivity, movesActivityRead, newestActivityAt } from "./activity";
 import { Avatar } from "./Avatar";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { fullTimestamp } from "./format";
@@ -88,7 +88,9 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
     requests.current[which] = request;
     setLists((current) => ({ ...current, [which]: { items: current[which]?.items ?? [], cursor: current[which]?.cursor ?? null, loading: true } }));
     try {
-      const page = await api.listActivity({ filter: which, cursor, limit: ACTIVITY_PAGE });
+      const answer = await api.listActivity({ filter: which, cursor, limit: ACTIVITY_PAGE });
+      // A kind this version cannot show (a newer server) is skipped; the cursor still walks past it.
+      const page = { ...answer, items: answer.items.filter(isShownActivity) };
       if (requests.current[which] !== request) return; // a newer load of this list answers instead
       setFailed(false);
       setSeenFrom((current) => current ?? page.read_at);
@@ -212,17 +214,27 @@ const KIND_ICON = {
   reaction: { Icon: SmilePlus, className: "bg-amber-500" },
 } as const;
 
+/** What a row quotes: the message's opening words, or (a canvas mention, M76) the line around the mention. */
+function activityExcerpt(item: ActivityItem, controller: AppController): string {
+  if (item.canvas) return item.canvas.excerpt;
+  const message = item.message;
+  if (!message) return "";
+  const store = controller.store;
+  return message.deleted ? "(削除されたメッセージ)" : plainText(mentionsToNames(message.body, store.users, store.groups), 200) || message.attachments.map((a) => a.filename).join(", ");
+}
+
 /** One item: who (their pictures) did what, where and when, and the message's opening words. */
 function ActivityRow({ controller, item, unread, onOpen }: { controller: AppController; item: ActivityItem; unread: boolean; onOpen: () => void }) {
   const store = controller.store;
   const nameOf = (id: string) => store.users.get(id)?.display_name ?? "メンバー";
   const { who, what } = activityHeadline(item, nameOf);
-  const channel = store.getChannel(item.message.channel_id);
+  const channelId = item.message?.channel_id ?? item.canvas?.channel_id ?? "";
+  const channel = store.getChannel(channelId);
   const where = channel ? channelTitle(channel, controller) : "";
-  const message = item.message;
-  const excerpt = message.deleted ? "(削除されたメッセージ)" : plainText(mentionsToNames(message.body, store.users, store.groups), 200) || message.attachments.map((a) => a.filename).join(", ");
+  const excerpt = activityExcerpt(item, controller);
   const actors = item.actor_ids.slice(0, 3);
-  const { Icon, className: iconClass } = KIND_ICON[item.kind];
+  const fallbackActor = item.message?.sender_id ?? "";
+  const kindIcon = item.kind === "canvas_mention" ? null : KIND_ICON[item.kind];
   return (
     <button
       type="button"
@@ -243,11 +255,15 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
             ))}
           </span>
         ) : (
-          <Avatar id={actors[0] ?? message.sender_id} name={nameOf(actors[0] ?? message.sender_id)} size={40} className="rounded-xl" />
+          <Avatar id={actors[0] ?? fallbackActor} name={nameOf(actors[0] ?? fallbackActor)} size={40} className="rounded-xl" />
         )}
-        <span className={cn("absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full text-white ring-2 ring-canvas", iconClass)}>
-          <Icon size={11} strokeWidth={2.6} />
-        </span>
+        {kindIcon ? (
+          <span className={cn("absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full text-white ring-2 ring-canvas", kindIcon.className)}>
+            <kindIcon.Icon size={11} strokeWidth={2.6} />
+          </span>
+        ) : (
+          <span data-kind-icon="canvas" className="absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-canvas text-[11px] leading-none ring-2 ring-canvas">📝</span>
+        )}
       </span>
       <span className="min-w-0 flex-1 pl-1">
         <span className="flex items-baseline gap-2">
@@ -265,7 +281,7 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
           </span>
           <time dateTime={item.at} title={fullTimestamp(item.at)} className="shrink-0 text-xs text-muted">{dmTimeLabel(item.at)}</time>
         </span>
-        {where && <span className="block truncate text-xs text-muted">{item.kind === "thread_reply" ? `${where} のスレッド` : where}</span>}
+        {where && <span className="block truncate text-xs text-muted">{item.kind === "thread_reply" ? `${where} のスレッド` : item.kind === "canvas_mention" ? `${where} のキャンバス` : where}</span>}
         <span className="mt-0.5 line-clamp-2 text-[13.5px] leading-snug text-ink/80">{item.kind === "reaction" ? `「${excerpt}」` : excerpt}</span>
       </span>
     </button>
