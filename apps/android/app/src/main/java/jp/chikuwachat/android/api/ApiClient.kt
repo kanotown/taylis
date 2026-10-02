@@ -8,6 +8,7 @@ import jp.chikuwachat.android.ui.OccurrenceScope
 import jp.chikuwachat.android.sync.TaskApi
 import jp.chikuwachat.android.sync.AiApi
 import jp.chikuwachat.android.sync.CanvasApi
+import jp.chikuwachat.android.sync.MyCanvasesApi
 import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.DraftApi
@@ -67,7 +68,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi {
+) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -623,6 +624,10 @@ class ApiClient(
     /** The conversation's canvases without bodies, most recently updated first (`trashed`: its trash instead). */
     override suspend fun listCanvases(channelId: String, trashed: Boolean): List<CanvasMeta> =
         request("GET", "/api/v1/channels/$channelId/canvases" + if (trashed) "?trashed=true" else "")
+
+    /** M78 (CANVAS.md §21): the canvases of all my conversations, most recently updated first, a page at a time. */
+    override suspend fun myCanvases(cursor: String?, limit: Int): CanvasPage =
+        request("GET", "/api/v1/canvases?limit=$limit" + (cursor?.let { "&cursor=" + URLEncoder.encode(it, "UTF-8") } ?: ""))
 
     /** A new canvas (a retry with the same client_save_id returns the first one). The server fills a template in `tz`. */
     override suspend fun createCanvas(channelId: String, clientSaveId: String, templateKey: String?, title: String?, asTab: Boolean, tz: String?): CanvasOut =

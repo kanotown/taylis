@@ -94,6 +94,13 @@ sealed interface Route {
     @Serializable @SerialName("mentions")
     data object Mentions : Pane { override val keptUnderConversation get() = false }
 
+    /**
+     * M78 (CANVAS.md §21.2): 「キャンバス」 — the canvases of all my conversations, from the home's tile. A row's canvas opens
+     * over it ([MainNav.openCanvas]) and back returns to it.
+     */
+    @Serializable @SerialName("canvases")
+    data object Canvases : Pane { override val keptUnderConversation get() = true }
+
     /** 「ファイル」 of every channel, or of the one picked in its scope menu. */
     @Serializable @SerialName("files")
     data class Files(val channelId: String? = null) : Pane { override val keptUnderConversation get() = false }

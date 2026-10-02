@@ -1602,6 +1602,9 @@ class AppController(private val app: Application) {
 
     // --- canvases (M46, CANVAS.md §4.5) ---------------------------------------------------------
 
+    /** M78 (CANVAS.md §21.2): `GET /canvases` for the home's 「キャンバス」 (null: signed out). */
+    val myCanvasesApi: jp.chikuwachat.android.sync.MyCanvasesApi? get() = api
+
     /**
      * A `/c/<id>` link (CANVAS.md §4.13): the canvas opens in its conversation's 「キャンバス」 tab. Someone outside the
      * conversation is told so (403 not_a_member), a canvas in the trash or gone as not found.

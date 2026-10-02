@@ -74,6 +74,7 @@ interface LocalDao {
 
     @Query("SELECT * FROM canvases WHERE id = :id") fun canvas(id: String): CanvasRow?
     @Query("SELECT * FROM canvases WHERE channelId = :channelId") fun canvasesOf(channelId: String): List<CanvasRow>
+    @Query("SELECT * FROM canvases") fun allCanvases(): List<CanvasRow>
     @Upsert fun putCanvas(row: CanvasRow)
     @Query("DELETE FROM canvases WHERE id = :id") fun deleteCanvas(id: String)
     @Query("DELETE FROM canvases WHERE channelId = :channelId") fun deleteCanvases(channelId: String)
@@ -124,6 +125,8 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
     override fun loadCanvas(id: String): CachedCanvas? = read { dao.canvas(id)?.let { decode(CachedCanvas.serializer(), it.json) } }
     override fun loadCanvases(channelId: String): List<CachedCanvas> =
         read { dao.canvasesOf(channelId).mapNotNull { decode(CachedCanvas.serializer(), it.json) } } ?: emptyList()
+    override fun loadAllCanvases(): List<CachedCanvas> =
+        read { dao.allCanvases().mapNotNull { decode(CachedCanvas.serializer(), it.json) } } ?: emptyList()
     override fun deleteCanvas(id: String) = run { dao.deleteCanvas(id) }
     override fun deleteCanvases(channelId: String) = run { dao.deleteCanvases(channelId) }
 

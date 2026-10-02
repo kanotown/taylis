@@ -42,6 +42,7 @@ class MemoryPersistence : Persistence {
     }
     override fun loadCanvas(id: String): CachedCanvas? = canvases[id]
     override fun loadCanvases(channelId: String): List<CachedCanvas> = canvases.values.filter { it.canvas.channelId == channelId }
+    override fun loadAllCanvases(): List<CachedCanvas> = canvases.values.toList()
     override fun deleteCanvas(id: String) { canvases.remove(id) }
     override fun deleteCanvases(channelId: String) { canvases.values.removeAll { it.canvas.channelId == channelId } }
 }
