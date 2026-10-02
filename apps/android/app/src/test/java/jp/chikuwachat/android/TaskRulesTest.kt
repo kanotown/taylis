@@ -204,7 +204,8 @@ class TaskRulesTest {
         assertEquals("題名は 200 文字までです", TaskRules.draftProblem(draft.copy(title = "あ".repeat(201))))
         assertEquals("メモは 4000 文字までです", TaskRules.draftProblem(draft.copy(notes = "x".repeat(4001))))
         assertNull(TaskRules.draftProblem(draft))
-        assertEquals(TaskDraft("資料", "メモ", "todo", "2026-10-05", listOf("u-a")), draft)
+        // M84: the rule picker starts from the due date (its weekday); no time, no checklist.
+        assertEquals(TaskDraft("資料", "メモ", "todo", "2026-10-05", listOf("u-a")), draft.copy(repeat = jp.chikuwachat.android.ui.RepeatDraft()))
     }
 
     @Test

@@ -820,6 +820,28 @@ class ApiClient(
         requestRaw("DELETE", "/api/v1/tasks/$taskId", null, auth = true, retry401 = true)
     }
 
+    // --- M84: columns and checklist items (TASKS.md §11.3) ---
+
+    override suspend fun moveTaskToColumn(taskId: String, columnId: String, neighbors: TaskNeighbors): TaskOut =
+        request("POST", "/api/v1/tasks/$taskId/move", taskColumnMoveJson(columnId, neighbors))
+
+    override suspend fun updateSubtask(taskId: String, subtaskId: String, done: Boolean): TaskOut =
+        request("PATCH", "/api/v1/tasks/$taskId/subtasks/$subtaskId", buildJsonObject { put("done", JsonPrimitive(done)) })
+
+    /** A server before M81 answers 404 / 422 (the route read as /tasks/{task_id}): the hub reads that as no columns. */
+    override suspend fun listTaskColumns(channelId: String): List<TaskColumnOut> =
+        request("GET", "/api/v1/tasks/columns?channel_id=" + Enc.encode(channelId, "UTF-8"))
+
+    override suspend fun createTaskColumn(channelId: String, name: String, status: String, afterId: String?): TaskColumnOut =
+        request("POST", "/api/v1/tasks/columns", taskColumnCreateJson(channelId, name, status, afterId))
+
+    override suspend fun updateTaskColumn(columnId: String, name: String?, move: Boolean, afterId: String?): TaskColumnOut =
+        request("PATCH", "/api/v1/tasks/columns/$columnId", taskColumnUpdateJson(name, move, afterId))
+
+    override suspend fun deleteTaskColumn(columnId: String) {
+        requestRaw("DELETE", "/api/v1/tasks/columns/$columnId", null, auth = true, retry401 = true)
+    }
+
     // --- AI (docs/AI.md §5, M66) -----------------------------------------------------------------
 
     override suspend fun aiStatus(): AiStatusOut = request("GET", "/api/v1/ai/status")
