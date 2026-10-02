@@ -1478,7 +1478,34 @@ API とイベントは変わらない (`RevisionKind` に `task` が増えただ
 4. **「タスクにする」**: 題名・抜粋は印を除き、`source_canvas_line` は本文の行そのまま。
 5. 変えないもの: 保存のループ、マージ、オフラインの写し (本文はそのまま持つ)、タスクの画面 (`canvas_source` は今のまま)。
 
-### 22.8 入れなかったもの
+### 22.8 M83 iOS (build 76)
+
+- 規則は `UI/CanvasMarkers.swift` (`CanvasMarkers.strip`・`CanvasMarkers.Table`・`CanvasMarkers.deleteBeside`)。Desktop の
+  `canvasMarkers.ts` をそのまま移したもので、`canvas_task_markers.json` の 4 つの節 (`strip` / `blocks` / `editor` / `delete`) を
+  すべて `CanvasMarkersFixtureTests` で確かめる。位置はすべて UTF-16 (`NSString` / `NSRange`)。見えない文字は U+E0020 + n
+  (サロゲートペアの 2 単位) で、前の文字と 1 つの `Character` になる (テストで確かめている)。描くと幅 0 になることもテストで確かめた。
+- **表示**: `BodyTokenizer.parseLinedBlocks(…, canvas: true)` が各行から印を除く (行番号は変わらない)。閲覧・セクションの見出し・
+  履歴の「この版の本文」・オフラインの写し (M74、同じ `CanvasBodyView`) がこれで印を出さない。目次 (`CanvasText.outline`、
+  「編集中」の見出しの名前にも使う) も印と見えない文字を除く。
+- **編集欄** (全体とセクション): `CanvasEditorModel` が編集欄ごとに `CanvasMarkers.Table` を持ち、本文 → 表示は `hide` してから
+  メンションを名前に、表示 → 本文は `show` (印をその行の末尾、前に空白 1 つ) してからメンションを `<@id>` に戻す。マージで来た
+  本文も同じ表を通す。セクションの範囲は保存する本文の長さで数えるので変わらない。
+  - 見えない文字の隣の Backspace / Delete (選択なし、1 文字分): `textView(_:shouldChangeTextIn:replacementText:)` で
+    `deleteBeside` の結果に置き換え、UIKit の `replace(_:withText:)` を通すので取り消し (シェイク / ⌘Z) で戻る。UIKit は
+    Backspace で書記素 (前の文字と見えない文字) ごと消そうとするので、これが無いとリンクが切れる。単語ごとの削除 (option +
+    Backspace) と選択した範囲の削除は UIKit のまま (見えない文字も消え、リンクが切れる。タスクは残る)。
+  - 編集欄の文字表示は `CanvasUITextView` (`UITextView` の子)。**コピー**は見えない文字を除いた文。**切り取り**はそれに加えて
+    印付きの形 (本文の形) を独自の種類 `jp.chikuwachat.canvas-text` でも持ち、キャンバスの編集欄に貼ると印ごと戻る (普通の文字
+    と一致するときだけ。ほかで何かをコピーすれば消える)。コピーして貼った行には印が付かない (Desktop と同じ)。
+- **履歴**: 種類 `task` の名前は「タスクと連動」。差分 (`CanvasHistory` の比較)、競合の画面 (重なった箇所・元の文)、版が
+  整理されたときの見比べ、「本文をコピー」「自分の本文をコピー」は印を除いた文。印を足しただけの版の差分は空になる。
+- **「タスクにする」**: `TaskRules.checklistItem` の `text` (題名と抜粋の元) は印を除き、`line` (`source_canvas_line`) は本文の
+  行そのまま。
+- ホームの「キャンバス」 (M78) の一覧は本文を出さないので変更なし。検索とアクティビティの抜粋はサーバが印を除いて返す。
+- 入れなかったもの: ドラッグ & ドロップで編集欄から文字を外へ運ぶと見えない文字が付いたまま (見えない。ほかのアプリでは
+  ただの不可視文字)。編集欄の外 (共有メニューなど) は今までどおり。
+
+### 22.10 入れなかったもの
 
 - 行にタスクの有無を出す印 (アイコン) と、リンク済みの行で「タスクにする」を隠すこと: 印が見えないままなので要望が出てから
   (タスクを消しても印は残るため、隠すと作り直せなくなる)。

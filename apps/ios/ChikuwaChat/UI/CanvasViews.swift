@@ -834,7 +834,7 @@ private struct CanvasConflictSheet: View {
         Task { await saver.resolveConflict(choice) }
     }
 
-    private func names(_ text: String) -> String { Mentions.toNames(text, users: controller.store.users, groups: controller.store.groups) }
+    private func names(_ text: String) -> String { Mentions.toNames(CanvasMarkers.strip(text), users: controller.store.users, groups: controller.store.groups) }
 
     private func side(_ label: String, _ text: String, mine: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -892,7 +892,7 @@ private struct CanvasExpiredSheet: View {
     private func side(_ label: String, _ text: String, mine: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            Text(Mentions.toNames(text, users: controller.store.users, groups: controller.store.groups))
+            Text(Mentions.toNames(CanvasMarkers.strip(text), users: controller.store.users, groups: controller.store.groups))
                 .font(.callout).fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

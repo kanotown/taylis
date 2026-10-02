@@ -168,7 +168,10 @@ enum BodyTokenizer {
 
     /// The blocks with the line each starts on (0-based): a canvas's outline and section editing find its headings.
     static func parseLinedBlocks(_ body: String, canvas: Bool = false) -> [(block: BodyBlock, line: Int)] {
-        let lines = body.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n")
+        let split = body.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n")
+        // M83 (CANVAS.md §22): a canvas's task markers are never shown; the lines stay where they are (a tick still
+        // changes its line of the stored body, the marker with it).
+        let lines = canvas ? split.map(CanvasMarkers.strip) : split
         func blank(_ index: Int) -> Bool { index < 0 || index >= lines.count || lines[index].trimmingCharacters(in: .whitespaces).isEmpty }
         func isTask(_ index: Int) -> Bool { canvas && index < lines.count && firstMatch(CanvasText.taskLine, lines[index]) != nil }
         func isImage(_ index: Int) -> Bool { canvas && firstMatch(imageLine, lines[index]) != nil }

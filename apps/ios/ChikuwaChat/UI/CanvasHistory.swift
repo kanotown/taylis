@@ -81,6 +81,7 @@ final class CanvasHistoryModel {
         case "side": "送信した版"
         case "restore": "復元"
         case "erased": "本文を消去"
+        case "task": "タスクと連動" // M83: the server's marker or tick for a linked task (CANVAS.md §22)
         default: "編集"
         }
     }
@@ -394,7 +395,7 @@ struct CanvasRevisionDetail: View {
             return
         }
         let other = otherId.flatMap { model.bodies[$0] } ?? ""
-        let names = { (text: String) in Mentions.toNames(text, users: controller.store.users, groups: controller.store.groups) }
+        let names = { (text: String) in Mentions.toNames(CanvasMarkers.strip(text), users: controller.store.users, groups: controller.store.groups) }
         // Previous → this version; this version → the current one.
         let (from, to) = mode == .previous ? (names(other), names(mine)) : (names(mine), names(other))
         diff = await Task.detached(priority: .userInitiated) { CanvasDiff.rows(CanvasDiff.lines(from, to)) }.value

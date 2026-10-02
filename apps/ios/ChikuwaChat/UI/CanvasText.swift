@@ -129,7 +129,7 @@ enum CanvasText {
             if fenced { continue }
             let ns = line as NSString
             if let match = headingLine.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)) {
-                let text = ns.substring(with: match.range(at: 2)).replacingOccurrences(of: #"[*_~`]"#, with: "", options: .regularExpression)
+                let text = CanvasMarkers.stripStandIns(CanvasMarkers.strip(ns.substring(with: match.range(at: 2)))).replacingOccurrences(of: #"[*_~`]"#, with: "", options: .regularExpression)
                 entries.append(OutlineEntry(level: match.range(at: 1).length, text: text.trimmingCharacters(in: .whitespaces), line: index))
             }
         }

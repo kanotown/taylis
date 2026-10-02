@@ -228,9 +228,9 @@ extension AppController {
         }
     }
 
-    /// A canvas's body as a reader sees it (mentions as names) on the clipboard.
+    /// A canvas's body as a reader sees it (mentions as names, no task markers) on the clipboard.
     func copyCanvasText(_ text: String) {
-        UIPasteboard.general.string = Mentions.decode(text, users: store.users, groups: store.groups)
+        UIPasteboard.general.string = Mentions.decode(CanvasMarkers.strip(text), users: store.users, groups: store.groups)
         notice = "本文をコピーしました"
     }
 
