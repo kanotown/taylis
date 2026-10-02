@@ -63,5 +63,5 @@ ROADMAP.md §5 の表。実際の番号は着手したときに空いている�
 
 ## 6. リリースと片付け
 
-- 本番は v0.1.19 (42d3802、2026-10-02)。次の v0.1.20: M68〜M71 (カレンダーの繰り返しと iCal、「AI に聞く」)、移行 0063・0064、iOS build 70。
+- 本番は v0.1.19 (42d3802、2026-10-02)。次の v0.1.20: M68〜M73 (カレンダーの繰り返しと iCal、「AI に聞く」、Canvas Phase 2)、移行 0063〜0065、iOS build 71。
 - 開発サーバのテスト用のチャンネル (#canvas-m43、#canvas-m44、m46-private、#quote-test、#tab-test、#tab-sp、#tab-tt、#arrival-test、#arrival-android、#link-test など) は、利用者の了承を得てから片付ける。
