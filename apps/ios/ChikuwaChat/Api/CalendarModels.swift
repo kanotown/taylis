@@ -8,6 +8,8 @@ struct CalendarAlarmOut: Codable, Equatable, Hashable {
     let minutesBefore: Int
     let fireAt: String
     let status: String
+    /// M69 (§10.4): which occurrence of a recurring event `fireAt` is for (nil: a one-off event, or a server before M68).
+    var occurrenceStart: String? = nil
 }
 
 /// An event as I see it (GET /calendar/events and the answers to my changes). calendar.event.updated carries the same
@@ -33,12 +35,26 @@ struct CalendarEventOut: Identifiable, Equatable, Hashable {
     var updatedAt: String
     var canEdit: Bool
     var alarm: CalendarAlarmOut?
+    /// M69 (CALENDAR.md §10.3): the series an occurrence belongs to (a one-off event: its own id; nil from a server before
+    /// M68 — read `series`).
+    var seriesId: String? = nil
+    /// The occurrence's key: its original start ("2030-01-10T05:00:00Z", all-day "2030-01-10"); nil before M68.
+    var occurrenceStart: String? = nil
+    var recurring = false
+    /// The series' rule (normalized RRULE) and the zone it repeats in.
+    var rrule: String? = nil
+    var tz: String? = nil
+
+    /// The series' id (what the occurrence calls, the alarm and the scope dialog use).
+    var series: String { seriesId ?? id }
+    /// The occurrence's key, or the event's own start for a one-off event from an older server.
+    var occurrenceKey: String { occurrenceStart ?? startsAt ?? startDate ?? "" }
 }
 
 extension CalendarEventOut: Decodable {
     private enum CodingKeys: String, CodingKey {
         case id, channelId, channelName, ownerId, title, allDay, startsAt, endsAt, startDate, endDate, location, description, createdAt,
-             updatedAt, canEdit, alarm
+             updatedAt, canEdit, alarm, seriesId, occurrenceStart, recurring, rrule, tz
     }
 
     init(from decoder: Decoder) throws {
@@ -59,6 +75,12 @@ extension CalendarEventOut: Decodable {
         updatedAt = try c.decode(String.self, forKey: .updatedAt)
         canEdit = try c.decodeIfPresent(Bool.self, forKey: .canEdit) ?? false
         alarm = try c.decodeIfPresent(CalendarAlarmOut.self, forKey: .alarm)
+        // M68's fields, leniently: a server before M68 sends none of them (every event is then a one-off).
+        seriesId = try? c.decodeIfPresent(String.self, forKey: .seriesId)
+        occurrenceStart = try? c.decodeIfPresent(String.self, forKey: .occurrenceStart)
+        recurring = (try? c.decodeIfPresent(Bool.self, forKey: .recurring)) ?? false
+        rrule = try? c.decodeIfPresent(String.self, forKey: .rrule)
+        tz = try? c.decodeIfPresent(String.self, forKey: .tz)
     }
 }
 
@@ -106,6 +128,8 @@ struct CalendarEventCreate: Equatable {
     var alarmMinutes: Int?
     var tz: String
     var clientEventId: String
+    /// M69: the rule of a recurring event (nil: one-off; left out of the body then, as a server before M68 expects).
+    var rrule: String? = nil
 
     var json: JSONValue {
         var fields = timing.fields
@@ -116,6 +140,7 @@ struct CalendarEventCreate: Equatable {
         fields["alarm_minutes"] = alarmMinutes.map { .number(Double($0)) } ?? .null
         fields["tz"] = .string(tz)
         fields["client_event_id"] = .string(clientEventId)
+        if let rrule { fields["rrule"] = .string(rrule) }
         return .object(fields)
     }
 }
@@ -126,12 +151,62 @@ struct CalendarEventPatch: Equatable {
     var timing: CalendarTiming
     var location: String?
     var description: String?
+    /// M69: a one-off event made recurring (its rule and the zone it repeats in); nil leaves the event one-off.
+    var rrule: String? = nil
+    var tz: String? = nil
 
     var json: JSONValue {
         var fields = timing.fields
         fields["title"] = .string(title)
         fields["location"] = location.map(JSONValue.string) ?? .null
         fields["description"] = description.map(JSONValue.string) ?? .null
+        if let rrule {
+            fields["rrule"] = .string(rrule)
+            fields["tz"] = tz.map(JSONValue.string) ?? .null
+        }
         return .object(fields)
     }
+}
+
+/// M69 (§10.1): which occurrences of a recurring event a change or a delete touches.
+enum OccurrenceScope: String, CaseIterable, Identifiable {
+    case this, following, all
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .this: "この予定"
+        case .following: "これ以降すべて"
+        case .all: "すべての予定"
+        }
+    }
+}
+
+/// PATCH /calendar/events/{series_id}/occurrences/{occurrence_start} (§10.3): only the fields the form changed (the times
+/// are the occurrence's new ones), and the rule for 「これ以降」 / 「すべて」 when it changed (null: no longer repeats).
+struct CalendarOccurrenceUpdate: Equatable {
+    var scope: OccurrenceScope
+    /// snake_case fields, as sent.
+    var changes: [String: JSONValue] = [:]
+
+    var json: JSONValue {
+        var fields = changes
+        fields["scope"] = .string(scope.rawValue)
+        return .object(fields)
+    }
+}
+
+/// M69 (§10.6): a private iCal feed, without its token. `scope` is all | personal.
+struct CalendarFeedOut: Decodable, Equatable, Identifiable {
+    let id: String
+    let scope: String
+    let createdAt: String
+    let lastUsedAt: String?
+}
+
+/// POST /calendar/ical-feeds: the feed and its URL (in this answer only: the server keeps a hash).
+struct CalendarFeedCreated: Decodable, Equatable {
+    let feed: CalendarFeedOut
+    let url: String
 }

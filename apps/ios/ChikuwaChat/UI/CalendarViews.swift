@@ -16,7 +16,8 @@ enum CalendarFormTarget: Identifiable {
 /// M52 (CALENDAR.md §7, the phone column): 「カレンダー」 from the home's tile. 一覧: the days with events from today, 60 days
 /// ahead; 月: the month's days with a dot per event (in its calendar's colour), the chosen day's events below. 「すべて /
 /// 自分 / #チャンネル」 filters. Weeks start on Sunday, as the web's. M56 (TASKS.md §6): the tasks due in the range show as
-/// all-day rows 「☐ 題名」 (done 「☑」, struck through), and a dot in the month; a tap opens the task.
+/// all-day rows 「☐ 題名」 (done 「☑」, struck through), and a dot in the month; a tap opens the task. M69 (CALENDAR.md
+/// §10.9): ⋯ → 「カレンダーを購読 (iCal)」 opens the private feed URLs (CalendarFeedsView).
 struct CalendarView: View {
     static let selectionId = "calendar"
     static let windowKey = "view"
@@ -42,6 +43,7 @@ struct CalendarView: View {
     @State private var selectedDay: DayKey?
     @State private var form: CalendarFormTarget?
     @State private var taskForm: TaskFormTarget?
+    @State private var feeds = false
 
     private var calendarHub: CalendarHub? { hub ?? controller.calendarHub }
     private var taskHub: TaskHub? { tasks ?? controller.taskHub }
@@ -76,6 +78,15 @@ struct CalendarView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button { feeds = true } label: { Label("カレンダーを購読 (iCal)", systemImage: "dot.radiowaves.up.forward") }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("その他")
+                .disabled(hub == nil)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { form = .new(newDraft(on: mode == .month ? chosenDay : now)) } label: { Image(systemName: "plus") }
                     .accessibilityLabel("予定を追加")
                     .disabled(hub == nil)
@@ -88,7 +99,7 @@ struct CalendarView: View {
             await taskHub?.openDue(Self.taskWindowKey, from: range.start, to: range.end) // M56 (dates, the end excluded)
         }
         .onDisappear {
-            if form == nil && taskForm == nil {
+            if form == nil && taskForm == nil && !feeds {
                 calendarHub?.close(Self.windowKey)
                 taskHub?.closeDue(Self.taskWindowKey)
             }
@@ -104,6 +115,9 @@ struct CalendarView: View {
         }
         .fullScreenCover(item: $taskForm) { target in
             TaskForm(controller: controller, hub: taskHub, target: target)
+        }
+        .sheet(isPresented: $feeds) {
+            CalendarFeedsView(model: CalendarFeedsModel(api: controller.api))
         }
     }
 
@@ -385,9 +399,14 @@ struct CalendarEventRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.title).font(.subheadline.weight(.medium)).lineLimit(2)
                 let calendar = showCalendar ? (event.channelName.map { "#" + $0 } ?? "自分") : nil
-                if calendar != nil || event.location != nil {
+                if calendar != nil || event.location != nil || event.recurring {
                     HStack(spacing: 8) {
                         if let calendar { Text(calendar).lineLimit(1) }
+                        if event.recurring {
+                            // M69: 🔁 and the rule in words.
+                            Label(CalendarRecurrence.describe(event.rrule, start: CalendarDates.eventDays(event).first), systemImage: "repeat")
+                                .labelStyle(CompactLabelStyle()).lineLimit(1)
+                        }
                         if let location = event.location {
                             Label(location, systemImage: "mappin.and.ellipse").labelStyle(CompactLabelStyle()).lineLimit(1)
                         }

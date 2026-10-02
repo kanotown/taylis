@@ -46,7 +46,7 @@ extension ErrorMessages {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, CalendarApi, TaskApi, RecurringApi, AiApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, CalendarApi, CalendarFeedApi, TaskApi, RecurringApi, AiApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -931,6 +931,36 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     func clearCalendarAlarm(id: String) async throws {
         _ = try await requestRaw("DELETE", "/api/v1/calendar/events/\(id)/alarm", body: nil, auth: true, retry401: true)
+    }
+
+    // MARK: recurring events and iCal feeds (CALENDAR.md §10, M69)
+
+    /// An occurrence's key in a path: "2030-01-10T05:00:00Z" with its ":" (and any "+") percent-encoded, as the web's
+    /// encodeURIComponent.
+    static func occurrencePath(_ seriesId: String, _ occurrenceStart: String) -> String {
+        let key = occurrenceStart.addingPercentEncoding(withAllowedCharacters: CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"))
+        return "/api/v1/calendar/events/\(seriesId)/occurrences/\(key ?? occurrenceStart)"
+    }
+
+    /// One occurrence (`this`), it and the later ones (`following`) or the whole series (`all`).
+    func updateCalendarOccurrence(seriesId: String, occurrenceStart: String, _ body: CalendarOccurrenceUpdate) async throws -> CalendarEventOut {
+        try await request("PATCH", Self.occurrencePath(seriesId, occurrenceStart), body: body.json)
+    }
+
+    func deleteCalendarOccurrence(seriesId: String, occurrenceStart: String, scope: OccurrenceScope) async throws {
+        _ = try await requestRaw("DELETE", Self.occurrencePath(seriesId, occurrenceStart) + "?scope=\(scope.rawValue)", body: nil, auth: true,
+                                 retry401: true)
+    }
+
+    func calendarFeeds() async throws -> [CalendarFeedOut] { try await request("GET", "/api/v1/calendar/ical-feeds") }
+
+    /// A new private feed URL (`scope`: all | personal); the URL is in this answer only.
+    func createCalendarFeed(scope: String) async throws -> CalendarFeedCreated {
+        try await request("POST", "/api/v1/calendar/ical-feeds", body: .object(["scope": .string(scope)]))
+    }
+
+    func deleteCalendarFeed(id: String) async throws {
+        _ = try await requestRaw("DELETE", "/api/v1/calendar/ical-feeds/\(id)", body: nil, auth: true, retry401: true)
     }
 
     // MARK: tasks (TASKS.md §3, M56)

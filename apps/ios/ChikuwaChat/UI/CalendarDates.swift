@@ -350,6 +350,8 @@ struct EventDraft: Equatable {
     var location = ""
     var description = ""
     var alarm: Int?
+    /// M69 (CALENDAR.md §10): 「繰り返し」 (an occurrence's: its series' rule, read on the occurrence's day).
+    var repetition: RepeatDraft
 
     var startDay: DayKey { CalendarDates.dayKey(start) }
     var endDay: DayKey { CalendarDates.dayKey(end) }
@@ -364,7 +366,7 @@ struct EventDraft: Equatable {
     }
 
     init(title: String = "", allDay: Bool = false, start: Date, end: Date, channelId: String? = nil, location: String = "",
-         description: String = "", alarm: Int? = nil) {
+         description: String = "", alarm: Int? = nil, repetition: RepeatDraft? = nil) {
         self.title = title
         self.allDay = allDay
         self.start = start
@@ -373,6 +375,7 @@ struct EventDraft: Equatable {
         self.location = location
         self.description = description
         self.alarm = alarm
+        self.repetition = repetition ?? CalendarRecurrence.noRepeat(CalendarDates.dayKey(start))
     }
 
     /// An event read back into the form, in local time (an all-day one at 10:00〜11:00 should it turn timed).
@@ -390,6 +393,7 @@ struct EventDraft: Equatable {
         location = event.location ?? ""
         description = event.description ?? ""
         alarm = event.alarm?.minutesBefore
+        repetition = CalendarRecurrence.toRepeat(event.rrule, start: CalendarDates.dayKey(start))
     }
 
     /// Moving the start carries the end along (the event keeps its length).
@@ -402,6 +406,8 @@ struct EventDraft: Equatable {
         } else {
             next.end = end.addingTimeInterval(newStart.timeIntervalSince(start))
         }
+        // 「しない」 follows the start, so 毎週 offers the new start's weekday once chosen.
+        if repetition.kind == .none { next.repetition.weekdays = [CalendarDates.weekday(next.startDay)] }
         return next
     }
 
@@ -427,6 +433,7 @@ struct EventDraft: Equatable {
         if Self.length(description.trimmingCharacters(in: .whitespacesAndNewlines)) > CalendarDates.maxDescription {
             return "説明は \(CalendarDates.maxDescription) 文字までです"
         }
+        if let repeatProblem = CalendarRecurrence.problem(repetition, start: startDay) { return repeatProblem }
         if allDay {
             if endDay < startDay { return "終了日は開始日より後にしてください" }
             if CalendarDates.daysBetween(startDay, endDay) >= CalendarDates.maxAllDayDays { return "終日の予定は \(CalendarDates.maxAllDayDays) 日までです" }
@@ -452,7 +459,22 @@ struct EventDraft: Equatable {
     func create(tz: String, clientEventId: String) -> CalendarEventCreate {
         CalendarEventCreate(channelId: channelId, title: title.trimmingCharacters(in: .whitespacesAndNewlines), timing: timing,
                             location: Self.optional(location), description: Self.optional(description), alarmMinutes: alarm, tz: tz,
-                            clientEventId: clientEventId)
+                            clientEventId: clientEventId, rrule: rrule)
+    }
+
+    /// M69: the rule the picker says (nil: しない).
+    var rrule: String? { CalendarRecurrence.toRrule(repetition, start: startDay) }
+
+    /// M69 (§10.8): what the form changed against the event as it was opened, and only that, as the occurrence call's
+    /// fields (「この予定」 must not mark the fields it left alone as its own). The time goes whole when any of it changed.
+    func changes(from before: EventDraft) -> [String: JSONValue] {
+        var out: [String: JSONValue] = [:]
+        let trim = { (text: String) in text.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if trim(title) != trim(before.title) { out["title"] = .string(trim(title)) }
+        if trim(location) != trim(before.location) { out["location"] = Self.optional(location).map(JSONValue.string) ?? .null }
+        if trim(description) != trim(before.description) { out["description"] = Self.optional(description).map(JSONValue.string) ?? .null }
+        if timing != before.timing { out.merge(timing.fields) { _, new in new } }
+        return out
     }
 
     /// PATCH /calendar/events/{id}: the whole form (its calendar cannot move).
