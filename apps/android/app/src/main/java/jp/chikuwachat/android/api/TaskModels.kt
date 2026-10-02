@@ -25,6 +25,11 @@ object TaskStatus {
 object TaskKind {
     const val TASK = "task"
     const val REVIEW = "review"
+    /**
+     * M86 (DEADLINES.md §8): a channel's deadline — a board task with a date, no repeat, whose advance notices (`notice_days`)
+     * the server's 「締切」 bot posts in the channel. Any other value the server may add later still reads as a task.
+     */
+    const val DEADLINE = "deadline"
 }
 
 /**
@@ -97,6 +102,11 @@ data class TaskOut(
     val rrule: String? = null,
     /** M84: an added column of the board; null = the built-in column of `status` (which keeps its three values). */
     val columnId: String? = null,
+    /**
+     * M86 (DEADLINES.md §3): a deadline's advance notices, days before (largest first; empty: none). Null for every other
+     * kind, and from a server before M85.
+     */
+    val noticeDays: List<Int>? = null,
 )
 
 /** M84 (TASKS.md §11.2): one item of a task's checklist. */
@@ -177,6 +187,8 @@ data class TaskCreate(
     val dueAt: String? = null,
     val rrule: String? = null,
     val subtasks: List<SubtaskIn>? = null,
+    /** M86: a deadline's advance notices (left out: the server's 7 / 3 / 1 / 0). Only with `kind` deadline. */
+    val noticeDays: List<Int>? = null,
 )
 
 /**
@@ -200,9 +212,12 @@ data class TaskUpdate(
     val rrule: String? = null,
     /** M84: the whole checklist (known ids kept). */
     val subtasks: List<SubtaskIn>? = null,
+    /** M86: a deadline's advance notices, the whole set (`[]`: none). */
+    val noticeDays: List<Int>? = null,
 ) {
     val isEmpty: Boolean
-        get() = title == null && !setNotes && status == null && !setDueOn && assigneeIds == null && !setDueAt && !setRrule && subtasks == null
+        get() = title == null && !setNotes && status == null && !setDueOn && assigneeIds == null && !setDueAt && !setRrule && subtasks == null &&
+            noticeDays == null
 
     fun toJson(): JsonObject = buildJsonObject {
         title?.let { put("title", JsonPrimitive(it)) }
@@ -214,6 +229,7 @@ data class TaskUpdate(
         if (setRrule) put("rrule", rrule?.let { JsonPrimitive(it) } ?: JsonNull)
         subtasks?.let { items -> put("subtasks", JsonArray(items.map { Codec.snake.encodeToJsonElement(SubtaskIn.serializer(), it) })) }
         assigneeIds?.let { ids -> put("assignee_ids", JsonArray(ids.map { JsonPrimitive(it) })) }
+        noticeDays?.let { days -> put("notice_days", JsonArray(days.map { JsonPrimitive(it) })) }
     }
 }
 

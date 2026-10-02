@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.outlined.Alarm
+import androidx.compose.material.icons.outlined.AlarmAdd
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Lock
@@ -136,6 +138,8 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
     val current = remember(version, channel.id) { controller.store.channel(channel.id) ?: channel }
     val canEdit = hub?.available == true && TaskRules.canEditBoard(current, controller.isAdmin)
     val canEditColumns = canEdit && board?.columnsSupported == true
+    // M86 (DEADLINES.md §8 5.): 「締切を追加」 on the board (not for a guest).
+    val canAddDeadline = canEdit && !controller.isGuest
     val cards = remember(tasks, column, columns) { TaskRules.sortBoardColumn(tasks, column, columns) }
     var confirmDelete by remember { mutableStateOf<TaskOut?>(null) }
     var columnDialog by remember { mutableStateOf<ColumnDialog?>(null) }
@@ -197,6 +201,11 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
                         TaskRules.columnLabel(item, count), selected = item.id == column.id, onClick = { select(item) },
                         menu = if (canEditColumns) ({ dismiss -> columnMenu(item, dismiss) }) else null,
                     )
+                }
+            }
+            if (canAddDeadline) {
+                IconButton(onClick = { controller.taskForm = TaskForm(null, DeadlineRules.createInit(channel.id, emptyList())) }) {
+                    Icon(Icons.Outlined.AlarmAdd, contentDescription = "締切を追加")
                 }
             }
             if (canEditColumns) {
@@ -506,8 +515,11 @@ fun TaskCard(
     val done = task.status == TaskStatus.DONE
     val overdue = TaskRules.isOverdue(task, today)
     val progress = TaskRules.subtaskProgress(task)
+    // M86 (DEADLINES.md §8 5.): a deadline carries ⏰.
+    val deadline = task.kind == TaskKind.DEADLINE
     val names = remember(version, task.assigneeIds) { task.assigneeIds.map { store.users[it]?.displayName ?: "?" } }
     val summary = buildString {
+        if (deadline) append("締切、")
         append(task.title)
         if (done) append("、完了")
         badge?.let { append("、").append(it) }
@@ -546,10 +558,13 @@ fun TaskCard(
                     color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 )
                 val canvasId = task.canvasSource?.canvasId
-                val marks = badge != null || task.dueOn != null || !task.notes.isNullOrBlank() || task.source?.messageId != null || canvasId != null ||
+                val marks = deadline || badge != null || task.dueOn != null || !task.notes.isNullOrBlank() || task.source?.messageId != null || canvasId != null ||
                     names.isNotEmpty() || progress != null || task.rrule != null
                 if (marks) {
                     Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (deadline) {
+                            Icon(Icons.Outlined.Alarm, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
+                        }
                         badge?.let {
                             Text(
                                 it, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,

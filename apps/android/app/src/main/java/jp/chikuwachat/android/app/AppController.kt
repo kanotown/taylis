@@ -1211,6 +1211,8 @@ class AppController(private val app: Application) {
         if (!active) engine?.canvases?.flushAll() // M46 (CANVAS.md §4.4): what is typed is saved when the app goes to the background
         if (!active) engine?.stopCanvasEditing() // M73 (§18.2): no 「編集中」 from a phone in a pocket
         if (active) {
+            // M86 (DEADLINES.md §8 1.): the deadlines' window read again (a reconnect reads it anyway).
+            if (engineStatus == EngineStatus.ONLINE) engine?.tasks?.refreshDeadlines()
             engine?.reconnectNow()
             if (api != null) push.refresh()
             refreshSummaries() // WORKSPACES.md §6: the other workspaces' marks

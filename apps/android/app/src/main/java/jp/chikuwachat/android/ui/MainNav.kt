@@ -80,6 +80,10 @@ sealed interface Route {
     @Serializable @SerialName("tasks")
     data object Tasks : Pane { override val keptUnderConversation get() = true }
 
+    /** M86 (DEADLINES.md §8 3.): 「締切」, from the home's tile; a row's deadline opens its form over it. */
+    @Serializable @SerialName("deadlines")
+    data object Deadlines : Pane { override val keptUnderConversation get() = true }
+
     /** A draft row closes the list itself before opening its conversation ([MainNav.openDraft]). */
     @Serializable @SerialName("drafts")
     data object Drafts : Pane { override val keptUnderConversation get() = true }

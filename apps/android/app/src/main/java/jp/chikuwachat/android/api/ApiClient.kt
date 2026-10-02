@@ -842,6 +842,9 @@ class ApiClient(
         requestRaw("DELETE", "/api/v1/tasks/columns/$columnId", null, auth = true, retry401 = true)
     }
 
+    /** M86: a server before M85 answers 422 (the route read as /tasks/{task_id}) or 404: the hub reads that as unsupported. */
+    override suspend fun deadlineTasks(): List<TaskOut> = request("GET", "/api/v1/tasks/deadlines")
+
     // --- AI (docs/AI.md §5, M66) -----------------------------------------------------------------
 
     override suspend fun aiStatus(): AiStatusOut = request("GET", "/api/v1/ai/status")
