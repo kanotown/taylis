@@ -43,6 +43,7 @@ import {
   MAX_TASK_NOTES,
   MAX_TASK_TITLE,
   newTaskChannel,
+  repeatForDue,
   sourceState,
   statusLabel,
   TASK_STATUSES,
@@ -297,7 +298,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
             <div className="space-y-1">
               <span className="text-xs font-medium text-muted">{dueName}</span>
               <div className="flex flex-wrap items-center gap-2">
-                <Input type="date" aria-label={dueName} className="w-44" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value, ...(e.target.value ? {} : { dueTime: "" }) })} />
+                <Input type="date" aria-label={dueName} className="w-44" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value, repeat: repeatForDue(draft.repeat, draft.dueOn, e.target.value), ...(e.target.value ? {} : { dueTime: "" }) })} />
                 {draft.dueOn && (
                   <Input type="time" aria-label="期限の時刻" title="時刻 (空なら終日)" className="w-32" value={draft.dueTime ?? ""} onChange={(e) => set({ dueTime: e.target.value })} />
                 )}
@@ -311,7 +312,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
             {deadline && <NoticeDaysPicker days={draft.noticeDays ?? [...DEFAULT_NOTICE_DAYS]} onChange={(noticeDays) => set({ noticeDays })} />}
             {!review && !deadline && draft.dueOn && draft.repeat && (
               <div className="space-y-1" data-task-repeat>
-                <span className="text-xs font-medium text-muted">繰り返し</span>
+                {/* RepeatPicker has its own 「繰り返し」 label */}
                 <RepeatPicker repeat={draft.repeat} start={draft.dueOn} onChange={(repeat) => set({ repeat })} />
                 {draft.repeat.kind !== "none" && <p className="text-xs text-muted">完了にすると、次の回のタスクができます</p>}
               </div>
