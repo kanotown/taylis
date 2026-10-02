@@ -480,7 +480,7 @@ Future AI capabilities may include:
 - task extraction
 - question answering over past discussions
 
-These were out of scope for the first implementation. Since M65 (2026-10-02) an AI bot that answers mentions and private summaries exist; see docs/AI.md. Semantic search and RAG are still to come.
+These were out of scope for the first implementation. Since M65 (2026-10-02) an AI bot that answers mentions, private summaries and (M70) question answering over past messages through the full-text search exist; see docs/AI.md. Semantic search (embeddings) is still to come.
 
 ---
 
