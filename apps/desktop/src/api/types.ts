@@ -307,6 +307,18 @@ export type TaskUpdate = components["schemas"]["TaskUpdate"];
 export type TaskMove = components["schemas"]["TaskMove"];
 export type TaskStatus = TaskOut["status"];
 export type TaskData = Omit<TaskOut, "can_delete">;
+/** M81 (TASKS.md §11): a board's column (each belongs to a status), a checklist item. */
+export type TaskColumnOut = components["schemas"]["TaskColumnOut"];
+export type TaskColumnCreate = components["schemas"]["TaskColumnCreate"];
+export type TaskColumnUpdate = components["schemas"]["TaskColumnUpdate"];
+export type SubtaskOut = components["schemas"]["SubtaskOut"];
+export type SubtaskIn = components["schemas"]["SubtaskIn"];
+export type SubtaskUpdate = components["schemas"]["SubtaskUpdate"];
+/** task.columns.updated (M81): a board's columns, all of them, left to right. */
+export interface TaskColumnsUpdated {
+  channel_id: string;
+  columns: TaskColumnOut[];
+}
 /** task.updated: a new, changed or moved task, and who may delete it. */
 export interface TaskUpdated {
   task: TaskData;
@@ -342,6 +354,9 @@ export interface TaskDue {
   channel_name: string | null;
   title: string;
   due_on: string;
+  /** M81: the due time (the notification went out at it) and the zone it is read in. */
+  due_at?: string | null;
+  tz?: string | null;
 }
 /** calendar.alarm.updated: my alarm on an event was set, recomputed, fired (status "fired") or removed (null). */
 export interface CalendarAlarmUpdated {

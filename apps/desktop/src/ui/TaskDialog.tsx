@@ -7,8 +7,12 @@
  * DM too): 依頼先 first, then the title, the notes and 希望日. A DM's 「タスクにする」 offers the DM's members as
  * assignees (chosen: shared in the DM; none: personal). An assignee of an open shared task gets 「対応を始める」 and
  * 「完了にする」 on top.
+ *
+ * M81 (TASKS.md §11): a time beside the due date (empty: the whole day), 「繰り返し」 once there is a due date (the
+ * calendar's picker; completing makes the next occurrence on the server), and 「サブタスク」 (a checklist: a checkbox of a
+ * saved task goes at once, the rest with 保存).
  */
-import { CheckCircle2, FileText, MessageSquareText, PlayCircle, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, CheckCircle2, FileText, MessageSquareText, PlayCircle, Plus, Repeat, Trash2, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import { describeError } from "../api/errors";
@@ -16,6 +20,8 @@ import type { TaskOut, TaskStatus } from "../api/types";
 import type { AppController } from "../state/app";
 import { Avatar } from "./Avatar";
 import { localZone, today as todayKey } from "./calendarDates";
+import { RepeatPicker } from "./CalendarEventDialog";
+import { describeRrule } from "./calendarRecurrence";
 import { conversationTitle } from "./channels";
 import { useMembers } from "./Dialogs";
 import { Button, cn, Field, Input, Modal, Textarea } from "./primitives";
@@ -24,7 +30,12 @@ import {
   canEditTask,
   canvasSourceState,
   draftFromTask,
+  dueText,
+  emptyExtras,
   hasBoard,
+  MAX_SUBTASKS,
+  subtaskProgress,
+  type SubtaskDraft,
   MAX_TASK_NOTES,
   MAX_TASK_TITLE,
   newTaskChannel,
@@ -54,7 +65,9 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
   const store = controller.store;
   const me = store.me?.id ?? null;
   const [draft, setDraft] = useState<TaskDraft>(() =>
-    task ? draftFromTask(task) : { title: init?.title ?? "", notes: "", status: init?.status ?? "todo", dueOn: init?.dueOn ?? "", assigneeIds: [...(init?.assigneeIds ?? [])] },
+    task
+      ? draftFromTask(task)
+      : { title: init?.title ?? "", notes: "", status: init?.status ?? "todo", dueOn: init?.dueOn ?? "", ...emptyExtras(init?.dueOn ?? ""), assigneeIds: [...(init?.assigneeIds ?? [])] },
   );
   /** New: the board ("me" or a channel id). */
   const [board, setBoard] = useState<string>(() => init?.channelId ?? "me");
@@ -77,6 +90,16 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
   const set = (patch: Partial<TaskDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
     setError(null);
+  };
+  /** M81: a saved item's checkbox goes at once (one item: another person's edit of the list is not undone). */
+  const toggleSubtask = (index: number) => {
+    const items = draft.subtasks ?? [];
+    const item = items[index];
+    if (!item) return;
+    const next = items.map((i, k) => (k === index ? { ...i, done: !i.done } : i));
+    set({ subtasks: next });
+    const saved = task && item.id && (task.subtasks ?? []).some((i) => i.id === item.id);
+    if (hub && task && saved && item.id) void hub.toggleSubtask(task.id, item.id, !item.done).catch((err: unknown) => setError(describeError(err)));
   };
   const openMessage = (messageId: string) => {
     onClose();
@@ -229,15 +252,26 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
             )}
             <div className="space-y-1">
               <span className="text-xs font-medium text-muted">{review ? "希望日" : "期限"}</span>
-              <div className="flex items-center gap-2">
-                <Input type="date" aria-label={review ? "希望日" : "期限"} className="w-44" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
+              <div className="flex flex-wrap items-center gap-2">
+                <Input type="date" aria-label={review ? "希望日" : "期限"} className="w-44" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value, ...(e.target.value ? {} : { dueTime: "" }) })} />
                 {draft.dueOn && (
-                  <Button variant="ghost" size="sm" onClick={() => set({ dueOn: "" })}>
+                  <Input type="time" aria-label="期限の時刻" title="時刻 (空なら終日)" className="w-32" value={draft.dueTime ?? ""} onChange={(e) => set({ dueTime: e.target.value })} />
+                )}
+                {draft.dueOn && (
+                  <Button variant="ghost" size="sm" onClick={() => set({ dueOn: "", dueTime: "", repeat: draft.repeat ? { ...draft.repeat, kind: "none" } : draft.repeat })}>
                     <X size={14} /> {review ? "希望日をなくす" : "期限をなくす"}
                   </Button>
                 )}
               </div>
             </div>
+            {!review && draft.dueOn && draft.repeat && (
+              <div className="space-y-1" data-task-repeat>
+                <span className="text-xs font-medium text-muted">繰り返し</span>
+                <RepeatPicker repeat={draft.repeat} start={draft.dueOn} onChange={(repeat) => set({ repeat })} />
+                {draft.repeat.kind !== "none" && <p className="text-xs text-muted">完了にすると、次の回のタスクができます</p>}
+              </div>
+            )}
+            {!creatingReview && <SubtaskEditor items={draft.subtasks ?? []} onChange={(subtasks) => set({ subtasks })} onToggle={toggleSubtask} />}
             {!creatingReview && picker}
           </>
         ) : (
@@ -367,7 +401,25 @@ function ReadOnlyTask({ controller, task }: { controller: AppController; task: T
         <dt className="text-muted">状態</dt>
         <dd>{statusLabel(task.kind, task.status as TaskStatus)}</dd>
         <dt className="text-muted">{task.kind === "review" ? "希望日" : "期限"}</dt>
-        <dd>{task.due_on ? `${task.due_on.replaceAll("-", "/")}${task.due_on === today ? " (今日)" : ""}` : "なし"}</dd>
+        <dd>{task.due_on ? `${dueText(task, "")}${task.due_on === today ? " (今日)" : ""}` : "なし"}</dd>
+        {task.rrule && (
+          <>
+            <dt className="text-muted">繰り返し</dt>
+            <dd className="inline-flex items-center gap-1"><Repeat size={13} /> {describeRrule(task.rrule, task.due_on ?? today)}</dd>
+          </>
+        )}
+        {subtaskProgress(task) && (
+          <>
+            <dt className="text-muted">サブタスク</dt>
+            <dd>
+              <ul className="space-y-0.5">
+                {(task.subtasks ?? []).map((item) => (
+                  <li key={item.id} className={cn(item.done && "text-muted line-through")}>{item.done ? "☑" : "☐"} {item.title}</li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        )}
         {task.channel_id && (
           <>
             <dt className="text-muted">{task.kind === "review" ? "依頼先" : "担当者"}</dt>
@@ -385,6 +437,72 @@ function ReadOnlyTask({ controller, task }: { controller: AppController; task: T
       </dl>
       {task.notes && <p className="whitespace-pre-wrap break-words rounded-lg bg-panel-2 px-3 py-2 text-sm">{task.notes}</p>}
       <p className="text-xs text-muted">{task.channel_id && task.channel_name ? "このボードを変更できるのは、チャンネルに投稿できるメンバーです。" : "変更できるのは、この会話のメンバーです。"}</p>
+    </div>
+  );
+}
+
+/** M81: 「サブタスク」 — checkboxes, editable titles, ↑ / ↓, × and 「＋ サブタスクを追加」 (Enter adds the next one). */
+function SubtaskEditor({ items, onChange, onToggle }: { items: SubtaskDraft[]; onChange: (items: SubtaskDraft[]) => void; onToggle: (index: number) => void }) {
+  const [adding, setAdding] = useState("");
+  const done = items.filter((i) => i.done).length;
+  const update = (index: number, patch: Partial<SubtaskDraft>) => onChange(items.map((i, k) => (k === index ? { ...i, ...patch } : i)));
+  const swap = (index: number, to: number) => {
+    if (to < 0 || to >= items.length) return;
+    const next = [...items];
+    [next[index], next[to]] = [next[to]!, next[index]!];
+    onChange(next);
+  };
+  const add = () => {
+    const title = adding.trim();
+    if (!title || items.length >= MAX_SUBTASKS) return;
+    onChange([...items, { id: null, title, done: false }]);
+    setAdding("");
+  };
+  return (
+    <div className="space-y-1" data-subtask-editor>
+      <span className="text-xs font-medium text-muted">サブタスク{items.length > 0 ? ` (${done}/${items.length})` : ""}</span>
+      {items.length > 0 && (
+        <ul className="divide-y divide-line rounded-lg border border-line">
+          {items.map((item, index) => (
+            <li key={item.id ?? `new-${index}`} className="group/sub flex items-center gap-2 px-2 py-1" data-subtask>
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-[var(--accent)]" checked={item.done} aria-label={`「${item.title}」を完了`} onChange={() => onToggle(index)} />
+              <input
+                className={cn("min-w-0 flex-1 bg-transparent text-sm outline-none", item.done && "text-muted line-through")}
+                value={item.title}
+                maxLength={MAX_TASK_TITLE}
+                aria-label="サブタスクの題名"
+                onChange={(e) => update(index, { title: e.target.value })}
+              />
+              <span className="flex shrink-0 items-center opacity-60 group-hover/sub:opacity-100">
+                <button type="button" className="rounded p-0.5 hover:bg-ink/6 disabled:opacity-30" aria-label="上へ" disabled={index === 0} onClick={() => swap(index, index - 1)}><ArrowUp size={13} /></button>
+                <button type="button" className="rounded p-0.5 hover:bg-ink/6 disabled:opacity-30" aria-label="下へ" disabled={index === items.length - 1} onClick={() => swap(index, index + 1)}><ArrowDown size={13} /></button>
+                <button type="button" className="rounded p-0.5 hover:bg-ink/6" aria-label="サブタスクを削除" onClick={() => onChange(items.filter((_, k) => k !== index))}><X size={13} /></button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {items.length < MAX_SUBTASKS && (
+        <div className="flex items-center gap-1">
+          <Plus size={14} className="shrink-0 text-muted" />
+          <input
+            className="min-w-0 flex-1 rounded-md bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted focus:bg-panel"
+            value={adding}
+            maxLength={MAX_TASK_TITLE}
+            placeholder="サブタスクを追加 (Enter)"
+            aria-label="サブタスクを追加"
+            onChange={(e) => setAdding(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add();
+              }
+            }}
+            onBlur={add}
+          />
+        </div>
+      )}
     </div>
   );
 }

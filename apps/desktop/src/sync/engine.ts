@@ -901,6 +901,7 @@ export class SyncEngine {
       case "task.assigned":
       case "task.due":
       case "task.review_done":
+      case "task.columns.updated":
         this.tasks.applyEvent(frame.event, frame.data);
         return;
       case "sidebar.updated": {

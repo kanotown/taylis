@@ -5,6 +5,7 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -287,6 +288,12 @@ class PushPlanner:
             else:
                 body = f"{who} がタスクを割り当てました: {title}{where}"
                 hidden = "タスクが割り当てられました"
+        elif data.get("due_at"):
+            # M81 (TASKS.md §11): a due time — the notification goes out at it.
+            zone = str(data.get("tz") or calendar.zone_for(None, user))
+            at = datetime.fromisoformat(str(data["due_at"])).astimezone(ZoneInfo(zone))
+            body = f"{at:%H:%M} が期限: {title}{where}"
+            hidden = "期限のタスクがあります"
         else:
             body = f"今日が期限: {title}{where}"
             hidden = "今日が期限のタスクがあります"

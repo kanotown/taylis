@@ -3,35 +3,52 @@
  * between and within them (native drag and drop: a line shows where the card will land), 「＋ 追加」 under each column,
  * and per card a menu (移動 / 上へ / 下へ / 削除) that does the same from the keyboard. Read-only for those who may not
  * post in the channel. The cards (TaskCard) are shared with 「自分のタスク」.
+ *
+ * M81 (TASKS.md §11): the board's columns come from GET /tasks/columns (each belongs to a status; the built-in three
+ * stay, renamed and moved; added ones are deleted from the column's ⋯), 「＋ 列を追加」 at the right end, and on the
+ * cards the due time, the checklist's progress and 🔁 for a repeating task.
  */
-import { CalendarDays, FileText, MessageSquareText, MoreHorizontal, Plus, StickyNote } from "lucide-react";
+import { CalendarDays, CheckSquare, FileText, MessageSquareText, MoreHorizontal, Plus, Repeat, StickyNote } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { describeError } from "../api/errors";
+
 import type { TaskOut, TaskStatus } from "../api/types";
+import { describeRrule } from "./calendarRecurrence";
 import type { AppController } from "../state/app";
 import type { TaskHub } from "../sync/tasks";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
 import { localZone, today as todayKey, type DayKey } from "./calendarDates";
-import { Button, cn, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Modal } from "./primitives";
+import { Button, cn, Field, Input, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Modal } from "./primitives";
 import { TaskDialog } from "./TaskDialog";
 import {
   BOARD_DONE_LIMIT,
+  type BoardColumn,
+  builtinFor,
   CARD_AVATARS,
   canEditBoard,
   cleanTitle,
+  COLUMN_KIND_LABELS,
+  columnMoveTarget,
+  columnNameProblem,
   computeNeighbors,
-  dueLabel,
+  dueDay,
+  dueText,
+  FALLBACK_COLUMNS,
   isNoopMove,
   isOverdue,
+  MAX_COLUMN_NAME,
+  MAX_COLUMNS,
   MAX_TASK_TITLE,
   moveWithin,
   type Neighbors,
-  sortColumn,
+  sortBoardColumn,
+  sortColumns,
   sourceState,
   canvasSourceState,
-  STATUS_LABELS,
   statusLabel,
+  subtaskProgress,
   TASK_STATUSES,
 } from "./tasks";
 
@@ -98,7 +115,9 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
   const overdue = isOverdue(task, today);
   const source = sourceState(task);
   const canvasSource = canvasSourceState(task);
-  const hasMeta = !!place || !!task.due_on || !!task.notes || source.kind === "link" || canvasSource.kind === "link" || task.assignee_ids.length > 0 || (showStatus && task.status === "doing");
+  const progress = subtaskProgress(task);
+  const due = dueDay(task);
+  const hasMeta = !!place || !!task.due_on || !!task.notes || !!progress || !!task.rrule || source.kind === "link" || canvasSource.kind === "link" || task.assignee_ids.length > 0 || (showStatus && task.status === "doing");
   return (
     <div
       data-task-card={task.id}
@@ -122,14 +141,28 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
         <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs text-muted">
           {showStatus && task.status === "doing" && <span className="rounded bg-accent-soft px-1.5 py-px text-[11px] font-medium text-accent">{statusLabel(task.kind, "doing")}</span>}
           {place && <span className="min-w-0 truncate" data-task-place>{place}</span>}
-          {task.due_on && (
+          {due && (
             <span
               data-due={task.due_on}
               data-overdue={overdue || undefined}
-              title={`期限 ${task.due_on.replaceAll("-", "/")}${overdue ? " (過ぎています)" : ""}`}
-              className={cn("inline-flex items-center gap-0.5 tabular-nums", overdue && "font-semibold text-danger", !overdue && task.due_on === today && !done && "font-semibold text-ink")}
+              title={`期限 ${dueText(task, "")}${overdue ? " (過ぎています)" : ""}`}
+              className={cn("inline-flex items-center gap-0.5 tabular-nums", overdue && "font-semibold text-danger", !overdue && due === today && !done && "font-semibold text-ink")}
             >
-              <CalendarDays size={12} /> {dueLabel(task.due_on, today)}
+              <CalendarDays size={12} /> {dueText(task, today)}
+            </span>
+          )}
+          {task.rrule && (
+            <span title={`繰り返し: ${describeRrule(task.rrule, task.due_on ?? today)}`} aria-label="繰り返し" data-repeat>
+              <Repeat size={12} />
+            </span>
+          )}
+          {progress && (
+            <span
+              data-subtasks={`${progress.done}/${progress.total}`}
+              title={`サブタスク ${progress.done}/${progress.total}`}
+              className={cn("inline-flex items-center gap-0.5 tabular-nums", progress.done === progress.total && "text-success")}
+            >
+              <CheckSquare size={12} /> {progress.done}/{progress.total}
             </span>
           )}
           {task.notes && (
@@ -245,11 +278,14 @@ export function InlineAdd({ label = "追加", placeholder = "題名を入力し�
 }
 
 /** The card's ⋯: 移動 (another column), 上へ / 下へ, 削除 (who may). The keyboard's way to do what dragging does. */
-function CardMenu({ task, column, canEdit, onMove, onDelete }: {
+function CardMenu({ task, column, current, columns, canEdit, onMove, onDelete }: {
   task: TaskOut;
   column: TaskOut[];
+  /** M81: the card's column and the board's columns (移動 lists them). */
+  current: BoardColumn;
+  columns: readonly BoardColumn[];
   canEdit: boolean;
-  onMove: (status: TaskStatus, neighbors: Neighbors) => void;
+  onMove: (target: BoardColumn, neighbors: Neighbors) => void;
   onDelete: () => void;
 }) {
   if (!canEdit && !task.can_delete) return null;
@@ -271,15 +307,15 @@ function CardMenu({ task, column, canEdit, onMove, onDelete }: {
         {canEdit && (
           <>
             <MenuLabel>移動</MenuLabel>
-            {TASK_STATUSES.map((status) => (
-              <MenuItem key={status} disabled={status === task.status} onSelect={() => onMove(status, { after_id: null, before_id: null })}>
-                {STATUS_LABELS[status]}
-                {status === task.status && <span className="ml-auto text-xs text-muted">いまここ</span>}
+            {columns.map((target) => (
+              <MenuItem key={target.id} disabled={target.id === current.id} onSelect={() => onMove(target, { after_id: null, before_id: null })}>
+                {target.name}
+                {target.id === current.id && <span className="ml-auto text-xs text-muted">いまここ</span>}
               </MenuItem>
             ))}
             <MenuSeparator />
-            <MenuItem disabled={!up} onSelect={() => up && onMove(task.status, up)}>上へ</MenuItem>
-            <MenuItem disabled={!down} onSelect={() => down && onMove(task.status, down)}>下へ</MenuItem>
+            <MenuItem disabled={!up} onSelect={() => up && onMove(current, up)}>上へ</MenuItem>
+            <MenuItem disabled={!down} onSelect={() => down && onMove(current, down)}>下へ</MenuItem>
           </>
         )}
         {task.can_delete && (
@@ -341,7 +377,9 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
   const [dialog, setDialog] = useState<TaskOut | null>(null);
   const [confirm, setConfirm] = useState<TaskOut | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
-  const [drop, setDrop] = useState<{ status: TaskStatus; index: number } | null>(null);
+  const [drop, setDrop] = useState<{ column: string; index: number } | null>(null);
+  const [columnDialog, setColumnDialog] = useState<{ mode: "add" } | { mode: "rename"; column: BoardColumn } | null>(null);
+  const [deleting, setDeleting] = useState<BoardColumn | null>(null);
   useEffect(() => {
     if (!hub) return;
     void hub.openBoard(channel.id);
@@ -350,34 +388,45 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
   const board = hub?.board(channel.id);
   const tasks = board?.tasks ?? [];
   const canEdit = canEditBoard(channel, controller.isAdmin) && !!hub?.available;
-  const columns = Object.fromEntries(TASK_STATUSES.map((s) => [s, sortColumn(tasks, s)])) as Record<TaskStatus, TaskOut[]>;
+  const boardColumns = sortColumns(board?.columns ?? FALLBACK_COLUMNS);
+  const cardsOf = Object.fromEntries(boardColumns.map((c) => [c.id, sortBoardColumn(tasks, c, boardColumns)])) as Record<string, TaskOut[]>;
+  const columnOf = (task: TaskOut) => boardColumns.find((c) => cardsOf[c.id]?.some((t) => t.id === task.id)) ?? boardColumns[0]!;
   const note = boardNote(board?.state, channel, canEdit);
+  const canChangeColumns = canEdit && !!board?.columnsSupported;
+  const doneCount = tasks.filter((t) => t.status === "done").length;
 
-  const move = (task: TaskOut, status: TaskStatus, neighbors: Neighbors) => {
+  const move = (task: TaskOut, target: BoardColumn, neighbors: Neighbors) => {
     if (!hub) return;
-    void hub.move(task.id, status, neighbors).catch((err: unknown) => controller.setError(err));
+    void hub.move(task.id, target.status, neighbors, target).catch((err: unknown) => controller.setError(err));
   };
-  const add = async (status: TaskStatus, title: string): Promise<boolean> => {
+  const add = async (target: BoardColumn, title: string): Promise<boolean> => {
     if (!hub) return false;
     try {
-      await hub.create({ channel_id: channel.id, title, status, kind: "task", client_task_id: crypto.randomUUID(), tz: localZone() });
+      const created = await hub.create({ channel_id: channel.id, title, status: target.status, kind: "task", client_task_id: crypto.randomUUID(), tz: localZone() });
+      // M81: a card added under an added column goes there (it was made in the built-in column of that status).
+      if (!target.builtin && board?.columnsSupported) await hub.move(created.id, target.status, { after_id: null, before_id: null }, target);
       return true;
     } catch (err) {
       controller.setError(err);
       return false;
     }
   };
+  const moveColumn = (column: BoardColumn, direction: -1 | 1) => {
+    const after = columnMoveTarget(boardColumns, column.id, direction);
+    if (!hub || after === undefined) return;
+    void hub.changeColumn(channel.id, column.id, { after_id: after }).catch((err: unknown) => controller.setError(err));
+  };
   const endDrag = () => {
     setDragging(null);
     setDrop(null);
   };
-  const dropOn = (status: TaskStatus, index: number) => {
+  const dropOn = (target: BoardColumn, index: number) => {
     const task = dragging ? tasks.find((t) => t.id === dragging) : undefined;
     endDrag();
     if (!task || !canEdit) return;
-    const column = columns[status];
-    if (task.status === status && isNoopMove(column, task.id, index)) return;
-    move(task, status, computeNeighbors(column, task.id, index));
+    const column = cardsOf[target.id] ?? [];
+    if (columnOf(task).id === target.id && isNoopMove(column, task.id, index)) return;
+    move(task, target, computeNeighbors(column, task.id, index));
   };
 
   return (
@@ -385,40 +434,51 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
       {note && <div className="border-b border-line bg-warning/10 px-4 py-1.5 text-xs text-muted">{note}</div>}
       {/* A phone: the columns side by side, scrolled sideways inside the board (snapping to a column). */}
       <div className="flex min-h-0 flex-1 snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden p-3 md:snap-none">
-        {TASK_STATUSES.map((status) => {
-          const column = columns[status];
+        {boardColumns.map((target) => {
+          const status: TaskStatus = target.status;
+          const column = cardsOf[target.id] ?? [];
           const showIndicator = (i: number) =>
-            drop?.status === status && drop.index === i && !(dragging && column.some((t) => t.id === dragging) && isNoopMove(column, dragging, i));
-          const doneLimit = status === "done" && !board?.allDone && column.length >= BOARD_DONE_LIMIT;
+            drop?.column === target.id && drop.index === i && !(dragging && column.some((t) => t.id === dragging) && isNoopMove(column, dragging, i));
+          const doneLimit = status === "done" && !board?.allDone && doneCount >= BOARD_DONE_LIMIT && column.length > 0;
           return (
             <section
-              key={status}
-              aria-label={STATUS_LABELS[status]}
-              data-column={status}
+              key={target.id}
+              aria-label={target.name}
+              data-column={target.builtin ? status : target.id}
+              data-column-status={status}
               className="flex min-h-0 w-[272px] shrink-0 snap-start flex-col rounded-xl bg-panel-2/70 max-md:w-[min(300px,calc(100vw-56px))] md:min-w-[220px] md:flex-1 md:basis-0"
             >
-              <h3 className="flex shrink-0 items-center gap-2 px-3 pb-1 pt-2.5 text-[13px] font-semibold">
-                <span className={cn("h-2 w-2 rounded-full", status === "todo" ? "bg-muted/60" : status === "doing" ? "bg-accent" : "bg-success")} aria-hidden />
-                {STATUS_LABELS[status]}
+              <h3 className="group/col flex shrink-0 items-center gap-2 px-3 pb-1 pt-2.5 text-[13px] font-semibold">
+                <span className={cn("h-2 w-2 shrink-0 rounded-full", status === "todo" ? "bg-muted/60" : status === "doing" ? "bg-accent" : "bg-success")} aria-hidden />
+                <span className="min-w-0 truncate" data-column-name>{target.name}</span>
                 <span className="font-normal text-muted" data-count>{column.length}{doneLimit ? "+" : ""}</span>
+                {canChangeColumns && (
+                  <ColumnMenu
+                    column={target}
+                    columns={boardColumns}
+                    onRename={() => setColumnDialog({ mode: "rename", column: target })}
+                    onMove={(direction) => moveColumn(target, direction)}
+                    onDelete={() => setDeleting(target)}
+                  />
+                )}
               </h3>
               <div
-                data-drop-zone={status}
+                data-drop-zone={target.builtin ? status : target.id}
                 className="flex min-h-[48px] flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-1 pt-1"
                 onDragOver={(e) => {
                   if (!dragging || !canEdit) return;
                   e.preventDefault();
                   if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
                   const index = dropSlot(e.currentTarget, e.clientY);
-                  if (drop?.status !== status || drop.index !== index) setDrop({ status, index });
+                  if (drop?.column !== target.id || drop.index !== index) setDrop({ column: target.id, index });
                 }}
                 onDragLeave={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node | null) && drop?.status === status) setDrop(null);
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null) && drop?.column === target.id) setDrop(null);
                 }}
                 onDrop={(e) => {
                   if (!dragging) return;
                   e.preventDefault();
-                  dropOn(status, dropSlot(e.currentTarget, e.clientY));
+                  dropOn(target, dropSlot(e.currentTarget, e.clientY));
                 }}
               >
                 {board?.state === "loading" && column.length === 0 && <p className="px-1 py-2 text-xs text-muted">読み込み中…</p>}
@@ -442,7 +502,7 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
                         setDragging(task.id);
                       }}
                       onDragEnd={endDrag}
-                      menu={<CardMenu task={task} column={column} canEdit={canEdit} onMove={(s, n) => move(task, s, n)} onDelete={() => setConfirm(task)} />}
+                      menu={<CardMenu task={task} column={column} current={target} columns={boardColumns} canEdit={canEdit} onMove={(c, n) => move(task, c, n)} onDelete={() => setConfirm(task)} />}
                     />
                   </div>
                 ))}
@@ -454,14 +514,154 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
                     完了をすべて表示
                   </button>
                 )}
-                {canEdit && <div className="shrink-0 pb-1"><InlineAdd onAdd={(title) => add(status, title)} /></div>}
+                {canEdit && <div className="shrink-0 pb-1"><InlineAdd onAdd={(title) => add(target, title)} /></div>}
               </div>
             </section>
           );
         })}
+        {canChangeColumns && boardColumns.length < MAX_COLUMNS && (
+          <div className="w-[200px] shrink-0 snap-start pt-1 md:w-[180px]">
+            <button
+              type="button"
+              className="flex w-full items-center gap-1 rounded-xl border border-dashed border-line px-3 py-2 text-left text-sm text-muted hover:bg-ink/6 hover:text-ink"
+              onClick={() => setColumnDialog({ mode: "add" })}
+            >
+              <Plus size={14} /> 列を追加
+            </button>
+          </div>
+        )}
       </div>
+      {columnDialog && hub && (
+        <ColumnDialog
+          mode={columnDialog.mode}
+          column={columnDialog.mode === "rename" ? columnDialog.column : null}
+          onClose={() => setColumnDialog(null)}
+          onSave={async (name, status) => {
+            if (columnDialog.mode === "rename") await hub.changeColumn(channel.id, columnDialog.column.id, { name });
+            else await hub.addColumn({ channel_id: channel.id, name, status });
+          }}
+        />
+      )}
+      {deleting && hub && (
+        <Modal onClose={() => setDeleting(null)} title={`列「${deleting.name}」を削除しますか？`} className="w-[420px]">
+          <p className="mt-2 text-sm text-muted">
+            この列のカードは「{builtinFor(boardColumns, deleting.status)?.name ?? statusLabel("task", deleting.status)}」へ移ります (状態は変わりません)。
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDeleting(null)}>キャンセル</Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                const column = deleting;
+                setDeleting(null);
+                void hub.removeColumn(channel.id, column.id).catch((err: unknown) => controller.setError(err));
+              }}
+            >
+              削除する
+            </Button>
+          </div>
+        </Modal>
+      )}
       {dialog && <TaskDialog controller={controller} task={hub?.find(dialog.id) ?? dialog} onClose={() => setDialog(null)} onOpenMessage={onOpenMessage} />}
       {confirm && <DeleteTaskConfirm controller={controller} task={confirm} onClose={() => setConfirm(null)} />}
     </div>
+  );
+}
+
+/** M81: a column's ⋯ — 名前を変更, 左へ / 右へ, 削除 (an added column only). */
+function ColumnMenu({ column, columns, onRename, onMove, onDelete }: {
+  column: BoardColumn;
+  columns: readonly BoardColumn[];
+  onRename: () => void;
+  onMove: (direction: -1 | 1) => void;
+  onDelete: () => void;
+}) {
+  const left = columnMoveTarget(columns, column.id, -1) !== undefined;
+  const right = columnMoveTarget(columns, column.id, 1) !== undefined;
+  return (
+    <Menu>
+      <MenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`列「${column.name}」の操作`}
+          title="列の操作"
+          className="ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md font-normal text-muted opacity-60 hover:bg-ink/6 hover:text-ink group-hover/col:opacity-100 focus-visible:opacity-100"
+        >
+          <MoreHorizontal size={15} />
+        </button>
+      </MenuTrigger>
+      <MenuContent align="end" className="min-w-40">
+        <MenuItem onSelect={onRename}>名前を変更</MenuItem>
+        <MenuItem disabled={!left} onSelect={() => onMove(-1)}>左へ</MenuItem>
+        <MenuItem disabled={!right} onSelect={() => onMove(1)}>右へ</MenuItem>
+        {!column.builtin && (
+          <>
+            <MenuSeparator />
+            <MenuItem className="text-danger" onSelect={onDelete}>列を削除</MenuItem>
+          </>
+        )}
+      </MenuContent>
+    </Menu>
+  );
+}
+
+/** M81: 「列を追加」 (a name and the status its cards take) and 「名前を変更」. */
+function ColumnDialog({ mode, column, onClose, onSave }: {
+  mode: "add" | "rename";
+  column: BoardColumn | null;
+  onClose: () => void;
+  onSave: (name: string, status: TaskStatus) => Promise<void>;
+}) {
+  const [name, setName] = useState(column?.name ?? "");
+  const [status, setStatus] = useState<TaskStatus>(column?.status ?? "doing");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const problem = columnNameProblem(name);
+  const save = async () => {
+    if (busy || problem) {
+      setError(problem);
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSave(cleanTitle(name), status);
+      onClose();
+    } catch (err) {
+      setError(describeError(err));
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal onClose={onClose} title={mode === "add" ? "列を追加" : "列の名前を変更"} className="w-[420px]">
+      <form
+        className="mt-4 space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <Field label="名前">
+          <Input autoFocus value={name} maxLength={MAX_COLUMN_NAME} placeholder="レビュー待ち" onChange={(e) => { setName(e.target.value); setError(null); }} />
+        </Field>
+        {mode === "add" && (
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-muted">種類</span>
+            <div role="radiogroup" aria-label="種類" className="space-y-1 text-sm">
+              {TASK_STATUSES.map((s) => (
+                <label key={s} className="flex cursor-pointer items-center gap-2">
+                  <input type="radio" name="column-kind" className="accent-[var(--accent)]" checked={status === s} onChange={() => setStatus(s)} />
+                  {COLUMN_KIND_LABELS[s]}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose}>キャンセル</Button>
+          <Button type="submit" disabled={busy || !!problem}>{mode === "add" ? "追加" : "保存"}</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

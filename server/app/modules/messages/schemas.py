@@ -306,6 +306,8 @@ class MessageTaskOut(BaseModel):
     assignee_ids: list[UUID]
     due_on: dt.date | None
     owner_id: UUID
+    # M81 (TASKS.md §11): the due time, when it has one.
+    due_at: datetime | None = None
 
 
 class CollectionOut(BaseModel):

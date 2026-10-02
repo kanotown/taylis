@@ -3,10 +3,11 @@
  * POST /tasks/{id}/move), the optimistic move, the event reducer, due dates, who may edit a board, and the groups of
  * 「自分のタスク」. No store, no React: the hub (sync/tasks.ts) and the screens share them, and the tests read them.
  */
-import type { GroupOut, MessageTaskOut, TaskCreate, TaskData, TaskOut, TaskStatus, TaskUpdate, UserPublic } from "../api/types";
+import type { GroupOut, MessageTaskOut, SubtaskIn, SubtaskOut, TaskColumnOut, TaskCreate, TaskData, TaskOut, TaskStatus, TaskUpdate, UserPublic } from "../api/types";
 import type { ChannelState } from "../sync/types";
 import { canPostTopLevel } from "./channels";
-import { type DayKey, parseDay } from "./calendarDates";
+import { clock, type DayKey, dayKey, isoLocal, parseDay, today as todayKey } from "./calendarDates";
+import { noRepeat, type RepeatDraft, repeatProblem, repeatToRrule, ruleChanged, rruleToRepeat } from "./calendarRecurrence";
 import { attachmentText, plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
 
@@ -40,6 +41,79 @@ export function sortColumn<T extends Pick<TaskOut, "status" | "position" | "id">
 export interface Neighbors {
   after_id: string | null;
   before_id: string | null;
+}
+
+// --- columns (M81, TASKS.md §11) -------------------------------------------------------------------
+
+/** A board's column as the screens use it (the server's TaskColumnOut without its channel). */
+export type BoardColumn = Pick<TaskColumnOut, "id" | "name" | "status" | "builtin" | "position">;
+export const MAX_COLUMN_NAME = 50;
+export const MAX_COLUMNS = 20;
+export const MAX_SUBTASKS = 50;
+
+/**
+ * The three built-in columns before the server's answer, or from a server before M81 (no GET /tasks/columns). Their
+ * ids are the statuses: a move into one sends the status alone.
+ */
+export const FALLBACK_COLUMNS: readonly BoardColumn[] = TASK_STATUSES.map((status, i) => ({ id: status, name: STATUS_LABELS[status], status, builtin: true, position: i + 1 }));
+
+/** Whether a board's columns are the fallback ones (ids = statuses: moves send the status alone). */
+export function isFallbackColumns(columns: readonly BoardColumn[]): boolean {
+  return columns.every((c) => c.builtin && c.id === c.status);
+}
+
+/** Left to right (position, then id). */
+export function sortColumns<T extends Pick<BoardColumn, "position" | "id">>(columns: readonly T[]): T[] {
+  return [...columns].sort((a, b) => a.position - b.position || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/** The column a card is in: its added column, else (or when that column is unknown here) the built-in one of its status. */
+export function columnOfTask(task: Pick<TaskOut, "status"> & { column_id?: string | null }, columns: readonly BoardColumn[]): BoardColumn | undefined {
+  const own = task.column_id ? columns.find((c) => c.id === task.column_id && !c.builtin) : undefined;
+  return own ?? columns.find((c) => c.builtin && c.status === task.status);
+}
+
+/** A column's cards in the server's order. */
+export function sortBoardColumn<T extends Pick<TaskOut, "status" | "position" | "id"> & { column_id?: string | null }>(tasks: readonly T[], column: BoardColumn, columns: readonly BoardColumn[]): T[] {
+  return tasks.filter((t) => columnOfTask(t, columns)?.id === column.id).sort(compareTasks);
+}
+
+/** The task's column_id once in `column` (null: a built-in one). */
+export function columnIdFor(column: BoardColumn): string | null {
+  return column.builtin ? null : column.id;
+}
+
+/** The built-in column a deleted column's cards go to. */
+export function builtinFor(columns: readonly BoardColumn[], status: TaskStatus): BoardColumn | undefined {
+  return columns.find((c) => c.builtin && c.status === status);
+}
+
+/** What the 「種類」 of a new column says (a column of a status). */
+export const COLUMN_KIND_LABELS: Readonly<Record<TaskStatus, string>> = { todo: "未着手 (まだ始めていない)", doing: "進行中", done: "完了 (カードは完了になる)" };
+
+export function columnNameProblem(name: string): string | null {
+  const cleaned = cleanTitle(name);
+  if (!cleaned) return "列の名前を入れてください";
+  if (cleaned.length > MAX_COLUMN_NAME) return `列の名前は ${MAX_COLUMN_NAME} 文字までです`;
+  return null;
+}
+
+/** 「左へ」 / 「右へ」: the column to go right of (null: the left end), or undefined when it cannot move that way. */
+export function columnMoveTarget(columns: readonly BoardColumn[], columnId: string, direction: -1 | 1): string | null | undefined {
+  const sorted = sortColumns(columns);
+  const index = sorted.findIndex((c) => c.id === columnId);
+  if (index < 0) return undefined;
+  const to = index + direction;
+  if (to < 0 || to >= sorted.length) return undefined;
+  const rest = sorted.filter((c) => c.id !== columnId);
+  return to === 0 ? null : rest[to - 1]!.id;
+}
+
+/** M81: a card's checklist progress (「2/5」), or null without one. */
+export function subtaskProgress(task: { subtasks?: readonly SubtaskOut[] | null }): { done: number; total: number } | null {
+  const items = task.subtasks ?? [];
+  if (items.length === 0) return null;
+  return { done: items.filter((i) => i.done).length, total: items.length };
 }
 
 /**
@@ -76,8 +150,10 @@ export function moveWithin(column: readonly Pick<TaskOut, "id">[], taskId: strin
  * The position a move would get here (the optimistic guess; the server's answer replaces it): between the neighbours,
  * else past the one given, else the bottom of todo / doing and the top of done (the server's rule without neighbours).
  */
-export function guessPosition(tasks: readonly TaskOut[], taskId: string, status: TaskStatus, neighbors: Neighbors): number {
-  const column = sortColumn(tasks, status).filter((t) => t.id !== taskId);
+export function guessPosition(tasks: readonly TaskOut[], taskId: string, status: TaskStatus, neighbors: Neighbors, columnId?: string | null): number {
+  // M81: within an added column (or a built-in one: null) when one is given, else the whole status.
+  const inColumn = columnId === undefined ? tasks : tasks.filter((t) => (t.column_id ?? null) === columnId);
+  const column = sortColumn(inColumn, status).filter((t) => t.id !== taskId);
   const above = column.find((t) => t.id === neighbors.after_id);
   const below = column.find((t) => t.id === neighbors.before_id);
   if (above && below) return (above.position + below.position) / 2;
@@ -94,13 +170,15 @@ export function guessPosition(tasks: readonly TaskOut[], taskId: string, status:
 }
 
 /** The optimistic move: the card in its new column at its guessed position (completion as the server would set it). */
-export function applyLocalMove(tasks: readonly TaskOut[], taskId: string, status: TaskStatus, neighbors: Neighbors, now: string = new Date().toISOString(), me: string | null = null): TaskOut[] {
+export function applyLocalMove(tasks: readonly TaskOut[], taskId: string, status: TaskStatus, neighbors: Neighbors, now: string = new Date().toISOString(), me: string | null = null, columnId?: string | null): TaskOut[] {
   const task = tasks.find((t) => t.id === taskId);
   if (!task) return [...tasks];
-  const position = guessPosition(tasks, taskId, status, neighbors);
+  // M81: the server's rule for a move without a column: the card's column while the status stays, else the built-in one.
+  const column = columnId !== undefined ? columnId : status === task.status ? (task.column_id ?? null) : null;
+  const position = guessPosition(tasks, taskId, status, neighbors, column);
   const completion =
     status === task.status ? {} : status === "done" ? { completed_at: now, completed_by: me } : { completed_at: null, completed_by: null };
-  return tasks.map((t) => (t.id === taskId ? { ...t, status, position, ...completion } : t));
+  return tasks.map((t) => (t.id === taskId ? { ...t, status, position, column_id: column, ...completion } : t));
 }
 
 /** A task as it is now (an event, an answer): replaces the one held, or joins the list. */
@@ -128,8 +206,25 @@ export function isMine(task: Pick<TaskOut, "channel_id" | "assignee_ids">, me: s
 
 // --- due dates -------------------------------------------------------------------------------------
 
-export function isOverdue(task: Pick<TaskOut, "due_on" | "status">, today: DayKey): boolean {
-  return !!task.due_on && task.status !== "done" && task.due_on < today;
+/** Past due while open: a due time once it has passed (M81), a date once the day is over. */
+export function isOverdue(task: Pick<TaskOut, "due_on" | "status"> & { due_at?: string | null }, today: DayKey, now: Date = new Date()): boolean {
+  if (!task.due_on || task.status === "done") return false;
+  if (task.due_at) return new Date(task.due_at).getTime() < now.getTime();
+  return task.due_on < today;
+}
+
+/** The local day a task is due on: a due time's local date (M81), else due_on. */
+export function dueDay(task: Pick<TaskOut, "due_on"> & { due_at?: string | null }): DayKey | null {
+  if (task.due_at) return dayKey(new Date(task.due_at));
+  return task.due_on ?? null;
+}
+
+/** A card's due: 「今日」 / 「10/9」, with the time when it has one (「今日 14:00」, 「10/9 14:00」). */
+export function dueText(task: Pick<TaskOut, "due_on"> & { due_at?: string | null }, today: DayKey): string {
+  const day = dueDay(task);
+  if (!day) return "";
+  const label = dueLabel(day, today);
+  return task.due_at ? `${label} ${clock(task.due_at)}` : label;
 }
 
 /** A card's due date: 「今日」, else M/D (with the year when not this year's). */
@@ -141,10 +236,12 @@ export function dueLabel(dueOn: string, today: DayKey): string {
 }
 
 /** The tasks due on a day (the calendar's rows), open ones first, then by title. */
-export function tasksForDay<T extends Pick<TaskOut, "due_on" | "status" | "title" | "id">>(tasks: readonly T[], day: DayKey): T[] {
+export function tasksForDay<T extends Pick<TaskOut, "due_on" | "status" | "title" | "id"> & { due_at?: string | null }>(tasks: readonly T[], day: DayKey): T[] {
+  // M81: those with a due time after those without, by time.
+  const time = (t: T) => (t.due_at ? new Date(t.due_at).getTime() : -1);
   return tasks
     .filter((t) => t.due_on === day)
-    .sort((a, b) => Number(a.status === "done") - Number(b.status === "done") || a.title.localeCompare(b.title, "ja") || (a.id < b.id ? -1 : 1));
+    .sort((a, b) => Number(a.status === "done") - Number(b.status === "done") || time(a) - time(b) || a.title.localeCompare(b.title, "ja") || (a.id < b.id ? -1 : 1));
 }
 
 /** Whether a task is due inside [from, to) (dates; the calendar's window). */
@@ -254,23 +351,77 @@ export function taskChip(task: MessageTaskOut, nameOf: (userId: string) => strin
   const names = task.assignee_ids.map((id) => nameOf(id) ?? "?");
   if (names.length > 0) parts.push(names.length > 2 ? `${names.slice(0, 2).join("、")} 他 ${names.length - 2} 人` : names.join("、"));
   parts.push(statusLabel(task.kind, task.status));
-  if (task.due_on && task.status !== "done") parts.push(task.due_on === today ? "今日まで" : `${dueLabel(task.due_on, today)} まで`);
+  if (task.due_on && task.status !== "done") {
+    const due = dueText(task, today);
+    parts.push(due === "今日" ? "今日まで" : `${due} まで`);
+  }
   const tone: TaskChipTone = task.status === "done" ? "done" : isOverdue(task, today) ? "overdue" : "open";
   return { text: parts.join(" · "), tone };
 }
 
 // --- the detail dialog -----------------------------------------------------------------------------
 
+/** M81: a checklist item in the dialog (id null: new). */
+export interface SubtaskDraft {
+  id: string | null;
+  title: string;
+  done: boolean;
+}
+
 export interface TaskDraft {
   title: string;
   notes: string;
   status: TaskStatus;
   dueOn: string;
+  /** M81: "HH:MM" (local), "" for the whole day. */
+  dueTime?: string;
+  /** M81: 「繰り返し」 (needs a due date). */
+  repeat?: RepeatDraft;
+  /** M81: 「サブタスク」. */
+  subtasks?: SubtaskDraft[];
   assigneeIds: string[];
 }
 
+function hhmmLocal(iso: string): string {
+  const date = new Date(iso);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 export function draftFromTask(task: TaskOut): TaskDraft {
-  return { title: task.title, notes: task.notes ?? "", status: task.status, dueOn: task.due_on ?? "", assigneeIds: [...task.assignee_ids] };
+  const dueOn = dueDay(task) ?? "";
+  return {
+    title: task.title,
+    notes: task.notes ?? "",
+    status: task.status,
+    dueOn,
+    dueTime: task.due_at ? hhmmLocal(task.due_at) : "",
+    repeat: rruleToRepeat(task.rrule ?? null, dueOn || todayKey()),
+    subtasks: (task.subtasks ?? []).map((i) => ({ id: i.id, title: i.title, done: i.done })),
+    assigneeIds: [...task.assignee_ids],
+  };
+}
+
+/** A new task's empty extras (no time, no repeat, no checklist). */
+export function emptyExtras(dueOn: string): Pick<TaskDraft, "dueTime" | "repeat" | "subtasks"> {
+  return { dueTime: "", repeat: noRepeat(dueOn || todayKey()), subtasks: [] };
+}
+
+/** The due time as the server takes it: the local wall-clock time with the device's offset. */
+export function dueAtOf(draft: Pick<TaskDraft, "dueOn" | "dueTime">): string | null {
+  if (!draft.dueOn || !draft.dueTime) return null;
+  return isoLocal(new Date(`${draft.dueOn}T${draft.dueTime}:00`));
+}
+
+/** The checklist as sent (blank items left out). */
+export function subtasksBody(items: readonly SubtaskDraft[] | undefined): SubtaskIn[] {
+  return (items ?? [])
+    .map((i) => ({ ...i, title: cleanTitle(i.title) }))
+    .filter((i) => i.title)
+    .map((i) => (i.id ? { id: i.id, title: i.title, done: i.done } : { title: i.title, done: i.done }));
+}
+
+function repeatRule(draft: TaskDraft): string | null {
+  return draft.dueOn && draft.repeat ? repeatToRrule(draft.repeat, draft.dueOn) : null;
 }
 
 /** The title as the server keeps it (whitespace collapsed). */
@@ -283,6 +434,13 @@ export function taskDraftProblem(draft: TaskDraft): string | null {
   if (!title) return "題名を入れてください";
   if (title.length > MAX_TASK_TITLE) return `題名は ${MAX_TASK_TITLE} 文字までです`;
   if (draft.notes.length > MAX_TASK_NOTES) return `メモは ${MAX_TASK_NOTES} 文字までです`;
+  if (draft.repeat && draft.repeat.kind !== "none") {
+    if (!draft.dueOn) return "繰り返すには期限を入れてください";
+    const problem = repeatProblem(draft.repeat, draft.dueOn);
+    if (problem) return problem;
+  }
+  if (subtasksBody(draft.subtasks).length > MAX_SUBTASKS) return `サブタスクは ${MAX_SUBTASKS} 個までです`;
+  if ((draft.subtasks ?? []).some((i) => cleanTitle(i.title).length > MAX_TASK_TITLE)) return `サブタスクは ${MAX_TASK_TITLE} 文字までです`;
   return null;
 }
 
@@ -295,9 +453,28 @@ export function taskPatch(task: TaskOut, draft: TaskDraft, tz: string): TaskUpda
   if (notes !== (task.notes ?? null)) patch.notes = notes;
   if (draft.status !== task.status) patch.status = draft.status;
   const due = draft.dueOn || null;
-  if (due !== (task.due_on ?? null)) {
-    patch.due_on = due;
-    patch.tz = tz;
+  const dueAt = dueAtOf(draft);
+  if (dueAt) {
+    // M81: a due time (the server takes its date from it).
+    if (!task.due_at || new Date(task.due_at).getTime() !== new Date(dueAt).getTime()) {
+      patch.due_at = dueAt;
+      patch.tz = tz;
+    }
+  } else {
+    if (due !== (dueDay(task) ?? null)) {
+      patch.due_on = due;
+      patch.tz = tz;
+    }
+    if (due && task.due_at) patch.due_at = null; // back to the whole day
+  }
+  if (draft.repeat) {
+    const changed = due ? ruleChanged(draft.repeat, due, task.rrule ?? null) : !!task.rrule;
+    if (changed) patch.rrule = repeatRule(draft);
+  }
+  if (draft.subtasks) {
+    const before = JSON.stringify((task.subtasks ?? []).map((i) => [i.id, i.title, i.done]));
+    const body = subtasksBody(draft.subtasks);
+    if (JSON.stringify(body.map((i) => [i.id ?? null, i.title, i.done ?? false])) !== before) patch.subtasks = body;
   }
   if (task.channel_id !== null) {
     const before = [...task.assignee_ids].sort();
@@ -375,6 +552,9 @@ export function taskCreateBody(draft: TaskDraft, init: TaskCreateInit | undefine
     ...(channelId ? { channel_id: channelId } : {}),
     ...(draft.notes.trim() ? { notes: draft.notes } : {}),
     ...(draft.dueOn ? { due_on: draft.dueOn } : {}),
+    ...(dueAtOf(draft) ? { due_at: dueAtOf(draft) } : {}),
+    ...(repeatRule(draft) ? { rrule: repeatRule(draft) } : {}),
+    ...(subtasksBody(draft.subtasks).length > 0 ? { subtasks: subtasksBody(draft.subtasks) } : {}),
     ...(channelId && draft.assigneeIds.length > 0 ? { assignee_ids: [...new Set(draft.assigneeIds)] } : {}),
     ...(init?.sourceMessageId ? { source_message_id: init.sourceMessageId } : {}),
     ...(init?.sourceCanvasId && init.sourceCanvasLine ? { source_canvas_id: init.sourceCanvasId, source_canvas_line: init.sourceCanvasLine } : {}),
@@ -444,7 +624,7 @@ export function taskNoticeText(
   notice:
     | { kind: "assigned"; data: ByNotice & { kind?: TaskKind } }
     | { kind: "review_done"; data: ByNotice }
-    | { kind: "due"; data: { task_id: string; channel_id: string | null; channel_name: string | null; title: string } },
+    | { kind: "due"; data: { task_id: string; channel_id: string | null; channel_name: string | null; title: string; due_at?: string | null } },
   nameOf: (userId: string) => string | null,
 ): { body: string; taskId: string; channelId: string | null } {
   const where = (name: string | null | undefined) => (name ? ` (#${name})` : "");
@@ -454,5 +634,7 @@ export function taskNoticeText(
     return { body: `${nameOf(data.by_user_id) ?? "メンバー"} が${what}: ${data.title}${where(data.channel_name)}`, taskId: data.task_id, channelId: data.channel_id };
   }
   const { data } = notice;
-  return { body: `今日が期限: ${data.title}${data.channel_id ? where(data.channel_name) : ""}`, taskId: data.task_id, channelId: data.channel_id };
+  // M81: a due time (the notification went out at it): 「14:00 が期限: …」.
+  const when = data.due_at ? `${clock(data.due_at)} が期限` : "今日が期限";
+  return { body: `${when}: ${data.title}${data.channel_id ? where(data.channel_name) : ""}`, taskId: data.task_id, channelId: data.channel_id };
 }
