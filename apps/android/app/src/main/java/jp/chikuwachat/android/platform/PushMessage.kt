@@ -22,6 +22,8 @@ data class PushMessage(
     val eventId: String? = null,
     /** M56: a task's assignment or due date (`kind = task`); its `channel_id` is null for a personal task. */
     val taskId: String? = null,
+    /** M73: the canvas that newly mentions me (`kind = canvas`, CANVAS.md §18.1); `channel_id` is its conversation. */
+    val canvasId: String? = null,
 ) {
     val isSilent: Boolean get() = kind == "silent"
 
@@ -30,6 +32,9 @@ data class PushMessage(
 
     /** M56 (TASKS.md §5, §8): a task assigned to me or due today; the tap opens the task. */
     val isTask: Boolean get() = kind == "task" && taskId != null
+
+    /** M73 (CANVAS.md §18.5): a canvas mentioned me; the tap opens it in its conversation's 「キャンバス」 tab. */
+    val isCanvas: Boolean get() = kind == "canvas" && canvasId != null
 
     /** Whether it becomes a notification: a conversation's, or a calendar alarm's / a task's (which may have no conversation). */
     val shown: Boolean get() = !isSilent && notificationKey != null && (channelId != null || isCalendar || isTask)
@@ -53,6 +58,8 @@ data class PushMessage(
         "calendar" -> collapseKey ?: eventId?.let { "calendar:$it" }
         // M56: one per task ("task:<task id>"), the server's collapse key.
         "task" -> collapseKey ?: taskId?.let { "task:$it" }
+        // M73: one per canvas ("canvas:<canvas id>"): the next mention in it replaces it; a read of the conversation keeps it.
+        "canvas" -> collapseKey ?: canvasId?.let { "canvas:$it" }
         else -> channelId
     }
 
@@ -73,6 +80,7 @@ data class PushMessage(
                 badge = data["badge"]?.toIntOrNull(),
                 eventId = data["event_id"]?.takeIf { it.isNotBlank() },
                 taskId = data["task_id"]?.takeIf { it.isNotBlank() },
+                canvasId = data["canvas_id"]?.takeIf { it.isNotBlank() },
             )
         }
     }

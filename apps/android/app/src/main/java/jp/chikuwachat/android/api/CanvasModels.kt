@@ -140,6 +140,20 @@ data class CanvasSearchOut(
     val totalCapped: Boolean = false,
 )
 
+/**
+ * M73 (CANVAS.md §18.1): canvas.mentioned (to me only) — a save of the canvas newly mentions me. Lenient: a missing
+ * field takes its default (only the canvas and its conversation are needed to say it and open it).
+ */
+@Serializable
+data class CanvasMentioned(
+    val canvasId: String,
+    val channelId: String,
+    /** The version that added the mention. */
+    val revId: String = "",
+    val title: String = "",
+    val byUserId: String = "",
+)
+
 /** M58: GET /search/canvases parameters (the message search's words, person, conversation and dates; no has: / thread). */
 data class CanvasSearchRequest(
     val q: String,

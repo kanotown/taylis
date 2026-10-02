@@ -109,6 +109,7 @@ class FakeServer {
                     deliver(buildJsonObject { put("type", "pong"); put("server_time", now()) })
                 }
                 "typing" -> frame["channel_id"]?.jsonPrimitive?.contentOrNull?.let { relayTyping(userId, it, frame["parent_id"]?.jsonPrimitive?.contentOrNull) }
+                "canvas_presence" -> relayCanvasPresence(userId, frame)
             }
         }
 
@@ -618,6 +619,37 @@ class FakeServer {
         sockets.toList().filter { it.authed && it.userId != userId && it.userId in record.members }.forEach {
             it.deliver(buildJsonObject { put("type", "typing"); put("channel_id", channelId); put("parent_id", parentId?.let { p -> JsonPrimitive(p) } ?: JsonNull); put("user_id", userId) })
         }
+    }
+
+    // --- canvases, M73 (CANVAS.md §18.1 / §18.2) ------------------------------------------------------
+
+    /** Canvas id → its conversation (set by tests): where `canvas_presence` frames are relayed. */
+    val canvasChannels = HashMap<String, String>()
+    /** Every `canvas_presence` frame a client sent, with its sender. */
+    val canvasPresenceReceived = ArrayList<Pair<String, JsonObject>>()
+
+    /** The server's relay (§18.2): to the conversation's other members; an unknown canvas or a non-member is dropped. */
+    fun relayCanvasPresence(userId: String, frame: JsonObject) {
+        canvasPresenceReceived.add(userId to frame)
+        val canvasId = frame["canvas_id"]?.jsonPrimitive?.contentOrNull ?: return
+        val channelId = canvasChannels[canvasId] ?: return
+        val record = channels[channelId] ?: return
+        if (userId !in record.members) return
+        val editing = frame["editing"]?.jsonPrimitive?.contentOrNull == "true"
+        val section = frame["section"]?.jsonPrimitive?.contentOrNull
+        sockets.toList().filter { it.authed && it.userId != userId && it.userId in record.members }.forEach {
+            it.deliver(buildJsonObject {
+                put("type", "canvas_presence"); put("canvas_id", canvasId); put("channel_id", channelId); put("user_id", userId)
+                put("editing", editing); put("section", section?.let { v -> JsonPrimitive(v) } ?: JsonNull)
+            })
+        }
+    }
+
+    /** canvas.mentioned (audience user, no seq): a save of the canvas newly mentions `userId`. */
+    fun emitCanvasMentioned(userId: String, canvasId: String, channelId: String, title: String, byUserId: String) {
+        emit(setOf(userId), event("canvas.mentioned", null, null, buildJsonObject {
+            put("canvas_id", canvasId); put("channel_id", channelId); put("rev_id", nextId()); put("title", title); put("by_user_id", byUserId)
+        }))
     }
 
     // --- threads (THREADS.md §2) ------------------------------------------------------------------

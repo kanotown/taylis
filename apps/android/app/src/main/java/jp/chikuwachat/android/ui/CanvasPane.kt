@@ -59,7 +59,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
@@ -78,6 +80,8 @@ import jp.chikuwachat.android.sync.CanvasHub
 import jp.chikuwachat.android.sync.CanvasSaveStatus
 import jp.chikuwachat.android.sync.CanvasSaver
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.CanvasEditors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /*
@@ -260,6 +264,15 @@ private fun CanvasView(
             }
         }
     }
+    // M73 (CANVAS.md §18.3): 「タスクにする」 on an open checklist item — the task form, filled like the desktop's (what is
+    // typed or ticked goes out first: the server looks for the line in the saved body).
+    val onMakeTask: ((Int) -> Unit)? = if (usable && controller.tasks?.available == true && channel.isMember) { line ->
+        val init = CanvasTasks.taskInit(canvasId, saver.text, line, channel, store.users, store.groups, controller.isAdmin)
+        if (init != null) {
+            saver.flush()
+            controller.taskForm = TaskForm(null, init)
+        }
+    } else null
     val onShare: (() -> Unit)? = if (meta != null && !shared && rights.share) ({
         scope.launch { if (controller.shareCanvas(meta.id) != null) controller.notice = "会話に共有しました" }
     }) else null
@@ -302,6 +315,7 @@ private fun CanvasView(
                     if (rights.edit && status != CanvasSaveStatus.GONE && loadError == null) ModeSwitch(mode) { mode = it }
                 }
             }
+            CanvasEditing(controller, canvasId, Modifier.padding(horizontal = 12.dp).padding(bottom = 4.dp))
             HorizontalDivider()
             if (loadError == null) CanvasNotice(controller, channel, rights, saver, status)
             when {
@@ -310,7 +324,7 @@ private fun CanvasView(
                 editing && wide -> Row(Modifier.fillMaxSize()) {
                     CanvasEditorField(controller, saver, null, Modifier.weight(1f).fillMaxHeight())
                     VerticalDivider()
-                    CanvasReader(controller, saver, meta, title, rights, onToggle, null, rememberLazyListState(), Modifier.weight(1f).fillMaxHeight(), preview = true, onStartWriting = {})
+                    CanvasReader(controller, saver, meta, title, rights, onToggle, null, rememberLazyListState(), Modifier.weight(1f).fillMaxHeight(), preview = true, onStartWriting = {}, onMakeTask = onMakeTask)
                 }
                 editing -> CanvasEditorField(controller, saver, null, Modifier.fillMaxSize())
                 else -> Row(Modifier.fillMaxSize()) {
@@ -318,7 +332,7 @@ private fun CanvasView(
                         controller, saver, meta, title, rights, onToggle,
                         onEditSection = if (rights.edit && usable) ({ line -> section = CanvasSections.keyAt(saver.text, line) }) else null,
                         listState = listState, modifier = Modifier.weight(1f).fillMaxHeight(), preview = false,
-                        onStartWriting = { mode = CanvasMode.EDIT },
+                        onStartWriting = { mode = CanvasMode.EDIT }, onMakeTask = onMakeTask,
                     )
                     if (wide && headings.size >= 3) {
                         VerticalDivider()
@@ -344,6 +358,62 @@ private fun CanvasView(
     val expired = saver.expired
     if (conflictOpen && status == CanvasSaveStatus.EXPIRED && expired != null) {
         ExpiredDialog(controller, saver, expired, canOverwrite = rights.edit) { conflictOpen = false }
+    }
+}
+
+/**
+ * M73 (CANVAS.md §18.2): who else edits this canvas now — their pictures (three, then 「+N」) and 「〇〇 が編集中」; a tap
+ * lists each one's heading. Volatile: an entry goes 45 s after its last refresh (checked every second while shown).
+ */
+@Composable
+private fun CanvasEditing(controller: AppController, canvasId: String, modifier: Modifier = Modifier) {
+    val store = controller.store
+    val version by store.version.collectAsState()
+    var tick by remember { mutableIntStateOf(0) }
+    val editors = remember(version, tick, canvasId) { store.canvasEditors(canvasId) }
+    LaunchedEffect(editors.isNotEmpty()) {
+        while (editors.isNotEmpty()) {
+            delay(1_000)
+            tick += 1
+        }
+    }
+    if (editors.isEmpty()) return
+    fun nameOf(id: String) = store.users[id]?.displayName ?: "メンバー"
+    val label = CanvasEditors.label(editors.map { nameOf(it.userId) })
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Row(
+            Modifier
+                .clickable(role = Role.Button, onClickLabel = "編集中の人と見出し") { open = true }
+                .heightIn(min = 28.dp)
+                .semantics(mergeDescendants = true) { contentDescription = label; liveRegion = LiveRegionMode.Polite },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val shown = editors.take(3)
+            Row(horizontalArrangement = Arrangement.spacedBy((-6).dp), verticalAlignment = Alignment.CenterVertically) {
+                shown.forEach { editor ->
+                    Box(Modifier.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(50)).padding(1.dp)) {
+                        Avatar(editor.userId, nameOf(editor.userId), size = 20.dp)
+                    }
+                }
+                if (editors.size > shown.size) {
+                    Box(
+                        Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(50)).padding(horizontal = 5.dp, vertical = 2.dp),
+                    ) { Text("+${editors.size - shown.size}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold) }
+                }
+            }
+            Spacer(Modifier.width(6.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            editors.forEach { editor ->
+                DropdownMenuItem(
+                    text = { Text(editor.section?.let { "${nameOf(editor.userId)}: $it" } ?: nameOf(editor.userId)) },
+                    leadingIcon = { Avatar(editor.userId, nameOf(editor.userId), size = 20.dp) },
+                    onClick = { open = false },
+                )
+            }
+        }
     }
 }
 
@@ -449,7 +519,7 @@ private fun CanvasNotice(controller: AppController, channel: ChannelState, right
 private fun CanvasReader(
     controller: AppController, saver: CanvasSaver, meta: CanvasMeta?, title: String, rights: CanvasRights,
     onToggle: ((Int, Boolean) -> Unit)?, onEditSection: ((Int) -> Unit)?, listState: LazyListState, modifier: Modifier,
-    preview: Boolean, onStartWriting: () -> Unit,
+    preview: Boolean, onStartWriting: () -> Unit, onMakeTask: ((Int) -> Unit)? = null,
 ) {
     val revision by saver.revision.collectAsState()
     val text = remember(revision) { saver.text }
@@ -482,7 +552,7 @@ private fun CanvasReader(
         }
         itemsIndexed(blocks) { _, block ->
             Box(Modifier.canvasColumn().padding(vertical = 1.dp)) {
-                CanvasBlockView(block, inline, controller, onToggle, onEditSection)
+                CanvasBlockView(block, inline, controller, onToggle, onEditSection, onMakeTask)
             }
         }
         item(key = "end") { Spacer(Modifier.height(48.dp)) }
@@ -592,6 +662,32 @@ private fun CanvasEditorField(
         }
     }
 
+    val focus = remember { FocusRequester() }
+    var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(autoFocus) { if (autoFocus) runCatching { focus.requestFocus() } }
+
+    // M73 (CANVAS.md §18.2 / §18.5): 「編集中」 for the conversation's other members while this field has the focus — said
+    // on focus, on typing and when the caret's heading changes (the engine sends a new heading after 2 s at most, the
+    // same one every 20 s; this loop asks every 2 s), stopped on blur, when the editor goes and in the background.
+    val engine = controller.engine
+    var announcedAt by remember { mutableLongStateOf(0L) }
+    fun announce(editing: Boolean, soon: Boolean = false) {
+        if (engine == null) return
+        if (!editing) return engine.setCanvasEditing(saver.id, false)
+        val now = System.currentTimeMillis()
+        if (soon && now - announcedAt < 1_000) return // the heading is found by a scan: at most once a second while typing
+        announcedAt = now
+        val current = field
+        engine.setCanvasEditing(saver.id, true, CanvasTasks.sectionAt(current.text, current.selection.start))
+    }
+    LaunchedEffect(engine, saver) {
+        while (true) {
+            delay(2_000)
+            if (focused && controller.appForeground) announce(true)
+        }
+    }
+    DisposableEffect(engine, saver) { onDispose { engine?.setCanvasEditing(saver.id, false) } }
+
     fun commit(shown: String) {
         val encoded = encode(shown)
         val stored = if (section == null) encoded else {
@@ -617,6 +713,7 @@ private fun CanvasEditorField(
         val changed = next.text != previous.text
         field = next
         if (changed) commit(next.text)
+        if (focused && (changed || next.selection != previous.selection)) announce(true, soon = true)
         if (previous.composition != null && next.composition == null) saver.replaceable() // a merge that waited for the IME
     }
 
@@ -697,9 +794,6 @@ private fun CanvasEditorField(
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { insertImages(it) }
     val openCamera = rememberCameraCapture(controller) { uri, cleanup -> insertImages(listOf(uri), cleanup) }
 
-    val focus = remember { FocusRequester() }
-    var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(autoFocus) { if (autoFocus) runCatching { focus.requestFocus() } }
     val caret = field.selection.start
     val query = if (field.selection.collapsed) Mentions.query(field.text.substring(0, caret.coerceIn(0, field.text.length))) else null
     // `<!channel>` notifies nobody in a canvas (§4.2): @channel / @here are not offered.
@@ -745,8 +839,13 @@ private fun CanvasEditorField(
                 .fillMaxWidth()
                 .focusRequester(focus)
                 .onFocusChanged { state ->
-                    if (focused && !state.isFocused) saver.flush() // leaving the field saves now (the desktop's blur)
+                    if (focused && !state.isFocused) {
+                        saver.flush() // leaving the field saves now (the desktop's blur)
+                        announce(false)
+                    }
+                    val gained = !focused && state.isFocused
                     focused = state.isFocused
+                    if (gained) announce(true)
                 }
                 .semantics { contentDescription = if (section == null) "キャンバスの本文 (Markdown)" else "セクションの本文 (Markdown)" }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -821,6 +920,7 @@ private fun SectionSheet(controller: AppController, saver: CanvasSaver, key: Can
                 SaveState(saver, onOpenConflict = onDismiss)
                 TextButton(onClick = onDismiss) { Text("完了") }
             }
+            CanvasEditing(controller, saver.id, Modifier.padding(horizontal = 16.dp).padding(bottom = 4.dp))
             CanvasEditorField(controller, saver, key, Modifier.fillMaxWidth().weight(1f), autoFocus = true, onSectionGone = {
                 controller.notice = "見出しが変わったため、セクションの編集を閉じました"
                 onDismiss()

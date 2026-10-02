@@ -50,6 +50,13 @@ data class MessageTaskOut(
 data class TaskSourceOut(val messageId: String? = null, val channelId: String = "", val excerpt: String? = null)
 
 /**
+ * M73 (TASKS.md §10, CANVAS.md §18.3): the canvas checklist item a task was made from. `canvas_id` is null once the canvas
+ * was purged from the trash (「元のキャンバスは削除されました」); `excerpt` is the item's text as it was then.
+ */
+@Serializable
+data class TaskCanvasSourceOut(val canvasId: String? = null, val excerpt: String? = null)
+
+/**
  * A task as I see it. `channel_id` null: a personal task (only its owner sees it). task.updated carries the same shape
  * without `can_delete` (it differs per person): it is filled in from `deleter_ids` here (TASKS.md §8 4.).
  */
@@ -74,6 +81,8 @@ data class TaskOut(
     val canDelete: Boolean = false,
     /** L9: "task" or "review" (a server before M63 sends none: "task"). */
     val kind: String = TaskKind.TASK,
+    /** M73: made from a canvas's checklist item (apart from `source`, which phones before M73 read as a message). */
+    val canvasSource: TaskCanvasSourceOut? = null,
 )
 
 /** task.updated: the task as everyone who sees it sees it, and who may delete it. */
@@ -117,6 +126,9 @@ data class TaskCreate(
     val tz: String? = null,
     /** L9: "review" for 「レビューを依頼」 (needs `source_message_id`); left out for a plain task (the server's default). */
     val kind: String? = null,
+    /** M73 (TASKS.md §10): a canvas's checklist item — the canvas and the line as it is in its body (`- [ ] …`), together. */
+    val sourceCanvasId: String? = null,
+    val sourceCanvasLine: String? = null,
 )
 
 /**

@@ -56,6 +56,17 @@ class MainActivity : ComponentActivity() {
             controller.openTaskFromNotification(workspace, channel, taskId)
             return
         }
+        // M73: a canvas mention's notification opens the canvas in its conversation's 「キャンバス」 tab.
+        val canvasId = intent?.getStringExtra(Notifier.EXTRA_CANVAS_ID)
+        val canvasChannel = intent?.getStringExtra(Notifier.EXTRA_CHANNEL_ID)
+        if (canvasId != null && canvasChannel != null) {
+            val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
+            intent.removeExtra(Notifier.EXTRA_CANVAS_ID)
+            intent.removeExtra(Notifier.EXTRA_CHANNEL_ID)
+            intent.removeExtra(Notifier.EXTRA_WORKSPACE)
+            controller.openCanvasFromNotification(workspace, canvasChannel, canvasId)
+            return
+        }
         // M52: a calendar alarm's notification opens its event (my own calendar's has no conversation).
         val eventId = intent?.getStringExtra(Notifier.EXTRA_EVENT_ID)
         if (eventId != null) {
