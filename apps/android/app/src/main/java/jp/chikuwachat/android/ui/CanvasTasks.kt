@@ -20,14 +20,17 @@ object CanvasTasks {
     private val DUE = Regex("""📅\s*(\d{4}-\d{2}-\d{2})""")
     private val USER_TOKEN = Regex("""<@([0-9a-f-]{36})>""")
 
-    /** A checklist item: the line as it is in the body (the server finds it there, §18.3), the text after the box. */
+    /**
+     * A checklist item: the line as it is in the body (the server finds it there, §18.3; M83: with any task marker),
+     * the text after the box (without task markers, §22.7 item 4).
+     */
     data class Item(val line: String, val text: String, val done: Boolean)
 
     /** Line `index` of the body, when it is a checklist item. */
     fun checklistItem(body: String, index: Int): Item? {
         val line = body.split("\n").getOrNull(index) ?: return null
         val match = TASK_LINE.matchEntire(line) ?: return null
-        return Item(line, match.groupValues[3].trim(), match.groupValues[2] != " ")
+        return Item(line, CanvasMarkers.strip(match.groupValues[3]).trim(), match.groupValues[2] != " ")
     }
 
     /** A real calendar date in `YYYY-MM-DD` (not 2026-02-30). */

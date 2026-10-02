@@ -1511,3 +1511,29 @@ API とイベントは変わらない (`RevisionKind` に `task` が増えただ
   (タスクを消しても印は残るため、隠すと作り直せなくなる)。
 - タスクの題名・期限・担当の変更を行に書き戻すこと、行の書き換えで抜粋を変えること: しない (題名は作った時の写し、§18.3)。
 - タスクを消したときに印を外すこと: しない (§22.1)。
+
+### 22.9 M83 Android
+
+- 規則は `ui/CanvasMarkers.kt` (Desktop の `canvasMarkers.ts` の移植: `strip`・`Table` (hide / show)・`deleteBeside`、それに
+  `fixDeletion`)。単体テスト `CanvasTaskMarkersTest` が `canvas_task_markers.json` の `strip` / `blocks` / `editor` / `delete` を
+  すべて読む (`delete` は `deleteBeside` そのものと、Compose 自身の削除 (書記素ごと) を `fixDeletion` で直した結果の両方)。
+  印の正規表現は ASCII だけ、見えない文字はコードポイントの比較で扱う (Android の ICU の正規表現に補助文字を渡さない)。
+- **表示**: `parseBlocks(body, canvas = true)` が各行から印を除く (閲覧・プレビュー・オフラインの写し (M74、同じ描画)・履歴の
+  「この版の本文」)。目次 (`CanvasText.outline`) も印と見えない文字を除く。ホームの「キャンバス」(M78) は本文を出さないので変更なし。
+- **編集欄** (全体とセクション、`CanvasEditorField`): 編集欄ごとに `CanvasMarkers.Table` を持ち、本文を出すときに印を見えない
+  1 文字 (U+E0020 + n) に、保存するとき (`commit`) に行末の印 (前に空白 1 つ) に戻す。メンションの変換より先に戻す (`@名前` の直後の
+  見えない文字で名前が見つからなくならないように)。位置はすべて UTF-16 (見えない文字はサロゲートペアの 2 単位)。
+  - 削除: タグ文字は前の文字と 1 つの書記素なので、Compose の Backspace は「前の文字 + 見えない文字」を一緒に消す。`onValueChange`
+    で前の値と比べ、選択なしの削除が見えない文字に触れていたら直す (見える部分も消えていれば同じ削除で見えない文字だけ戻す、
+    見えない文字だけ (または半分) なら `deleteBeside`)。カーソルが Backspace / Delete の位置に無いとき (IME が自分の覚えた位置で
+    消したとき) は、前後の本文の差から消えた 1 か所を探して Backspace として扱う。エミュレータ (Gboard・ハードウェアキー) で確認。
+  - 取り消し: Android の編集欄の取り消しは Compose 自身のもの (ハードウェアキーボードの Ctrl+Z) だけで、見えない文字は本文の文字
+    なのでそのまま戻る (直した削除の取り消しも印ごと戻る。エミュレータで確認)。
+  - コピーと切り取り: 編集欄の `LocalClipboard` を包み (`StandInFreeClipboard`)、見えない文字を除いた文を置く。Desktop と違い、
+    切り取った行を貼り戻しても印は戻らない (切り取った行のリンクは切れる。タスクは残る)。
+- 履歴の種類の名前 `task` →「タスクと連動」。差分・競合の画面・期限切れの画面・「本文をコピー」/「自分の本文をコピー」
+  (`AppController.copyCanvasText`) は印を除いた文。
+- 「タスクにする」(`CanvasTasks.checklistItem`): 題名と抜粋は印を除き、`source_canvas_line` は行そのまま。
+- 残したこと: adb で 1 フレームの間に何回もキーを送ると (人の打鍵や長押しの繰り返しより速い)、Compose が前に描いた本文から削除を
+  計算するため 1 文字多く消えることがある (エミュレータでだけ見えた)。直すには `TextFieldState` + `InputTransformation` への
+  書き換えが要る。

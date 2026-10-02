@@ -11,7 +11,8 @@ import jp.chikuwachat.android.sync.Store
  * The canvas dialect (CANVAS.md §4.2, `parseBlocks(body, canvas = true)`, M46) adds tasks ("- [ ] item" / "- [x] item",
  * "*" too, two leading spaces nest), images of the canvas ("![alt](attachment:<uuid>)" on a line of its own; other image
  * URLs stay text) and rules ("---" between blank lines). Messages keep showing all of these as text.
- * apps/shared/canvas_markdown.json holds the cases the three clients share (CanvasMarkdownTest).
+ * apps/shared/canvas_markdown.json holds the cases the three clients share (CanvasMarkdownTest). M83: the hidden task
+ * markers (` <!--task:<id>-->`, CanvasMarkers.kt) are left out in the canvas dialect.
  */
 sealed class BodyToken {
     data class Text(val text: String) : BodyToken()
@@ -151,7 +152,8 @@ private fun splitFence(raw: String): BodyToken.CodeBlock {
 
 /** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order; `canvas`: the canvas dialect too. */
 fun parseBlocks(body: String, canvas: Boolean = false): List<BodyBlock> {
-    val lines = body.replace("\r\n", "\n").replace('\r', '\n').split("\n")
+    // M83 (CANVAS.md §22): a canvas's hidden task markers are never shown (each line keeps its place).
+    val lines = body.replace("\r\n", "\n").replace('\r', '\n').split("\n").let { all -> if (canvas) all.map(CanvasMarkers::strip) else all }
     fun blank(index: Int) = index < 0 || index >= lines.size || lines[index].isBlank()
     fun isTask(index: Int) = canvas && TASK_LINE.matches(lines[index])
     fun isImage(index: Int) = canvas && IMAGE_LINE.matches(lines[index])

@@ -99,6 +99,7 @@ private val KIND_LABELS = mapOf(
     "side" to "送信した版",
     "restore" to "復元",
     "erased" to "本文を消去",
+    "task" to "タスクと連動", // M83 (CANVAS.md §22): the server ticked an item, or tied it to a task
 )
 
 /** The kind of a version as the history names it. */
@@ -164,10 +165,11 @@ fun CanvasHistoryDialog(controller: AppController, canvas: CanvasMeta, rights: C
     val rows by produceState<List<CanvasDiff.Row>?>(null, view, selectedBody, otherBody) {
         value = null
         if (view == VIEW_BODY || selectedBody == null || otherBody == null) return@produceState
-        // Previous → this version; this version → the current one. Mentions as names (`<@uuid>` reads as nothing).
+        // Previous → this version; this version → the current one. Mentions as names (`<@uuid>` reads as nothing); M83:
+        // task markers left out (a version that only added one shows no change).
         val (from, to) = if (view == VIEW_PREVIOUS) otherBody to selectedBody else selectedBody to otherBody
         value = withContext(Dispatchers.Default) {
-            CanvasDiff.rows(CanvasDiff.lines(Mentions.toNames(from, store.users, store.groups), Mentions.toNames(to, store.users, store.groups)))
+            CanvasDiff.rows(CanvasDiff.lines(Mentions.toNames(CanvasMarkers.strip(from), store.users, store.groups), Mentions.toNames(CanvasMarkers.strip(to), store.users, store.groups)))
         }
     }
 

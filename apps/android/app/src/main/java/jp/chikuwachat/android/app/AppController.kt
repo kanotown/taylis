@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.platform.AvatarPhoto
 import jp.chikuwachat.android.ui.QuickReactions
+import jp.chikuwachat.android.ui.CanvasMarkers
 import jp.chikuwachat.android.ui.Dnd
 import jp.chikuwachat.android.ui.CalendarChannels
 import jp.chikuwachat.android.ui.CalendarDates
@@ -1823,10 +1824,10 @@ class AppController(private val app: Application) {
         return uploaded
     }
 
-    /** A canvas's text to the clipboard (mentions as @names), e.g. when saving it stopped. */
+    /** A canvas's text to the clipboard (mentions as @names, M83: task markers left out), e.g. when saving it stopped. */
     fun copyCanvasText(stored: String) {
         val clipboard = app.getSystemService(ClipboardManager::class.java) ?: return
-        clipboard.setPrimaryClip(ClipData.newPlainText("ChikuwaChat", Mentions.decode(stored, store.users, store.groups)))
+        clipboard.setPrimaryClip(ClipData.newPlainText("ChikuwaChat", Mentions.decode(CanvasMarkers.strip(stored), store.users, store.groups)))
         notice = "本文をコピーしました"
     }
 
