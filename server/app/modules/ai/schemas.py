@@ -119,6 +119,23 @@ class AiRunOut(BaseModel):
     omitted_count: int
     created_at: datetime
     finished_at: datetime | None
+    # Added (review v0.1.18 #2): where the run's text is sent, fixed when the run was created.
+    # null only for runs from before that.
+    provider: AiProviderName | None
+    model: str | None
+
+
+class AiSummaryTargetOut(BaseModel):
+    """GET /ai/summaries/target (docs/AI.md §5): where a summary of this conversation would be
+    sent, shown before asking. `reason` (ai_unavailable, ai_private_not_allowed,
+    ai_budget_exceeded) when it cannot be asked now; provider / model / agent_name are still
+    given when a bot was found (e.g. the bot of a private conversation without allow_private)."""
+
+    available: bool
+    provider: AiProviderName | None
+    model: str | None
+    agent_name: str | None
+    reason: str | None
 
 
 class AiRunUpdatedData(BaseModel):
@@ -188,4 +205,6 @@ def to_run_out(run: AiRun) -> AiRunOut:
         omitted_count=run.omitted_count,
         created_at=run.created_at,
         finished_at=run.finished_at,
+        provider=run.provider,  # type: ignore[arg-type]
+        model=run.model,
     )

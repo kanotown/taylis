@@ -87,6 +87,17 @@
                 "title": "Kind",
                 "type": "string"
               },
+              "model": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Model"
+              },
               "omitted_count": {
                 "title": "Omitted Count",
                 "type": "integer"
@@ -101,6 +112,21 @@
                   }
                 ],
                 "title": "Output"
+              },
+              "provider": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "anthropic",
+                      "openai"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Provider"
               },
               "scope": {
                 "anyOf": [
@@ -153,7 +179,9 @@
               "error",
               "omitted_count",
               "created_at",
-              "finished_at"
+              "finished_at",
+              "provider",
+              "model"
             ],
             "title": "AiRunOut",
             "type": "object"

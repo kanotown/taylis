@@ -501,6 +501,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/summaries/target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Summary Target
+         * @description Where a summary of this conversation would be sent (provider, model, bot), shown before
+         *     asking; `available = false` with `reason` when it cannot be asked now (404 channel_not_found
+         *     for a conversation one cannot read).
+         */
+        get: operations["get_summary_target_api_v1_ai_summaries_target_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments": {
         parameters: {
             query?: never;
@@ -3261,10 +3283,14 @@ export interface components {
              * @enum {string}
              */
             kind: "mention" | "summary";
+            /** Model */
+            model: string | null;
             /** Omitted Count */
             omitted_count: number;
             /** Output */
             output: string | null;
+            /** Provider */
+            provider: ("anthropic" | "openai") | null;
             /** Scope */
             scope: ("unread" | "thread" | "recent") | null;
             /**
@@ -3302,6 +3328,25 @@ export interface components {
             thread_id?: string | null;
             /** Tz Offset Minutes */
             tz_offset_minutes?: number | null;
+        };
+        /**
+         * AiSummaryTargetOut
+         * @description GET /ai/summaries/target (docs/AI.md §5): where a summary of this conversation would be
+         *     sent, shown before asking. `reason` (ai_unavailable, ai_private_not_allowed,
+         *     ai_budget_exceeded) when it cannot be asked now; provider / model / agent_name are still
+         *     given when a bot was found (e.g. the bot of a private conversation without allow_private).
+         */
+        AiSummaryTargetOut: {
+            /** Agent Name */
+            agent_name: string | null;
+            /** Available */
+            available: boolean;
+            /** Model */
+            model: string | null;
+            /** Provider */
+            provider: ("anthropic" | "openai") | null;
+            /** Reason */
+            reason: string | null;
         };
         /** AiUsageByAgent */
         AiUsageByAgent: {
@@ -7456,6 +7501,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AiRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_summary_target_api_v1_ai_summaries_target_get: {
+        parameters: {
+            query: {
+                channel_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSummaryTargetOut"];
                 };
             };
             /** @description Validation Error */

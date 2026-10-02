@@ -41,6 +41,9 @@ CLAUDE.md の「AI は最初の実装の範囲外」を、この文書を指す�
    `client_msg_id` は run の id から作る (UUIDv5) ので、二重に投稿しない。
 4. 失敗 (キーが無い、上限、API のエラーが 3 回続いた、安全のための断り) は、短い返事 (「応答できませんでした: …」) をスレッドに
    投稿して終わる。黙らない。
+5. (レビュー v0.1.18、§8) モデルの答えと投稿は別々に記録する。投稿が一時的に失敗したら、保存した答えを後で投稿し直す
+   (モデルは呼び直さない)。送る直前に、ボットが有効・会話のメンバー・(非公開なら) allow_private かを確かめ直し、だめなら
+   何も送らずに失敗にする。
 
 **渡す会話**: スレッドの中なら、親と返信 (古い順、新しい側から 3 万字まで)。トップレベルなら、そのメッセージの前のチャンネルの
 タイムライン 30 件 (同じく 3 万字まで)。各行は「名前 (日時): 本文」。添付はファイル名だけ。
@@ -55,8 +58,13 @@ CLAUDE.md の「AI は最初の実装の範囲外」を、この文書を指す�
 - 渡す量は 6 万字まで。超える分は古い側を落とし、結果に「古い N 件は省きました」と書く (`omitted_count`)。
 - 結果は `ai_runs.output` (Markdown) に入り、頼んだ人の端末に `ai.run_updated` (宛先はその人だけ) で届く。端末は
   `GET /ai/runs/{id}` でも読める。会話には投稿しない。
-- 要約するボットは「既定のボット」(有効なボットのうち、その事業者のキーがある最初の 1 体 (§12)。無ければ要約は使えない) の
-  model を使い (考える量は low)、性格は使わない。
+- 要約するボット (レビュー v0.1.18 で変更、§8): その会話のメンバーの AI ボットのうち、有効で事業者のキーがある最初の 1 体
+  (ボットの作成順)。会話にいなければ「既定のボット」(有効でキーのある最初の 1 体 (§12))。どちらも無ければ要約は使えない
+  (`409 ai_unavailable`)。非公開チャンネル・DM・グループ DM は、選んだボットが `allow_private` のときだけ
+  (`409 ai_private_not_allowed`)。そのボットの model を使い (考える量は low)、性格は使わない。
+- 送り先 (ボット・事業者・モデル) は頼んだときに決めて `ai_runs` に残す (`agent_id`, `provider`, `model`)。待っている間に
+  ボットが止められた・消された・事業者のキーが無くなったら、ほかへ切り替えずに失敗にする (理由を `error` に)。
+  頼む前に `GET /ai/summaries/target` で送り先を見せられる (§5)。
 
 ### 2.4 API の呼び方
 
@@ -76,7 +84,15 @@ CLAUDE.md の「AI は最初の実装の範囲外」を、この文書を指す�
 
 - 月の予算 `AI_MONTHLY_BUDGET_USD` (既定 30)。各 run の使ったトークンから費用を計算して `ai_runs.cost_usd` に残し、その月の合計が
   予算を超えたら新しい run を作らない (要約は `429 ai_budget_exceeded`、メンションは「今月の上限に達しました」の返事)。
-- 人ごとの 1 日の回数 `AI_USER_DAILY_RUNS` (既定 50、メンションと要約の合計)。超えたら同じく断る。
+- **予約** (レビュー v0.1.18 #4): run を作るときに、見積もった費用を `ai_runs.reserved_usd` に予約する。見積もりは控えめ
+  (多め) に: 送る本文とシステムプロンプトを 1 字 2 トークン + 500 として入力 (入力とキャッシュ書き込みの高い方の単価)、
+  出力は上限まで全部 (返事 2000 / 要約 4000、OpenAI は考える分の 2.3 万を足す)、それを試行の回数 (3) 倍。
+  「その月の記録済みの費用 + 待っている run の予約 + この run の予約」が予算を超えるなら作らない。確かめと作成は同じ
+  トランザクションでロックの下 (下の回数と同じ)。試行のたびに使った分だけ予約を減らし、終わったら (done / failed) 0 に
+  する (費用は `cost_usd` の実費)。worker も送る直前に、その月の「記録済み + 予約」が予算を超えていれば送らずに失敗にする。
+- **計上する月**: run は作った時刻 (`created_at`) の UTC の暦月に数える。月末に作って翌月に実行した run も前の月の分。
+- 人ごとの 1 日の回数 `AI_USER_DAILY_RUNS` (既定 50、メンションと要約の合計)。超えたら同じく断る。数えてから作るまでを、
+  頼んだ人ごとのトランザクションの advisory lock で直列にする (要約とメンションで同じロック。レビュー v0.1.18 #8)。
 - 料金の表はコードに持つ (100 万トークンあたり、2026-09 の Anthropic の料金): Opus 5.5 入力 $4・出力 $20・キャッシュ読み $0.20、
   Sonnet 5.5 $2・$10・$0.20、Haiku 4.5 $1・$5・$0.10。キャッシュへの書き込みは入力の 1.25 倍。
 - OpenAI (2026-10-02 に公式のモデルのページで確かめた): GPT-6.1 Sol (`gpt-6.1-sol`) 入力 $2・出力 $10・キャッシュ読み $0.10・
@@ -86,7 +102,8 @@ CLAUDE.md の「AI は最初の実装の範囲外」を、この文書を指す�
 ## 4. 知らせること・守ること
 
 - ボットのいるチャンネルの詳細に「AI (名前) が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に
-  送られます」と出す (事業者名はボットのモデルによる。§12)。
+  送られます」と出す (事業者名はボットのモデルによる。§12)。メンションの送り先はメンションしたボットの事業者、要約の送り先は
+  §2.3 で選んだボットの事業者 (端末は `GET /ai/summaries/target` で要約の送り先を頼む前に出す。レビュー v0.1.18 #2)。
 - 要約は頼んだ人が読めるメッセージだけを使い、結果は本人にだけ見える。非公開チャンネルの中身が他人に漏れない。
 - ボットは道具を持たない (何も書き換えない)。会話の中の指示 (プロンプトインジェクション) で困ることは、変な返事を書くことまで。
   ただし返事のリンクのプレビューはサーバが外へ取りに行くので、ボットの投稿では 3 端末とも自動では取らない (押したときだけ。SECURITY.md §14)。
@@ -103,7 +120,10 @@ AiStatusOut  = {available: bool, summary_available: bool, agents: AiAgentPublic[
 AiRunOut     = {id, kind: "mention"|"summary", status: "pending"|"running"|"done"|"failed",
                 channel_id, thread_id: uuid|null, scope: "unread"|"thread"|"recent"|null, days: int|null,
                 output: string|null (Markdown), error: string|null, omitted_count: int,
-                created_at, finished_at: datetime|null}
+                created_at, finished_at: datetime|null,
+                provider: "anthropic"|"openai"|null, model: string|null}   // provider / model: v0.1.18 のレビューで追加
+AiSummaryTargetOut = {available: bool, provider: "anthropic"|"openai"|null, model: string|null,
+                agent_name: string|null, reason: string|null}               // レビュー v0.1.18 で追加
 AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, total_runs: int,
                 by_agent: [{agent_id, name, runs, input_tokens, output_tokens, cost_usd}],
                 by_user:  [{user_id, runs, cost_usd}]}
@@ -121,10 +141,16 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
     models: string[]}]`。その事業者の API キーがサーバーにあるか (キーそのものは返さない)。古いサーバーでは 404 (印を出さない)。
 - 全員:
   - `GET /ai/status` → `AiStatusOut`。`available` = 事業者のキーがある有効なボットが 1 体以上 (§12)。`summary_available` = `available` かつ
-    今月の予算が残っている。
+    今月の予算が残っている (記録済みの費用 + 待っている run の予約 < 予算。§3)。
   - `POST /ai/summaries {channel_id, scope, thread_id?, days?, tz_offset_minutes?}` → `202 AiRunOut`。エラー: 会話を読めない
     `404 channel_not_found`、`scope = thread` で `thread_id` 無し・親でない `400 validation_error`、AI が使えない
-    `409 ai_unavailable`、予算・回数の上限 `429 ai_budget_exceeded` / `429 ai_daily_limit`。
+    `409 ai_unavailable`、予算・回数の上限 `429 ai_budget_exceeded` / `429 ai_daily_limit`、(レビュー v0.1.18 で追加)
+    非公開チャンネル・DM・グループ DM で選んだボットに `allow_private` が無い `409 ai_private_not_allowed`。
+    `AiRunOut` の `provider` / `model` は実際の送り先 (頼んだときに決まり、変わらない)。
+  - (レビュー v0.1.18 で追加) `GET /ai/summaries/target?channel_id=` → `AiSummaryTargetOut`: その会話の要約の送り先
+    (§2.3 の選び方)。頼めないときは `available = false` と `reason` (`ai_unavailable` / `ai_private_not_allowed` /
+    `ai_budget_exceeded`)。ボットが決まれば `provider` / `model` / `agent_name` は頼めないときも入る (`ai_unavailable` では
+    null)。会話を読めなければ `404 channel_not_found`。古いサーバーでは 404 (端末はこれまでの表示のまま)。
   - `GET /ai/runs/{id}` → `AiRunOut` (自分が頼んだ run だけ。ほかは 404 `ai_run_not_found`)。
   - `GET /ai/runs?kind=summary` → `AiRunOut[]` (自分の最近 20 件、新しい順)。
 - イベント `ai.run_updated` `{run: AiRunOut}`: 宛先は頼んだ人 (の全端末)。要約の状態が変わるたび (running、done、failed)。
@@ -165,8 +191,10 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
 - **メンション**: 応えるのは、メンション順で最初の「有効・チャンネルのメンバー・(非公開なら allow_private)」のボット 1 体
   (`(kind, source_message_id)` が一意なので 1 メッセージ 1 回)。送り手がボット (`role = bot`)・無効な人、メッセージの `type` が
   user 以外、アーカイブ中のチャンネルでは何もしない。公開から非公開に変わったチャンネルでは allow_private の無いボットは黙る。
-  ハンドラは自分の savepoint で動き、失敗してもイベントのプッシュや配信を止めない (ログだけ)。
-- **上限の確かめ方**: 月は UTC の暦月で `cost_usd` を合計 (終わった run の分)。人ごとの回数は直近 24 時間に作った run の数
+  ハンドラは自分の savepoint で動き、失敗してもイベントのプッシュや配信を止めない (失敗したメンションは `ai_mention_inbox` に
+  残して後でやり直す。下の「レビュー v0.1.18 の修正」#10)。
+- **上限の確かめ方**: 月は UTC の暦月で `cost_usd` と待っている run の予約 (`reserved_usd`) を合計 (§3。レビュー v0.1.18 までは
+  記録済みの `cost_usd` だけだった)。人ごとの回数は直近 24 時間に作った run の数
   (メンションと要約の合計、上限で断ったものは数えない)。メンションで上限・キー無しのときは run を作らず、ボットが
   「応答できませんでした: …」をスレッドに書く (`client_msg_id` はメッセージの id から作るので二重にならない)。
 - **worker**: 2 秒ごと (`AI_WORKER_INTERVAL_SECONDS`)、一度に 2 件を拾って並べて実行 (`FOR UPDATE SKIP LOCKED`、リース 10 分)。
@@ -186,6 +214,41 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
   `AI_INPUT_RETENTION_DAYS` (90。消すのは毎時の掃除のループ)。
 - **エラー文言**: `ai_unavailable` / `ai_budget_exceeded` / `ai_daily_limit` / `ai_private_not_allowed` / `ai_run_not_found` /
   `ai_agent_not_found` を apps/shared/errors.json に足し、3 端末の表を作り直した。
+
+### レビュー v0.1.18 の修正 (2026-10-02、移行 0062)
+
+外部レビュー (v0.1.18) のサーバーの指摘への対応。テストは `server/tests/test_ai_review_v018.py` (FakeProvider だけ)。
+
+- **#2 要約の送り先**: 要約は会話のメンバーのボット (無ければ既定のボット) を使う (§2.3)。送り先 (`agent_id`・`provider`・
+  `model`) は作るときに決めて `ai_runs` に残し、worker はその model だけを使う。待つ間にボットが止まった・消えた・キーが
+  無くなったら、切り替えずに失敗 (理由つき)。非公開・DM・グループ DM は選んだボットが `allow_private` のときだけ
+  (`409 ai_private_not_allowed`)。端末向けに `GET /ai/summaries/target` と `AiRunOut.provider` / `model` を足した (§5)。
+- **#3 送る直前の確認**: メンションの run は、送る直前にボットが有効・ボットのユーザーが有効・会話がアーカイブされていない・
+  ボットがまだメンバー・(非公開なら) `allow_private` かを確かめ、だめなら外部に何も送らずに失敗にする (理由を `error` に、
+  スレッドへ「応答できませんでした: …」)。管理者が `allow_private` を外す (その非公開の会話の分)・ボットを止める・消すと、
+  そのボットの待っている run (pending / running) をその場で失敗にする。ボットを会話から外したとき (`channel.member_removed`)
+  はその会話のメンションの run を同じく取り消す。要約も送る直前に、ボットが有効か・(非公開なら) `allow_private` かを見る
+  (中身は頼んだ時点で読めたもののまま)。
+- **#4 予算の予約**: §3。作るときにロックの下で見積もりを予約し、記録済み + 予約が予算を超えるなら断る。worker も送る前に
+  確かめる。計上する月は `created_at` の UTC の月。
+- **#7 失敗した試行の使用量**: `LlmError.usage` を足し、OpenAI の `failed` / `cancelled` の応答に usage があれば記録する
+  (試行ごとに足し合わせる。成功した試行の分も同じ run に足す)。
+- **#8 1 日の回数の競合**: 数えてから作るまでを、予算のロック → 頼んだ人のロック (どちらも `pg_advisory_xact_lock`) の順で
+  取って直列にする。順番を固定しているので、relay が 1 つのトランザクションで何人分ものロックを取っても互いに待ち合わない。
+- **#9 リースを失った worker**: claim は世代 (`attempts`) を返し、worker の結果はその run がまだ同じ世代の `running` のとき
+  だけ使う。古い試行の結果は使わず (投稿もしない)、使ったトークンと費用だけ run に足す。外部の呼び出しがちょうど 1 回に
+  なるわけではない (落ちたプロセスの呼び出しは取り消せない)。
+- **#10 メンションの取りこぼし**: ハンドラの失敗はログだけにせず、`ai_mention_inbox` (message_id) に入れる。この行は relay の
+  トランザクションで書くので、イベントが処理済みになるときに必ずある (書けなければハンドラが例外を出し、relay がイベント
+  ごとやり直す。そのときプッシュの計画も一緒に巻き戻るので、二重には送らない)。relay にやり直させる案は採らなかった:
+  relay は失敗した行をすぐ (間をあけずに) 取り直し、10 回で諦めるとそのメッセージのプッシュと配信まで止まるため。
+  AI の worker が 10 秒・1 分・5 分・15 分・30 分あけて 5 回まで `handle_mention` をやり直し (冪等: 1 メッセージ 1 run)、最後も
+  失敗したらスレッドに「応答できませんでした: 一時的なエラーで依頼を受け付けられませんでした」。
+- **#11 返事の投稿の失敗**: モデルの答え (`output`) と投稿の状態 (`reply_state`: pending / posted / failed、`reply_attempts`、
+  `reply_next_at`) を分けた。投稿が一時的に失敗したら、30 秒・2 分・5 分・15 分あけて 5 回まで、保存した答えを同じ
+  `client_msg_id` (UUIDv5) で投稿し直す (モデルは呼び直さない)。サーバーが断る投稿 (ボットが外された・無効、会話が
+  アーカイブ、スレッドが消えた) は恒久的なので、run を `failed` にして理由を `error` に残す。取り消した run の「応答できません
+  でした」も同じ仕組みで投稿する。
 
 ## 9. 実装で決めたこと (M65 Desktop / Web)
 
@@ -254,7 +317,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
   マウント)。Anthropic と同じく、無い・空・ディレクトリなら「その事業者は使えない」だけで、サーバーは起動する。キーは事業者ごとに
   最初に使うときに読み、無ければ次の利用でまた見る。
 - **使える / 使えない**: `available` = キーのある事業者の有効なボットが 1 体以上。要約の既定のボットは「キーのある最初の有効な
-  ボット」。メンションされたボットの事業者にキーが無ければ、run を作らず「応答できませんでした: AI の API キーが設定されていません」。
+  ボット」(会話のメンバーのボットがいればそちらが先。§2.3、レビュー v0.1.18)。メンションされたボットの事業者にキーが無ければ、run を作らず「応答できませんでした: AI の API キーが設定されていません」。
 - **呼び方** (`OpenAIProvider`、公式 SDK の `AsyncOpenAI(api_key=…, max_retries=2, timeout=120)`):
   `client.responses.create(model=…, instructions=<共通の決まり + 性格>, input=[{"role": "user", "content": <会話>}],
   reasoning={"effort": low|medium|high}, max_output_tokens=<返事 2000 / 要約 4000> + 23000, store=False)`。

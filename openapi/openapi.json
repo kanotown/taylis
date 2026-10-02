@@ -701,6 +701,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
           "omitted_count": {
             "title": "Omitted Count",
             "type": "integer"
@@ -715,6 +726,21 @@
               }
             ],
             "title": "Output"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "anthropic",
+                  "openai"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
           },
           "scope": {
             "anyOf": [
@@ -767,7 +793,9 @@
           "error",
           "omitted_count",
           "created_at",
-          "finished_at"
+          "finished_at",
+          "provider",
+          "model"
         ],
         "title": "AiRunOut",
         "type": "object"
@@ -858,6 +886,72 @@
           "scope"
         ],
         "title": "AiSummaryCreate",
+        "type": "object"
+      },
+      "AiSummaryTargetOut": {
+        "description": "GET /ai/summaries/target (docs/AI.md §5): where a summary of this conversation would be\nsent, shown before asking. `reason` (ai_unavailable, ai_private_not_allowed,\nai_budget_exceeded) when it cannot be asked now; provider / model / agent_name are still\ngiven when a bot was found (e.g. the bot of a private conversation without allow_private).",
+        "properties": {
+          "agent_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Name"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "anthropic",
+                  "openai"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "available",
+          "provider",
+          "model",
+          "agent_name",
+          "reason"
+        ],
+        "title": "AiSummaryTargetOut",
         "type": "object"
       },
       "AiUsageByAgent": {
@@ -10983,6 +11077,55 @@
           }
         ],
         "summary": "Create Summary",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/ai/summaries/target": {
+      "get": {
+        "description": "Where a summary of this conversation would be sent (provider, model, bot), shown before\nasking; `available = false` with `reason` when it cannot be asked now (404 channel_not_found\nfor a conversation one cannot read).",
+        "operationId": "get_summary_target_api_v1_ai_summaries_target_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSummaryTargetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Summary Target",
         "tags": [
           "ai"
         ]
