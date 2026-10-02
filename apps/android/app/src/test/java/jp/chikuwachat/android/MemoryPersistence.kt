@@ -1,6 +1,7 @@
 package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.UserPublic
+import jp.chikuwachat.android.sync.CachedCanvas
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.OutboxItem
@@ -14,6 +15,8 @@ class MemoryPersistence : Persistence {
     val channels = LinkedHashMap<String, ChannelState>()
     val messages = LinkedHashMap<String, MessageState>()
     val outbox = LinkedHashMap<String, OutboxItem>()
+    /** M74: the canvas copies, oldest write first (like the table's trim by `savedAt`). */
+    val canvases = LinkedHashMap<String, CachedCanvas>()
     /** Makes loadMessages fail the way a table too big for memory does (AND-4). */
     var failMessages = false
 
@@ -32,4 +35,13 @@ class MemoryPersistence : Persistence {
     override fun clearMessages(channelId: String) { messages.values.removeAll { it.channelId == channelId } }
     override fun saveOutbox(item: OutboxItem) { outbox[item.clientMsgId] = item }
     override fun deleteOutbox(clientMsgId: String) { outbox.remove(clientMsgId) }
+    override fun saveCanvas(canvas: CachedCanvas, keep: Int) {
+        canvases.remove(canvas.canvas.id)
+        canvases[canvas.canvas.id] = canvas
+        while (canvases.size > keep) canvases.remove(canvases.keys.first())
+    }
+    override fun loadCanvas(id: String): CachedCanvas? = canvases[id]
+    override fun loadCanvases(channelId: String): List<CachedCanvas> = canvases.values.filter { it.canvas.channelId == channelId }
+    override fun deleteCanvas(id: String) { canvases.remove(id) }
+    override fun deleteCanvases(channelId: String) { canvases.values.removeAll { it.canvas.channelId == channelId } }
 }

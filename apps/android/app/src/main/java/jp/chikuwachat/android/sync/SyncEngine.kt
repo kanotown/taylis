@@ -33,6 +33,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -139,8 +140,8 @@ data class EngineOptions(
     val random: () -> Double = { Random.nextDouble() },
     val newId: () -> String = { UUID.randomUUID().toString() },
     val now: () -> String = { java.time.Instant.now().toString() },
-    /** M46: the canvas save loop's pauses (CANVAS.md §4.4). */
-    val canvasSave: CanvasSaverOptions = CanvasSaverOptions(),
+    /** M46: the canvas save loop's pauses (CANVAS.md §4.4); M74: its copies are read off the main thread. */
+    val canvasSave: CanvasSaverOptions = CanvasSaverOptions(io = Dispatchers.IO),
 )
 
 /**

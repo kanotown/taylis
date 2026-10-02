@@ -7,6 +7,7 @@ import jp.chikuwachat.android.api.CanvasOut
 import jp.chikuwachat.android.api.CanvasSaveOut
 import jp.chikuwachat.android.api.Codec
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -69,6 +70,10 @@ data class CanvasSaverOptions(
     val newId: () -> String = { UUID.randomUUID().toString() },
     /** Null: timers on the saver's scope (`delay`). */
     val timers: CanvasTimers? = null,
+    /** M74: where the canvas copies are read (the app: Dispatchers.IO, see EngineOptions; null: on the caller's thread). */
+    val io: CoroutineDispatcher? = null,
+    /** M74: the clock of the copies' `fetchedAt`. */
+    val now: () -> Long = { System.currentTimeMillis() },
 )
 
 /**
@@ -90,6 +95,10 @@ class CanvasSaver(
     private val scope: CoroutineScope,
     private val options: CanvasSaverOptions = CanvasSaverOptions(),
     restored: CanvasPendingState? = null,
+    /** M74: the last copy kept on this device (read once, before the first GET): shown while the server cannot answer. */
+    private val cached: (suspend () -> CachedCanvas?)? = null,
+    /** M74: the server answered with this canvas (keep it as the copy), or null: it is gone or out of reach (drop it). */
+    private val remember: ((CanvasOut?) -> Unit)? = null,
     /** The unsaved state changed (null: nothing to keep). */
     private val persist: ((CanvasPendingState?) -> Unit)? = null,
 ) {
@@ -112,6 +121,15 @@ class CanvasSaver(
     /** Why the first read failed (cleared when [load] tries again): the screen offers 再読み込み, not an empty canvas. */
     var loadError: Throwable? = null
         private set
+    /**
+     * M74: the screen shows the copy kept on this device, read from the server at this moment, and the server has not
+     * answered since (null once it has). With [unreachable] the screen says so (CanvasOffline.notice).
+     */
+    var cachedAt: Long? = null
+        private set
+    /** M74: the last try to reach the server about this canvas failed for now (the network, 5xx …). */
+    var unreachable = false
+        private set
     private val _revision = MutableStateFlow(0)
     /** Bumped on every change (Compose collects it). */
     val revision: StateFlow<Int> = _revision
@@ -131,6 +149,13 @@ class CanvasSaver(
     private var again = false
     private var attempt = 0
     private var loaded = false
+    private var loading = false
+    private var cacheTried = false
+    /**
+     * M74: the last canvas the server gave whole (its body, version and head belong together). [canvas] may carry newer
+     * metadata over an older body (applyMeta), so the copy is never taken from it.
+     */
+    private var lastWhole: CanvasOut? = null
     private var disposed = false
     /** A merged body could not be put on screen: read the canvas again once the editor is idle. */
     private var stale = false
@@ -166,15 +191,77 @@ class CanvasSaver(
 
     // --- loading and reading again ---------------------------------------------------------
 
-    /** The first read (again after it failed). A restored unsaved state keeps its text and goes on saving. */
+    /**
+     * The first read (again after it failed). A restored unsaved state keeps its text and goes on saving. M74: the copy
+     * kept on this device comes first (shown, and edited, at once); the server is then asked whether it is still the
+     * current one (If-None-Match), and unsaved edits go out on its head.
+     */
     fun load() {
-        if (disposed || loaded) return
+        if (disposed || loaded || loading) return
         if (loadError != null) {
             loadError = null
             error = null
             setStatus(CanvasSaveStatus.LOADING)
         }
-        track { read(null, first = true) }
+        loading = true
+        track {
+            try {
+                if (!cacheTried) {
+                    cacheTried = true
+                    val copy = cached?.let { source ->
+                        try {
+                            source()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    if (copy != null) showCopy(copy)
+                }
+                if (disposed) return@track
+                if (loaded) confirmCopy() else read(null, first = true)
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    /** M74: the kept copy is what the server last said; a restored unsaved state keeps its own base and text. */
+    private fun showCopy(copy: CachedCanvas) {
+        if (disposed || loaded || copy.canvas.id != id) return
+        val got = copy.canvas
+        canvas = got
+        lastWhole = got
+        cachedAt = copy.fetchedAt
+        loaded = true
+        version = maxOf(version, got.version)
+        if (baseRevId == null) {
+            baseRevId = got.headRevId
+            synced = got.body
+            text = got.body
+            textRevision += 1
+        }
+        setStatus(if (unsaved) CanvasSaveStatus.EDITING else CanvasSaveStatus.SAVED)
+    }
+
+    /** M74: after showing the copy: what was kept goes out, or the server says whether the copy is current. */
+    private suspend fun confirmCopy() {
+        when {
+            inFlight != null -> send()
+            dirty -> save()
+            idleHere() -> read(version.takeIf { it > 0 }, first = false)
+        }
+    }
+
+    /** M74: the server answered with the canvas (or that ours is current): no longer only the kept copy. */
+    private fun reached(got: CanvasOut?) {
+        cachedAt = null
+        unreachable = false
+        if (got != null) lastWhole = got
+        // A 304 vouches for the version asked about: the copy is rewritten (its time) only when it is that one.
+        val current = got ?: lastWhole?.takeIf { it.version == version } ?: return
+        remember?.invoke(current)
     }
 
     /** A canvas.updated (or a reconnect): read again unless something here is not saved yet (§4.4). */
@@ -226,13 +313,35 @@ class CanvasSaver(
             if (first && !loaded) loadError = e
             if (temporary(e)) {
                 if (first) setStatus(CanvasSaveStatus.OFFLINE) // online() loads again
+                else if (cachedAt != null) {
+                    // M74: the kept copy stays on screen (and editable), saying how old it is.
+                    unreachable = true
+                    if (idleHere()) setStatus(CanvasSaveStatus.OFFLINE) else emit()
+                }
                 return
+            }
+            if (e is ApiException.Api && (e.status == 403 || e.status == 404)) remember?.invoke(null) // M74: not to be shown any more
+            if (cachedAt != null && !first) {
+                // M74: the copy was all there was: the screen says why it cannot be read (or that it is in the trash).
+                cachedAt = null
+                unreachable = false
+                loaded = false // 再読み込み reads it again from the start
+                loadError = e
             }
             stop(e)
             return
         }
-        if (disposed || got == null) return
+        if (disposed) return
+        if (got == null) {
+            // 304: what is here is current.
+            if (cachedAt != null || unreachable) {
+                reached(null)
+                if (status == CanvasSaveStatus.OFFLINE && idleHere()) setStatus(CanvasSaveStatus.SAVED) else emit()
+            }
+            return
+        }
         canvas = got
+        reached(got)
         if (first && !loaded) {
             loaded = true
             version = maxOf(version, got.version)
@@ -355,6 +464,7 @@ class CanvasSaver(
         inFlight = null
         attempt = 0
         canvas = answer.canvas
+        reached(answer.canvas)
         version = maxOf(version, answer.canvas.version)
         if (text == flight.sent && canReplace()) {
             // Nothing typed meanwhile: the head is the base, and a merge's result goes on screen.
@@ -387,7 +497,10 @@ class CanvasSaver(
             again = false
             attempt = 0
             val details = e.details?.let { runCatching { Codec.snake.decodeFromJsonElement(CanvasConflictDetails.serializer(), it) }.getOrNull() }
-            if (details != null) canvas = details.head
+            if (details != null) {
+                canvas = details.head
+                reached(details.head)
+            }
             when {
                 e.code == "canvas_conflict" && details != null -> {
                     conflict = CanvasConflictState(details, flight.baseRevId)
@@ -404,6 +517,7 @@ class CanvasSaver(
         }
         if (temporary(e)) {
             // Kept as it is (same key, body and base) and sent again: never a second version (§4.4).
+            if (cachedAt != null) unreachable = true
             setStatus(if (e is ApiException.Network) CanvasSaveStatus.OFFLINE else CanvasSaveStatus.RETRYING)
             val delays = options.retryDelaysMs
             val wait = retryAfterMs(e) ?: delays.getOrElse(minOf(attempt, delays.size - 1)) { 30_000L }
@@ -471,6 +585,8 @@ class CanvasSaver(
         if (disposed) return
         clearTimers()
         inFlight = null
+        cachedAt = null
+        unreachable = false
         error = ApiException.Api(404, "canvas_not_found", "Canvas not found")
         setStatus(CanvasSaveStatus.GONE)
     }

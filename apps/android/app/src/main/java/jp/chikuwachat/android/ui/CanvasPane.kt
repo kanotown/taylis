@@ -77,6 +77,7 @@ import jp.chikuwachat.android.api.CanvasRevisionOut
 import jp.chikuwachat.android.api.CanvasTemplateOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.CanvasHub
+import jp.chikuwachat.android.sync.CanvasOffline
 import jp.chikuwachat.android.sync.CanvasSaveStatus
 import jp.chikuwachat.android.sync.CanvasSaver
 import jp.chikuwachat.android.sync.ChannelState
@@ -317,6 +318,9 @@ private fun CanvasView(
             }
             CanvasEditing(controller, canvasId, Modifier.padding(horizontal = 12.dp).padding(bottom = 4.dp))
             HorizontalDivider()
+            // M74 (CANVAS.md §19.2): the copy kept on this device, the server out of reach.
+            val offlineSince = remember(revision) { saver.cachedAt?.takeIf { saver.unreachable } }
+            if (offlineSince != null && loadError == null) OfflineCopyNotice(offlineSince) { saver.online() }
             if (loadError == null) CanvasNotice(controller, channel, rights, saver, status)
             when {
                 loadError != null -> CanvasLoadFailed(controller, loadError) { saver.load() }
@@ -480,6 +484,24 @@ private fun SaveState(saver: CanvasSaver, onOpenConflict: () -> Unit) {
         Icon(icon, null, tint = tone, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(4.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, color = tone, fontWeight = if (choice) FontWeight.SemiBold else null)
+    }
+}
+
+/** M74: 「オフライン — 最後に読み込んだ時点 (日時) の内容です」 over the kept copy, with 再読み込み. */
+@Composable
+private fun OfflineCopyNotice(fetchedAt: Long, onRetry: () -> Unit) {
+    val text = remember(fetchedAt) { CanvasOffline.notice(fetchedAt) }
+    Row(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.tertiaryContainer)
+            .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.CloudOff, null, tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.weight(1f))
+        TextButton(onClick = onRetry) { Text("再読み込み", style = MaterialTheme.typography.labelMedium) }
     }
 }
 

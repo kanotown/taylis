@@ -18,6 +18,7 @@ import jp.chikuwachat.android.api.MessageTaskOut
 import jp.chikuwachat.android.api.MembershipOut
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.CanvasMeta
+import jp.chikuwachat.android.api.CanvasOut
 import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
@@ -195,6 +196,16 @@ interface Persistence {
     fun clearMessages(channelId: String)
     fun saveOutbox(item: OutboxItem)
     fun deleteOutbox(clientMsgId: String)
+
+    // M74 (CANVAS.md §19.2): the last copy of each canvas read, for offline viewing. Read on demand, never at start.
+    /** Writes the copy and keeps only the `keep` most recently written ones. */
+    fun saveCanvas(canvas: CachedCanvas, keep: Int)
+    /** Blocking (after the writes queued before it): call off the main thread. */
+    fun loadCanvas(id: String): CachedCanvas?
+    /** The conversation's copies (its list while the server cannot be reached). Blocking, like [loadCanvas]. */
+    fun loadCanvases(channelId: String): List<CachedCanvas>
+    fun deleteCanvas(id: String)
+    fun deleteCanvases(channelId: String)
 }
 
 const val LOCAL_PREFIX = "local:"
@@ -420,6 +431,34 @@ class Store(private val persistence: Persistence? = null) {
         if (list.none { it.id == canvasId }) return
         canvasLists[channelId] = list.filter { it.id != canvasId }
         emit()
+    }
+
+    /**
+     * M74: the list could not be read (offline): the conversation's cached copies stand in for it until it loads (the
+     * error stays, so the next try is not skipped). Nothing is done once a list is there.
+     */
+    fun setCanvasesFromCache(channelId: String, copies: List<CachedCanvas>) {
+        if (canvasLists.containsKey(channelId) || copies.isEmpty()) return
+        canvasLists[channelId] = sortCanvases(copies.map { it.canvas.meta })
+        emit()
+    }
+
+    // --- M74: the canvas copies for offline viewing (CANVAS.md §19.2) ------------------------------
+
+    /** The last copy of a canvas read on this device. Blocking: call off the main thread. */
+    fun cachedCanvas(canvasId: String): CachedCanvas? = persistence?.let { p -> runCatching { p.loadCanvas(canvasId) }.getOrNull() }
+
+    /** The conversation's copies. Blocking: call off the main thread. */
+    fun cachedCanvases(channelId: String): List<CachedCanvas> = persistence?.let { p -> runCatching { p.loadCanvases(channelId) }.getOrNull() } ?: emptyList()
+
+    /** The server answered with this canvas (read or saved): it becomes the copy shown offline. */
+    fun cacheCanvas(canvas: CanvasOut, at: Long = System.currentTimeMillis()) {
+        persist { it.saveCanvas(CachedCanvas(canvas, at), CANVAS_CACHE_LIMIT) }
+    }
+
+    /** In the trash, or out of reach: its copy goes. */
+    fun uncacheCanvas(canvasId: String) {
+        persist { it.deleteCanvas(canvasId) }
     }
 
     private fun sortCanvases(list: List<CanvasMeta>): List<CanvasMeta> =
@@ -750,7 +789,7 @@ class Store(private val persistence: Persistence? = null) {
         canvasListErrors.remove(id)
         canvasPending.filterValues { it.channelId == id }.keys.toList().forEach { setPendingCanvas(it, null) }
         if (preview?.channelId == id) preview = null // made private, or no longer listed: its preview goes too
-        persist { it.clearMessages(id); it.deleteChannel(id) }
+        persist { it.clearMessages(id); it.deleteChannel(id); it.deleteCanvases(id) } // M74: and the canvas copies
         emit()
     }
 

@@ -11,14 +11,18 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.UserPublic
+import jp.chikuwachat.android.sync.CachedCanvas
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.OutboxItem
 import jp.chikuwachat.android.sync.Persistence
 import jp.chikuwachat.android.sync.Snapshot
 import java.security.MessageDigest
+import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
@@ -39,6 +43,10 @@ data class MessageRow(@PrimaryKey val id: String, val channelId: String, val jso
 
 @Entity(tableName = "outbox")
 data class OutboxRow(@PrimaryKey val clientMsgId: String, val json: String)
+
+/** M74 (schema 2): the last copy of a canvas read (CachedCanvas), for offline viewing; `savedAt` orders the trim. */
+@Entity(tableName = "canvases", indices = [Index("channelId")])
+data class CanvasRow(@PrimaryKey val id: String, val channelId: String, val savedAt: Long, val json: String)
 
 @Dao
 interface LocalDao {
@@ -63,9 +71,16 @@ interface LocalDao {
     @Query("SELECT * FROM outbox") fun outbox(): List<OutboxRow>
     @Upsert fun putOutbox(row: OutboxRow)
     @Query("DELETE FROM outbox WHERE clientMsgId = :clientMsgId") fun deleteOutbox(clientMsgId: String)
+
+    @Query("SELECT * FROM canvases WHERE id = :id") fun canvas(id: String): CanvasRow?
+    @Query("SELECT * FROM canvases WHERE channelId = :channelId") fun canvasesOf(channelId: String): List<CanvasRow>
+    @Upsert fun putCanvas(row: CanvasRow)
+    @Query("DELETE FROM canvases WHERE id = :id") fun deleteCanvas(id: String)
+    @Query("DELETE FROM canvases WHERE channelId = :channelId") fun deleteCanvases(channelId: String)
+    @Query("DELETE FROM canvases WHERE id NOT IN (SELECT id FROM canvases ORDER BY savedAt DESC, id DESC LIMIT :keep)") fun trimCanvases(keep: Int)
 }
 
-@Database(entities = [MetaRow::class, UserRow::class, ChannelRow::class, MessageRow::class, OutboxRow::class], version = RoomPersistence.SCHEMA_VERSION, exportSchema = false)
+@Database(entities = [MetaRow::class, UserRow::class, ChannelRow::class, MessageRow::class, OutboxRow::class, CanvasRow::class], version = RoomPersistence.SCHEMA_VERSION, exportSchema = false)
 abstract class LocalDatabase : RoomDatabase() {
     abstract fun dao(): LocalDao
 }
@@ -99,6 +114,19 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
     override fun saveOutbox(item: OutboxItem) = run { dao.putOutbox(OutboxRow(item.clientMsgId, Codec.plain.encodeToString(OutboxItem.serializer(), item))) }
     override fun deleteOutbox(clientMsgId: String) = run { dao.deleteOutbox(clientMsgId) }
 
+    override fun saveCanvas(canvas: CachedCanvas, keep: Int) = run {
+        val row = CanvasRow(canvas.canvas.id, canvas.canvas.channelId, canvas.fetchedAt, Codec.plain.encodeToString(CachedCanvas.serializer(), canvas))
+        db.runInTransaction {
+            dao.putCanvas(row)
+            dao.trimCanvases(keep)
+        }
+    }
+    override fun loadCanvas(id: String): CachedCanvas? = read { dao.canvas(id)?.let { decode(CachedCanvas.serializer(), it.json) } }
+    override fun loadCanvases(channelId: String): List<CachedCanvas> =
+        read { dao.canvasesOf(channelId).mapNotNull { decode(CachedCanvas.serializer(), it.json) } } ?: emptyList()
+    override fun deleteCanvas(id: String) = run { dao.deleteCanvas(id) }
+    override fun deleteCanvases(channelId: String) = run { dao.deleteCanvases(channelId) }
+
     /** Lets the queued writes finish (briefly), then closes the database; call off the main thread. */
     fun close() {
         executor.shutdown()
@@ -115,6 +143,16 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
         }
     }
 
+    /** A read on the writer thread, so it sees every write queued before it (null after close() or on a failure). */
+    private fun <T> read(work: () -> T): T? = try {
+        executor.submit(Callable { work() }).get(5, TimeUnit.SECONDS)
+    } catch (e: RejectedExecutionException) {
+        null
+    } catch (e: Exception) {
+        Log.w("RoomPersistence", "read failed", e)
+        null
+    }
+
     private fun <T> decode(serializer: kotlinx.serialization.KSerializer<T>, json: String): T? =
         runCatching { Codec.plain.decodeFromString(serializer, json) }.getOrNull()
 
@@ -122,12 +160,30 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
         private const val DELETE_CHUNK = 500
 
         /**
-         * The schema version of [LocalDatabase]. The builders below fall back to a destructive migration, which is
-         * only right while this is 1 (the first schema, nothing to migrate from): a bump must ship a `Migration` and
-         * drop the fallback, or every device would lose its cached rows, drafts and unsent messages at the update.
-         * RoomPersistenceTest pins the value so the bump cannot slip through without that.
+         * The schema version of [LocalDatabase]. Every bump ships a `Migration` in [MIGRATIONS] (no destructive fallback
+         * on upgrade: every device would lose its cached rows, drafts and unsent messages at the update).
+         * RoomPersistenceTest checks that the migrations reach this version.
+         *
+         * - 1: the first schema (meta, users, channels, messages, outbox)
+         * - 2 (M74): `canvases`, the copies for offline viewing
          */
-        const val SCHEMA_VERSION = 1
+        const val SCHEMA_VERSION = 2
+
+        /** 1 → 2: the canvases table, empty (the copies fill as canvases are read). The SQL is Room's own for [CanvasRow]. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `canvases` (`id` TEXT NOT NULL, `channelId` TEXT NOT NULL, `savedAt` INTEGER NOT NULL, `json` TEXT NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_canvases_channelId` ON `canvases` (`channelId`)")
+            }
+        }
+
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2)
+
+        /** An older build reinstalled over a newer schema starts empty (it cannot read what it does not know). */
+        private fun builder(context: Context, profile: String) =
+            Room.databaseBuilder(context, LocalDatabase::class.java, fileName(profile))
+                .addMigrations(*MIGRATIONS)
+                .fallbackToDestructiveMigrationOnDowngrade(true)
 
         /**
          * One database per (server, user) profile, named by a hash of both (SYNC_PROTOCOL.md §11), so switching
@@ -139,13 +195,10 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
         }
 
         fun open(context: Context, profile: String): RoomPersistence {
-            val db = Room.databaseBuilder(context, LocalDatabase::class.java, fileName(profile))
-                .fallbackToDestructiveMigration(true) // see SCHEMA_VERSION: version 1 only
-                .build()
-            return RoomPersistence(db)
+            return RoomPersistence(builder(context, profile).build())
         }
 
-        /** Sign-out (§11): the profile's messages, drafts and outbox go with the session. Close it first. */
+        /** Sign-out (§11): the profile's messages, drafts, outbox and canvas copies go with the session. Close it first. */
         fun delete(context: Context, profile: String) {
             context.deleteDatabase(fileName(profile))
         }
@@ -156,7 +209,7 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
          */
         fun hasChannel(context: Context, profile: String, channelId: String): Boolean {
             if (!context.getDatabasePath(fileName(profile)).exists()) return false
-            val db = Room.databaseBuilder(context, LocalDatabase::class.java, fileName(profile)).fallbackToDestructiveMigration(true).build()
+            val db = builder(context, profile).build()
             return try {
                 db.dao().countChannel(channelId) > 0
             } catch (e: Exception) {

@@ -7,6 +7,7 @@ import jp.chikuwachat.android.api.Codec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -14,7 +15,8 @@ import kotlinx.serialization.json.jsonPrimitive
  * M46: canvases on this device (CANVAS.md §4.4 / §4.6), as the desktop's src/sync/canvases.ts. The conversation's list
  * lives in the Store (loaded when it opens and after reconnecting, kept current by canvas.* events: the larger version
  * wins); each canvas on screen, or with edits not saved yet, has a [CanvasSaver]. Unsaved edits are kept in the Room
- * store's meta table, so a restart sends them with the same idempotency key.
+ * store's meta table, so a restart sends them with the same idempotency key. M74: the last copy of each canvas read is
+ * kept in the `canvases` table (CANVAS.md §19.2) and opens the canvas, and stands in for the list, while offline.
  */
 class CanvasHub(
     private val api: CanvasApi?,
@@ -41,15 +43,29 @@ class CanvasHub(
             throw e
         } catch (e: Exception) {
             Log.w("CanvasHub", "could not load the canvases", e)
+            // M74: offline, the canvases read here before stand in for the list (the error stays: the pane can say so).
+            if (CanvasSaver.temporary(e) && store.canvasesOf(channelId) == null) {
+                store.setCanvasesFromCache(channelId, onIo { store.cachedCanvases(channelId) })
+            }
             store.setCanvasListError(channelId, e)
         }
     }
+
+    private suspend fun <T> onIo(work: () -> T): T = options.io?.let { withContext(it) { work() } } ?: work()
+
+    /** M74: the copy kept for this canvas, when it is still of this conversation. */
+    private suspend fun cachedCopy(canvasId: String, channelId: String): CachedCanvas? =
+        onIo { store.cachedCanvas(canvasId) }?.takeIf { it.canvas.channelId == channelId }
 
     /** The saver of a canvas (made, and its unsaved edits restored, on first use). */
     fun saver(canvasId: String, channelId: String): CanvasSaver? {
         val api = api ?: return null
         savers[canvasId]?.let { return it }
-        val saver = CanvasSaver(canvasId, channelId, api, scope, options, store.pendingCanvas(canvasId)) { state -> store.setPendingCanvas(canvasId, state) }
+        val saver = CanvasSaver(
+            canvasId, channelId, api, scope, options, store.pendingCanvas(canvasId),
+            cached = { cachedCopy(canvasId, channelId) },
+            remember = { got -> if (got == null) store.uncacheCanvas(canvasId) else store.cacheCanvas(got, options.now()) },
+        ) { state -> store.setPendingCanvas(canvasId, state) }
         savers[canvasId] = saver
         saver.load()
         return saver
@@ -106,6 +122,7 @@ class CanvasHub(
     /** Moved to the trash (an event, or my own DELETE): out of the list, nothing more saved. */
     fun trashed(canvasId: String, channelId: String) {
         store.removeCanvas(channelId, canvasId)
+        store.uncacheCanvas(canvasId) // M74: its offline copy too
         savers[canvasId]?.let { saver ->
             saver.gone()
             store.setPendingCanvas(canvasId, null)
