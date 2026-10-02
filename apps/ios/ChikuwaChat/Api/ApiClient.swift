@@ -46,7 +46,7 @@ extension ErrorMessages {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, CalendarApi, CalendarFeedApi, TaskApi, RecurringApi, AiApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, MyCanvasesApi, CalendarApi, CalendarFeedApi, TaskApi, RecurringApi, AiApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -790,6 +790,14 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// The conversation's canvases without bodies, most recently updated first (`trashed`: its trash instead).
     func listCanvases(channelId: String, trashed: Bool) async throws -> [CanvasMeta] {
         try await request("GET", "/api/v1/channels/\(channelId)/canvases" + (trashed ? "?trashed=true" : ""))
+    }
+
+    /// M78 (CANVAS.md §21): the canvases of all my conversations without bodies, most recently updated first, a page at a
+    /// time (`next_cursor` for the next).
+    func myCanvases(cursor: String?, limit: Int) async throws -> CanvasPage {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request("GET", Self.pathWithQuery("/api/v1/canvases", items))
     }
 
     /// A new canvas (a retry with the same client_save_id returns the first one). The server puts in a template's

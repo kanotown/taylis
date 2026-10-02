@@ -140,6 +140,12 @@ struct CanvasRevisionMeta: Codable, Identifiable, Equatable {
     let createdAt: String
 }
 
+/// GET /canvases (M78, CANVAS.md §21): the canvases of all my conversations, most recently updated first.
+struct CanvasPage: Codable, Equatable {
+    let items: [CanvasMeta]
+    let nextCursor: String?
+}
+
 struct CanvasRevisionPage: Codable, Equatable {
     let items: [CanvasRevisionMeta]
     let nextCursor: String?
