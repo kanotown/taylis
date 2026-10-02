@@ -1,5 +1,5 @@
-import { AlarmClock, ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, ClipboardCheck, Forward,Hash, Link, ListTodo, Lock, Mail, MessageSquare, MessagesSquare, Pencil, Pin, PinOff, SmilePlus, Trash2, Users } from "lucide-react";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, Hash, Lock, MessageSquare, MessagesSquare, MoreHorizontal, Pencil, Pin, SmilePlus } from "lucide-react";
+import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiClient } from "../api/client";
 import type { AppController } from "../state/app";
@@ -22,7 +22,8 @@ import { CollectionChip } from "./RecurringPosts";
 import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
 import { isSendKey, sendKeyLabel } from "./prefs";
-import { Button, cn, IconButton, Input, Kbd, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
+import { Button, cn, IconButton, Input, Kbd, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
+import { hoverMenuGroups, type MessageActionKey, messageActions, rowFitsQuickReactions } from "./messageActions";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { isSelfNotes, SELF_NOTES_INTRO } from "./channels";
@@ -772,6 +773,23 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   // row renders, so a change made while the row stays put shows late at worst (the server checks it again).
   const [reviewOpen, setReviewOpen] = useState(false);
   const canRequestReview = canMakeTask && message.seq !== null && !message.pending && canEditConversationTasks(store.getChannel(message.channel_id), isAdmin);
+  // The hover bar's 「その他」 menu. What an item opens (a dialog, the remind or delete popover by ⋯) opens once the menu
+  // has closed and handed focus back, which the new layer would otherwise take for a click outside (as in the composer).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const afterMenu = useRef<(() => void) | null>(null);
+  const runAfterMenu = (event: Event) => {
+    const run = afterMenu.current;
+    if (!run) return;
+    afterMenu.current = null;
+    event.preventDefault();
+    run();
+  };
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const moreAnchor = useRef({ getBoundingClientRect: () => moreButton.current?.getBoundingClientRect() ?? new DOMRect() });
+  // Whether the quick reactions fit the bar (rowFitsQuickReactions), from the row's own width when the bar is about to
+  // show (hover or focus): no observer per row, and the thread pane or a narrow window drops them.
+  const [wideRow, setWideRow] = useState(true);
+  const measureRow = (row: HTMLElement) => setWideRow(rowFitsQuickReactions(row.clientWidth));
   // M25: the long-press sheet on touch screens (a mouse has the hover bar), and where it opens.
   const [sheet, setSheet] = useState<"actions" | "emoji" | null>(null);
   const press = useRef<{ timer: number; x: number; y: number } | null>(null);
@@ -794,6 +812,26 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   const link = rawLink && api && parsePermalink(api.baseUrl, rawLink) ? null : rawLink; // our own permalinks get no card
   const pinnedBy = message.pinned_at ? (store.users.get(message.pinned_by ?? "")?.display_name ?? "?") : null;
   const threadId = message.parent_id ?? message.id;
+  // The same actions as the long-press sheet (messageActions.ts): the bar shows a few, ⋯ the rest.
+  const editable = mine && feedChannel === undefined;
+  const actions = messageActions({ message, mine, isAdmin, saved, thread: !!onOpenThread, editable, showReactions: true, canMakeTask, canRequestReview, unreadOffered });
+  const offered = new Set(actions.map((action) => action.key));
+  const afterClose = (work: () => void) => () => { afterMenu.current = work; };
+  const menuRun: Record<MessageActionKey, () => void> = {
+    reactions: afterClose(() => setReactionsOpen(true)),
+    thread: () => onOpenThread?.(threadId),
+    edit: () => controller.setEditing(message.id),
+    copyText: () => void controller.copyMessageText(message.body),
+    save: () => void controller.toggleBookmark(message),
+    remind: afterClose(() => setRemindOpen(true)),
+    task: afterClose(() => setTaskOpen(true)),
+    review: afterClose(() => setReviewOpen(true)),
+    unread: () => engine?.markUnread(message.channel_id, message.seq!),
+    copyLink: () => void controller.copyPermalink(message.id),
+    share: afterClose(() => setShareOpen(true)),
+    pin: () => void controller.togglePin(message),
+    delete: afterClose(() => setConfirmDelete(true)),
+  };
   return (
     <article
       key={rowKey(message)}
@@ -811,6 +849,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         message.failed && "opacity-100 shadow-[inset_3px_0_0_var(--danger)]",
       )}
       title={compact ? fullTimestamp(message.created_at) : undefined}
+      onMouseEnter={(event) => measureRow(event.currentTarget)}
+      onFocus={(event) => measureRow(event.currentTarget)}
       onClick={(event) => {
         // A dialog this row opened (who reacted, who confirmed …) sits in a portal: React still bubbles its clicks and
         // touches here, but they are not on the message.
@@ -1000,16 +1040,20 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         )}
       </div>
       {!message.pending && !readOnly && (
-        <div className={cn("row-actions pointer-events-none absolute -top-3.5 right-2 flex items-center gap-0.5 rounded-lg border border-line bg-canvas p-0.5 opacity-0 shadow-md transition-opacity", (pickerOpen || confirmDelete) && "pointer-events-auto opacity-100")}>
-          {/* The first three I chose (M50), else the three I used last (then the defaults), as the phone sheet's six (M25). */}
-          {quickReactions(recentEmoji, 3, chosenReactions).map((emoji) => (
-            <button key={emoji} type="button" title={`${emoji} でリアクション`} className="h-7 w-7 rounded-md text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
+        // Slack's bar: quick reactions, 「リアクションを追加」, the thread, 「あとで見る」, my edit, and 「その他」 (⋯) with the
+        // rest (messageActions.ts, the same list as the long-press sheet). It stays shown while its menu or a popover
+        // opened from it is open (they sit in portals, outside the row's hover).
+        <div className={cn("row-actions pointer-events-none absolute -top-3.5 right-2 flex max-w-[calc(100%-1rem)] items-center gap-0.5 rounded-lg border border-line bg-canvas p-0.5 opacity-0 shadow-md transition-opacity", (pickerOpen || confirmDelete || remindOpen || menuOpen) && "pointer-events-auto opacity-100")}>
+          {/* The first three I chose (M50), else the three I used last (then the defaults), as the phone sheet's six (M25).
+              Left out on a narrow row (the thread pane): 「リアクションを追加」 still has them. */}
+          {wideRow && quickReactions(recentEmoji, 3, chosenReactions).map((emoji) => (
+            <button key={emoji} type="button" title={`${emoji} でリアクション`} className="h-7 w-7 shrink-0 rounded-md text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
               {emoji}
             </button>
           ))}
           <PopoverRoot open={pickerOpen} onOpenChange={setPickerOpen}>
             <PopoverTrigger asChild>
-              <button type="button" title="リアクションを追加" aria-label="リアクションを追加" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
+              <button type="button" title="リアクションを追加" aria-label="リアクションを追加" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
                 <SmilePlus size={16} />
               </button>
             </PopoverTrigger>
@@ -1026,29 +1070,44 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               />
             </PopoverContent>
           </PopoverRoot>
-          {reactions.length > 0 && (
-            <IconButton label="リアクションした人" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setReactionsOpen(true)}>
-              <Users size={15} />
-            </IconButton>
-          )}
-          {onOpenThread && (
-            <IconButton label="スレッドで返信" className="h-7 w-7 text-muted hover:text-ink" onClick={() => onOpenThread(threadId)}>
+          {offered.has("thread") && (
+            <IconButton label="スレッドで返信" className="h-7 w-7 shrink-0 text-muted hover:text-ink" onClick={() => onOpenThread?.(threadId)}>
               <MessageSquare size={15} />
             </IconButton>
           )}
-          <IconButton label="リンクをコピー" className="h-7 w-7 text-muted hover:text-ink" onClick={() => void controller.copyPermalink(message.id)}>
-            <Link size={15} />
+          <IconButton label={saved ? "保存を解除" : "あとで見る (保存)"} className={cn("h-7 w-7 shrink-0 hover:text-ink", saved ? "text-accent" : "text-muted")} onClick={() => void controller.toggleBookmark(message)}>
+            {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
           </IconButton>
-          <IconButton label="別のチャンネルに共有" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setShareOpen(true)}>
-            <Forward size={15} />
-          </IconButton>
-          <PopoverRoot open={remindOpen} onOpenChange={setRemindOpen}>
-            <PopoverTrigger asChild>
-              <button type="button" title="リマインド" aria-label="リマインド" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
-                <AlarmClock size={15} />
+          {offered.has("edit") && (
+            <IconButton label="編集 (空の入力欄で ↑)" className="h-7 w-7 shrink-0 text-muted hover:text-ink" onClick={() => controller.setEditing(message.id)}>
+              <Pencil size={15} />
+            </IconButton>
+          )}
+          <Menu open={menuOpen} onOpenChange={(open) => { if (open) afterMenu.current = null; setMenuOpen(open); }}>
+            <MenuTrigger asChild>
+              <button ref={moreButton} type="button" title="その他" aria-label="その他" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink data-[state=open]:bg-panel-2 data-[state=open]:text-ink">
+                <MoreHorizontal size={16} />
               </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-72 p-3">
+            </MenuTrigger>
+            <MenuContent align="end" aria-label="メッセージのその他の操作" onCloseAutoFocus={runAfterMenu}>
+              {hoverMenuGroups(actions).map((group, index) => (
+                <Fragment key={group[0]!.key}>
+                  {index > 0 && <MenuSeparator />}
+                  {group.map((action) => (
+                    <MenuItem key={action.key} className={action.danger ? "text-danger" : undefined} onSelect={menuRun[action.key]}>
+                      <action.icon size={14} className={action.danger ? undefined : "text-muted"} />
+                      {action.label}
+                      {action.key === "unread" && <span aria-hidden className="ml-auto pl-3 text-[11px] text-muted">Alt+クリック</span>}
+                    </MenuItem>
+                  ))}
+                </Fragment>
+              ))}
+            </MenuContent>
+          </Menu>
+          {/* 「リマインド…」 and 「削除」 from the menu open by ⋯. */}
+          <PopoverRoot open={remindOpen} onOpenChange={setRemindOpen}>
+            <PopoverAnchor virtualRef={moreAnchor} />
+            <PopoverContent align="end" className="w-72 p-3" aria-label="リマインド">
               <div className="mb-2 text-xs font-semibold text-muted">リマインド</div>
               <Input value={remindNote} maxLength={200} placeholder="メモ (任意)" aria-label="リマインドのメモ" className="mb-2 h-9 text-sm" onChange={(e) => setRemindNote(e.target.value)} />
               <ul className="space-y-0.5">
@@ -1068,53 +1127,21 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               </div>
             </PopoverContent>
           </PopoverRoot>
-          {canMakeTask && (
-            <IconButton label="タスクにする" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setTaskOpen(true)}>
-              <ListTodo size={15} />
-            </IconButton>
-          )}
-          {canRequestReview && (
-            <IconButton label="レビューを依頼" className="h-7 w-7 text-muted hover:text-ink" onClick={() => setReviewOpen(true)}>
-              <ClipboardCheck size={15} />
-            </IconButton>
-          )}
-          <IconButton label={saved ? "保存を解除" : "あとで見る (保存)"} className={cn("h-7 w-7 hover:text-ink", saved ? "text-accent" : "text-muted")} onClick={() => void controller.toggleBookmark(message)}>
-            {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
-          </IconButton>
-          <IconButton label={message.pinned_at ? "ピン留めを外す" : "チャンネルにピン留め"} className={cn("h-7 w-7 hover:text-ink", message.pinned_at ? "text-warning" : "text-muted")} onClick={() => void controller.togglePin(message)}>
-            {message.pinned_at ? <PinOff size={15} /> : <Pin size={15} />}
-          </IconButton>
-          {unreadOffered && (
-            <IconButton label="ここから未読にする (Alt+クリック)" className="h-7 w-7 text-muted hover:text-ink" onClick={() => engine?.markUnread(message.channel_id, message.seq!)}>
-              <Mail size={15} />
-            </IconButton>
-          )}
-          {mine && feedChannel === undefined && (
-            <IconButton label="編集 (空の入力欄で ↑)" className="h-7 w-7 text-muted hover:text-ink" onClick={() => controller.setEditing(message.id)}>
-              <Pencil size={15} />
-            </IconButton>
-          )}
-          {(mine || isAdmin) && (
-            <PopoverRoot open={confirmDelete} onOpenChange={setConfirmDelete}>
-              <PopoverTrigger asChild>
-                <button type="button" title="削除" aria-label="削除" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-danger">
-                  <Trash2 size={15} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-64 p-3">
-                <div className="text-sm font-medium">このメッセージを削除しますか？</div>
-                <div className="mt-1 text-xs text-muted">削除したメッセージは元に戻せません。</div>
-                <div className="mt-3 flex justify-end gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
-                    キャンセル
-                  </Button>
-                  <Button variant="danger" size="sm" onClick={() => { setConfirmDelete(false); void controller.deleteMessage(message.id); }}>
-                    削除する
-                  </Button>
-                </div>
-              </PopoverContent>
-            </PopoverRoot>
-          )}
+          <PopoverRoot open={confirmDelete} onOpenChange={setConfirmDelete}>
+            <PopoverAnchor virtualRef={moreAnchor} />
+            <PopoverContent align="end" className="w-64 p-3" aria-label="メッセージの削除">
+              <div className="text-sm font-medium">このメッセージを削除しますか？</div>
+              <div className="mt-1 text-xs text-muted">削除したメッセージは元に戻せません。</div>
+              <div className="mt-3 flex justify-end gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
+                  キャンセル
+                </Button>
+                <Button variant="danger" size="sm" onClick={() => { setConfirmDelete(false); void controller.deleteMessage(message.id); }}>
+                  削除する
+                </Button>
+              </div>
+            </PopoverContent>
+          </PopoverRoot>
         </div>
       )}
       {shareOpen && <ShareDialog controller={controller} message={message} onClose={() => setShareOpen(false)} />}
@@ -1150,6 +1177,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           unreadOffered={unreadOffered}
           saved={saved}
           isAdmin={isAdmin}
+          canEdit={editable}
         />
       )}
     </article>

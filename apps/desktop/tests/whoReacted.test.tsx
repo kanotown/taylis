@@ -10,6 +10,7 @@ import { ackLine, compactNames } from "../src/ui/format";
 import { LONG_PRESS_MS } from "../src/ui/MessageActionsSheet";
 import { Timeline } from "../src/ui/Timeline";
 import { FakeServer } from "./fakeServer";
+import { chooseFromRowMenu, rowMenuLabels, tick } from "./rowMenu";
 
 afterEach(() => {
   cleanup();
@@ -102,15 +103,17 @@ describe("リアクションした人 (M27)", () => {
     expect(screen.getByRole("dialog", { name: "リアクションした人" })).toBeTruthy();
   });
 
-  it("with a mouse: the chips keep their hover names, and the hover bar opens the same list", () => {
+  it("with a mouse: the chips keep their hover names, and the hover bar opens the same list", async () => {
     touchScreen(false);
     const w = world();
-    expect(within(w.row()).queryByRole("button", { name: "リアクションした人" })).toBeNull(); // nothing to list yet
+    expect(rowMenuLabels(w.row())).not.toContain("リアクションした人"); // nothing to list yet
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await tick();
     w.react(1, "🎉");
     w.react(4, "🎉");
     const chip = within(w.row()).getByTitle("Bob, Erin");
     expect(chip.textContent).toContain("2");
-    fireEvent.click(within(w.row()).getByRole("button", { name: "リアクションした人" }));
+    await chooseFromRowMenu("リアクションした人", w.row());
     expect(within(screen.getByRole("dialog", { name: "リアクションした人" })).getByText("Bob、Erin")).toBeTruthy();
   });
 });

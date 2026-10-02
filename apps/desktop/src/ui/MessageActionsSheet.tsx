@@ -1,9 +1,10 @@
-import { AlarmClock, Bookmark, BookmarkCheck, ClipboardCheck, Copy,Forward, Link, ListTodo, Mail, MessageSquare, Pencil, Pin, PinOff, SmilePlus, Trash2, Users } from "lucide-react";
+import { AlarmClock, SmilePlus } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { MessageState } from "../sync/types";
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
+import { type MessageActionKey, messageActions } from "./messageActions";
 import { cn } from "./primitives";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 
@@ -32,7 +33,7 @@ export const LONG_PRESS_MS = 450;
  * The long-press sheet on a phone (M25, MUI-1): quick reactions, then the actions in the order iOS (MessageActions.swift)
  * and Android (MessageActions.kt) show them. Each action closes the sheet; the delete asks once more in place.
  */
-export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onShowReactions, onMakeTask, onRequestReview, unreadOffered, saved, isAdmin }: {
+export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onShowReactions, onMakeTask, onRequestReview, unreadOffered, saved, isAdmin, canEdit }: {
   controller: AppController;
   message: MessageState;
   /** "emoji": straight to the picker (the 「＋」 after the reactions). */
@@ -49,6 +50,8 @@ export function MessageActionsSheet({ controller, message, initialView = "action
   unreadOffered: boolean;
   saved: boolean;
   isAdmin: boolean;
+  /** Editing in place is offered (my own message with its conversation open); my own message when left out. */
+  canEdit?: boolean;
 }) {
   const store = controller.store;
   const me = store.me;
@@ -72,6 +75,26 @@ export function MessageActionsSheet({ controller, message, initialView = "action
   const [remindNote, setRemindNote] = useState("");
   const [remindAt, setRemindAt] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60_000)));
   const remind = (at: Date) => void controller.setReminder(message.id, at, remindNote.trim() || null);
+  // The same list as the hover bar and its 「その他」 menu (messageActions.ts), in the phone apps' order.
+  const actions = messageActions({
+    message, mine, isAdmin, saved, thread: !!onOpenThread, editable: canEdit ?? mine, showReactions: !!onShowReactions,
+    canMakeTask: !!onMakeTask, canRequestReview: !!onRequestReview, unreadOffered,
+  });
+  const run: Record<MessageActionKey, () => void> = {
+    reactions: then(() => onShowReactions?.()),
+    thread: then(() => onOpenThread?.(message.parent_id ?? message.id)),
+    edit: then(() => controller.setEditing(message.id)),
+    copyText: then(() => void controller.copyMessageText(message.body)),
+    save: then(() => void controller.toggleBookmark(message)),
+    remind: () => { if (settled()) setView("remind"); },
+    task: then(() => onMakeTask?.()),
+    review: then(() => onRequestReview?.()),
+    unread: then(() => controller.engine?.markUnread(message.channel_id, message.seq!)),
+    copyLink: then(() => void controller.copyPermalink(message.id)),
+    share: then(onShare),
+    pin: then(() => void controller.togglePin(message)),
+    delete: () => { if (settled()) setView("delete"); },
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/35" onClick={() => { if (settled()) onClose(); }} role="presentation">
@@ -163,27 +186,11 @@ export function MessageActionsSheet({ controller, message, initialView = "action
               </button>
             </div>
             <ul className="px-2 pb-1">
-              {onShowReactions && (message.reactions ?? []).length > 0 && <li><SheetButton icon={<Users size={18} />} onClick={then(onShowReactions)}>リアクションした人</SheetButton></li>}
-              {onOpenThread &&<li><SheetButton icon={<MessageSquare size={18} />} onClick={then(() => onOpenThread(message.parent_id ?? message.id))}>スレッドで返信</SheetButton></li>}
-              {mine && <li><SheetButton icon={<Pencil size={18} />} onClick={then(() => controller.setEditing(message.id))}>編集</SheetButton></li>}
-              {message.body && <li><SheetButton icon={<Copy size={18} />} onClick={then(() => void controller.copyMessageText(message.body))}>テキストをコピー</SheetButton></li>}
-              <li>
-                <SheetButton icon={saved ? <BookmarkCheck size={18} /> : <Bookmark size={18} />} onClick={then(() => void controller.toggleBookmark(message))}>
-                  {saved ? "保存を解除" : "あとで見る (保存)"}
-                </SheetButton>
-              </li>
-              <li><SheetButton icon={<AlarmClock size={18} />} onClick={() => { if (settled()) setView("remind"); }}>リマインド…</SheetButton></li>
-              {onMakeTask && <li><SheetButton icon={<ListTodo size={18} />} onClick={then(onMakeTask)}>タスクにする</SheetButton></li>}
-              {onRequestReview && <li><SheetButton icon={<ClipboardCheck size={18} />} onClick={then(onRequestReview)}>レビューを依頼</SheetButton></li>}
-              {unreadOffered && <li><SheetButton icon={<Mail size={18} />} onClick={then(() => controller.engine?.markUnread(message.channel_id, message.seq!))}>ここから未読にする</SheetButton></li>}
-              <li><SheetButton icon={<Link size={18} />} onClick={then(() => void controller.copyPermalink(message.id))}>リンクをコピー</SheetButton></li>
-              <li><SheetButton icon={<Forward size={18} />} onClick={then(onShare)}>別のチャンネルに共有…</SheetButton></li>
-              <li>
-                <SheetButton icon={message.pinned_at ? <PinOff size={18} /> : <Pin size={18} />} onClick={then(() => void controller.togglePin(message))}>
-                  {message.pinned_at ? "ピン留めを外す" : "チャンネルにピン留め"}
-                </SheetButton>
-              </li>
-              {(mine || isAdmin) && <li><SheetButton danger icon={<Trash2 size={18} />} onClick={() => { if (settled()) setView("delete"); }}>削除</SheetButton></li>}
+              {actions.map((action) => (
+                <li key={action.key}>
+                  <SheetButton danger={action.danger} icon={<action.icon size={18} />} onClick={run[action.key]}>{action.label}</SheetButton>
+                </li>
+              ))}
             </ul>
           </>
         )}
