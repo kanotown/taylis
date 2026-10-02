@@ -2115,7 +2115,7 @@ class AppController(private val app: Application) {
     suspend fun createPoll(channelId: String, parentId: String?, question: String, options: List<String>, multiple: Boolean, anonymous: Boolean = false): Boolean = attempt {
         val message = api!!.postPoll(channelId, parentId, question, options, multiple, anonymous)
         engine?.postedFromHere(message) ?: store.upsertMessage(message)
-        if (message.parentId == null) postedHere = message.id
+        postedHere = message.id
         true
     }.getOrElse { error = describe(it); false }
 
@@ -2128,7 +2128,7 @@ class AppController(private val app: Application) {
     suspend fun createSchedulePoll(channelId: String, parentId: String?, question: String, slots: List<jp.chikuwachat.android.api.ScheduleSlotIn>, tz: String, anonymous: Boolean = false): Boolean = attempt {
         val message = api!!.postSchedulePoll(channelId, parentId, question, slots, tz, anonymous)
         engine?.postedFromHere(message) ?: store.upsertMessage(message)
-        if (message.parentId == null) postedHere = message.id
+        postedHere = message.id
         true
     }.getOrElse { error = describe(it); false }
 
@@ -2170,7 +2170,7 @@ class AppController(private val app: Application) {
     }
 
     /**
-     * §10.1 rule 11 (M28c): the id of my latest top-level post made through an endpoint of its own (a poll), for the
+     * §10.1 rule 11 (M28c): the id of my latest post (top-level or a reply) made through an endpoint of its own (a poll), for the
      * open conversation to show it at the bottom like a send from the outbox (the desktop's and iOS's postedHere).
      */
     var postedHere by mutableStateOf<String?>(null)

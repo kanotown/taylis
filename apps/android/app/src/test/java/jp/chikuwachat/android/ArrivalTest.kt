@@ -119,4 +119,61 @@ class ArrivalTest {
         assertNull(ThreadRows.dividerMark(replies.take(2), 11, me))
         assertNull(ThreadRows.dividerMark(replies, null, me))
     }
+
+    // --- a thread (BACKLOG §5, 2026-10-02): laid out oldest first, the newest end is the bottom of the list ---
+
+    @Test fun theThreadEndIsTheLastItemNoFurtherBelowThanTheSlop() {
+        // 2 header items + 10 replies: the last index is 11; content ends at 1000 px.
+        assertTrue(ThreadRows.atNewestEnd(11, 1000, 11, 1000, 21))
+        assertTrue(ThreadRows.atNewestEnd(11, 1021, 11, 1000, 21))
+        assertFalse(ThreadRows.atNewestEnd(11, 1022, 11, 1000, 21))
+        assertFalse(ThreadRows.atNewestEnd(10, 980, 11, 1000, 21))
+        assertFalse(ThreadRows.atNewestEnd(null, 0, 11, 1000, 21))
+    }
+
+    @Test fun onlyRepliesAddedAtTheEndCountAsThreadArrivals() {
+        val replies = (1..5).map { row(it, parentId = "p").rowKey }
+        assertTrue(ThreadRows.arrivedAtEnd(replies, replies + "cmid-6"))
+        assertTrue(ThreadRows.arrivedAtEnd(replies, replies + "cmid-6" + "cmid-7"))
+        // The first reply of a thread that had none.
+        assertTrue(ThreadRows.arrivedAtEnd(emptyList(), listOf("cmid-1")))
+        // Older replies fetched above, an edit, the last reply deleted, another thread: no arrival.
+        assertFalse(ThreadRows.arrivedAtEnd(replies, listOf("cmid-0") + replies))
+        assertFalse(ThreadRows.arrivedAtEnd(replies, replies))
+        assertFalse(ThreadRows.arrivedAtEnd(replies, replies.dropLast(1)))
+        assertFalse(ThreadRows.arrivedAtEnd(replies, listOf("x-1", "x-2")))
+        assertFalse(ThreadRows.arrivedAtEnd(emptyList(), emptyList()))
+    }
+
+    @Test fun theThreadFollowsAnArrivalOnlyAtTheEndOrForMyOwnSend() {
+        // At the end: someone else's reply is followed.
+        assertTrue(ThreadRows.followsArrival(atNewestEnd = true, arrived = true, settled = true, sentHere = false))
+        // Scrolled up: the reader stays put (and gets 「新着 N 件」).
+        assertFalse(ThreadRows.followsArrival(atNewestEnd = false, arrived = true, settled = true, sentHere = false))
+        // My own reply sent from here always goes to the end, wherever the reader was.
+        assertTrue(ThreadRows.followsArrival(atNewestEnd = false, arrived = true, settled = true, sentHere = true))
+        // Nothing arrived, or the thread was not placed yet (the open positioning decides): no move.
+        assertFalse(ThreadRows.followsArrival(atNewestEnd = true, arrived = false, settled = true, sentHere = false))
+        assertFalse(ThreadRows.followsArrival(atNewestEnd = true, arrived = true, settled = false, sentHere = true))
+    }
+
+    @Test fun onlyMyPendingReplyOrMyPostFromHereCountsAsSentHere() {
+        val pending = row(1, sender = me, parentId = "p").copy(seq = null, id = "local:cmid-x", pending = true)
+        assertTrue(ThreadRows.sentHere(pending, me, null))
+        // My poll posted through its own endpoint.
+        assertTrue(ThreadRows.sentHere(row(7, sender = me, parentId = "p"), me, "id-7"))
+        // My reply from another device arriving live, someone else's reply, nothing.
+        assertFalse(ThreadRows.sentHere(row(7, sender = me, parentId = "p"), me, null))
+        assertFalse(ThreadRows.sentHere(row(8, parentId = "p"), me, "id-8"))
+        assertFalse(ThreadRows.sentHere(null, me, null))
+    }
+
+    @Test fun aThreadArrivalWhileScrolledUpIsCountedAsNew() {
+        val replies = (1..10).map { row(it, parentId = "p") }
+        val after = replies + row(11, parentId = "p") + row(12, sender = me, parentId = "p")
+        val seenSeq = ReadGate.nextSeenSeq(10, settled = true, atBottom = false, newestSeq = 12)
+        // My own reply is never 「新着」.
+        assertEquals(1, ReadGate.newBelow(after, seenSeq, me))
+        assertEquals(0, ReadGate.newBelow(after, ReadGate.nextSeenSeq(10, settled = true, atBottom = true, newestSeq = 12), me))
+    }
 }

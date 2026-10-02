@@ -12,6 +12,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListLayoutInfo
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
@@ -96,6 +106,34 @@ object ThreadRows {
         }
         return keys
     }
+
+    /**
+     * At the newest end of the thread (the list is laid out from the top, oldest first): the last item is laid out and
+     * its bottom is no further below the content's end than `slopPx` (Timeline.NEWEST_EDGE_SLOP_DP, as in the channel).
+     * `lastVisibleIndex` null = nothing laid out yet.
+     */
+    fun atNewestEnd(lastVisibleIndex: Int?, lastVisibleEnd: Int, lastIndex: Int, contentEnd: Int, slopPx: Int): Boolean =
+        lastVisibleIndex != null && lastVisibleIndex == lastIndex && lastVisibleEnd - contentEnd <= slopPx
+
+    /**
+     * Replies came in at the newest end: the last key changed and the reply that was last is still there, now further
+     * up (not a reload, another thread or the last reply deleted). The first reply of a thread that had none counts.
+     * Keys oldest first, as the replies are.
+     */
+    fun arrivedAtEnd(before: List<String>, after: List<String>): Boolean =
+        if (before.isEmpty()) after.isNotEmpty() else Timeline.arrivedAtNewest(before.asReversed(), after.asReversed())
+
+    /** My reply made on this device: its pending row (the outbox) or a post through an endpoint of its own (`postedHere`). */
+    fun sentHere(reply: MessageState?, meId: String?, postedHere: String?): Boolean =
+        reply != null && meId != null && reply.senderId == meId && (reply.pending || reply.id == postedHere)
+
+    /**
+     * §10.1 2-4 for a thread: a reply that arrives while the reader is at the newest end is shown there (the list follows
+     * it); scrolled up, the reader stays where they are (and gets 「新着 N 件」). My own reply sent from here always goes
+     * to the end. Never before the thread was first placed (the open positioning decides the first position).
+     */
+    fun followsArrival(atNewestEnd: Boolean, arrived: Boolean, settled: Boolean, sentHere: Boolean): Boolean =
+        arrived && settled && (atNewestEnd || sentHere)
 }
 
 /**
@@ -136,6 +174,8 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     var positioned by remember(parentId) { mutableStateOf(false) }
     var userScrolled by remember(parentId) { mutableStateOf(false) }
     var anchored by remember(parentId) { mutableStateOf(false) }
+    var seenSeq by remember(parentId) { mutableIntStateOf(0) }
+    val maxSeq = replies.maxOfOrNull { it.seq ?: 0 } ?: 0
     // The keyboard and the input growing: the newest reply (or the one read last) stays above the input.
     KeepBottomOnResize(listState, enabled = placed || positioned)
 
@@ -146,6 +186,30 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
             OpenPosition.Bottom -> listState.scrollToItem(header + replies.size - 1)
         }
     }
+    // §10.1 2-4 (BACKLOG §5, 2026-10-02): the list keeps its first visible item in place by key, so a reply appended
+    // below the newest one went off the bottom unseen. Asked for in the composition that brings the reply (the list's
+    // position is still the one before it), the list lays it out at the end in the same frame, as the channel does.
+    val edgeSlop = with(LocalDensity.current) { Timeline.NEWEST_EDGE_SLOP_DP.dp.roundToPx() }
+    val atEnd by remember(listState) { derivedStateOf { listState.layoutInfo.atThreadEnd(edgeSlop) } }
+    val followed = remember(parentId) { LastShown<List<MessageState>>() }
+    followed.value?.let { before ->
+        if (before !== replies) {
+            val arrived = ThreadRows.arrivedAtEnd(before.map { it.rowKey }, replies.map { it.rowKey })
+            val wasAtEnd = Snapshot.withoutReadObservation { listState.layoutInfo.atThreadEnd(edgeSlop) }
+            val mine = ThreadRows.sentHere(replies.lastOrNull(), me, Snapshot.withoutReadObservation { controller.postedHere })
+            if (ThreadRows.followsArrival(wasAtEnd, arrived, placed || positioned, mine)) listState.requestScrollToItem(header + replies.size - 1)
+        }
+    }
+    SideEffect { followed.value = replies }
+    // My poll in the thread (an endpoint of its own) may name itself a frame after its row came.
+    LaunchedEffect(parentId, controller.postedHere) {
+        val last = replies.lastOrNull() ?: return@LaunchedEffect
+        if ((placed || positioned) && last.id == controller.postedHere) listState.scrollToItem(header + replies.size - 1)
+    }
+    // 「新着 N 件」 (§10.1 rule 7, as in the channel): replies from others past the newest one seen at the end.
+    LaunchedEffect(atEnd, maxSeq, positioned) { seenSeq = ReadGate.nextSeenSeq(seenSeq, positioned, atEnd, maxSeq) }
+    val unseenBelow = if (positioned) ReadGate.newBelow(replies, seenSeq, me) else 0
+    val scope = rememberCoroutineScope()
     LaunchedEffect(parentId) {
         listState.interactionSource.interactions.collect { if (it is DragInteraction.Start) userScrolled = true }
     }
@@ -167,8 +231,10 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
         if (threadReady) {
             positioned = true
             dividerMark = ThreadRows.dividerMark(replies, shown.lastReadSeq, me)
+            seenSeq = shown.lastReadSeq ?: 0
             if (userScrolled) return@LaunchedEffect
             val at = ThreadRows.openPosition(replies, header, focusId, shown.lastReadSeq, me)
+            if (at == OpenPosition.Bottom) seenSeq = maxOf(seenSeq, maxSeq)
             scrollTo(at)
             if (at is OpenPosition.Top) anchored = true
         } else if (!placed && replies.isNotEmpty()) {
@@ -209,31 +275,41 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        // The channel's 8 dp above and below (ChannelPane): the newest reply sits as far above the input as a channel's
-        // newest message (2026-10-02: the thread had none).
-        LazyColumn(
-            Modifier.weight(1f).fillMaxWidth().closesKeyboardOnTap(LocalFocusManager.current, rememberKeyboardUp()), state = listState,
-            contentPadding = PaddingValues(vertical = 8.dp),
-        ) {
-            if (parent != null) {
-                item(key = "parent") { ThreadMessage(parent, store, controller, version) }
-                item(key = "divider") {
-                    Text(
-                        if (replies.isEmpty()) "返信はまだありません" else "${replies.size} 件の返信",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                    )
-                    HorizontalDivider()
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            // The channel's 8 dp above and below (ChannelPane): the newest reply sits as far above the input as a channel's
+            // newest message (2026-10-02: the thread had none).
+            LazyColumn(
+                Modifier.fillMaxSize().closesKeyboardOnTap(LocalFocusManager.current, rememberKeyboardUp()), state = listState,
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                if (parent != null) {
+                    item(key = "parent") { ThreadMessage(parent, store, controller, version) }
+                    item(key = "divider") {
+                        Text(
+                            if (replies.isEmpty()) "返信はまだありません" else "${replies.size} 件の返信",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        )
+                        HorizontalDivider()
+                    }
+                } else {
+                    item { Text("メッセージが見つかりません", modifier = Modifier.padding(16.dp)) }
                 }
-            } else {
-                item { Text("メッセージが見つかりません", modifier = Modifier.padding(16.dp)) }
+                items(replies, key = { it.rowKey }) { reply ->
+                    Column {
+                        if (reply.id == firstUnreadId) NewRepliesDivider()
+                        ThreadMessage(reply, store, controller, version, compact = reply.rowKey in compactKeys)
+                    }
+                }
             }
-            items(replies, key = { it.rowKey }) { reply ->
-                Column {
-                    if (reply.id == firstUnreadId) NewRepliesDivider()
-                    ThreadMessage(reply, store, controller, version, compact = reply.rowKey in compactKeys)
-                }
+            if (!atEnd && unseenBelow > 0 && replies.isNotEmpty()) {
+                ExtendedFloatingActionButton(
+                    onClick = { scope.launch { listState.animateScrollToItem(header + replies.size - 1) } },
+                    icon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
+                    text = { Text("新着 $unseenBelow 件") },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                )
             }
         }
         HorizontalDivider()
@@ -243,6 +319,13 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
             ConversationComposer(controller, channelId, version, parentId)
         }
     }
+}
+
+/** At the thread's newest end ([ThreadRows.atNewestEnd]); an empty list is at it. */
+private fun LazyListLayoutInfo.atThreadEnd(slopPx: Int): Boolean {
+    if (totalItemsCount == 0) return true
+    val last = visibleItemsInfo.lastOrNull()
+    return ThreadRows.atNewestEnd(last?.index, last?.let { it.offset + it.size } ?: 0, totalItemsCount - 1, viewportEndOffset - afterContentPadding, slopPx)
 }
 
 /** What one store version shows of a thread (see ThreadPane). */
