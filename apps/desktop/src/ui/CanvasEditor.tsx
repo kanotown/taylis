@@ -3,9 +3,12 @@
  * checklists, quotes, code, links, mentions, rules, tables (M57), images), the composer's list continuation and `@`
  * completion. Mentions show as `@username` and are stored as `<@uuid>` (§4.2). Every change goes to the save loop (sync/canvasSave.ts); a body the
  * loop replaces (someone else's merged edits, a box ticked in the preview) comes back here with the caret kept.
+ * M80 (§22): the hidden task markers of checklist items show as invisible stand-ins (canvasMarkers.ts) that move with
+ * their lines; Backspace / Delete beside one take the visible character, a copy leaves them out, a cut keeps them for a
+ * paste back into a canvas editor (the line moved keeps its task).
  */
 import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, Table as TableIcon, TextQuote } from "lucide-react";
-import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ApiError } from "../api/errors";
 import type { CanvasSaver } from "../sync/canvasSave";
@@ -15,8 +18,12 @@ import { CanvasTableDialog } from "./CanvasTableDialog";
 import { CANVAS_PRESENCE_REFRESH_MS } from "../sync/canvasPresence";
 import { attachmentRefs, insertImageLine, insertRule, MAX_CANVAS_IMAGES, preserveCaret, sectionAt, setHeading, toggleTasks } from "./canvasText";
 import { continueStructure, type EditState, indentListLine, insertLink, replaceThroughBrowser, toggleLinePrefix, toggleWrap } from "./composerEdit";
+import { deleteBesideStandIns, stripStandIns, TaskMarkerTable } from "./canvasMarkers";
 import { decodeMentions, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { cn, IconButton, modKey } from "./primitives";
+
+/** M80: what a cut in a canvas editor keeps besides the plain text — the lines with their task markers. */
+const CUT_TYPE = "application/x-chikuwachat-canvas";
 
 export function CanvasEditor({ controller, saver, className, style, autoFocus = false }: {
   controller: AppController;
@@ -27,8 +34,11 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
 }) {
   const store = controller.store;
   useSyncExternalStore((listener) => saver.subscribe(listener), () => saver.textRevision);
-  const decode = (wire: string) => decodeMentions(wire, store.users, store.groups);
-  const encode = (shown: string) => encodeMentions(shown, store.users.values(), store.groups.values());
+  const markers = useRef<TaskMarkerTable | null>(null);
+  markers.current ??= new TaskMarkerTable();
+  const table = markers.current;
+  const decode = (wire: string) => table.hide(decodeMentions(wire, store.users, store.groups));
+  const encode = (shown: string) => table.show(encodeMentions(shown, store.users.values(), store.groups.values()));
   const [text, setText] = useState(() => decode(saver.text));
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
@@ -269,6 +279,21 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     { icon: <ImagePlus size={16} />, label: "画像 (貼り付け・ドロップでも入れられます)", run: () => picker.current?.click() },
   ];
 
+  /** M80: a copy or a cut without the stand-ins; a cut also keeps the stored form (markers) for a paste back. */
+  const copyOut = (event: ClipboardEvent<HTMLTextAreaElement>, cut: boolean) => {
+    const el = event.currentTarget;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? start;
+    const selected = el.value.slice(start, end);
+    const plain = stripStandIns(selected);
+    if (plain === selected) return; // no marker in it: the browser's own copy
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", plain);
+    if (!cut) return;
+    event.clipboardData.setData(CUT_TYPE, table.show(selected));
+    put({ text: el.value.slice(0, start) + el.value.slice(end), start, end: start });
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     const ime = event.nativeEvent.isComposing || composing.current || event.keyCode === 229;
     if (candidates.length > 0 && !ime) {
@@ -308,6 +333,18 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
       return;
     }
     if (ime) return;
+    if ((event.key === "Backspace" || event.key === "Delete") && !event.altKey && !event.metaKey && !event.ctrlKey) {
+      // M80: beside a task marker's stand-in, the visible character goes and the marker stays.
+      const el = area.current;
+      if (el && el.selectionStart === el.selectionEnd) {
+        const next = deleteBesideStandIns(el.value, el.selectionStart ?? 0, event.key === "Backspace");
+        if (next) {
+          event.preventDefault();
+          put({ text: next.text, start: next.caret, end: next.caret });
+          return;
+        }
+      }
+    }
     if (event.key === "Tab") {
       if (edit((s) => indentListLine(s, event.shiftKey))) event.preventDefault();
       return;
@@ -365,11 +402,25 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
           announce(false);
           void saver.flush();
         }}
+        onCopy={(event) => copyOut(event, false)}
+        onCut={(event) => copyOut(event, true)}
         onPaste={(event) => {
           const files = [...event.clipboardData.files];
           if (files.some((file) => file.type.startsWith("image/"))) {
             event.preventDefault();
             void insertImages(files);
+            return;
+          }
+          // M80: lines cut in a canvas editor come back with their task markers (as this editor's stand-ins).
+          const raw = event.clipboardData.getData(CUT_TYPE);
+          const plain = event.clipboardData.getData("text/plain");
+          if (raw && plain && stripStandIns(table.hide(raw)) === plain.replace(/\r\n?/g, "\n")) {
+            event.preventDefault();
+            const el = event.currentTarget;
+            const start = el.selectionStart ?? el.value.length;
+            const end = el.selectionEnd ?? start;
+            const inserted = table.hide(raw);
+            put({ text: el.value.slice(0, start) + inserted + el.value.slice(end), start: start + inserted.length, end: start + inserted.length });
           }
         }}
         onDragOver={(event) => {

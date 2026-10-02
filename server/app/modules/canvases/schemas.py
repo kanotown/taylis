@@ -9,7 +9,8 @@ from app.modules.canvases.models import Canvas, CanvasRevision, CanvasTemplate
 
 EditPolicy = Literal["members", "owners"]
 OnConflict = Literal["fail", "ours", "theirs", "both"]
-RevisionKind = Literal["create", "save", "merge", "side", "restore", "erased"]
+# task (M80, CANVAS.md §22): the server ticked an item or put a task's marker in, for a task.
+RevisionKind = Literal["create", "save", "merge", "side", "restore", "erased", "task"]
 CanvasChange = Literal["content", "title", "settings", "restore"]
 
 # CANVAS.md §4.3. The body limit is checked by the service (422 canvas_too_large); a request

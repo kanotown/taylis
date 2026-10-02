@@ -14,6 +14,12 @@ async def get(db: AsyncSession, task_id: uuid.UUID, *, lock: bool = False) -> Ta
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+async def source_canvas_of(db: AsyncSession, task_id: uuid.UUID) -> uuid.UUID | None:
+    """M80: the canvas a task was made from (None: none, or no such task)."""
+    stmt = select(Task.source_canvas_id).where(Task.id == task_id)
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 async def by_client_id(db: AsyncSession, owner_id: uuid.UUID, client_task_id: str) -> Task | None:
     stmt = select(Task).where(Task.owner_id == owner_id, Task.client_task_id == client_task_id)
     return (await db.execute(stmt)).scalar_one_or_none()

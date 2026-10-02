@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.modules.attachments.models import Attachment
+from app.modules.canvases import markers as canvas_markers
 from app.modules.canvases.models import Canvas
 from app.modules.messages.models import Message, Reaction
 
@@ -254,10 +255,19 @@ class CanvasScope:
 
 
 def canvas_document() -> Any:
-    """`ARRAY[title::text, body]`: the expression canvases_search_idx is built on (migration
-    0047). One expression, one index: `title &@~ q OR body &@~ q` used no index at all (1,374 ms
-    on 5,000 canvases, CANVAS.md §7)."""
-    return postgresql.array([cast(Canvas.title, Text), Canvas.body])
+    """`ARRAY[title::text, body without the task markers]`: the expression canvases_search_idx is
+    built on (migration 0047; 0068 took the M80 markers out, so 「task」 finds no linked item).
+    One expression, one index: `title &@~ q OR body &@~ q` used no index at all (1,374 ms on 5,000
+    canvases, CANVAS.md §7). The pattern is written as a constant, as in the index: a bound
+    parameter would not match the index's expression."""
+    body = func.regexp_replace(
+        Canvas.body,
+        literal_column(f"'{canvas_markers.MARKER_SQL}'"),
+        literal_column("''"),
+        literal_column("'g'"),
+        type_=Text,
+    )
+    return postgresql.array([cast(Canvas.title, Text), body])
 
 
 def _text_needle(query: str, escaped: bool) -> Any:

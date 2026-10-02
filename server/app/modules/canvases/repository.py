@@ -12,7 +12,8 @@ async def get(db: AsyncSession, canvas_id: uuid.UUID, *, lock: bool = False) -> 
     stmt = select(Canvas).where(Canvas.id == canvas_id)
     if lock:
         # Saves to one canvas run one at a time (like channels.last_seq for messages).
-        stmt = stmt.with_for_update()
+        # populate_existing: the body as it is now, also when this session read the row before.
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
@@ -132,14 +133,15 @@ async def delete_side_revisions(db: AsyncSession, before: datetime) -> int:
     return int(getattr(result, "rowcount", 0) or 0)
 
 
-# Among the versions made between :since and :before, a run of consecutive save / merge versions
-# by one author (no label, not the head) keeps the last one of every :bucket. Create, restore,
-# erased, labelled and head versions are always kept, and end a run.
+# Among the versions made between :since and :before, a run of consecutive save / merge / task
+# (M80) versions by one author (no label, not the head) keeps the last one of every :bucket.
+# Create, restore, erased, labelled and head versions are always kept, and end a run.
 _THIN = text(
     """
     WITH old AS (
         SELECT r.id, r.canvas_id, r.author_id, r.created_at,
-               (r.kind IN ('save', 'merge') AND r.label IS NULL AND r.id <> c.head_rev_id) AS thin
+               (r.kind IN ('save', 'merge', 'task') AND r.label IS NULL
+                AND r.id <> c.head_rev_id) AS thin
         FROM canvas_revisions r JOIN canvases c ON c.id = r.canvas_id
         WHERE r.kind <> 'side' AND r.created_at < :before AND r.created_at >= :since
     ), marked AS (

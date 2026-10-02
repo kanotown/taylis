@@ -12,6 +12,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, bad_request
+from app.modules.canvases import markers as canvas_markers
 from app.modules.canvases.models import Canvas
 from app.modules.canvases.schemas import to_meta as to_canvas_meta
 from app.modules.channels import service as channels
@@ -462,7 +463,9 @@ async def _search_canvases_in_time(
     # The excerpts after the LIMIT: only for the page returned (CANVAS.md §7).
     hits = [
         CanvasSearchHit(
-            canvas=to_canvas_meta(canvas), snippet=make_snippet(canvas.body, keywords), score=score
+            canvas=to_canvas_meta(canvas),
+            snippet=make_snippet(canvas_markers.strip(canvas.body), keywords),
+            score=score,
         )
         for canvas, score in rows
     ]

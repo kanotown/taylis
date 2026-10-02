@@ -41,7 +41,9 @@ from app.events.envelope import Audience
 from app.events.models import OutboxEvent
 from app.events.outbox import write_outbox
 from app.modules.calendar.service import DEFAULT_TZ, zone_for
+from app.modules.canvases import markers as canvas_markers
 from app.modules.canvases import repository as canvases_repo
+from app.modules.canvases import service as canvases
 from app.modules.canvases.service import TASK_LINE
 from app.modules.channels import service as channels
 from app.modules.channels.events import CHANNEL_MEMBER_REMOVED
@@ -631,9 +633,9 @@ async def _canvas_source(
         )
     wanted = line.replace("\r", "").rstrip()
     match = TASK_LINE.match(wanted)
-    if match is None or wanted not in (row.rstrip() for row in canvas.body.split("\n")):
+    if match is None or canvas_markers.find_item(canvas.body, wanted) is None:
         raise bad_request("task_invalid_source", "The checklist item is not in the canvas")
-    text = match.group(3)[1:].strip()
+    text = canvas_markers.strip(match.group(3)[1:]).strip()
     visible = await channels.visible_user_ids(db, actor)
     mentioned, _ = extract_mentions(text)
     shown = [uid for uid in mentioned if visible is None or uid in visible]
@@ -731,11 +733,35 @@ async def create(db: AsyncSession, actor: User, data: TaskCreate) -> tuple[TaskO
     if channel is not None:
         await _emit_assigned(db, task, channel, actor_id, assignees)
     await _announce_source(db, task)
+    if canvas_source is not None:
+        # M80 (CANVAS.md §22): the item gets the task's marker, so box and task follow each other.
+        await canvases.link_task_in_tx(
+            db, actor, canvas_source[0], data.source_canvas_line or "", task.id
+        )
     await db.commit()
     return to_out(_Seen(task, channel, role), actor, assignees), True
 
 
+async def _lock_source_canvas(db: AsyncSession, task_id: uuid.UUID) -> None:
+    """M80: a task made from a canvas's item locks that canvas before itself, the order a save
+    of the canvas takes them in (canvas, then the tasks it ticks), so the two never deadlock."""
+    canvas_id = await repo.source_canvas_of(db, task_id)
+    if canvas_id is not None:
+        await canvases_repo.get(db, canvas_id, lock=True)
+
+
+async def _follow_in_canvas(db: AsyncSession, actor: User, task: Task) -> None:
+    """M80 (CANVAS.md §22): the linked item's box follows the task's completion (as the person
+    who changed the task, when they may tick there)."""
+    if task.source_canvas_id is not None:
+        await canvases.follow_task_in_tx(
+            db, actor, task.source_canvas_id, task.id, task.status == "done"
+        )
+
+
 async def update(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskUpdate) -> TaskOut:
+    if "status" in data.model_fields_set:
+        await _lock_source_canvas(db, task_id)
     seen = await _load(db, actor, task_id, lock=True)
     _require_editor(actor, seen)
     task = seen.task
@@ -757,11 +783,13 @@ async def update(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskUp
         task.due_on = data.due_on
     now = utcnow()
     renumbered: list[Task] = []
+    status_changed = False
     if "status" in sent and data.status is not None and data.status != task.status:
         if data.status != "done" and task.status == "done":
             await _check_room(db, task)
         renumbered = await _place(db, task, data.status, None, None)
         _set_status(task, data.status, actor.id, now)
+        status_changed = True
         if data.status == "done":
             await _emit_review_done(db, task, seen.channel, actor.id)
     task.updated_at = now
@@ -775,6 +803,8 @@ async def update(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskUp
         await _emit_assigned(db, task, seen.channel, actor.id, added)
     if (task.status, task.due_on) != shown_before or assignees != current:
         await _announce_source(db, task)
+    if status_changed:
+        await _follow_in_canvas(db, actor, task)
     await db.commit()
     return to_out(seen, actor, assignees)
 
@@ -803,6 +833,7 @@ async def _emit_changes(
 
 async def move(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskMove) -> TaskOut:
     """To a column and between two cards there (TASKS.md §3)."""
+    await _lock_source_canvas(db, task_id)
     seen = await _load(db, actor, task_id, lock=True)
     _require_editor(actor, seen)
     task = seen.task
@@ -822,6 +853,7 @@ async def move(db: AsyncSession, actor: User, task_id: uuid.UUID, data: TaskMove
         if data.status == "done":
             await _emit_review_done(db, task, seen.channel, actor.id)
         await _announce_source(db, task)
+        await _follow_in_canvas(db, actor, task)
     await db.commit()
     return to_out(seen, actor, assignees)
 
@@ -846,6 +878,57 @@ async def delete(db: AsyncSession, actor: User, task_id: uuid.UUID) -> None:
     await db.flush()
     await _announce_source(db, task)
     await db.commit()
+
+
+async def follow_canvas_ticks(
+    db: AsyncSession, actor: User, canvas_id: uuid.UUID, ticks: dict[uuid.UUID, bool]
+) -> None:
+    """M80 (CANVAS.md §22): a save of the canvas ticked (True) or unticked (False) the items of
+    these tasks; each task made from that canvas follows — completed, or back to todo — as the
+    saver, in the save's transaction. A task they may not see or change (or that is gone, already
+    in that state, or would overfill its board) is left as it is; this never fails the save.
+    The box is already as wanted, so nothing is written back to the canvas (no loop)."""
+    for task_id in sorted(ticks):
+        done = ticks[task_id]
+        task = await repo.get(db, task_id, lock=True)
+        if task is None or task.is_deleted or task.source_canvas_id != canvas_id:
+            continue
+        if (task.status == "done") == done:
+            continue
+        seen = await _editable(db, actor, task)
+        if seen is None:
+            continue
+        status = "done" if done else "todo"
+        if not done and await repo.count_open(db, task.channel_id, task.owner_id) >= (
+            MAX_OPEN_PER_BOARD
+        ):
+            continue
+        now = utcnow()
+        renumbered = await _place(db, task, status, None, None)
+        _set_status(task, status, actor.id, now)
+        task.updated_at = now
+        await db.flush()
+        assignees = (await repo.assignees_of(db, [task.id])).get(task.id, [])
+        await _sync_alarms(db, task, assignees, actor, None, now)
+        await _emit_changes(db, task, seen.channel, assignees, renumbered)
+        if done:
+            await _emit_review_done(db, task, seen.channel, actor.id)
+        await _announce_source(db, task)
+
+
+async def _editable(db: AsyncSession, actor: User, task: Task) -> _Seen | None:
+    """The task as `_load` and `_require_editor` see it, or None instead of an error."""
+    if task.channel_id is None:
+        return _Seen(task, None, None) if task.owner_id == actor.id else None
+    membership = await channels.membership_of(db, actor.id, task.channel_id)
+    if membership is None:
+        return None
+    channel = await channels.require_channel(db, task.channel_id)
+    if channel.is_archived:
+        return None
+    if channel.posting_policy == "owners" and not actor.is_admin and membership.role != "owner":
+        return None
+    return _Seen(task, channel, membership.role)
 
 
 # --- the worker and the push planner -------------------------------------------------------------
