@@ -6248,7 +6248,7 @@ export interface components {
             must_change_password: boolean;
             /**
              * Notification Default
-             * @default mentions
+             * @default all
              * @enum {string}
              */
             notification_default: "all" | "mentions" | "none";
