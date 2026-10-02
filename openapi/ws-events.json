@@ -808,6 +808,48 @@
         "type": "object"
       }
     },
+    "canvas.mentioned": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "description": "canvas.mentioned (M72, CANVAS.md §18.1): to one person, whom a save of the canvas newly\nmentions (directly or through a group). The push planner turns it into a notification; the\nopen apps show one.",
+        "properties": {
+          "by_user_id": {
+            "format": "uuid",
+            "title": "By User Id",
+            "type": "string"
+          },
+          "canvas_id": {
+            "format": "uuid",
+            "title": "Canvas Id",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "rev_id": {
+            "format": "uuid",
+            "title": "Rev Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "canvas_id",
+          "channel_id",
+          "rev_id",
+          "title",
+          "by_user_id"
+        ],
+        "title": "CanvasMentionedData",
+        "type": "object"
+      }
+    },
     "canvas.updated": {
       "audience": "channel",
       "consumes_seq": false,
@@ -5630,6 +5672,40 @@
       "consumes_seq": false,
       "data": {
         "$defs": {
+          "TaskCanvasSourceOut": {
+            "description": "M72 (CANVAS.md §18.3): the canvas a task was made from, and its checklist item's text as it\nwas then (one line; it does not follow later edits). canvas_id is null once the canvas was\npurged from the trash (「元のキャンバスは削除されました」).",
+            "properties": {
+              "canvas_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Canvas Id"
+              },
+              "excerpt": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Excerpt"
+              }
+            },
+            "required": [
+              "canvas_id",
+              "excerpt"
+            ],
+            "title": "TaskCanvasSourceOut",
+            "type": "object"
+          },
           "TaskData": {
             "description": "A task as everyone who sees it sees it: task.updated carries this (can_delete, which\ndiffers per person, is in TaskOut).",
             "properties": {
@@ -5640,6 +5716,17 @@
                 },
                 "title": "Assignee Ids",
                 "type": "array"
+              },
+              "canvas_source": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/TaskCanvasSourceOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "channel_id": {
                 "anyOf": [
@@ -6647,6 +6734,45 @@
           "title": "AuthFrame",
           "type": "object"
         },
+        "CanvasPresenceFrame": {
+          "description": "Volatile (M72, CANVAS.md §18.2): I am editing this canvas (or stopped); relayed to the other\nmembers of its conversation, never stored. `section`: the heading the caret is under.",
+          "properties": {
+            "canvas_id": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            },
+            "editing": {
+              "title": "Editing",
+              "type": "boolean"
+            },
+            "section": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Section"
+            },
+            "type": {
+              "const": "canvas_presence",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "canvas_id",
+            "editing"
+          ],
+          "title": "CanvasPresenceFrame",
+          "type": "object"
+        },
         "PingFrame": {
           "properties": {
             "active": {
@@ -6704,6 +6830,7 @@
       "discriminator": {
         "mapping": {
           "auth": "#/$defs/AuthFrame",
+          "canvas_presence": "#/$defs/CanvasPresenceFrame",
           "ping": "#/$defs/PingFrame",
           "typing": "#/$defs/TypingFrame"
         },
@@ -6718,11 +6845,64 @@
         },
         {
           "$ref": "#/$defs/TypingFrame"
+        },
+        {
+          "$ref": "#/$defs/CanvasPresenceFrame"
         }
       ]
     },
     "server": {
       "$defs": {
+        "CanvasPresenceOut": {
+          "description": "Someone is editing a canvas (or stopped). Clients drop it after 45 s without a refresh.",
+          "properties": {
+            "canvas_id": {
+              "format": "uuid",
+              "title": "Canvas Id",
+              "type": "string"
+            },
+            "channel_id": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            },
+            "editing": {
+              "title": "Editing",
+              "type": "boolean"
+            },
+            "section": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Section"
+            },
+            "type": {
+              "const": "canvas_presence",
+              "default": "canvas_presence",
+              "title": "Type",
+              "type": "string"
+            },
+            "user_id": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "canvas_id",
+            "channel_id",
+            "user_id",
+            "editing",
+            "section"
+          ],
+          "title": "CanvasPresenceOut",
+          "type": "object"
+        },
         "ErrorFrame": {
           "properties": {
             "code": {
@@ -6931,6 +7111,7 @@
       },
       "discriminator": {
         "mapping": {
+          "canvas_presence": "#/$defs/CanvasPresenceOut",
           "error": "#/$defs/ErrorFrame",
           "event": "#/$defs/EventFrame",
           "hello": "#/$defs/HelloFrame",
@@ -6958,6 +7139,9 @@
         },
         {
           "$ref": "#/$defs/PresenceOut"
+        },
+        {
+          "$ref": "#/$defs/CanvasPresenceOut"
         }
       ]
     }

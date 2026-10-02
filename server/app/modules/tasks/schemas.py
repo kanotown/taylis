@@ -57,6 +57,15 @@ class TaskSourceOut(BaseModel):
     excerpt: str | None
 
 
+class TaskCanvasSourceOut(BaseModel):
+    """M72 (CANVAS.md §18.3): the canvas a task was made from, and its checklist item's text as it
+    was then (one line; it does not follow later edits). canvas_id is null once the canvas was
+    purged from the trash (「元のキャンバスは削除されました」)."""
+
+    canvas_id: UUID | None
+    excerpt: str | None
+
+
 class TaskData(BaseModel):
     """A task as everyone who sees it sees it: task.updated carries this (can_delete, which
     differs per person, is in TaskOut)."""
@@ -79,6 +88,8 @@ class TaskData(BaseModel):
     # Members of the channel; always empty on a personal task (it is its owner's).
     assignee_ids: list[UUID]
     source: TaskSourceOut | None
+    # M72: made from a canvas's checklist item (apart from `source`, which is a message's).
+    canvas_source: TaskCanvasSourceOut | None = None
     completed_at: datetime | None
     completed_by: UUID | None
     created_at: datetime
@@ -105,6 +116,11 @@ class TaskCreate(BaseModel):
     # A message I can see. A shared task's must be in the same channel. L9: a DM's task (shared
     # with its members) must come from one of its messages.
     source_message_id: UUID | None = None
+    # M72 (CANVAS.md §18.3): a canvas I can read and one of its checklist lines (`- [ ] …`, as it
+    # is in the body now), both or neither; not with source_message_id. A shared task's canvas
+    # must be in the same conversation.
+    source_canvas_id: UUID | None = None
+    source_canvas_line: str | None = Field(default=None, min_length=1, max_length=1000)
     # L9: "review" (「レビューを依頼」) changes the wording of its chip and pushes.
     kind: TaskKind = "task"
     # Idempotency key: a retry returns the task made by the first request (200).

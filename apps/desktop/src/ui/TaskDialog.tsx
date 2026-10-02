@@ -8,7 +8,7 @@
  * assignees (chosen: shared in the DM; none: personal). An assignee of an open shared task gets 「対応を始める」 and
  * 「完了にする」 on top.
  */
-import { CheckCircle2, MessageSquareText, PlayCircle, Trash2, X } from "lucide-react";
+import { CheckCircle2, FileText, MessageSquareText, PlayCircle, Trash2, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import { describeError } from "../api/errors";
@@ -22,6 +22,7 @@ import { Button, cn, Field, Input, Modal, Textarea } from "./primitives";
 import {
   canEditBoard,
   canEditTask,
+  canvasSourceState,
   draftFromTask,
   hasBoard,
   MAX_TASK_NOTES,
@@ -53,7 +54,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
   const store = controller.store;
   const me = store.me?.id ?? null;
   const [draft, setDraft] = useState<TaskDraft>(() =>
-    task ? draftFromTask(task) : { title: init?.title ?? "", notes: "", status: init?.status ?? "todo", dueOn: "", assigneeIds: [] },
+    task ? draftFromTask(task) : { title: init?.title ?? "", notes: "", status: init?.status ?? "todo", dueOn: init?.dueOn ?? "", assigneeIds: [...(init?.assigneeIds ?? [])] },
   );
   /** New: the board ("me" or a channel id). */
   const [board, setBoard] = useState<string>(() => init?.channelId ?? "me");
@@ -141,6 +142,13 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
   };
   const title = creatingReview ? "レビューを依頼" : !task ? "タスクを追加" : review ? (editable ? "レビュー依頼を編集" : "レビュー依頼") : editable ? "タスクを編集" : "タスク";
   const source = task ? sourceState(task) : init?.sourceMessageId ? { kind: "link" as const, messageId: init.sourceMessageId, excerpt: init.sourceExcerpt ?? null } : { kind: "none" as const };
+  // M72 (CANVAS.md §18.3): the canvas a task came from (a one-way link).
+  const canvasSource = task ? canvasSourceState(task) : init?.sourceCanvasId ? { kind: "link" as const, canvasId: init.sourceCanvasId, excerpt: init.sourceCanvasExcerpt ?? null } : { kind: "none" as const };
+  const canvasTitle = canvasSource.kind === "link" ? store.canvasMeta(canvasSource.canvasId)?.title ?? null : null;
+  const openCanvas = (canvasId: string) => {
+    onClose();
+    void controller.openCanvasLink(canvasId);
+  };
   const assigneeLabel = review ? "依頼先" : "担当者";
   const picker = pickerChannelId && (
     <AssigneePicker
@@ -252,6 +260,22 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
         {source.kind === "deleted" && (
           <div className="flex items-center gap-2 rounded-lg bg-panel-2 px-3 py-2 text-sm text-muted" data-task-source>
             <MessageSquareText size={15} className="shrink-0" /> 元のメッセージは削除されました
+          </div>
+        )}
+        {canvasSource.kind !== "none" && (
+          <div className="flex items-start gap-2 rounded-lg bg-panel-2 px-3 py-2 text-sm" data-task-canvas-source>
+            <FileText size={15} className="mt-0.5 shrink-0 text-muted" />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-muted">
+                {canvasSource.kind === "deleted" ? "元のキャンバスは削除されました" : canvasTitle ? `元のキャンバス: ${canvasTitle}` : "元のキャンバス"}
+              </div>
+              {canvasSource.excerpt && <div className="line-clamp-2 break-words">{canvasSource.excerpt}</div>}
+            </div>
+            {task && canvasSource.kind === "link" && (
+              <Button variant="secondary" size="sm" className="shrink-0" onClick={() => openCanvas(canvasSource.canvasId)}>
+                キャンバスを開く
+              </Button>
+            )}
           </div>
         )}
         {!hub?.available && <p className="text-sm text-muted">このサーバはタスクに対応していません</p>}

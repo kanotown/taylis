@@ -8271,6 +8271,40 @@
         "title": "SsoExchange",
         "type": "object"
       },
+      "TaskCanvasSourceOut": {
+        "description": "M72 (CANVAS.md §18.3): the canvas a task was made from, and its checklist item's text as it\nwas then (one line; it does not follow later edits). canvas_id is null once the canvas was\npurged from the trash (「元のキャンバスは削除されました」).",
+        "properties": {
+          "canvas_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canvas Id"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          }
+        },
+        "required": [
+          "canvas_id",
+          "excerpt"
+        ],
+        "title": "TaskCanvasSourceOut",
+        "type": "object"
+      },
       "TaskCreate": {
         "additionalProperties": false,
         "properties": {
@@ -8340,6 +8374,31 @@
               }
             ],
             "title": "Notes"
+          },
+          "source_canvas_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Canvas Id"
+          },
+          "source_canvas_line": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Canvas Line"
           },
           "source_message_id": {
             "anyOf": [
@@ -8444,6 +8503,16 @@
           "can_delete": {
             "title": "Can Delete",
             "type": "boolean"
+          },
+          "canvas_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskCanvasSourceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "channel_id": {
             "anyOf": [

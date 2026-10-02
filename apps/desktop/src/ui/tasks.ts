@@ -318,6 +318,17 @@ export function sourceState(task: Pick<TaskOut, "source">): { kind: "none" } | {
   return { kind: "link", messageId: source.message_id, excerpt: source.excerpt ?? null };
 }
 
+/**
+ * M72 (CANVAS.md §18.3): what a task says of the canvas it came from: a link while the canvas is there (`canvas_id`),
+ * 「元のキャンバスは削除されました」 once it was purged (`canvas_id` null), nothing for a task not made from one.
+ */
+export function canvasSourceState(task: Pick<TaskOut, "canvas_source">): { kind: "none" } | { kind: "deleted"; excerpt: string | null } | { kind: "link"; canvasId: string; excerpt: string | null } {
+  const source = task.canvas_source;
+  if (!source) return { kind: "none" };
+  if (!source.canvas_id) return { kind: "deleted", excerpt: source.excerpt ?? null };
+  return { kind: "link", canvasId: source.canvas_id, excerpt: source.excerpt ?? null };
+}
+
 // --- creating --------------------------------------------------------------------------------------
 
 /** What the dialog starts a new task with. `channelId` null: 「自分のタスク」. */
@@ -337,6 +348,13 @@ export interface TaskCreateInit {
   shareChannelId?: string | null;
   /** L9 「レビューを依頼」: kind review, in the message's conversation (channelId), with at least one 依頼先. */
   kind?: TaskKind;
+  /** M72 (CANVAS.md §18.3): a canvas's checklist item — the canvas, the line as in its body, the item's text. */
+  sourceCanvasId?: string | null;
+  sourceCanvasLine?: string | null;
+  sourceCanvasExcerpt?: string | null;
+  /** M72: a due date and assignees to start with (the item's `📅` and mentions). */
+  dueOn?: string;
+  assigneeIds?: string[];
 }
 
 /** Where a new task goes: the board chosen, else a DM shared once someone is assigned, else 「自分のタスク」 (null). */
@@ -359,6 +377,7 @@ export function taskCreateBody(draft: TaskDraft, init: TaskCreateInit | undefine
     ...(draft.dueOn ? { due_on: draft.dueOn } : {}),
     ...(channelId && draft.assigneeIds.length > 0 ? { assignee_ids: [...new Set(draft.assigneeIds)] } : {}),
     ...(init?.sourceMessageId ? { source_message_id: init.sourceMessageId } : {}),
+    ...(init?.sourceCanvasId && init.sourceCanvasLine ? { source_canvas_id: init.sourceCanvasId, source_canvas_line: init.sourceCanvasLine } : {}),
   };
 }
 

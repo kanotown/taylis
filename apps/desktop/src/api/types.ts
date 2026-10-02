@@ -258,6 +258,17 @@ export interface CanvasDeleted {
   canvas_id: string;
   channel_id: string;
 }
+/** canvas.mentioned (M72, to me only): a save of the canvas newly mentions me (CANVAS.md §18.1). */
+export interface CanvasMentioned {
+  canvas_id: string;
+  channel_id: string;
+  /** The version that added the mention. */
+  rev_id: string;
+  title: string;
+  by_user_id: string;
+}
+/** M72: the canvas (and checklist item) a task was made from. */
+export type TaskCanvasSource = components["schemas"]["TaskCanvasSourceOut"];
 
 /**
  * Calendar (CALENDAR.md; M51): one-off events in my own calendar (`channel_id` null) or a channel's shared one. The

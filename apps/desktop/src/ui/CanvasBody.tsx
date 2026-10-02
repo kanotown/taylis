@@ -2,6 +2,8 @@
  * A canvas rendered (CANVAS.md §4.2): the message renderer's blocks plus tasks with boxes that tick (§4.4 「チェックの
  * 切り替え」), images of the canvas (M44: ui/CanvasImage.tsx) and rules. Headings get anchors for the outline.
  */
+import { ListTodo } from "lucide-react";
+
 import type { AppController } from "../state/app";
 import { CanvasImage } from "./CanvasImage";
 import { parseBlocks } from "./markdown";
@@ -10,11 +12,13 @@ import { cn } from "./primitives";
 
 export const headingAnchor = (line: number) => `canvas-h-${line}`;
 
-export function CanvasBody({ body, controller, onToggleTask, className }: {
+export function CanvasBody({ body, controller, onToggleTask, onMakeTask = null, className }: {
   body: string;
   controller: AppController;
   /** null: the boxes only show (read only). */
   onToggleTask: ((line: number, done: boolean) => void) | null;
+  /** M72 (CANVAS.md §18.3): 「タスクにする」 on an open item (its line in the body); null: not offered. */
+  onMakeTask?: ((line: number) => void) | null;
   className?: string;
 }) {
   const store = controller.store;
@@ -40,7 +44,7 @@ export function CanvasBody({ body, controller, onToggleTask, className }: {
           return (
             <ul key={index} className="my-1 list-none pl-0.5" role="list">
               {block.items.map((item) => (
-                <li key={item.line} className={cn("flex items-start gap-2", item.level > 0 && "ml-6")}>
+                <li key={item.line} className={cn("group/task flex items-start gap-2", item.level > 0 && "ml-6")}>
                   <input
                     type="checkbox"
                     checked={item.done}
@@ -50,6 +54,19 @@ export function CanvasBody({ body, controller, onToggleTask, className }: {
                     className="mt-[7px] h-4 w-4 shrink-0 accent-[var(--accent)]"
                   />
                   <span className={cn("min-w-0", item.done && "text-muted line-through")}>{inline(item.tokens, store.users, options)}</span>
+                  {onMakeTask && !item.done && (
+                    <button
+                      type="button"
+                      title="この項目をタスクにする"
+                      aria-label="タスクにする"
+                      data-make-task={item.line}
+                      onClick={() => onMakeTask(item.line)}
+                      className="ml-auto mt-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs text-muted opacity-0 transition-opacity hover:bg-ink/6 hover:text-ink focus-visible:opacity-100 group-hover/task:opacity-100 pointer-coarse:opacity-70"
+                    >
+                      <ListTodo size={14} />
+                      <span className="max-md:sr-only">タスクにする</span>
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

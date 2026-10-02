@@ -3,6 +3,7 @@ import type { AttachmentOut, ChannelLinkOut, ChannelOut, ChannelState, CustomEmo
 import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PollOut, TemplateOut } from "../api/types";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
+import { type CanvasEditor, CanvasEditors } from "./canvasPresence";
 import type { CanvasPendingState } from "./canvasSave";
 import { ownNotification } from "./notifications";
 import { LOCAL_PREFIX } from "./types";
@@ -74,6 +75,8 @@ export class Store {
   readonly presence = new Map<string, PresenceStatus>();
   /** "channel[:parent]" → user id → expiry (ms); volatile typing indicators. */
   readonly typing = new Map<string, Map<string, number>>();
+  /** M72: who edits which canvas (volatile `canvas_presence` frames, CANVAS.md §18.2). */
+  readonly canvasEditing = new CanvasEditors();
   /** My saved message ids (M11c); from bookmark and bookmark.updated, not persisted. */
   readonly bookmarks = new Set<string>();
   /** My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted. */
@@ -886,6 +889,16 @@ export class Store {
     const users = this.typing.get(this.typingKey(channelId, parentId));
     if (!users?.delete(userId)) return;
     this.emit();
+  }
+
+  /** M72: a `canvas_presence` frame from someone else (true for 45 s unless refreshed, false ends it). */
+  noteCanvasEditing(canvasId: string, userId: string, editing: boolean, section: string | null, now: number = Date.now()): void {
+    if (this.canvasEditing.note(canvasId, userId, editing, section, now)) this.emit();
+  }
+
+  /** M72: who edits the canvas now; pure (called during render), expired entries are skipped. */
+  canvasEditors(canvasId: string, now: number): CanvasEditor[] {
+    return this.canvasEditing.of(canvasId, now);
   }
 
   /** Users typing in this conversation right now; pure (called during render), expired entries are skipped. */

@@ -188,6 +188,7 @@
 | `auth` | `{ token }` |
 | `ping` | `{ active: bool }`。`heartbeat_interval_sec` ごとに送る。`active` はウィンドウがフォーカスされている / アプリがフォアグラウンドなら true (プッシュ抑制の判定に使う。PUSH_NOTIFICATIONS.md §4.1) |
 | `typing` | `{ channel_id, parent_id? }`。揮発。入力中に 3 秒に 1 回まで送る (サーバは 1 接続あたり 2 秒に 1 回だけ中継し、メンバーでなければ捨てる) |
+| `canvas_presence` | `{ canvas_id, editing, section? }` (M72、CANVAS.md §18.2)。揮発。キャンバスの編集欄にフォーカスがある間 `editing: true` (見出しが変わればすぐ、そのままなら 20 秒ごと)、やめたら false。サーバは 1 接続・1 キャンバスにつき同じ内容を 2 秒に 1 回だけ中継し、キャンバスが無い・ゴミ箱・メンバーでなければ捨てる |
 
 サーバ → クライアント:
 
@@ -197,6 +198,7 @@
 | `pong` | `{ server_time }` |
 | `event` | `{ id, event, ts, channel_id?, seq?, data }`。`event` がイベント名 (§6)、`id` は outbox の id |
 | `typing` | `{ channel_id, parent_id, user_id }`。揮発 (M11b)。送った本人以外のメンバーに届く。クライアントは 5 秒で消す |
+| `canvas_presence` | `{ canvas_id, channel_id, user_id, editing, section }` (M72)。揮発。キャンバスの会話の、送った本人以外のメンバーに届く。クライアントは 45 秒送り直しが無ければ消す。送った接続が切れると、その接続が最後に `editing: true` を送ったキャンバスに `editing: false` が届く |
 | `presence` | `{ user_id, status: "online" \| "away" \| "offline" }`。揮発 (M11b)。接続 / 切断、`ping` の `active: true`、5 分間 active な ping が無いときの away 判定 (30 秒ごとの sweep) で、接続中の全員に届く。在席を隠した人 (`users.presence_hidden`、L4) は常に offline として配り、bootstrap の `presence` にも載せない (本人にも offline に見える)。プロセス内の状態なので、複数プロセス化するときは Redis に移す (ARCHITECTURE.md §12) |
 | `error` | `{ code, message }`。`auth_required` / `invalid_token` / `invalid_frame` / `already_authenticated` など |
 
@@ -238,6 +240,7 @@
 | `canvas.created` | channel | — | `{ canvas: CanvasMeta }` (M41)。キャンバスの作成、ゴミ箱からの復元。本文は載せない。手順は §14 |
 | `canvas.updated` | channel | — | `{ canvas: CanvasMeta, change: "content" \| "title" \| "settings" \| "restore" }` (M41)。`version` が手元より大きければメタを差し替え、開いていて編集中でなければ本文を読み直す (§14) |
 | `canvas.deleted` | channel | — | `{ canvas_id, channel_id }` (M41)。ゴミ箱に移された。手元から消す |
+| `canvas.mentioned` | user | — | `{ canvas_id, channel_id, rev_id, title, by_user_id }` (M72、CANVAS.md §18.1)。キャンバスの保存で新しくメンションされた (その版で 1 回)。表示は変えず、アプリを開いている端末が通知する (会話がミュート / なしなら出さない。プッシュは PushPlanner) |
 | `calendar.event.updated` | channel (自分用: user) | — | `{ event: CalendarEventData, editor_ids }` (M51)。予定の作成・変更。人ごとに違う `can_edit` と `alarm` は載せない: `can_edit` は `editor_ids` に自分がいるか、`alarm` は手元の値のまま。表示中の期間に重なる予定だけを差し替え、外れたら消す。手順は §15 |
 | `calendar.event.deleted` | channel (自分用: user) | — | `{ id, channel_id }` (M51)。手元から消す |
 | `calendar.alarm.updated` | user | — | `{ event_id, channel_id, alarm: CalendarAlarmOut \| null }` (M51)。自分の通知の設定・計算し直し・発火 (`status: fired`)・削除 (null)。fired はアプリ内でも通知する (プッシュは PushPlanner) |
@@ -1006,6 +1009,17 @@ base・送られた本文・head を 3-way マージする。
 - **整理**: 24 時間を過ぎた版は整理され (side と、同じ作者の 10 分以内の続き)、30 日ゴミ箱にあったキャンバスは消える。
   イベントは出ない。24 時間以上オフラインで編集した端末の保存は、元の版が無ければ `409 canvas_base_expired` (§14.2)。
   消えたキャンバスは `GET /channels/{id}/canvases?trashed=true` から外れ、`GET /canvases/{id}` は 404。
+
+### 14.5 Phase 2 (M72、CANVAS.md §18)
+
+- **メンション**: 保存 (直接・マージ) と作成で、前の head に無かったメンション (グループは展開) の相手のうち会話のメンバー
+  (本人以外) に `canvas.mentioned` (user) が 1 回届く。再送 (`client_save_id`) では増えない。版の復元・チェックだけでは出ない。
+  端末は表示を変えず、開いていれば通知だけ出す (押すとそのキャンバス)。取りこぼしても回復はしない (プッシュと同じく知らせるだけ)。
+- **編集中**: WS の `canvas_presence` (§5.2)。状態はサーバのプロセス内と端末のメモリだけ。再接続の後は、編集中なら端末が
+  `editing: true` を送り直す (次の入力か 20 秒ごとの送り直し)。受けた側は 45 秒で消すので、取りこぼしても残り続けない。
+- **チェックリストからタスク**: `POST /tasks` の `source_canvas_id` + `source_canvas_line` (TASKS.md §10)。端末は送る前に
+  キャンバスの手元の入力を保存する (サーバは保存済みの本文に行があるかを見る)。タスクの `canvas_source` は作った時の写しで、
+  キャンバスの変更では `task.updated` は出ない (完全に消えたときだけ、次に読んだ `canvas_id` が null)。
 
 ## 15. カレンダー (M51、CALENDAR.md §5)
 

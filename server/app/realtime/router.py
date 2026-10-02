@@ -15,6 +15,7 @@ from app.core.errors import AppError
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.auth import service as auth
+from app.modules.canvases import repository as canvas_repo
 from app.modules.channels import repository as channel_repo
 from app.modules.channels import service as channels
 from app.realtime.hub import CLOSE_KEY, Connection, RealtimeHub
@@ -22,6 +23,8 @@ from app.realtime.protocol import (
     CLOSE_AUTH_FAILED,
     CLOSE_RECONNECT,
     AuthFrame,
+    CanvasPresenceFrame,
+    CanvasPresenceOut,
     ClientFrame,
     ErrorFrame,
     HelloFrame,
@@ -33,7 +36,11 @@ from app.realtime.protocol import (
 
 log = logging.getLogger("app.realtime")
 router = APIRouter(tags=["realtime"])
-_client_frame: TypeAdapter[AuthFrame | PingFrame | TypingFrame] = TypeAdapter(ClientFrame)
+_client_frame: TypeAdapter[AuthFrame | PingFrame | TypingFrame | CanvasPresenceFrame] = TypeAdapter(
+    ClientFrame
+)
+# M72 (CANVAS.md §18.2): the canvases one connection said it edits, remembered for its close.
+MAX_PRESENCE_CANVASES = 20
 
 
 async def _relay_typing(
@@ -48,6 +55,35 @@ async def _relay_typing(
         return
     out = TypingOut(channel_id=frame.channel_id, parent_id=frame.parent_id, user_id=user_id)
     hub.send_to_users((m for m in members if m != user_id), out.model_dump(mode="json"))
+
+
+async def _relay_canvas_presence(
+    websocket: WebSocket,
+    hub: RealtimeHub,
+    user_id: uuid.UUID,
+    canvas_id: uuid.UUID,
+    editing: bool,
+    section: str | None,
+) -> bool:
+    """Volatile 「編集中」 (M72, CANVAS.md §18.2): to the other members of the canvas's
+    conversation, only from a member and for a canvas not in the trash. True when relayed."""
+    async with websocket.app.state.db.session_factory() as db:
+        canvas = await canvas_repo.get(db, canvas_id)
+        if canvas is None or canvas.is_deleted:
+            return False
+        channel_id = canvas.channel_id
+        members = (await channel_repo.member_ids_for_channels(db, [channel_id])).get(channel_id, [])
+    if user_id not in members:
+        return False
+    out = CanvasPresenceOut(
+        canvas_id=canvas_id,
+        channel_id=channel_id,
+        user_id=user_id,
+        editing=editing,
+        section=section,
+    )
+    hub.send_to_users((m for m in members if m != user_id), out.model_dump(mode="json"))
+    return True
 
 
 async def _send(websocket: WebSocket, frame: dict[str, Any]) -> None:
@@ -151,6 +187,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     sender = asyncio.create_task(_sender(websocket, conn))
     deadline = time.monotonic() + settings.ws_max_lifetime_seconds
     last_typing = 0.0
+    # canvas id → (editing, section, when relayed): repeats are throttled, changes go at once.
+    canvas_presence: dict[uuid.UUID, tuple[bool, str | None, float]] = {}
     closing = False  # we asked for the close: let the queued frames flush first
     try:
         while not sender.done():
@@ -182,6 +220,25 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if now - last_typing >= settings.typing_min_interval_seconds:
                     last_typing = now
                     await _relay_typing(websocket, hub, context.user.id, frame)
+            elif isinstance(frame, CanvasPresenceFrame):
+                now = time.monotonic()
+                section = " ".join((frame.section or "").split()) or None
+                last = canvas_presence.get(frame.canvas_id)
+                if last is None:
+                    skip = not frame.editing  # a stop for nothing started on this connection
+                else:
+                    skip = (
+                        last[:2] == (frame.editing, section)
+                        and now - last[2] < settings.typing_min_interval_seconds
+                    )
+                if not skip:
+                    if last is None and len(canvas_presence) >= MAX_PRESENCE_CANVASES:
+                        oldest = min(canvas_presence, key=lambda c: canvas_presence[c][2])
+                        del canvas_presence[oldest]
+                    if await _relay_canvas_presence(
+                        websocket, hub, context.user.id, frame.canvas_id, frame.editing, section
+                    ):
+                        canvas_presence[frame.canvas_id] = (frame.editing, section, now)
             else:
                 error = ErrorFrame(code="already_authenticated", message="Already authenticated")
                 conn.offer(error.model_dump())
@@ -194,3 +251,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         hub.remove(conn)
         if not sender.done():
             sender.cancel()
+        # A window closed or lost while editing: its 「編集中」 ends now, not 45 s later (§18.2).
+        for canvas_id, (editing, _, _) in canvas_presence.items():
+            if not editing:
+                continue
+            try:
+                await _relay_canvas_presence(
+                    websocket, hub, context.user.id, canvas_id, False, None
+                )
+            except Exception:  # best effort: the receivers drop it after 45 s anyway
+                log.debug("could not end the canvas presence of %s", canvas_id)

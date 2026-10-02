@@ -85,6 +85,17 @@ export function outline(body: string): OutlineEntry[] {
   return entries;
 }
 
+/** M72 (CANVAS.md §18.2): the heading the caret is under (its text), or null above the first one. */
+export function sectionAt(text: string, caret: number): string | null {
+  const line = text.slice(0, Math.max(0, caret)).split("\n").length - 1;
+  let found: string | null = null;
+  for (const entry of outline(text)) {
+    if (entry.line > line) break;
+    found = entry.text;
+  }
+  return found;
+}
+
 interface Selection {
   text: string;
   start: number;

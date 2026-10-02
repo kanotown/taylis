@@ -15,6 +15,8 @@ from app.events.models import OutboxEvent
 from app.modules.activity.events import REACTION_ADDED
 from app.modules.calendar import service as calendar
 from app.modules.calendar.events import CALENDAR_ALARM_UPDATED
+from app.modules.canvases import repository as canvases_repo
+from app.modules.canvases.events import CANVAS_MENTIONED
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel
 from app.modules.groups import service as groups
@@ -60,6 +62,9 @@ class PushPlanner:
             return
         if event.event_type in (TASK_ASSIGNED, TASK_DUE, TASK_REVIEW_DONE):
             await self.handle_task(db, event)
+            return
+        if event.event_type == CANVAS_MENTIONED:
+            await self.handle_canvas_mention(db, event)
             return
         if (
             event.event_type != MESSAGE_CREATED
@@ -300,6 +305,71 @@ class PushPlanner:
             body=(body if self.settings.push_include_content else hidden)[:240],
             badge=max(await self.badge_for(db, user_id), 1),
             collapse_key=f"task:{task_id}",
+            sent_at=now,
+        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        for device in devices:
+            await repo.add_delivery(
+                db,
+                event_id=event.id,
+                device=device,
+                kind="alert",
+                collapse_key=str(payload["collapse_key"]),
+                channel_id=channel_id,
+                message_id=None,
+                message_seq=None,
+                payload=payload,
+                expires_at=expires_at,
+            )
+
+    async def handle_canvas_mention(self, db: AsyncSession, event: OutboxEvent) -> None:
+        """M72 (CANVAS.md §18.1): a save of a canvas newly mentions me. Held back like a message's
+        mention: not in a conversation muted or set to nothing, not during DND, not while I am on
+        another device; not for a canvas in the trash since, nor once I left the conversation."""
+        data = event.payload
+        user_id = uuid.UUID(str(event.audience_id))
+        user = await users.get_user(db, user_id)
+        now = utcnow()
+        if user is None or user.deactivated_at is not None or dnd_active(user, now):
+            return
+        if self.is_active(user_id):
+            return
+        canvas_id = uuid.UUID(str(data["canvas_id"]))
+        canvas = await canvases_repo.get(db, canvas_id)
+        if canvas is None or canvas.is_deleted:
+            return
+        channel_id = canvas.channel_id
+        if await channels.membership_of(db, user_id, channel_id) is None:
+            return
+        channel = await channels.require_channel(db, channel_id)
+        pref = (await repo.preferences_for_channel(db, channel_id, [user_id])).get(user_id)
+        level = push_level(
+            pref.level if pref else None,
+            is_dm=channel.is_dm,
+            others_times=channel.times_owner_id is not None and channel.times_owner_id != user_id,
+            overall=user.notification_default,
+        )
+        if level == "none" or is_muted(pref, now):
+            return
+        devices = await repo.push_devices_for_users(db, [user_id])
+        if not devices:
+            return
+        actor = await users.get_user(db, uuid.UUID(str(data["by_user_id"])))
+        who = actor.display_name if actor else "誰か"
+        body = f"{who} が「{canvas.title}」であなたをメンションしました"
+        expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
+        payload = PushPayload(
+            kind="canvas",
+            workspace_id=await workspace.workspace_id(db),
+            channel_id=channel_id,
+            canvas_id=canvas_id,
+            seq=None,
+            title="キャンバス",
+            subtitle=None if channel.is_dm else f"#{channel.name}",
+            body=(
+                body if self.settings.push_include_content else "キャンバスでメンションされました"
+            )[:240],
+            badge=max(await self.badge_for(db, user_id), 1),
+            collapse_key=f"canvas:{canvas_id}",
             sent_at=now,
         ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
         for device in devices:

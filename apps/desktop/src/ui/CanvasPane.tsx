@@ -13,6 +13,11 @@ import type { AppController } from "../state/app";
 import type { CanvasSaver, CanvasSaveStatus } from "../sync/canvasSave";
 import type { ChannelState } from "../sync/types";
 import { CanvasBody, headingAnchor } from "./CanvasBody";
+import { Avatar } from "./Avatar";
+import { canvasTaskInit } from "./canvasTasks";
+import { TaskDialog } from "./TaskDialog";
+import type { TaskCreateInit } from "./tasks";
+import { editingLabel } from "../sync/canvasPresence";
 import { CanvasEditor } from "./CanvasEditor";
 import { canvasRights, type CanvasRights, isDmConversation, NO_CANVAS_RIGHTS } from "./canvasAccess";
 import { CanvasHistoryDialog } from "./CanvasHistory";
@@ -233,6 +238,18 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
     if (saver.status === "conflict" || saver.status === "expired") setConflictOpen(true);
   }, [saver.status]);
 
+  // M72 (CANVAS.md §18.3): 「タスクにする」 on an open checklist item, when this server has tasks and the conversation is
+  // not archived. What is typed is saved first: the server looks for the item in the saved body.
+  const [taskInit, setTaskInit] = useState<TaskCreateInit | null>(null);
+  const taskHub = controller.engine?.tasks ?? null;
+  const onMakeTask = taskHub?.available && !channel.archived && saver.status !== "gone" && saver.status !== "loading"
+    ? (line: number) => {
+        const init = canvasTaskInit({ id: canvasId, body: saver.text }, line, controller.store.getChannel(channel.id) ?? channel, controller.store.users, controller.store.groups, controller.isAdmin);
+        if (!init) return;
+        void saver.flush().then(() => setTaskInit(init));
+      }
+    : null;
+
   const headings = useMemo(() => outline(saver.text), [saver.text]);
   const showOutline = !compact && !editing && headings.length >= 3;
   const title = meta?.title ?? "キャンバス";
@@ -243,6 +260,7 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
       <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-line px-2">
         <CanvasPicker controller={controller} list={list} currentId={canvasId} title={title} onSelect={onSelect} onNew={onNew} onTrash={onTrash} />
         <div className="min-w-0 flex-1" />
+        <CanvasEditing controller={controller} canvasId={canvasId} />
         <SaveState saver={saver} onOpenConflict={() => setConflictOpen(true)} />
         {meta && saver.status !== "gone" && onOpenThread && (shared || rights.share) && (
           <button
@@ -313,7 +331,7 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
             <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" aria-label="キャンバスのプレビュー">
               <div className="mx-auto max-w-3xl px-6 py-4">
                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted">プレビュー</div>
-                <CanvasBody body={saver.text} controller={controller} onToggleTask={onToggleTask} />
+                <CanvasBody body={saver.text} controller={controller} onToggleTask={onToggleTask} onMakeTask={onMakeTask} />
               </div>
             </div>
           )}
@@ -329,7 +347,7 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
                   まだ何も書かれていません。{rights.edit && <button type="button" className="text-accent hover:underline" onClick={() => setMode("edit")}>書き始める</button>}
                 </p>
               ) : (
-                <CanvasBody body={saver.text} controller={controller} onToggleTask={onToggleTask} className="mt-5" />
+                <CanvasBody body={saver.text} controller={controller} onToggleTask={onToggleTask} onMakeTask={onMakeTask} className="mt-5" />
               )}
             </article>
           </div>
@@ -351,6 +369,7 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
         </div>
       )}
       {renaming && meta && <RenameDialog controller={controller} canvas={meta} onClose={() => setRenaming(false)} />}
+      {taskInit && <TaskDialog controller={controller} task={null} init={taskInit} onClose={() => setTaskInit(null)} />}
       {historyOpen && meta && <CanvasHistoryDialog controller={controller} canvas={meta} rights={rights} onClose={() => setHistoryOpen(false)} />}
       {conflictOpen && saver.status === "conflict" && saver.conflict && (
         <ConflictDialog controller={controller} saver={saver} tickOnly={!rights.edit} conflicts={saver.conflict.details.conflicts ?? []} timedOut={saver.conflict.details.timed_out ?? false} onClose={() => setConflictOpen(false)} />
@@ -359,6 +378,39 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
         <ExpiredDialog controller={controller} saver={saver} head={saver.expired} canOverwrite={rights.edit} onClose={() => setConflictOpen(false)} />
       )}
     </section>
+  );
+}
+
+/**
+ * M72 (CANVAS.md §18.2): who else edits this canvas now — their pictures (three, then 「+N」) and 「〇〇 が編集中」, each
+ * one's heading in the tooltip. Volatile: an entry goes 45 s after its last refresh (re-checked every second).
+ */
+function CanvasEditing({ controller, canvasId }: { controller: AppController; canvasId: string }) {
+  const store = controller.store;
+  const [now, setNow] = useState(() => Date.now());
+  const editors = store.canvasEditors(canvasId, now);
+  useEffect(() => {
+    if (editors.length === 0) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [editors.length]);
+  if (editors.length === 0) return null;
+  const nameOf = (id: string) => store.users.get(id)?.display_name ?? "メンバー";
+  const label = editingLabel(editors.map((e) => nameOf(e.userId)));
+  const detail = editors.map((e) => (e.section ? `${nameOf(e.userId)}: ${e.section}` : nameOf(e.userId))).join("\n");
+  const shown = editors.slice(0, 3);
+  return (
+    <div className="flex min-w-0 shrink items-center gap-1.5 px-1 text-xs text-muted" title={detail} aria-live="polite" data-canvas-editing={editors.length}>
+      <span className="flex shrink-0 items-center -space-x-1.5" aria-hidden="true">
+        {shown.map((e) => (
+          <Avatar key={e.userId} id={e.userId} name={nameOf(e.userId)} size={20} className="rounded-full ring-2 ring-canvas" />
+        ))}
+        {editors.length > shown.length && (
+          <span className="relative inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-panel-2 px-1 text-[10px] font-semibold ring-2 ring-canvas">+{editors.length - shown.length}</span>
+        )}
+      </span>
+      <span className="truncate max-md:sr-only">{label}</span>
+    </div>
   );
 }
 

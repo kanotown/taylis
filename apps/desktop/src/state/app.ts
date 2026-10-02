@@ -1520,6 +1520,16 @@ export class AppController {
           if (this.active === session) this.requestOpenTask(taskId, channelId);
         });
       },
+      // M72 (CANVAS.md §18.1): a canvas newly mentions me (the engine checks the conversation's level and mute), worded
+      // like the server's push; a click opens the canvas.
+      onCanvasMention: (mention, channel) => {
+        if (this.quiet(session)) return;
+        const who = store.users.get(mention.by_user_id)?.display_name ?? "メンバー";
+        const where = channel.type === "public" || channel.type === "private" ? ` (#${channel.name})` : "";
+        void notify(this.notificationTitle(session, "キャンバス"), `${who} が「${mention.title}」であなたをメンションしました${where}`, () => {
+          if (this.active === session) this.requestOpenCanvas(mention.channel_id, mention.canvas_id);
+        });
+      },
       onNotify: (message, channel) => {
         if (this.quiet(session)) return; // M12c: paused / quiet hours
         const sender = store.users.get(message.sender_id)?.display_name ?? "メンバー";

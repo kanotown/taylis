@@ -1014,6 +1014,8 @@ CREATE TABLE tasks (
   source_message_id  uuid REFERENCES messages(id) ON DELETE SET NULL,  -- メッセージから作ったとき
   source_channel_id  uuid,                                   -- そのメッセージのチャンネル
   source_excerpt     text,                                   -- 作った時の 1 行の抜粋 (DM の一覧・通知と同じ規則、140 文字)
+  source_canvas_id   uuid REFERENCES canvases(id) ON DELETE SET NULL,  -- M72: キャンバスのチェックリストの行から作ったとき (0065)
+  source_canvas_excerpt text,                                -- M72: その行の文 (1 行、200 文字)。作った時の写し (一方向のリンク)
   completed_at       timestamptz,                            -- done の間だけ入る
   completed_by       uuid REFERENCES users(id),
   client_task_id     varchar(64),                            -- POST の冪等キー (作った人ごとに一意)
@@ -1027,6 +1029,7 @@ CREATE TABLE tasks (
 );
 CREATE INDEX tasks_board_idx    ON tasks (channel_id, status, position) WHERE channel_id IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX tasks_personal_idx ON tasks (owner_id, status, position)   WHERE channel_id IS NULL AND deleted_at IS NULL;
+CREATE INDEX tasks_source_canvas_idx ON tasks (source_canvas_id) WHERE source_canvas_id IS NOT NULL;  -- M72: 完全削除の SET NULL 用
 CREATE INDEX tasks_due_idx      ON tasks (due_on) WHERE due_on IS NOT NULL AND deleted_at IS NULL;
 CREATE UNIQUE INDEX tasks_client_uniq ON tasks (owner_id, client_task_id) WHERE client_task_id IS NOT NULL;
 

@@ -41,11 +41,19 @@ from app.events.envelope import Audience
 from app.events.models import OutboxEvent
 from app.events.outbox import write_outbox
 from app.modules.calendar.service import DEFAULT_TZ, zone_for
+from app.modules.canvases import repository as canvases_repo
+from app.modules.canvases.service import TASK_LINE
 from app.modules.channels import service as channels
 from app.modules.channels.events import CHANNEL_MEMBER_REMOVED
 from app.modules.channels.models import Channel
+from app.modules.groups import service as groups
 from app.modules.messages import service as messages
 from app.modules.messages.events import MESSAGE_DELETED, MESSAGE_UPDATED
+from app.modules.messages.mentions import (
+    extract_group_mentions,
+    extract_mentions,
+    notification_text,
+)
 from app.modules.tasks import repository as repo
 from app.modules.tasks.events import (
     TASK_ASSIGNED,
@@ -57,6 +65,7 @@ from app.modules.tasks.events import (
 from app.modules.tasks.models import Task, TaskDueAlarm
 from app.modules.tasks.schemas import (
     TaskAssignedData,
+    TaskCanvasSourceOut,
     TaskCreate,
     TaskData,
     TaskDeletedData,
@@ -118,6 +127,11 @@ def to_data(task: Task, channel: Channel | None, assignee_ids: list[uuid.UUID]) 
             channel_id=task.source_channel_id,
             excerpt=task.source_excerpt,
         )
+    canvas_source = None
+    if task.source_canvas_id is not None or task.source_canvas_excerpt is not None:
+        canvas_source = TaskCanvasSourceOut(
+            canvas_id=task.source_canvas_id, excerpt=task.source_canvas_excerpt
+        )
     return TaskData(
         id=task.id,
         channel_id=task.channel_id,
@@ -131,6 +145,7 @@ def to_data(task: Task, channel: Channel | None, assignee_ids: list[uuid.UUID]) 
         due_on=task.due_on,
         assignee_ids=assignee_ids,
         source=source,
+        canvas_source=canvas_source,
         completed_at=_utc(task.completed_at),
         completed_by=task.completed_by,
         created_at=task.created_at,
@@ -598,6 +613,35 @@ async def _source(
     return message.id, message.channel_id, excerpt
 
 
+async def _canvas_source(
+    db: AsyncSession, actor: User, canvas_id: uuid.UUID, line: str, channel: Channel | None
+) -> tuple[uuid.UUID, str]:
+    """M72 (CANVAS.md §18.3): the canvas and checklist item a task is made from. A canvas the
+    actor reads (else 404, like one they cannot see); a shared task's only from a canvas of that
+    conversation; the line must be a checklist item of the body as it is now. The excerpt is the
+    item's text as one plain line (mentions as names, as the actor sees them)."""
+    canvas = await canvases_repo.get(db, canvas_id)
+    if canvas is None or canvas.is_deleted:
+        raise not_found("canvas_not_found", "Canvas not found")
+    if await channels.membership_of(db, actor.id, canvas.channel_id) is None:
+        raise not_found("canvas_not_found", "Canvas not found")
+    if channel is not None and canvas.channel_id != channel.id:
+        raise bad_request(
+            "task_invalid_source", "A shared task can only be made from a canvas of its channel"
+        )
+    wanted = line.replace("\r", "").rstrip()
+    match = TASK_LINE.match(wanted)
+    if match is None or wanted not in (row.rstrip() for row in canvas.body.split("\n")):
+        raise bad_request("task_invalid_source", "The checklist item is not in the canvas")
+    text = match.group(3)[1:].strip()
+    visible = await channels.visible_user_ids(db, actor)
+    mentioned, _ = extract_mentions(text)
+    shown = [uid for uid in mentioned if visible is None or uid in visible]
+    names = {uid: user.display_name for uid, user in (await users.get_users(db, shown)).items()}
+    names.update(await groups.names_for(db, extract_group_mentions(text)))
+    return canvas.id, notification_text(text, names)
+
+
 async def create(db: AsyncSession, actor: User, data: TaskCreate) -> tuple[TaskOut, bool]:
     """A new task. A retry with the same client_task_id returns the task the first request made
     (False)."""
@@ -610,15 +654,33 @@ async def create(db: AsyncSession, actor: User, data: TaskCreate) -> tuple[TaskO
     role: str | None = None
     if data.kind == "review" and data.source_message_id is None:
         raise bad_request("task_invalid_source", "A review request is made from a message")
+    from_canvas = data.source_canvas_id is not None
+    if from_canvas != (data.source_canvas_line is not None) or (
+        from_canvas and data.source_message_id is not None
+    ):
+        raise bad_request(
+            "task_invalid_source",
+            "A task comes from a message, or from a canvas with one of its checklist lines",
+        )
     if data.channel_id is not None:
         channel, role = await _board_channel(
-            db, actor, data.channel_id, from_message=data.source_message_id is not None
+            db,
+            actor,
+            data.channel_id,
+            from_message=data.source_message_id is not None or from_canvas,
         )
         _require_poster(actor, channel, role)
     await _check_assignees(db, channel, data.assignee_ids)
     source = (
         await _source(db, actor, data.source_message_id, channel)
         if data.source_message_id is not None
+        else None
+    )
+    canvas_source = (
+        await _canvas_source(
+            db, actor, data.source_canvas_id, data.source_canvas_line or "", channel
+        )
+        if data.source_canvas_id is not None
         else None
     )
     if (
@@ -640,6 +702,8 @@ async def create(db: AsyncSession, actor: User, data: TaskCreate) -> tuple[TaskO
         source_message_id=source[0] if source else None,
         source_channel_id=source[1] if source else None,
         source_excerpt=source[2] if source else None,
+        source_canvas_id=canvas_source[0] if canvas_source else None,
+        source_canvas_excerpt=canvas_source[1] if canvas_source else None,
         completed_at=now if data.status == "done" else None,
         completed_by=actor_id if data.status == "done" else None,
         client_task_id=data.client_task_id,
