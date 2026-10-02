@@ -35,6 +35,7 @@ import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 import { BOTTOM_SLACK_PX, ListAnchor, stillAtBottom } from "./scrollAnchor";
+import { conversationScrollKey, restoreDecision, scrollMemoryFor } from "./scrollMemory";
 import { READER_BACK } from "../platform/idle";
 import { AcksDialog, ReactionsDialog } from "./WhoDialogs";
 import { TaskDialog } from "./TaskDialog";
@@ -80,6 +81,14 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
   const [rowAnchor] = useState(() => new ListAnchor(() => container.current, "article[id^='timeline-']"));
   /** scrollTop at the last scroll event (or the view's own move to the bottom): what a scroll up is measured from. */
   const lastTop = useRef(0);
+  /**
+   * M75: where the reader was in each conversation this session (scrollMemory.ts). A conversation opened again (the
+   * sidebar, ⌘K, back / forward …) comes back at its row; one left at the bottom, or opened at a message, lands as usual.
+   */
+  const scrollMemory = scrollMemoryFor(controller.activeServer ?? "");
+  /** The conversation whose next positioning may restore (this view's first, or one just switched to); null once used. */
+  const restoreFor = useRef<string | null>(channel.id);
+  const shownId = useRef(channel.id);
 
   // The "new messages" divider stays where it was when the channel was opened, or the search context was left (that
   // works like opening, §10.1 4.), or 「最初の未読へ」 reached it.
@@ -240,6 +249,9 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
   }, [messages.length]);
 
   useLayoutEffect(() => {
+    // Another conversation (not a search context of the same one, nor leaving it: 「最新の会話に戻る」 is a landing).
+    if (shownId.current !== channel.id) restoreFor.current = channel.id;
+    shownId.current = channel.id;
     positioned.current = false;
     setIsPositioned(false);
     setAnchored(false);
@@ -253,9 +265,16 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
   useLayoutEffect(() => {
     // Not on my placeholders alone (a failed send is kept): the rows they follow have not arrived yet.
     if (positioned.current || messages.length === 0 || (!focus && channel.oldestLoadedSeq === null)) return;
-    const unread = !focus && mark !== null ? firstUnreadRow(messages, mark, me?.id) : null;
+    // M75: back where the reader left it, when that row is still loaded. Not a landing on the first unread row: what is
+    // on screen decides anchored as on any look (§10.1 2.), so rows below a position in the middle are not read.
+    const requested = restoreFor.current === channel.id;
+    restoreFor.current = null;
+    const decision = restoreDecision(requested && !focus ? scrollMemory.get(conversationScrollKey(channel.id)) : null, { explicit: !!focus, requested });
+    const restoredRow = decision.kind === "anchor" ? document.getElementById(`timeline-${decision.rowKey}`) : null;
+    const unread = !focus && !restoredRow && mark !== null ? firstUnreadRow(messages, mark, me?.id) : null;
     const target = focus ? (focus.parentId ?? focus.messageId) : unread?.id;
-    if (unread) showFromRow(unread);
+    if (restoredRow && decision.kind === "anchor") rowAnchor.placeAt(restoredRow, decision.offset);
+    else if (unread) showFromRow(unread);
     else if (target) document.getElementById(`timeline-${target}`)?.scrollIntoView({ block: "center" });
     else scrollToBottom();
     rememberAnchor();
@@ -272,6 +291,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     lastTop.current = el?.scrollTop ?? 0;
     setShowJump(!atBottom.current);
     if (atBottom.current) markSeen();
+    recordPosition();
   }, [channel.id, focus?.messageId, messages.length]);
 
   // New messages while at the bottom, and a top-level post sent from this device, show the newest message. A layout
@@ -419,6 +439,15 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     void engine.loadOlder(channel.id).catch((error) => controller.setError(error)).finally(() => setLoadingOlder(false));
   };
 
+  /** M75: this conversation's position, for when it comes back (not a search context: that is another list). */
+  const recordPosition = () => {
+    const el = container.current;
+    if (!el || !positioned.current || focus) return;
+    const row = rowAnchor.snapshot();
+    const rowKey = row && row.id.startsWith("timeline-") ? row.id.slice("timeline-".length) : null;
+    scrollMemory.save(conversationScrollKey(channel.id), { rowKey, offset: row?.offset ?? 0, scrollTop: el.scrollTop, atBottom: atBottom.current });
+  };
+
   const onScroll = () => {
     const el = container.current;
     if (!el) return;
@@ -436,6 +465,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     if (positioned.current && !atBottom.current) keepAnchor();
     else rememberAnchor();
     markVisible();
+    recordPosition();
     if (!focus && el.scrollTop < 120 && channel.hasOlder && channel.syncedSeq !== null && !loadingOlder && engine?.status === "online") loadOlder();
   };
 

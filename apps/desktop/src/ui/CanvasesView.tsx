@@ -77,7 +77,7 @@ export function CanvasesView({ controller, onOpen, onSearch }: {
           />
         </div>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {items === null ? (
           <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
         ) : shown.length === 0 ? (
@@ -95,7 +95,7 @@ export function CanvasesView({ controller, onOpen, onSearch }: {
               const channel = store.getChannel(canvas.channel_id);
               const progress = taskProgress(canvas.task_total, canvas.task_done);
               return (
-                <li key={canvas.id}>
+                <li key={canvas.id} data-row-key={canvas.id}>
                   <button type="button" data-canvas-row={canvas.id} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-panel" onClick={() => onOpen(canvas)}>
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><FileText size={17} /></span>
                     <span className="min-w-0 flex-1">

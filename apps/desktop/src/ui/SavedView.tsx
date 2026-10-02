@@ -40,7 +40,7 @@ export function SavedView({ controller, onOpen }: { controller: AppController; o
         <strong className="shrink-0 whitespace-nowrap text-[15px]">保存済み</strong>
         <span className="min-w-0 truncate text-xs text-muted">{items ? `${store.bookmarks.size} 件` : ""}</span>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {items === null ? (
           <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
         ) : items.length === 0 ? (

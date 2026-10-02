@@ -104,7 +104,7 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
         </Button>
       </header>
       {note && <div className="border-b border-line bg-warning/10 px-4 py-1.5 text-xs text-muted">{note}</div>}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 max-md:px-3">
+      <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-4 max-md:px-3">
         <div className="mx-auto max-w-2xl space-y-8">
           <section aria-label="自分のタスク" className="space-y-2">
             <h2 className="text-sm font-semibold">自分のタスク <span className="ml-1 text-xs font-normal text-muted">自分だけに表示</span></h2>

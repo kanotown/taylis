@@ -22,7 +22,7 @@ export function DraftsView({ controller, onOpen }: { controller: AppController; 
         <strong className="shrink-0 whitespace-nowrap text-[15px]">下書き</strong>
         <span className="min-w-0 truncate text-xs text-muted">{drafts.length + scheduled.length} 件</span>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {scheduled.length > 0 && (
           <div className="mx-auto mb-4 max-w-3xl">
             <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-muted"><Clock size={13} /> 予約送信</div>
@@ -31,7 +31,7 @@ export function DraftsView({ controller, onOpen }: { controller: AppController; 
                 const channel = store.getChannel(row.channel_id);
                 const failed = row.status === "failed";
                 return (
-                  <li key={row.id} className="flex items-start gap-3 px-3 py-2.5">
+                  <li key={row.id} data-row-key={row.id} className="flex items-start gap-3 px-3 py-2.5">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 text-xs text-muted">
                         <span className="font-medium text-ink">{channel ? channelTitle(channel, controller) : "?"}</span>
@@ -69,7 +69,7 @@ export function DraftsView({ controller, onOpen }: { controller: AppController; 
             {drafts.map(({ channelId, parentId, draft }) => {
               const channel = store.getChannel(channelId)!;
               return (
-                <li key={`${channelId}:${parentId ?? ""}`}>
+                <li key={`${channelId}:${parentId ?? ""}`} data-row-key={`${channelId}:${parentId ?? ""}`}>
                   <button type="button" className="block w-full px-3 py-2.5 text-left transition-colors hover:bg-panel" onClick={() => onOpen(channelId, parentId)}>
                     <div className="flex items-center gap-2 text-xs text-muted">
                       <span className="font-medium text-ink">{channelTitle(channel, controller)}</span>
