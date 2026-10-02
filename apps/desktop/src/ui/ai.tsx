@@ -3,9 +3,9 @@
  * 「要約」 menu items and the summary dialog.
  */
 import { Loader2, RotateCw, Sparkles } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { AI_PROVIDERS, aiProviderOf, type AiProviderName, describeAiError } from "../api/ai";
+import { AI_PROVIDERS, aiProviderOf, type AiProviderName, aiRunCaption, type AiSummaryTargetOut, describeAiError, summaryTargetLine } from "../api/ai";
 import type { AppController } from "../state/app";
 import { type AiHub, isFinished, type SummaryTarget, summaryTitle } from "../sync/ai";
 import type { Store } from "../sync/store";
@@ -67,9 +67,63 @@ export function SummaryMenuItems({ controller, channel, onSummary, separator = t
     <>
       {separator && <MenuSeparator />}
       <MenuLabel>要約 (自分にだけ見えます)</MenuLabel>
-      <MenuItem onSelect={() => onSummary({ channelId: channel.id, scope: "unread" })}>未読を要約</MenuItem>
-      <MenuItem onSelect={() => onSummary({ channelId: channel.id, scope: "recent", days: 1 })}>直近 1 日を要約</MenuItem>
-      <MenuItem onSelect={() => onSummary({ channelId: channel.id, scope: "recent", days: 7 })}>直近 7 日を要約</MenuItem>
+      <SummaryChoices
+        controller={controller}
+        channelId={channel.id}
+        onSummary={onSummary}
+        choices={[
+          { label: "未読を要約", target: { channelId: channel.id, scope: "unread" } },
+          { label: "直近 1 日を要約", target: { channelId: channel.id, scope: "recent", days: 1 } },
+          { label: "直近 7 日を要約", target: { channelId: channel.id, scope: "recent", days: 7 } },
+        ]}
+      />
+    </>
+  );
+}
+
+/**
+ * Where a summary of the conversation would go (review v0.1.18 #2), read while the menu is open (it mounts on opening).
+ * undefined while reading; null when it cannot be told (an older server: the choices stay as before).
+ */
+function useSummaryTarget(controller: AppController, channelId: string): AiSummaryTargetOut | null | undefined {
+  const hub = controller.engine?.ai ?? null;
+  const [read, setRead] = useState<{ channelId: string; target: AiSummaryTargetOut | null } | null>(null);
+  useEffect(() => {
+    if (!hub) return;
+    let live = true;
+    void hub.summaryTarget(channelId).then((target) => {
+      if (live) setRead({ channelId, target });
+    });
+    return () => {
+      live = false;
+    };
+  }, [hub, channelId]);
+  return read && read.channelId === channelId ? read.target : undefined;
+}
+
+/**
+ * The 「要約」 choices with one line under them: 「要約は <bot> (<provider>) に送られます」, or, when the server says it
+ * cannot be asked for now, the reason in Japanese with the choices disabled (review v0.1.18 #2).
+ */
+export function SummaryChoices({ controller, channelId, choices, onSummary = (target) => startSummary(controller, target) }: {
+  controller: AppController;
+  channelId: string;
+  choices: ReadonlyArray<{ label: string; target: SummaryTarget }>;
+  onSummary?: (target: SummaryTarget) => void;
+}) {
+  const target = useSummaryTarget(controller, channelId);
+  const disabled = !!target && !target.available;
+  const line = target ? summaryTargetLine(target) : null;
+  return (
+    <>
+      {choices.map((choice) => (
+        <MenuItem key={choice.label} disabled={disabled} onSelect={() => onSummary(choice.target)}>{choice.label}</MenuItem>
+      ))}
+      {line && (
+        <p data-testid="ai-summary-target" className={cn("max-w-72 px-2.5 pb-1 pt-0.5 text-[11px]", disabled ? "text-danger" : "text-muted")}>
+          {line}
+        </p>
+      )}
     </>
   );
 }
@@ -134,6 +188,7 @@ export function SummaryDialog({ controller }: { controller: AppController }) {
         )}
       </div>
       {run?.status === "done" && <p className="mt-4 text-[11px] text-muted">AI が書いた要約です。間違いがあるかもしれません。</p>}
+      {run && aiRunCaption(run) && <p data-testid="ai-run-caption" className="mt-1 text-[11px] text-muted">{aiRunCaption(run)}</p>}
       <div className="mt-3 flex justify-end">
         <Button variant="secondary" onClick={close}>閉じる</Button>
       </div>

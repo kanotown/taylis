@@ -441,7 +441,8 @@ struct ChannelInfoView: View {
                 header(channel)
                 AiChannelSection(channelId: channelId,
                                  notice: AiRules.notice(controller.aiHub?.agents(among: (members ?? []).map(\.userId)) ?? []),
-                                 canSummarize: controller.canSummarize(channelId)) { request in
+                                 canSummarize: controller.canSummarize(channelId),
+                                 target: controller.aiHub?.target(channelId)) { request in
                     aiSummary = request
                     controller.summarize(request)
                 }
@@ -533,6 +534,7 @@ struct ChannelInfoView: View {
         } message: { Text(convertMessage) }
         .task(id: controller.store.memberListVersion[channelId, default: 0]) { await loadMembers() }  // L4: roles change
         .aiSummarySheet(controller, request: $aiSummary)
+        .loadsSummaryTarget(controller, channelId: channelId)
         .sheet(isPresented: $addingLink) { ChannelLinkEditor(controller: controller, channelId: channelId, link: nil) }
         .sheet(isPresented: $searching) { SearchView(controller: controller, initial: SearchParams(channelId: channelId)) }
         .sheet(isPresented: $showAddMember, onDismiss: { Task { await loadMembers() } }) {

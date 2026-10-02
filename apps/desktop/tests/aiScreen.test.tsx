@@ -191,3 +191,65 @@ it("no summaries when the budget is used up (summary_available false)", async ()
   await openMenu("チャンネルの操作");
   expect(screen.queryByRole("menuitem", { name: "未読を要約" })).toBeNull();
 });
+
+// Review v0.1.18 #2: where the summary goes, told before asking, and the run's provider / model in the dialog.
+
+const targetLine = () => screen.queryByTestId("ai-summary-target")?.textContent ?? null;
+
+it("channel ⋯ tells where the summary goes (Anthropic), and the dialog the run's provider and model", async () => {
+  const { server } = await setup();
+  await openMenu("チャンネルの操作");
+  expect(targetLine()).toBe("要約は ちくわ (Anthropic) に送られます");
+  expect(screen.getByRole("menuitem", { name: "未読を要約" }).getAttribute("aria-disabled")).toBeNull();
+  fireEvent.click(screen.getByRole("menuitem", { name: "未読を要約" }));
+  await settle();
+  expect(within(dialog()).getByTestId("ai-run-caption").textContent).toBe("Anthropic · claude-opus-5-5");
+  const run = server.lastAiRun()!;
+  server.updateAiRun(run.id, { status: "done", output: "まとめ", provider: "openai", model: "gpt-6.1-sol", finished_at: new Date().toISOString() });
+  await settle();
+  expect(within(dialog()).getByTestId("ai-run-caption").textContent).toBe("OpenAI · gpt-6.1-sol");
+});
+
+it("an OpenAI target reads 「要約は … (OpenAI) に送られます」, on the thread ⋯ too", async () => {
+  const { server, alice, channelId } = await setup();
+  server.aiSummaryTargetAnswer = { available: true, provider: "openai", model: "gpt-6.1-sol", agent_name: "ソル", reason: null };
+  await openMenu("チャンネルの操作");
+  expect(targetLine()).toBe("要約は ソル (OpenAI) に送られます");
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await settle();
+  const parent = server.post(channelId, alice.id, "スレッドの親").message;
+  server.post(channelId, alice.id, "返信", undefined, parent.id);
+  await settle();
+  fireEvent.click(screen.getAllByTestId("thread-summary").at(-1)!);
+  await settle();
+  await openMenu("スレッドの操作");
+  expect(targetLine()).toBe("要約は ソル (OpenAI) に送られます");
+});
+
+it.each([
+  ["ai_unavailable", "このサーバーでは AI を使えません"],
+  ["ai_budget_exceeded", "今月の AI の利用上限に達しました"],
+  ["ai_private_not_allowed", "この AI のボットは公開チャンネルでだけ使えます (非公開チャンネルと DM には参加・要約できません)"],
+])("target unavailable (%s): the choices are disabled and the reason is shown", async (reason, text) => {
+  const { server } = await setup();
+  server.aiSummaryTargetAnswer = { available: false, provider: reason === "ai_unavailable" ? null : "anthropic", model: null, agent_name: null, reason };
+  await openMenu("チャンネルの操作");
+  expect(targetLine()).toBe(text);
+  for (const name of ["未読を要約", "直近 1 日を要約", "直近 7 日を要約"]) {
+    expect(screen.getByRole("menuitem", { name }).getAttribute("aria-disabled")).toBe("true");
+  }
+  fireEvent.click(screen.getByRole("menuitem", { name: "未読を要約" }));
+  await settle();
+  expect(server.lastAiRun()).toBeUndefined();
+});
+
+it("a server without the target route (404): no line, the choices as before", async () => {
+  const { server } = await setup();
+  server.aiSummaryTargetRoute = false;
+  await openMenu("チャンネルの操作");
+  expect(targetLine()).toBeNull();
+  expect(screen.getByRole("menuitem", { name: "直近 1 日を要約" }).getAttribute("aria-disabled")).toBeNull();
+  fireEvent.click(screen.getByRole("menuitem", { name: "直近 1 日を要約" }));
+  await settle();
+  expect(server.lastAiRun()).toMatchObject({ scope: "recent", days: 1 });
+});

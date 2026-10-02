@@ -5,6 +5,7 @@ import jp.chikuwachat.android.api.AiRunOut
 import jp.chikuwachat.android.api.AiRunUpdated
 import jp.chikuwachat.android.api.AiStatusOut
 import jp.chikuwachat.android.api.AiSummaryIn
+import jp.chikuwachat.android.api.AiSummaryTargetOut
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.ErrorMessages
@@ -254,6 +255,7 @@ class AiTest {
         override suspend fun aiStatus() = AiStatusOut(true, true)
         override suspend fun createSummary(body: AiSummaryIn): AiRunOut = gate.await()
         override suspend fun aiRun(runId: String): AiRunOut = throw ApiException.Api(404, "ai_run_not_found", "x")
+        override suspend fun summaryTarget(channelId: String): AiSummaryTargetOut = throw ApiException.Api(404, "http_404", "x")
     }
 
     private fun event(run: AiRunOut): JsonObject = Codec.snake.encodeToJsonElement(AiRunUpdated.serializer(), AiRunUpdated(run)) as JsonObject
@@ -369,5 +371,61 @@ class AiTest {
         assertEquals(listOf(BarMenuItem.SUMMARIZE_THREAD), BarMenu.items(conversation = false, channel = true, archived = false, activityFeed = false, thread = true, summaries = true))
         assertEquals(emptyList<BarMenuItem>(), BarMenu.items(conversation = false, channel = true, archived = false, activityFeed = false, thread = true, summaries = false))
         assertFalse(BarMenuItem.SUMMARIZE in BarMenu.items(conversation = true, channel = true, archived = false, activityFeed = false))
+    }
+
+    // --- review v0.1.18 #2: where the summary goes ---------------------------------------------------------------
+
+    @Test fun targetAndRunProviderDecodeLeniently() {
+        val target = Codec.snake.decodeFromString(AiSummaryTargetOut.serializer(),
+            """{"available": false, "provider": "anthropic", "model": "claude-opus-5-5", "agent_name": "ちくわ", "reason": "ai_private_not_allowed", "extra": 1}""")
+        assertEquals(AiSummaryTargetOut(false, "anthropic", "claude-opus-5-5", "ちくわ", "ai_private_not_allowed"), target)
+        assertEquals(AiSummaryTargetOut(), Codec.snake.decodeFromString(AiSummaryTargetOut.serializer(), "{}"))
+        val run = Codec.snake.decodeFromString(AiRunOut.serializer(), """{"id": "r1", "provider": "openai", "model": "gpt-6.1-sol"}""")
+        assertEquals("openai" to "gpt-6.1-sol", run.provider to run.model)
+        val old = Codec.snake.decodeFromString(AiRunOut.serializer(), """{"id": "r2"}""")
+        assertNull(old.provider)
+        assertNull(old.model)
+    }
+
+    @Test fun targetLineNamesTheBotAndProvider() {
+        assertEquals("要約は ちくわ (Anthropic) に送られます", AiTexts.targetLine(AiSummaryTargetOut(true, "anthropic", "claude-opus-5-5", "ちくわ")))
+        assertEquals("要約は そる (OpenAI) に送られます", AiTexts.targetLine(AiSummaryTargetOut(true, "openai", "gpt-6.1-sol", "そる")))
+        assertEquals("要約は OpenAI に送られます", AiTexts.targetLine(AiSummaryTargetOut(true, "openai")))
+        assertNull(AiTexts.targetLine(AiSummaryTargetOut(true)))
+        assertNull(AiTexts.targetLine(null)) // an older server: no line
+        assertFalse(AiTexts.choicesDisabled(null))
+        assertFalse(AiTexts.choicesDisabled(AiSummaryTargetOut(true, "openai")))
+    }
+
+    @Test fun unavailableTargetsDisableTheChoicesWithTheReason() {
+        for (reason in listOf("ai_unavailable", "ai_budget_exceeded", "ai_private_not_allowed")) {
+            val target = AiSummaryTargetOut(false, if (reason == "ai_unavailable") null else "anthropic", reason = reason)
+            assertTrue(reason, AiTexts.choicesDisabled(target))
+            assertEquals(reason, ErrorMessages.byCode.getValue(reason), AiTexts.targetLine(target))
+        }
+        assertEquals("今は要約できません", AiTexts.targetLine(AiSummaryTargetOut(false, reason = "something_new")))
+    }
+
+    @Test fun runCaptionIsTheProviderAndModelUsed() {
+        assertEquals("OpenAI · gpt-6.1-sol", AiTexts.runCaption(AiRunOut("r", provider = "openai", model = "gpt-6.1-sol")))
+        assertEquals("Anthropic · claude-haiku-4-5", AiTexts.runCaption(AiRunOut("r", provider = "anthropic", model = "claude-haiku-4-5")))
+        assertNull(AiTexts.runCaption(AiRunOut("r")))
+        assertNull(AiTexts.runCaption(null))
+    }
+
+    @Test fun theHubReadsTheTargetAndFallsBackOnAnOlderServer() = runBlocking {
+        val server = FakeServer()
+        val api = server.Api("u1")
+        val hub = AiHub(api, CoroutineScope(Dispatchers.Unconfined)) { 540 }
+        hub.loadTarget("c1")
+        assertNull(hub.target("c1")) // 404: the choices as before
+        val sol = AiSummaryTargetOut(true, "openai", "gpt-6.1-sol", "そる")
+        server.aiSummaryTarget = sol
+        hub.loadTarget("c1")
+        assertEquals(sol, hub.target("c1"))
+        assertNull(hub.target("c2"))
+        server.aiSummaryTarget = null
+        hub.loadTarget("c1")
+        assertNull(hub.target("c1")) // forgotten, not a stale line
     }
 }

@@ -145,6 +145,15 @@ class AppController(private val app: Application) {
         private set
     /** M66: the conversation whose 「要約」 choices (未読 / 直近 1 日 / 直近 7 日) are on screen. */
     var aiSummaryChooser by mutableStateOf<String?>(null)
+    /** Review v0.1.18 #2: the engine's summary targets (AiHub.targets), for the line under the 「要約」 choices. */
+    var aiSummaryTargets by mutableStateOf<Map<String, jp.chikuwachat.android.api.AiSummaryTargetOut>>(emptyMap())
+        private set
+
+    /** Reads where a summary of the conversation would go (the choices are opening). */
+    fun loadSummaryTarget(channelId: String) {
+        val engine = engine ?: return
+        scope.launch { engine.ai.loadTarget(channelId) }
+    }
     /** The AI bots' user ids: 「AI」 instead of 「BOT」 on their rows and mention candidates. */
     val aiBotIds: Set<String> get() = aiStatus?.agents?.map { it.botUserId }?.toSet() ?: emptySet()
     val aiSummaryAvailable: Boolean get() = aiStatus?.let { it.available && it.summaryAvailable } == true
@@ -447,6 +456,7 @@ class AppController(private val app: Application) {
         aiStatus = null
         aiSummary = null
         aiSummaryChooser = null
+        aiSummaryTargets = emptyMap()
         messageFocus = null
         pendingReveal = null
         pendingCanvas = null
@@ -928,11 +938,13 @@ class AppController(private val app: Application) {
         aiStatus = null
         aiSummary = null
         aiSummaryChooser = null
+        aiSummaryTargets = emptyMap()
         scope.launch {
             engine.ai.version.collect {
                 if (this@AppController.engine !== engine) return@collect
                 aiStatus = engine.ai.status
                 aiSummary = engine.ai.summary
+                aiSummaryTargets = engine.ai.targets
             }
         }
         scope.launch {

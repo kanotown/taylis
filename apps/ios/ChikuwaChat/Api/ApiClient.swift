@@ -1006,6 +1006,11 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     func aiRun(id: String) async throws -> AiRunOut { try await request("GET", "/api/v1/ai/runs/\(id)") }
 
+    /// Review v0.1.18 #2: where a summary of the conversation would go (404 on an older server).
+    func summaryTarget(channelId: String) async throws -> AiSummaryTargetOut {
+        try await request("GET", "/api/v1/ai/summaries/target?channel_id=\(channelId)")
+    }
+
     // MARK: transport
 
     private func request<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil, auth: Bool = true, timeout: TimeInterval? = nil,

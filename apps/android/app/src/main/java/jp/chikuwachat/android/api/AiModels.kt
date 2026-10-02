@@ -28,10 +28,27 @@ data class AiRunOut(
     val omittedCount: Int = 0,
     val createdAt: String = "",
     val finishedAt: String? = null,
+    /** Review v0.1.18 #2: where the run is sent ("anthropic" | "openai"), fixed when asked. Null on an older server. */
+    val provider: String? = null,
+    val model: String? = null,
 ) {
     /** "done" and "failed" are final: nothing changes the run after them. */
     val finished: Boolean get() = status == "done" || status == "failed"
 }
+
+/**
+ * GET /ai/summaries/target?channel_id= (review v0.1.18 #2, docs/AI.md §5): where a summary of this conversation would go.
+ * `reason` (ai_unavailable / ai_private_not_allowed / ai_budget_exceeded) when it cannot be asked for now. Lenient: a
+ * missing `available` counts as true (nothing disabled by mistake), the rest null.
+ */
+@Serializable
+data class AiSummaryTargetOut(
+    val available: Boolean = true,
+    val provider: String? = null,
+    val model: String? = null,
+    val agentName: String? = null,
+    val reason: String? = null,
+)
 
 /** POST /ai/summaries. Absent fields are left out (Codec.snake drops nulls). */
 @Serializable

@@ -643,7 +643,7 @@ struct ChannelView: View {
                         NotificationMenu(controller: controller, channel: channel)
                     }
                     if controller.canSummarize(channelId) {  // M66
-                        AiSummaryMenu(channelId: channelId) { request in aiSummary = request; controller.summarize(request) }
+                        AiSummaryMenu(channelId: channelId, target: controller.aiHub?.target(channelId)) { request in aiSummary = request; controller.summarize(request) }
                     }
                     Button("チャンネル情報", systemImage: "info.circle") { showInfo = true }
                 } label: {
@@ -659,6 +659,7 @@ struct ChannelView: View {
             }
         }
         .aiSummarySheet(controller, request: $aiSummary)
+        .loadsSummaryTarget(controller, channelId: channelId)
         .navigationDestination(item: $thread) { target in ThreadView(controller: controller, channelId: channelId, parentId: target.id) }
         .navigationDestination(isPresented: $showInfo) { ChannelInfoView(controller: controller, channelId: channelId) }
         .onChange(of: thread == nil && !showInfo) { _, back in if back { sheetClosed() } }

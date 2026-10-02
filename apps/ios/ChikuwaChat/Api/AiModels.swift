@@ -76,9 +76,13 @@ struct AiRunOut: Decodable, Equatable {
     var omittedCount: Int
     var createdAt: String
     var finishedAt: String?
+    /// Review v0.1.18 #2: where the run is sent ("anthropic" | "openai"), fixed when it was asked for. nil on an older server.
+    var provider: String?
+    var model: String?
 
     init(id: String, kind: String = "summary", status: String, channelId: String, threadId: String? = nil, scope: String? = nil,
-         days: Int? = nil, output: String? = nil, error: String? = nil, omittedCount: Int = 0, createdAt: String = "", finishedAt: String? = nil) {
+         days: Int? = nil, output: String? = nil, error: String? = nil, omittedCount: Int = 0, createdAt: String = "", finishedAt: String? = nil,
+         provider: String? = nil, model: String? = nil) {
         self.id = id
         self.kind = kind
         self.status = status
@@ -91,10 +95,12 @@ struct AiRunOut: Decodable, Equatable {
         self.omittedCount = omittedCount
         self.createdAt = createdAt
         self.finishedAt = finishedAt
+        self.provider = provider
+        self.model = model
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, status, channelId, threadId, scope, days, output, error, omittedCount, createdAt, finishedAt
+        case id, kind, status, channelId, threadId, scope, days, output, error, omittedCount, createdAt, finishedAt, provider, model
     }
 
     init(from decoder: Decoder) throws {
@@ -111,9 +117,41 @@ struct AiRunOut: Decodable, Equatable {
         omittedCount = (try? c.decodeIfPresent(Int.self, forKey: .omittedCount)) ?? 0
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
         finishedAt = try c.decodeIfPresent(String.self, forKey: .finishedAt)
+        provider = try? c.decodeIfPresent(String.self, forKey: .provider)
+        model = try? c.decodeIfPresent(String.self, forKey: .model)
     }
 
     var isFinished: Bool { status == "done" || status == "failed" }
+}
+
+/// GET /ai/summaries/target?channel_id= (review v0.1.18 #2, docs/AI.md §5): where a summary of this conversation would
+/// go, shown under the 「要約」 choices. `reason` (ai_unavailable / ai_private_not_allowed / ai_budget_exceeded) when it
+/// cannot be asked for now. Lenient: a missing field is nil (and `available` true, so nothing is disabled by mistake).
+struct AiSummaryTargetOut: Decodable, Equatable {
+    var available: Bool
+    var provider: String?
+    var model: String?
+    var agentName: String?
+    var reason: String?
+
+    init(available: Bool, provider: String? = nil, model: String? = nil, agentName: String? = nil, reason: String? = nil) {
+        self.available = available
+        self.provider = provider
+        self.model = model
+        self.agentName = agentName
+        self.reason = reason
+    }
+
+    enum CodingKeys: String, CodingKey { case available, provider, model, agentName, reason }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        available = (try? c.decodeIfPresent(Bool.self, forKey: .available)) ?? true
+        provider = try? c.decodeIfPresent(String.self, forKey: .provider)
+        model = try? c.decodeIfPresent(String.self, forKey: .model)
+        agentName = try? c.decodeIfPresent(String.self, forKey: .agentName)
+        reason = try? c.decodeIfPresent(String.self, forKey: .reason)
+    }
 }
 
 /// What to summarize (POST /ai/summaries).

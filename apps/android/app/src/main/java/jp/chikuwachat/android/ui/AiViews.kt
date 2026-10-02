@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -31,6 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.AiAgentPublic
+import jp.chikuwachat.android.api.AiRunOut
+import jp.chikuwachat.android.api.AiSummaryTargetOut
+import jp.chikuwachat.android.api.ErrorMessages
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.AiSummaryPhase
 import jp.chikuwachat.android.sync.AiSummaryRequest
@@ -79,6 +83,35 @@ object AiTexts {
     }
 
     const val PRIVATE_NOTE = "要約はあなたにだけ表示されます"
+
+    private fun providerLabel(provider: String): String = when (provider) {
+        "openai" -> "OpenAI"
+        "anthropic" -> "Anthropic"
+        else -> provider
+    }
+
+    /**
+     * Review v0.1.18 #2: the line under the 「要約」 choices — 「要約は <bot> (<provider>) に送られます」, or the reason a
+     * summary cannot be asked for now (the shared error texts). Null: nothing to say (no target, an older server).
+     */
+    fun targetLine(target: AiSummaryTargetOut?): String? {
+        target ?: return null
+        if (!target.available) return target.reason?.let { ErrorMessages.byCode[it] } ?: "今は要約できません"
+        val provider = target.provider?.takeIf { it.isNotBlank() } ?: return null
+        val name = target.agentName?.takeIf { it.isNotBlank() }
+        return if (name != null) "要約は $name (${providerLabel(provider)}) に送られます" else "要約は ${providerLabel(provider)} に送られます"
+    }
+
+    /** The choices are disabled while the server says no; an unknown target (an older server) leaves them as before. */
+    fun choicesDisabled(target: AiSummaryTargetOut?): Boolean = target?.available == false
+
+    /** The summary sheet's caption: the provider and model the run actually used, e.g. 「OpenAI · gpt-6.1-sol」. */
+    fun runCaption(run: AiRunOut?): String? {
+        run ?: return null
+        val model = run.model?.takeIf { it.isNotBlank() }
+        val provider = run.provider?.takeIf { it.isNotBlank() } ?: model?.let { if (it.startsWith("gpt-")) "openai" else "anthropic" } ?: return null
+        return if (model != null) "${providerLabel(provider)} · $model" else providerLabel(provider)
+    }
 }
 
 /** 「AI」 beside an AI bot's name (instead of 「BOT」) and on its mention candidate. */
@@ -114,6 +147,10 @@ fun AiSheets(controller: AppController) {
 @Composable
 private fun AiSummaryChooser(controller: AppController, channelId: String) {
     val sheet = rememberModalBottomSheetState()
+    // Review v0.1.18 #2: where the summary would go, read as the choices open.
+    LaunchedEffect(channelId) { controller.loadSummaryTarget(channelId) }
+    val target = controller.aiSummaryTargets[channelId]
+    val disabled = AiTexts.choicesDisabled(target)
     ModalBottomSheet(onDismissRequest = { controller.aiSummaryChooser = null }, sheetState = sheet) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) {
             Text("要約", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
@@ -121,12 +158,24 @@ private fun AiSummaryChooser(controller: AppController, channelId: String) {
                 Text(
                     label,
                     style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable { controller.requestSummary(request) }.padding(horizontal = 24.dp, vertical = 14.dp),
+                    color = if (disabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(enabled = !disabled) { controller.requestSummary(request) }.padding(horizontal = 24.dp, vertical = 14.dp),
                 )
             }
+            AiSummaryTargetLine(target, Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
             Text(AiTexts.PRIVATE_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         }
     }
+}
+
+/** Review v0.1.18 #2: the line under the 「要約」 choices (AiTexts.targetLine); nothing without a target. */
+@Composable
+fun AiSummaryTargetLine(target: AiSummaryTargetOut?, modifier: Modifier = Modifier) {
+    val line = AiTexts.targetLine(target) ?: return
+    Text(
+        line, style = MaterialTheme.typography.bodySmall, modifier = modifier,
+        color = if (target?.available == false) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -176,6 +225,9 @@ private fun AiSummarySheet(controller: AppController, state: AiSummaryState) {
                 }
             }
             Text(AiTexts.PRIVATE_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            AiTexts.runCaption(state.run)?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+            }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
                 if (state.phase == AiSummaryPhase.FAILED) TextButton(onClick = { controller.retrySummary() }) { Text("もう一度") }
                 TextButton(onClick = ::close) { Text("閉じる") }

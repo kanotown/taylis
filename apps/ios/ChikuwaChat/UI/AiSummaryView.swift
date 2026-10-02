@@ -1,19 +1,38 @@
 import SwiftUI
 
-/// M66 (docs/AI.md §6): the channel's 「要約」 choices (the header's ⋯ and the channel details).
+/// M66 (docs/AI.md §6): the channel's 「要約」 choices (the header's ⋯ and the channel details). Review v0.1.18 #2: under
+/// them one line from GET /ai/summaries/target — where the summary goes, or why it cannot be asked for now (the choices
+/// then disabled). No target known (an older server): the choices as before, no line.
 struct AiSummaryMenu: View {
     let channelId: String
+    var target: AiSummaryTargetOut?
     let summarize: (AiSummaryRequest) -> Void
 
     var body: some View {
         Menu {
-            Button("未読を要約", systemImage: "envelope.badge") { summarize(AiSummaryRequest(channelId: channelId, scope: .unread)) }
-            Button("直近 1 日を要約", systemImage: "clock") { summarize(AiSummaryRequest(channelId: channelId, scope: .recent(days: 1))) }
-            Button("直近 7 日を要約", systemImage: "calendar") { summarize(AiSummaryRequest(channelId: channelId, scope: .recent(days: 7))) }
+            let disabled = AiRules.choicesDisabled(target)
+            Group {
+                Button("未読を要約", systemImage: "envelope.badge") { summarize(AiSummaryRequest(channelId: channelId, scope: .unread)) }
+                Button("直近 1 日を要約", systemImage: "clock") { summarize(AiSummaryRequest(channelId: channelId, scope: .recent(days: 1))) }
+                Button("直近 7 日を要約", systemImage: "calendar") { summarize(AiSummaryRequest(channelId: channelId, scope: .recent(days: 7))) }
+            }
+            .disabled(disabled)
+            AiSummaryTargetLine(target: target)
         } label: {
             Label("要約", systemImage: "sparkles")
         }
         .accessibilityLabel("AI で要約")
+    }
+}
+
+/// Review v0.1.18 #2: the line under the 「要約」 choices (AiRules.targetLine); nothing without a target.
+struct AiSummaryTargetLine: View {
+    let target: AiSummaryTargetOut?
+
+    var body: some View {
+        if let target, let line = AiRules.targetLine(target) {
+            Text(line).font(.footnote).foregroundStyle(target.available ? Color.secondary : Color.red)
+        }
     }
 }
 
@@ -27,6 +46,15 @@ struct AiBadge: View {
 }
 
 extension View {
+    /// Review v0.1.18 #2: reads where a summary of the conversation would go while its 「要約」 choices can show (again on
+    /// every reconnect), for the line under them.
+    func loadsSummaryTarget(_ controller: AppController, channelId: String) -> some View {
+        task(id: "\(channelId):\(controller.canSummarize(channelId)):\(controller.engine?.status.rawValue ?? "")") {
+            guard controller.canSummarize(channelId) else { return }
+            await controller.aiHub?.loadTarget(channelId)
+        }
+    }
+
     /// The summary sheet over this view while `request` is set; closing it forgets the run (docs/AI.md §2.3: only
     /// the one who asked sees it, and nothing is posted).
     func aiSummarySheet(_ controller: AppController, request: Binding<AiSummaryRequest?>) -> some View {
@@ -66,6 +94,10 @@ struct AiSummarySheet: View {
                     content
                     Text("要約はあなたにだけ表示されます。会話には投稿されません。")
                         .font(.caption).foregroundStyle(.secondary)
+                    if let caption = session.run.flatMap(AiRules.runCaption) {
+                        Text(caption).font(.caption2).foregroundStyle(.secondary)
+                            .accessibilityLabel("送り先: \(caption)")
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
@@ -129,6 +161,7 @@ struct AiChannelSection: View {
     /// AiRules.notice (nil: no AI bot here).
     let notice: String?
     let canSummarize: Bool
+    var target: AiSummaryTargetOut?
     let summarize: (AiSummaryRequest) -> Void
 
     var body: some View {
@@ -137,7 +170,7 @@ struct AiChannelSection: View {
                 if let notice {
                     Label(notice, systemImage: "sparkles").font(.footnote).foregroundStyle(.secondary)
                 }
-                if canSummarize { AiSummaryMenu(channelId: channelId, summarize: summarize) }
+                if canSummarize { AiSummaryMenu(channelId: channelId, target: target, summarize: summarize) }
             }
         }
     }
