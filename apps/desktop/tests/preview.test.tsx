@@ -8,7 +8,7 @@ import type { UserMe } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { type SyncApi, SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
-import { PreviewJoinBar, PreviewThreadPane, PreviewTimeline } from "../src/ui/ChannelPreview";
+import { ARCHIVED_PREVIEW_NOTE, PreviewJoinBar, PreviewThreadPane, PreviewTimeline, previewCanJoin } from "../src/ui/ChannelPreview";
 import { LONG_PRESS_MS } from "../src/ui/MessageActionsSheet";
 import { ThreadPane } from "../src/ui/ThreadPane";
 import { FakeServer, MemoryPersistence } from "./fakeServer";
@@ -210,6 +210,19 @@ describe("the preview on screen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "#lab に参加する" }));
     expect(w.onJoin).toHaveBeenCalledWith(w.channel.id);
+  });
+
+  it("offers no 「参加する」 for an archived channel (the server refuses: 409 channel_archived), only a note", async () => {
+    expect(previewCanJoin({ archived: false })).toBe(true);
+    expect(previewCanJoin({ archived: true })).toBe(false);
+    const w = await world();
+    const channel = { ...w.store.getChannel(w.channel.id)!, archived: true };
+    const onJoin = vi.fn(async () => true);
+    const controller = { engine: w.engine } as unknown as AppController;
+    render(<PreviewJoinBar controller={controller} channel={channel} onJoin={onJoin} />);
+    expect(screen.getByText(ARCHIVED_PREVIEW_NOTE)).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByText(/に参加する/)).toBeNull();
   });
 
   it("offers no long-press sheet on a phone; a tap opens the thread, read-only", async () => {

@@ -142,14 +142,22 @@ export function PreviewTimeline({ controller, channel, onOpenThread }: { control
   );
 }
 
+/** What the preview's bar says in place of the button when the channel is archived (joining it is refused: 409 channel_archived). */
+export const ARCHIVED_PREVIEW_NOTE = "アーカイブされたチャンネルです (読むだけ)";
+
+/** Whether the preview offers 「#name に参加する」: not for an archived channel (e.g. an archived times found by `is:times`). */
+export function previewCanJoin(channel: Pick<ChannelState, "archived">): boolean {
+  return !channel.archived;
+}
+
 /** In place of the input (§7.6.1): 「#name に参加する」; the conversation then goes on as one of mine. */
 export function PreviewJoinBar({ controller, channel, onJoin }: { controller: AppController; channel: ChannelState; onJoin: (channelId: string) => Promise<unknown> }) {
   const [busy, setBusy] = useState(false);
   const name = `#${channel.name ?? ""}`;
   return (
     <div className="flex shrink-0 flex-col items-center gap-2 border-t border-line bg-panel/50 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 text-center">
-      {channel.archived ? (
-        <span className="text-sm text-muted">アーカイブされたチャンネルには参加できません</span>
+      {!previewCanJoin(channel) ? (
+        <span className="text-sm text-muted">{ARCHIVED_PREVIEW_NOTE}</span>
       ) : (
         <>
           <span className="text-xs text-muted">{name} をプレビューしています{channel.member_count ? ` · メンバー ${channel.member_count} 人` : ""}</span>

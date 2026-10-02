@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// The preview's join bar (M27): an archived channel offers no 「参加する」 (the server answers 409 channel_archived).
+enum PreviewJoin {
+    /// In place of the button when the channel is archived.
+    static let archivedNote = "アーカイブされたチャンネルです (読むだけ)"
+
+    static func canJoin(_ channel: ChannelOut) -> Bool { !channel.archived }
+}
+
 /// A public channel read before joining (M27, SYNC_PROTOCOL.md §7.6.1; Slack): its messages as they are when opened,
 /// read-only, and a bar to join. Only in memory: no cursor, no read position, nothing on disk. Events are for members,
 /// so nothing new arrives while it is open; joining turns it into the channel itself (MainView shows ChannelView then).
@@ -102,15 +110,19 @@ struct ChannelPreviewView: View {
 
     private var joinBar: some View {
         VStack(spacing: 6) {
-            Text("プレビュー中です。参加すると投稿やリアクションができます。").font(.footnote).foregroundStyle(.secondary)
-            Button {
-                Task { await join() }
-            } label: {
-                Text(joining ? "参加しています…" : "#\(channel?.channel.name ?? "") に参加する").frame(maxWidth: .infinity)
+            if let channel, !PreviewJoin.canJoin(channel.channel) {
+                Text(PreviewJoin.archivedNote).font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+            } else {
+                Text("プレビュー中です。参加すると投稿やリアクションができます。").font(.footnote).foregroundStyle(.secondary)
+                Button {
+                    Task { await join() }
+                } label: {
+                    Text(joining ? "参加しています…" : "#\(channel?.channel.name ?? "") に参加する").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(joining || channel == nil)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(joining || channel == nil)
         }
         .padding(12)
         .background(.bar)

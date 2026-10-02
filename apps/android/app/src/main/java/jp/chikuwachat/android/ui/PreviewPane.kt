@@ -184,13 +184,22 @@ private fun PreviewLoading(failed: Boolean, onRetry: () -> Unit) {
     }
 }
 
+/** The preview's join bar, apart from Compose so it can be tested. */
+object PreviewJoin {
+    /** In place of the button when the channel is archived. */
+    const val ARCHIVED_NOTE = "アーカイブされたチャンネルです (読むだけ)"
+
+    /** Whether 「#name に参加する」 is offered: not for an archived channel (the server refuses: 409 channel_archived). */
+    fun canJoin(channel: jp.chikuwachat.android.api.ChannelOut): Boolean = !channel.archived
+}
+
 /** Where the composer would be: 「#name に参加する」, after which the conversation carries on as a joined one. */
 @Composable
 private fun JoinBar(controller: AppController, channel: ChannelState) {
     var joining by remember(channel.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (channel.channel.archived) {
-            Text("このチャンネルはアーカイブされています", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        if (!PreviewJoin.canJoin(channel.channel)) {
+            Text(PreviewJoin.ARCHIVED_NOTE, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
         } else {
             Text("参加すると投稿やリアクションができます", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(
