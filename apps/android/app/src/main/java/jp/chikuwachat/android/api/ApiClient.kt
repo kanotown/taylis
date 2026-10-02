@@ -776,6 +776,15 @@ class ApiClient(
     override suspend fun summaryTarget(channelId: String): AiSummaryTargetOut =
         request("GET", "/api/v1/ai/summaries/target?channel_id=$channelId")
 
+    // M70 「AI に聞く」 (docs/AI.md §13.5)
+    override suspend fun createAsk(body: AiAskIn): AiRunOut =
+        request("POST", "/api/v1/ai/ask", Codec.snake.encodeToJsonElement(AiAskIn.serializer(), body))
+
+    override suspend fun askTarget(q: String, channelId: String?): AiAskTargetOut =
+        request("GET", "/api/v1/ai/ask/target?q=" + Enc.encode(q, "UTF-8").replace("+", "%20") + (channelId?.let { "&channel_id=" + Enc.encode(it, "UTF-8") } ?: ""))
+
+    override suspend fun aiRuns(kind: String): List<AiRunOut> = request("GET", "/api/v1/ai/runs?kind=" + Enc.encode(kind, "UTF-8"))
+
     // --- acknowledgements (M15e) ----------------------------------------------------------------
 
     suspend fun acknowledge(messageId: String, present: Boolean): MessageOut =

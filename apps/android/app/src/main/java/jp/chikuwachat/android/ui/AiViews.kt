@@ -32,9 +32,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.AiAgentPublic
+import jp.chikuwachat.android.api.AiAskTargetOut
 import jp.chikuwachat.android.api.AiRunOut
+import jp.chikuwachat.android.api.AiSourceOut
 import jp.chikuwachat.android.api.AiSummaryTargetOut
 import jp.chikuwachat.android.api.ErrorMessages
+import jp.chikuwachat.android.sync.AiAskState
+import jp.chikuwachat.android.sync.AiHub
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.AiSummaryPhase
 import jp.chikuwachat.android.sync.AiSummaryRequest
@@ -112,6 +116,68 @@ object AiTexts {
         val provider = run.provider?.takeIf { it.isNotBlank() } ?: model?.let { if (it.startsWith("gpt-")) "openai" else "anthropic" } ?: return null
         return if (model != null) "${providerLabel(provider)} · $model" else providerLabel(provider)
     }
+
+    // --- 「AI に聞く」 (M71, docs/AI.md §13) ----------------------------------------------------------------------
+
+    const val ASK_NOTE = "この答えはあなたにだけ表示されます。AI が書いた答えです。間違いがあるかもしれません。"
+
+    /** The line beside 「AI に聞く」: where the question goes, or why it cannot be asked (null: nothing to say). */
+    fun askTargetLine(target: AiAskTargetOut?): String? {
+        target ?: return null
+        if (!target.available) return when (val reason = target.reason.orEmpty()) {
+            "ai_private_not_allowed" -> "この会話のボットは非公開の会話を読めないため、ここでは聞けません"
+            "ai_budget_exceeded" -> "今月の AI の利用上限に達しました"
+            else -> ErrorMessages.byCode[reason] ?: AiHub.texts[reason] ?: "今は AI に聞けません"
+        }
+        val provider = target.provider?.takeIf { it.isNotBlank() } ?: return null
+        val name = target.agentName?.takeIf { it.isNotBlank() }
+        val where = if (name != null) "$name (${providerLabel(provider)})" else providerLabel(provider)
+        return "質問は $where に送られます"
+    }
+
+    /** Too long for the server (1〜200 字, counted in characters): not asked (the entry stays hidden, as on the web). */
+    fun askTooLong(question: String): Boolean = question.codePointCount(0, question.length) > Search.ASK_MAX
+
+    /** While the question waits: the server searches (asked, queued), then the model writes. */
+    fun askProgress(state: AiAskState): String? = when (state.phase) {
+        AiSummaryPhase.REQUESTING -> "メッセージを探しています…"
+        AiSummaryPhase.RUNNING -> if (state.run?.status == "running") "答えを書いています…" else "メッセージを探しています…"
+        else -> null
+    }
+
+    /** §13.2 5: the private conversations' hits left out for a bot without allow_private. */
+    fun askOmittedNote(count: Int): String? = if (count > 0) "非公開の会話の $count 件は、このボットに送れないため除きました" else null
+
+    /** An answer's citations: [3], [1][4], [1, 4], [1、4] (not a Markdown link's label already). */
+    private val CITATION = Regex("""\[(\d+(?:\s*[,、]\s*\d+)*)](?!\()""")
+    private val CITATION_SPLIT = Regex("""\s*[,、]\s*""")
+
+    /**
+     * §13.3: the answer's citations as message links on this server (`<base>/m/<id>`, which the message body opens in
+     * place), one link per number; drawn as 「[n]」 (MessageBody's `citations`). A group with a number that is not among
+     * the sources stays as it was.
+     */
+    fun linkCitations(output: String, sources: List<AiSourceOut>, baseUrl: String): String {
+        val byNumber = sources.filter { it.messageId.isNotBlank() }.associateBy { it.n }
+        if (byNumber.isEmpty()) return output
+        val base = baseUrl.trimEnd('/')
+        return CITATION.replace(output) { match ->
+            val numbers = match.groupValues[1].split(CITATION_SPLIT).map { it.toIntOrNull() }
+            if (numbers.any { it == null || it !in byNumber }) match.value
+            else numbers.joinToString(" ") { n -> "[$n]($base/m/${byNumber.getValue(n!!).messageId})" }
+        }
+    }
+
+    /** A past question that has no answer to show (yet): said beside its date in the history. */
+    fun historyStatus(run: AiRunOut): String? = when (run.status) {
+        "done" -> null
+        "failed" -> "失敗"
+        else -> "作成中"
+    }
+
+    /** A cited message's line: 「送り手 · 会話 · スレッド · 日時」. */
+    fun sourceLine(sender: String, conversation: String, reply: Boolean, time: String): String =
+        listOfNotNull(sender, conversation, "スレッド".takeIf { reply }, time.takeIf { it.isNotBlank() }).joinToString(" · ")
 }
 
 /** 「AI」 beside an AI bot's name (instead of 「BOT」) and on its mention candidate. */

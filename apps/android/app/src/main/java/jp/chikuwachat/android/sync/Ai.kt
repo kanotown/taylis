@@ -1,6 +1,8 @@
 package jp.chikuwachat.android.sync
 
 import android.util.Log
+import jp.chikuwachat.android.api.AiAskIn
+import jp.chikuwachat.android.api.AiAskTargetOut
 import jp.chikuwachat.android.api.AiRunOut
 import jp.chikuwachat.android.api.AiRunUpdated
 import jp.chikuwachat.android.api.AiStatusOut
@@ -23,7 +25,34 @@ interface AiApi {
     suspend fun aiRun(runId: String): AiRunOut
     /** Review v0.1.18 #2: GET /ai/summaries/target (404 on an older server). */
     suspend fun summaryTarget(channelId: String): AiSummaryTargetOut
+    /** M70 「AI に聞く」 (docs/AI.md §13.5): POST /ai/ask. A fake without it answers like a server before M70 (404). */
+    suspend fun createAsk(body: AiAskIn): AiRunOut = throw ApiException.Api(404, "http_404", "no /ai/ask before M70")
+    /** GET /ai/ask/target?q=&channel_id= (404 on a server before M70: no 「AI に聞く」). */
+    suspend fun askTarget(q: String, channelId: String?): AiAskTargetOut = throw ApiException.Api(404, "http_404", "no /ai/ask before M70")
+    /** GET /ai/runs?kind= (my recent runs of that kind, newest first). */
+    suspend fun aiRuns(kind: String): List<AiRunOut> = throw ApiException.Api(404, "http_404", "no /ai/runs before M70")
 }
+
+/** M70 (docs/AI.md §13.6): the question followed in the 「AI に聞く」 sheet: asked, then the run, or the refusal in words. */
+data class AiAskState(val question: String, val channelId: String?, val run: AiRunOut? = null, val error: String? = null) {
+    val phase: AiSummaryPhase get() = when {
+        error != null -> AiSummaryPhase.FAILED
+        run == null -> AiSummaryPhase.REQUESTING
+        run.status == "done" -> AiSummaryPhase.DONE
+        run.status == "failed" -> AiSummaryPhase.FAILED
+        else -> AiSummaryPhase.RUNNING
+    }
+
+    /** What the sheet says when it failed: the refusal, else the run's own error. */
+    val failureText: String? get() = when {
+        error != null -> error
+        run?.status == "failed" -> "答えられませんでした" + (run.error?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
+        else -> null
+    }
+}
+
+/** M70: where one question (with its conversation) would go; `target` null: unknown (a server before M70, a failure). */
+data class AiAskTargetRead(val question: String, val channelId: String?, val target: AiAskTargetOut?)
 
 /** What to summarize: `scope` "unread" / "recent" (with `days` 1 or 7) / "thread" (with `threadId`, the parent). */
 data class AiSummaryRequest(val channelId: String, val scope: String, val threadId: String? = null, val days: Int? = null)
@@ -71,9 +100,16 @@ class AiHub(
      */
     var targets: Map<String, AiSummaryTargetOut> = emptyMap()
         private set
+    /** M70: the question on screen (the 「AI に聞く」 sheet), apart from the summary; null when none. */
+    var ask: AiAskState? = null
+        private set
+    /** M70: where the search's current question would go (the last one read). */
+    var askTarget: AiAskTargetRead? = null
+        private set
     /** Runs seen in events, so one that arrives before its POST answer is not lost (the latest few only). */
     private val seen = LinkedHashMap<String, AiRunOut>()
     private var ticket = 0
+    private var askTicket = 0
     private val _version = MutableStateFlow(0)
     /** Bumped by every change: the screens read [status] and [summary] again. */
     val version: StateFlow<Int> = _version
@@ -181,6 +217,101 @@ class AiHub(
         }
     }
 
+    // --- 「AI に聞く」 (M70, docs/AI.md §13): one question at a time, followed like a summary ---------------------
+
+    /**
+     * GET /ai/ask/target for the search's question. Any failure forgets it: a server before M70 (404), a question the
+     * server will not take (422), the network — the 「AI に聞く」 entry then stays hidden, as on the web.
+     */
+    suspend fun loadAskTarget(question: String, channelId: String?) {
+        val api = api ?: return
+        val target = try {
+            api.askTarget(question, channelId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!(e is ApiException.Api && (e.status == 404 || e.status == 422))) Log.w("AiHub", "could not read the ask target", e)
+            null
+        }
+        askTarget = AiAskTargetRead(question, channelId, target)
+        changed()
+    }
+
+    /** The target read for exactly this question and conversation; null while unknown. */
+    fun askTargetFor(question: String, channelId: String?): AiAskTargetOut? =
+        askTarget?.takeIf { it.question == question && it.channelId == channelId }?.target
+
+    /** 「AI に聞く」: replaces the question followed before; the run then moves on through ai.run_updated. */
+    suspend fun startAsk(question: String, channelId: String?) {
+        val api = api ?: return
+        val mine = ++askTicket
+        ask = AiAskState(question, channelId)
+        changed()
+        try {
+            val run = api.createAsk(AiAskIn(q = question, tzOffsetMinutes = tzOffsetMinutes(), channelId = channelId))
+            if (askTicket != mine || ask == null) return
+            ask = AiAskState(question, channelId, advance(seen[run.id], run))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (askTicket != mine || ask == null) return
+            ask = AiAskState(question, channelId, error = describe(e))
+            // Turned off, out of budget or not for this conversation since the target was read: read both again.
+            if (e is ApiException.Api && e.code in REREAD_CODES) scope.launch { loadStatus(); loadAskTarget(question, channelId) }
+        }
+        changed()
+    }
+
+    /** 「もう一度」 after a failure: the same question as a new POST. */
+    suspend fun retryAsk() {
+        ask?.let { startAsk(it.question, it.channelId) }
+    }
+
+    /** A past question from the history: shown, and read again while it is not finished. */
+    fun showAskRun(run: AiRunOut) {
+        askTicket += 1
+        ask = AiAskState(run.question.orEmpty(), run.channelId, advance(seen[run.id], run))
+        changed()
+        if (!run.finished) scope.launch { refreshAsk() }
+    }
+
+    fun closeAsk() {
+        if (ask == null) return
+        askTicket += 1 // an answer still on its way is dropped
+        ask = null
+        changed()
+    }
+
+    /** Reads the open question's run again (after reconnecting: an ai.run_updated may have been missed). */
+    suspend fun refreshAsk() {
+        val api = api ?: return
+        val run = ask?.run ?: return
+        if (run.finished) return
+        val mine = askTicket
+        try {
+            val now = api.aiRun(run.id)
+            if (askTicket != mine || ask?.run?.id != now.id) return
+            put(now)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("AiHub", "could not read the question again", e)
+        }
+    }
+
+    /** My recent questions (GET /ai/runs?kind=ask), newest first; null when they cannot be read. */
+    suspend fun askHistory(): List<AiRunOut>? {
+        val api = api ?: return null
+        return try {
+            api.aiRuns("ask").filter { it.kind == "ask" }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("AiHub", "could not read the questions", e)
+            null
+        }
+    }
+
     // --- events ---------------------------------------------------------------------------------------
 
     fun applyEvent(event: String, data: JsonObject) {
@@ -195,6 +326,14 @@ class AiHub(
         seen.remove(run.id)
         seen[run.id] = kept
         while (seen.size > SEEN_MAX) seen.remove(seen.keys.first())
+        // M70: an "ask" run belongs to the question sheet, the others (summaries) to the summary sheet.
+        if (run.kind == "ask") {
+            val open = ask ?: return
+            if (open.run?.id != run.id || open.error != null) return
+            ask = open.copy(run = advance(open.run, kept))
+            changed()
+            return
+        }
         val open = summary ?: return
         if (open.run?.id != run.id || open.error != null) return
         summary = open.copy(run = advance(open.run, kept))
@@ -208,19 +347,26 @@ class AiHub(
         if (api == null) return
         scope.launch { loadStatus() }
         if (summary?.run?.finished == false) scope.launch { refreshRun() }
+        if (ask?.run?.finished == false) scope.launch { refreshAsk() } // M70: the open question too
     }
 
     fun stop() {
         status = null
         summary = null
         targets = emptyMap()
+        ask = null
+        askTarget = null
         seen.clear()
         ticket += 1
+        askTicket += 1
         changed()
     }
 
     companion object {
         private const val SEEN_MAX = 20
+
+        /** Refusals after which the status (and the ask target) is read again: the entry points follow the server. */
+        private val REREAD_CODES = setOf("ai_unavailable", "ai_budget_exceeded", "ai_private_not_allowed")
 
         /** A server from before M65 has no /ai routes: any 404 there means no AI (docs/AI.md §5). */
         fun serverLacksAi(e: Throwable): Boolean = e is ApiException.Api && e.status == 404

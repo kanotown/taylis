@@ -153,6 +153,41 @@ object Search {
     fun canvasEmpty(params: SearchParams): Boolean =
         params.q.isBlank() && params.fromUserId == null && params.channelId == null && params.date == null
 
+    /**
+     * M71 (docs/AI.md §13.1, the desktop's askQuery): the question for 「AI に聞く」: the words as typed, and the filters
+     * picked from the chips as the modifiers the server reads (`from:@name`, `after:` / `before:` in the viewer's days,
+     * `has:`, `is:thread`, `is:times`). The conversation goes apart, as `channel_id`.
+     */
+    fun askQuery(params: SearchParams, usernameOf: (String) -> String?, today: LocalDate = LocalDate.now()): String {
+        val parts = arrayListOf(params.q.trim())
+        params.fromUserId?.let(usernameOf)?.takeIf { it.isNotBlank() }?.let { parts.add("from:@$it") }
+        val date = params.date
+        if (date != null) {
+            // `after:D` is from the day after D, `before:D` until D (exclusive), as in the search box.
+            var first: LocalDate? = null
+            var last: LocalDate? = null
+            if (date.preset != null) {
+                val back = DAYS_BACK[date.preset]
+                if (back != null) {
+                    first = today.minusDays(back)
+                    if (date.preset == "yesterday") last = today.minusDays(1)
+                }
+            } else {
+                first = day(date.from)
+                last = day(date.to)
+            }
+            first?.let { parts.add("after:" + it.minusDays(1)) }
+            last?.let { parts.add("before:" + it.plusDays(1)) }
+        }
+        params.has.filter { it in HAS_FLAGS }.forEach { parts.add("has:$it") }
+        if (params.isThread) parts.add("is:thread")
+        if (params.isTimes) parts.add("is:times")
+        return parts.filter { it.isNotEmpty() }.joinToString(" ")
+    }
+
+    /** POST /ai/ask takes 1 to 200 characters (the search box's limit). */
+    const val ASK_MAX = 200
+
     /** 「123 件」, or 「1,000 件以上」 when the server stopped counting. */
     fun totalLabel(total: Int, capped: Boolean): String = String.format(Locale.JAPAN, "%,d 件", total) + if (capped) "以上" else ""
 

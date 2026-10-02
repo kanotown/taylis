@@ -16,7 +16,9 @@ import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.LastMessageOut
 import jp.chikuwachat.android.sync.ActivityApi
 import jp.chikuwachat.android.sync.AiApi
+import jp.chikuwachat.android.api.AiAskIn
 import jp.chikuwachat.android.api.AiRunOut
+import jp.chikuwachat.android.api.AiSourceOut
 import jp.chikuwachat.android.api.AiRunUpdated
 import jp.chikuwachat.android.api.AiStatusOut
 import jp.chikuwachat.android.api.AiSummaryIn
@@ -162,6 +164,44 @@ class FakeServer {
         override suspend fun summaryTarget(channelId: String): AiSummaryTargetOut {
             maybeFail()
             return this@FakeServer.aiSummaryTarget ?: throw ApiException.Api(404, "http_404", "no such route before review v0.1.18")
+        }
+
+        // --- M71 「AI に聞く」 (docs/AI.md §13.5) ---
+        /** The POST /ai/ask bodies and the GET /ai/ask/target questions received. */
+        val askRequests = ArrayList<AiAskIn>()
+        val askTargetCalls = ArrayList<Pair<String, String?>>()
+
+        override suspend fun createAsk(body: AiAskIn): AiRunOut {
+            maybeFail()
+            val status = this@FakeServer.aiStatus ?: throw ApiException.Api(404, "not_found", "no AI before M65")
+            if (this@FakeServer.aiAskTarget == null) throw ApiException.Api(404, "http_404", "no /ai/ask before M70")
+            askRequests.add(body)
+            aiAskRefusals.removeFirstOrNull()?.let { throw it }
+            if (body.q.isBlank()) throw ApiException.Api(400, "validation_error", "empty question")
+            body.channelId?.let { id ->
+                val record = channels[id]
+                if (record == null || userId !in record.members) throw ApiException.Api(404, "channel_not_found", "not found")
+            }
+            if (!status.available) throw ApiException.Api(409, "ai_unavailable", "AI is not available")
+            if (!status.summaryAvailable) throw ApiException.Api(429, "ai_budget_exceeded", "budget exceeded")
+            val run = AiRunOut(
+                id = nextId(), kind = "ask", status = "pending", channelId = body.channelId, question = body.q, sources = emptyList(),
+                createdAt = now(), provider = "anthropic", model = "claude-opus-5-5",
+            )
+            aiRuns[run.id] = userId to run
+            return run
+        }
+
+        override suspend fun askTarget(q: String, channelId: String?): AiSummaryTargetOut {
+            maybeFail()
+            askTargetCalls.add(q to channelId)
+            return this@FakeServer.aiAskTarget ?: throw ApiException.Api(404, "http_404", "no /ai/ask/target before M70")
+        }
+
+        override suspend fun aiRuns(kind: String): List<AiRunOut> {
+            maybeFail()
+            if (this@FakeServer.aiAskTarget == null) throw ApiException.Api(404, "http_404", "no /ai/runs before M70")
+            return aiRuns.values.filter { (owner, run) -> owner == userId && run.kind == kind }.map { it.second }.reversed().take(20)
         }
 
         override suspend fun aiRun(runId: String): AiRunOut {
@@ -949,10 +989,22 @@ class FakeServer {
     /** Refusals for the next POST /ai/summaries calls, in order (after the request is recorded). */
     val aiSummaryRefusals = ArrayDeque<Throwable>()
 
+    /** M71: GET /ai/ask/target's answer; null is a server before M70 (POST /ai/ask, the target and GET /ai/runs answer 404). */
+    var aiAskTarget: AiSummaryTargetOut? = null
+    /** Refusals for the next POST /ai/ask calls, in order (after the request is recorded). */
+    val aiAskRefusals = ArrayDeque<Throwable>()
+
     /** The worker moved a run on: stored, and ai.run_updated to the one who asked (unless `silent`: the event lost). */
-    fun advanceAiRun(runId: String, status: String, output: String? = null, error: String? = null, omittedCount: Int = 0, silent: Boolean = false): AiRunOut {
+    fun advanceAiRun(
+        runId: String, status: String, output: String? = null, error: String? = null, omittedCount: Int = 0, silent: Boolean = false,
+        /** M71: a done ask run's cited messages. */
+        sources: List<AiSourceOut>? = null,
+    ): AiRunOut {
         val (owner, run) = aiRuns.getValue(runId)
-        val next = run.copy(status = status, output = output, error = error, omittedCount = omittedCount, finishedAt = if (status == "done" || status == "failed") now() else null)
+        val next = run.copy(
+            status = status, output = output, error = error, omittedCount = omittedCount, finishedAt = if (status == "done" || status == "failed") now() else null,
+            sources = sources ?: run.sources,
+        )
         aiRuns[runId] = owner to next
         if (!silent) emit(setOf(owner), event("ai.run_updated", null, null, Codec.snake.encodeToJsonElement(AiRunUpdated.serializer(), AiRunUpdated(next)) as JsonObject))
         return next

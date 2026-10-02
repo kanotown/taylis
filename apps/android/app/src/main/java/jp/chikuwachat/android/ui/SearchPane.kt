@@ -649,6 +649,8 @@ fun SearchResultsPane(
     onOpen: (MessageOut) -> Unit,
     onOpenFile: (FileItem) -> Unit,
     onOpenCanvas: (CanvasMeta) -> Unit,
+    /** M71: a message an AI answer cites (docs/AI.md §13.3), opened like a result. */
+    onOpenCited: (messageId: String, channelId: String, parentId: String?) -> Unit = { _, _, _ -> },
 ) {
     Column(Modifier.fillMaxSize()) {
         PrimaryTabRow(selectedTabIndex = tab) {
@@ -660,7 +662,7 @@ fun SearchResultsPane(
         when (tab) {
             SEARCH_TAB_FILES -> FileResults(controller, results, filesState, onLoadMoreFiles, onOpenFile)
             SEARCH_TAB_CANVASES -> CanvasResults(controller, version, params, results, onChange, canvasesState, onLoadMoreCanvases, onRetryCanvases, onOpenCanvas)
-            else -> MessageResults(controller, version, params, results, onChange, listState, onLoadMore, onRetry, onOpen)
+            else -> MessageResults(controller, version, params, results, onChange, listState, onLoadMore, onRetry, onOpen, onOpenCited)
         }
     }
 }
@@ -796,8 +798,12 @@ private fun MessageResults(
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     onOpen: (MessageOut) -> Unit,
+    onOpenCited: (messageId: String, channelId: String, parentId: String?) -> Unit,
 ) {
     val words = params.q.isNotBlank()
+    // M71: the 「AI に聞く」 history sheet (the answer sheet follows the controller's question).
+    var askHistoryOpen by remember { mutableStateOf(false) }
+    AskSheets(controller, version, askHistoryOpen, onCloseHistory = { askHistoryOpen = false }, onOpenSource = onOpenCited)
     // Endless list: the next page once the end is near (and again after it arrived, while still near). The
     // layout must already hold the rows: a stale one would ask for page 2 before page 1 is even on screen.
     LaunchedEffect(listState, results) {
@@ -826,6 +832,8 @@ private fun MessageResults(
         }
     }
     LazyColumn(Modifier.fillMaxSize(), state = listState) {
+        // M71 (docs/AI.md §13.6): always an item (empty while hidden), so its arrival never pushes the first hit's anchor.
+        item(key = "ai-ask") { AskBar(controller, version, params, onHistory = { askHistoryOpen = true }) }
         when {
             results.loaded && results.hits.isEmpty() -> item(key = "empty") {
                 EmptyResults(filtered = Search.hasFilters(params), onClear = { onChange(Search.cleared(params)) })

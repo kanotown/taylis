@@ -758,6 +758,8 @@ fun MainScreen(controller: AppController) {
                             onOpen = { message -> openFromSearch(message.id, message.channelId, message.parentId, message) },
                             onOpenFile = { item -> openFromSearch(item.messageId, item.channelId, item.parentId) },
                             onOpenCanvas = ::openCanvasFromSearch,
+                            // M71: a message the AI's answer cites opens like a result (the results stay behind it).
+                            onOpenCited = { messageId, channelId, parentId -> openFromSearch(messageId, channelId, parentId) },
                         )
                     }
                 } else if (pane is Route.Files) {
