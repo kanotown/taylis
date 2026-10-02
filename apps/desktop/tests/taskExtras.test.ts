@@ -18,6 +18,7 @@ import {
   FALLBACK_COLUMNS,
   isFallbackColumns,
   isOverdue,
+  repeatForDue,
   sortBoardColumn,
   subtaskProgress,
   taskChip,
@@ -130,6 +131,30 @@ describe("repeats and subtasks in the dialog", () => {
     expect(subtaskProgress(task("none"))).toBeNull();
     // Dropping the due date of a repeating task stops it too.
     expect(taskPatch(t, { ...draft, dueOn: "" }, "Asia/Tokyo")).toMatchObject({ due_on: null, rrule: null });
+  });
+
+  it("the weekday seeded from the old date follows a new due date; one the reader picked stays (v0.1.21 check)", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-03T10:00:00+09:00")); // a Saturday
+    try {
+      // A new task: the draft was seeded from today (Saturday), the due date picked is a Sunday.
+      const seeded = emptyExtras("").repeat!;
+      expect(seeded.weekdays).toEqual([6]);
+      const moved = repeatForDue(seeded, "", "2026-10-04")!;
+      expect(moved.weekdays).toEqual([0]);
+      expect(taskCreateBody({ title: "発注", notes: "", status: "todo", dueOn: "2026-10-04", ...emptyExtras(""), repeat: { ...moved, kind: "weekly" }, assigneeIds: [] }, undefined, "me", "k", "Asia/Tokyo"))
+        .toMatchObject({ rrule: "FREQ=WEEKLY;BYDAY=SU" });
+      // Moving the date again (Sunday → Wednesday) follows too; a chosen weekday or several stay.
+      expect(repeatForDue({ ...moved, kind: "weekly" }, "2026-10-04", "2026-10-07")!.weekdays).toEqual([3]);
+      expect(repeatForDue({ ...moved, kind: "weekly", weekdays: [2] }, "2026-10-04", "2026-10-07")!.weekdays).toEqual([2]);
+      expect(repeatForDue({ ...moved, kind: "weekly", weekdays: [0, 3] }, "2026-10-04", "2026-10-07")!.weekdays).toEqual([0, 3]);
+      // Cleared date, same date, no repeat: unchanged.
+      expect(repeatForDue(moved, "2026-10-04", "")).toBe(moved);
+      expect(repeatForDue(moved, "2026-10-04", "2026-10-04")).toBe(moved);
+      expect(repeatForDue(undefined, "", "2026-10-04")).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

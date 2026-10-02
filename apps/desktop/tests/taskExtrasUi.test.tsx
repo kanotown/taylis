@@ -105,6 +105,8 @@ describe("the dialog's extras", () => {
     render(<TaskDialog controller={controller} task={a} onClose={() => {}} />);
     expect(screen.getByLabelText("期限の時刻")).toBeTruthy();
     expect(document.querySelector("[data-task-repeat]")).toBeTruthy();
+    // One 「繰り返し」 heading (the picker's own; it showed twice before the v0.1.21 check).
+    expect(within(document.querySelector<HTMLElement>("[data-task-repeat]")!).getAllByText("繰り返し", { selector: ":not(option)" })).toHaveLength(1);
     fireEvent.click(screen.getByLabelText("「集計」を完了"));
     await flush();
     expect(api.updateSubtask).toHaveBeenCalledWith(a.id, "s1", { done: true });

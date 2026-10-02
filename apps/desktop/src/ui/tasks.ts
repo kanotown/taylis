@@ -409,6 +409,18 @@ export function emptyExtras(dueOn: string): Pick<TaskDraft, "dueTime" | "repeat"
   return { dueTime: "", repeat: noRepeat(dueOn || todayKey()), subtasks: [] };
 }
 
+/**
+ * The repeat after the due date moves from `before` to `after`. The draft's weekday was seeded from the old date (today
+ * when there was none), so a new task due on a Sunday offered 「毎週 土曜日」 on a Saturday (v0.1.21 check): while it is
+ * still the old date's weekday alone, it follows the date (as a calendar does); other or more weekdays stay.
+ */
+export function repeatForDue(repeat: RepeatDraft | undefined, before: string, after: string): RepeatDraft | undefined {
+  if (!repeat || !after || before === after) return repeat;
+  const seeded = noRepeat(before || todayKey()).weekdays;
+  if (repeat.weekdays.length !== 1 || repeat.weekdays[0] !== seeded[0]) return repeat;
+  return { ...repeat, weekdays: noRepeat(after).weekdays };
+}
+
 /** The due time as the server takes it: the local wall-clock time with the device's offset. */
 export function dueAtOf(draft: Pick<TaskDraft, "dueOn" | "dueTime">): string | null {
   if (!draft.dueOn || !draft.dueTime) return null;

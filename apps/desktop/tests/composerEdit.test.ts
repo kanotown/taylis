@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { changedRange, continueStructure, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "../src/ui/composerEdit";
+import { changedRange, clusterRange, continueStructure, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "../src/ui/composerEdit";
 
 describe("composer markdown helpers", () => {
   it("wraps, unwraps and inserts empty marker pairs", () => {
@@ -64,5 +64,22 @@ describe("composer markdown helpers", () => {
     expect(changedRange("same", "same")).toEqual({ start: 4, end: 4, text: "" });
     expect(changedRange("😀", "😃")).toEqual({ start: 0, end: 2, text: "😃" });
     expect(changedRange("a😀", "a😀b😀")).toEqual({ start: 3, end: 3, text: "b😀" });
+  });
+
+  it("widens the range to whole clusters, as the browser deletes them (a task marker's stand-in, v0.1.21 check)", () => {
+    const tag = "\u{E0020}"; // a canvas task marker's stand-in (canvasMarkers.ts): it clusters with the character before
+    // Backspace beside the stand-in removes 約 and keeps the stand-in: the browser gets 「約 + stand-in」 → 「stand-in」.
+    expect(changedRange(`- [ ] 予約${tag}\n`, `- [ ] 予${tag}\n`)).toEqual({ start: 7, end: 8, text: "" });
+    expect(clusterRange(`- [ ] 予約${tag}\n`, `- [ ] 予${tag}\n`)).toEqual({ start: 7, end: 10, text: tag });
+    // Combining marks and ZWJ emoji too; ranges on cluster boundaries stay as they were.
+    expect(clusterRange("café!", "cafe!")).toEqual({ start: 3, end: 5, text: "e" });
+    expect(clusterRange("a👩‍💻b", "ab")).toEqual(changedRange("a👩‍💻b", "ab"));
+    expect(clusterRange("ab", "a****b")).toEqual({ start: 1, end: 1, text: "****" });
+    expect(clusterRange("same", "same")).toEqual({ start: 4, end: 4, text: "" });
+    const apply = (before: string, r: { start: number; end: number; text: string }) => before.slice(0, r.start) + r.text + before.slice(r.end);
+    const pairs: Array<[string, string]> = [[`x約${tag}y`, `x${tag}y`], [`約${tag}`, `約${tag}約`], ["éé", "é"]];
+    for (const [before, after] of pairs) {
+      expect(apply(before, clusterRange(before, after))).toBe(after);
+    }
   });
 });

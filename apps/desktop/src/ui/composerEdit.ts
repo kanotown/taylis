@@ -139,7 +139,25 @@ export function changedRange(before: string, after: string): { start: number; en
 }
 
 /**
- * Makes the text area read `next` as if it had been typed: the smallest changed range (changedRange) selected, then
+ * `changedRange` widened to whole grapheme clusters of `before`. The browser selects and deletes whole clusters, so a
+ * range that ends inside one takes more than asked: a canvas task marker's stand-in (a tag character, M80) belongs to
+ * the character before it, and deleting that character alone through the browser took the stand-in too (v0.1.21 check).
+ */
+export function clusterRange(before: string, after: string): { start: number; end: number; text: string } {
+  const range = changedRange(before, after);
+  if (typeof Intl === "undefined" || typeof Intl.Segmenter !== "function") return range;
+  const clusters = new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(before);
+  let { start, end } = range;
+  const first = start < before.length ? clusters.containing(start) : undefined;
+  if (first && first.index < start) start = first.index;
+  const last = end > 0 && end < before.length ? clusters.containing(end) : undefined;
+  if (last && last.index < end) end = last.index + last.segment.length;
+  if (start === range.start && end === range.end) return range;
+  return { start, end, text: after.slice(start, after.length - (before.length - end)) };
+}
+
+/**
+ * Makes the text area read `next` as if it had been typed: the smallest changed range (clusterRange) selected, then
  * replaced with `execCommand("insertText")`, which Chrome / WebView2 and WebKit (Tauri on macOS) put on the text area's
  * own undo stack, merged with typing, and announce with an `input` event (the composer's draft or the canvas follows
  * through onChange). The command is deprecated but has no replacement for this, and a stack of our own would fight the
@@ -150,7 +168,7 @@ export function replaceThroughBrowser(el: HTMLTextAreaElement, next: string): bo
   if (el.value === next) return true;
   el.focus();
   if (document.activeElement !== el || typeof document.execCommand !== "function") return false;
-  const { start, end, text } = changedRange(el.value, next);
+  const { start, end, text } = clusterRange(el.value, next);
   el.setSelectionRange(start, end);
   try {
     return document.execCommand(text ? "insertText" : "delete", false, text) && el.value === next;

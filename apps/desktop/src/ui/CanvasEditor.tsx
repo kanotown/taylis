@@ -161,7 +161,15 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   const put = (next: EditState) => {
     const el = area.current;
     if (el && replaceThroughBrowser(el, next.text)) el.setSelectionRange(next.start, next.end);
-    else change(next.text);
+    else {
+      change(next.text);
+      // The text set by React puts the caret at the end: back where the edit leaves it once that is drawn.
+      if (el && document.activeElement === el && typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+          if (document.activeElement === el && el.value === next.text) el.setSelectionRange(next.start, next.end);
+        });
+      }
+    }
     setCaret(next.start);
   };
 
