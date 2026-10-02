@@ -978,6 +978,11 @@ struct MessageRow: View {
         return link
     }
 
+    /// 「プレビューを表示」 was tapped on this message.
+    private var revealed: Bool { controller.revealedPreviews.contains(message.id) }
+    /// Whether the row asks for its link's preview and shows the card (review v0.1.18 #5: a bot's only when asked for).
+    private var loadsPreview: Bool { revealed || controller.autoLoadsLinkPreview(message) }
+
     private var senderName: String { store.users[message.senderId]?.displayName ?? (message.pending ? store.me?.displayName ?? "" : "?") }
     /// Why the server refused an unsent message (its outbox row keeps the code), in the shared Japanese words.
     private var failureText: String {
@@ -1073,11 +1078,17 @@ struct MessageRow: View {
                                     present: present.map { present in { url in present(MessageSheet(kind: .file, message: message, url: url)) } })
                 }
                 if let link = previewLink {
-                    // The card's frame from the start, so the row does not grow when the preview comes (LinkPreviewSlot).
-                    switch controller.linkPreviewSlot(link) {
-                    case .card(let preview): LinkPreviewCard(preview: preview, url: link)
-                    case .placeholder: LinkPreviewCard(preview: nil, url: link)
-                    case .none: EmptyView()
+                    if loadsPreview {
+                        // The card's frame from the start, so the row does not grow when the preview comes (LinkPreviewSlot).
+                        switch controller.linkPreviewSlot(link) {
+                        case .card(let preview): LinkPreviewCard(preview: preview, url: link)
+                        case .placeholder: LinkPreviewCard(preview: nil, url: link)
+                        // Asked for by hand and the page gives none: the plain link stays, without the button.
+                        case .none: if revealed { LinkPreviewOffer(url: link, offer: false) {} }
+                        }
+                    } else {
+                        // A bot's link (review v0.1.18 #5): fetched only when asked for.
+                        LinkPreviewOffer(url: link) { controller.revealLinkPreview(message.id) }
                     }
                 }
                 if let poll = message.poll { PollCardView(poll: poll, message: message, controller: controller, readOnly: readOnly) }  // M14b
@@ -1162,7 +1173,8 @@ struct MessageRow: View {
         // The link's preview is asked for by the row, which is always there. The card asked for it itself, but it is
         // empty until the preview has come, and an empty view has nothing to run a task on: it never started, and no
         // card ever showed (audit 2026-09-30).
-        .task(id: previewLink) { if let previewLink { await controller.loadLinkPreview(previewLink) } }
+        // Only for a link whose preview the row may ask for (LinkPreviewRules; a bot's after 「プレビューを表示」).
+        .task(id: loadsPreview ? previewLink : nil) { if loadsPreview, let previewLink { await controller.loadLinkPreview(previewLink) } }
         // Slack: a tap opens the thread (in the channel); the links, buttons, name and pictures in the row keep their
         // own taps.
         .onTapGesture(perform: tapped)

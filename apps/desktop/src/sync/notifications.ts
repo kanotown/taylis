@@ -73,3 +73,40 @@ export function ownNotification(pref: {
     muted: pref.muted ?? false,
   };
 }
+
+/** How a message sits in its conversation for the notification rule: top-level, a reply only in its thread, or both. */
+export type ReplyKind = "none" | "thread_only" | "also_in_channel";
+
+/** One new message (not mine) as the notification rule sees it (apps/shared/notify-rules.json). */
+export interface NotifyCase {
+  /** The conversation's resolved level (effectiveNotificationLevel). */
+  level: NotifyLevel;
+  /** Muted until unmuted, a timed mute running, or its own level "none" (isMutedChannel). */
+  muted?: boolean;
+  reply: ReplyKind;
+  /** I am in the reply's parent_thread.participant_ids (the thread's followers). */
+  follower: boolean;
+  /** I unfollowed the thread by hand: a reply only in it never notifies me, not even a mention. */
+  unfollowed: boolean;
+  /** My id is in mentioned_user_ids (by name or group). */
+  mentioned: boolean;
+  /** @channel / @here. */
+  mentionAll: boolean;
+  /** One of my notify_keywords is in the body. */
+  keyword: boolean;
+}
+
+/**
+ * Whether a new message notifies me (PUSH_NOTIFICATIONS.md §4, the server's PushPlanner handle + select_recipients),
+ * before the checks each side does on its own (DND, read already, looking at it now). A reply only in its thread is
+ * for its followers and the people it mentions, at level "all" too; one I unfollowed by hand stays silent.
+ */
+export function notifies(c: NotifyCase): boolean {
+  if (c.level === "none" || c.muted) return false;
+  if (c.reply === "thread_only" && c.unfollowed) return false;
+  // A follower of the thread counts as involved for any reply (the server's participants).
+  const involved = c.mentionAll || c.mentioned || c.keyword || (c.reply !== "none" && c.follower);
+  if (c.level === "mentions" && !involved) return false;
+  if (c.reply === "thread_only" && !involved) return false;
+  return true;
+}

@@ -758,6 +758,18 @@ final class AppController {
     /// url → preview (nil = the page gives none). Views read this; `loadLinkPreview` fills it.
     var linkPreviews: [String: LinkPreviewOut?] { store.linkPreviews }
     private var previewLoads: [String: Task<Void, Never>] = [:]
+    /// Messages whose 「プレビューを表示」 was tapped this session (LinkPreviewRules): their rows ask for the preview.
+    var revealedPreviews: Set<String> = []
+
+    /// Whether the message's row asks for its link's preview by itself (review v0.1.18 #5): not for an AI bot's or
+    /// another bot's message (LinkPreviewRules), unless its preview was asked for by hand.
+    func autoLoadsLinkPreview(_ message: MessageState) -> Bool {
+        LinkPreviewRules.autoLoads(senderId: message.senderId, senderRole: store.users[message.senderId]?.role,
+                                   aiBotIds: aiHub?.botUserIds ?? [])
+    }
+
+    /// 「プレビューを表示」 on the message's row.
+    func revealLinkPreview(_ messageId: String) { revealedPreviews.insert(messageId) }
 
     /// What a row shows for its link now (LinkPreviewSlot).
     func linkPreviewSlot(_ url: String) -> LinkPreviewSlot {

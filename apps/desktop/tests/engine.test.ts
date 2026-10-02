@@ -1418,3 +1418,47 @@ describe("DM list order (§7.4)", () => {
     engine.stop();
   });
 });
+
+describe("thread-only replies and notifications (PUSH_NOTIFICATIONS.md §4)", () => {
+  it("at level all, a reply only in a thread I do not follow stays silent; one I follow or also in the channel notifies", async () => {
+    const { server, alice, bob, channel, store, engine, notifications } = await setup();
+    const carol = server.addUser("carol");
+    server.join(channel.id, carol.id);
+    server.keywords.set(bob.id, ["deploy"]);
+    await engine.start();
+    await engine.idle();
+    store.setNotification(channel.id, "all", null);
+
+    const { message: other } = server.post(channel.id, alice.id, "alice and carol");
+    server.post(channel.id, carol.id, "carol joins", undefined, other.id);
+    await engine.idle();
+    notifications.length = 0;
+    server.post(channel.id, alice.id, "between them", undefined, other.id);
+    await engine.idle();
+    expect(notifications).toEqual([]); // not a follower, not mentioned
+
+    server.post(channel.id, alice.id, "also here", undefined, other.id, [], { alsoInChannel: true });
+    await engine.idle();
+    expect(notifications).toEqual(["also here"]);
+
+    server.post(channel.id, alice.id, `ping <@${bob.id}>`, undefined, other.id);
+    await engine.idle();
+    expect(notifications).toEqual(["also here", `ping <@${bob.id}>`]); // a mention reaches me (and makes me follow)
+    server.post(channel.id, carol.id, "now I follow", undefined, other.id);
+    await engine.idle();
+    expect(notifications.at(-1)).toBe("now I follow");
+
+    // Unfollowed by hand: silent even when mentioned or hit by a keyword; also in the channel still notifies.
+    await engine.setThreadFollow(other.id, false);
+    notifications.length = 0;
+    server.post(channel.id, alice.id, "after unfollow", undefined, other.id);
+    server.post(channel.id, alice.id, `again <@${bob.id}>`, undefined, other.id);
+    server.post(channel.id, alice.id, "deploy tonight", undefined, other.id);
+    await engine.idle();
+    expect(notifications).toEqual([]);
+    server.post(channel.id, alice.id, "shared reply", undefined, other.id, [], { alsoInChannel: true });
+    await engine.idle();
+    expect(notifications).toEqual(["shared reply"]);
+    engine.stop();
+  });
+});

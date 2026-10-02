@@ -58,6 +58,53 @@ struct StoredLinkPreview: Codable, Equatable {
     var savedAt: TimeInterval
 }
 
+/// Review v0.1.18 #5: whether a row asks the server for its link's preview by itself. The server GETs the URL to
+/// make the card, so a link an AI bot wrote (a prompt injection can make it put the conversation into the URL) would be
+/// sent out without anyone tapping it. Such rows show the link plainly with 「プレビューを表示」 instead, and the
+/// preview is asked for only on that tap.
+///
+/// Decided by the sender at render time, so stored and re-synced messages behave the same:
+/// - an AI bot (`aiBotIds`, from GET /ai/status) → no;
+/// - any `role = bot` sender → no, whether or not the AI status is known yet. That covers an AI bot before the status
+///   has come (and a disabled agent, which leaves the status), and also incoming webhooks and scheduled posts (their
+///   cards are one tap away). Deciding by role alone keeps the row's height fixed when the status arrives later;
+/// - anyone else (an unknown sender too) → yes, as before.
+enum LinkPreviewRules {
+    static func autoLoads(senderId: String, senderRole: String?, aiBotIds: Set<String>) -> Bool {
+        !aiBotIds.contains(senderId) && senderRole != "bot"
+    }
+}
+
+/// The link of a row whose preview is not asked for by itself (LinkPreviewRules): the link as a plain line and, unless
+/// `offer` is false, 「プレビューを表示」. One line whatever the link, so the row's height is final from the start.
+struct LinkPreviewOffer: View {
+    let url: String
+    var offer = true
+    let reveal: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "link").font(.caption).foregroundStyle(.secondary)
+            if let destination = URL(string: url) {
+                Link(destination: destination) {
+                    Text(url).font(.footnote).lineLimit(1).truncationMode(.middle)
+                }
+            } else {
+                Text(url).font(.footnote).lineLimit(1).truncationMode(.middle)
+            }
+            Spacer(minLength: 0)
+            if offer {
+                Button("プレビューを表示", action: reveal)
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .fixedSize()
+            }
+        }
+        .padding(.top, 2)
+    }
+}
+
 /// Open Graph card under a message for its first link (M11g). The row asks for the preview (MessageRow): this view is
 /// only the card. It is always as tall as a site line, two title lines and two description lines, whatever the page
 /// gives, so the frame shown while the preview is on its way (`preview` nil) has the card's height.

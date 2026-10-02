@@ -295,6 +295,59 @@ enum NotificationRules {
         return overall
     }
 
+    /// Where a new message sits: top-level, a reply only in its thread, or a reply also sent to the channel.
+    enum Reply: String {
+        case none
+        case threadOnly = "thread_only"
+        case alsoInChannel = "also_in_channel"
+    }
+
+    /// The facts about one message the rule looks at (apps/shared/notify-rules.json), for me.
+    struct NotifyFacts: Equatable {
+        var reply: Reply = .none
+        /// In the reply's parent_thread.participant_ids (the thread's followers).
+        var follower = false
+        /// I unfollowed the thread by hand.
+        var unfollowed = false
+        /// My id in mentioned_user_ids (by name or group).
+        var mentioned = false
+        var mentionAll = false
+        /// One of my notify_keywords is in the body.
+        var keyword = false
+    }
+
+    /// Whether a message (not my own) notifies me at the conversation's resolved `level`, before DND, mute, read
+    /// already and looking at it now (PUSH_NOTIFICATIONS.md §4; the server's PushPlanner handle + select_recipients,
+    /// checked against apps/shared/notify-rules.json). A reply only in its thread is for its followers and those it
+    /// addresses (at level all too), and never for someone who unfollowed it by hand.
+    static func notifies(level: String, _ facts: NotifyFacts) -> Bool {
+        if level == "none" { return false }
+        if facts.reply == .threadOnly && facts.unfollowed { return false }
+        let involved = facts.mentionAll || facts.mentioned || facts.keyword || facts.follower
+        if level == "mentions" && !involved { return false }
+        if facts.reply == .threadOnly && !involved { return false }
+        return true
+    }
+
+    /// The facts of a live message for me. `thread` is the event's parent_thread; `storedFollowing` my stored thread
+    /// state's `following` for the reply's parent (used only when the event carries no parent_thread). The server
+    /// follows the thread for everyone a reply mentions by id or by keyword unless they unfollowed it by hand, so such a
+    /// reply that left me out of participant_ids means I unfollowed it.
+    static func facts(of message: MessageOut, me: UserMe, thread: ParentThread?, storedFollowing: Bool?) -> NotifyFacts {
+        var facts = NotifyFacts()
+        facts.reply = message.parentId == nil ? .none : message.alsoInChannel ? .alsoInChannel : .threadOnly
+        facts.mentioned = message.mentionedUserIds.contains(me.id)
+        facts.mentionAll = message.mentionAll
+        facts.keyword = NotifyKeywords.matches(message.body, me.notifyKeywords)
+        if let thread {
+            facts.follower = thread.participantIds.contains(me.id)
+            facts.unfollowed = facts.reply == .threadOnly && (facts.mentioned || facts.keyword) && !facts.follower
+        } else if facts.reply != .none {
+            facts.follower = storedFollowing ?? false
+        }
+        return facts
+    }
+
     /// The overall setting's name in the settings picker and in a channel's 「既定 (…)」.
     static func overallLabel(_ overall: String) -> String {
         switch overall {

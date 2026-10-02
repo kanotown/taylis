@@ -77,3 +77,23 @@ export function go<F>(history: PlaceHistory<F>, step: -1 | 1, available: (place:
   const index = step < 0 ? lo : lo + 1;
   return { history: { entries, index }, place: entries[index]! };
 }
+
+/**
+ * The web's own Back / Forward (popstate) put `place` back on screen: the entry it came from, not a new visit. The
+ * nearest entry of that place (the one just behind or ahead first) becomes the current one, taking its latest reveal,
+ * and nothing is dropped, so the in-app arrows go on from there. Only a place found nowhere is recorded as a visit.
+ */
+export function restore<F>(history: PlaceHistory<F>, place: Place<F>, cap = HISTORY_CAP): PlaceHistory<F> {
+  const key = placeKey(place);
+  const { entries, index } = history;
+  for (let distance = 0; distance < entries.length; distance++) {
+    for (const i of distance === 0 ? [index] : [index - distance, index + distance]) {
+      const entry = entries[i];
+      if (!entry || placeKey(entry) !== key) continue;
+      const next = entries.slice();
+      next[i] = place;
+      return { entries: next, index: i };
+    }
+  }
+  return visit(history, place, cap);
+}

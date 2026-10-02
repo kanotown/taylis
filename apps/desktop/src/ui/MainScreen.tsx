@@ -56,7 +56,7 @@ import { activeStatus } from "./users";
 import { StatusDialog } from "./StatusDialog";
 import { CONVERSATION_MIN, headerFit, paneLayout } from "./paneLayout";
 import { useNavigationHistory } from "./navigationHistory";
-import { canGo, emptyHistory, go, type Place, type PlaceHistory, placeKey, visit } from "./placeHistory";
+import { canGo, emptyHistory, go, type Place, type PlaceHistory, placeKey, restore, visit } from "./placeHistory";
 import { historyStep, historyShortcutLabels, mouseHistoryStep } from "./historyShortcuts";
 import { focusChatRegion } from "./messageKeyboard";
 import { ActivityView } from "./ActivityView";
@@ -97,6 +97,19 @@ interface Nav {
 /** A tab's root: its list, nothing of a conversation over it (the last conversation's id may stay, unopened). */
 function rootNav(nav: Nav): Nav {
   return { ...nav, pane: "list", view: "channel", threadId: null, threadChannelId: null, pinsOpen: false, tab: "messages", details: false, backToSearch: false };
+}
+
+/** M67: the place a screen shows for the back / forward history (none on a phone's layout, or with no conversation open). */
+function placeOf(nav: Pick<Nav, "currentId" | "view" | "search" | "filesChannelId">, focus: Focus | null, compact: boolean): Place<Focus> | null {
+  if (compact) return null;
+  const { currentId, view } = nav;
+  if (view === "channel") return currentId ? { kind: "channel", channelId: currentId, focus: focus?.channelId === currentId ? focus : null } : null;
+  return { kind: "view", view, search: view === "search" ? nav.search : null, filesChannelId: view === "files" ? nav.filesChannelId : null };
+}
+
+/** The place with the message it was revealed at: a change of either is recorded. */
+function liveKey(place: Place<Focus>): string {
+  return `${placeKey(place)}|${place.kind === "channel" ? (place.focus?.messageId ?? "") : ""}`;
 }
 
 const isRootNav = (nav: Nav) => nav.pane === "list";
@@ -213,7 +226,13 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // One entry for 「ピン留め」 and 「ファイル」 together: Back from either returns to 「メッセージ」 first (M29). A tab
   // switch is an entry too (M34): Back after it returns to the tab before, with every tab's screens as they were then.
   const navigationKey = JSON.stringify({ ...navigation, mobileTab, tab: tab !== "messages", focus: focus?.messageId ?? null });
+  // M67 / review v0.1.18 #13: the place a browser Back / Forward put back (its liveKey), until the places history takes
+  // it as a move to its entry rather than a new visit.
+  const browserRestored = useRef<string | null>(null);
   useNavigationHistory(navigationKey, { ...navigation, focus, results: searchSnapshot.current, mobileTab, savedTabs }, (previous) => {
+    const restored = placeOf(previous, previous.focus, compactRef.current);
+    const restoredKey = restored ? liveKey(restored) : null;
+    browserRestored.current = restoredKey !== null && restoredKey !== livePlaceKeyRef.current ? restoredKey : null;
     controller.messageFocus = previous.focus;
     controller.setEditing(null);
     applyNav(previous);
@@ -718,17 +737,19 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // place again, so recording it adds nothing. A phone's layout has its own back (the bottom tabs' stacks, and the
   // browser's history on the web) and records nothing here.
   const [places, setPlaces] = useState<PlaceHistory<Focus>>(emptyHistory);
-  const livePlace: Place<Focus> | null = compact
-    ? null
-    : view === "channel"
-      ? currentId ? { kind: "channel", channelId: currentId, focus: focus?.channelId === currentId ? focus : null } : null
-      : { kind: "view", view, search: view === "search" ? search : null, filesChannelId: view === "files" ? filesChannelId : null };
+  const livePlace = placeOf(navigation, focus, compact);
   const livePlaceRef = useRef(livePlace);
   livePlaceRef.current = livePlace;
-  const livePlaceKey = livePlace ? `${placeKey(livePlace)}|${livePlace.kind === "channel" ? (livePlace.focus?.messageId ?? "") : ""}` : null;
+  const livePlaceKey = livePlace ? liveKey(livePlace) : null;
+  const livePlaceKeyRef = useRef(livePlaceKey);
+  livePlaceKeyRef.current = livePlaceKey;
   useEffect(() => {
     const place = livePlaceRef.current;
-    if (place) setPlaces((history) => visit(history, place));
+    // On the web, a place the browser's Back / Forward restored moves the in-app history to its entry (else C → D → E,
+    // browser Back to D, made C, D, E, D: the in-app Forward was off and Back went to E). Tauri has no such restore.
+    const restored = browserRestored.current !== null && browserRestored.current === livePlaceKey;
+    browserRestored.current = null;
+    if (place) setPlaces((history) => (restored ? restore(history, place) : visit(history, place)));
   }, [livePlaceKey]);
   /** A conversation can be shown again while it is in the store and readable (mine, or a public one to preview). */
   const placeAvailable = (place: Place<Focus>): boolean => {

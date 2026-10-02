@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { canGo, emptyHistory, go, HISTORY_CAP, type Place, type PlaceHistory, placeKey, visit } from "../src/ui/placeHistory";
+import { canGo, emptyHistory, go, HISTORY_CAP, type Place, type PlaceHistory, placeKey, restore, visit } from "../src/ui/placeHistory";
 import { EMPTY_SEARCH } from "../src/ui/search";
 
 const ch = (id: string, focus: string | null = null): Place<string> => ({ kind: "channel", channelId: id, focus });
@@ -94,4 +94,20 @@ it("an entry equal to the current one (left behind by a skipped entry) is not a 
   const h = build(ch("a"), ch("gone"), ch("a"));
   const available = (place: Place<string>) => place.kind !== "channel" || place.channelId !== "gone";
   expect(canGo(h, -1, available)).toBe(false);
+});
+
+it("restore (the web's own Back / Forward) moves to the nearest entry of the place, keeping the rest", () => {
+  let h = build(ch("c"), ch("d"), ch("e"));
+  h = restore(h, ch("d"));
+  expect([keys(h), h.index]).toEqual([["channel:c", "channel:d", "channel:e"], 1]);
+  h = restore(h, ch("e", "m1")); // forward; the entry takes the reveal it came back with
+  expect([keys(h), h.index, h.entries[2]]).toEqual([["channel:c", "channel:d", "channel:e"], 2, ch("e", "m1")]);
+  h = restore(h, ch("c")); // two back at once: the nearest one of that place
+  expect(h.index).toBe(0);
+  // The nearest of two entries of the same place, the one behind first at equal distance.
+  const twice = restore({ entries: [ch("a"), ch("b"), ch("x"), ch("b")], index: 2 }, ch("b"));
+  expect(twice.index).toBe(1);
+  // A place in no entry is a visit (drops what is ahead).
+  h = restore(h, ch("z"));
+  expect([keys(h), h.index]).toEqual([["channel:c", "channel:z"], 1]);
 });

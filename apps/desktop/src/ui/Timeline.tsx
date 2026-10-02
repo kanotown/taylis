@@ -28,7 +28,7 @@ import { StatusEmoji, UserPopover } from "./UserPopover";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { isSelfNotes, SELF_NOTES_INTRO } from "./channels";
 import { EmojiPicker, rememberEmoji, useRecentEmoji } from "./EmojiPicker";
-import { LinkPreviewCard } from "./LinkPreviewCard";
+import { autoLinkPreview, LinkPreviewCard } from "./LinkPreviewCard";
 import { LONG_PRESS_MS, MessageActionsSheet, quickReactions } from "./MessageActionsSheet";
 import { firstLink } from "./links";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
@@ -975,7 +975,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               <MessageBody body={message.body} users={store.users} internalBase={api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} keywords={store.me?.notify_keywords} groups={store.groups} />
             )}
             <AttachmentList attachments={message.attachments ?? []} controller={controller} />
-            {!message.pending && link && <LinkPreviewCard controller={controller} url={link} />}
+            {!message.pending && link && <LinkPreviewCard controller={controller} url={link} auto={autoLinkPreview(store, message.sender_id)} />}
           </>
         )}
         {message.failed && (

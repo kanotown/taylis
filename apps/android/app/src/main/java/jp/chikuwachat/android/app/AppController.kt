@@ -456,6 +456,7 @@ class AppController(private val app: Application) {
         taskForm = null
         linkPreviews.clear()
         previewLoads.clear()
+        previewsAsked.clear()
         emojiLoads.clear()
         canvasLinks.clear()
         canvasLinksAsked.clear()
@@ -1358,6 +1359,11 @@ class AppController(private val app: Application) {
     /** url → preview (null value = failed / none); Compose reads this map, [loadLinkPreview] fills it. */
     val linkPreviews = mutableStateMapOf<String, LinkPreviewOut?>()
     private val previewLoads = HashSet<String>()
+    /**
+     * Review v0.1.18 #5: the messages (by id) whose preview was asked for by a tap on 「プレビューを表示」, for the ones
+     * that never load it by themselves (an AI bot's, [jp.chikuwachat.android.ui.LinkPreviewPolicy]); kept for the session.
+     */
+    val previewsAsked = mutableStateMapOf<String, Boolean>()
 
     suspend fun loadLinkPreview(url: String) {
         val api = api ?: return

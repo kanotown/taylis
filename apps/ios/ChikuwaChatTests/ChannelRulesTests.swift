@@ -200,6 +200,79 @@ final class ChannelRulesTests: XCTestCase {
         }
     }
 
+    // MARK: which messages notify me (PUSH_NOTIFICATIONS.md §4, review v0.1.18 #6)
+
+    /// One case of apps/shared/notify-rules.json.
+    private struct NotifyCase: Decodable {
+        struct Expect: Decodable { let notify: Bool }
+        let name: String
+        let level: String
+        let reply: String
+        let follower: Bool
+        let unfollowed: Bool
+        let mentioned: Bool
+        let mentionAll: Bool
+        let keyword: Bool
+        let expect: Expect
+    }
+
+    private func notifyCases() throws -> [NotifyCase] {
+        // The repository's own file (the simulator reads the Mac's disk), which the server tests read too.
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/notify-rules.json")
+        struct Vectors: Decodable { let cases: [NotifyCase] }
+        return try JSON.snakeDecoder.decode(Vectors.self, from: Data(contentsOf: url)).cases
+    }
+
+    func testNotifyRulesFollowTheSharedVectors() throws {
+        let cases = try notifyCases()
+        XCTAssertGreaterThanOrEqual(cases.count, 20)
+        for c in cases {
+            let reply = try XCTUnwrap(NotificationRules.Reply(rawValue: c.reply), c.name)
+            let facts = NotificationRules.NotifyFacts(reply: reply, follower: c.follower, unfollowed: c.unfollowed, mentioned: c.mentioned,
+                                                      mentionAll: c.mentionAll, keyword: c.keyword)
+            XCTAssertEqual(NotificationRules.notifies(level: c.level, facts), c.expect.notify, c.name)
+        }
+    }
+
+    /// The same cases from the message as it arrives: the facts come from the event (parent_thread, mentions, my
+    /// keywords), and a hand unfollow is inferred from a mention or keyword that left me out of the followers.
+    func testNotifyFactsFromALiveMessageGiveTheSharedAnswers() throws {
+        let me = UserMe(id: "me", username: "kano", displayName: "Kano", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "",
+                        email: nil, mustChangePassword: false, notifyKeywords: ["ちくわ"])
+        for c in try notifyCases() {
+            var message = MessageOut(id: "r", channelId: "c1", senderId: "u2", seq: 2, updatedSeq: 2, clientMsgId: nil,
+                                     body: c.keyword ? "ちくわの件" : "hi", createdAt: "", editedAt: nil, deleted: false,
+                                     mentionedUserIds: c.mentioned ? ["me"] : [], mentionAll: c.mentionAll,
+                                     parentId: c.reply == "none" ? nil : "p")
+            message.alsoInChannel = c.reply == "also_in_channel"
+            // The server's parent_thread is read after the reply auto-followed everyone it mentions or keyword-hits
+            // (threads.on_reply_created_in_tx), except those who unfollowed by hand.
+            let followed = c.follower || ((c.mentioned || c.keyword) && !c.unfollowed)
+            let thread = c.reply == "none" ? nil : ParentThread(id: "p", replyCount: 1, lastReplyAt: nil, updatedSeq: 2,
+                                                                participantIds: followed ? ["u2", "me"] : ["u2"])
+            let facts = NotificationRules.facts(of: message, me: me, thread: thread, storedFollowing: nil)
+            // A hand unfollow can only be seen through a mention or keyword: without one it looks like never following,
+            // which gives the same answer.
+            if c.reply == "thread_only" && (c.mentioned || c.keyword) { XCTAssertEqual(facts.unfollowed, c.unfollowed, c.name) }
+            XCTAssertEqual(NotificationRules.notifies(level: c.level, facts), c.expect.notify, c.name)
+        }
+    }
+
+    func testAThreadOnlyReplyWithoutParentThreadUsesTheStoredFollow() {
+        let me = UserMe(id: "me", username: "kano", displayName: "Kano", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "",
+                        email: nil, mustChangePassword: false)
+        let reply = MessageOut(id: "r", channelId: "c1", senderId: "u2", seq: 2, updatedSeq: 2, clientMsgId: nil, body: "hi", createdAt: "",
+                               editedAt: nil, deleted: false, parentId: "p")
+        XCTAssertTrue(NotificationRules.notifies(level: "all", NotificationRules.facts(of: reply, me: me, thread: nil, storedFollowing: true)))
+        XCTAssertFalse(NotificationRules.notifies(level: "all", NotificationRules.facts(of: reply, me: me, thread: nil, storedFollowing: false)))
+        XCTAssertFalse(NotificationRules.notifies(level: "all", NotificationRules.facts(of: reply, me: me, thread: nil, storedFollowing: nil)))
+        // A top-level message keeps the channel's level.
+        let top = MessageOut(id: "t", channelId: "c1", senderId: "u2", seq: 3, updatedSeq: 3, clientMsgId: nil, body: "hi", createdAt: "",
+                             editedAt: nil, deleted: false)
+        XCTAssertTrue(NotificationRules.notifies(level: "all", NotificationRules.facts(of: top, me: me, thread: nil, storedFollowing: nil)))
+    }
+
     func testTimesGetTheirOwnSectionMineFirst() {
         var all = [channel("general"), channel("times-zed"), channel("times-me"), channel("times-amy", unread: 3), channel("times-bob", unread: 2, mentions: 1)]
         for (index, owner) in [(1, "zed"), (2, "me"), (3, "amy"), (4, "bob")] { all[index].channel.timesOwnerId = owner }
