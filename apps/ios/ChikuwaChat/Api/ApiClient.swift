@@ -887,6 +887,12 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     static func labelBody(_ label: String?) -> JSONValue { .object(["label": label.map(JSONValue.string) ?? .null]) }
 
+    /// M74 (§4.9): erase a version's body (owners and administrators; in a DM its creator; never the current version:
+    /// 409 canvas_revision_is_head). Audited. The answer is the version, now `erased`.
+    func eraseCanvasRevision(id: String, revisionId: String) async throws -> CanvasRevisionMeta {
+        try await request("DELETE", "/api/v1/canvases/\(id)/revisions/\(revisionId)")
+    }
+
     /// M58 (§4.8): canvases of my conversations whose title or body matches; typed modifiers stay in `q`.
     func searchCanvases(_ search: SearchRequest, limit: Int = 20, offset: Int = 0) async throws -> CanvasSearchOut {
         try await request("GET", Self.pathWithQuery("/api/v1/search/canvases", search.canvasQueryItems(limit: limit, offset: offset)))

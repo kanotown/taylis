@@ -114,7 +114,11 @@ enum Timeline {
     /// 「2026年10月1日 (木) 14:30」 whatever the device's region (an English region gave 「October 1, 2026 at 2:30 PM」).
     static func fullLabel(_ iso: String, calendar: Calendar = .current) -> String {
         guard let date = parseIsoDate(iso) else { return "" }
-        return fullLabelFormatter(calendar).string(from: date)
+        return fullLabel(date, calendar: calendar)
+    }
+
+    static func fullLabel(_ date: Date, calendar: Calendar = .current) -> String {
+        fullLabelFormatter(calendar).string(from: date)
     }
 
     private static func fullLabelFormatter(_ calendar: Calendar) -> DateFormatter {

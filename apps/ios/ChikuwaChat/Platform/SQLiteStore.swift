@@ -79,6 +79,9 @@ final class SQLitePersistence: Persistence {
         "CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, seq INTEGER, json TEXT NOT NULL)",
         "CREATE INDEX IF NOT EXISTS messages_channel_seq ON messages (channel_id, seq)",
         "CREATE TABLE IF NOT EXISTS outbox (client_msg_id TEXT PRIMARY KEY, created_at TEXT NOT NULL, json TEXT NOT NULL)",
+        // M74 (CANVAS.md §19.1): the canvases last read here, for reading offline. The metadata is loaded at start, a
+        // body only when its canvas opens.
+        "CREATE TABLE IF NOT EXISTS canvases (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, saved_at REAL NOT NULL, meta TEXT NOT NULL, body TEXT NOT NULL)",
     ]
 
     init(db: SQLiteDatabase) throws {
@@ -198,5 +201,35 @@ final class SQLitePersistence: Persistence {
 
     func deleteOutbox(clientMsgId: String) throws {
         try db.exec("DELETE FROM outbox WHERE client_msg_id = ?", [clientMsgId])
+    }
+
+    // MARK: M74 cached canvases
+
+    func loadCachedCanvasIndex() throws -> [CachedCanvasEntry] {
+        try db.query("SELECT meta, saved_at FROM canvases").compactMap { row in
+            guard let json = row["meta"] as? String, let savedAt = row["saved_at"] as? Double,
+                  let meta = try? JSON.plainDecoder.decode(CanvasMeta.self, from: Data(json.utf8)) else { return nil }
+            return CachedCanvasEntry(meta: meta, savedAt: Date(timeIntervalSince1970: savedAt))
+        }
+    }
+
+    func loadCachedCanvasBody(id: String) throws -> String? {
+        try db.query("SELECT body FROM canvases WHERE id = ?", [id]).first?["body"] as? String
+    }
+
+    func saveCachedCanvas(_ entry: CachedCanvasEntry, body: String?) throws {
+        let savedAt = entry.savedAt.timeIntervalSince1970
+        if let body {
+            try db.exec("""
+                INSERT INTO canvases (id, channel_id, saved_at, meta, body) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET channel_id = excluded.channel_id, saved_at = excluded.saved_at, meta = excluded.meta, body = excluded.body
+                """, [entry.meta.id, entry.meta.channelId, savedAt, encode(entry.meta), body])
+        } else {
+            try db.exec("UPDATE canvases SET saved_at = ? WHERE id = ?", [savedAt, entry.meta.id])
+        }
+    }
+
+    func deleteCachedCanvas(id: String) throws {
+        try db.exec("DELETE FROM canvases WHERE id = ?", [id])
     }
 }

@@ -109,6 +109,17 @@ final class CanvasSaver {
     private(set) var textRevision = 0
     /// The first read failed (not a 404: that is .gone): the screen offers 再読み込み instead of an empty canvas.
     private(set) var loadFailed = false
+    /// M74 (CANVAS.md §19.1): the canvas on screen is the copy kept on this device, received from the server then; nil
+    /// once the server answered (a new version, or 304: the copy is current).
+    private(set) var cachedAt: Date?
+    /// M74: reading the server failed on the network while the kept copy is shown (the screen says 「オフライン」).
+    private(set) var offlineCopy = false
+    /// M74: the server sent the canvas with its body (kept to read offline).
+    @ObservationIgnored var received: ((CanvasOut) -> Void)?
+    /// M74: the server said the kept copy is still current (304).
+    @ObservationIgnored var confirmed: (() -> Void)?
+    /// M74: the canvas is gone (404): its kept copy goes too.
+    @ObservationIgnored var vanished: (() -> Void)?
     /// Whether the editor can take a new text now (not while an IME composition is open). When it cannot, the merged
     /// body waits: the next save carries this text on the version that holds it, and the server merges again.
     @ObservationIgnored var canReplace: () -> Bool = { true }
@@ -132,9 +143,11 @@ final class CanvasSaver {
     @ObservationIgnored private let api: CanvasApi
     @ObservationIgnored private let clock: CanvasClock
     @ObservationIgnored private let options: CanvasSaverOptions
+    /// M74: the copy kept on this device, shown while the server is asked (and instead of it when offline).
+    @ObservationIgnored private var cachedStart: CachedCanvas?
 
     init(id: String, channelId: String, api: CanvasApi, clock: CanvasClock? = nil, options: CanvasSaverOptions = .init(),
-         restored: CanvasPendingState? = nil) {
+         restored: CanvasPendingState? = nil, cached: CachedCanvas? = nil) {
         self.id = id
         self.channelId = channelId
         self.api = api
@@ -147,6 +160,7 @@ final class CanvasSaver {
             version = restored.version
             inFlight = restored.inFlight
         }
+        cachedStart = cached?.canvas.id == id ? cached : nil
     }
 
     var dirty: Bool { text != synced }
@@ -168,9 +182,47 @@ final class CanvasSaver {
 
     // MARK: loading and reading again
 
-    /// The first read. A restored unsaved state keeps its text and goes on saving.
+    /// The first read. A restored unsaved state keeps its text and goes on saving. M74: with a kept copy, it is shown
+    /// (and edited, on its version) at once and the server is asked whether it is still current (If-None-Match).
     func load() {
+        if !loaded, let cached = cachedStart {
+            cachedStart = nil
+            startFromCache(cached)
+            let known = cached.canvas.version
+            track { await self.read(knownVersion: known, first: false) }
+            return
+        }
         track { await self.read(knownVersion: nil, first: true) }
+    }
+
+    /// M74: the kept copy as if the first read had answered with it (the base of the next save is its head).
+    private func startFromCache(_ cached: CachedCanvas) {
+        let copy = cached.canvas
+        loaded = true
+        loadFailed = false
+        canvas = copy
+        cachedAt = cached.savedAt
+        version = max(version, copy.version)
+        guard baseRevId != nil else {
+            adopt(copy)
+            setStatus(.saved)
+            return
+        }
+        // A restored unsaved state goes on as after a first read (the server merges it over what changed since).
+        setStatus(.saved)
+        if inFlight != nil {
+            track { await self.send() }
+        } else if dirty {
+            save()
+        } else if baseRevId != copy.headRevId {
+            adopt(copy)
+        }
+    }
+
+    /// M74: the server answered: what is on screen is no longer only the kept copy.
+    private func serverAnswered() {
+        if cachedAt != nil { cachedAt = nil }
+        if offlineCopy { offlineCopy = false }
     }
 
     /// 再読み込み after the first read failed.
@@ -241,13 +293,22 @@ final class CanvasSaver {
             if first && !loaded, !Self.isNotFound(error) { loadFailed = true }
             if Self.retryable(error) {
                 if first { setStatus(.offline) } // online() loads again
+                if cachedAt != nil { offlineCopy = true } // M74: the kept copy stays on screen; online() reads again
                 return
             }
             stop(error)
             return
         }
-        guard !disposed, let fresh = answer else { return }
+        guard !disposed else { return }
+        guard let fresh = answer else {
+            // 304: the version on screen is the current one (the kept copy too, when that is what is shown).
+            if cachedAt != nil, knownVersion == canvas?.version { confirmed?() }
+            serverAnswered()
+            return
+        }
         canvas = fresh
+        received?(fresh)
+        serverAnswered()
         if first && !loaded {
             loaded = true
             loadFailed = false
@@ -365,6 +426,8 @@ final class CanvasSaver {
         inFlight = nil
         attempt = 0
         canvas = answer.canvas
+        received?(answer.canvas)
+        serverAnswered()
         version = max(version, answer.canvas.version)
         if text == flight.sent && canReplace() {
             // Nothing typed meanwhile: the head is the base, and a merge's result goes on screen.
@@ -398,6 +461,8 @@ final class CanvasSaver {
             again = false
             attempt = 0
             canvas = details.head
+            received?(details.head)
+            serverAnswered()
             conflict = ConflictState(details: details, baseRevId: flight.baseRevId)
             setStatus(.conflict)
             persistState()
@@ -407,6 +472,8 @@ final class CanvasSaver {
             again = false
             attempt = 0
             canvas = head
+            received?(head)
+            serverAnswered()
             expired = head
             setStatus(.expired)
             persistState()
@@ -446,6 +513,7 @@ final class CanvasSaver {
     /// Refused for good: nothing more is sent until the text changes (403, 422) or at all (404: in the trash).
     private func stop(_ failure: Error) {
         error = failure
+        if Self.isNotFound(failure) { vanished?() }
         setStatus(Self.isNotFound(failure) ? .gone : .blocked)
     }
 

@@ -17,6 +17,9 @@ struct CanvasRights: Equatable {
     /// M58: 「会話に共有」 (posting the link is posting a message: not where only owners post, unless one) — and so
     /// 「コメント」 on a canvas not shared yet, which shares it first.
     var share = false
+    /// M74 (§4.7, the desktop's `erase`): erase a version's body — the conversation's owners and administrators; in a
+    /// DM the canvas's creator. Never the current version (the history screen hides it there).
+    var erase = false
 
     static let none = CanvasRights()
 
@@ -41,7 +44,7 @@ struct CanvasRights: Equatable {
         guard channel.isMember, !channel.channel.archived else { return .none } // an archived conversation's canvases are read only
         if channel.channel.isDm {
             let creator = canvas?.createdBy == actor.id && actor.id != nil
-            return CanvasRights(create: true, edit: true, tick: true, manage: true, trash: canvas != nil && creator, share: canvas != nil)
+            return CanvasRights(create: true, edit: true, tick: true, manage: true, trash: canvas != nil && creator, share: canvas != nil, erase: creator)
         }
         let manager = actor.isAdmin || channel.channel.membership?.role == "owner"
         let create = !actor.isGuest && (!channel.channel.isAnnouncement || manager)
@@ -51,7 +54,8 @@ struct CanvasRights: Equatable {
         let manage = !actor.isGuest && (creator || manager)
         // Sharing posts a message: whoever may post at the top level (a guest may post in a channel they are in).
         let share = !channel.channel.isAnnouncement || manager
-        return CanvasRights(create: create, edit: edit, tick: edit || !actor.isGuest, manage: manage, trash: manage, share: share)
+        return CanvasRights(create: create, edit: edit, tick: edit || !actor.isGuest, manage: manage, trash: manage, share: share,
+                            erase: manager)
     }
 
     static func of(_ channel: ChannelState, actor: Actor, meta: CanvasMeta?) -> CanvasRights {

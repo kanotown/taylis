@@ -206,6 +206,18 @@ extension AppController {
         }
     }
 
+    /// M74 (§4.9, the desktop's M44): a version's body erased (a secret pasted by mistake). Not undoable; the server
+    /// audits it. The answer is the version, now `erased`; a refusal shows as the other canvas errors do.
+    func eraseCanvasRevision(_ canvasId: String, revisionId: String) async -> CanvasRevisionMeta? {
+        guard let api else { return nil }
+        do {
+            return try await api.eraseCanvasRevision(id: canvasId, revisionId: revisionId)
+        } catch {
+            self.error = describe(error)
+            return nil
+        }
+    }
+
     /// A canvas's body as a reader sees it (mentions as names) on the clipboard.
     func copyCanvasText(_ text: String) {
         UIPasteboard.general.string = Mentions.decode(text, users: store.users, groups: store.groups)
