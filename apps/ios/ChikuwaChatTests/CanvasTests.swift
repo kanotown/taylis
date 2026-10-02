@@ -16,7 +16,7 @@ final class CanvasMarkdownFixtureTests: XCTestCase {
     }
 
     /// What the reader sees of inline tokens (a link shows its label; emphasis markers are gone).
-    private func plain(_ tokens: [BodyToken]) -> String {
+    static func plain(_ tokens: [BodyToken]) -> String {
         tokens.map { token -> String in
             switch token {
             case .text(let s), .bold(let s), .italic(let s), .strike(let s), .code(let s): return s
@@ -30,7 +30,7 @@ final class CanvasMarkdownFixtureTests: XCTestCase {
         }.joined()
     }
 
-    private func describe(_ block: BodyBlock) -> JSONValue {
+    static func describe(_ block: BodyBlock) -> JSONValue {
         switch block {
         case .heading(let level, let tokens):
             return .object(["kind": .string("heading"), "level": .number(Double(level)), "text": .string(plain(tokens))])
@@ -63,7 +63,7 @@ final class CanvasMarkdownFixtureTests: XCTestCase {
             let body = try XCTUnwrap(item["body"]?.stringValue)
             var canvas = true
             if case .bool(let flag)? = item["canvas"] { canvas = flag }
-            let blocks = BodyTokenizer.parseBlocks(body, canvas: canvas).map(describe)
+            let blocks = BodyTokenizer.parseBlocks(body, canvas: canvas).map(Self.describe)
             XCTAssertEqual(blocks, item["blocks"]?.arrayValue, name)
         }
     }

@@ -317,7 +317,8 @@ enum TaskRules {
         let ns = line as NSString
         guard let match = CanvasText.taskLine.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)) else { return nil }
         let text = match.range(at: 3).location == NSNotFound ? "" : ns.substring(with: match.range(at: 3))
-        return ChecklistItem(line: line, text: text.trimmingCharacters(in: .whitespaces), done: ns.substring(with: match.range(at: 2)) != " ")
+        // M83 (CANVAS.md §22.6): the title and the excerpt without task markers; `line` stays as it is in the body.
+        return ChecklistItem(line: line, text: CanvasMarkers.strip(text).trimmingCharacters(in: .whitespaces), done: ns.substring(with: match.range(at: 2)) != " ")
     }
 
     private static let dueMark = try! NSRegularExpression(pattern: #"📅\s*(\d{4}-\d{2}-\d{2})"#)

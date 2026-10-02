@@ -1,6 +1,7 @@
 import PhotosUI
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// M45: the canvas's Markdown editor (CANVAS.md §5 「編集」): a text view with a small toolbar (heading, list, checklist,
 /// bold, link, mention, rule) and `@` completion, for the whole body or one heading's section. Mentions show as
@@ -193,8 +194,9 @@ struct CanvasEditor: View {
     }
 }
 
-/// The editor's state between the text view and the save loop: the shown text (`@name`), the stored text it stands
-/// for, the section (a range of the stored body) when only one is edited, and the mention being typed.
+/// The editor's state between the text view and the save loop: the shown text (`@name`, task markers as invisible
+/// stand-ins), the stored text it stands for, the section (a range of the stored body) when only one is edited, and the
+/// mention being typed.
 @MainActor
 @Observable
 final class CanvasEditorModel {
@@ -218,6 +220,10 @@ final class CanvasEditorModel {
     @ObservationIgnored private(set) var focused = false
     @ObservationIgnored private var inFront = true
     @ObservationIgnored private var lastAnnounced: Date?
+    /// M83 (CANVAS.md §22.8): the task markers shown as stand-ins, which go back to the end of their line when stored.
+    @ObservationIgnored let markers = CanvasMarkers.Table()
+    /// Set while the editor makes its own deletion beside a stand-in (the text view may ask the delegate again).
+    @ObservationIgnored private var replacing = false
 
     func attach(saver: CanvasSaver, store: Store, sectionLine: Int?) {
         self.saver = saver
@@ -238,13 +244,15 @@ final class CanvasEditorModel {
     }
 
     private func decode(_ stored: String) -> String {
-        guard let store else { return stored }
-        return Mentions.decode(stored, users: store.users, groups: store.groups)
+        let hidden = markers.hide(stored)
+        guard let store else { return hidden }
+        return Mentions.decode(hidden, users: store.users, groups: store.groups)
     }
 
     private func encode(_ text: String) -> String {
-        guard let store else { return text }
-        return Mentions.encode(text, users: store.users.values, groups: Array(store.groups.values))
+        let stored = markers.show(text)
+        guard let store else { return stored }
+        return Mentions.encode(stored, users: store.users.values, groups: Array(store.groups.values))
     }
 
     /// The reader typed (or the toolbar changed the text): the stored body goes to the save loop.
@@ -344,7 +352,7 @@ final class CanvasEditorModel {
     }
 
     /// The text replaced by `next`, through the text view's input (one undo step) when there is one.
-    private func replaceText(with next: String, caret: Int) {
+    func replaceText(with next: String, caret: Int) {
         guard let tv = textView else {
             userChanged(next)
             return
@@ -376,6 +384,38 @@ final class CanvasEditorModel {
         userChanged(next.text)
         return true
     }
+
+    /// M83 (§22.8): Backspace / Delete beside a stand-in with nothing selected takes the visible character and keeps
+    /// the stand-ins (UIKit would take the grapheme — the character together with its stand-ins — or the stand-in
+    /// alone). True: done here, through the text view's input (undo takes it back).
+    func deletePressed(in tv: UITextView, range: NSRange) -> Bool {
+        guard !replacing, tv.markedTextRange == nil, range.length > 0 else { return false }
+        let selected = tv.selectedRange
+        guard selected.length == 0 else { return false }
+        let caret = selected.location
+        let backward = NSMaxRange(range) == caret
+        guard backward || range.location == caret else { return false }
+        let text = tv.text ?? ""
+        let ns = text as NSString
+        guard NSMaxRange(range) <= ns.length else { return false }
+        // One character (a word deleted at once is left to the text view, its stand-ins with it).
+        guard CanvasMarkers.stripStandIns(ns.substring(with: range)).count <= 1,
+              let out = CanvasMarkers.deleteBeside(text, caret: caret, backward: backward) else { return false }
+        if out.text == text {
+            tv.selectedRange = NSRange(location: out.caret, length: 0)
+            return true
+        }
+        replacing = true
+        replaceText(with: out.text, caret: out.caret)
+        replacing = false
+        return true
+    }
+
+    /// The selection as stored, for a cut that keeps its markers (pasted back into a canvas editor, they return).
+    func markedForm(_ shownText: String) -> String { markers.show(shownText) }
+
+    /// A cut's stored form as this editor shows it.
+    func hidden(_ wireText: String) -> String { markers.hide(wireText) }
 
     func selectionChanged() {
         if textView?.isFirstResponder == true { caretPlaced = true }
@@ -471,7 +511,8 @@ struct CanvasTextView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
     func makeUIView(context: Context) -> UITextView {
-        let view = UITextView()
+        let view = CanvasUITextView()
+        view.model = model
         view.delegate = context.coordinator
         view.font = .preferredFont(forTextStyle: .body)
         view.adjustsFontForContentSizeCategory = true
@@ -525,8 +566,46 @@ struct CanvasTextView: UIViewRepresentable {
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            if text.isEmpty { return MainActor.assumeIsolated { !model.deletePressed(in: textView, range: range) } }
             guard text == "\n" else { return true }
             return MainActor.assumeIsolated { !model.returnPressed(in: textView, range: range) }
         }
+    }
+}
+
+/// M83 (CANVAS.md §22.8): the editor's text view. A copy leaves the task markers' stand-ins out; a cut also keeps the
+/// stored form (markers at the end of their lines) under the app's own type, so pasting it back into a canvas editor
+/// brings the markers back (a line cut and pasted elsewhere keeps its task). A copy pasted gets no markers (one task's
+/// line would be there twice).
+final class CanvasUITextView: UITextView {
+    static let pasteboardType = "jp.chikuwachat.canvas-text"
+    weak var model: CanvasEditorModel?
+
+    private var selectedShown: String? {
+        guard let range = selectedTextRange, !range.isEmpty else { return nil }
+        return text(in: range)
+    }
+
+    override func copy(_ sender: Any?) {
+        guard let shown = selectedShown, CanvasMarkers.hasStandIns(shown) else { return super.copy(sender) }
+        UIPasteboard.general.string = CanvasMarkers.stripStandIns(shown)
+    }
+
+    override func cut(_ sender: Any?) {
+        guard let shown = selectedShown, CanvasMarkers.hasStandIns(shown), let model, let range = selectedTextRange else { return super.cut(sender) }
+        let stored = model.markedForm(shown)
+        UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: CanvasMarkers.stripStandIns(shown), Self.pasteboardType: Data(stored.utf8)]])
+        replace(range, withText: "") // through the input: undo takes it back, the delegate hears of it
+        if model.shown != text { model.userChanged(text) }
+    }
+
+    override func paste(_ sender: Any?) {
+        let board = UIPasteboard.general
+        guard let model, let range = selectedTextRange, board.contains(pasteboardTypes: [Self.pasteboardType]),
+              let data = board.data(forPasteboardType: Self.pasteboardType), let stored = String(data: data, encoding: .utf8),
+              CanvasMarkers.strip(stored) == board.string else { return super.paste(sender) }
+        let shown = model.hidden(stored)
+        replace(range, withText: shown)
+        if model.shown != text { model.userChanged(text) }
     }
 }
