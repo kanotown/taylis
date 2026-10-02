@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
@@ -429,6 +430,7 @@ fun MainScreen(controller: AppController) {
     }
     val upcomingEvents = remember(calendarChanges, upcomingChannel) { upcomingChannel?.let { calendarHub?.upcomingOf(it)?.size } ?: 0 }
     controller.calendarForm?.let { form -> CalendarEventForm(controller, form, onDismiss = { controller.calendarForm = null }) }
+    controller.calendarFeeds?.let { feeds -> CalendarFeedsScreen(controller, feeds, onDismiss = { controller.calendarFeeds = null }) }
     // M56: a tapped task notification: its channel's 「タスク」 tab (once the store knows the channel), or 「タスク」 for a
     // personal one, then the task's form over it (read from the server when no window on screen holds it).
     LaunchedEffect(controller.pendingTask, version) {
@@ -584,6 +586,8 @@ fun MainScreen(controller: AppController) {
                             // M66: a joined conversation's thread; summaries while the server takes them (GET /ai/status).
                             thread = selectedChannel != null && selectedChannel.isMember && threadId != null && !detailsOpen,
                             summaries = controller.aiSummaryAvailable,
+                            // M69: 「カレンダーを購読 (iCal)」 on the calendar's own page.
+                            calendar = pane == Route.Calendar && !searching && controller.calendar?.available == true,
                         )
                         val barButtons = top != Route.You && top !is Route.Settings
                         // THREADS.md §5: follow / unfollow the open thread.
@@ -714,6 +718,10 @@ fun MainScreen(controller: AppController) {
                                             AiSummaryTargetLine(target, Modifier.widthIn(max = 280.dp).padding(horizontal = 12.dp, vertical = 4.dp))
                                         }
                                     }
+                                    BarMenuItem.CALENDAR_FEEDS -> DropdownMenuItem(
+                                        text = { Text("カレンダーを購読 (iCal)") }, leadingIcon = { Icon(Icons.Default.RssFeed, contentDescription = null) },
+                                        onClick = { menuOpen = false; controller.openCalendarFeeds() },
+                                    )
                                     BarMenuItem.ADD_MEMBER -> DropdownMenuItem(
                                         text = { Text("メンバーを追加") }, leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
                                         onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER },

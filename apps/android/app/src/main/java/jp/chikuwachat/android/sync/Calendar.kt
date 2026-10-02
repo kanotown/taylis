@@ -12,6 +12,7 @@ import jp.chikuwachat.android.api.CalendarEventUpdated
 import jp.chikuwachat.android.api.Codec
 // The overlap and order rules are plain date work shared with the screens (CalendarDates.kt).
 import jp.chikuwachat.android.ui.CalendarDates
+import jp.chikuwachat.android.ui.OccurrenceScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +41,11 @@ data class CalendarWindow(
  * A channel's tab count comes from GET /calendar/upcoming, read again when one of its events changes. After reconnecting
  * every window and count is read again, which fills whatever events were missed. Runs on the app's main thread (the
  * controller's scope), like the engine's queue.
+ *
+ * M69 (CALENDAR.md §10.4): a recurring event comes as one entry per occurrence (its own `id`, the series' `series_id`).
+ * The server alone expands a series: any change to one (its calendar.event.updated has `recurring`, as do the answers to
+ * my own changes) reads the windows it may touch again instead of patching them here. A series' alarm is one per person
+ * and applies to all its occurrences.
  */
 class CalendarHub(
     private val api: CalendarApi?,
@@ -120,24 +126,50 @@ class CalendarHub(
 
     // --- changes made here -------------------------------------------------------------------------
 
-    suspend fun create(body: CalendarEventCreate): CalendarEventOut = requireApi().createCalendarEvent(body).also { put(it) }
+    suspend fun create(body: CalendarEventCreate): CalendarEventOut = requireApi().createCalendarEvent(body).also { settle(it) }
 
-    suspend fun update(eventId: String, patch: CalendarEventUpdate): CalendarEventOut = requireApi().updateCalendarEvent(eventId, patch).also { put(it) }
+    /** A whole event (a series: all its occurrences, 「すべての予定」 without moving it from an occurrence). */
+    suspend fun update(eventId: String, patch: CalendarEventUpdate): CalendarEventOut = requireApi().updateCalendarEvent(eventId, patch).also { settle(it) }
 
+    /** A whole event (a series: every occurrence). */
     suspend fun remove(eventId: String) {
         val known = find(eventId)
         requireApi().deleteCalendarEvent(eventId)
         drop(eventId, known?.channelId)
     }
 
-    /** My alarm: minutes before (null removes it). */
+    /** M69: one occurrence of a series, it and the later ones, or all of them (the windows are read again). */
+    suspend fun updateOccurrence(seriesId: String, occurrenceStart: String, body: JsonObject): CalendarEventOut {
+        val known = findSeries(seriesId)
+        val event = requireApi().updateCalendarOccurrence(seriesId, occurrenceStart, body)
+        reloadFor(event.channelId ?: known?.channelId)
+        return event
+    }
+
+    suspend fun removeOccurrence(seriesId: String, occurrenceStart: String, scope: OccurrenceScope) {
+        val known = findSeries(seriesId)
+        requireApi().deleteCalendarOccurrence(seriesId, occurrenceStart, scope)
+        val channelId = known?.channelId
+        if (scope == OccurrenceScope.ALL) {
+            drop(seriesId, channelId)
+        } else {
+            // The occurrence (or the later ones) leave at once; the windows' next read confirms it.
+            dropWhere(channelId) {
+                it.series == seriesId && if (scope == OccurrenceScope.THIS) it.occurrenceStart == occurrenceStart else (it.occurrenceStart ?: "") >= occurrenceStart
+            }
+            reloadFor(channelId)
+        }
+    }
+
+    /** My alarm: minutes before (null removes it). On a series it is the series' (every occurrence's): pass its id. */
     suspend fun setAlarm(eventId: String, minutes: Int?) {
         val api = requireApi()
         if (minutes == null) {
             api.clearCalendarAlarm(eventId)
             patchAlarm(eventId, null)
         } else {
-            put(api.setCalendarAlarm(eventId, minutes, tz()))
+            val event = api.setCalendarAlarm(eventId, minutes, tz())
+            if (event.recurring) patchAlarm(event.series, event.alarm) else put(event)
         }
     }
 
@@ -146,12 +178,29 @@ class CalendarHub(
 
     private fun requireApi(): CalendarApi = api ?: throw IllegalStateException("The calendar is not available")
 
-    // --- events (§5) -------------------------------------------------------------------------------
+    /** My change's answer: a one-off event goes in as it is; a series is read again where it may show. */
+    private fun settle(event: CalendarEventOut) {
+        if (event.recurring) reloadFor(event.channelId) else put(event)
+    }
+
+    /** Reads again every window that may hold the channel's events (null: my own calendar), and its count. */
+    private fun reloadFor(channelId: String?) {
+        if (api == null) return
+        windows.filterValues { it.channelId == null || it.channelId == channelId }.keys.toList().forEach { key -> scope.launch { read(key) } }
+        channelId?.let { refreshUpcoming(it) }
+    }
+
+    // --- events (§5, §10.4) ------------------------------------------------------------------------
 
     fun applyEvent(event: String, data: JsonObject) {
         when (event) {
             "calendar.event.updated" -> {
                 val update = decode { Codec.snake.decodeFromJsonElement(CalendarEventUpdated.serializer(), data) } ?: return
+                if (update.event.recurring) {
+                    // A series changed (its rule, an occurrence, a split): only the server expands it.
+                    reloadFor(update.event.channelId)
+                    return
+                }
                 val mine = me()
                 val known = find(update.event.id)
                 put(update.event.copy(canEdit = mine != null && mine in update.editorIds, alarm = known?.alarm))
@@ -163,19 +212,21 @@ class CalendarHub(
             }
             "calendar.alarm.updated" -> {
                 val update = decode { Codec.snake.decodeFromJsonElement(CalendarAlarmUpdated.serializer(), data) } ?: return
-                val before = find(update.eventId)?.alarm?.status
+                val before = findSeries(update.eventId)?.alarm
                 patchAlarm(update.eventId, update.alarm)
-                if (update.alarm?.status == "fired" && before != "fired") announce(update.eventId)
+                // A series' alarm fires once per occurrence: only the same occurrence fired again is not said twice.
+                val again = before?.status == "fired" && before.occurrenceStart == update.alarm?.occurrenceStart
+                if (update.alarm?.status == "fired" && !again) announce(update.eventId, update.alarm.occurrenceStart)
             }
         }
     }
 
     private fun <T> decode(block: () -> T): T? = runCatching(block).onFailure { Log.w("CalendarHub", "unreadable calendar event", it) }.getOrNull()
 
-    /** A fired alarm: its event as known here, else read (it may be outside every window). */
-    private fun announce(eventId: String) {
+    /** A fired alarm: its event (a series: the occurrence it is for) as known here, else read (it may be outside every window). */
+    private fun announce(eventId: String, occurrenceStart: String?) {
         val callback = onAlarm ?: return
-        find(eventId)?.let {
+        (occurrenceStart?.let { findOccurrence(eventId, it) } ?: find(eventId))?.let {
             callback(it)
             return
         }
@@ -187,11 +238,16 @@ class CalendarHub(
         }
     }
 
-    /** An event as it is now: into every window it overlaps (out of those it left), and the counts holding it. */
+    /**
+     * An event as it is now: into every window it overlaps (out of those it left), and the counts holding it. A one-off
+     * event also replaces what was left of its series (it no longer repeats).
+     */
     fun put(event: CalendarEventOut) {
+        val series = event.series
+        val other = { e: CalendarEventOut -> e.id != event.id && (event.recurring || e.series != series) }
         for ((key, window) in windows.entries.toList()) {
             val fits = (window.channelId == null || window.channelId == event.channelId) && CalendarDates.overlapsRange(event, window.from, window.to)
-            val rest = window.events.filter { it.id != event.id }
+            val rest = window.events.filter(other)
             if (!fits && rest.size == window.events.size) continue
             windows[key] = window.copy(events = if (fits) (rest + event).sortedWith(CalendarDates.eventOrder) else rest)
         }
@@ -201,20 +257,35 @@ class CalendarHub(
         changed()
     }
 
-    private fun drop(eventId: String, channelId: String?) {
+    /** An event gone (a series: every occurrence). */
+    private fun drop(eventId: String, channelId: String?) = dropWhere(channelId) { it.id == eventId || it.series == eventId }
+
+    private fun dropWhere(channelId: String?, gone: (CalendarEventOut) -> Boolean) {
         for ((key, window) in windows.entries.toList()) {
-            if (window.events.any { it.id == eventId }) windows[key] = window.copy(events = window.events.filter { it.id != eventId })
+            if (window.events.any(gone)) windows[key] = window.copy(events = window.events.filterNot(gone))
         }
         for ((id, list) in upcoming.entries.toList()) {
-            if (list.any { it.id == eventId }) upcoming[id] = list.filter { it.id != eventId }
+            if (list.any(gone)) upcoming[id] = list.filterNot(gone)
         }
         channelId?.let { refreshUpcoming(it) }
         changed()
     }
 
+    /** My alarm on an event, or on every occurrence of a series. */
     private fun patchAlarm(eventId: String, alarm: CalendarAlarmOut?) {
-        val known = find(eventId) ?: return
-        put(known.copy(alarm = alarm))
+        val mine = { e: CalendarEventOut -> e.id == eventId || e.series == eventId }
+        var found = false
+        for ((key, window) in windows.entries.toList()) {
+            if (window.events.none(mine)) continue
+            found = true
+            windows[key] = window.copy(events = window.events.map { if (mine(it)) it.copy(alarm = alarm) else it })
+        }
+        for ((id, list) in upcoming.entries.toList()) {
+            if (list.none(mine)) continue
+            found = true
+            upcoming[id] = list.map { if (mine(it)) it.copy(alarm = alarm) else it }
+        }
+        if (found) changed()
     }
 
     private fun refreshUpcoming(channelId: String) {
@@ -224,6 +295,14 @@ class CalendarHub(
     fun find(eventId: String): CalendarEventOut? =
         windows.values.firstNotNullOfOrNull { window -> window.events.firstOrNull { it.id == eventId } }
             ?: upcoming.values.firstNotNullOfOrNull { list -> list.firstOrNull { it.id == eventId } }
+
+    /** Any occurrence of a series (or the one-off event) held here. */
+    fun findSeries(seriesId: String): CalendarEventOut? = find(seriesId) ?: all().firstOrNull { it.series == seriesId }
+
+    fun findOccurrence(seriesId: String, occurrenceStart: String): CalendarEventOut? =
+        all().firstOrNull { it.series == seriesId && it.occurrenceStart == occurrenceStart }
+
+    private fun all(): Sequence<CalendarEventOut> = windows.values.asSequence().flatMap { it.events } + upcoming.values.asSequence().flatten()
 
     // --- lifecycle ---------------------------------------------------------------------------------
 
