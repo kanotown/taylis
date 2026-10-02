@@ -604,6 +604,113 @@
         "title": "AiAgentUpdate",
         "type": "object"
       },
+      "AiAskCreate": {
+        "description": "POST /ai/ask (docs/AI.md §13): the question as typed in the search box, modifiers\n(in:# from:@ before: after: on: has: is:) included; they limit what is looked through.",
+        "properties": {
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "q": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Q",
+            "type": "string"
+          },
+          "tz_offset_minutes": {
+            "anyOf": [
+              {
+                "maximum": 840.0,
+                "minimum": -840.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz Offset Minutes"
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "title": "AiAskCreate",
+        "type": "object"
+      },
+      "AiAskTargetOut": {
+        "description": "GET /ai/ask/target (docs/AI.md §13.5): where a question would be sent, shown before\nasking; the same shape and reasons as AiSummaryTargetOut.",
+        "properties": {
+          "agent_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Name"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "anthropic",
+                  "openai"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "available",
+          "provider",
+          "model",
+          "agent_name",
+          "reason"
+        ],
+        "title": "AiAskTargetOut",
+        "type": "object"
+      },
       "AiProviderOut": {
         "description": "docs/AI.md §12 (admin only): a provider, whether its key file is configured, its models.",
         "properties": {
@@ -645,9 +752,16 @@
       "AiRunOut": {
         "properties": {
           "channel_id": {
-            "format": "uuid",
-            "title": "Channel Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
           },
           "created_at": {
             "format": "date-time",
@@ -696,7 +810,8 @@
           "kind": {
             "enum": [
               "mention",
-              "summary"
+              "summary",
+              "ask"
             ],
             "title": "Kind",
             "type": "string"
@@ -742,6 +857,17 @@
             ],
             "title": "Provider"
           },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
           "scope": {
             "anyOf": [
               {
@@ -757,6 +883,13 @@
               }
             ],
             "title": "Scope"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/AiSourceOut"
+            },
+            "title": "Sources",
+            "type": "array"
           },
           "status": {
             "enum": [
@@ -798,6 +931,62 @@
           "model"
         ],
         "title": "AiRunOut",
+        "type": "object"
+      },
+      "AiSourceOut": {
+        "description": "A message an answer cites as [n] (docs/AI.md §13.3).",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "sender_id": {
+            "format": "uuid",
+            "title": "Sender Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "n",
+          "message_id",
+          "channel_id",
+          "parent_id",
+          "sender_id",
+          "created_at",
+          "excerpt"
+        ],
+        "title": "AiSourceOut",
         "type": "object"
       },
       "AiStatusOut": {
@@ -10896,6 +11085,120 @@
         ]
       }
     },
+    "/api/v1/ai/ask": {
+      "post": {
+        "description": "「AI に聞く」 (docs/AI.md §13): an answer only the requester sees, from the messages the\nsearch finds for the question (the search's scope and modifiers), citing them as [n]\n(`sources`). The result arrives as ai.run_updated and through GET /ai/runs/{id}.",
+        "operationId": "create_ask_api_v1_ai_ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiAskCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Ask",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/ai/ask/target": {
+      "get": {
+        "description": "Where a question would be sent (provider, model, bot), shown before asking: the bot of the\none conversation the question is narrowed to (channel_id or in:#), else the default bot\n(docs/AI.md §13.4). 404 channel_not_found for a conversation one cannot search.",
+        "operationId": "get_ask_target_api_v1_ai_ask_target_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Channel Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAskTargetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Ask Target",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
     "/api/v1/ai/runs": {
       "get": {
         "description": "My most recent 20 runs, newest first.",
@@ -10910,7 +11213,8 @@
                 {
                   "enum": [
                     "mention",
-                    "summary"
+                    "summary",
+                    "ask"
                   ],
                   "type": "string"
                 },

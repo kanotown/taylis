@@ -128,7 +128,7 @@ export function SummaryChoices({ controller, channelId, choices, onSummary = (ta
   );
 }
 
-function useAiHub(controller: AppController): AiHub | null {
+export function useAiHub(controller: AppController): AiHub | null {
   const hub = controller.engine?.ai ?? null;
   useSyncExternalStore(
     (listener) => (hub ? hub.subscribe(listener) : () => {}),

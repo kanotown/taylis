@@ -7,7 +7,7 @@
  *   running / done / failed. Events can be lost, so after reconnecting an unfinished run is read again (GET /ai/runs/{id}).
  *   A run never goes back (an older answer that arrives late does not replace a newer state).
  */
-import type { AiRunOut, AiRunUpdated, AiStatusOut, AiSummaryCreate, AiSummaryScope, AiSummaryTargetOut } from "../api/ai";
+import type { AiAskCreate, AiAskTargetOut, AiRunOut, AiRunUpdated, AiStatusOut, AiSummaryCreate, AiSummaryScope, AiSummaryTargetOut } from "../api/ai";
 import { ApiError } from "../api/errors";
 
 export interface AiApi {
@@ -16,6 +16,21 @@ export interface AiApi {
   getAiRun(runId: string): Promise<AiRunOut>;
   /** Review v0.1.18 #2 (GET /ai/summaries/target). Optional: older fakes. */
   aiSummaryTarget?(channelId: string): Promise<AiSummaryTargetOut>;
+  /** M70 「AI に聞く」 (docs/AI.md §13.5). Optional: older fakes. */
+  createAiAsk?(body: AiAskCreate): Promise<AiRunOut>;
+  aiAskTarget?(q: string, channelId: string | null): Promise<AiAskTargetOut>;
+  aiRuns?(kind: "ask"): Promise<AiRunOut[]>;
+}
+
+/** M70: the question followed on the search screen. */
+export interface AskSession {
+  question: string;
+  channelId: string | null;
+  /** The server's run; null until POST answers. */
+  run: AiRunOut | null;
+  sending: boolean;
+  /** POST failed (shown with 「もう一度」); null otherwise. */
+  error: unknown;
 }
 
 /** What a summary is of (the menu's choice). */
@@ -97,6 +112,124 @@ export class AiHub {
   online(): void {
     void this.loadStatus();
     void this.refreshSummary();
+    void this.refreshAsk();
+  }
+
+  // --- 「AI に聞く」 (M70, docs/AI.md §13.6): one question at a time, followed like a summary -------------------------
+
+  ask: AskSession | null = null;
+  private askAttempt = 0;
+
+  /** Whether this server has 「AI に聞く」 (the client can ask it). */
+  get canAsk(): boolean {
+    return !!this.deps.api?.createAiAsk;
+  }
+
+  /** Where the question would go; null when it cannot be told (a server without the route, or a failure). */
+  async askTarget(q: string, channelId: string | null): Promise<AiAskTargetOut | null> {
+    const api = this.deps.api;
+    if (!api?.aiAskTarget) return null;
+    try {
+      const target = await api.aiAskTarget(q, channelId);
+      return target && typeof target.available === "boolean" ? target : null;
+    } catch (err) {
+      if (!(err instanceof ApiError && (err.status === 404 || err.status === 422))) console.warn("could not read the ask target", err);
+      return null;
+    }
+  }
+
+  /** My recent questions (GET /ai/runs?kind=ask), newest first; null when they cannot be read. */
+  async askHistory(): Promise<AiRunOut[] | null> {
+    const api = this.deps.api;
+    if (!api?.aiRuns) return null;
+    try {
+      return (await api.aiRuns("ask")).filter((run) => run.kind === "ask");
+    } catch (err) {
+      console.warn("could not read the questions", err);
+      return null;
+    }
+  }
+
+  /** 「AI に聞く」: replaces the question followed before. */
+  startAsk(question: string, channelId: string | null): Promise<void> {
+    this.ask = { question, channelId, run: null, sending: false, error: null };
+    return this.sendAsk();
+  }
+
+  /** 「もう一度」 after POST failed. */
+  retryAsk(): Promise<void> {
+    if (!this.ask || this.ask.run || this.ask.sending) return Promise.resolve();
+    return this.sendAsk();
+  }
+
+  /** A past question from the history: shown (and followed while it is not finished). */
+  showAskRun(run: AiRunOut): void {
+    this.askAttempt += 1;
+    this.ask = { question: run.question ?? "", channelId: run.channel_id, run, sending: false, error: null };
+    this.changed();
+    if (!isFinished(run)) void this.refreshAsk();
+  }
+
+  closeAsk(): void {
+    if (!this.ask) return;
+    this.askAttempt += 1;
+    this.ask = null;
+    this.changed();
+  }
+
+  private async sendAsk(): Promise<void> {
+    const api = this.deps.api;
+    const session = this.ask;
+    if (!session) return;
+    const id = ++this.askAttempt;
+    this.ask = { ...session, sending: true, error: null };
+    this.changed();
+    try {
+      if (!api?.createAiAsk) throw new ApiError(409, "ai_unavailable", "AI is not available");
+      const run = await api.createAiAsk({ q: session.question, channel_id: session.channelId, tz_offset_minutes: -new Date().getTimezoneOffset() });
+      if (id !== this.askAttempt || !this.ask) return;
+      this.ask = { ...this.ask, sending: false, run: laterRun(this.early.get(run.id), run) };
+      this.early.delete(run.id);
+    } catch (err) {
+      if (id !== this.askAttempt || !this.ask) return;
+      this.ask = { ...this.ask, sending: false, error: err };
+    }
+    this.changed();
+  }
+
+  /** Reconnected (or a past question opened): an unfinished question is read again. */
+  async refreshAsk(): Promise<void> {
+    const api = this.deps.api;
+    const run = this.ask?.run;
+    if (!api || !run || isFinished(run)) return;
+    const id = this.askAttempt;
+    try {
+      const fresh = await api.getAiRun(run.id);
+      if (id !== this.askAttempt || this.ask?.run?.id !== fresh.id) return;
+      const next = laterRun(this.ask.run, fresh);
+      if (next === this.ask.run) return;
+      this.ask = { ...this.ask, run: next };
+      this.changed();
+    } catch (err) {
+      console.warn("could not read the question again", err);
+    }
+  }
+
+  private applyAsk(run: AiRunOut): void {
+    const current = this.ask?.run;
+    if (current && current.id === run.id) {
+      const next = laterRun(current, run);
+      if (next === current) return;
+      this.ask = { ...this.ask!, run: next };
+      this.changed();
+      return;
+    }
+    if (this.ask && this.ask.sending) this.keepEarly(run);
+  }
+
+  private keepEarly(run: AiRunOut): void {
+    this.early.set(run.id, laterRun(this.early.get(run.id), run));
+    if (this.early.size > EARLY_RUNS) this.early.delete(this.early.keys().next().value!);
   }
 
   async loadStatus(): Promise<void> {
@@ -176,6 +309,10 @@ export class AiHub {
   /** ai.run_updated. */
   applyEvent(data: AiRunUpdated): void {
     const run = data?.run;
+    if (run?.kind === "ask") {
+      this.applyAsk(run);
+      return;
+    }
     if (!run || run.kind !== "summary") return;
     const current = this.summary?.run;
     if (current && current.id === run.id) {
@@ -185,11 +322,8 @@ export class AiHub {
       this.changed();
       return;
     }
-    if (this.summary && this.summary.sending) {
-      // Perhaps the answer to the POST on its way.
-      this.early.set(run.id, laterRun(this.early.get(run.id), run));
-      if (this.early.size > EARLY_RUNS) this.early.delete(this.early.keys().next().value!);
-    }
+    // Perhaps the answer to the POST on its way.
+    if (this.summary && this.summary.sending) this.keepEarly(run);
   }
 
   /** Reconnected: an unfinished run on screen is read again (its events may have been lost). */

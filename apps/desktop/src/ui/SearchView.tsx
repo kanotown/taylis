@@ -2,6 +2,7 @@ import { AlertTriangle, ArrowUpDown, AtSign, Calendar, Check, ChevronDown, FileT
 import { type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, type Ref, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import type { CanvasMeta, ChannelOut, FileItem, MessageOut, SearchHit } from "../api/types";
+import { AskPanel } from "./AskPanel";
 import { CanvasResults } from "./CanvasSearch";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -130,6 +131,19 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
     rows[next]?.scrollIntoView?.({ block: "nearest" });
   };
 
+  /** M70: a message the AI's answer cites, opened like a result (in its conversation, its thread for a reply). */
+  const openById = async (messageId: string) => {
+    const api = controller.api;
+    if (!api) return;
+    try {
+      const message = await api.getMessage(messageId);
+      rememberScroll();
+      onOpen(message);
+    } catch (error) {
+      controller.setError(error);
+    }
+  };
+
   const words = params.q.trim();
   // On a phone the back arrow closes the results; the ✕ is for the desktop layout.
   const back = useContext(BackToList);
@@ -161,6 +175,8 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
         <CanvasResults controller={controller} params={params} onOpen={onOpenCanvas} />
       ) : (
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-3" onKeyDown={onListKey} onScroll={rememberScroll}>
+          {/* M70: 「AI に聞く」 with these words and filters (docs/AI.md §13.6). */}
+          <AskPanel controller={controller} params={params} onOpenMessage={(id) => void openById(id)} />
           {unresolved.length > 0 && (
             <div className="mb-3 flex max-w-3xl items-start gap-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />

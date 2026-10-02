@@ -1,6 +1,6 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
 import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, PollAnswersIn, PollCreate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
-import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
+import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
@@ -888,8 +888,20 @@ export class ApiClient {
     return this.request("GET", `/api/v1/ai/runs/${runId}`);
   }
 
+  /** M70 (docs/AI.md §13): 202 with the question's run (`kind = "ask"`); done at once when nothing was found. */
+  createAiAsk(body: AiAskCreate): Promise<AiRunOut> {
+    return this.request("POST", "/api/v1/ai/ask", body);
+  }
+
+  /** M70: where the question would go (404 on an older server). */
+  aiAskTarget(q: string, channelId: string | null): Promise<AiAskTargetOut> {
+    const params = new URLSearchParams({ q });
+    if (channelId) params.set("channel_id", channelId);
+    return this.request("GET", `/api/v1/ai/ask/target?${params.toString()}`);
+  }
+
   /** My newest 20 runs. */
-  aiRuns(kind: "summary" | "mention" = "summary"): Promise<AiRunOut[]> {
+  aiRuns(kind: "summary" | "mention" | "ask" = "summary"): Promise<AiRunOut[]> {
     return this.request("GET", `/api/v1/ai/runs?kind=${kind}`);
   }
 

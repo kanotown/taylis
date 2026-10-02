@@ -1,5 +1,7 @@
-"""docs/AI.md §5: the contract the three clients code against (JSON keys as written there)."""
+"""docs/AI.md §5 (and §13.5): the contract the three clients code against (JSON keys as written
+there)."""
 
+import re
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -8,13 +10,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.modules.admin.schemas import USERNAME_PATTERN
 from app.modules.ai.models import MAX_CHARACTER_LENGTH, MAX_NAME_LENGTH, AiAgent, AiRun
+from app.modules.search.schemas import MAX_QUERY_LENGTH
 
 AiModel = Literal[
     "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5", "gpt-6.1-sol", "gpt-6-luna"
 ]
 AiProviderName = Literal["anthropic", "openai"]
 AiEffort = Literal["low", "medium", "high"]
-AiRunKind = Literal["mention", "summary"]
+AiRunKind = Literal["mention", "summary", "ask"]
 AiRunStatus = Literal["pending", "running", "done", "failed"]
 AiScope = Literal["unread", "thread", "recent"]
 
@@ -106,11 +109,37 @@ class AiSummaryCreate(BaseModel):
     tz_offset_minutes: int | None = Field(default=None, ge=-840, le=840)
 
 
+class AiAskCreate(BaseModel):
+    """POST /ai/ask (docs/AI.md §13): the question as typed in the search box, modifiers
+    (in:# from:@ before: after: on: has: is:) included; they limit what is looked through."""
+
+    q: str = Field(min_length=1, max_length=MAX_QUERY_LENGTH)
+    # The requester's offset from UTC (dates in the question, times in the transcript; default
+    # Japan, +540).
+    tz_offset_minutes: int | None = Field(default=None, ge=-840, le=840)
+    # The conversation the search screen is narrowed to, as the search's channel_id.
+    channel_id: UUID | None = None
+
+
+class AiSourceOut(BaseModel):
+    """A message an answer cites as [n] (docs/AI.md §13.3)."""
+
+    n: int
+    message_id: UUID
+    channel_id: UUID
+    parent_id: UUID | None
+    sender_id: UUID
+    created_at: datetime
+    # Plain text around the first matching word (about 60 characters on each side).
+    excerpt: str
+
+
 class AiRunOut(BaseModel):
     id: UUID
     kind: AiRunKind
     status: AiRunStatus
-    channel_id: UUID
+    # null only for a question (ask) not narrowed to one conversation.
+    channel_id: UUID | None
     thread_id: UUID | None
     scope: AiScope | None
     days: int | None
@@ -123,6 +152,10 @@ class AiRunOut(BaseModel):
     # null only for runs from before that.
     provider: AiProviderName | None
     model: str | None
+    # Added (M70, docs/AI.md §13): the question of an ask run (null for the other kinds), and
+    # the messages its answer cites, by their [n] (done runs only; empty otherwise).
+    question: str | None = None
+    sources: list[AiSourceOut] = Field(default_factory=list)
 
 
 class AiSummaryTargetOut(BaseModel):
@@ -130,6 +163,17 @@ class AiSummaryTargetOut(BaseModel):
     sent, shown before asking. `reason` (ai_unavailable, ai_private_not_allowed,
     ai_budget_exceeded) when it cannot be asked now; provider / model / agent_name are still
     given when a bot was found (e.g. the bot of a private conversation without allow_private)."""
+
+    available: bool
+    provider: AiProviderName | None
+    model: str | None
+    agent_name: str | None
+    reason: str | None
+
+
+class AiAskTargetOut(BaseModel):
+    """GET /ai/ask/target (docs/AI.md §13.5): where a question would be sent, shown before
+    asking; the same shape and reasons as AiSummaryTargetOut."""
 
     available: bool
     provider: AiProviderName | None
@@ -207,4 +251,29 @@ def to_run_out(run: AiRun) -> AiRunOut:
         finished_at=run.finished_at,
         provider=run.provider,  # type: ignore[arg-type]
         model=run.model,
+        question=run.question,
+        sources=cited_sources(run),
     )
+
+
+_CITATION = re.compile(r"\[(\d+(?:\s*[,、]\s*\d+)*)\]")
+
+
+def cited_numbers(text: str) -> set[int]:
+    """The source numbers an answer cites: [3], [1][4], [1, 4] and [1、4]."""
+    found: set[int] = set()
+    for match in _CITATION.finditer(text):
+        found.update(int(n) for n in re.split(r"\s*[,、]\s*", match.group(1)))
+    return found
+
+
+def cited_sources(run: AiRun) -> list[AiSourceOut]:
+    """docs/AI.md §13.3: the sources of a done ask run that its answer cites, by number."""
+    if run.kind != "ask" or run.status != "done" or not run.output or not run.sources:
+        return []
+    cited = cited_numbers(run.output)
+    return [
+        AiSourceOut.model_validate(s)
+        for s in sorted(run.sources, key=lambda s: int(s["n"]))
+        if int(s["n"]) in cited
+    ]

@@ -340,3 +340,31 @@ async def channel_range(
     stmt = select(Message).where(*conditions).order_by(Message.seq.desc()).limit(limit)
     rows = list((await db.execute(stmt)).scalars().all())
     return list(reversed(rows)), total
+
+
+async def neighbours(db: AsyncSession, message: Message) -> tuple[Message | None, Message | None]:
+    """docs/AI.md §13.2: the live messages just before and just after `message` in its own
+    stream (the channel timeline for a top-level message, the thread for a reply)."""
+    conditions = [
+        Message.channel_id == message.channel_id,
+        Message.deleted_at.is_(None),
+        Message.type == "user",
+        Message.id != message.id,
+    ]
+    if message.parent_id is None:
+        conditions.append(timeline_filter())
+    else:
+        conditions.append(Message.parent_id == message.parent_id)
+    before = select(Message).where(*conditions, Message.seq < message.seq)
+    after = select(Message).where(*conditions, Message.seq > message.seq)
+    prev = (await db.execute(before.order_by(Message.seq.desc()).limit(1))).scalar_one_or_none()
+    nxt = (await db.execute(after.order_by(Message.seq).limit(1))).scalar_one_or_none()
+    return prev, nxt
+
+
+async def live_message(db: AsyncSession, message_id: uuid.UUID) -> Message | None:
+    """A live user message (a thread's parent, for the context of a reply)."""
+    stmt = select(Message).where(
+        Message.id == message_id, Message.deleted_at.is_(None), Message.type == "user"
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()

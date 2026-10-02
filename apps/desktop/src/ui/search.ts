@@ -112,6 +112,42 @@ export function toQuery(params: SearchParams, now: Date = new Date()): {
   };
 }
 
+function dayString(day: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+}
+
+/**
+ * M70 (docs/AI.md §13.1): the question for 「AI に聞く」: the words as typed, and the filters picked from menus as the
+ * modifiers the server reads (`from:@name`, `after:` / `before:` in the viewer's days, `has:`, `is:thread`, `is:times`).
+ * The conversation goes apart, as `channel_id`.
+ */
+export function askQuery(params: SearchParams, usernameOf: (userId: string) => string | undefined, now: Date = new Date()): string {
+  const parts = [params.q.trim()];
+  const username = params.fromUserId ? usernameOf(params.fromUserId) : undefined;
+  if (username) parts.push(`from:@${username}`);
+  const date = params.date;
+  if (date) {
+    // `after:D` is from the day after D, `before:D` until D (exclusive), as in the search box.
+    let first: Date | null = null;
+    let last: Date | null = null;
+    if ("preset" in date) {
+      const back = { today: 0, yesterday: 1, week: 6, month: 29, year: 364 }[date.preset];
+      first = midnight(now, -back);
+      if (date.preset === "yesterday") last = midnight(now, -1);
+    } else {
+      first = localDay(date.from);
+      last = localDay(date.to);
+    }
+    if (first) parts.push(`after:${dayString(midnight(first, -1))}`);
+    if (last) parts.push(`before:${dayString(midnight(last, 1))}`);
+  }
+  for (const flag of params.has) parts.push(`has:${flag}`);
+  if (params.isThread) parts.push("is:thread");
+  if (params.isTimes) parts.push("is:times");
+  return parts.filter(Boolean).join(" ");
+}
+
 /** 「123 件」, or 「1,000 件以上」 when the server stopped counting. */
 export function totalLabel(total: number, capped: boolean): string {
   return `${total.toLocaleString("ja-JP")} 件${capped ? "以上" : ""}`;

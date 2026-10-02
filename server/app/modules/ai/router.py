@@ -10,6 +10,8 @@ from app.modules.ai.schemas import (
     AiAgentCreate,
     AiAgentOut,
     AiAgentUpdate,
+    AiAskCreate,
+    AiAskTargetOut,
     AiProviderOut,
     AiRunOut,
     AiStatusOut,
@@ -18,6 +20,7 @@ from app.modules.ai.schemas import (
     AiUsageOut,
 )
 from app.modules.auth.deps import CurrentAdmin, CurrentUser
+from app.modules.search.schemas import MAX_QUERY_LENGTH
 
 router = APIRouter(tags=["ai"])
 
@@ -99,6 +102,36 @@ async def create_summary(
     return await service.create_summary(db, _runtime(request), user, body)
 
 
+@router.get("/ai/ask/target", response_model=AiAskTargetOut)
+async def get_ask_target(
+    user: CurrentUser,
+    db: Db,
+    request: Request,
+    q: str = Query(default="", max_length=MAX_QUERY_LENGTH),
+    channel_id: UUID | None = None,
+) -> AiAskTargetOut:
+    """Where a question would be sent (provider, model, bot), shown before asking: the bot of the
+    one conversation the question is narrowed to (channel_id or in:#), else the default bot
+    (docs/AI.md §13.4). 404 channel_not_found for a conversation one cannot search."""
+    return await service.ask_target(db, _runtime(request), user, q, channel_id)
+
+
+@router.post("/ai/ask", response_model=AiRunOut, status_code=202)
+async def create_ask(body: AiAskCreate, user: CurrentUser, db: Db, request: Request) -> AiRunOut:
+    """「AI に聞く」 (docs/AI.md §13): an answer only the requester sees, from the messages the
+    search finds for the question (the search's scope and modifiers), citing them as [n]
+    (`sources`). The result arrives as ai.run_updated and through GET /ai/runs/{id}."""
+    settings = request.app.state.settings
+    return await service.create_ask(
+        db,
+        _runtime(request),
+        user,
+        body,
+        timeout_ms=settings.search_timeout_ms,
+        gate=request.app.state.search_gate,
+    )
+
+
 @router.get("/ai/runs/{run_id}", response_model=AiRunOut)
 async def get_run(run_id: UUID, user: CurrentUser, db: Db) -> AiRunOut:
     """One of my runs (others' are 404 ai_run_not_found)."""
@@ -109,7 +142,7 @@ async def get_run(run_id: UUID, user: CurrentUser, db: Db) -> AiRunOut:
 async def list_runs(
     user: CurrentUser,
     db: Db,
-    kind: Literal["mention", "summary"] | None = Query(default=None),
+    kind: Literal["mention", "summary", "ask"] | None = Query(default=None),
 ) -> list[AiRunOut]:
     """My most recent 20 runs, newest first."""
     return await service.list_runs(db, user, kind)
