@@ -184,3 +184,39 @@ struct CanvasDeletedEvent: Decodable {
     let canvasId: String
     let channelId: String
 }
+
+/// canvas.mentioned (M72, to me only; CANVAS.md §18.1): a save of the canvas newly mentions me. Only the ids are
+/// required: a title or author missing reads as empty (the notice still says something).
+struct CanvasMentioned: Decodable, Equatable {
+    let canvasId: String
+    let channelId: String
+    var revId: String?
+    var title: String
+    var byUserId: String
+
+    init(canvasId: String, channelId: String, revId: String? = nil, title: String, byUserId: String) {
+        self.canvasId = canvasId
+        self.channelId = channelId
+        self.revId = revId
+        self.title = title
+        self.byUserId = byUserId
+    }
+
+    private enum CodingKeys: String, CodingKey { case canvasId, channelId, revId, title, byUserId }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        canvasId = try c.decode(String.self, forKey: .canvasId)
+        channelId = try c.decode(String.self, forKey: .channelId)
+        revId = try? c.decodeIfPresent(String.self, forKey: .revId)
+        title = (try? c.decodeIfPresent(String.self, forKey: .title)) ?? ""
+        byUserId = (try? c.decodeIfPresent(String.self, forKey: .byUserId)) ?? ""
+    }
+
+    /// The push's words (CANVAS.md §18.1): 「〇〇 が「題名」であなたをメンションしました」.
+    func noticeText(nameOf: (String) -> String?) -> String {
+        let who = nameOf(byUserId) ?? "メンバー"
+        let title = title.isEmpty ? "キャンバス" : title
+        return "\(who) が「\(title)」であなたをメンションしました"
+    }
+}

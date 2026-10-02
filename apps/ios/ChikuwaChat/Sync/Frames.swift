@@ -23,6 +23,8 @@ enum ServerFrame: Equatable {
     /// Volatile (M11b): shown for a few seconds, never stored.
     case typing(channelId: String, parentId: String?, userId: String)
     case presence(userId: String, status: String)
+    /// M73 (CANVAS.md §18.2): someone else edits (or stopped editing) a canvas; volatile, dropped after 45 s.
+    case canvasPresence(canvasId: String, channelId: String?, userId: String, editing: Bool, section: String?)
 
     private struct Head: Decodable {
         let type: String
@@ -34,6 +36,9 @@ enum ServerFrame: Equatable {
         let parent_id: String?
         let user_id: String?
         let status: String?
+        let canvas_id: String?
+        let editing: Bool?
+        let section: String?
     }
 
     static func parse(_ text: String) -> ServerFrame? {
@@ -50,6 +55,10 @@ enum ServerFrame: Equatable {
         case "presence":
             guard let userId = head.user_id, let status = head.status else { return nil }
             return .presence(userId: userId, status: status)
+        case "canvas_presence":
+            guard let canvasId = head.canvas_id, let userId = head.user_id else { return nil }
+            return .canvasPresence(canvasId: canvasId, channelId: head.channel_id, userId: userId, editing: head.editing ?? false,
+                                   section: head.section)
         default: return nil
         }
     }
@@ -62,6 +71,12 @@ enum ClientFrame {
         var object: [String: JSONValue] = ["type": .string("typing"), "channel_id": .string(channelId)]
         if let parentId { object["parent_id"] = .string(parentId) }
         return encode(object)
+    }
+
+    /// M73: `section` is null without a heading (the server takes 120 characters).
+    static func canvasPresence(canvasId: String, editing: Bool, section: String?) -> String {
+        encode(["type": .string("canvas_presence"), "canvas_id": .string(canvasId), "editing": .bool(editing),
+                "section": section.map(JSONValue.string) ?? .null])
     }
 
     private static func encode(_ object: [String: JSONValue]) -> String {

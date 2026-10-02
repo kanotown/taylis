@@ -14,6 +14,7 @@
 		072F46A639D7FAE65117A223 /* Share.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B2BB586E878AEEC2A31668 /* Share.swift */; };
 		08F3CC14499210725A24A0E5 /* DraftSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = A980BB847A9CA5813A391341 /* DraftSync.swift */; };
 		09042AACA7B7FC70CC71C09F /* TaskTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8340FEBA780A3A7BF118790 /* TaskTests.swift */; };
+		0AB4CF977D63D5D8D1B6CE89 /* CanvasPhase2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41095FD838912D8AAB1FD7F3 /* CanvasPhase2Tests.swift */; };
 		0B30BA10FE1F85A93BEEE644 /* IsoDatesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22D11A729F3DC9A928D8517A /* IsoDatesTests.swift */; };
 		0BF3079882ED5F8F73F73D6D /* ThreadsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 095DC9C14EA053C04A5D3DEA /* ThreadsSnapshotTests.swift */; };
 		0ECCCE363BA13FDFDB89F930 /* ScheduleSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC86365F7AB2D7B7809C4CB0 /* ScheduleSnapshotTests.swift */; };
@@ -206,6 +207,7 @@
 		F61DD3ECA05DE74855A4FAC4 /* ActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 336635B45331D305DB86CEDA /* ActivityTests.swift */; };
 		F620F4D16BD57ABD77ABECE3 /* SavedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4C8A95833707C7581F036D /* SavedView.swift */; };
 		F6B0289DCC3A8F13206BE205 /* DraftSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D5DFCD4849BD74C5BD21B4 /* DraftSyncTests.swift */; };
+		F962A43BBF43E92873A6CFE8 /* CanvasPresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22E0FD560319E4983B3A57B4 /* CanvasPresence.swift */; };
 		F98DDD6607EB0D904F1E37C4 /* ShareTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA240682AC06B184CE133E2 /* ShareTests.swift */; };
 		F9AE534F5A1A2B3ED7311EC2 /* ContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91851A02B144D3F57EB66170 /* ContractTests.swift */; };
 		FB26D88A3A28AF522C46FD3B /* BrowserSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57361050F0BB2C12BDB8B78B /* BrowserSnapshotTests.swift */; };
@@ -251,6 +253,7 @@
 		1FCAE33D55025EFA146CADC2 /* MentionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentionsView.swift; sourceTree = "<group>"; };
 		20149D2520CFB689B293AEB2 /* ApiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApiClient.swift; sourceTree = "<group>"; };
 		22D11A729F3DC9A928D8517A /* IsoDatesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IsoDatesTests.swift; sourceTree = "<group>"; };
+		22E0FD560319E4983B3A57B4 /* CanvasPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasPresence.swift; sourceTree = "<group>"; };
 		234BE2448E1022BD0D1D55EB /* TypingLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingLine.swift; sourceTree = "<group>"; };
 		235F4C3E16ABCCEF1B647BFF /* MessageRowAccessibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageRowAccessibilityTests.swift; sourceTree = "<group>"; };
 		24269094945450CF90BCAC33 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
@@ -271,6 +274,7 @@
 		3C1DC4CF6739F3437F8FC0FC /* PushTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushTests.swift; sourceTree = "<group>"; };
 		3D8D44C8BF1DDCB4820DC752 /* KeyboardBehavior.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardBehavior.swift; sourceTree = "<group>"; };
 		3F7662F23ED981268EBFB0F8 /* ChannelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelView.swift; sourceTree = "<group>"; };
+		41095FD838912D8AAB1FD7F3 /* CanvasPhase2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasPhase2Tests.swift; sourceTree = "<group>"; };
 		411D0F28175679909161F694 /* RevisionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevisionsView.swift; sourceTree = "<group>"; };
 		41D8FE044BFBF564E1DC7816 /* LinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinksTests.swift; sourceTree = "<group>"; };
 		4324FDC43FE12F139725608A /* WebSocketTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketTransport.swift; sourceTree = "<group>"; };
@@ -441,6 +445,7 @@
 				75FB7B9DFEF2B0FBC001D1A0 /* AiHub.swift */,
 				4B482E71B92FB96FC40EB7B8 /* CalendarHub.swift */,
 				88EF402B1E9AB04B9002ACC7 /* CanvasHub.swift */,
+				22E0FD560319E4983B3A57B4 /* CanvasPresence.swift */,
 				C9393E38B1CAB5781D5AF359 /* CanvasSave.swift */,
 				A980BB847A9CA5813A391341 /* DraftSync.swift */,
 				FF56C1D17673E9A46D280F6D /* Frames.swift */,
@@ -538,6 +543,7 @@
 				B025C4C5724847FCE8E54C78 /* CalendarSnapshotTests.swift */,
 				989AE8D5D6BB658A4E7C78C7 /* CalendarTests.swift */,
 				F82924F67F96966CEF6D5764 /* CanvasCatchUpTests.swift */,
+				41095FD838912D8AAB1FD7F3 /* CanvasPhase2Tests.swift */,
 				607C1E9E7402F661214D90A0 /* CanvasTableTests.swift */,
 				0397FFA9C50A7ED2CC1BCCFF /* CanvasTests.swift */,
 				888C8B5471FBCF6939976F42 /* ChannelLinksTests.swift */,
@@ -857,6 +863,7 @@
 				28F001DA9E97332D9904EC95 /* CalendarSnapshotTests.swift in Sources */,
 				550E3B084AFF70246660C746 /* CalendarTests.swift in Sources */,
 				7E2B5B4B79437C3FB91524B3 /* CanvasCatchUpTests.swift in Sources */,
+				0AB4CF977D63D5D8D1B6CE89 /* CanvasPhase2Tests.swift in Sources */,
 				60835B65D7A929055ECFF067 /* CanvasTableTests.swift in Sources */,
 				37B851B524C60ED03CED733D /* CanvasTests.swift in Sources */,
 				26514DB9DB56AFE075EC6AA4 /* ChannelLinksTests.swift in Sources */,
@@ -957,6 +964,7 @@
 				12F298467859EDDBBE06C67C /* CanvasHistory.swift in Sources */,
 				9FE00E5EE37687842E6BA362 /* CanvasHub.swift in Sources */,
 				9FBDEF1808F26E2BC1702A0A /* CanvasModels.swift in Sources */,
+				F962A43BBF43E92873A6CFE8 /* CanvasPresence.swift in Sources */,
 				EDDA7B56DBA5B948E7557B5B /* CanvasSave.swift in Sources */,
 				85A3F97DF7831B3EBC32DA93 /* CanvasSearch.swift in Sources */,
 				E56B3F2373EBFEDE59168124 /* CanvasTable.swift in Sources */,

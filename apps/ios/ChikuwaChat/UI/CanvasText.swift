@@ -136,6 +136,20 @@ enum CanvasText {
         return entries
     }
 
+    /// The line holding UTF-16 offset `offset` (0-based).
+    static func lineIndex(_ text: String, at offset: Int) -> Int {
+        let ns = text as NSString
+        let end = max(0, min(offset, ns.length))
+        return ns.substring(to: end).components(separatedBy: "\n").count - 1
+    }
+
+    /// M73 (§18.2): the heading the caret (a UTF-16 offset) is under — the `section` of `canvas_presence`; nil above the
+    /// first heading.
+    static func sectionAt(_ text: String, caret: Int) -> String? {
+        let line = lineIndex(text, at: caret)
+        return outline(text).last { $0.line <= line }?.text
+    }
+
     // MARK: sections (§5 「見出しごとの「このセクションを編集」」)
 
     /// The section of the heading on `headingLine`: from that line up to the next heading of the same or a higher level

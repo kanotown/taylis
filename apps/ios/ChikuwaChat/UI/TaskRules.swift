@@ -283,6 +283,91 @@ enum TaskRules {
         return draft
     }
 
+    // MARK: a canvas's checklist item (M73, CANVAS.md §18.3; the desktop's ui/canvasTasks.ts)
+
+    /// What a task says of the canvas it came from: a link while the canvas is there, 「元のキャンバスは削除されました」 once
+    /// it was purged, nothing for a task not made from one.
+    enum CanvasSourceState: Equatable {
+        case none
+        case deleted(excerpt: String?)
+        case link(canvasId: String, excerpt: String?)
+    }
+
+    static func canvasSourceState(_ source: TaskCanvasSourceOut?) -> CanvasSourceState {
+        guard let source else { return .none }
+        let excerpt = source.excerpt.flatMap { $0.isEmpty ? nil : $0 }
+        guard let canvasId = source.canvasId, !canvasId.isEmpty else { return .deleted(excerpt: excerpt) }
+        return .link(canvasId: canvasId, excerpt: excerpt)
+    }
+
+    /// A checklist item of a canvas's body.
+    struct ChecklistItem: Equatable {
+        /// The line as it is in the body (`- [ ] …`): the server finds it there.
+        let line: String
+        /// The text after the box.
+        let text: String
+        let done: Bool
+    }
+
+    /// Line `index` of the body, when it is a checklist item.
+    static func checklistItem(_ body: String, line index: Int) -> ChecklistItem? {
+        let lines = body.components(separatedBy: "\n")
+        guard index >= 0, index < lines.count else { return nil }
+        let line = lines[index]
+        let ns = line as NSString
+        guard let match = CanvasText.taskLine.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        let text = match.range(at: 3).location == NSNotFound ? "" : ns.substring(with: match.range(at: 3))
+        return ChecklistItem(line: line, text: text.trimmingCharacters(in: .whitespaces), done: ns.substring(with: match.range(at: 2)) != " ")
+    }
+
+    private static let dueMark = try! NSRegularExpression(pattern: #"📅\s*(\d{4}-\d{2}-\d{2})"#)
+    private static let userToken = try! NSRegularExpression(pattern: #"<@([0-9a-f-]{36})>"#)
+
+    /// A real calendar date in `YYYY-MM-DD` (not 2026-02-30).
+    static func validDay(_ value: String) -> Bool {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return false }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        guard let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else { return false }
+        let back = calendar.dateComponents([.year, .month, .day], from: date)
+        return back.year == parts[0] && back.month == parts[1] && back.day == parts[2]
+    }
+
+    /// 「タスクにする」 on checklist item `line` of a canvas (CANVAS.md §18.3), as the desktop: the item's text as the title
+    /// (the box gone, mentions as names, a `📅 YYYY-MM-DD` taken out, 200 characters), that date as the due date, the
+    /// people it mentions as assignees (groups not expanded; only where the task is shared), and the message's rule for
+    /// where it goes (the channel's board when I may add to it; a DM's canvas: mine, shared in the DM once someone is
+    /// assigned). nil: the line is not a checklist item.
+    static func canvasTaskInit(canvasId: String, body: String, line: Int, channel: ChannelState?, users: [String: UserPublic],
+                               groups: [String: GroupOut], isAdmin: Bool) -> TaskDraft? {
+        guard let item = checklistItem(body, line: line) else { return nil }
+        let text = item.text as NSString
+        let whole = NSRange(location: 0, length: text.length)
+        var dueOn = ""
+        if let match = dueMark.firstMatch(in: item.text, range: whole) {
+            let day = text.substring(with: match.range(at: 1))
+            if validDay(day) { dueOn = day }
+        }
+        let withoutDue = dueMark.stringByReplacingMatches(in: item.text, range: whole, withTemplate: " ")
+        let title = cleanTitle(Timeline.plainText(Mentions.toNames(withoutDue, users: users, groups: groups), limit: maxTitle))
+        var seen = Set<String>()
+        let mentioned = userToken.matches(in: item.text, range: whole).map { text.substring(with: $0.range(at: 1)) }
+            .filter { users[$0] != nil && seen.insert($0).inserted }
+        let board = canEditBoard(channel, isAdmin: isAdmin) ? channel?.id : nil
+        let share = channel.flatMap { !hasBoard($0) && canShareInDm($0) ? $0.id : nil }
+        var draft = TaskDraft(title: title, channelId: board)
+        draft.dueOn = dueOn
+        draft.assigneeIds = board != nil || share != nil ? mentioned : []
+        draft.boardChoices = board.map { [$0] } ?? []
+        draft.dmChannelId = share
+        draft.sourceCanvasId = canvasId
+        draft.sourceCanvasLine = item.line
+        let excerpt = Timeline.plainText(Mentions.toNames(item.text, users: users, groups: groups), limit: maxTitle)
+        draft.sourceCanvasExcerpt = excerpt.isEmpty ? nil : excerpt
+        return draft
+    }
+
     static let reviewPrefix = "レビュー: "
 
     /// L9 「レビューを依頼」 (REVIEWS.md §2.3): 「タスクにする」's form as a review request — 「レビュー: <excerpt>」, the
@@ -392,6 +477,10 @@ struct TaskDraft: Equatable {
     var dmChannelId: String?
     /// L9: a new review request needs someone to ask.
     var needsAssignee = false
+    /// M73: 「タスクにする」 on a canvas's checklist item — the canvas, the line as it is in the body, its one-line text.
+    var sourceCanvasId: String?
+    var sourceCanvasLine: String?
+    var sourceCanvasExcerpt: String?
 
     init(title: String = "", channelId: String? = nil, status: TaskStatus = .todo) {
         self.title = title
@@ -429,7 +518,8 @@ struct TaskDraft: Equatable {
         return TaskCreate(channelId: target, title: TaskRules.cleanTitle(title),
                           notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes, status: status,
                           dueOn: dueOn.isEmpty ? nil : dueOn, assigneeIds: assignees, sourceMessageId: sourceMessageId,
-                          clientTaskId: clientTaskId, tz: tz, kind: kind)
+                          clientTaskId: clientTaskId, tz: tz, kind: kind,
+                          sourceCanvasId: sourceCanvasLine == nil ? nil : sourceCanvasId, sourceCanvasLine: sourceCanvasId == nil ? nil : sourceCanvasLine)
     }
 
     /// PATCH /tasks/{id} with only what changed (`tz` with a new due date: its notification is read in my zone).

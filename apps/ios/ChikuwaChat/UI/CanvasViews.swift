@@ -62,6 +62,13 @@ struct CanvasPane: View {
         .onChange(of: list.flatMap(Self.defaultId), initial: true) { _, id in
             if selectedId == nil, let id { selectedId = id }
         }
+        .onChange(of: controller.canvasOpen, initial: true) { _, open in
+            // M73: a canvas mention's notification, a task's 元のキャンバス (ChannelView chose this tab).
+            guard let open, open.channelId == channel.id else { return }
+            controller.canvasOpen = nil
+            dialog = nil
+            selectedId = open.canvasId
+        }
         .task(id: channel.id) {
             if controller.store.canvasesOf(channel.id) == nil { await hub?.loadList(channel.id) }
         }
@@ -162,6 +169,8 @@ struct CanvasDocument: View {
     @State private var confirmTrash = false
     /// M58: 「コメント」 is asking the server (sharing first when the canvas never was).
     @State private var openingComments = false
+    /// M73: 「タスクにする」 on a checklist item (CANVAS.md §18.3).
+    @State private var taskForm: TaskFormTarget?
 
     private var meta: CanvasMeta? { saver.meta(in: controller.store) }
 
@@ -177,6 +186,7 @@ struct CanvasDocument: View {
         VStack(spacing: 0) {
             bar(rights: rights)
             Divider()
+            CanvasEditingRow(controller: controller, canvasId: saver.id)
             if let notice = notice(rights: rights) {
                 HStack(spacing: 8) {
                     Text(notice.text).font(.caption).fixedSize(horizontal: false, vertical: true)
@@ -200,7 +210,8 @@ struct CanvasDocument: View {
                 CanvasReader(controller: controller, saver: saver, title: meta?.title ?? "キャンバス", meta: meta,
                              onToggleTask: rights.tick && status != .gone ? toggle : nil,
                              onEditSection: rights.edit && status != .gone ? { section = SectionTarget(line: $0) } : nil,
-                             onStartWriting: rights.edit ? { mode = .edit } : nil)
+                             onStartWriting: rights.edit ? { mode = .edit } : nil,
+                             onMakeTask: controller.serverHasTasks && status != .gone && !saver.loadFailed ? makeTask : nil)
             }
         }
         .onChange(of: status) { _, next in
@@ -221,6 +232,10 @@ struct CanvasDocument: View {
                 CanvasExpiredSheet(controller: controller, saver: saver, head: head, canOverwrite: rights.edit)
             }
         }
+        // A sheet, not a full-screen cover: a cover ends this screen under it (CanvasScreen lets go of the canvas).
+        .sheet(item: $taskForm) { target in
+            TaskForm(controller: controller, hub: controller.taskHub, target: target)
+        }
         .sheet(isPresented: $history) {
             CanvasHistorySheet(controller: controller, channel: channel, saver: saver, model: CanvasHistoryModel(canvasId: saver.id))
         }
@@ -240,6 +255,11 @@ struct CanvasDocument: View {
         } message: {
             Text("30 日間はゴミ箱から戻せます。")
         }
+    }
+
+    /// M73 (§18.3): the task form for checklist item `line`, prefilled as the desktop's.
+    private func makeTask(_ line: Int) {
+        if let draft = controller.canvasTaskDraft(canvasId: saver.id, channelId: channel.id, body: saver.text, line: line) { taskForm = .new(draft) }
     }
 
     /// A tick is saved at once (§4.4); only the box changes, so a member who may only tick sends what the server takes.
@@ -366,6 +386,59 @@ struct CanvasDocument: View {
     }
 }
 
+/// M73 (CANVAS.md §18.2): who else edits this canvas now — their pictures (three, then 「+N」) and 「〇〇 が編集中」, under
+/// the bar; each one's heading is read out with them. Volatile: an entry goes 45 s after its last refresh (checked
+/// every 5 s while someone is shown). Nothing when nobody edits.
+struct CanvasEditingRow: View {
+    @Bindable var controller: AppController
+    let canvasId: String
+
+    var body: some View {
+        if !controller.store.canvasEditors(canvasId).isEmpty {
+            TimelineView(.periodic(from: .now, by: 5)) { context in
+                let editors = controller.store.canvasEditors(canvasId, now: context.date)
+                if !editors.isEmpty { row(editors) }
+            }
+        }
+    }
+
+    private func name(_ id: String) -> String { controller.store.users[id]?.displayName ?? "メンバー" }
+
+    private func row(_ editors: [CanvasEditingUser]) -> some View {
+        let shown = Array(editors.prefix(3))
+        let label = CanvasPresence.editingLabel(editors.map { name($0.userId) })
+        let detail = editors.map { editor in editor.section.map { "\(name(editor.userId)): \($0)" } ?? name(editor.userId) }.joined(separator: "、")
+        return VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                HStack(spacing: -6) {
+                    ForEach(shown, id: \.userId) { editor in
+                        AvatarView(id: editor.userId, name: name(editor.userId), size: 20)
+                            .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(Color(.systemBackground), lineWidth: 1.5))
+                    }
+                    if editors.count > shown.count {
+                        Text("+\(editors.count - shown.count)")
+                            .font(.system(size: 10, weight: .semibold))
+                            .frame(minWidth: 20, minHeight: 20)
+                            .background(Color(.tertiarySystemFill), in: Capsule())
+                    }
+                }
+                Image(systemName: "pencil").imageScale(.small)
+                Text(label).lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .accessibilityValue(detail)
+            .accessibilityIdentifier("canvas-editing")
+            Divider()
+        }
+    }
+}
+
 /// The save state beside the canvas's name; 「競合」 opens its choice again.
 struct CanvasSaveStateLabel: View {
     let saver: CanvasSaver
@@ -433,6 +506,7 @@ private struct CanvasReader: View {
     let onToggleTask: ((Int, Bool) -> Void)?
     let onEditSection: ((Int) -> Void)?
     let onStartWriting: (() -> Void)?
+    var onMakeTask: ((Int) -> Void)? = nil
 
     var body: some View {
         let headings = CanvasText.outline(saver.text)
@@ -449,7 +523,8 @@ private struct CanvasReader: View {
                         .font(.subheadline)
                         .padding(.top, 16)
                     } else {
-                        CanvasBodyView(body: saver.text, controller: controller, onToggleTask: onToggleTask, onEditSection: onEditSection)
+                        CanvasBodyView(body: saver.text, controller: controller, onToggleTask: onToggleTask, onEditSection: onEditSection,
+                                       onMakeTask: onMakeTask)
                             .padding(.top, 10)
                     }
                 }

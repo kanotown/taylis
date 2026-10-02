@@ -23,6 +23,8 @@ final class FakeServer {
         var authed = false
         /// The `active` of every ping this client sent.
         var pings: [Bool] = []
+        /// M73: the `canvas_presence` frames this client sent (the relay itself is not modelled).
+        var canvasPresence: [[String: JSONValue]] = []
 
         func send(_ text: String) async throws {
             guard let data = text.data(using: .utf8), let frame = try? JSON.plainDecoder.decode([String: JSONValue].self, from: data) else { return }
@@ -41,6 +43,8 @@ final class FakeServer {
                 pings.append(frame["active"] == .bool(true))
                 if case .bool(true)? = frame["active"] { server.markActive(userId) }
                 deliver(.object(["type": .string("pong"), "server_time": .string(now())]))
+            case "canvas_presence":
+                canvasPresence.append(frame)
             case "typing":
                 if let channelId = frame["channel_id"]?.stringValue { server.relayTyping(userId, channelId: channelId, parentId: frame["parent_id"]?.stringValue) }
             default: break

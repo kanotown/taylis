@@ -57,7 +57,8 @@ struct TaskCardContent: View {
         let overdue = TaskRules.isOverdue(task, today: today)
         let source = TaskRules.sourceState(task.source)
         let hasSource = if case .link = source { true } else { false }
-        let hasMeta = task.dueOn != nil || task.notes != nil || hasSource || !task.assigneeIds.isEmpty || (showStatus && task.status == .doing)
+        let hasCanvas = if case .link = TaskRules.canvasSourceState(task.canvasSource) { true } else { false }
+        let hasMeta = task.dueOn != nil || task.notes != nil || hasSource || hasCanvas || !task.assigneeIds.isEmpty || (showStatus && task.status == .doing)
         VStack(alignment: .leading, spacing: 5) {
             Text(task.title)
                 .font(.subheadline)
@@ -87,6 +88,9 @@ struct TaskCardContent: View {
                     }
                     if hasSource {
                         Image(systemName: "text.bubble").accessibilityLabel("元のメッセージあり")
+                    }
+                    if hasCanvas {
+                        Image(systemName: "doc.text").accessibilityLabel("元のキャンバスあり")  // M73
                     }
                     Spacer(minLength: 0)
                     TaskAssigneeStack(controller: controller, ids: task.assigneeIds)
@@ -279,7 +283,7 @@ struct ChannelTasksPane: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("タスクを開く")
-            if canEdit || task.canDelete {
+            if canEdit || task.canDelete || canvasOf(task) != nil {
                 Menu { menu(task, column: cards, canEdit: canEdit) } label: {
                     Image(systemName: "ellipsis")
                         .font(.subheadline)
@@ -294,7 +298,13 @@ struct ChannelTasksPane: View {
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color(.separator).opacity(0.5), lineWidth: 0.5))
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .contextMenu { if canEdit || task.canDelete { menu(task, column: cards, canEdit: canEdit) } }
+        .contextMenu { if canEdit || task.canDelete || canvasOf(task) != nil { menu(task, column: cards, canEdit: canEdit) } }
+    }
+
+    /// M73: the canvas a card was made from, while it is there.
+    private func canvasOf(_ task: TaskOut) -> String? {
+        if case .link(let canvasId, _) = TaskRules.canvasSourceState(task.canvasSource) { return canvasId }
+        return nil
     }
 
     /// The card's actions: 移動 (another column), 上へ / 下へ, 削除 (who may) — what dragging does on the web.
@@ -312,6 +322,9 @@ struct ChannelTasksPane: View {
             let down = TaskRules.moveWithin(cards, task.id, 1)
             Button("上へ", systemImage: "arrow.up") { if let up { move(task, to: task.status, up) } }.disabled(up == nil)
             Button("下へ", systemImage: "arrow.down") { if let down { move(task, to: task.status, down) } }.disabled(down == nil)
+        }
+        if let canvasId = canvasOf(task) {
+            Button("元のキャンバスを開く", systemImage: "doc.text") { Task { await controller.openCanvas(canvasId, channelId: channel.id, navigate: false) } }
         }
         if task.canDelete {
             Button("削除", systemImage: "trash", role: .destructive) { deleting = task }

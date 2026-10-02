@@ -10,12 +10,16 @@ struct CanvasBodyView: View {
     var onToggleTask: ((Int, Bool) -> Void)?
     /// nil: no section editing.
     var onEditSection: ((Int) -> Void)?
+    /// M73 (CANVAS.md §18.3): 「タスクにする」 on an open checklist item's long press (its line); nil: not offered.
+    var onMakeTask: ((Int) -> Void)?
 
-    init(body: String, controller: AppController, onToggleTask: ((Int, Bool) -> Void)?, onEditSection: ((Int) -> Void)? = nil) {
+    init(body: String, controller: AppController, onToggleTask: ((Int, Bool) -> Void)?, onEditSection: ((Int) -> Void)? = nil,
+         onMakeTask: ((Int) -> Void)? = nil) {
         self.body_ = body
         self.controller = controller
         self.onToggleTask = onToggleTask
         self.onEditSection = onEditSection
+        self.onMakeTask = onMakeTask
     }
 
     static func anchor(_ line: Int) -> String { "canvas-h-\(line)" }
@@ -87,6 +91,7 @@ struct CanvasBodyView: View {
                 .foregroundStyle(item.done ? .secondary : .primary)
         }
         .padding(.leading, CGFloat(item.level) * 24)
+        .modifier(MakeTaskMenu(action: item.done ? nil : onMakeTask.map { make in { make(item.line) } }))
     }
 
     private func message(_ blocks: [BodyBlock]) -> some View {
@@ -94,6 +99,22 @@ struct CanvasBodyView: View {
         return MessageBodyView(text: "", users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
                                customEmoji: store.customEmoji, emojiImages: store.emojiImages,
                                onNeedEmojiImage: { controller.loadEmojiImage($0) }, preparsed: blocks)
+    }
+}
+
+/// M73: the long press of an open checklist item offers 「タスクにする」; nothing is attached without one (a done item,
+/// a read-only body), so the row scrolls and ticks as before.
+private struct MakeTaskMenu: ViewModifier {
+    let action: (() -> Void)?
+
+    func body(content: Content) -> some View {
+        if let action {
+            content
+                .contentShape(.contextMenuPreview, Rectangle())
+                .contextMenu { Button("タスクにする", systemImage: "checklist", action: action) }
+        } else {
+            content
+        }
     }
 }
 
