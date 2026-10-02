@@ -88,7 +88,7 @@ object CanvasText {
                 return@forEachIndexed
             }
             if (fenced) return@forEachIndexed
-            HEADING_LINE.find(line)?.let { entries.add(OutlineEntry(it.groupValues[1].length, it.groupValues[2].replace(Regex("[*_~`]"), "").trim(), index)) }
+            HEADING_LINE.find(line)?.let { entries.add(OutlineEntry(it.groupValues[1].length, CanvasMarkers.stripStandIns(CanvasMarkers.strip(it.groupValues[2])).replace(Regex("[*_~`]"), "").trim(), index)) }
         }
         return entries
     }

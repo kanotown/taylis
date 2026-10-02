@@ -63,6 +63,9 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.Clipboard
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -639,6 +642,11 @@ private val HEADING_IN_SECTION = Regex("""(?m)^#{1,3}\s+\S""")
  * edits) comes back here with the caret kept — never while an IME composition is open (§4.4).
  *
  * `section`: only that section's lines (under its heading) are edited; they are put back into the whole body.
+ *
+ * M83 (CANVAS.md §22.7 / §22.9): the hidden task markers of checklist items show as invisible stand-ins
+ * ([CanvasMarkers.Table], one table per editor) that move with their lines and are written back at their line's end;
+ * a deletion beside one (Compose takes it with the character before it, one grapheme) is redone in onValueChange so
+ * the marker stays; a copy or a cut leaves them out ([StandInFreeClipboard]).
  */
 @Composable
 private fun CanvasEditorField(
@@ -646,8 +654,10 @@ private fun CanvasEditorField(
     autoFocus: Boolean = false, onSectionGone: () -> Unit = {},
 ) {
     val store = controller.store
-    fun decode(stored: String) = Mentions.decode(stored, store.users, store.groups)
-    fun encode(shown: String) = CanvasText.encodeMentions(shown, store.users.values, store.groups.values)
+    val markers = remember(saver, section) { CanvasMarkers.Table() }
+    fun decode(stored: String) = markers.hide(Mentions.decode(stored, store.users, store.groups))
+    // The markers go back first: a stand-in right after `@name` must not keep the name from being found.
+    fun encode(shown: String) = CanvasText.encodeMentions(markers.show(shown), store.users.values, store.groups.values)
     /** The part of the stored body this editor shows: the whole, or the section's lines (null: the section is gone). */
     fun window(stored: String): Pair<IntRange?, String>? {
         if (section == null) return null to stored
@@ -725,6 +735,14 @@ private fun CanvasEditorField(
     fun change(incoming: TextFieldValue) {
         var next = incoming
         val previous = field
+        // M83: Backspace / Delete beside a task marker's stand-in takes the visible character and keeps the marker.
+        // (Keys sent within one frame — faster than a held key repeats — reach here worked out on the text the field last
+        // drew, and may take a character too many; seen only with adb on the emulator.)
+        if (previous.selection.collapsed && next.selection.collapsed) {
+            CanvasMarkers.fixDeletion(previous.text, previous.selection.start, next.text, next.selection.start)?.let { fixed ->
+                next = TextFieldValue(fixed.text, TextRange(fixed.caret))
+            }
+        }
         // Enter in a list, a checklist or a quote goes on with it (a new open box …); on an empty item it ends it.
         val c = previous.selection.start
         if (next.composition == null && previous.selection.collapsed && next.selection.collapsed && next.text.length == previous.text.length + 1 &&
@@ -851,7 +869,9 @@ private fun CanvasEditorField(
                 }
             }
         }
-        BasicTextField(
+        val platformClipboard = LocalClipboard.current
+        val clipboard = remember(platformClipboard) { StandInFreeClipboard(platformClipboard) }
+        CompositionLocalProvider(LocalClipboard provides clipboard) { BasicTextField(
             value = field,
             onValueChange = ::change,
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
@@ -882,7 +902,17 @@ private fun CanvasEditorField(
                     inner()
                 }
             },
-        )
+        ) }
+    }
+}
+
+/** M83: the editor's copy and cut put its text on the clipboard without the task markers' stand-ins. */
+private class StandInFreeClipboard(private val base: Clipboard) : Clipboard by base {
+    override suspend fun setClipEntry(clipEntry: ClipEntry?) {
+        val data = clipEntry?.clipData
+        val text = data?.takeIf { it.itemCount == 1 }?.getItemAt(0)?.text?.toString()
+        if (data == null || text == null || !CanvasMarkers.hasStandIns(text)) return base.setClipEntry(clipEntry)
+        base.setClipEntry(ClipEntry(android.content.ClipData.newPlainText(data.description?.label ?: "", CanvasMarkers.stripStandIns(text))))
     }
 }
 
@@ -1198,7 +1228,7 @@ private fun TrashDialog(controller: AppController, channel: ChannelState, onDism
 @Composable
 private fun ConflictDialog(controller: AppController, saver: CanvasSaver, tickOnly: Boolean, conflicts: List<CanvasConflict>, timedOut: Boolean, onDismiss: () -> Unit) {
     val store = controller.store
-    fun names(text: String) = Mentions.toNames(text, store.users, store.groups)
+    fun names(text: String) = Mentions.toNames(CanvasMarkers.strip(text), store.users, store.groups) // M83: markers hidden
     val shown = conflicts.take(5)
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1251,7 +1281,7 @@ private fun ConflictSide(label: String, text: String, mine: Boolean) {
 @Composable
 private fun ExpiredDialog(controller: AppController, saver: CanvasSaver, head: CanvasOut, canOverwrite: Boolean, onDismiss: () -> Unit) {
     val store = controller.store
-    fun names(text: String) = Mentions.toNames(text, store.users, store.groups)
+    fun names(text: String) = Mentions.toNames(CanvasMarkers.strip(text), store.users, store.groups) // M83: markers hidden
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("編集の元にした版がなくなりました") },
