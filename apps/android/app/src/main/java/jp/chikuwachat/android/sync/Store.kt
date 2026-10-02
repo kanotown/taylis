@@ -204,6 +204,8 @@ interface Persistence {
     fun loadCanvas(id: String): CachedCanvas?
     /** The conversation's copies (its list while the server cannot be reached). Blocking, like [loadCanvas]. */
     fun loadCanvases(channelId: String): List<CachedCanvas>
+    /** M78: every copy (the home's 「キャンバス」 while the server cannot be reached). Blocking, like [loadCanvas]. */
+    fun loadAllCanvases(): List<CachedCanvas>
     fun deleteCanvas(id: String)
     fun deleteCanvases(channelId: String)
 }
@@ -450,6 +452,9 @@ class Store(private val persistence: Persistence? = null) {
 
     /** The conversation's copies. Blocking: call off the main thread. */
     fun cachedCanvases(channelId: String): List<CachedCanvas> = persistence?.let { p -> runCatching { p.loadCanvases(channelId) }.getOrNull() } ?: emptyList()
+
+    /** M78: every copy on this device (the home's 「キャンバス」 offline). Blocking: call off the main thread. */
+    fun allCachedCanvases(): List<CachedCanvas> = persistence?.let { p -> runCatching { p.loadAllCanvases() }.getOrNull() } ?: emptyList()
 
     /** The server answered with this canvas (read or saved): it becomes the copy shown offline. */
     fun cacheCanvas(canvas: CanvasOut, at: Long = System.currentTimeMillis()) {

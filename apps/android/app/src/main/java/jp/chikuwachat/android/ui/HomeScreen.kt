@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Bookmark
@@ -304,6 +305,7 @@ private fun tileIcon(tile: HomeTile): ImageVector = when (tile) {
     HomeTile.CALENDAR -> Icons.Default.CalendarMonth
     HomeTile.TASKS -> Icons.Default.Checklist
     HomeTile.FILES -> Icons.Outlined.Folder
+    HomeTile.CANVASES -> Icons.AutoMirrored.Outlined.Article
 }
 
 /**

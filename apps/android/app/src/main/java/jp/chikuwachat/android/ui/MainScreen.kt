@@ -121,6 +121,14 @@ fun MainScreen(controller: AppController) {
     val activityListState = rememberLazyListState()
     // L8: the Times feed keeps its place while a row's conversation is open over it.
     val timesFeedListState = rememberLazyListState()
+    // M78 (CANVAS.md §21.2): the home's 「キャンバス」, kept (pages and place) while a row's canvas is open over it; a new
+    // store (another workspace, signing in again) starts it over.
+    val myCanvases = remember(store) {
+        jp.chikuwachat.android.sync.MyCanvasList({ controller.myCanvasesApi }, cached = {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.allCachedCanvases().map { it.canvas.meta } }
+        })
+    }
+    val canvasesListState = rememberLazyListState()
     var confirmReadTimes by remember { mutableStateOf(false) }
     // M39: the activity tab's ⋮ 「すべて既読」, handed to its list (which also clears its dots).
     var activityReadAll by remember { mutableStateOf(false) }
@@ -550,6 +558,7 @@ fun MainScreen(controller: AppController) {
                             pane == Route.Mentions -> Text("メンション")
                             pane == Route.Drafts -> Text("下書き")
                             pane is Route.Files -> Text("ファイル")
+                            pane == Route.Canvases -> Text("キャンバス")
                             pane == Route.Reminders -> Text("リマインダー")
                             pane == Route.Calendar -> Text("カレンダー")
                             pane == Route.Tasks -> Text("タスク")
@@ -829,6 +838,28 @@ fun MainScreen(controller: AppController) {
                     }
                 } else if (pane == Route.Reminders) {
                     RemindersPane(controller, version) { row -> scope.launch { controller.openPermalink(row.messageId) } }
+                } else if (pane == Route.Canvases) {
+                    // M78 (CANVAS.md §21.2): a row opens its canvas over the list (back returns here); the keyboard's
+                    // search looks in the bodies on the search's 「キャンバス」 tab (back returns here too).
+                    CanvasesPane(
+                        controller, version, myCanvases, canvasesListState,
+                        onOpen = { canvas ->
+                            when (val target = MyCanvases.open(stack, store, canvas)) {
+                                is MyCanvasOpen.Push -> {
+                                    controller.messageFocus = null
+                                    focusManager.clearFocus()
+                                    stack = target.stack
+                                }
+                                is MyCanvasOpen.Link -> scope.launch { controller.openCanvasLink(target.canvasId) }
+                            }
+                        },
+                        onSearchBodies = { q ->
+                            focusManager.clearFocus()
+                            openSearch()
+                            searchTab = SEARCH_TAB_CANVASES
+                            runSearch(SearchParams(q = q))
+                        },
+                    )
                 } else if (pane == Route.Calendar) {
                     // M52 (CALENDAR.md §7): 一覧 and 月, filtered by calendar; a row opens the event's form.
                     CalendarPane(controller, version)
@@ -930,6 +961,12 @@ fun MainScreen(controller: AppController) {
                                     HomeTile.CALENDAR -> Route.Calendar
                                     HomeTile.TASKS -> Route.Tasks
                                     HomeTile.FILES -> Route.Files()
+                                    HomeTile.CANVASES -> {
+                                        // Afresh from the tile (back from a canvas keeps the pages and the place).
+                                        myCanvases.clear()
+                                        canvasesListState.requestScrollToItem(0)
+                                        Route.Canvases
+                                    }
                                 },
                             )
                         },

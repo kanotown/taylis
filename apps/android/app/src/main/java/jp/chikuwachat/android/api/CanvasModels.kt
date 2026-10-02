@@ -78,6 +78,10 @@ data class CanvasConflict(val base: String = "", val ours: String = "", val thei
 @Serializable
 data class CanvasConflictDetails(val head: CanvasOut, val conflicts: List<CanvasConflict> = emptyList(), val timedOut: Boolean = false)
 
+/** M78 (CANVAS.md §21): GET /canvases' page, the canvases of all my conversations, most recently updated first. */
+@Serializable
+data class CanvasPage(val items: List<CanvasMeta> = emptyList(), val nextCursor: String? = null)
+
 @Serializable
 data class CanvasTemplateOut(
     val id: String,

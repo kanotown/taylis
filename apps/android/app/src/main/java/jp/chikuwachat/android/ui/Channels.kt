@@ -150,6 +150,8 @@ enum class HomeTile(val label: String) {
     /** M56 (TASKS.md §6): 「自分のタスク」 and 「自分の担当」, next to カレンダー; no number. */
     TASKS("タスク"),
     FILES("ファイル"),
+    /** M78 (CANVAS.md §21.2): the canvases of all my conversations, after ファイル (as the desktop's sidebar); no number. */
+    CANVASES("キャンバス"),
 }
 
 /** A tile's number (null: none shown), red when `alert`; a 0 is dimmed but still opens its list. */
@@ -171,6 +173,7 @@ object HomeTiles {
         TileState(HomeTile.CALENDAR, null),
         TileState(HomeTile.TASKS, null),
         TileState(HomeTile.FILES, null),
+        TileState(HomeTile.CANVASES, null),
     )
 
     /** What TalkBack reads for a tile. */
