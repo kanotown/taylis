@@ -4,10 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AttachmentOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { AttachmentList } from "../src/ui/Attachments";
-import { fitBox, groupAttachments, loadsInlineVideo, mediaKind, photoLayout, VIDEO_INLINE_MAX_BYTES, VIDEO_TILE_MAX } from "../src/ui/attachmentLayout";
+import { fitBox, formatDuration, groupAttachments, loadsInlineVideo, mediaKind, photoLayout, VIDEO_INLINE_MAX_BYTES, VIDEO_TILE_MAX } from "../src/ui/attachmentLayout";
 import { acquireVideo, resetVideoCache, VIDEO_RELEASE_DELAY_MS } from "../src/ui/videoSource";
 
-const base: AttachmentOut = { id: "a", filename: "photo.png", content_type: "image/png", size_bytes: 100, has_thumbnail: true, status: "attached", created_at: "", width: 10, height: 10 };
+const base: AttachmentOut = { id: "a", filename: "photo.png", content_type: "image/png", size_bytes: 100, has_thumbnail: true, has_poster: false, duration_ms: null, status: "attached", created_at: "", width: 10, height: 10 };
 const video: AttachmentOut = { ...base, id: "v", filename: "clip.mp4", content_type: "video/mp4", size_bytes: 2_000_000, has_thumbnail: false, width: null, height: null };
 const file: AttachmentOut = { ...base, id: "f", filename: "notes.pdf", content_type: "application/pdf", has_thumbnail: false, width: null, height: null };
 
@@ -60,6 +60,21 @@ describe("layout decisions", () => {
   it("fetches a clip for its tile only up to the inline cap", () => {
     expect(loadsInlineVideo({ size_bytes: VIDEO_INLINE_MAX_BYTES })).toBe(true);
     expect(loadsInlineVideo({ size_bytes: VIDEO_INLINE_MAX_BYTES + 1 })).toBe(false);
+    // M79: the server's poster stands in, unless it failed to load.
+    expect(loadsInlineVideo({ size_bytes: 10, has_poster: true })).toBe(false);
+    expect(loadsInlineVideo({ size_bytes: 10, has_poster: true }, true)).toBe(true);
+    expect(loadsInlineVideo({ size_bytes: VIDEO_INLINE_MAX_BYTES + 1, has_poster: true }, true)).toBe(false);
+  });
+
+  it("formats a video's length", () => {
+    expect(formatDuration(null)).toBeNull();
+    expect(formatDuration(undefined)).toBeNull();
+    expect(formatDuration(-1)).toBeNull();
+    expect(formatDuration(0)).toBe("0:00");
+    expect(formatDuration(300)).toBe("0:01");
+    expect(formatDuration(7_400)).toBe("0:07");
+    expect(formatDuration(754_000)).toBe("12:34");
+    expect(formatDuration(3_723_000)).toBe("1:02:03");
   });
 });
 
@@ -170,6 +185,54 @@ describe("in a message", () => {
     const buttons = within(dialog).getAllByRole("button", { name: "ダウンロード" });
     fireEvent.click(buttons[buttons.length - 1]!);
     expect(downloadAttachment).toHaveBeenCalledWith(expect.objectContaining({ id: "v" }));
+  });
+
+  it("M79: sizes the tile from the server and shows its poster without downloading the clip", async () => {
+    const fetchBlob = vi.fn(async () => new Blob());
+    const { controller } = controllerWith(fetchBlob);
+    const served = { ...video, width: 1080, height: 1920, has_poster: true, duration_ms: 42_400 };
+    render(<AttachmentList attachments={[served]} controller={controller} />);
+    const tile = screen.getByRole("button", { name: "clip.mp4 を再生" });
+    // Its final shape before anything loads: nothing below it moves.
+    expect(tile.dataset.shape).toBe("portrait");
+    expect(tile.style.width).toBe("135px");
+    expect(tile.style.aspectRatio).toBe("135 / 240");
+    const poster = await vi.waitFor(() => {
+      const element = tile.querySelector("img[data-video-poster]");
+      if (!element) throw new Error("no poster yet");
+      return element;
+    });
+    expect(poster.getAttribute("src")).toMatch(/^blob:media-/);
+    expect(tile.querySelector("video")).toBeNull();
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/thumbnail");
+    expect(fetchBlob).not.toHaveBeenCalledWith("/api/v1/attachments/v/content");
+    expect(tile.querySelector("[data-video-badge]")?.textContent).toBe("0:42 · 1.9 MB");
+
+    // Opened: now the clip is fetched, with the poster on the player until it plays.
+    fireEvent.click(tile);
+    const dialog = screen.getByRole("dialog");
+    const player = await vi.waitFor(() => {
+      const element = dialog.querySelector<HTMLVideoElement>("video[data-video-player]");
+      if (!element) throw new Error("no player yet");
+      return element;
+    });
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/content");
+    await vi.waitFor(() => expect(player.getAttribute("poster")).toMatch(/^blob:media-/));
+    expect(within(dialog).getByText(/1080×1920/)).toBeTruthy();
+  });
+
+  it("M79: falls back to the clip's own first frame when the poster does not load", async () => {
+    const fetchBlob = vi.fn(async (path: string) => {
+      if (path.endsWith("/thumbnail")) throw new Error("gone");
+      return new Blob();
+    });
+    const { controller } = controllerWith(fetchBlob);
+    render(<AttachmentList attachments={[{ ...video, has_poster: true }]} controller={controller} />);
+    const tile = screen.getByRole("button", { name: "clip.mp4 を再生" });
+    await vi.waitFor(() => {
+      if (!tile.querySelector("video")) throw new Error("no frame yet");
+    });
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/content");
   });
 
   it("keeps photos, videos and files in their own rows", () => {

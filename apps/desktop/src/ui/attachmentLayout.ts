@@ -65,12 +65,35 @@ export function photoBox(attachment: Pick<AttachmentOut, "width" | "height">): B
 export const VIDEO_TILE_PLACEHOLDER: Box = { width: 180, height: 180 };
 
 /**
- * The server makes no poster or size for videos, so the tile learns the shape from the video itself, which means
- * fetching its bytes. Up to this size that happens once the row nears the screen; a larger clip shows a plain tile and
- * is fetched only when opened in the viewer (after which its tile takes the real shape too).
+ * A video tile needs the clip's shape and a frame to show. Since M79 the server records both at upload (`width` /
+ * `height` upright, `has_poster`: a JPEG frame at `/thumbnail`), so the tile has its final size at once and shows the
+ * poster without downloading the clip, which is fetched only when opened. A video without them (uploaded before M79
+ * and not backfilled yet, a file the server could not read, or an older server) learns its shape from the video
+ * itself, which means fetching its bytes: up to this size that happens once the row nears the screen; a larger clip
+ * shows a plain tile and is fetched only when opened in the viewer (after which its tile takes the real shape too).
  */
 export const VIDEO_INLINE_MAX_BYTES = 30 * 1024 * 1024;
 
-export function loadsInlineVideo(attachment: Pick<AttachmentOut, "size_bytes">): boolean {
+/** M79: the server made a poster frame for this video (absent from servers before M79: false). */
+export function hasPoster(attachment: Partial<Pick<AttachmentOut, "has_poster">>): boolean {
+  return attachment.has_poster === true;
+}
+
+/** Whether the tile fetches the clip itself: not while the server's poster stands in (`posterFailed`: it did not load). */
+export function loadsInlineVideo(
+  attachment: Pick<AttachmentOut, "size_bytes"> & Partial<Pick<AttachmentOut, "has_poster">>,
+  posterFailed = false,
+): boolean {
+  if (hasPoster(attachment) && !posterFailed) return false;
   return attachment.size_bytes <= VIDEO_INLINE_MAX_BYTES;
+}
+
+/** A video's length as its tile shows it ("0:07", "12:34", "1:02:03"); `null` when the server does not know it. */
+export function formatDuration(ms: number | null | undefined): string | null {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return null;
+  const total = ms > 0 ? Math.max(1, Math.round(ms / 1000)) : 0;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = String(total % 60).padStart(2, "0");
+  return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
 }

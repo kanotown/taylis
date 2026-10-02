@@ -1356,9 +1356,11 @@ CREATE TABLE attachments (
   size_bytes     bigint NOT NULL,
   sha256         bytea,
   storage_key    text NOT NULL,                     -- 'attachments/{id}'
-  width          integer,                           -- 画像のみ
+  width          integer,                           -- 画像、M79 から動画も (回転を当てた表示上の縦横)
   height         integer,
-  thumbnail_key  text,                              -- 'attachments/{id}.thumb.jpg'
+  thumbnail_key  text,                              -- 'attachments/{id}.thumb.jpg' (画像のサムネイル、動画のポスター)
+  duration_ms    integer,                           -- M79: 動画の長さ
+  video_probed_at timestamptz,                      -- M79: サーバが動画を調べた時刻 (結果の有無によらず)。NULL は未調査
   created_at     timestamptz NOT NULL DEFAULT now(),
   attached_at    timestamptz,
   deleted_at     timestamptz
@@ -1377,6 +1379,17 @@ M42: `canvas_id uuid REFERENCES canvases(id) ON DELETE SET NULL` (部分索引 `
 **会話のメンバーだけ**が読める (キャンバスと同じ。メッセージの添付の「参加前のプレビュー」(M27) は当てはまらない)。
 ファイル一覧 (`GET /files`) とメッセージ検索のファイル名の枝は messages と結合するので、キャンバスの画像を含まない。
 キャンバスの完全削除では deleted にしてから行を消す (SET NULL は行を消せるようにするためだけ)。1 キャンバス最大 100 件。
+
+M79 (migration 0067): **動画の縦横・長さ・ポスター**。`video/*` のアップロードをサーバが ffprobe / ffmpeg で調べ、
+`width` / `height` (回転と画素の縦横比を当てた、送った人が見た向きの縦横。画像と同じ列)、`duration_ms`、ポスター
+(1 秒目、2 秒未満の動画は最初のフレーム。画像のサムネイルと同じ 512 px の JPEG を同じ `thumbnail_key` に置き、
+同じ `GET /attachments/{id}/thumbnail` で返す) を入れる。手順と制限は SECURITY.md §4 「動画」。
+`AttachmentOut` では、画像のサムネイルは `has_thumbnail`、動画のポスターは `has_poster` (動画では `has_thumbnail` は
+常に false。M82 より前の Android はサムネイルのある添付をすべて写真として出すため) と `duration_ms`。
+調べられなかった動画 (壊れている、対応しない形式、時間切れ) は縦横もポスターも無く、`video_probed_at` だけ入る。
+ffmpeg の無いサーバや M79 より前の動画は `video_probed_at` が NULL のままで、`app.cli probe-videos` (infra/README.md の
+運用コマンド) が後から埋める。メッセージに付いた動画はそのメッセージの `updated_seq` を進めて `message.updated`
+(`change = "attachments"`) を出すので、端末は差分で受け取る (SYNC_PROTOCOL.md §7.3)。
 
 ### outbox_events
 

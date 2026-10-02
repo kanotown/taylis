@@ -5,7 +5,7 @@ import type { AttachmentOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { AttachmentList } from "../src/ui/Attachments";
 
-const attachment: AttachmentOut = { id: "a", filename: "result.png", content_type: "image/png", size_bytes: 100, has_thumbnail: true, status: "attached", created_at: "", width: 10, height: 10 };
+const attachment: AttachmentOut = { id: "a", filename: "result.png", content_type: "image/png", size_bytes: 100, has_thumbnail: true, has_poster: false, duration_ms: null, status: "attached", created_at: "", width: 10, height: 10 };
 const controller = (fetchBlob: (...args: unknown[]) => Promise<Blob>) => ({ api: { fetchBlob } }) as unknown as AppController;
 beforeEach(() => {
   vi.stubGlobal("URL", class extends URL {

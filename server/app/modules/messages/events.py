@@ -21,7 +21,8 @@ class MessageUpdatedData(BaseModel):
     message: MessageOut
     # "collection" (L6): the submissions of a collecting post changed (a reply came or went).
     # "tasks" (L9): the shared tasks made from it changed (MessageOut.tasks).
-    change: Literal["body", "reactions", "pin", "poll", "ack", "collection", "tasks"]
+    # "attachments" (M79): the server learned a video's size, length or poster (the backfill).
+    change: Literal["body", "reactions", "pin", "poll", "ack", "collection", "tasks", "attachments"]
 
 
 class MessageDeletedData(BaseModel):

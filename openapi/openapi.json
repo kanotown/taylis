@@ -1321,9 +1321,24 @@
             "title": "Created At",
             "type": "string"
           },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
           "filename": {
             "title": "Filename",
             "type": "string"
+          },
+          "has_poster": {
+            "title": "Has Poster",
+            "type": "boolean"
           },
           "has_thumbnail": {
             "title": "Has Thumbnail",
@@ -1373,6 +1388,8 @@
           "width",
           "height",
           "has_thumbnail",
+          "has_poster",
+          "duration_ms",
           "status",
           "created_at"
         ],

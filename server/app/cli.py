@@ -276,6 +276,39 @@ def cmd_verify_attachments(args: argparse.Namespace) -> int:
     return asyncio.run(_verify_attachments())
 
 
+async def _probe_videos(limit: int) -> int:
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.attachments.blobstore import build_blobstore
+    from app.modules.attachments.video_backfill import probe_stored_videos
+
+    settings = get_settings()
+    db = Database(settings.database_url)
+    blobs = build_blobstore(settings)
+    try:
+        async with db.session_factory() as session:
+            try:
+                result = await probe_stored_videos(session, blobs, settings, limit=limit)
+            except RuntimeError as exc:
+                raise SystemExit(f"error: {exc}") from exc
+        print(
+            f"probed {result.probed} video(s): {result.found} now have a size or poster, "
+            f"{result.announced} message(s) updated"
+        )
+        if result.remaining:
+            print("more videos are left: run it again")
+        return 0
+    finally:
+        await db.dispose()
+
+
+def cmd_probe_videos(args: argparse.Namespace) -> int:
+    """M79: size, length and poster of the videos stored before M79 (resumable)."""
+    if args.limit < 1:
+        raise SystemExit("error: --limit must be at least 1")
+    return asyncio.run(_probe_videos(args.limit))
+
+
 def cmd_push_test(args: argparse.Namespace) -> int:
     """Send a test notification to every push-registered device of a user."""
     return asyncio.run(_push_test(args.username, args.body))
@@ -405,6 +438,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify = sub.add_parser("verify-attachments", help="report attachments whose bytes are missing")
     verify.set_defaults(func=cmd_verify_attachments)
+
+    probe = sub.add_parser(
+        "probe-videos", help="fill in the size and poster of videos uploaded before M79"
+    )
+    probe.add_argument("--limit", type=int, default=1000, help="at most this many a run")
+    probe.set_defaults(func=cmd_probe_videos)
 
     anonymize = sub.add_parser("anonymize-user", help="erase a user's identity, keep the history")
     anonymize.add_argument("--username", required=True)

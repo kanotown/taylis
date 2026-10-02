@@ -10,7 +10,7 @@ import { Timeline } from "../src/ui/Timeline";
 import { FakeServer } from "./fakeServer";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
-const attachment: AttachmentOut = { id: "a1", filename: "note.txt", content_type: "text/plain", size_bytes: 4, width: null, height: null, has_thumbnail: false, status: "pending", created_at: "2026-09-26T00:00:00Z" };
+const attachment: AttachmentOut = { id: "a1", filename: "note.txt", content_type: "text/plain", size_bytes: 4, width: null, height: null, has_thumbnail: false, has_poster: false, duration_ms: null, status: "pending", created_at: "2026-09-26T00:00:00Z" };
 function world() {
   const server = new FakeServer();
   const me = server.addUser("alice");

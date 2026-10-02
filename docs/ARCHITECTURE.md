@@ -140,7 +140,7 @@ server/
   pyproject.toml
   app/
     main.py              # app factory, lifespan (background tasks の起動), 依存の組み立て (composition root)
-    cli.py               # create-admin / create-user / export-openapi / push-test / verify-attachments
+    cli.py               # create-admin / create-user / export-openapi / push-test / verify-attachments / probe-videos
     core/
       settings.py        # pydantic-settings (環境変数)
       db.py              # engine, session factory, transaction helper
@@ -285,13 +285,15 @@ worker を分離できる余地だけ残す (分離には Redis が必要。§10
 - EventBus の購読者
 
 CPU を食う処理 (画像サムネイル生成、argon2) は `run_in_threadpool` で逃がす。
+動画の縦横・ポスター (M79) は ffprobe / ffmpeg のサブプロセスで、イベントループは待つだけ (時間切れと同時実行数の
+上限付き。SECURITY.md §4 「動画」)。ffmpeg はサーバのイメージに Debian のパッケージで入れる。
 
 ## 8. データストアとバックアップ
 
 - **PostgreSQL**: 全ドメインデータ、セッション、outbox、push_deliveries、検索インデックス (PGroonga)。
   スキーマは DATA_MODEL.md。
 - **versitygw**: S3 互換のオブジェクトストレージ。posix バックエンドで、バケットはディレクトリ、オブジェクトは
-  通常のファイルとして `/data/<bucket>/<key>` に置かれる。添付ファイル本体とサムネイルを格納する。キーは
+  通常のファイルとして `/data/<bucket>/<key>` に置かれる。添付ファイル本体とサムネイル (動画はポスター、M79) を格納する。キーは
   `attachments/{id}`、`attachments/{id}.thumb.jpg`。バケットは非公開。クライアントはオブジェクトストレージに
   直接アクセスせず、API 経由で読み書きする (§10 の presigned URL は将来の最適化)。大きなファイルを PostgreSQL に
   入れない。アプリは `BlobStore` (S3 API) 経由でしか触らないので、他の S3 互換ストアやクラウドの S3 に

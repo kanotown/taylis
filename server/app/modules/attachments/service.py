@@ -3,10 +3,12 @@
 import hashlib
 import logging
 import re
+import shutil
 import tempfile
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
+from typing import IO
 from urllib.parse import quote
 
 import filetype
@@ -19,6 +21,7 @@ from app.core.ids import uuid7
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.modules.attachments import repository as repo
+from app.modules.attachments import videos
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
 from app.modules.attachments.models import Attachment
@@ -28,6 +31,7 @@ from app.modules.attachments.schemas import (
     FileListOut,
     to_attachment_out,
 )
+from app.modules.attachments.videos import is_video
 from app.modules.channels import service as channels
 from app.modules.users.models import User
 
@@ -123,12 +127,55 @@ async def upload(
                 await blobs.put(thumbnail_key(attachment_id), thumb, "image/jpeg")
                 attachment.width, attachment.height = width, height
                 attachment.thumbnail_key = thumbnail_key(attachment_id)
+        elif is_video(content_type):
+            await _probe_spooled_video(attachment, spool, settings, blobs)
         spool.seek(0)
         await blobs.put(attachment.storage_key, spool, content_type)
     db.add(attachment)
     await db.commit()
     await db.refresh(attachment)
     return to_attachment_out(attachment)
+
+
+async def _probe_spooled_video(
+    attachment: Attachment, spool: IO[bytes], settings: Settings, blobs: BlobStore
+) -> None:
+    """M79: the shape, length and poster of an uploaded video, before the upload answers (it is
+    still pending, so no device holds it yet and nothing has to be announced). ffprobe needs a
+    named, seekable file (an MP4 may keep its index at the end), so the spool is copied to one.
+    Never fails the upload."""
+    if videos.tools(settings) is None:
+        return
+    try:
+        with tempfile.NamedTemporaryFile(prefix="chikuwa-video-") as named:
+            spool.seek(0)
+            await run_in_threadpool(shutil.copyfileobj, spool, named, READ_CHUNK)
+            await run_in_threadpool(named.flush)
+            info = await videos.probe_video(named.name, settings)
+        if info is not None:
+            await apply_video_info(attachment, info, blobs)
+    except Exception as exc:
+        log.warning("video probe failed for %s: %s", attachment.id, exc)
+
+
+async def apply_video_info(
+    attachment: Attachment, info: videos.VideoInfo, blobs: BlobStore
+) -> bool:
+    """Record what the probe found (the poster goes to the store first). True when the attachment
+    now shows anything new (a shape, a length or a poster)."""
+    changed = False
+    if info.poster is not None:
+        await blobs.put(thumbnail_key(attachment.id), info.poster, "image/jpeg")
+        changed = changed or attachment.thumbnail_key is None
+        attachment.thumbnail_key = thumbnail_key(attachment.id)
+    if info.width is not None and info.height is not None:
+        changed = changed or (attachment.width, attachment.height) != (info.width, info.height)
+        attachment.width, attachment.height = info.width, info.height
+    if info.duration_ms is not None:
+        changed = changed or attachment.duration_ms != info.duration_ms
+        attachment.duration_ms = info.duration_ms
+    attachment.video_probed_at = utcnow()
+    return changed
 
 
 async def bind_in_tx(
