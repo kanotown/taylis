@@ -137,7 +137,7 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
   .message:focus-within { background-color: var(--panel); }
   .message:focus-within .row-actions { opacity: 1; pointer-events: auto; }
 }
-/* A phone has no room for the thirteen actions over the row: they float at the bottom of the screen, wrapped,
+/* A phone has no room for the bar over the row: its buttons float at the bottom of the screen, wrapped,
    with finger-sized buttons, until the message loses focus. */
 @media (hover: none) and (max-width: 47.99rem) {
   .message .row-actions {

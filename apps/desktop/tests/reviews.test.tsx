@@ -18,6 +18,7 @@ import { AgendaList } from "../src/ui/CalendarView";
 import { MessageActionsSheet } from "../src/ui/MessageActionsSheet";
 import { MyTasksView } from "../src/ui/MyTasksView";
 import { MessageRow } from "../src/ui/Timeline";
+import { chooseFromRowMenu, rowMenuLabels, tick } from "./rowMenu";
 import {
   canEditTask,
   isRequestedByMe,
@@ -162,7 +163,7 @@ function conversation(type: ChannelOut["type"], options: { tasks?: MessageTaskOu
 describe("「レビューを依頼」", () => {
   it("from a channel: 依頼先 first (not me), 希望日, then kind review in the channel with the message as source", async () => {
     const { api, controller, message, channel, bob } = conversation("public");
-    fireEvent.click(screen.getByRole("button", { name: "レビューを依頼" }));
+    await chooseFromRowMenu("レビューを依頼");
     await flush();
     const dialog = screen.getByRole("dialog", { name: "レビューを依頼" });
     expect(within(dialog).queryByLabelText("追加先")).toBeNull();
@@ -194,7 +195,7 @@ describe("「レビューを依頼」", () => {
 
   it("from a DM: in the DM (channel_id = the DM), the other member as 依頼先", async () => {
     const { api, channel, bob } = conversation("dm");
-    fireEvent.click(screen.getByRole("button", { name: "レビューを依頼" }));
+    await chooseFromRowMenu("レビューを依頼");
     await flush();
     const dialog = screen.getByRole("dialog", { name: "レビューを依頼" });
     expect(dialog.querySelector("[data-task-board]")?.textContent).toBe("Bob との DM で共有");
@@ -206,7 +207,7 @@ describe("「レビューを依頼」", () => {
 
   it("a DM's 「タスクにする」 with an assignee is shared in the DM", async () => {
     const { api, channel, bob } = conversation("dm");
-    fireEvent.click(screen.getByRole("button", { name: "タスクにする" }));
+    await chooseFromRowMenu("タスクにする");
     await flush();
     const dialog = screen.getByRole("dialog", { name: "タスクを追加" });
     fireEvent.click(within(within(dialog).getByRole("group", { name: "担当者" })).getByLabelText("Bob"));
@@ -229,14 +230,17 @@ describe("「レビューを依頼」", () => {
     expect(onRequestReview).toHaveBeenCalled();
   });
 
-  it("not offered in an archived channel", () => {
+  it("not offered in an archived channel", async () => {
     const { store, channel, message } = conversation("public");
-    expect(screen.getByRole("button", { name: "レビューを依頼" })).toBeTruthy();
+    expect(rowMenuLabels()).toContain("レビューを依頼");
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await tick();
     act(() => store.updateChannel(channel.id, { archived: true }));
     // The row re-renders with its message: a changed message picks up the archived conversation.
     act(() => store.upsertMessage({ ...message, updated_seq: message.updated_seq + 1 }));
-    expect(screen.queryByRole("button", { name: "レビューを依頼" })).toBeNull();
-    expect(screen.getByRole("button", { name: "タスクにする" })).toBeTruthy(); // a personal task still
+    const labels = rowMenuLabels();
+    expect(labels).not.toContain("レビューを依頼");
+    expect(labels).toContain("タスクにする"); // a personal task still
   });
 });
 

@@ -21,6 +21,7 @@ import { TaskDialog } from "../src/ui/TaskDialog";
 import { MessageRow } from "../src/ui/Timeline";
 import { today } from "../src/ui/calendarDates";
 import { FakeServer } from "./fakeServer";
+import { chooseFromRowMenu } from "./rowMenu";
 import { task } from "./taskFixtures";
 
 afterEach(() => {
@@ -319,7 +320,7 @@ describe("「タスクにする」", () => {
 
   it("from a DM without assignees: a personal task with the message's text and the message as its source", async () => {
     const { api, controller, message } = timeline("dm");
-    fireEvent.click(screen.getByRole("button", { name: "タスクにする" }));
+    await chooseFromRowMenu("タスクにする");
     const dialog = screen.getByRole("dialog", { name: "タスクを追加" });
     // L9: no board to choose; assignees (the DM's members) would share it in the DM.
     expect(within(dialog).queryByLabelText("追加先")).toBeNull();
@@ -335,7 +336,7 @@ describe("「タスクにする」", () => {
 
   it("from a channel: its board, switchable to 「自分のタスク」", async () => {
     const { api, conversation } = timeline("public");
-    fireEvent.click(screen.getByRole("button", { name: "タスクにする" }));
+    await chooseFromRowMenu("タスクにする");
     const dialog = screen.getByRole("dialog", { name: "タスクを追加" });
     const where = within(dialog).getByLabelText("追加先") as HTMLSelectElement;
     expect(where.value).toBe(conversation.id);

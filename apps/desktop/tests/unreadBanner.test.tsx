@@ -16,6 +16,7 @@ import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import { ThreadPane } from "../src/ui/ThreadPane";
 import { Timeline } from "../src/ui/Timeline";
+import { rowMenuLabels, tick } from "./rowMenu";
 import { stamp, threadWorld, type World, world } from "./unreadWorld";
 
 const ROW = 60;
@@ -980,7 +981,9 @@ describe("round 2: the anchor, the read position and the banner (§10.1)", { tim
   it("V38: 「ここから未読にする」 is not offered (nor Alt+click) past a range that does not reach the read position", async () => {
     const w = world({ posts: 3000, lastRead: 1000 });
     await openView(w);
-    expect(rowOf(w, 2990).querySelector('[aria-label^="ここから未読にする"]')).toBeNull();
+    expect(rowMenuLabels(rowOf(w, 2990))).not.toContain("ここから未読にする");
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await tick();
     fireEvent.click(rowOf(w, 2990), { altKey: true });
     await settle(w);
     expect(w.calls.reads).toEqual([]);
@@ -991,7 +994,9 @@ describe("round 2: the anchor, the read position and the banner (§10.1)", { tim
     const v1 = world({ posts: 130, lastRead: 100 });
     await openView(v1);
     await settle(v1);
-    expect(rowOf(v1, 125).querySelector('[aria-label^="ここから未読にする"]')).toBeTruthy();
+    expect(rowMenuLabels(rowOf(v1, 125))).toContain("ここから未読にする");
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await tick();
     fireEvent.click(rowOf(v1, 125), { altKey: true });
     await settle(v1);
     expect(v1.calls.reads.at(-1)).toEqual({ seq: 124, mode: "set" });
