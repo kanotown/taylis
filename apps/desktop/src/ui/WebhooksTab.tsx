@@ -87,7 +87,7 @@ export function WebhooksTab({ controller }: { controller: AppController }) {
         </Button>
       </div>
       {rows && (
-        <ul className="max-h-[420px] divide-y divide-line overflow-y-auto rounded-xl border border-line">
+        <ul className="divide-y divide-line rounded-xl border border-line">
           {rows.map((row) => (
             <li key={row.id} className={cn("flex items-center gap-3 px-3 py-2 text-sm", !row.enabled && "opacity-60")}>
               <Webhook size={16} className="shrink-0 text-muted" />
