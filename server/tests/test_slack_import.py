@@ -717,3 +717,37 @@ async def test_the_token_goes_only_over_https_to_slack_hosts(tmp_path: Path) -> 
     }
     assert sum(1 for r in requests if r.url.path == "/r/loop") == 6  # 1 + MAX_REDIRECTS
     assert not list((tmp_path / "cache").rglob("*.part"))
+
+
+class _NoUtf8FlagInfo(zipfile.ZipInfo):
+    """A member as Slack's exporter writes it: UTF-8 bytes, but no UTF-8 flag (0x800)."""
+
+    def _encodeFilenameFlags(self) -> tuple[bytes, int]:
+        return self.filename.encode("utf-8"), self.flag_bits & ~0x800
+
+
+def test_export_reads_japanese_names_without_the_utf8_flag(tmp_path: Path) -> None:
+    """The real lab export (2026-10-03) had no UTF-8 flag on any member: zipfile decoded the
+    names as cp437 mojibake, so Japanese channel folders were not found."""
+    from app.modules.importer.slack_import import Export
+
+    path = tmp_path / "slack.zip"
+    files = {
+        "users.json": [],
+        "channels.json": [{"id": "C1", "name": "全体連絡", "created": 1}],
+        "全体連絡/2024-05-01.json": [
+            {"type": "message", "text": "こんにちは", "ts": "1714521600.000100"}
+        ],
+    }
+    with zipfile.ZipFile(path, "w") as zf:
+        for name, value in files.items():
+            zf.writestr(_NoUtf8FlagInfo(name), json.dumps(value, ensure_ascii=False))
+    with zipfile.ZipFile(path) as zf:
+        assert all(not info.flag_bits & 0x800 for info in zf.infolist())
+        assert "全体連絡/2024-05-01.json" not in zf.namelist()  # what zipfile alone sees
+    export = Export(path)
+    try:
+        assert export.day_files("全体連絡") == ["全体連絡/2024-05-01.json"]
+        assert export.json("全体連絡/2024-05-01.json")[0]["text"] == "こんにちは"
+    finally:
+        export.close()

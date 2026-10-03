@@ -138,12 +138,23 @@ def slug(name: str) -> str:
 # ---- reading the export ------------------------------------------------------------------------
 
 
+def _member_name(info: zipfile.ZipInfo) -> str:
+    """A member's name as the exporter wrote it: UTF-8 even without the ZIP's UTF-8 flag (0x800)."""
+    if info.flag_bits & 0x800:
+        return info.filename
+    try:
+        return info.filename.encode("cp437").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return info.filename
+
+
 class Export:
     """The export ZIP, or the directory it was unpacked into."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self._zip: zipfile.ZipFile | None = None
+        self._members: dict[str, str] = {}
         self._root = ""
         if path.is_dir():
             self._names = None
@@ -152,7 +163,11 @@ class Export:
                 self._zip = zipfile.ZipFile(path)
             except (OSError, zipfile.BadZipFile) as exc:
                 raise ImportFailed(f"{path}: not a Slack export ZIP ({exc})") from exc
-            self._names = set(self._zip.namelist())
+            # Slack's export stores UTF-8 names without the ZIP UTF-8 flag, so zipfile decodes them
+            # as cp437 (mojibake) and Japanese channel folders would not be found: take the bytes
+            # back and read them as UTF-8. The original member name is kept for reading.
+            self._members = {_member_name(info): info.filename for info in self._zip.infolist()}
+            self._names = set(self._members)
             # Some unpack-and-repack tools put everything under one folder.
             users = sorted((n for n in self._names if n.endswith("users.json")), key=len)
             if users:
@@ -170,7 +185,7 @@ class Export:
             assert self._names is not None
             if member not in self._names:
                 return None
-            return self._zip.read(member)
+            return self._zip.read(self._members[member])
         target = (self.path / name).resolve()
         if not target.is_relative_to(self.path.resolve()) or not target.is_file():
             return None
