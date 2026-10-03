@@ -219,3 +219,9 @@ class CalendarAlarmUpdatedData(BaseModel):
     event_id: UUID
     channel_id: UUID | None
     alarm: CalendarAlarmOut | None
+    # Review v0.1.22 #9 (CALENDAR.md §10.5): the occurrence the alarm is for, as listed when the
+    # event was written: a series' `alarm.occurrence_start` resolved with its edits (that
+    # occurrence's title, times, location), a one-off event as it is. Clients show this and never
+    # another occurrence. null when there is none (alarm removed, a series' wake-up or cancelled
+    # alarm, the owner no longer sees the event) and from servers before it (absent).
+    occurrence: CalendarEventData | None = None

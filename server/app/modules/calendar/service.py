@@ -373,11 +373,48 @@ async def _emit_deleted(db: AsyncSession, event: CalendarEvent) -> None:
     )
 
 
+async def _alarm_occurrence(
+    db: AsyncSession,
+    event: CalendarEvent,
+    user_id: uuid.UUID,
+    alarm: CalendarEventAlarm | None,
+    overrides: list[CalendarEventOverride] | None,
+) -> CalendarEventData | None:
+    """The occurrence an alarm is for, resolved now (Review v0.1.22 #9): a series' occurrence
+    with its edits, a one-off event as it is; None when there is none or its owner no longer
+    sees the event (the alarm is dropped on leaving, but a reschedule may come first)."""
+    if alarm is None or event.is_deleted:
+        return None
+    occ: CalendarEvent | Occurrence = event
+    if event.recurring:
+        if alarm.occurrence_start is None:
+            return None
+        if overrides is None:
+            overrides = await repo.overrides_list(db, event.id)
+        found = series.resolve(
+            event, {o.occurrence_start: o for o in overrides}, alarm.occurrence_start
+        )
+        if found is None:
+            return None
+        occ = found
+    if not await _still_sees(db, user_id, event):
+        return None
+    channel = await channels.require_channel(db, event.channel_id) if event.channel_id else None
+    return to_data(occ, channel)
+
+
 async def _emit_alarm(
-    db: AsyncSession, event: CalendarEvent, user_id: uuid.UUID, alarm: CalendarEventAlarm | None
+    db: AsyncSession,
+    event: CalendarEvent,
+    user_id: uuid.UUID,
+    alarm: CalendarEventAlarm | None,
+    overrides: list[CalendarEventOverride] | None = None,
 ) -> None:
     data = CalendarAlarmUpdatedData(
-        event_id=event.id, channel_id=event.channel_id, alarm=alarm_out(alarm)
+        event_id=event.id,
+        channel_id=event.channel_id,
+        alarm=alarm_out(alarm),
+        occurrence=await _alarm_occurrence(db, event, user_id, alarm, overrides),
     )
     await write_outbox(
         db,
@@ -398,7 +435,7 @@ async def _reschedule_all(
         if kind_changed:
             alarm.minutes_before = remap_alarm(alarm.minutes_before, event.all_day)
         _schedule(alarm, event, now, overrides)
-        await _emit_alarm(db, event, alarm.user_id, alarm)
+        await _emit_alarm(db, event, alarm.user_id, alarm, overrides)
 
 
 # --- access --------------------------------------------------------------------------------------
@@ -1202,11 +1239,11 @@ async def _fire_series(
     sent = 0
     if occ is not None and not ended(occ, moment, alarm.tz):
         alarm.status = "fired"
-        await _emit_alarm(db, event, alarm.user_id, alarm)
+        await _emit_alarm(db, event, alarm.user_id, alarm, overrides)
         sent = 1
     # On to the next occurrence (a wake-up, a cancelled or past one: without a word).
     _schedule(alarm, event, moment, overrides)
-    await _emit_alarm(db, event, alarm.user_id, alarm)
+    await _emit_alarm(db, event, alarm.user_id, alarm, overrides)
     return sent
 
 

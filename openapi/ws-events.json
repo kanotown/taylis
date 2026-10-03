@@ -357,6 +357,190 @@
             ],
             "title": "CalendarAlarmOut",
             "type": "object"
+          },
+          "CalendarEventData": {
+            "description": "An event as everyone who sees it sees it: calendar.event.updated carries this (the fields\nthat differ per person, can_edit and alarm, are in CalendarEventOut).",
+            "properties": {
+              "all_day": {
+                "title": "All Day",
+                "type": "boolean"
+              },
+              "channel_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Channel Id"
+              },
+              "channel_name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Channel Name"
+              },
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Description"
+              },
+              "end_date": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "End Date"
+              },
+              "ends_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Ends At"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "location": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Location"
+              },
+              "occurrence_start": {
+                "title": "Occurrence Start",
+                "type": "string"
+              },
+              "owner_id": {
+                "format": "uuid",
+                "title": "Owner Id",
+                "type": "string"
+              },
+              "recurring": {
+                "title": "Recurring",
+                "type": "boolean"
+              },
+              "rrule": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Rrule"
+              },
+              "series_id": {
+                "format": "uuid",
+                "title": "Series Id",
+                "type": "string"
+              },
+              "start_date": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Start Date"
+              },
+              "starts_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Starts At"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "tz": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Tz"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "channel_id",
+              "channel_name",
+              "owner_id",
+              "title",
+              "all_day",
+              "starts_at",
+              "ends_at",
+              "start_date",
+              "end_date",
+              "location",
+              "description",
+              "created_at",
+              "updated_at",
+              "series_id",
+              "occurrence_start",
+              "recurring",
+              "rrule",
+              "tz"
+            ],
+            "title": "CalendarEventData",
+            "type": "object"
           }
         },
         "description": "calendar.alarm.updated: my alarm on an event was set, recomputed, fired or removed.",
@@ -387,6 +571,17 @@
             "format": "uuid",
             "title": "Event Id",
             "type": "string"
+          },
+          "occurrence": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CalendarEventData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [

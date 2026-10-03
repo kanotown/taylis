@@ -367,4 +367,9 @@ export interface CalendarAlarmUpdated {
   event_id: string;
   channel_id: string | null;
   alarm: CalendarAlarmOut | null;
+  /**
+   * Review v0.1.22 #9 (CALENDAR.md §10.5): the occurrence the alarm is for, resolved by the server (a changed occurrence's
+   * own title and times). Absent from servers before it; null when there is none.
+   */
+  occurrence?: CalendarEventData | null;
 }

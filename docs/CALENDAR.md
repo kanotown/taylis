@@ -119,6 +119,7 @@ M51 で実装した形:
   1 回)。チャンネルから抜けたときの取り消しは、channels が calendar を呼ばないよう outbox の `channel.member_removed` を受ける
   ハンドラ (CalendarLeaveHandler) でする (ARCHITECTURE.md §5 の「副作用の連鎖はイベントで結ぶ」)。
 - アプリを開いている Desktop / Web は `calendar.alarm.updated` の fired でデスクトップ通知を出す (プッシュが届かないため)。
+  文はイベントの `occurrence` (対象の回) から作る (§10.11)。
 - おやすみ時間・一時停止 (DND) の間は送らない (リマインダーと同じ扱い)。
 
 ## 7. 画面
@@ -283,6 +284,7 @@ M68 はサーバと Desktop / Web、スマホ (iOS / Android) は M69。
 - 端末: `recurring` の `calendar.event.updated` (と、自分の繰り返しの変更の応答) では、開いている期間 (そのチャンネルか、全部の窓) を
   **読み直す** (回の展開はサーバだけがする)。`calendar.event.deleted` は `series_id` が一致する回を全部外す。単発の予定は今までどおり。
 - 通知: `calendar.alarm.updated` の `alarm.occurrence_start` で回が分かる。通知は系列に 1 つなので、手元のその系列の回すべてに当てる。
+  発火したときに出す文は、イベントの `occurrence` (サーバが解決したその回) から作る (§10.11)。
 - M69 より前の端末: 回は重ならない id で届き、単発と同じに見える (繰り返しの表示・編集はない)。2 回目以降を開いて変えると 404。
   `calendar.event.updated` は 1 回目 (親の id) を入れ替えるだけなので、ほかの回は次に読むまで古い。
 
@@ -356,3 +358,40 @@ iOS と Android に同じもの: フォームの「繰り返し」(Web と同じ
   ボタンと同じ場所)。全画面で、範囲 (すべて / 自分のカレンダーだけ) → 作る → URL を 1 回だけ表示してコピー (Android 13+ ではクリップボードに
   「機密」の印を付ける)、一覧 (範囲・作成日・最後に読まれた日) と削除 (確認してから)、Google / Apple の手順。画面の状態 (作った URL) は
   controller が持つので回転しても消えない。
+
+### 10.11 通知のイベントに対象の回を載せる (Review v0.1.22 #9)
+
+**問題**: 繰り返しの 1 回だけ題名や時刻を変え、その回を手元の窓に持っていない端末に fired の `calendar.alarm.updated` が届くと、
+3 端末とも系列の id で探して見つからず `GET /calendar/events/{series_id}` に頼っていた。この API は系列の 1 回目を返すので、
+変えた回の通知でも 1 回目の題名・時刻を出していた (プッシュは `occurrence_start` から回を解決するので、前面の通知とプッシュも食い違う)。
+
+**決めたこと**: 回を取る API (`GET /calendar/events/{series_id}/occurrences/{occurrence_start}`) は足さず、**イベントに回を載せる**。
+端末が通知を受けたときに追加の往復が要らず、オフラインに戻る前に受けたイベントだけで文を作れるため。
+
+- `calendar.alarm.updated` に `occurrence: CalendarEventData | null` を足した (追加の項目だけ。古い端末は無視する)。中身は
+  `GET /calendar/events` の 1 行と同じ形 (`can_edit` と `alarm` を除く): 繰り返しなら `alarm.occurrence_start` の回を例外込みで
+  解決したもの (その回の `title`・`starts_at` / `ends_at` または `start_date` / `end_date`・`all_day`・`location`・`description`・
+  `tz`・`occurrence_start`・`series_id`)、単発ならその予定。イベントを書いた時点の値 (fired は発火した回、そのあと次の回を予約した
+  pending のイベントは次の回)。
+- `null` になるのは: 通知を消した (`alarm: null`)、系列の目覚まし・`cancelled` で回が無い (`occurrence_start` が null)、
+  その回がもう無い、本人がもう予定を見られない (チャンネルを抜けた直後の予約し直しなど。本文を渡さない)。
+- プッシュの文 (`alarm_notice`) は今まで通り送る直前に読み直す。同じ回を解決するので、前面の通知と同じ題名・時刻になる。
+- **端末の規則**: 発火の文は (1) `occurrence` があり、その `occurrence_start` が `alarm.occurrence_start` と同じならそれを使う
+  (手元の古い写しより優先)。(2) 無ければ (古いサーバ) 手元のその回 (`series_id` と `occurrence_start` が一致するもの)。
+  (3) それも無ければ `GET /calendar/events/{id}` を読み、返った行の `occurrence_start` が対象と一致するとき (単発、または 1 回目)
+  だけ使う。(4) どれでもなければ **別の回で代用しない**: 「予定の通知があります (#チャンネル)」(自分用ならチャンネル名なし) を出す。
+- Desktop / Web (このとき実装): `sync/calendar.ts` の `announce` と `calendarAlarmText`、`onAlarm(event | null, channelId)`。
+
+**iOS (`Sync/CalendarHub.swift`) と Android (`sync/Calendar.kt`) に要るもの**:
+
+1. モデル: `CalendarAlarmUpdated` に `occurrence: CalendarEventData?` (省略可・null 可。無いサーバでは nil / null)。中身は
+   `calendar.event.updated` の `event` と同じ型で読む。
+2. `announce`: 上の規則 (1)〜(4)。(1) は `occurrence` に手元の `can_edit` (その回か系列のもの、無ければ false) と届いた `alarm` を
+   足して `CalendarEventOut` にする。(3) で読んだ行の `occurrence_start` が対象と違えば使わない。今の
+   `findOccurrence(...) ?? find(eventId)` の `find(eventId)` (系列の 1 回目) への逃げ道は消す。
+3. 文: 回が分かれば今までの「14:00 題名 (#ch)」/「終日 題名」(回の時刻・題名で)。分からなければ「予定の通知があります (#ch)」
+   (チャンネル名は手元のチャンネル一覧から。自分用はなし)。通知のキー (`calendar:<series_id>`)・押したときの動き・DND は変えない。
+   押したときに開くフォームも、`occurrence` があればその回を開く。
+4. テスト (Desktop の `tests/calendarHub.test.ts` の「an alarm for an occurrence of a series」を移す): カレンダーを一度も開いていない、
+   別の月だけ読み込んでいる、題名・時刻を変えた回 (時刻付きと終日)、手元の古い写しより `occurrence` が勝つ、古いサーバ
+   (`occurrence` 無し) で対象の回が手元に無ければ中立の文で `GET` の 1 回目を使わない、1 回目そのものなら `GET` の行を使う。

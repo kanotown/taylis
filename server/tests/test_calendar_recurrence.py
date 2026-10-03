@@ -559,6 +559,151 @@ async def test_series_alarm_moves_with_the_series(
     assert after["occurrence_start"] == week and after["status"] == "pending"
 
 
+async def _alarm_events(db: AsyncSession) -> list[dict[str, Any]]:
+    stmt = (
+        select(OutboxEvent)
+        .where(OutboxEvent.event_type == "calendar.alarm.updated")
+        .order_by(OutboxEvent.id)
+    )
+    return [e.payload for e in (await db.execute(stmt)).scalars().all()]
+
+
+async def test_alarm_event_carries_a_changed_timed_occurrence(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    test_settings: Settings,
+) -> None:
+    """Review v0.1.22 #9: the alarm of an occurrence whose title and time were changed says that
+    occurrence (as the push does), not the series' first one."""
+    bob = await make_user(db, "bob")
+    await add_device(db, bob)
+    as_user(bob)
+    made = await _create(
+        client,
+        timed(
+            "朝会",
+            jst(2030, 1, 1, 9),
+            15,
+            rrule="FREQ=DAILY;COUNT=10",
+            tz="Asia/Tokyo",
+            alarm_minutes=10,
+            location="会議室",
+        ),
+    )
+    sid = made["id"]
+    changed = await client.patch(
+        occ_url(sid, "2030-01-05T00:00:00Z"),
+        json={
+            "scope": "this",
+            "title": "臨時の朝会",
+            "starts_at": jst(2030, 1, 5, 11).isoformat(),
+            "ends_at": jst(2030, 1, 5, 11, 30).isoformat(),
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    # The series' own read is still the first occurrence: not what the alarm is about.
+    whole = (await client.get(f"{EVENTS}/{sid}")).json()
+    assert whole["title"] == "朝会" and whole["starts_at"] == "2030-01-01T00:00:00Z"
+
+    async with app.state.db.session_factory() as worker:
+        # Stopped since the 1st: the passed ones go without a word, the 5th (moved) is booked.
+        assert await calendar.fire_due(worker, now=datetime(2030, 1, 5, 1, 49, tzinfo=UTC)) == 0
+        assert await calendar.fire_due(worker, now=datetime(2030, 1, 5, 1, 51, tzinfo=UTC)) == 1
+
+    payloads = await _alarm_events(db)
+    first = payloads[0]  # made with the event: the 1st, as it is
+    assert first["alarm"]["occurrence_start"] == "2030-01-01T00:00:00Z"
+    assert first["occurrence"]["title"] == "朝会"
+    assert first["occurrence"]["starts_at"] == "2030-01-01T00:00:00Z"
+    fired = [p for p in payloads if p["alarm"] and p["alarm"]["status"] == "fired"]
+    assert len(fired) == 1
+    occ = fired[0]["occurrence"]
+    assert fired[0]["alarm"]["occurrence_start"] == "2030-01-05T00:00:00Z"
+    assert occ["occurrence_start"] == "2030-01-05T00:00:00Z"
+    assert occ["series_id"] == sid and occ["recurring"] is True and occ["all_day"] is False
+    assert occ["title"] == "臨時の朝会"
+    assert occ["starts_at"] == "2030-01-05T02:00:00Z" and occ["ends_at"] == "2030-01-05T02:30:00Z"
+    assert occ["location"] == "会議室" and occ["tz"] == "Asia/Tokyo"
+    # The next one booked after it is the 6th, unchanged.
+    after = payloads[-1]
+    assert after["alarm"]["status"] == "pending"
+    assert after["occurrence"]["title"] == "朝会"
+    assert after["occurrence"]["starts_at"] == "2030-01-06T00:00:00Z"
+    # The push says the same occurrence.
+    await _drain(_relay(app, test_settings))
+    assert [r.payload["body"] for r in await deliveries(db)] == ["11:00 臨時の朝会"]
+    # Removing the alarm: no occurrence.
+    assert (await client.delete(f"{EVENTS}/{sid}/alarm")).status_code == 204
+    gone = (await _alarm_events(db))[-1]
+    assert gone["alarm"] is None and gone["occurrence"] is None
+
+
+async def test_alarm_event_carries_a_changed_all_day_occurrence(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    test_settings: Settings,
+) -> None:
+    bob = await make_user(db, "bob")
+    await add_device(db, bob)
+    as_user(bob)
+    made = await _create(
+        client,
+        all_day(
+            "当番",
+            date(2030, 1, 7),
+            rrule="FREQ=WEEKLY;BYDAY=MO",
+            tz="Asia/Tokyo",
+            alarm_minutes=-480,
+        ),
+    )
+    sid = made["id"]
+    moved = await client.patch(
+        occ_url(sid, "2030-01-14"),
+        json={
+            "scope": "this",
+            "title": "代理",
+            "start_date": "2030-01-15",
+            "end_date": "2030-01-15",
+        },
+    )
+    assert moved.status_code == 200, moved.text
+    async with app.state.db.session_factory() as worker:
+        # 当日 8:00 JST = 23:00Z the day before.
+        assert await calendar.fire_due(worker, now=datetime(2030, 1, 6, 23, 1, tzinfo=UTC)) == 1
+        assert await calendar.fire_due(worker, now=datetime(2030, 1, 14, 23, 1, tzinfo=UTC)) == 1
+    fired = [p for p in await _alarm_events(db) if p["alarm"] and p["alarm"]["status"] == "fired"]
+    assert [(p["occurrence"]["title"], p["occurrence"]["start_date"]) for p in fired] == [
+        ("当番", "2030-01-07"),
+        ("代理", "2030-01-15"),
+    ]
+    occ = fired[1]["occurrence"]
+    assert occ["all_day"] is True and occ["occurrence_start"] == "2030-01-14"
+    assert occ["end_date"] == "2030-01-15" and occ["starts_at"] is None
+    await _drain(_relay(app, test_settings))
+    assert sorted(r.payload["body"] for r in await deliveries(db)) == ["終日 代理", "終日 当番"]
+
+
+async def test_alarm_event_of_a_one_off_event_carries_it(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    general = await _channel(client, "general")
+    made = await _create(
+        client,
+        timed("ゼミ", jst(2030, 2, 1, 14), channel_id=general["id"], alarm_minutes=15),
+    )
+    payload = (await _alarm_events(db))[-1]
+    assert payload["event_id"] == made["id"]
+    assert payload["occurrence"]["title"] == "ゼミ"
+    assert payload["occurrence"]["channel_name"] == "general"
+    assert payload["occurrence"]["recurring"] is False
+
+
 # --- iCal -----------------------------------------------------------------------------------------
 
 

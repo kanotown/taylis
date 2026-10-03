@@ -12,7 +12,9 @@
  */
 import { ApiError } from "../api/errors";
 import type {
+  CalendarAlarmOut,
   CalendarAlarmUpdated,
+  CalendarEventData,
   CalendarEventCreate,
   CalendarEventDeleted,
   CalendarEventOut,
@@ -21,7 +23,7 @@ import type {
   CalendarOccurrenceUpdate,
   OccurrenceScope,
 } from "../api/types";
-import { compareEvents, localZone, overlapsRange } from "../ui/calendarDates";
+import { clock, compareEvents, localZone, overlapsRange } from "../ui/calendarDates";
 
 export interface CalendarApi {
   calendarEvents(from: string, to: string, channelId?: string | null): Promise<CalendarEventOut[]>;
@@ -38,6 +40,17 @@ export interface CalendarApi {
 
 /** The series an entry belongs to (a one-off event is its own). */
 export const seriesOf = (event: Pick<CalendarEventOut, "id" | "series_id">): string => event.series_id ?? event.id;
+
+/**
+ * The open app's line for a fired alarm, worded like the server's push: 「14:00 ゼミ (#m2-進捗)」, 「終日 学会」. `event` null
+ * (the occurrence is not known here, Review v0.1.22 #9): 「予定の通知があります (#…)」, never another occurrence's title.
+ */
+export function calendarAlarmText(event: CalendarEventOut | null, channelName: string | null): string {
+  if (!event) return `予定の通知があります${channelName ? ` (#${channelName})` : ""}`;
+  const when = event.all_day ? "終日" : clock(event.starts_at!);
+  const name = event.channel_name ?? channelName;
+  return `${when} ${event.title}${name ? ` (#${name})` : ""}`;
+}
 
 export type CalendarWindowState = "loading" | "ready" | "failed" | "unsupported";
 
@@ -67,8 +80,12 @@ export class CalendarHub {
       api: CalendarApi | null;
       /** My user id (can_edit is `editor_ids` holding it). */
       me: () => string | null;
-      /** One of my alarms fired (a notification while the app is open). */
-      onAlarm?: (event: CalendarEventOut) => void;
+      /**
+       * One of my alarms fired (a notification while the app is open): the occurrence it is for, or null when this device
+       * cannot tell which occurrence that is (an older server, not loaded here): then say so neutrally (`channelId` names
+       * the calendar), never with another occurrence's title or time (Review v0.1.22 #9).
+       */
+      onAlarm?: (event: CalendarEventOut | null, channelId: string | null) => void;
       tz?: () => string;
     },
   ) {}
@@ -240,26 +257,39 @@ export class CalendarHub {
       const { id, channel_id: channelId } = data as CalendarEventDeleted;
       this.drop(id, channelId);
     } else if (event === "calendar.alarm.updated") {
-      const { event_id: eventId, alarm } = data as CalendarAlarmUpdated;
+      const { event_id: eventId, channel_id: channelId, alarm, occurrence } = data as CalendarAlarmUpdated;
       const before = this.findSeries(eventId)?.alarm;
       this.patchAlarm(eventId, alarm);
       const again = before?.status === "fired" && (before.occurrence_start ?? null) === (alarm?.occurrence_start ?? null);
-      if (alarm?.status === "fired" && !again) void this.announce(eventId, alarm.occurrence_start ?? null);
+      if (alarm?.status === "fired" && !again) void this.announce(eventId, channelId, alarm, occurrence ?? null);
     }
   }
 
-  /** A fired alarm: its event (a series: the occurrence it is for) as known here, else read (it may be outside every window). */
-  private async announce(eventId: string, occurrenceStart: string | null): Promise<void> {
-    if (!this.deps.onAlarm) return;
-    let event = (occurrenceStart ? this.findOccurrence(eventId, occurrenceStart) : undefined) ?? this.find(eventId);
-    if (!event && this.deps.api) {
+  /**
+   * A fired alarm, said for the occurrence it is for (Review v0.1.22 #9): the one the server put in the event; from an
+   * older server, the occurrence as held here, else the event read (a one-off, or a series whose first occurrence is
+   * the one). Anything else would be another occurrence's title and time: the neutral notice instead.
+   */
+  private async announce(eventId: string, channelId: string | null, alarm: CalendarAlarmOut, occurrence: CalendarEventData | null): Promise<void> {
+    const onAlarm = this.deps.onAlarm;
+    if (!onAlarm) return;
+    const key = alarm.occurrence_start ?? null;
+    const known = this.findSeries(eventId);
+    if (occurrence && (key === null || occurrence.occurrence_start === key)) {
+      const held = this.findOccurrence(seriesOf(occurrence), occurrence.occurrence_start);
+      onAlarm({ ...occurrence, can_edit: held?.can_edit ?? known?.can_edit ?? false, alarm }, occurrence.channel_id);
+      return;
+    }
+    const fits = (e: CalendarEventOut | undefined) => e !== undefined && (key === null ? !e.recurring : e.occurrence_start === key);
+    let event: CalendarEventOut | undefined = key !== null ? this.findOccurrence(eventId, key) : this.find(eventId);
+    if (!fits(event) && this.deps.api) {
       try {
         event = await this.deps.api.getCalendarEvent(eventId);
       } catch {
         return; // gone or no longer mine to see: nothing to say
       }
     }
-    if (event) this.deps.onAlarm(event);
+    onAlarm(fits(event) ? event! : null, event?.channel_id ?? channelId);
   }
 
   /** An event as it is now: into every window it overlaps (out of those it left). A one-off event also replaces what was
