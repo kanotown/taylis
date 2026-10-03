@@ -1,3 +1,4 @@
+import { readPickedFiles } from "../platform/pickedFiles";
 import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X, Zap } from "lucide-react";
 import { Fragment, type KeyboardEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
@@ -214,12 +215,24 @@ export function Composer({
     setPending((items) => items.filter((a) => !ids.includes(a.id)));
   };
 
-  const pickFiles = async (files: FileList | null) => {
+  /** Uploads picked, dropped or pasted files. A picker's files arrive as a promise (read into memory before the input
+   *  is cleared, platform/pickedFiles.ts) with their count, so the upload counter (which holds back sending) rises at
+   *  once, not after the read. */
+  const pickFiles = async (files: FileList | File[] | Promise<File[]> | null, count?: number) => {
     const api = controller.api;
     if (!files || !api) return;
-    const batch = Array.from(files);
-    if (pending.length + uploading + batch.length > 10) { controller.setError("添付は10件までです"); return; }
-    store.trackUpload(channel.id, parentId, batch.length);
+    const expected = files instanceof Promise ? (count ?? 0) : Array.from(files).length;
+    if (pending.length + uploading + expected > 10) { controller.setError("添付は10件までです"); return; }
+    store.trackUpload(channel.id, parentId, expected);
+    let batch: File[];
+    try {
+      batch = files instanceof Promise ? await files : Array.from(files);
+    } catch (error) {
+      store.trackUpload(channel.id, parentId, -expected);
+      controller.setError(error);
+      return;
+    }
+    if (batch.length !== expected) store.trackUpload(channel.id, parentId, batch.length - expected);
     for (const file of batch) {
       try {
         const uploaded = await api.uploadAttachment(file, file.name);
@@ -598,8 +611,10 @@ export function Composer({
           multiple
           hidden
           onChange={(e) => {
-            void pickFiles(e.target.files);
+            const count = e.target.files?.length ?? 0;
+            const picked = readPickedFiles(e.target.files);
             e.target.value = "";
+            void pickFiles(picked, count);
           }}
         />
         <input
@@ -610,8 +625,10 @@ export function Composer({
           hidden
           aria-label="写真・動画を選択"
           onChange={(e) => {
-            void pickFiles(e.target.files);
+            const count = e.target.files?.length ?? 0;
+            const picked = readPickedFiles(e.target.files);
             e.target.value = "";
+            void pickFiles(picked, count);
           }}
         />
         <div className="relative">
