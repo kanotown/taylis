@@ -22,6 +22,7 @@ from app.modules.tasks import models as _task_models
 from app.modules.totp import models as _totp_models
 from app.modules.users import models as _user_models
 from app.modules.webhooks import models as _webhook_models
+from app.modules.workflows import models as _workflow_models
 from app.modules.workspace import models as _workspace_models
 
 __all__ = [
@@ -47,5 +48,6 @@ __all__ = [
     "_totp_models",
     "_user_models",
     "_webhook_models",
+    "_workflow_models",
     "_workspace_models",
 ]

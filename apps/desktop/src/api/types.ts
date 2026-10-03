@@ -113,6 +113,17 @@ export type RecurringSchedule = WeeklySchedule | MonthlySchedule;
 export type CollectSpec = components["schemas"]["CollectSpec"];
 export type CollectionOut = components["schemas"]["CollectionOut"];
 
+/** Workflows: forms that post a message (M94, docs/WORKFLOWS.md). */
+export type WorkflowOut = components["schemas"]["WorkflowOut"];
+export type WorkflowCreate = components["schemas"]["WorkflowCreate"];
+export type WorkflowUpdate = components["schemas"]["WorkflowUpdate"];
+export type WorkflowField = components["schemas"]["WorkflowField"];
+export type WorkflowFieldType = WorkflowField["type"];
+export type FieldDefault = components["schemas"]["FieldDefault"];
+export type WorkflowTemplateOut = components["schemas"]["WorkflowTemplateOut"];
+export type WorkflowSubmit = components["schemas"]["WorkflowSubmit"];
+export type MessageWorkflowOut = components["schemas"]["MessageWorkflowOut"];
+
 /** Reminders (M12e). */
 export type ReminderOut = components["schemas"]["ReminderOut"];
 export type ReminderCreate = components["schemas"]["ReminderCreate"];

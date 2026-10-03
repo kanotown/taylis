@@ -810,6 +810,31 @@ CREATE UNIQUE INDEX message_templates_user_name ON message_templates (owner_id, 
     時刻が読めない・終わりが先、のどれかなら何も作らずに使い方を出す。
   - `/日程` だけなら投票の作成画面を開き、質問「日程調整」、複数選択、今日の翌日からの平日 5 日を選択肢に入れておく。
 
+### workflows (ワークフロー、M94、WORKFLOWS.md §3)
+
+```sql
+CREATE TABLE workflows (
+  id                   uuid PRIMARY KEY,
+  name                 varchar(40) NOT NULL,              -- 1〜40。/名前 で開く
+  emoji                varchar(32),                       -- NULL なら ⚡
+  description          text NOT NULL DEFAULT '',          -- 200 文字まで
+  channel_id           uuid NOT NULL REFERENCES channels(id),  -- 送り先 (公開・非公開)
+  offered_channel_ids  uuid[] NOT NULL DEFAULT '{}',      -- メニューに出すチャンネル (送り先を含む、最大 10)
+  fields               jsonb NOT NULL DEFAULT '[]',       -- [{key, label, type, required, help, options, multiple, default}]、最大 20
+  template             text NOT NULL,                     -- 1〜4000。{{key}} を値で置き換える
+  enabled              boolean NOT NULL DEFAULT true,
+  created_by           uuid NOT NULL REFERENCES users(id),
+  created_at, updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at           timestamptz                        -- 論理削除 (投稿の workflow_id が残る)
+);
+CREATE UNIQUE INDEX workflows_name_uniq ON workflows (lower(name)) WHERE deleted_at IS NULL;
+CREATE INDEX workflows_offered_idx ON workflows USING gin (offered_channel_ids) WHERE deleted_at IS NULL;
+```
+
+送信 (`POST /workflows/{id}/submit`) は値を確かめて雛形を描き、出した人のふつうのメッセージとして投稿する
+(`messages.workflow_id` / `workflow_name`)。提出の表は無い (メッセージが記録)。描き方と値の規則の検証ベクタは
+`apps/shared/workflows.json`。
+
 ### canvases / canvas_revisions / canvas_templates (キャンバス、M41・M42、CANVAS.md §4)
 
 ```sql
@@ -1243,6 +1268,8 @@ CREATE TABLE messages (
   pinned_at           timestamptz,                         -- M11c: ピン留め (メンバーなら誰でも)。外すと NULL
   pinned_by           uuid REFERENCES users(id),
   system_event        jsonb,                               -- M88: type = 'system' の中身 {kind, actor_id, user_ids} (0071)。人の投稿は NULL
+  workflow_id         uuid REFERENCES workflows(id),       -- M94: ワークフローのフォームから投稿した (0075)。ほかは NULL
+  workflow_name       varchar(40),                         -- M94: その時のワークフローの名前 (MessageOut.workflow = {id, name})
   UNIQUE (channel_id, seq)
 );
 CREATE UNIQUE INDEX messages_client_msg_id_uniq ON messages (sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL;

@@ -1,7 +1,7 @@
-import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X } from "lucide-react";
+import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X, Zap } from "lucide-react";
 import { Fragment, type KeyboardEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import type { AttachmentOut, Priority, TemplateOut } from "../api/types";
+import type { AttachmentOut, Priority, TemplateOut, WorkflowOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState, SendOptions } from "../sync/types";
 import { composerMaxHeight } from "../platform/viewport";
@@ -19,6 +19,8 @@ import { MessageBody } from "./MessageBody";
 import { isSendKey, readFormatBar, sendKeyLabel, writeFormatBar } from "./prefs";
 import { scheduleLabel, schedulePresets, toLocalInput } from "./schedule";
 import { PollDialog } from "./PollDialog";
+import { ChannelWorkflowsDialog, useChannelWorkflows, WorkflowEmoji, WorkflowRunDialog } from "./WorkflowViews";
+import { findWorkflowCommand, workflowCandidates } from "./workflows";
 import { ScheduleDialog, type ScheduleFormInitial } from "./ScheduleDialog";
 import { slotsFromEntries } from "./scheduling";
 import { appendTemplate, expandTemplate, findTemplate, orderTemplates, readSchedule, SCHEDULE_USAGE, templateCandidates, templateSummary, templateWithText } from "./templates";
@@ -103,10 +105,16 @@ export function Composer({
   const [addEmojiOpen, setAddEmojiOpen] = useState(false);
   // M30: the templates in the order they are offered here (a times channel puts `suggest_in = times` first).
   const templates = orderTemplates(store.templates.values(), !!channel.times_owner_id);
+  // M94: the workflows this channel offers (`/name`, `/wf name`, 「＋」 → ワークフロー); not in a thread's composer.
+  const isChannel = channel.type === "public" || channel.type === "private";
+  const workflows = useChannelWorkflows(controller, !parentId && isChannel ? channel.id : null) ?? [];
+  const [workflowRun, setWorkflowRun] = useState<WorkflowOut | null>(null);
+  const [workflowMenu, setWorkflowMenu] = useState(false);
   // `/st` at the very start offers the slash commands (M13b), then the templates whose name fits (M30).
   const slashHits: SlashHit[] = query || emojiAt || !listShown ? [] : [
     ...commandCandidates(text).map((command) => ({ kind: "command" as const, command })),
     ...templateCandidates(text, templates).map((template) => ({ kind: "template" as const, template })),
+    ...workflowCandidates(text, workflows).map((workflow) => ({ kind: "workflow" as const, workflow })),
   ];
   const listLength = candidates.length > 0 ? candidates.length : emojiHits.length > 0 ? emojiHits.length : slashHits.length;
   const active = Math.min(selected, Math.max(listLength - 1, 0));
@@ -125,6 +133,17 @@ export function Composer({
         const template = findTemplate(templates, command.name);
         if (template) {
           putText(templateWithText(expandTemplate(template.body), command.args));
+          return;
+        }
+        // M94: `/name` of a workflow (or `/wf name`) opens its form; what was typed goes.
+        const workflow = findWorkflowCommand(command.name, command.args, workflows);
+        if (workflow) {
+          setText("");
+          setWorkflowRun(workflow);
+          return;
+        }
+        if (command.name === "wf") {
+          controller.setError(command.args ? `「${command.args}」というワークフローはこのチャンネルにありません` : "/wf の後にワークフローの名前を続けてください");
           return;
         }
         controller.setError(`/${command.name} というコマンドはありません (/help で一覧)`);
@@ -235,7 +254,10 @@ export function Composer({
 
   const pickSlash = (hit: SlashHit) => {
     if (hit.kind === "command") pickCommand(hit.command);
-    else putText(expandTemplate(hit.template.body)); // the whole input is `/na…`: it becomes the template at once
+    else if (hit.kind === "workflow") {
+      setText("");
+      setWorkflowRun(hit.workflow);
+    } else putText(expandTemplate(hit.template.body)); // the whole input is `/na…`: it becomes the template at once
   };
 
   const pickCommand = (command: SlashCommand) => {
@@ -434,6 +456,8 @@ export function Composer({
     >
       {addEmojiOpen && <AddEmojiDialog controller={controller} onClose={() => setAddEmojiOpen(false)} />}
       {pollForm && <PollDialog controller={controller} channelId={channel.id} parentId={parentId} initial={pollForm} onClose={() => setPollForm(null)} />}
+      {workflowRun && <WorkflowRunDialog controller={controller} workflow={workflowRun} here={channel.id} onClose={() => setWorkflowRun(null)} />}
+      {workflowMenu && <ChannelWorkflowsDialog controller={controller} channel={channel} onClose={() => setWorkflowMenu(false)} />}
       {scheduleForm && <ScheduleDialog controller={controller} channelId={channel.id} parentId={parentId} initial={scheduleForm} onClose={() => setScheduleForm(null)} />}
       {emojiHits.length > 0 && (
         <ul className="absolute bottom-full left-4 z-20 mb-1 w-72 rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="絵文字の候補">
@@ -476,7 +500,7 @@ export function Composer({
         <ul className="absolute bottom-full left-4 z-20 mb-1 max-h-80 w-96 max-w-[calc(100%-2rem)] overflow-y-auto rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="コマンドの候補">
           {slashHits.map((hit, index) => (
             <li
-              key={hit.kind === "command" ? hit.command.name : hit.template.id}
+              key={hit.kind === "command" ? hit.command.name : hit.kind === "workflow" ? `wf:${hit.workflow.id}` : hit.template.id}
               className={cn("flex items-baseline gap-2 rounded-lg px-2.5 py-1.5 text-sm", index === active ? "bg-accent-soft" : "hover:bg-panel")}
               onMouseDown={(event) => {
                 event.preventDefault();
@@ -486,6 +510,13 @@ export function Composer({
               {hit.kind === "command" ? (
                 <>
                   <strong className="font-mono">{hit.command.usage}</strong> <span className="text-muted">{hit.command.description}</span>
+                </>
+              ) : hit.kind === "workflow" ? (
+                <>
+                  <WorkflowEmoji workflow={hit.workflow} className="self-center" />
+                  <strong className="shrink-0 font-mono">{/\s/.test(hit.workflow.name) ? `/wf ${hit.workflow.name}` : `/${hit.workflow.name}`}</strong>
+                  <span className="min-w-0 flex-1 truncate text-muted">{hit.workflow.description || "ワークフロー"}</span>
+                  {!hit.workflow.can_run && <span className="ml-auto shrink-0 text-[10px] text-warning">使えません</span>}
                 </>
               ) : (
                 <>
@@ -651,6 +682,11 @@ export function Composer({
                   <MenuItem onSelect={() => { afterMenu.current = () => setTemplatesOpen(true); }}>
                     <LayoutTemplate size={14} className="text-muted" /> テンプレート…
                   </MenuItem>
+                  {!parentId && isChannel && (
+                    <MenuItem onSelect={() => { afterMenu.current = () => setWorkflowMenu(true); }}>
+                      <Zap size={14} className="text-muted" /> ワークフロー…
+                    </MenuItem>
+                  )}
                 </MenuContent>
               </Menu>
               <PopoverContent align="start" side="top" className="w-80 p-1" onCloseAutoFocus={(e) => e.preventDefault()}>
@@ -780,7 +816,7 @@ export function Composer({
   );
 }
 
-type SlashHit = { kind: "command"; command: SlashCommand } | { kind: "template"; template: TemplateOut };
+type SlashHit = { kind: "command"; command: SlashCommand } | { kind: "template"; template: TemplateOut } | { kind: "workflow"; workflow: WorkflowOut };
 
 /** A popover anchor at the first of these elements that is shown (the others folded away by the composer's width). */
 function useShownAnchor(...elements: Array<RefObject<HTMLElement | null>>): RefObject<{ getBoundingClientRect(): DOMRect }> {

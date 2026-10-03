@@ -339,6 +339,14 @@ class SystemEventOut(BaseModel):
     user_ids: list[UUID]
 
 
+class MessageWorkflowOut(BaseModel):
+    """M94 (docs/WORKFLOWS.md D4): the workflow whose form posted this message, by its name
+    when it was posted (clients label the message 「⚡ name」)."""
+
+    id: UUID
+    name: str
+
+
 class MessageOut(BaseModel):
     id: UUID
     channel_id: UUID
@@ -378,6 +386,8 @@ class MessageOut(BaseModel):
     tasks: list[MessageTaskOut] = []
     # M88: on a system message (type "system"), what it says; null on people's posts.
     system_event: SystemEventOut | None = None
+    # M94: posted through a workflow's form; null on other posts.
+    workflow: MessageWorkflowOut | None = None
 
 
 class MessageRevisionOut(BaseModel):
@@ -540,6 +550,9 @@ def to_message_out(
         system_event=None
         if deleted or not message.system_event
         else SystemEventOut.model_validate(message.system_event),
+        workflow=None
+        if deleted or message.workflow_id is None
+        else MessageWorkflowOut(id=message.workflow_id, name=message.workflow_name or ""),
     )
 
 

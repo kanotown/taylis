@@ -2797,6 +2797,17 @@
               "updated_seq": {
                 "title": "Updated Seq",
                 "type": "integer"
+              },
+              "workflow": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/MessageWorkflowOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               }
             },
             "required": [
@@ -2887,6 +2898,26 @@
               "owner_id"
             ],
             "title": "MessageTaskOut",
+            "type": "object"
+          },
+          "MessageWorkflowOut": {
+            "description": "M94 (docs/WORKFLOWS.md D4): the workflow whose form posted this message, by its name\nwhen it was posted (clients label the message 「⚡ name」).",
+            "properties": {
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "name": {
+                "title": "Name",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "title": "MessageWorkflowOut",
             "type": "object"
           },
           "ParentThread": {
@@ -3772,6 +3803,17 @@
               "updated_seq": {
                 "title": "Updated Seq",
                 "type": "integer"
+              },
+              "workflow": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/MessageWorkflowOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               }
             },
             "required": [
@@ -3862,6 +3904,26 @@
               "owner_id"
             ],
             "title": "MessageTaskOut",
+            "type": "object"
+          },
+          "MessageWorkflowOut": {
+            "description": "M94 (docs/WORKFLOWS.md D4): the workflow whose form posted this message, by its name\nwhen it was posted (clients label the message 「⚡ name」).",
+            "properties": {
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "name": {
+                "title": "Name",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "title": "MessageWorkflowOut",
             "type": "object"
           },
           "ParentThread": {
@@ -4748,6 +4810,17 @@
               "updated_seq": {
                 "title": "Updated Seq",
                 "type": "integer"
+              },
+              "workflow": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/MessageWorkflowOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               }
             },
             "required": [
@@ -4838,6 +4911,26 @@
               "owner_id"
             ],
             "title": "MessageTaskOut",
+            "type": "object"
+          },
+          "MessageWorkflowOut": {
+            "description": "M94 (docs/WORKFLOWS.md D4): the workflow whose form posted this message, by its name\nwhen it was posted (clients label the message 「⚡ name」).",
+            "properties": {
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "name": {
+                "title": "Name",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "title": "MessageWorkflowOut",
             "type": "object"
           },
           "PollCommentOut": {

@@ -1757,6 +1757,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Channel Workflows
+         * @description The workflows offered in the channel whose target I can read (the menu and `/`), by name;
+         *     `run_blocked` says why I cannot submit one.
+         */
+        get: operations["list_channel_workflows_api_v1_channels__channel_id__workflows_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices/current": {
         parameters: {
             query?: never;
@@ -3279,6 +3300,98 @@ export interface paths {
         get: operations["get_avatar_api_v1_users__user_id__avatar_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workflow Templates
+         * @description 「テンプレートから作成」: starting points for the editor (never workflows by themselves).
+         */
+        get: operations["list_workflow_templates_api_v1_workflow_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workflows
+         * @description The workflows I may manage (paused ones too), by name.
+         */
+        get: operations["list_workflows_api_v1_workflows_get"];
+        put?: never;
+        /**
+         * Create Workflow
+         * @description A new workflow posting to `channel_id` (its owners and administrators). At most 200 in the
+         *     workspace (409 too_many_workflows); names are unique (409 workflow_name_taken).
+         */
+        post: operations["create_workflow_api_v1_workflows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{workflow_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workflow */
+        get: operations["get_workflow_api_v1_workflows__workflow_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Workflow
+         * @description Gone for good; the messages it posted keep their 「⚡ name」 label.
+         */
+        delete: operations["delete_workflow_api_v1_workflows__workflow_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Workflow
+         * @description A new target must be one I manage too. Messages already posted stay as they are.
+         */
+        patch: operations["update_workflow_api_v1_workflows__workflow_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/workflows/{workflow_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Workflow
+         * @description Posts the filled form to the target channel as me: 201 with the new message, 200 with the
+         *     same message for a retry with the same client_msg_id. 400 workflow_values_invalid carries
+         *     `details.fields = {key: reason}`.
+         */
+        post: operations["submit_workflow_api_v1_workflows__workflow_id__submit_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4948,6 +5061,25 @@ export interface components {
             favorite: boolean;
         };
         /**
+         * FieldDefault
+         * @description What the form starts with, filled in by the device that opens it (WORKFLOWS.md §3.1):
+         *     a literal value, today, me, or the first `weekday` (0 = Monday) from today on. `time` goes
+         *     with today / next_weekday on a datetime field (09:00 when left out).
+         */
+        FieldDefault: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "literal" | "today" | "me" | "next_weekday";
+            /** Time */
+            time?: string | null;
+            /** Value */
+            value?: boolean | string | null;
+            /** Weekday */
+            weekday?: number | null;
+        };
+        /**
          * FileItem
          * @description One row of the files list (M11i): the attachment and where it was posted.
          */
@@ -5540,6 +5672,7 @@ export interface components {
             type: string;
             /** Updated Seq */
             updated_seq: number;
+            workflow?: components["schemas"]["MessageWorkflowOut"] | null;
         };
         /**
          * MessageRevisionOut
@@ -5591,6 +5724,20 @@ export interface components {
              * @enum {string}
              */
             status: "todo" | "doing" | "done";
+        };
+        /**
+         * MessageWorkflowOut
+         * @description M94 (docs/WORKFLOWS.md D4): the workflow whose form posted this message, by its name
+         *     when it was posted (clients label the message 「⚡ name」).
+         */
+        MessageWorkflowOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /**
          * MonthlySchedule
@@ -7320,6 +7467,167 @@ export interface components {
             time: string;
             /** Weekdays */
             weekdays: number[];
+        };
+        /** WorkflowCreate */
+        WorkflowCreate: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Emoji */
+            emoji?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Fields */
+            fields?: components["schemas"]["WorkflowField"][];
+            /** Name */
+            name: string;
+            /** Offered Channel Ids */
+            offered_channel_ids?: string[];
+            /** Template */
+            template: string;
+        };
+        /** WorkflowField */
+        WorkflowField: {
+            default?: components["schemas"]["FieldDefault"] | null;
+            /**
+             * Help
+             * @default
+             */
+            help: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Multiple
+             * @default false
+             */
+            multiple: boolean;
+            /** Options */
+            options?: string[];
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "text" | "textarea" | "date" | "time" | "datetime" | "select" | "user" | "checkbox";
+        };
+        /** WorkflowOut */
+        WorkflowOut: {
+            /** Can Manage */
+            can_manage: boolean;
+            /** Can Run */
+            can_run: boolean;
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Description */
+            description: string;
+            /** Emoji */
+            emoji: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Fields */
+            fields: components["schemas"]["WorkflowField"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Offered Channel Ids */
+            offered_channel_ids: string[];
+            /** Run Blocked */
+            run_blocked: ("disabled" | "archived" | "not_a_member" | "posting_restricted") | null;
+            /** Template */
+            template: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * WorkflowSubmit
+         * @description POST /workflows/{id}/submit: the idempotency key and each field's value by key.
+         */
+        WorkflowSubmit: {
+            /**
+             * Client Msg Id
+             * Format: uuid
+             */
+            client_msg_id: string;
+            /** Values */
+            values?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * WorkflowTemplateOut
+         * @description A starting point for the editor (「テンプレートから作成」); never a workflow by itself.
+         */
+        WorkflowTemplateOut: {
+            /** Description */
+            description: string;
+            /** Emoji */
+            emoji: string | null;
+            /** Fields */
+            fields: components["schemas"]["WorkflowField"][];
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Template */
+            template: string;
+        };
+        /**
+         * WorkflowUpdate
+         * @description Fields left out stay; `emoji: null` goes back to ⚡.
+         */
+        WorkflowUpdate: {
+            /** Channel Id */
+            channel_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Emoji */
+            emoji?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Fields */
+            fields?: components["schemas"]["WorkflowField"][] | null;
+            /** Name */
+            name?: string | null;
+            /** Offered Channel Ids */
+            offered_channel_ids?: string[] | null;
+            /** Template */
+            template?: string | null;
         };
         /**
          * WorkspaceSettingsOut
@@ -11048,6 +11356,37 @@ export interface operations {
             };
         };
     };
+    list_channel_workflows_api_v1_channels__channel_id__workflows_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_device_api_v1_devices_current_put: {
         parameters: {
             query?: never;
@@ -14060,6 +14399,209 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workflow_templates_api_v1_workflow_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowTemplateOut"][];
+                };
+            };
+        };
+    };
+    list_workflows_api_v1_workflows_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowOut"][];
+                };
+            };
+        };
+    };
+    create_workflow_api_v1_workflows_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_api_v1_workflows__workflow_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workflow_api_v1_workflows__workflow_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_workflow_api_v1_workflows__workflow_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_workflow_api_v1_workflows__workflow_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowSubmit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
                 };
             };
             /** @description Validation Error */
