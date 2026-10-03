@@ -186,7 +186,7 @@ class MattermostImport(core.ImportJob):
             if mm["id"] in refs or name in self.custom_emoji:
                 continue  # imported before, or ChikuwaChat already has one by that name
             if not emoji_service.NAME.match(name):
-                self.report.warn(f":{mm['name']}: は ChikuwaChat の絵文字名にできないため未移行")
+                self.report.warn(f":{mm['name']}: は taylis の絵文字名にできないため未移行")
                 continue
             raw = self._read_file(Path("emoji") / mm["id"] / "image", f":{name}:")
             if raw is None:

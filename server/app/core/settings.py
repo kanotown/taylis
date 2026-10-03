@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    app_name: str = "ChikuwaChat"
+    app_name: str = "taylis"
     # Shown in the clients' workspace switcher (WORKSPACES.md); empty means app_name.
     workspace_name: str = ""
     environment: Literal["development", "test", "production"] = "development"

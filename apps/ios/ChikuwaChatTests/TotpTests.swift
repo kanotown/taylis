@@ -20,6 +20,6 @@ final class TotpTests: XCTestCase {
         let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
         XCTAssertNotNil(Totp.qrImage(base64: png))
         XCTAssertNil(Totp.qrImage(base64: "not base64!"))
-        XCTAssertEqual(Totp.recoveryCodesText(["abcde-fghjk", "mnpqr-stuvw"]), "ChikuwaChat の回復コード (各 1 回だけ使えます)\n\nabcde-fghjk\nmnpqr-stuvw")
+        XCTAssertEqual(Totp.recoveryCodesText(["abcde-fghjk", "mnpqr-stuvw"]), "taylis の回復コード (各 1 回だけ使えます)\n\nabcde-fghjk\nmnpqr-stuvw")
     }
 }

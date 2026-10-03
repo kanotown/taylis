@@ -91,9 +91,9 @@ fun LoginScreen(controller: AppController) {
             WorkspaceTile(entry, entry.name, 48.dp)
             Spacer(Modifier.height(12.dp))
         }
-        Text(if (adding) "ワークスペースを追加" else entry?.name ?: "ChikuwaChat", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+        Text(if (adding) "ワークスペースを追加" else entry?.name ?: "taylis", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
         when {
-            adding -> Text("別の ChikuwaChat サーバにログインします", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            adding -> Text("別の taylis サーバにログインします", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             entry?.signedOut == true -> Text("もう一度ログインしてください", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(24.dp))

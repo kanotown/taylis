@@ -1395,4 +1395,4 @@ async def feed_ics(db: AsyncSession, token: str) -> str | None:
     if feed.last_used_at is None or now - feed.last_used_at >= FEED_TOUCH:
         feed.last_used_at = now
         await db.commit()
-    return ical.render(entries, now=now, name="ChikuwaChat")
+    return ical.render(entries, now=now, name="taylis")

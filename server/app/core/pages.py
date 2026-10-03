@@ -30,7 +30,7 @@ _PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>ChikuwaChat</title>
+<title>taylis</title>
 <style>
 body {{ font-family: system-ui, sans-serif; margin: 0; display: grid; place-items: center;
        min-height: 100vh; background: #f6f7fb; color: #1f2333; }}
@@ -41,8 +41,8 @@ p {{ margin: .25rem 0; color: #5b6172; }}
 </head>
 <body>
 <main>
-<h1>ChikuwaChat の{kind}</h1>
-<p>このリンクは ChikuwaChat の{kind}を指しています。</p>
+<h1>taylis の{kind}</h1>
+<p>このリンクは taylis の{kind}を指しています。</p>
 <p>デスクトップ / iPhone / Android のアプリでこのリンクを開くと、
 該当の{kind}が表示されます (見られるのは、その会話のメンバーだけです)。</p>
 </main>

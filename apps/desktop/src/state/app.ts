@@ -317,7 +317,7 @@ export class AppController {
     }
     if (this.addingWorkspace) {
       if (!info) {
-        this.setScreen("login", "ChikuwaChat のサーバーではありません");
+        this.setScreen("login", "taylis のサーバーではありません");
         return null;
       }
       const known = this.workspaces.find((e) => (e.workspaceId !== null && e.workspaceId === info!.workspace_id) || sameServer(e.serverUrl, server));
@@ -1259,7 +1259,7 @@ export class AppController {
 
   /** The workspace name for the search box and the switcher (GET /server). */
   get workspaceName(): string {
-    return this.activeEntry?.name ?? "ChikuwaChat";
+    return this.activeEntry?.name ?? "taylis";
   }
 
   /** Whether a workspace has a running session (signed in on this device). */

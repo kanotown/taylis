@@ -21,6 +21,6 @@ describe("two-factor helpers (M12i)", () => {
   });
 
   it("formats recovery codes for the clipboard", () => {
-    expect(recoveryCodesText(["abcde-fghjk", "mnpqr-stuvw"])).toBe("ChikuwaChat の回復コード (各 1 回だけ使えます)\n\nabcde-fghjk\nmnpqr-stuvw");
+    expect(recoveryCodesText(["abcde-fghjk", "mnpqr-stuvw"])).toBe("taylis の回復コード (各 1 回だけ使えます)\n\nabcde-fghjk\nmnpqr-stuvw");
   });
 });
