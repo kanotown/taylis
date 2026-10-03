@@ -13,6 +13,9 @@ class ServerInfoOut(BaseModel):
     # The name for the switcher (WORKSPACE_NAME, else the application name).
     name: str
     api_version: str
+    # M93 (WORKSPACES.md §3.4): the icon's version, or null when there is none (the letter tile).
+    # The picture is GET /server/icon?v=<icon_version>, public like this answer.
+    icon_version: str | None = None
 
 
 class WorkspaceSettingsOut(BaseModel):
@@ -24,6 +27,9 @@ class WorkspaceSettingsOut(BaseModel):
     # 「参加前にチャンネルの中を見られる」: a public channel's messages, threads and files can be
     # read before joining it (M27). False: 403 preview_disabled, search keeps to one's channels.
     preview_before_join: bool = True
+    # M93 (WORKSPACES.md §3.4): the workspace icon's version (null: none); a change reaches the
+    # signed-in devices through workspace.settings_updated, so the rail follows at once.
+    icon_version: str | None = None
 
 
 # M90: at most this many default channels (a long list would bury a newcomer's sidebar).

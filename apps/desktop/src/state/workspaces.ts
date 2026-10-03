@@ -11,6 +11,8 @@ export interface WorkspaceEntry {
   userId: string | null;
   /** The session ended (signed out elsewhere, revoked): the entry stays so signing back in is one step. */
   signedOut?: boolean;
+  /** M93: GET /server's `icon_version` (the admin's icon, public); null / missing = the letter tile. */
+  iconVersion?: string | null;
 }
 
 export const LIST_KEY = "chikuwa.workspaces";
@@ -79,7 +81,38 @@ function valid(entry: unknown): entry is WorkspaceEntry {
   return typeof e === "object" && e !== null && typeof e.serverUrl === "string" && typeof e.username === "string" && typeof e.name === "string";
 }
 
-/** The saved list, in the order added; the one install that predates workspaces becomes its first entry. */
+/**
+ * M93: the rail's order after dragging `serverUrl` to `toIndex` (its index in the list as it will be). The list is
+ * saved in this order, so the rail, ⌘1 … ⌘9 and the next start follow it. Unknown URLs and no-op moves return the
+ * same array.
+ */
+export function moveWorkspace(entries: WorkspaceEntry[], serverUrl: string, toIndex: number): WorkspaceEntry[] {
+  const from = entries.findIndex((e) => e.serverUrl === serverUrl);
+  if (from < 0) return entries;
+  const to = Math.max(0, Math.min(entries.length - 1, Math.trunc(toIndex)));
+  if (to === from) return entries;
+  const next = entries.slice();
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved!);
+  return next;
+}
+
+/**
+ * M93: where a drop between tiles lands. `gap` is the slot the indicator shows: 0 = before the first tile,
+ * n = after the last. Dropping into the slot right before or after the dragged tile keeps the order.
+ */
+export function dropIndex(from: number, gap: number): number {
+  return gap > from ? gap - 1 : gap;
+}
+
+/** M93: the gap under the pointer while dragging: how many tiles' middles lie above `y` (0 … n). */
+export function gapForPointer(y: number, midpoints: number[]): number {
+  let gap = 0;
+  for (const mid of midpoints) if (y > mid) gap += 1;
+  return gap;
+}
+
+/** The saved list, in the order added (or as the user arranged it, M93); the one install that predates workspaces becomes its first entry. */
 export function loadWorkspaces(): { entries: WorkspaceEntry[]; active: string | null } {
   let entries = read<unknown[]>(LIST_KEY, []);
   if (!Array.isArray(entries)) entries = [];
@@ -124,6 +157,8 @@ export interface ServerInfo {
   workspace_id: string;
   name: string;
   api_version: string;
+  /** M93: the workspace icon's version (null: none; missing: a server before M93). */
+  icon_version?: string | null;
 }
 
 export function isServerInfo(value: unknown): value is ServerInfo {

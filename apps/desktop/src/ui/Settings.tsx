@@ -5,7 +5,8 @@ import type { SessionOut, TotpStatusOut } from "../api/types";
 import { isTauri } from "../platform/env";
 import { notificationPermission, type NotificationPermissionState, requestNotificationPermission } from "../platform/notify";
 import type { AppController } from "../state/app";
-import { hostLabel, type WorkspaceEntry, workspaceColor, workspaceInitials } from "../state/workspaces";
+import { hostLabel, type WorkspaceEntry } from "../state/workspaces";
+import { WorkspaceIcon } from "./workspaceIcons";
 import { AdminBody } from "./AdminDialog";
 import { AvatarCropDialog } from "./AvatarCropDialog";
 import { Avatar } from "./Avatar";
@@ -684,7 +685,7 @@ function ProfileSection({ controller }: { controller: AppController }) {
           <Input value={displayName} maxLength={80} onChange={edit(setDisplayName)} required />
         </Field>
         <Field label="肩書 (任意)">
-          <Input value={title} maxLength={80} placeholder="例: 開発 / 営業" onChange={edit(setTitle)} />
+          <Input value={title} maxLength={80} placeholder="例: 教授 / 准教授 / 助教 / D1 / M2 / M1 / B4" onChange={edit(setTitle)} />
         </Field>
         {line && (
           <>
@@ -909,9 +910,7 @@ function WorkspacesSection({ controller }: { controller: AppController }) {
           const signedIn = active || controller.isSignedIn(entry.serverUrl);
           return (
             <li key={entry.serverUrl} className="flex items-center gap-3 px-3 py-2.5">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ background: workspaceColor(entry.workspaceId ?? entry.serverUrl) }}>
-                {workspaceInitials(entry.name)}
-              </span>
+              <WorkspaceIcon serverUrl={entry.serverUrl} version={entry.iconVersion} name={entry.name} colorKey={entry.workspaceId ?? entry.serverUrl} className="h-9 w-9 rounded-xl text-sm" />
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-2 text-sm">
                   <span className="truncate font-medium">{entry.name}</span>

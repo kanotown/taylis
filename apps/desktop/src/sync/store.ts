@@ -663,7 +663,7 @@ export class Store {
   setWorkspaceSettings(settings: WorkspaceSettingsOut | null | undefined): void {
     const next = { ...DEFAULT_WORKSPACE_SETTINGS, ...(settings ?? {}) };
     const current = this.workspaceSettings;
-    if (next.show_membership_messages === current.show_membership_messages && next.preview_before_join === current.preview_before_join) return;
+    if (next.show_membership_messages === current.show_membership_messages && next.preview_before_join === current.preview_before_join && next.icon_version === current.icon_version) return;
     this.workspaceSettings = next;
     this.emit();
   }

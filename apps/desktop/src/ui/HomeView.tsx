@@ -2,7 +2,7 @@ import { AlarmClock, AtSign, BellOff, Bookmark, CalendarDays, Check, ChevronDown
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
-import { workspaceColor, workspaceInitials } from "../state/workspaces";
+import { WorkspaceIcon } from "./workspaceIcons";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
 import { badgeCount, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, showsSelfNotesInDmSection } from "./channels";
@@ -198,9 +198,7 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
         <Menu>
           <MenuTrigger asChild>
             <button type="button" aria-label={`ワークスペース: ${name}`} className="-ml-1 flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left hover:bg-panel">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold text-white" style={{ background: workspaceColor(entry?.workspaceId ?? entry?.serverUrl ?? name) }}>
-                {workspaceInitials(name)}
-              </span>
+              <WorkspaceIcon serverUrl={entry?.serverUrl} version={entry?.iconVersion} name={name} colorKey={entry?.workspaceId ?? entry?.serverUrl ?? name} className="h-6 w-6 rounded-md text-[11px]" />
               {title}
               <ChevronDown size={16} className="shrink-0 text-muted" />
             </button>
@@ -208,9 +206,7 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
           <MenuContent align="start" className="min-w-60">
             {controller.workspaces.map((workspace) => (
               <MenuItem key={workspace.serverUrl} onSelect={() => void controller.switchWorkspace(workspace.serverUrl)}>
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white" style={{ background: workspaceColor(workspace.workspaceId ?? workspace.serverUrl) }}>
-                  {workspaceInitials(workspace.name)}
-                </span>
+                <WorkspaceIcon serverUrl={workspace.serverUrl} version={workspace.iconVersion} name={workspace.name} colorKey={workspace.workspaceId ?? workspace.serverUrl} className="h-5 w-5 rounded text-[10px]" />
                 <span className="min-w-0 flex-1 truncate">{workspace.name}</span>
                 {workspace.serverUrl === controller.activeServer && <Check size={15} className="text-accent" />}
               </MenuItem>

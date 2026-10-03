@@ -52,7 +52,7 @@
     "default_channel_archived": "アーカイブ済みのチャンネルは既定のチャンネルにできません",
     "default_channel_not_found": "既定のチャンネルに選んだチャンネルが見つかりません (削除されたかもしれません)",
     "default_channel_not_public": "既定のチャンネルにできるのは公開チャンネルだけです",
-    "dm_immutable":"ダイレクトメッセージでは行えない操作です",
+    "dm_immutable": "ダイレクトメッセージでは行えない操作です",
     "domain_not_allowed": "このサーバでは、許可された大学・組織の Google アカウントだけでログインできます",
     "email_domain_reserved": "このドメインのメールアドレスは Google でのログインで登録されます。自分では設定できません",
     "email_not_verified": "Google アカウントのメールアドレスが確認されていません",
@@ -186,7 +186,11 @@
     "user_not_found": "ユーザーが見つかりません",
     "username_taken": "このユーザー名はすでに使われています",
     "validation_error": "入力内容を確認してください",
-    "webhook_not_found": "Webhook が見つかりません"
+    "webhook_not_found": "Webhook が見つかりません",
+    "workspace_icon_empty": "画像が空です",
+    "workspace_icon_not_found": "このワークスペースにはアイコンがありません",
+    "workspace_icon_not_image": "PNG・JPEG・WebP の画像を選んでください",
+    "workspace_icon_too_large": "画像が大きすぎます"
   },
   "status": {
     "400": "入力内容を確認してください",

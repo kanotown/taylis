@@ -65,7 +65,8 @@ ON/OFF できるようにもしたい。管理者側の設定で、入る前に�
 `workspace_settings` (1 行、migration 0071。行が無ければ既定値) と `GET / PATCH /admin/workspace-settings`
 (管理者のみ。PATCH は送った項目だけを変える。未知の項目は 422)。変更は監査ログ `workspace.settings_updated`
 (`{項目: {from, to}}`) に残し、`workspace.settings_updated` (audience all、`{settings}`) で全端末に届ける。
-クライアントは bootstrap の `workspace_settings` (`{show_membership_messages, preview_before_join}`) で受け取る。
+クライアントは bootstrap の `workspace_settings` (`{show_membership_messages, preview_before_join, icon_version}`) で受け取る
+(`icon_version` は M93 のワークスペースのアイコン。WORKSPACES.md §3.4)。
 
 | 項目 | 既定 | オフにすると |
 | --- | --- | --- |

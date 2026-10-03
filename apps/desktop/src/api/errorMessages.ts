@@ -188,6 +188,10 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   username_taken: "このユーザー名はすでに使われています",
   validation_error: "入力内容を確認してください",
   webhook_not_found: "Webhook が見つかりません",
+  workspace_icon_empty: "画像が空です",
+  workspace_icon_not_found: "このワークスペースにはアイコンがありません",
+  workspace_icon_not_image: "PNG・JPEG・WebP の画像を選んでください",
+  workspace_icon_too_large: "画像が大きすぎます",
 };
 
 /** Fallbacks by HTTP status ("5xx" for any server error). */

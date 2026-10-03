@@ -19,6 +19,7 @@ async def test_server_info_is_public(client: AsyncClient, db: AsyncSession) -> N
         "workspace_id": str(await workspace.workspace_id(db)),
         "name": "Taylis",
         "api_version": API_VERSION,
+        "icon_version": None,
     }
 
 

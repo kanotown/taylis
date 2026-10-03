@@ -466,6 +466,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/workspace-settings/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Workspace Icon
+         * @description M93 (WORKSPACES.md §3.4): a PNG / JPEG / WebP, centre-cropped square and resized to a 256px
+         *     PNG. Audited (`workspace.settings_updated`, `{icon: {from, to}}`) and announced to every
+         *     device.
+         */
+        post: operations["upload_workspace_icon_api_v1_admin_workspace_settings_icon_post"];
+        /**
+         * Delete Workspace Icon
+         * @description M93: no icon; clients draw the letter tile again. Idempotent.
+         */
+        delete: operations["delete_workspace_icon_api_v1_admin_workspace_settings_icon_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/ask": {
         parameters: {
             query?: never;
@@ -2674,6 +2700,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/server/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Server Icon
+         * @description M93 (WORKSPACES.md §3.4): the workspace's icon, a 256px square PNG. Public like GET /server
+         *     (the login screen and the rail show it before signing in): it is the workspace's logo, not a
+         *     secret. Clients add `?v=<icon_version>` so a new icon is not cached away. 404
+         *     workspace_icon_not_found when there is none.
+         */
+        get: operations["server_icon_api_v1_server_icon_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sidebar/channels/{channel_id}": {
         parameters: {
             query?: never;
@@ -3470,6 +3519,8 @@ export interface components {
              * @default false
              */
             default_channels_set: boolean;
+            /** Icon Version */
+            icon_version?: string | null;
             /**
              * Legacy Sso Default Channels
              * @default []
@@ -3874,6 +3925,11 @@ export interface components {
         };
         /** Body_upload_avatar_api_v1_users_me_avatar_post */
         Body_upload_avatar_api_v1_users_me_avatar_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_upload_workspace_icon_api_v1_admin_workspace_settings_icon_post */
+        Body_upload_workspace_icon_api_v1_admin_workspace_settings_icon_post: {
             /** File */
             file: string;
         };
@@ -6381,6 +6437,8 @@ export interface components {
         ServerInfoOut: {
             /** Api Version */
             api_version: string;
+            /** Icon Version */
+            icon_version?: string | null;
             /** Name */
             name: string;
             /**
@@ -7269,6 +7327,8 @@ export interface components {
          *     workspace.settings_updated).
          */
         WorkspaceSettingsOut: {
+            /** Icon Version */
+            icon_version?: string | null;
             /**
              * Preview Before Join
              * @default true
@@ -8275,6 +8335,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_workspace_icon_api_v1_admin_workspace_settings_icon_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_workspace_icon_api_v1_admin_workspace_settings_icon_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWorkspaceSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workspace_icon_api_v1_admin_workspace_settings_icon_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWorkspaceSettingsOut"];
                 };
             };
         };
@@ -12805,6 +12918,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ServerInfoOut"];
+                };
+            };
+        };
+    };
+    server_icon_api_v1_server_icon_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

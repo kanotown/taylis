@@ -18,7 +18,7 @@ import { orderTemplates, readSchedule, SCHEDULE_USAGE } from "../ui/templates";
 import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, NetworkError } from "../api/errors";
-import { hostLabel, isServerInfo, loadWorkspaces, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
+import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
 import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
@@ -1301,6 +1301,20 @@ export class AppController {
     await this.restoreWorkspace(entry, true);
   }
 
+  /** M93: drag (or Alt+↑/↓) a workspace to another place on the rail; the order is saved on this device. */
+  moveWorkspace(serverUrl: string, toIndex: number): void {
+    const next = moveWorkspace(this.workspaces, serverUrl, toIndex);
+    if (next === this.workspaces) return;
+    this.workspaces = next;
+    this.saveWorkspaces();
+    this.emit();
+  }
+
+  /** M93: the admin's icon for a workspace (its version, for GET /server/icon), or null for the letter tile. */
+  workspaceIconVersion(serverUrl: string): string | null {
+    return this.workspaces.find((e) => e.serverUrl === serverUrl)?.iconVersion ?? null;
+  }
+
   /** 「ワークスペースを追加」: the login form for another server; cancelling returns here (§5.1). */
   beginAddWorkspace(): void {
     this.returnTo = this.activeServer;
@@ -1340,6 +1354,7 @@ export class AppController {
       name: info?.name ?? known?.name ?? hostLabel(serverUrl),
       username,
       userId: me.id,
+      iconVersion: info?.icon_version !== undefined ? info.icon_version : (known?.iconVersion ?? null),
     };
     this.workspaces = known ? this.workspaces.map((e) => (e.serverUrl === serverUrl ? entry : e)) : [...this.workspaces, entry];
     const session = this.newSession(entry, api);
@@ -1423,8 +1438,10 @@ export class AppController {
       const answer: unknown = await session.api.serverInfo();
       if (!isServerInfo(answer)) return;
       const entry = this.workspaces.find((e) => e.serverUrl === session.serverUrl);
-      if (!entry || (entry.name === answer.name && entry.workspaceId === answer.workspace_id)) return;
-      this.patchEntry(session.serverUrl, { name: answer.name, workspaceId: answer.workspace_id });
+      // M93: a server before it has no `icon_version` (keep what we have: none).
+      const iconVersion = answer.icon_version !== undefined ? answer.icon_version : (entry?.iconVersion ?? null);
+      if (!entry || (entry.name === answer.name && entry.workspaceId === answer.workspace_id && (entry.iconVersion ?? null) === iconVersion)) return;
+      this.patchEntry(session.serverUrl, { name: answer.name, workspaceId: answer.workspace_id, iconVersion });
       if (this.active === session) setTitleBase(answer.name);
       this.emit();
     } catch {
@@ -1441,6 +1458,19 @@ export class AppController {
     await this.startEngine(session);
   }
 
+  /**
+   * M93: bootstrap's and workspace.settings_updated's `icon_version` (an admin changed the icon) reach the saved entry, so
+   * the rail and the switcher follow at once and keep it across restarts. Missing (a server before M93): no change.
+   */
+  private followIcon(session: Session, store: Store): void {
+    const live = store.workspaceSettings.icon_version;
+    if (live === undefined) return;
+    const entry = this.workspaces.find((e) => e.serverUrl === session.serverUrl);
+    if (!entry || (entry.iconVersion ?? null) === live) return;
+    this.patchEntry(session.serverUrl, { iconVersion: live });
+    this.emit();
+  }
+
   /** Open the account's local store and start syncing; `restoring` needs a stored user to go offline-first. */
   private async startEngine(session: Session, restoring = false): Promise<boolean> {
     session.engine?.stop();
@@ -1455,6 +1485,7 @@ export class AppController {
     store.subscribe(() => {
       if (session.store !== store) return;
       this.updateBadge();
+      this.followIcon(session, store);
       if (this.active === session) noteVersions(store.users.values()); // M14a: pictures follow user.updated
       else this.noteRail(session);
     });

@@ -7379,6 +7379,18 @@
           "WorkspaceSettingsOut": {
             "description": "M88 (docs/MEMBERSHIP.md §3): the switches every client needs (bootstrap, and the event\nworkspace.settings_updated).",
             "properties": {
+              "icon_version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Icon Version"
+              },
               "preview_before_join": {
                 "default": true,
                 "title": "Preview Before Join",

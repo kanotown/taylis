@@ -191,6 +191,10 @@ object ErrorMessages {
         "username_taken" to "このユーザー名はすでに使われています",
         "validation_error" to "入力内容を確認してください",
         "webhook_not_found" to "Webhook が見つかりません",
+        "workspace_icon_empty" to "画像が空です",
+        "workspace_icon_not_found" to "このワークスペースにはアイコンがありません",
+        "workspace_icon_not_image" to "PNG・JPEG・WebP の画像を選んでください",
+        "workspace_icon_too_large" to "画像が大きすぎます",
     )
 
     /** Fallbacks by HTTP status ("5xx" for any server error). */

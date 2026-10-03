@@ -10,7 +10,8 @@
 - クライアントが複数のサーバーを登録して切り替える。サーバー同士は互いを知らない。
   共有チャンネル、ワークスペース横断の検索、アカウントの統合はしない。
 - サーバー側の追加は 3 つだけ: 認証不要の `GET /api/v1/server`、未読サマリー `GET /api/v1/sync/summary`、
-  プッシュのペイロードの `workspace_id`。同期プロトコル (SYNC_PROTOCOL.md) はワークスペースごとに
+  プッシュのペイロードの `workspace_id`。M93 で、管理者が決めるワークスペースのアイコン (認証不要の
+  `GET /api/v1/server/icon`、§3.4) を足した。同期プロトコル (SYNC_PROTOCOL.md) はワークスペースごとに
   そのまま動く。
 
 ## 2. 用語
@@ -26,7 +27,7 @@
 ### 3.1 `GET /api/v1/server` (認証不要)
 
 ```json
-{ "product": "chikuwachat", "workspace_id": "0192…", "name": "開発チーム", "api_version": "0.1.0" }
+{ "product": "chikuwachat", "workspace_id": "0192…", "name": "開発チーム", "api_version": "0.1.0", "icon_version": "0192…" }
 ```
 
 - `product` は常に `"chikuwachat"`。ワークスペース追加の画面で、入力された URL が ChikuwaChat の
@@ -35,7 +36,8 @@
   バックアップ / 復元で保たれる。行が失われていた場合は起動時に新しい値で作り直す
   (クライアントは次に `GET /server` を読んだ時に新しい値を覚える)。
 - `name` は環境変数 `WORKSPACE_NAME`。空なら `APP_NAME` (既定 `Taylis`)。切り替え UI の表示名。
-- 返すのはログイン画面でも見える程度の情報 (名前と API バージョン) だけ。
+- `icon_version` (M93) はワークスペースのアイコンの版。無ければ `null`。M93 より前のサーバーには項目が無い (§3.4)。
+- 返すのはログイン画面でも見える程度の情報 (名前・API バージョン・アイコンの版) だけ。
 
 ### 3.2 `GET /api/v1/sync/summary`
 
@@ -55,6 +57,40 @@
 ペイロード (PUSH_NOTIFICATIONS.md §5) に `workspace_id` を入れる。APNs は `aps` の外、FCM は `data`
 に入る。クライアントは通知のタップをこの値でワークスペースに振り分ける (§7)。
 
+### 3.4 ワークスペースのアイコン (M93)
+
+利用者の要望 (2026-10-04): 「ワークスペースのアイコンを管理者が設定できるように」。レールなどは今まで頭文字を色の上に出していた。
+
+- **設定**: 管理 → 「設定」タブ。`POST /admin/workspace-settings/icon` (multipart の `file`、管理者のみ、`upload` の
+  レート制限) と `DELETE /admin/workspace-settings/icon` (冪等)。応答は `GET /admin/workspace-settings` と同じ
+  (`icon_version` を含む)。
+- **画像**: PNG・JPEG・WebP (GIF は不可: レールで動くと邪魔)。プロフィール写真 (M14a) と同じ処理: 中央の正方形を切り抜き、
+  256 px の PNG に作り直す (メタデータは残らない)。上限は `AVATAR_MAX_BYTES`。エラーは `workspace_icon_not_image`
+  (400)・`workspace_icon_empty` (400)・`workspace_icon_too_large` (413)・`image_too_large` (422、画素数)。
+- **保存**: オブジェクトストアの `workspace-icon/<uuid7>`、キーを `workspace_settings.icon_key` (migration 0074)。
+  差し替え・削除で前のオブジェクトを消す。キーの最後の部分 (uuid7) が版 `icon_version`。
+- **公開**: `GET /api/v1/server/icon` は認証不要 (`Cache-Control: public, max-age=86400`)。ワークスペースのロゴで秘密ではない。
+  ログイン前の画面と、この端末が知っている全ワークスペースのレール (サインアウト中も) に出すため。クライアントは
+  `?v=<icon_version>` を付けて版ごとにキャッシュする。無ければ `404 workspace_icon_not_found`。
+- **版の伝わり方**: `GET /server` の `icon_version`、bootstrap と `workspace.settings_updated` (audience all) の
+  `workspace_settings.icon_version`。変更は監査ログ `workspace.settings_updated` (`{"icon": {from, to}}`、版で記録)。
+- **クライアント**: ワークスペースの一覧の項目に `icon_version` を保存する (§4)。アイコンがあればレール・切り替え・
+  ログイン画面のタイルに出し、無い / 読めないときは今までの頭文字のタイル。削除すると頭文字に戻る。
+  - Desktop / Web (M93): レール、サイドバー上のワークスペース名、スマホ幅のホームの切り替え、設定の「ワークスペース」、
+    ログイン画面 (入力中のサーバー URL の `GET /server` を 0.4 秒待って読む)。管理 → 「設定」の先頭に「アイコン」の欄
+    (画像を選ぶとすぐアップロード、「削除」)。M93 より前のサーバー (`icon_version` が無い) では欄を出さない。
+
+#### 3.4.1 スマホ (iOS / Android、後で別に作る)
+
+- ワークスペースの一覧の項目に `iconVersion` (iOS: UserDefaults の JSON、Android: SharedPreferences) を足す。値は
+  `GET /server` を読んだ時 (起動時・ワークスペースを開いた時・追加した時) と、アクティブなワークスペースの bootstrap /
+  `workspace.settings_updated` の `workspace_settings.icon_version` で更新する。項目が無い (古いサーバー) ときは変えない。
+- 切り替え UI (iOS のワークスペースのシート、Android のワークスペースの切り替え) とログイン画面のタイルに、
+  `GET {server}/api/v1/server/icon?v={iconVersion}` の画像を出す (認証ヘッダーは付けない)。角丸の正方形、読めるまで・
+  読めないときは頭文字のタイル。キャッシュのキーは (サーバー URL, 版)。iOS は `URLCache` か小さなメモリキャッシュ、
+  Android は既存のアバターの読み込みと同じ仕組み。新しい依存は足さない。
+- 管理の画面 (アップロード・削除) はスマホには作らない (Desktop / Web で行う)。
+
 ## 4. クライアントが保存するもの
 
 | 項目 | 保存先 | 内容 |
@@ -73,6 +109,9 @@
 | `name` | `GET /server` の値。起動時とワークスペースを開いた時に読み直す |
 | `username` / `user_id` | サインインしているアカウント |
 | `badge` / `has_unread` | 最後に知った未読 (§6)。開いていないワークスペースの表示用 |
+| `icon_version` | M93: `GET /server` / bootstrap / イベントの値 (§3.4)。無ければ頭文字のタイル |
+
+一覧の順番はレールの並び (§5.4)。
 
 既存のインストール (1 サーバーだけを覚えている) は、初回起動時に保存済みのサーバー URL と
 ユーザー名から 1 件のワークスペースを作って移行する。名前は `GET /server` が読めるまでホスト名で表示する。
@@ -104,6 +143,16 @@ iOS / Android は保存済みの refresh token があるときだけ移行する
 ローカルストアと refresh token の削除、そのワークスペースの通知を消す) を行い、一覧から外す。
 アクティブなワークスペースだった場合は、サインイン済みの最初のワークスペースに切り替える (無ければ一覧の
 先頭のログイン画面、一覧が空ならログイン画面)。
+
+### 5.4 並べ替え (M93、desktop)
+
+利用者の要望 (2026-10-04): 「左のワークスペースの一覧をドラッグで並べ替えたい」。
+
+- レールのタイルをドラッグする (ポインターで 4 px 動かすとドラッグ。離れた場所の間に白い線を出す)。キーボードでは、
+  タイルにフォーカスして `Alt` + `↑` / `↓`。右クリックのメニューにも「上へ移動」「下へ移動」。Esc でドラッグをやめる。
+- 並べ替えた順で一覧を保存する (端末ごと、localStorage。サーバーには送らない)。再起動しても保たれ、`⌘` / `Ctrl` +
+  `1`〜`9` もこの順。ドラッグを終えたクリックではワークスペースを切り替えない。
+- スマホは並べ替えない (切り替えのシートは追加順)。
 
 ## 6. 開いていないワークスペース
 
@@ -154,4 +203,4 @@ refresh はワークスペースごとに 1 つの API クライアントが直�
 
 - ワークスペースをまたぐ検索、未読一覧、DM。
 - 1 サーバーに複数アカウントでの同時サインイン。
-- 一覧の並べ替え (追加順)。必要になったら加える。
+- スマホでの一覧の並べ替え (desktop は M93 で加えた。§5.4)。

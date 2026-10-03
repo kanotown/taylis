@@ -11,7 +11,7 @@ import { activityBadge } from "./mobileTabs";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { ChannelContextMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
-import { StatusEmoji } from "./UserPopover";
+import { StatusEmoji, UserPopover } from "./UserPopover";
 
 interface Props {
   controller: AppController;
@@ -154,14 +154,16 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     <nav data-chat-focus aria-label="チャンネルとDM" className="flex h-full min-h-0 flex-col overflow-y-auto bg-sidebar px-2 pb-4 text-sidebar-fg">
       {/* Pinned: my avatar, search, 管理 and 設定 stay in view while the list scrolls. */}
       <div data-testid="sidebar-header" className="sticky top-0 z-10 -mx-2 flex items-center gap-2.5 border-b border-white/10 bg-sidebar px-4 py-3">
-        {me && <Avatar id={me.id} name={me.display_name} size={34} className="rounded-xl" />}
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-white">{me?.display_name ?? ""}</div>
-          <div className="flex min-w-0 items-center gap-1.5 text-[11px] opacity-80" title={statusTitle(status)}>
-            <span className={cn("h-2 w-2 shrink-0 rounded-full", status === "online" ? "bg-success" : status === "connecting" ? "animate-pulse bg-warning" : status === "offline" ? "bg-warning" : "bg-white/30")} />
-            <span className="truncate whitespace-nowrap">{statusLabel(status)}</span>
+        {/* M93: my picture and name open my own profile card (status, title, 「プロフィールを編集」). */}
+        {me ? (
+          <UserPopover controller={controller} userId={me.id} className="-my-1 -ml-1.5 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1 pl-1.5 pr-1 hover:bg-white/10">
+            <SidebarIdentity controller={controller} meId={me.id} name={me.display_name} status={status} />
+          </UserPopover>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <SidebarIdentity controller={controller} meId={null} name="" status={status} />
           </div>
-        </div>
+        )}
         {onSearch && (
           <IconButton tone="sidebar" label={`検索 (${modKey()}+F)`} onClick={onSearch}>
             <Search size={17} />
@@ -583,6 +585,25 @@ export function useFoldedDefaults(): [ReadonlySet<string>, (key: string) => void
 
 /** The data type a dragged conversation row carries (M26); files dragged in from outside have none of it. */
 const CHANNEL_DRAG = "application/x-chikuwa-channel";
+
+/** The pinned header's picture, name and connection state (inside the button that opens my profile card). */
+function SidebarIdentity({ controller, meId, name, status }: { controller: AppController; meId: string | null; name: string; status: string }) {
+  return (
+    <>
+      {meId && <Avatar id={meId} name={name} size={34} className="rounded-xl" />}
+      <span className="block min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="truncate text-sm font-semibold text-white">{name}</span>
+          {meId && <StatusEmoji controller={controller} userId={meId} className="shrink-0" />}
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5 text-[11px] opacity-80" title={statusTitle(status)}>
+          <span className={cn("h-2 w-2 shrink-0 rounded-full", status === "online" ? "bg-success" : status === "connecting" ? "animate-pulse bg-warning" : status === "offline" ? "bg-warning" : "bg-white/30")} />
+          <span className="truncate whitespace-nowrap">{statusLabel(status)}</span>
+        </span>
+      </span>
+    </>
+  );
+}
 
 /**
  * A sidebar section. M26 (Slack): the header folds it (`onToggle`), with an icon before the title; a conversation row

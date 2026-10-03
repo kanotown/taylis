@@ -14,7 +14,7 @@ import { InvitesTab } from "./InvitesTab";
 import { RosterTab } from "./RosterTab";
 import { WebhooksTab } from "./WebhooksTab";
 import { WorkspaceSettingsTab } from "./WorkspaceSettingsTab";
-import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
+import { Badge, Button, cn, Field, Input, Modal, UNDERLINE_TAB, UNDERLINE_TAB_ROW } from "./primitives";
 
 type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates";
 
@@ -39,7 +39,7 @@ export function AdminBody({ controller, className }: { controller: AppController
   const shown: Tab = tab === "ai" && !ai ? "users" : tab;
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
-      <div role="tablist" aria-label="管理" className="flex shrink-0 gap-1 overflow-x-auto border-b border-line">
+      <div role="tablist" aria-label="管理" className={cn(UNDERLINE_TAB_ROW, "gap-1")}>
         {(
           [
             ["users", "ユーザー"],
@@ -60,7 +60,7 @@ export function AdminBody({ controller, className }: { controller: AppController
             role="tab"
             aria-selected={shown === value}
             onClick={() => setTab(value)}
-            className={cn("-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors max-md:px-2.5", shown === value ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink")}
+            className={cn(UNDERLINE_TAB, "px-3 py-2 max-md:px-2.5", shown === value ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink")}
           >
             {label}
           </button>

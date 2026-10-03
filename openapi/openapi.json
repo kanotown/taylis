@@ -426,6 +426,17 @@
             "title": "Default Channels Set",
             "type": "boolean"
           },
+          "icon_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Version"
+          },
           "legacy_sso_default_channels": {
             "default": [],
             "items": {
@@ -1530,6 +1541,20 @@
           "file"
         ],
         "title": "Body_upload_avatar_api_v1_users_me_avatar_post",
+        "type": "object"
+      },
+      "Body_upload_workspace_icon_api_v1_admin_workspace_settings_icon_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_workspace_icon_api_v1_admin_workspace_settings_icon_post",
         "type": "object"
       },
       "BookmarkItem": {
@@ -8357,6 +8382,17 @@
             "title": "Api Version",
             "type": "string"
           },
+          "icon_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Version"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -10826,6 +10862,17 @@
       "WorkspaceSettingsOut": {
         "description": "M88 (docs/MEMBERSHIP.md §3): the switches every client needs (bootstrap, and the event\nworkspace.settings_updated).",
         "properties": {
+          "icon_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Version"
+          },
           "preview_before_join": {
             "default": true,
             "title": "Preview Before Join",
@@ -12411,6 +12458,80 @@
           }
         ],
         "summary": "Apply Default Channels",
+        "tags": [
+          "server",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/workspace-settings/icon": {
+      "delete": {
+        "description": "M93: no icon; clients draw the letter tile again. Idempotent.",
+        "operationId": "delete_workspace_icon_api_v1_admin_workspace_settings_icon_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWorkspaceSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Workspace Icon",
+        "tags": [
+          "server",
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "M93 (WORKSPACES.md §3.4): a PNG / JPEG / WebP, centre-cropped square and resized to a 256px\nPNG. Audited (`workspace.settings_updated`, `{icon: {from, to}}`) and announced to every\ndevice.",
+        "operationId": "upload_workspace_icon_api_v1_admin_workspace_settings_icon_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_workspace_icon_api_v1_admin_workspace_settings_icon_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWorkspaceSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Workspace Icon",
         "tags": [
           "server",
           "admin"
@@ -20087,6 +20208,26 @@
           }
         },
         "summary": "Server Info",
+        "tags": [
+          "server"
+        ]
+      }
+    },
+    "/api/v1/server/icon": {
+      "get": {
+        "description": "M93 (WORKSPACES.md §3.4): the workspace's icon, a 256px square PNG. Public like GET /server\n(the login screen and the rail show it before signing in): it is the workspace's logo, not a\nsecret. Clients add `?v=<icon_version>` so a new icon is not cached away. 404\nworkspace_icon_not_found when there is none.",
+        "operationId": "server_icon_api_v1_server_icon_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Server Icon",
         "tags": [
           "server"
         ]
