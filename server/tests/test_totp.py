@@ -68,7 +68,7 @@ async def test_totp_setup_login_recovery_and_reset(client: AsyncClient, db: Asyn
     assert setup.status_code == 200, setup.text
     assert setup.headers["cache-control"] == "no-store"
     secret = setup.json()["secret"]
-    assert setup.json()["otpauth_uri"].startswith("otpauth://totp/taylis:alice?secret=")
+    assert setup.json()["otpauth_uri"].startswith("otpauth://totp/Taylis:alice?secret=")
     assert base64.b64decode(setup.json()["qr_png_base64"])[:4] == b"\x89PNG"
 
     # Not enabled until a code proves the app has the secret.

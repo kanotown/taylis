@@ -40,6 +40,7 @@ AI の API キー (docs/AI.md) は `infra/secrets/anthropic_api_key` (と `opena
 - 共有のデータ (apps/shared の JSON) を変えたら、生成スクリプトを走らせ、全クライアントのテストで確かめる。
 - API を変えたら openapi/openapi.json を書き出し直し、Web の型も作り直す (下の表)。
 - リリースのタグ (`v0.1.x`) は main の CI が通ってから付ける。
+- アプリとサイトのアイコン (iOS の AppIcon、Android のアダプティブアイコン、Tauri の `src-tauri/icons`、Web の favicon / apple-touch-icon) は `apps/shared/brand/appicon.png` から作る。元の画像を差し替えたら `apps/shared/brand/gen_icons.sh` を走らせ、書き出されたファイルをコミットする (macOS で uv・sips・iconutil と、`apps/desktop` の `npm ci` 済みが要る)。
 
 ## 4. 検証のコマンド
 

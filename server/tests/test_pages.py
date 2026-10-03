@@ -11,5 +11,5 @@ async def test_permalink_page_is_public_and_content_free(client: AsyncClient) ->
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert response.headers["x-robots-tag"] == "noindex"
-    assert "taylis" in response.text
+    assert "Taylis" in response.text
     assert (await client.get("/m/not-a-message-id")).status_code == 404

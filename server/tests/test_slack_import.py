@@ -591,7 +591,7 @@ async def test_bad_options_fail_before_writing(
     path = write_zip(tmp_path / "b.zip", export_data())
     with pytest.raises(ImportFailed, match="no such Slack user"):
         await _run(app, db, path, FileSource(), user_map={"nobody": "hana"})
-    with pytest.raises(ImportFailed, match="no taylis user ghost2"):
+    with pytest.raises(ImportFailed, match="no Taylis user ghost2"):
         await _run(app, db, path, FileSource(), user_map={"ghost": "ghost2"})
     with pytest.raises(ImportFailed, match="not an active administrator"):
         await import_slack(
