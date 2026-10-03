@@ -287,6 +287,25 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         try await request("POST", "/api/v1/channels/\(channelId)/members", body: .object(["user_id": .string(userId)]))
     }
 
+    /// M88 / M89 (MEMBERSHIP.md §5 6.): several people in one request, so the channel gets one 「A が B、C を追加しました」
+    /// line. One person goes the old way; a server before M88 answers the batch with 405, and then each is added on
+    /// its own (in order, stopping at the first refusal as before).
+    func addMembers(channelId: String, userIds: [String]) async throws -> [MemberOut] {
+        guard userIds.count > 1 else { return try await addEach(channelId: channelId, userIds: userIds) }
+        do {
+            return try await request("POST", "/api/v1/channels/\(channelId)/members/batch",
+                                     body: .object(["user_ids": .array(userIds.map(JSONValue.string))]))
+        } catch ApiError.api(405, _, _) {
+            return try await addEach(channelId: channelId, userIds: userIds)
+        }
+    }
+
+    private func addEach(channelId: String, userIds: [String]) async throws -> [MemberOut] {
+        var added: [MemberOut] = []
+        for userId in userIds { added.append(try await addMember(channelId: channelId, userId: userId)) }
+        return added
+    }
+
     func createDm(userIds: [String]) async throws -> ChannelOut {
         try await request("POST", "/api/v1/dms", body: .object(["user_ids": .array(userIds.map(JSONValue.string))]))
     }

@@ -375,6 +375,17 @@ final class FakeServer {
     var bookmarks: [String: [String]] = [:]
     /// Custom emoji by name (M12f); everyone gets emoji.updated.
     var customEmoji: [String: CustomEmojiOut] = [:]
+    /// M88: bootstrap's workspace_settings (nil: a server before M88 sends none).
+    var workspaceSettings: WorkspaceSettings? = nil
+
+    /// M88: workspace.settings_updated (audience all).
+    func emitWorkspaceSettings(_ settings: WorkspaceSettings) {
+        workspaceSettings = settings
+        eventId += 1
+        emit(Set(users.keys), .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("workspace.settings_updated"),
+                                       "ts": .string(now()), "channel_id": .null, "seq": .null,
+                                       "data": .object(["settings": try! JSONValue.from(settings)])]))
+    }
 
     func addEmoji(_ name: String, userId: String) -> CustomEmojiOut {
         eventId += 1
@@ -715,7 +726,8 @@ final class FakeServer {
     /// send (M12d), which does not read the channel for its sender.
     @discardableResult
     func post(channelId: String, senderId: String, body: String, clientMsgId: String? = nil, parentId: String? = nil, attachmentIds: [String] = [],
-              options: SendOptions = SendOptions(), type: String = "user", advanceRead: Bool = true) throws -> (MessageOut, Bool) {
+              options: SendOptions = SendOptions(), type: String = "user", advanceRead: Bool = true,
+              systemEvent: SystemEvent? = nil) throws -> (MessageOut, Bool) {
         var record = try requireMember(channelId, senderId)
         let key = clientMsgId ?? nextId()
         if let existing = byClientKey[senderId + ":" + key] {
@@ -740,6 +752,7 @@ final class FakeServer {
                                  attachments: attachmentIds.map { AttachmentOut(id: $0, filename: "file-\($0)", contentType: "application/octet-stream", sizeBytes: 1, width: nil, height: nil, hasThumbnail: false, status: "attached", createdAt: now()) },
                                  priority: parentId == nil ? options.priority : nil, ackRequested: parentId == nil && options.ackRequested)
         message.type = type
+        message.systemEvent = systemEvent
         record.messages.append(message)
         var payloadFields: [String: JSONValue] = ["message": try! JSONValue.from(message)]
         if let parentIndex {
@@ -978,7 +991,7 @@ final class FakeServer {
                             bookmarks: bookmarks[userId] ?? [],
                             favorites: (favorites[userId] ?? []).filter { channels[$0]?.members.contains(userId) == true },
                             customEmoji: Array(customEmoji.values), roster: Array(roster.values), drafts: drafts(of: userId),
-                            activity: activity[userId])
+                            activity: activity[userId], workspaceSettings: workspaceSettings)
     }
 
     func history(userId: String, channelId: String, beforeSeq: Int?, limit: Int) throws -> HistoryOut {

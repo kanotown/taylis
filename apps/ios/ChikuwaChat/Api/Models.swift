@@ -314,6 +314,8 @@ enum NotificationRules {
         var mentionAll = false
         /// One of my notify_keywords is in the body.
         var keyword = false
+        /// M88: the message's type; a system line ("system": the join / leave lines) never notifies.
+        var type = "user"
     }
 
     /// Whether a message (not my own) notifies me at the conversation's resolved `level`, before DND, mute, read
@@ -321,7 +323,7 @@ enum NotificationRules {
     /// checked against apps/shared/notify-rules.json). A reply only in its thread is for its followers and those it
     /// addresses (at level all too), and never for someone who unfollowed it by hand.
     static func notifies(level: String, _ facts: NotifyFacts) -> Bool {
-        if level == "none" { return false }
+        if level == "none" || facts.type != "user" { return false }
         if facts.reply == .threadOnly && facts.unfollowed { return false }
         let involved = facts.mentionAll || facts.mentioned || facts.keyword || facts.follower
         if level == "mentions" && !involved { return false }
@@ -335,6 +337,7 @@ enum NotificationRules {
     /// reply that left me out of participant_ids means I unfollowed it.
     static func facts(of message: MessageOut, me: UserMe, thread: ParentThread?, storedFollowing: Bool?) -> NotifyFacts {
         var facts = NotifyFacts()
+        facts.type = message.type
         facts.reply = message.parentId == nil ? .none : message.alsoInChannel ? .alsoInChannel : .threadOnly
         facts.mentioned = message.mentionedUserIds.contains(me.id)
         facts.mentionAll = message.mentionAll
@@ -587,11 +590,13 @@ struct MessageOut: Codable, Identifiable, Equatable {
     var collection: CollectionOut? = nil
     /// L9 (M63): the shared tasks made from it (review requests, 「タスクにする」), oldest first; none from older servers.
     var tasks: [MessageTaskOut] = []
+    /// M88 (MEMBERSHIP.md §1): what a `type = "system"` line says (the join / leave lines); nil otherwise and from older servers.
+    var systemEvent: SystemEvent? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted
         case type, mentionedUserIds, mentionAll, reactions, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
-        case priority, ackRequested, acks, collection, tasks
+        case priority, ackRequested, acks, collection, tasks, systemEvent
     }
 
     func mentions(_ userId: String) -> Bool { mentionAll || mentionedUserIds.contains(userId) }
@@ -701,7 +706,53 @@ extension MessageOut {
         acks = try c.decodeIfPresent([AckOut].self, forKey: .acks) ?? []
         collection = try? c.decodeIfPresent(CollectionOut.self, forKey: .collection)
         tasks = MessageTaskOut.list(c, forKey: .tasks)
+        systemEvent = try? c.decodeIfPresent(SystemEvent.self, forKey: .systemEvent)
     }
+}
+
+/// M88 (MEMBERSHIP.md §1): a system line's event. `kind` stays a string: a kind this version does not know shows the
+/// line's `body`. For member_joined / member_left `userIds` is `[actorId]`.
+struct SystemEvent: Codable, Equatable {
+    let kind: String
+    let actorId: String
+    var userIds: [String] = []
+
+    init(kind: String, actorId: String, userIds: [String] = []) {
+        self.kind = kind
+        self.actorId = actorId
+        self.userIds = userIds
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(String.self, forKey: .kind)
+        actorId = try c.decode(String.self, forKey: .actorId)
+        userIds = try c.decodeIfPresent([String].self, forKey: .userIds) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey { case kind, actorId, userIds }
+}
+
+/// M88 (MEMBERSHIP.md §3): the workspace's switches every client needs, from bootstrap and workspace.settings_updated.
+/// Not persisted: an offline start uses the defaults (both on, as a server before M88 behaves) until the next bootstrap.
+struct WorkspaceSettings: Codable, Equatable {
+    var showMembershipMessages = true
+    var previewBeforeJoin = true
+
+    static let defaults = WorkspaceSettings()
+
+    init(showMembershipMessages: Bool = true, previewBeforeJoin: Bool = true) {
+        self.showMembershipMessages = showMembershipMessages
+        self.previewBeforeJoin = previewBeforeJoin
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        showMembershipMessages = try c.decodeIfPresent(Bool.self, forKey: .showMembershipMessages) ?? true
+        previewBeforeJoin = try c.decodeIfPresent(Bool.self, forKey: .previewBeforeJoin) ?? true
+    }
+
+    enum CodingKeys: String, CodingKey { case showMembershipMessages, previewBeforeJoin }
 }
 
 /// M15e: one member's 「確認しました」.
@@ -756,6 +807,8 @@ struct BootstrapOut: Codable {
     var drafts: [DraftOut]? = nil
     /// M39: the activity badge and read position; nil from a server before M39 (the activity tab stays at stage A).
     var activity: ActivitySummary? = nil
+    /// M88 (MEMBERSHIP.md §3): nil from a server before M88 (both switches on).
+    var workspaceSettings: WorkspaceSettings? = nil
 }
 
 /// M39 (MOBILE_UI.md §6.4 / §7.2): one item of the activity, newest first. A mention of me, the reactions to one message
