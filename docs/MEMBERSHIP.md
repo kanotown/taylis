@@ -103,6 +103,10 @@ times (L8) もオフなら対象外 (`channels.list_public_times_not_member` が
   (本文も `refused: false` も、失敗のトーストも出さない)。プレビューごとの読み込みの世代を、開く・閉じる・オフになる・
   サーバが 403 で断るたびに進め、各 await のあとで世代・今の設定・対象のチャンネルを確かめる (`engine.ts` の `previewCurrent`)。
   スマホも同じ規則にする (応答を保留して設定を切り替えるテスト: Desktop の `tests/membership.test.tsx`)。
+  - Android: `sync/SyncEngine.kt` の `previewGen` (プレビューを入れ替える `replacePreview` のたびと、403 `preview_disabled` の
+    `refusePreview` で進む) と `previewCurrent` を、最初のページ・古いページ・スレッドの各 suspend のあとで確かめる。古い応答の
+    失敗は投げない (トーストなし)。テストは `MembershipTest` (応答を保留してオフにし、成功・失敗で返す 3 種類 × 2、403 のあとの
+    スレッド、オフ → オンで古い応答が新しい行を消さない)。
 - メンバーの追加ダイアログと `/invite @a @b` は `POST /channels/{id}/members/batch` で 1 回に送る (405 を返す古い
   サーバでは 1 人ずつ)。
 

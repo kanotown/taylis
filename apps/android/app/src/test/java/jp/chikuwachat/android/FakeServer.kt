@@ -297,9 +297,14 @@ class FakeServer {
             bootstrapGate?.let { gate -> bootstrapGate = null; gate.await() }
             return this@FakeServer.bootstrap(userId)
         }
+        /** Review v0.1.22 #6: when set, the next GET history / replies answers as it would now, but only once released. */
+        var historyHold: Hold? = null
+        var repliesHold: Hold? = null
+
         override suspend fun history(channelId: String, beforeSeq: Int?, limit: Int): HistoryOut {
             maybeFail()
             historyCalls.add(beforeSeq to limit)
+            historyHold?.let { hold -> historyHold = null; return hold.pass { this@FakeServer.history(userId, channelId, beforeSeq, limit) } }
             historyGate?.let { gate -> historyGate = null; gate.await() }
             return this@FakeServer.history(userId, channelId, beforeSeq, limit)
         }
@@ -320,6 +325,11 @@ class FakeServer {
         }
         override suspend fun replies(messageId: String): List<MessageOut> {
             maybeFail()
+            repliesHold?.let { hold -> repliesHold = null; return hold.pass { repliesNow(messageId) } }
+            return repliesNow(messageId)
+        }
+
+        private fun repliesNow(messageId: String): List<MessageOut> {
             val record = channels.values.first { r -> r.messages.any { it.id == messageId } }
             requireReadable(record.channel.id, userId)
             return record.messages.filter { it.parentId == messageId && !it.deleted }.sortedBy { it.seq }.map { shaped(it, userId) }
@@ -967,6 +977,13 @@ class FakeServer {
         emit(setOf(userId), event("activity.read", null, null, buildJsonObject { put("read_at", readAt) }))
     }
 
+    /** Review v0.1.22 (CANVAS.md §20.8): a canvas version's body erased blanked these activity items' excerpts. */
+    fun emitActivityUpdated(userId: String, itemIds: List<String>) {
+        emit(setOf(userId), event("activity.updated", null, null, buildJsonObject {
+            put("item_ids", kotlinx.serialization.json.JsonArray(itemIds.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+        }))
+    }
+
     private fun event(name: String, channelId: String?, seq: Int?, data: JsonObject): JsonObject = buildJsonObject {
         put("type", "event"); put("id", ++eventId); put("event", name); put("ts", now())
         put("channel_id", channelId?.let { JsonPrimitive(it) } ?: JsonNull)
@@ -1156,5 +1173,26 @@ class ManualTime {
             next.second.resumeWith(Result.success(Unit))
         }
         now = target
+    }
+}
+
+/**
+ * Review v0.1.22 #6: one answer held back. It is computed when the call is made (the server as it was then: the setting still
+ * on) and goes out, or a failure does, only when the test releases it.
+ */
+class Hold {
+    private val gate = CompletableDeferred<Throwable?>()
+    var asked = false
+        private set
+
+    fun release(failure: Throwable? = null) {
+        gate.complete(failure)
+    }
+
+    suspend fun <T> pass(answer: () -> T): T {
+        asked = true
+        val value = answer()
+        gate.await()?.let { throw it }
+        return value
     }
 }

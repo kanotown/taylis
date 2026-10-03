@@ -395,3 +395,9 @@ iOS と Android に同じもの: フォームの「繰り返し」(Web と同じ
 4. テスト (Desktop の `tests/calendarHub.test.ts` の「an alarm for an occurrence of a series」を移す): カレンダーを一度も開いていない、
    別の月だけ読み込んでいる、題名・時刻を変えた回 (時刻付きと終日)、手元の古い写しより `occurrence` が勝つ、古いサーバ
    (`occurrence` 無し) で対象の回が手元に無ければ中立の文で `GET` の 1 回目を使わない、1 回目そのものなら `GET` の行を使う。
+
+**Android (このとき実装)**: `api/CalendarModels.kt` の `CalendarAlarmUpdated.occurrence` (`CalendarEventOut?`)、`sync/Calendar.kt` の
+`announce` が規則 (1)〜(4) で `onAlarm(CalendarAlarmFired(eventId, channelId, event?))` を呼ぶ (`find(eventId)` への逃げ道は消した)。
+文は `CalendarDates.alarmText(event?, channelName)` (中立の文のチャンネル名は手元のチャンネル一覧から)。通知のキー
+`calendar:<series_id>`・押したときの動き (系列の id で開く)・DND は変えていない。JVM テスト `CalendarHubTest` に 9 件 (上の 4 の各場合と
+`occurrence: null`)。

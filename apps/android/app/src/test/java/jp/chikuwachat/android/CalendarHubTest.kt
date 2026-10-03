@@ -9,9 +9,11 @@ import jp.chikuwachat.android.api.CalendarEventCreate
 import jp.chikuwachat.android.api.CalendarEventOut
 import jp.chikuwachat.android.api.CalendarEventUpdate
 import jp.chikuwachat.android.api.Codec
+import jp.chikuwachat.android.sync.CalendarAlarmFired
 import jp.chikuwachat.android.sync.CalendarApi
 import jp.chikuwachat.android.sync.CalendarHub
 import jp.chikuwachat.android.sync.CalendarWindowState
+import jp.chikuwachat.android.ui.CalendarDates
 import jp.chikuwachat.android.ui.OccurrenceScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,8 +56,12 @@ class CalendarHubTest {
             return upcoming
         }
 
+        /** What GET /calendar/events/{id} answers instead of the row with that id (a series: its first occurrence). */
+        var eventAnswer: CalendarEventOut? = null
+
         override suspend fun calendarEvent(eventId: String): CalendarEventOut {
             calls += "event $eventId"
+            eventAnswer?.let { return it }
             return rows.firstOrNull { it.id == eventId } ?: throw ApiException.Api(404, "calendar_event_not_found", "gone")
         }
 
@@ -97,7 +103,7 @@ class CalendarHubTest {
         }
     }
 
-    private fun hub(api: CalendarApi?, onAlarm: ((CalendarEventOut) -> Unit)? = null) =
+    private fun hub(api: CalendarApi?, onAlarm: ((CalendarAlarmFired) -> Unit)? = null) =
         CalendarHub(api, scope, { "me" }, { "Asia/Tokyo" }).also { it.onAlarm = onAlarm }
 
     /** calendar.event.updated as the server sends it: the event without `can_edit` and `alarm`, and `editor_ids`. */
@@ -185,7 +191,7 @@ class CalendarHubTest {
     fun myAlarmAppliesAndSaysSoOnceWhenItFires() = runBlocking {
         val zemi = timed("ゼミ", "2026-10-05T05:00:00Z", "2026-10-05T06:00:00Z")
         val said = ArrayList<CalendarEventOut>()
-        val hub = hub(FakeCalendarApi(listOf(zemi))) { said += it }
+        val hub = hub(FakeCalendarApi(listOf(zemi))) { said += it.event!! }
         hub.open("view", oct.first, oct.second)
         val alarm = CalendarAlarmOut(10, "2026-10-05T04:50:00Z", "pending")
         fun alarmEvent(value: CalendarAlarmOut?) = JsonObject(
@@ -202,7 +208,7 @@ class CalendarHubTest {
         // An alarm of an event outside every window: the event is read to say it; one gone says nothing.
         val later = timed("来月の予定", "2026-11-20T05:00:00Z", "2026-11-20T06:00:00Z", id = "far")
         val said2 = ArrayList<CalendarEventOut>()
-        val hub2 = hub(FakeCalendarApi(listOf(later))) { said2 += it }
+        val hub2 = hub(FakeCalendarApi(listOf(later))) { said2 += it.event!! }
         hub2.applyEvent("calendar.alarm.updated", json("""{"event_id": "far", "channel_id": null, "alarm": {"minutes_before": 10, "fire_at": "x", "status": "fired"}}"""))
         hub2.applyEvent("calendar.alarm.updated", json("""{"event_id": "gone", "channel_id": null, "alarm": {"minutes_before": 10, "fire_at": "x", "status": "fired"}}"""))
         assertEquals(listOf(later), said2)
@@ -320,7 +326,7 @@ class CalendarHubTest {
     fun aSeriesAlarmIsOnEveryOccurrenceAndSaysTheOccurrenceItFiresFor() = runBlocking {
         val said = ArrayList<CalendarEventOut>()
         val api = FakeCalendarApi(listOf(s1, s2, s3))
-        val hub = hub(api) { said += it }
+        val hub = hub(api) { said += it.event!! }
         hub.open("view", oct.first, oct.second)
         // calendar.alarm.updated as the worker sends it (the decoder reads its occurrence_start).
         fun alarm(status: String, occurrence: String) = json(
@@ -384,5 +390,135 @@ class CalendarHubTest {
         hub.create(CalendarEventCreate(title = "ゼミ", startsAt = s1.startsAt, endsAt = s1.endsAt, clientEventId = "k", rrule = "FREQ=WEEKLY;BYDAY=MO"))
         assertEquals(listOf("create k", "events ${oct.first} ${oct.second} -"), api.calls)
         assertEquals(listOf(s1.id, s2.id, s3.id), hub.window("view")!!.events.map { it.id })
+    }
+
+    // --- Review v0.1.22 #9 (CALENDAR.md §10.11): a fired alarm of one occurrence says that occurrence, never another ---
+
+    // Daily at 9:00 JST from Oct 1 in #lab; the occurrence of Oct 20 alone renamed and moved to 11:00.
+    private fun daily(key: String) =
+        occurrence("朝会", key, key.replace(":00:00Z", ":15:00Z"), series = "d", rrule = "FREQ=DAILY", first = key == "2026-10-01T00:00:00Z", channelId = "c1")
+            .copy(id = if (key == "2026-10-01T00:00:00Z") "d" else "d:$key", channelName = "lab")
+    private val first = daily("2026-10-01T00:00:00Z")
+    private val changed = daily("2026-10-20T00:00:00Z").copy(title = "臨時の朝会", startsAt = "2026-10-20T02:00:00Z", endsAt = "2026-10-20T02:30:00Z")
+    private val fired = CalendarAlarmOut(10, "2026-10-20T01:50:00Z", "fired", occurrenceStart = "2026-10-20T00:00:00Z")
+    private val nov = "2026-11-01T00:00:00+09:00" to "2026-12-01T00:00:00+09:00"
+
+    /** calendar.alarm.updated as the server sends it; `occurrence` as calendar.event.updated's event (absent: an older server). */
+    private fun alarmUpdated(eventId: String, channelId: String?, alarm: CalendarAlarmOut, occurrence: CalendarEventOut? = null, absent: Boolean = false): JsonObject {
+        val fields = linkedMapOf<String, kotlinx.serialization.json.JsonElement>(
+            "event_id" to JsonPrimitive(eventId),
+            "channel_id" to (channelId?.let { JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull),
+            "alarm" to Codec.snake.encodeToJsonElement(CalendarAlarmOut.serializer(), alarm),
+        )
+        if (!absent) fields["occurrence"] = occurrence?.let { o ->
+            JsonObject(Codec.snake.encodeToJsonElement(CalendarEventOut.serializer(), o).jsonObject.filterKeys { it != "can_edit" && it != "alarm" })
+        } ?: kotlinx.serialization.json.JsonNull
+        return JsonObject(fields)
+    }
+
+    private class Setup(val api: FakeCalendarApi, val hub: CalendarHub, val said: List<CalendarAlarmFired>)
+
+    private fun setup(rows: List<CalendarEventOut>): Setup {
+        val api = FakeCalendarApi(rows).also { it.eventAnswer = first } // GET /calendar/events/{series}: its first occurrence
+        val said = ArrayList<CalendarAlarmFired>()
+        return Setup(api, hub(api) { said += it }, said)
+    }
+
+    @Test
+    fun theCalendarNeverOpenedSaysTheOccurrenceInTheEvent() {
+        val s = setup(emptyList())
+        s.hub.applyEvent("calendar.alarm.updated", alarmUpdated("d", "c1", fired, changed))
+        val fired1 = s.said.single()
+        assertEquals("臨時の朝会", fired1.event?.title)
+        assertEquals("2026-10-20T02:00:00Z", fired1.event?.startsAt)
+        assertEquals("2026-10-20T00:00:00Z", fired1.event?.occurrenceStart)
+        assertEquals(fired, fired1.event?.alarm)
+        assertEquals("c1", fired1.channelId)
+        assertEquals("d", fired1.eventId) // the notification's key and the tap stay the series'
+        assertEquals("11:00 臨時の朝会 (#lab)", CalendarDates.alarmText(fired1.event, null))
+        assertTrue(s.api.calls.none { it.startsWith("event ") })
+    }
+
+    @Test
+    fun anotherMonthLoadedSaysTheOccurrenceInTheEventNotALoadedOne() = runBlocking {
+        val s = setup(listOf(daily("2026-11-02T00:00:00Z"), daily("2026-11-03T00:00:00Z")))
+        s.hub.open("view", nov.first, nov.second)
+        s.hub.applyEvent("calendar.alarm.updated", alarmUpdated("d", "c1", fired, changed))
+        assertEquals("臨時の朝会", s.said.single().event?.title)
+        assertEquals("2026-10-20T02:00:00Z", s.said.single().event?.startsAt)
+        // The alarm went onto the loaded occurrences of the series too.
+        assertTrue(s.hub.window("view")!!.events.all { it.alarm?.status == "fired" })
+    }
+
+    @Test
+    fun theServersOccurrenceWinsOverAStaleCopyHeldHere() = runBlocking {
+        val s = setup(listOf(daily("2026-10-20T00:00:00Z"))) // read before the change
+        s.hub.open("view", oct.first, oct.second)
+        s.hub.applyEvent("calendar.alarm.updated", alarmUpdated("d", "c1", fired, changed))
+        assertEquals("臨時の朝会", s.said.single().event?.title)
+        assertEquals("2026-10-20T02:00:00Z", s.said.single().event?.startsAt)
+        assertTrue(s.said.single().event!!.canEdit) // the copy held here says I may edit it
+    }
+
+    @Test
+    fun anAllDayOccurrenceMovedToAnotherDay() {
+        val s = setup(emptyList())
+        val day = allDay("代理", "2026-10-21", "2026-10-21", id = "w:2026-10-20")
+            .copy(seriesId = "w", occurrenceStart = "2026-10-20", recurring = true, rrule = "FREQ=WEEKLY", tz = "Asia/Tokyo")
+        val alarm = CalendarAlarmOut(-480, "2026-10-20T23:00:00Z", "fired", occurrenceStart = "2026-10-20")
+        s.hub.applyEvent("calendar.alarm.updated", alarmUpdated("w", null, alarm, day))
+        val event = s.said.single().event!!
+        assertEquals("代理", event.title)
+        assertEquals("2026-10-21", event.startDate)
+        assertTrue(event.allDay)
+        assertEquals("終日 代理", CalendarDates.alarmText(event, null))
+        assertFalse(event.canEdit) // nothing held here says so
+    }
+
+    @Test
+    fun anOlderServerWithTheCalendarNeverOpenedSaysANeutralLineNotTheFirstOccurrence() {
+        val s = setup(emptyList())
+        s.hub.applyEvent("calendar.alarm.updated", alarmUpdated("d", "c1", fired, absent = true))
+        assertEquals(listOf("event d"), s.api.calls)
+        val said = s.said.single()
+        assertNull(said.event)
+        assertEquals("c1", said.channelId)
+        assertEquals("d", said.eventId)
+        assertEquals("予定の通知があります (#lab)", CalendarDates.alarmText(said.event, "lab"))
+        assertEquals("予定の通知があります", CalendarDates.alarmText(null, null)) // my own calendar
+    }
+
+    @Test
+    fun anOlderServerWithAnotherMonthLoadedLetsNoneOfItsOccurrencesStandIn() = runBlocking {
+        val s = setup(listOf(daily("2026-11-02T00:00:00Z")))
+        s.hub.open("view", nov.first, nov.second)
+        s.hub.applyEvent("calendar.alarm.updated", alarmUpdated("d", "c1", fired, absent = true))
+        assertNull(s.said.single().event)
+    }
+
+    @Test
+    fun anOlderServerSaysTheOccurrenceHeldHere() = runBlocking {
+        val s = setup(listOf(first, changed))
+        s.hub.open("view", oct.first, oct.second)
+        s.api.calls.clear()
+        s.hub.applyEvent("calendar.alarm.updated", alarmUpdated("d", "c1", fired, absent = true))
+        assertEquals("臨時の朝会", s.said.single().event?.title)
+        assertEquals("2026-10-20T02:00:00Z", s.said.single().event?.startsAt)
+        assertTrue(s.api.calls.isEmpty())
+    }
+
+    @Test
+    fun anOlderServerForTheFirstOccurrenceItselfUsesTheSeriesRead() {
+        val s = setup(emptyList())
+        s.hub.applyEvent("calendar.alarm.updated", alarmUpdated("d", "c1", fired.copy(occurrenceStart = "2026-10-01T00:00:00Z"), absent = true))
+        assertEquals("朝会", s.said.single().event?.title)
+        assertEquals("2026-10-01T00:00:00Z", s.said.single().event?.occurrenceStart)
+    }
+
+    @Test
+    fun aNullOccurrenceIsReadLikeAnOlderServer() {
+        val s = setup(emptyList())
+        s.hub.applyEvent("calendar.alarm.updated", alarmUpdated("d", "c1", fired, null))
+        assertNull(s.said.single().event)
     }
 }

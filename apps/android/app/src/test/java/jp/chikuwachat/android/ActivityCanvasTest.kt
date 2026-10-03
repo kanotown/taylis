@@ -214,4 +214,43 @@ class ActivityCanvasTest {
         assertEquals(2, store.activityRevision)
         engine.stop(); scope.cancel()
     }
+
+    // --- Review v0.1.22 (CANVAS.md §20.8): an erased version blanks the excerpts ---
+
+    @Test fun activityUpdatedBlanksTheExcerptsAndReadsTheListAgainWithoutTheBadge() = runBlocking {
+        val server = FakeServer()
+        val alice = server.addUser("alice")
+        val bob = server.addUser("bob")
+        server.activity[bob.id] = ActivitySummaryOut("2026-09-30T00:00:00Z", 1, true)
+        val store = Store()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = server.api(bob.id)
+        val engine = SyncEngine(api, server.connector(bob.id), "ws://fake", store, { "token" }, scope, EngineOptions(sleep = {}, reconnectMinMs = 0, random = { 0.5 }))
+        engine.isActive = { false }
+        engine.start(); settle(engine)
+        assertTrue(alice.id.isNotEmpty())
+
+        server.emitActivityUpdated(bob.id, listOf("i1"))
+        engine.flushActivity(); settle(engine)
+        assertEquals(setOf("i1"), store.blankedActivityItems)
+        assertEquals(1, store.activityRevision) // the list on screen reads its first page again
+        assertEquals(0, api.activitySummaryCalls) // the badge does not change
+        engine.stop(); scope.cancel()
+    }
+
+    @Test fun aBlankedOrEmptyExcerptLeavesTheLineOut() {
+        val page = Codec.snake.decodeFromString(ActivityListOut.serializer(), """
+            {"items":[
+              {"kind":"canvas_mention","at":"2026-09-30T03:00:00Z","actor_ids":["u1"],"canvas":$canvasJson},
+              {"kind":"canvas_mention","at":"2026-09-30T02:00:00Z","actor_ids":["u1"],"canvas":{"item_id":"i2","canvas_id":"cv1","channel_id":"c1","title":"議事録","excerpt":"","rev_id":"r1"}},
+              {"kind":"mention","at":"2026-09-30T01:00:00Z","message":$messageJson,"actor_ids":["u1"]}
+            ],"next_cursor":null,"read_at":"2026-09-30T00:00:00Z"}
+        """.trimIndent())
+        val line: (MessageOut) -> String = { it.body }
+        val (kept, erased, message) = page.items
+        assertEquals("次回は @山田 さんが発表", ActivityText.excerpt(kept, emptySet(), line))
+        assertEquals("", ActivityText.excerpt(kept, setOf("i1"), line)) // blanked by activity.updated before the list is read again
+        assertEquals("", ActivityText.excerpt(erased, emptySet(), line)) // the server's blank (read again)
+        assertEquals("<@u2> 見て", ActivityText.excerpt(message, setOf("i1"), line))
+    }
 }

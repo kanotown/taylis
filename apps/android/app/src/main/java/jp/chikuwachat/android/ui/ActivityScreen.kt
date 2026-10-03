@@ -121,6 +121,16 @@ object ActivityText {
         val oldest = page.lastOrNull()?.let { ActivityRules.parse(it.at) } ?: return page
         return page + shown.filter { it.key !in keys && ActivityRules.parse(it.at)?.isBefore(oldest) == true }
     }
+
+    /**
+     * Review v0.1.22 (CANVAS.md §20.8): a row's third line. A canvas item's excerpt, empty once the server blanked it
+     * (`blanked`: activity.updated's item_ids, for the rows shown before the list is read again); a message's line.
+     * The row leaves the line out when it is empty.
+     */
+    fun excerpt(item: ActivityItem, blanked: Set<String>, messageLine: (MessageOut) -> String): String {
+        item.canvas?.takeIf { item.kind == "canvas_mention" }?.let { return if (it.itemId in blanked) "" else it.excerpt }
+        return item.message?.let(messageLine) ?: ""
+    }
 }
 
 /** What an activity row opens ([ActivityText.target]). */
@@ -360,7 +370,7 @@ private fun ActivityRow(
     val where = ActivityText.where(item, conversation)
     val canvas = item.canvas.takeIf { item.kind == "canvas_mention" }
     val excerpt = remember(version, item) {
-        canvas?.excerpt ?: item.message?.let { messageLine(it.body, it.attachments, store) } ?: ""
+        ActivityText.excerpt(item, store.blankedActivityItems) { messageLine(it.body, it.attachments, store) }
     }
     val time = MainTabs.dmTimeLabel(item.at, now) ?: ""
     // M77: a canvas row reads as one sentence (CANVAS.md §20.5); the others keep their parts.
@@ -402,7 +412,9 @@ private fun ActivityRow(
             if (where.isNotEmpty()) {
                 Text(where, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Text(excerpt, style = MaterialTheme.typography.bodyMedium, maxLines = if (canvas != null) 2 else 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            if (excerpt.isNotEmpty()) {
+                Text(excerpt, style = MaterialTheme.typography.bodyMedium, maxLines = if (canvas != null) 2 else 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            }
         }
     }
 }

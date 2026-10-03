@@ -958,10 +958,11 @@ class AppController(private val app: Application) {
             if (!dndActive(store)) notify(workspace(), row.channelId, title, text, key = "reminder:${row.id}", messageId = row.messageId)
         }
         // M52: my calendar alarm fired while the app is open (the server's push is not shown then), worded like that push.
-        engine.calendar.onAlarm = { event ->
-            val text = CalendarDates.alarmText(event)
+        // Review v0.1.22 #9: said for the occurrence it is for; when this device cannot tell which, neutrally (never another's).
+        engine.calendar.onAlarm = { fired ->
+            val text = CalendarDates.alarmText(fired.event, fired.channelId?.let { store.channels[it]?.channel?.name })
             notice = "📅 $text"
-            if (!dndActive(store)) notify(workspace(), event.channelId, "予定", text, key = "calendar:${event.series}", eventId = event.series)
+            if (!dndActive(store)) notify(workspace(), fired.channelId, "予定", text, key = "calendar:${fired.eventId}", eventId = fired.eventId)
         }
         // M56: task.assigned / task.due while the app is open (the server's push is not shown then), worded like that push;
         // not with 「タスク (割り当て・期限)」 off (the server sends the event either way, TASKS.md §8).

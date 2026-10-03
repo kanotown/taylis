@@ -20,6 +20,7 @@ import jp.chikuwachat.android.ui.Timeline
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
@@ -254,4 +255,114 @@ class MembershipTest {
         id = id, channelId = channelId, senderId = event.actorId, seq = 1, updatedSeq = 1, type = "system", body = body,
         systemEvent = event, createdAt = "2026-10-03T00:00:00Z", deleted = false,
     )
+
+    // --- Review v0.1.22 #6: an answer on its way when the preview turns off ----------------------
+
+    private fun turnedOff(w: World) = ChannelPreview(w.open.id, disabled = true)
+
+    /** A failure released for a stale answer: no toast either (the call returns normally). */
+    private fun failure(outcome: String): Throwable? = if (outcome == "failure") ApiException.Api(503, "unavailable", "try again") else null
+
+    private suspend fun World.turnOff() {
+        server.updateWorkspaceSettings(WorkspaceSettingsOut(previewBeforeJoin = false)); settle()
+        assertEquals(ChannelPreview(open.id, disabled = true), store.preview)
+    }
+
+    /** Runs `call` until it suspends on the hold; its outcome (thrown or not) once released. */
+    private fun World.start(call: suspend () -> Unit) = scope.async { runCatching { call() } }
+
+    private fun firstPage(outcome: String) = runBlocking {
+        val w = World()
+        w.engine.start(); w.settle()
+        val hold = Hold().also { w.api.historyHold = it }
+        val opening = w.start { w.engine.openChannel(w.open.id) }
+        assertTrue(hold.asked)
+        assertEquals(ChannelPreview(w.open.id), w.store.preview) // loading
+        w.turnOff()
+        hold.release(failure(outcome)); w.settle()
+        assertTrue(opening.await().isSuccess)
+        assertEquals(turnedOff(w), w.store.preview)
+        assertFalse(w.store.workspaceSettings.previewBeforeJoin)
+        w.close()
+    }
+
+    @Test fun aFirstPageOnItsWayWritesNothingBackOnSuccess() = firstPage("success")
+    @Test fun aFirstPageOnItsWayWritesNothingBackOnFailure() = firstPage("failure")
+
+    private fun olderPage(outcome: String) = runBlocking {
+        val w = World()
+        (4..12).forEach { w.server.post(w.open.id, w.alice.id, "post $it") }
+        w.engine.start(); w.settle()
+        w.engine.openChannel(w.open.id); w.settle()
+        assertTrue(w.store.preview!!.loaded && w.store.preview!!.hasOlder)
+        val hold = Hold().also { w.api.historyHold = it }
+        val older = w.start { w.engine.loadOlderPreview(w.open.id) }
+        assertTrue(hold.asked)
+        w.turnOff()
+        hold.release(failure(outcome)); w.settle()
+        assertTrue(older.await().isSuccess)
+        assertEquals(turnedOff(w), w.store.preview)
+        w.close()
+    }
+
+    @Test fun anOlderPageOnItsWayWritesNothingBackOnSuccess() = olderPage("success")
+    @Test fun anOlderPageOnItsWayWritesNothingBackOnFailure() = olderPage("failure")
+
+    private fun thread(outcome: String) = runBlocking {
+        val w = World()
+        val parent = w.server.post(w.open.id, w.alice.id, "スレッドの親").first
+        w.server.post(w.open.id, w.alice.id, "返信の本文", parentId = parent.id)
+        w.engine.start(); w.settle()
+        w.engine.openChannel(w.open.id); w.settle()
+        assertTrue(w.store.preview!!.messages.any { it.id == parent.id })
+        val hold = Hold().also { w.api.repliesHold = it }
+        val loading = w.start { w.engine.loadPreviewReplies(w.open.id, parent.id) }
+        assertTrue(hold.asked)
+        w.turnOff()
+        hold.release(failure(outcome)); w.settle()
+        assertTrue(loading.await().isSuccess)
+        assertEquals(turnedOff(w), w.store.preview)
+        assertTrue(w.store.preview!!.replies.isEmpty())
+        w.close()
+    }
+
+    @Test fun aThreadOnItsWayWritesNothingBackOnSuccess() = thread("success")
+    @Test fun aThreadOnItsWayWritesNothingBackOnFailure() = thread("failure")
+
+    @Test fun aPageRefusedByTheServerMakesAThreadOnItsWayStale() = runBlocking {
+        val w = World()
+        (4..12).forEach { w.server.post(w.open.id, w.alice.id, "post $it") }
+        val parent = w.server.post(w.open.id, w.alice.id, "スレッドの親").first
+        w.server.post(w.open.id, w.alice.id, "返信の本文", parentId = parent.id)
+        w.engine.start(); w.settle()
+        w.engine.openChannel(w.open.id); w.settle()
+        val hold = Hold().also { w.api.repliesHold = it }
+        val loading = w.start { w.engine.loadPreviewReplies(w.open.id, parent.id) }
+        assertTrue(hold.asked)
+        // Turned off while this device did not hear of it: the next page is refused (403 preview_disabled).
+        w.server.updateWorkspaceSettings(WorkspaceSettingsOut(previewBeforeJoin = false), announce = false)
+        w.engine.loadOlderPreview(w.open.id)
+        assertEquals(turnedOff(w), w.store.preview)
+        hold.release(); w.settle()
+        assertTrue(loading.await().isSuccess)
+        assertEquals(turnedOff(w), w.store.preview)
+        w.close()
+    }
+
+    @Test fun turnedOffAndOnAgainOnlyTheNewLoadWrites() = runBlocking {
+        val w = World()
+        w.engine.start(); w.settle()
+        val hold = Hold().also { w.api.historyHold = it }
+        val opening = w.start { w.engine.openChannel(w.open.id) }
+        w.turnOff()
+        w.server.post(w.open.id, w.alice.id, "あとの投稿")
+        w.server.updateWorkspaceSettings(WorkspaceSettingsOut(previewBeforeJoin = true)); w.settle()
+        val fresh = listOf("post 1", "post 2", "post 3", "あとの投稿")
+        assertEquals(fresh, w.store.preview?.messages?.map { it.body })
+        hold.release(); w.settle() // the first answer (without あとの投稿) arrives last
+        assertTrue(opening.await().isSuccess)
+        assertEquals(fresh, w.store.preview?.messages?.map { it.body })
+        assertFalse(w.store.preview!!.disabled)
+        w.close()
+    }
 }

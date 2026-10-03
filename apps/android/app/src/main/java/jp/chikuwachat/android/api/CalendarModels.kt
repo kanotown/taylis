@@ -65,9 +65,19 @@ data class CalendarEventUpdated(val event: CalendarEventOut, val editorIds: List
 @Serializable
 data class CalendarEventDeleted(val id: String, val channelId: String? = null)
 
-/** calendar.alarm.updated (to me only): my alarm was set, recomputed, fired or removed (null). */
+/**
+ * calendar.alarm.updated (to me only): my alarm was set, recomputed, fired or removed (null). `occurrence` (Review v0.1.22 #9,
+ * CALENDAR.md §10.11): the occurrence the alarm is for as the server resolved it (a series' occurrence with its edits, a
+ * one-off event as it is; shaped like calendar.event.updated's `event`, without `can_edit` and `alarm`). Null when there is
+ * none; absent from a server before it.
+ */
 @Serializable
-data class CalendarAlarmUpdated(val eventId: String, val channelId: String? = null, val alarm: CalendarAlarmOut? = null)
+data class CalendarAlarmUpdated(
+    val eventId: String,
+    val channelId: String? = null,
+    val alarm: CalendarAlarmOut? = null,
+    val occurrence: CalendarEventOut? = null,
+)
 
 /** POST /calendar/events. `client_event_id` makes a retry return the same event (§9 4.); `tz` is the alarm's zone. */
 @Serializable
