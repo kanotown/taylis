@@ -751,3 +751,27 @@ def test_export_reads_japanese_names_without_the_utf8_flag(tmp_path: Path) -> No
         assert export.json("全体連絡/2024-05-01.json")[0]["text"] == "こんにちは"
     finally:
         export.close()
+
+
+async def test_the_download_cap_follows_the_servers_attachment_limit(
+    app: FastAPI, db: AsyncSession, tmp_path: Path, test_settings: Settings
+) -> None:
+    """2026-10-03: the lab's 592 MB videos were refused at a fixed 100 MB even when the import run
+    raised ATTACHMENT_MAX_BYTES; the cap now comes from the setting."""
+    from app.modules.importer import slack_import
+
+    seen: list[int] = []
+    real = slack_import.SlackImport.__init__
+
+    def spy(self: Any, *args: Any, **kwargs: Any) -> None:
+        seen.append(kwargs["files"].max_bytes)
+        real(self, *args, **kwargs)
+
+    await _people(db)
+    path = write_zip(tmp_path / "slack.zip", export_data())
+    big = test_settings.model_copy(update={"attachment_max_bytes": 700 * 1024 * 1024})
+    app.state.settings = big
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(slack_import.SlackImport, "__init__", spy)
+        await _run(app, db, path, FileSource(), dry_run=True)
+    assert seen == [700 * 1024 * 1024]
