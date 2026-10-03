@@ -162,7 +162,7 @@ function UsersTab({ controller }: { controller: AppController }) {
         </form>
       )}
       {users && (
-        <ul className="max-h-[420px] divide-y divide-line overflow-y-auto rounded-xl border border-line">
+        <ul className="divide-y divide-line rounded-xl border border-line">
           {users.map((user) => {
             const self = user.id === me?.id;
             const off = !!user.deactivated_at;
@@ -268,7 +268,7 @@ function ChannelsTab({ controller }: { controller: AppController }) {
   return (
     <div className="mt-4 space-y-3">
       <p className="text-xs text-muted">参加していない非公開チャンネルはここに出ません。アーカイブすると投稿できなくなりますが、履歴と検索は残ります。</p>
-      <ul className="max-h-[460px] divide-y divide-line overflow-y-auto rounded-xl border border-line">
+      <ul className="divide-y divide-line rounded-xl border border-line">
         {channels.map((channel) => (
           <li key={channel.id} className={cn("flex items-center gap-3 px-3 py-2 text-sm", channel.archived && "opacity-60")}>
             <span className="text-muted">{channel.type === "private" ? "🔒" : "#"}</span>

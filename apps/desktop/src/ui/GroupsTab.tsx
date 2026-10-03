@@ -36,7 +36,7 @@ export function GroupsTab({ controller }: { controller: AppController }) {
           <UsersRound size={14} /> グループを作成
         </Button>
       </div>
-      <ul className="max-h-[440px] divide-y divide-line overflow-y-auto rounded-xl border border-line">
+      <ul className="divide-y divide-line rounded-xl border border-line">
         {groups.map((group) => (
           <li key={group.id} className="flex items-center gap-3 px-3 py-2 text-sm">
             <Users size={16} className="shrink-0 text-muted" />

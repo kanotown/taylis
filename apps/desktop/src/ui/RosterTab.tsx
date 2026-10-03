@@ -59,7 +59,7 @@ export function RosterTab({ controller }: { controller: AppController }) {
       <p className="text-sm text-muted">
         名簿は表示の並び順とグループ分けにだけ使います (権限は変わりません)。名簿に合わせて @faculty @students @alumni @b4 @m1 @m2 @d が自動で保たれます。
       </p>
-      <ul className="max-h-[440px] divide-y divide-line overflow-y-auto rounded-xl border border-line">
+      <ul className="divide-y divide-line rounded-xl border border-line">
         {people.map((user) => {
           const line = store.roster.get(user.id);
           return (

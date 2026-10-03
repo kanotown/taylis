@@ -226,7 +226,7 @@ export function InvitesTab({ controller }: { controller: AppController }) {
         </form>
       )}
       {invites && (
-        <ul className="max-h-[420px] divide-y divide-line overflow-y-auto rounded-xl border border-line">
+        <ul className="divide-y divide-line rounded-xl border border-line">
           {invites.map((invite) => {
             const active = invite.status === "active";
             return (
