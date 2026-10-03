@@ -15,7 +15,7 @@ npm run tauri build    # バンドル作成 (macOS: .app / .dmg、Windows: .msi 
 ```
 
 同じ Mac で 2 人分のクライアントを動かすには、2 つ目をビルド済みアプリ
-(`open -n src-tauri/target/release/bundle/macos/taylis.app`) で起動するか、ポート 1421 で
+(`open -n src-tauri/target/release/bundle/macos/Taylis.app`) で起動するか、ポート 1421 で
 `npm run tauri:dev:2` を使う (開発サーバは 1 ポートに 1 つなので、`tauri dev` を 2 回は起動できない)。
 
 実サーバに対するエンジンの検証: `LIVE_URL=http://127.0.0.1:8000 LIVE_PASS=... npm test -- tests/live.test.ts`

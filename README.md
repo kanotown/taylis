@@ -1,6 +1,6 @@
-# taylis
+# Taylis
 
-taylis (formerly ChikuwaChat; internal IDs keep chikuwachat)
+Taylis (formerly ChikuwaChat; internal IDs keep chikuwachat)
 
 セルフホスト型の Slack ライクなチャットシステム。FastAPI + PostgreSQL (PGroonga) + versitygw (S3 互換オブジェクトストレージ) の
 modular monolith をサーバとし、Desktop (Windows / macOS)、iOS、Android のクライアントを持つ。

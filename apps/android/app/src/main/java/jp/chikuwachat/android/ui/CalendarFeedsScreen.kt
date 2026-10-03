@@ -84,7 +84,7 @@ fun CalendarFeedsScreen(controller: AppController, feeds: CalendarFeeds, onDismi
 
     fun copy(url: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("taylis", url)
+        val clip = ClipData.newPlainText("Taylis", url)
         // A secret: Android 13+ hides it from the clipboard's preview.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }

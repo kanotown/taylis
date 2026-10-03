@@ -297,7 +297,7 @@ class AppController(private val app: Application) {
     /** Names the per-workspace screen state (the open conversation, panes, search) while another is shown. */
     val workspaceKey: String? get() = activeWorkspace?.let { account(it.serverUrl, it.username) }
     /** The workspace name for titles and the search box. */
-    val workspaceName: String get() = activeWorkspace?.name ?: "taylis"
+    val workspaceName: String get() = activeWorkspace?.name ?: "Taylis"
     /** 「ワークスペースを追加」: the login form for another server is up; cancelling returns to this one (§5.1). */
     var addingWorkspace by mutableStateOf(false)
         private set
@@ -1583,14 +1583,14 @@ class AppController(private val app: Application) {
     fun copyPermalink(messageId: String) {
         val base = serverBase ?: return
         val clipboard = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("taylis", Permalink.url(base, messageId)))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", Permalink.url(base, messageId)))
         notice = "リンクをコピーしました"
     }
 
     /** 「テキストをコピー」: the body as it reads, mentions as @names. */
     fun copyText(message: MessageState) {
         val clipboard = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("taylis", jp.chikuwachat.android.ui.Mentions.decode(message.body, store.users, store.groups)))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", jp.chikuwachat.android.ui.Mentions.decode(message.body, store.users, store.groups)))
         notice = "テキストをコピーしました"
     }
 
@@ -1830,7 +1830,7 @@ class AppController(private val app: Application) {
     /** A canvas's text to the clipboard (mentions as @names, M83: task markers left out), e.g. when saving it stopped. */
     fun copyCanvasText(stored: String) {
         val clipboard = app.getSystemService(ClipboardManager::class.java) ?: return
-        clipboard.setPrimaryClip(ClipData.newPlainText("taylis", Mentions.decode(CanvasMarkers.strip(stored), store.users, store.groups)))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", Mentions.decode(CanvasMarkers.strip(stored), store.users, store.groups)))
         notice = "本文をコピーしました"
     }
 
@@ -2487,7 +2487,7 @@ class AppController(private val app: Application) {
 
     private companion object {
         const val SEARCH_PAGE = 30
-        const val NOT_CHIKUWA = "taylis のサーバーではありません"
+        const val NOT_CHIKUWA = "Taylis のサーバーではありません"
         const val SERVER_KEY = "server"
         const val USERNAME_KEY = "username"
         /** M48: the pending Google sign-in's secret name (never an account's `server|username`). */

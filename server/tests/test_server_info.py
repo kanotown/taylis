@@ -17,7 +17,7 @@ async def test_server_info_is_public(client: AsyncClient, db: AsyncSession) -> N
     assert response.json() == {
         "product": "chikuwachat",
         "workspace_id": str(await workspace.workspace_id(db)),
-        "name": "taylis",
+        "name": "Taylis",
         "api_version": API_VERSION,
     }
 
@@ -53,4 +53,4 @@ async def test_server_info_uses_the_configured_workspace_name() -> None:
     async for client in _client(workspace_name="  開発チーム  "):
         assert (await client.get("/api/v1/server")).json()["name"] == "開発チーム"
     async for client in _client(workspace_name="   "):
-        assert (await client.get("/api/v1/server")).json()["name"] == "taylis"
+        assert (await client.get("/api/v1/server")).json()["name"] == "Taylis"

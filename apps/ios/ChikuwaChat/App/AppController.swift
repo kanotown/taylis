@@ -68,8 +68,8 @@ final class AppController {
     private(set) var workspaces: [Workspace] = []
     private(set) var activeServerUrl: String?
     var activeWorkspace: Workspace? { workspaces.first { $0.serverUrl == activeServerUrl } }
-    /// The name over the channel list (GET /server); "taylis" before any workspace.
-    var workspaceName: String { activeWorkspace?.name ?? "taylis" }
+    /// The name over the channel list (GET /server); "Taylis" before any workspace.
+    var workspaceName: String { activeWorkspace?.name ?? "Taylis" }
     /// Another workspace has something unread: the switcher shows a dot.
     var otherWorkspacesUnread: Bool { workspaces.contains { $0.serverUrl != activeServerUrl && $0.hasNews } }
     /// Where the login form starts once no workspace is left: the last one signed out of in this run.
@@ -331,7 +331,7 @@ final class AppController {
             info = nil
         }
         if adding {
-            guard let info else { return .done(.failed("taylis のサーバーではありません")) }
+            guard let info else { return .done(.failed("Taylis のサーバーではありません")) }
             if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info.workspaceId, in: workspaces) {
                 if known.isSignedIn {
                     await switchTo(known.serverUrl)

@@ -371,7 +371,7 @@ async def test_bad_options_fail_before_writing(
         "settings": settings,
         "dry_run": False,
     }
-    with pytest.raises(ImportFailed, match="no taylis user"):
+    with pytest.raises(ImportFailed, match="no Taylis user"):
         await import_mattermost(
             db, path, user_map={"kanotown": "nobody"}, actor_username="admin", **common
         )
