@@ -244,7 +244,7 @@
 | `canvas.mentioned` | user | — | `{ canvas_id, channel_id, rev_id, title, by_user_id }` (M72、CANVAS.md §18.1)。キャンバスの保存で新しくメンションされた (その版で 1 回)。表示は変えず、アプリを開いている端末が通知する (会話がミュート / なしなら出さない。プッシュは PushPlanner) |
 | `calendar.event.updated` | channel (自分用: user) | — | `{ event: CalendarEventData, editor_ids }` (M51)。予定の作成・変更。人ごとに違う `can_edit` と `alarm` は載せない: `can_edit` は `editor_ids` に自分がいるか、`alarm` は手元の値のまま。表示中の期間に重なる予定だけを差し替え、外れたら消す。手順は §15 |
 | `calendar.event.deleted` | channel (自分用: user) | — | `{ id, channel_id }` (M51)。手元から消す |
-| `calendar.alarm.updated` | user | — | `{ event_id, channel_id, alarm: CalendarAlarmOut \| null }` (M51)。自分の通知の設定・計算し直し・発火 (`status: fired`)・削除 (null)。fired はアプリ内でも通知する (プッシュは PushPlanner) |
+| `calendar.alarm.updated` | user | — | `{ event_id, channel_id, alarm: CalendarAlarmOut \| null, occurrence?: CalendarEventData \| null }` (M51。`occurrence` は Review v0.1.22 #9: 通知の対象の回をサーバが解決したもの、CALENDAR.md §10.11)。自分の通知の設定・計算し直し・発火 (`status: fired`)・削除 (null)。fired はアプリ内でも通知する (プッシュは PushPlanner) |
 | `task.updated` | channel (自分用: user) | — | `{ task: TaskData, deleter_ids }` (M55)。タスクの作成・変更・移動 (並べ替えで振り直したカードも 1 件ずつ)。人ごとに違う `can_delete` は載せない: `deleter_ids` に自分がいるか。手順は §16 |
 | `task.deleted` | channel (自分用: user) | — | `{ id, channel_id }` (M55)。手元から消す |
 | `task.assigned` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id, kind }` (M55。`kind` は L9、M63)。ほかの人が自分を担当に加えた (自分で加えたときは出ない)。DM のタスクの `channel_name` は空文字。アプリ内でも通知する (プッシュは PushPlanner) |

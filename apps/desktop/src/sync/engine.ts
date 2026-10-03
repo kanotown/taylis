@@ -165,7 +165,7 @@ export interface EngineDeps {
   /** M12e: a reminder just fired (a nudge in the app while it is open). */
   onReminder?: (reminder: ReminderOut) => void;
   /** M51: one of my calendar alarms just fired (the server pushes to phones; the app shows it while open). */
-  onCalendarAlarm?: (event: CalendarEventOut) => void;
+  onCalendarAlarm?: (event: CalendarEventOut | null, channelId: string | null) => void;
   /** M55: task.assigned / task.due to me (the server pushes to phones; the app shows it while open). */
   onTaskNotice?: (notice: TaskNotice) => void;
   /**
@@ -214,6 +214,12 @@ export class SyncEngine {
   currentChannelId: string | null = null;
   /** §7.6.1: the channel read before joining, if one is open. */
   preview: ChannelPreview | null = null;
+  /**
+   * Review v0.1.22 #6: the preview's load generation. Bumped when a preview opens or closes, when
+   * 「参加前にチャンネルの中を見られる」 turns off and when the server refuses it: a page or thread asked for before
+   * then writes nothing back when it arrives (no rows, no `refused: false`, no toast).
+   */
+  private previewGen = 0;
   /** Channels marked unread by hand: visible-range marking pauses until the reader leaves them (§10). */
   readonly unreadHold = new Map<string, number>();
   readonly stats = { catchUps: 0, reloads: 0, reconnects: 0 };
@@ -297,7 +303,7 @@ export class SyncEngine {
         ? (api as unknown as CalendarApi)
         : null,
       me: () => deps.store.me?.id ?? null,
-      onAlarm: (event) => deps.onCalendarAlarm?.(event),
+      onAlarm: (event, channelId) => deps.onCalendarAlarm?.(event, channelId),
     });
     this.tasks = new TaskHub({
       api: api.listTasks && api.myTasks && api.dueTasks && api.getTask && api.createTask && api.updateTask && api.moveTask && api.deleteTask
@@ -1291,8 +1297,10 @@ export class SyncEngine {
     const after = store.workspaceSettings.preview_before_join;
     const preview = this.preview;
     if (!preview || before === after) return;
-    if (!after) this.setPreview({ ...preview, messages: [], hasOlder: false, loaded: false, loading: false, refused: true, replies: new Map(), parents: new Map() });
-    else if (this.status === "online") void this.loadPreview(preview.channelId, null).catch((err: unknown) => console.warn("could not load the preview", err));
+    if (!after) {
+      this.previewGen += 1; // pages and threads still on their way are stale now (Review v0.1.22 #6)
+      this.setPreview({ ...preview, messages: [], hasOlder: false, loaded: false, loading: false, refused: true, replies: new Map(), parents: new Map() });
+    } else if (this.status === "online") void this.loadPreview(preview.channelId, null).catch((err: unknown) => console.warn("could not load the preview", err));
   }
 
   // --- §7.6.1 preview before joining -----------------------------------------------------
@@ -1310,6 +1318,7 @@ export class SyncEngine {
     if (this.preview?.channelId === channelId) return Promise.resolve(); // already open (a re-render, a reconnect)
     // M88: with the preview off nothing is asked for; the panel says to join (the server would answer 403 anyway).
     const refused = !this.deps.store.workspaceSettings.preview_before_join;
+    this.previewGen += 1;
     this.setPreview({ channelId, messages: [], hasOlder: false, loaded: false, loading: false, refused, replies: new Map(), parents: new Map() });
     if (refused || this.status !== "online") return Promise.resolve();
     return this.loadPreview(channelId, null);
@@ -1332,20 +1341,48 @@ export class SyncEngine {
 
   /** The preview goes (another conversation opened, it was joined, or it closed). */
   closePreview(): void {
-    if (this.preview) this.setPreview(null);
+    if (!this.preview) return;
+    this.previewGen += 1;
+    this.setPreview(null);
+  }
+
+  /**
+   * Review v0.1.22 #6: a response for the preview of `channelId` asked for at generation `gen` may still be written:
+   * the same preview is open, nothing made it stale since, and the setting still allows previews.
+   */
+  private previewCurrent(channelId: string, gen: number): ChannelPreview | null {
+    const current = this.preview;
+    if (gen !== this.previewGen || current?.channelId !== channelId || !this.deps.store.workspaceSettings.preview_before_join) return null;
+    return current;
+  }
+
+  /** The server refused the preview (403): the panel says to join, and anything else on its way is stale. */
+  private refusePreview(channelId: string): void {
+    this.previewGen += 1;
+    this.patchPreview(channelId, { loading: false, refused: true });
   }
 
   /** A thread opened from the preview: its replies, and its parent when the preview does not hold it. */
   async loadPreviewThread(parentId: string): Promise<void> {
     const preview = this.preview;
-    if (!preview) return;
+    if (!preview || preview.refused || !this.deps.store.workspaceSettings.preview_before_join) return;
+    const gen = this.previewGen;
     const held = preview.messages.some((m) => m.id === parentId) || preview.parents.has(parentId);
-    const [replies, parent] = await Promise.all([
-      this.deps.api.replies(parentId),
-      held || !this.deps.api.getMessage ? Promise.resolve(null) : this.deps.api.getMessage(parentId),
-    ]);
-    const current = this.preview;
-    if (current?.channelId !== preview.channelId) return; // another conversation opened meanwhile
+    let replies: MessageOut[];
+    let parent: MessageOut | null;
+    try {
+      [replies, parent] = await Promise.all([
+        this.deps.api.replies(parentId),
+        held || !this.deps.api.getMessage ? Promise.resolve(null) : this.deps.api.getMessage(parentId),
+      ]);
+    } catch (error) {
+      if (!this.previewCurrent(preview.channelId, gen)) return; // stale: closed, turned off or refused meanwhile
+      if (error instanceof ApiError && error.status === 403) return this.refusePreview(preview.channelId);
+      throw error;
+    }
+    // Another conversation opened, the setting turned off or the server refused meanwhile: nothing is written back.
+    const current = this.previewCurrent(preview.channelId, gen);
+    if (!current) return;
     const threads = new Map(current.replies);
     threads.set(parentId, replies.filter((m) => !m.deleted).sort((a, b) => a.seq - b.seq));
     const parents = parent && !parent.deleted ? new Map(current.parents).set(parentId, parent) : current.parents;
@@ -1358,19 +1395,21 @@ export class SyncEngine {
    * contiguous), only what is newer is added. Missing more than a page (no overlap) starts over from the page.
    */
   private async loadPreview(channelId: string, beforeSeq: number | null): Promise<void> {
+    if (!this.deps.store.workspaceSettings.preview_before_join) return; // off: the panel says to join, nothing is asked
+    const gen = this.previewGen;
     this.patchPreview(channelId, { loading: true });
     let page: HistoryOut;
     try {
       page = await this.deps.api.history(channelId, beforeSeq, this.opts.pageSize);
     } catch (error) {
-      if (this.preview?.channelId !== channelId) return; // closed meanwhile: nobody is looking, no toast
-      const refused = error instanceof ApiError && error.status === 403;
-      this.patchPreview(channelId, { loading: false, refused });
-      if (refused) return;
+      // Closed, turned off or refused meanwhile: nobody is looking at these rows, no toast (Review v0.1.22 #6).
+      if (!this.previewCurrent(channelId, gen)) return;
+      if (error instanceof ApiError && error.status === 403) return this.refusePreview(channelId);
+      this.patchPreview(channelId, { loading: false, refused: false });
       throw error;
     }
-    const current = this.preview;
-    if (current?.channelId !== channelId) return;
+    const current = this.previewCurrent(channelId, gen);
+    if (!current) return;
     const rows = page.messages.filter((m) => !m.deleted).sort((a, b) => a.seq - b.seq);
     const newest = current.messages[current.messages.length - 1];
     const joins = beforeSeq === null && current.loaded && rows.length > 0 && newest !== undefined && rows[0]!.seq <= newest.seq;

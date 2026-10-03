@@ -1,7 +1,7 @@
 /** Application controller: login, session restore, and the sync engine lifecycle. */
 import { ApiClient, type DeviceInfo } from "../api/client";
 import { dndActive } from "../ui/dnd";
-import { clock } from "../ui/calendarDates";
+import { calendarAlarmText } from "../sync/calendar";
 import { taskNoticeText } from "../ui/tasks";
 import { canvasLink, messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
@@ -1507,10 +1507,10 @@ export class AppController {
         void notify(this.notificationTitle(session, "リマインダー"), (reminder.note ? `${reminder.note} — ` : "") + reminder.preview);
       },
       // M51: my calendar alarm (phones get the server's push; the open app says it too), worded like that push.
-      onCalendarAlarm: (event) => {
+      // Review v0.1.22 #9: null when the occurrence it is for is not known here: a neutral line, never another occurrence's.
+      onCalendarAlarm: (event, channelId) => {
         if (this.quiet(session)) return;
-        const when = event.all_day ? "終日" : clock(event.starts_at!);
-        void notify(this.notificationTitle(session, "予定"), `${when} ${event.title}${event.channel_name ? ` (#${event.channel_name})` : ""}`);
+        void notify(this.notificationTitle(session, "予定"), calendarAlarmText(event, channelId ? store.getChannel(channelId)?.name ?? null : null));
       },
       // M55: assigned to me / due today (TASKS.md §5), worded like the server's push; off with 「タスク」 in the settings.
       onTaskNotice: (notice) => {

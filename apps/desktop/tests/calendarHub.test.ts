@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../src/api/errors";
 import type { CalendarEventOut } from "../src/api/types";
-import { type CalendarApi, CalendarHub } from "../src/sync/calendar";
+import { type CalendarApi, CalendarHub, calendarAlarmText } from "../src/sync/calendar";
 import { allDay, timed } from "./calendarFixtures";
 
 const OCT = { from: "2026-10-01T00:00:00+09:00", to: "2026-11-01T00:00:00+09:00" };
@@ -97,7 +97,7 @@ describe("the calendar hub", () => {
     const onAlarm2 = vi.fn();
     const hub2 = new CalendarHub({ api: api2, me: () => "me", onAlarm: onAlarm2 });
     hub2.applyEvent("calendar.alarm.updated", { event_id: "far", channel_id: null, alarm: { ...alarm, status: "fired" } });
-    await vi.waitFor(() => expect(onAlarm2).toHaveBeenCalledWith(later));
+    await vi.waitFor(() => expect(onAlarm2).toHaveBeenCalledWith(later, null));
   });
 
   it("reads everything again after reconnecting and drops a channel I left", async () => {
@@ -157,5 +157,106 @@ describe("the calendar hub", () => {
     const hub = new CalendarHub({ api, me: () => "me" });
     await hub.open("view", OCT.from, OCT.to);
     expect(hub.window("view")!.state).toBe("unsupported");
+  });
+});
+
+/** Review v0.1.22 #9: a fired alarm of one occurrence of a series says that occurrence, never another. */
+describe("an alarm for an occurrence of a series", () => {
+  // Daily at 9:00 JST from Oct 1 in #lab; the occurrence of Oct 20 alone renamed and moved to 11:00.
+  const series = (key: string, extra: Partial<CalendarEventOut> = {}) =>
+    timed("朝会", key, key.replace(":00:00Z", ":15:00Z"), {
+      id: key === "2026-10-01T00:00:00Z" ? "s1" : `s1:${key}`, series_id: "s1", occurrence_start: key, recurring: true, rrule: "FREQ=DAILY", tz: "Asia/Tokyo", channel_id: "c1", channel_name: "lab", ...extra,
+    });
+  const first = series("2026-10-01T00:00:00Z");
+  const changed = series("2026-10-20T00:00:00Z", { title: "臨時の朝会", starts_at: "2026-10-20T02:00:00Z", ends_at: "2026-10-20T02:30:00Z" });
+  const fired = { minutes_before: 10, fire_at: "2026-10-20T01:50:00Z", status: "fired" as const, occurrence_start: "2026-10-20T00:00:00Z" };
+  const NOV = { from: "2026-11-01T00:00:00+09:00", to: "2026-12-01T00:00:00+09:00" };
+
+  function setup(rows: CalendarEventOut[]) {
+    const { api, state } = fakeApi(rows);
+    // GET /calendar/events/{series_id}: the series' first occurrence, as the server answers.
+    api.getCalendarEvent = vi.fn(async () => first);
+    const onAlarm = vi.fn();
+    const hub = new CalendarHub({ api, me: () => "me", onAlarm });
+    return { api, state, hub, onAlarm };
+  }
+
+  it("the calendar never opened: the occurrence in the event is said", async () => {
+    const { api, hub, onAlarm } = setup([]);
+    hub.applyEvent("calendar.alarm.updated", { event_id: "s1", channel_id: "c1", alarm: fired, occurrence: shared(changed) });
+    await vi.waitFor(() => expect(onAlarm).toHaveBeenCalledTimes(1));
+    const [event, channelId] = onAlarm.mock.calls[0]!;
+    expect(event).toMatchObject({ title: "臨時の朝会", starts_at: "2026-10-20T02:00:00Z", occurrence_start: "2026-10-20T00:00:00Z", alarm: fired });
+    expect(channelId).toBe("c1");
+    expect(calendarAlarmText(event, null)).toBe("11:00 臨時の朝会 (#lab)");
+    expect(api.getCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("another month loaded: the occurrence in the event, not one of the loaded ones", async () => {
+    const { hub, onAlarm, state } = setup([]);
+    state.rows = [series("2026-11-02T00:00:00Z"), series("2026-11-03T00:00:00Z")];
+    await hub.open("view", NOV.from, NOV.to);
+    hub.applyEvent("calendar.alarm.updated", { event_id: "s1", channel_id: "c1", alarm: fired, occurrence: shared(changed) });
+    await vi.waitFor(() => expect(onAlarm).toHaveBeenCalledTimes(1));
+    expect(onAlarm.mock.calls[0]![0]).toMatchObject({ title: "臨時の朝会", starts_at: "2026-10-20T02:00:00Z" });
+    // The alarm went onto the loaded occurrences of the series too.
+    expect(hub.window("view")!.events.every((e) => e.alarm?.status === "fired")).toBe(true);
+  });
+
+  it("the server's occurrence wins over a stale copy held here", async () => {
+    const { hub, onAlarm } = setup([series("2026-10-20T00:00:00Z")]); // read before the change
+    await hub.open("view", OCT.from, OCT.to);
+    hub.applyEvent("calendar.alarm.updated", { event_id: "s1", channel_id: "c1", alarm: fired, occurrence: shared(changed) });
+    await vi.waitFor(() => expect(onAlarm).toHaveBeenCalledTimes(1));
+    expect(onAlarm.mock.calls[0]![0]).toMatchObject({ title: "臨時の朝会", starts_at: "2026-10-20T02:00:00Z" });
+  });
+
+  it("an all-day occurrence moved to another day", async () => {
+    const { hub, onAlarm } = setup([]);
+    const day = allDay("代理", "2026-10-21", "2026-10-21", { id: "d1:2026-10-20", series_id: "d1", occurrence_start: "2026-10-20", recurring: true, rrule: "FREQ=WEEKLY", tz: "Asia/Tokyo" });
+    const alarm = { minutes_before: -480, fire_at: "2026-10-20T23:00:00Z", status: "fired" as const, occurrence_start: "2026-10-20" };
+    hub.applyEvent("calendar.alarm.updated", { event_id: "d1", channel_id: null, alarm, occurrence: shared(day) });
+    await vi.waitFor(() => expect(onAlarm).toHaveBeenCalledTimes(1));
+    const [event] = onAlarm.mock.calls[0]!;
+    expect(event).toMatchObject({ title: "代理", start_date: "2026-10-21", all_day: true });
+    expect(calendarAlarmText(event, null)).toBe("終日 代理");
+  });
+
+  describe("from a server before it (no occurrence in the event)", () => {
+    it("the calendar never opened: the series' first occurrence is not said, a neutral line is", async () => {
+      const { api, hub, onAlarm } = setup([]);
+      hub.applyEvent("calendar.alarm.updated", { event_id: "s1", channel_id: "c1", alarm: fired });
+      await vi.waitFor(() => expect(onAlarm).toHaveBeenCalledTimes(1));
+      expect(api.getCalendarEvent).toHaveBeenCalledWith("s1");
+      const [event, channelId] = onAlarm.mock.calls[0]!;
+      expect(event).toBeNull();
+      expect(channelId).toBe("c1");
+      expect(calendarAlarmText(event, "lab")).toBe("予定の通知があります (#lab)");
+    });
+
+    it("another month loaded: none of its occurrences stands in", async () => {
+      const { hub, onAlarm, state } = setup([]);
+      state.rows = [series("2026-11-02T00:00:00Z")];
+      await hub.open("view", NOV.from, NOV.to);
+      hub.applyEvent("calendar.alarm.updated", { event_id: "s1", channel_id: "c1", alarm: fired });
+      await vi.waitFor(() => expect(onAlarm).toHaveBeenCalledTimes(1));
+      expect(onAlarm.mock.calls[0]![0]).toBeNull();
+    });
+
+    it("the occurrence held here is said (it was read with its change)", async () => {
+      const { api, hub, onAlarm } = setup([first, changed]);
+      await hub.open("view", OCT.from, OCT.to);
+      hub.applyEvent("calendar.alarm.updated", { event_id: "s1", channel_id: "c1", alarm: fired });
+      await vi.waitFor(() => expect(onAlarm).toHaveBeenCalledTimes(1));
+      expect(onAlarm.mock.calls[0]![0]).toMatchObject({ title: "臨時の朝会", starts_at: "2026-10-20T02:00:00Z" });
+      expect(api.getCalendarEvent).not.toHaveBeenCalled();
+    });
+
+    it("the first occurrence itself: the series read is the one", async () => {
+      const { hub, onAlarm } = setup([]);
+      hub.applyEvent("calendar.alarm.updated", { event_id: "s1", channel_id: "c1", alarm: { ...fired, occurrence_start: "2026-10-01T00:00:00Z" } });
+      await vi.waitFor(() => expect(onAlarm).toHaveBeenCalledTimes(1));
+      expect(onAlarm.mock.calls[0]![0]).toMatchObject({ title: "朝会", occurrence_start: "2026-10-01T00:00:00Z" });
+    });
   });
 });

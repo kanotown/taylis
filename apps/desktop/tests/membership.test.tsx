@@ -12,6 +12,7 @@ import { PreviewJoinBar, PreviewTimeline, previewRefused } from "../src/ui/Chann
 import { buildTimeline } from "../src/ui/format";
 import { isSystemMessage, systemMessageText } from "../src/ui/systemMessage";
 import { WorkspaceSettingsTab } from "../src/ui/WorkspaceSettingsTab";
+import { ApiError } from "../src/api/errors";
 import { FakeServer, MemoryPersistence } from "./fakeServer";
 
 afterEach(cleanup);
@@ -193,5 +194,115 @@ describe("Administration → 設定", () => {
     const old = { api: { adminWorkspaceSettings: vi.fn(async () => { throw Object.assign(new Error("not found"), { status: 404 }); }) }, store: new Store(), setError: vi.fn() } as unknown as AppController;
     render(<WorkspaceSettingsTab controller={old} />);
     expect(await screen.findByText("このサーバはワークスペースの設定に対応していません。")).toBeTruthy();
+  });
+});
+
+/**
+ * Review v0.1.22 #6: hold one api call of the engine. The real answer is computed when the call is made (the setting is
+ * still on then), and goes out (or a failure does) only when the test releases it.
+ */
+function holdCall(engine: SyncEngine, method: "history" | "replies") {
+  const api = (engine as unknown as { deps: { api: Record<string, (...args: unknown[]) => Promise<unknown>> } }).deps.api;
+  const original = api[method]!.bind(api);
+  let release!: (fail?: Error) => void;
+  let called = false;
+  api[method] = (...args: unknown[]) => {
+    api[method] = original; // only the first call is held
+    called = true;
+    const answer = original(...args);
+    return new Promise((resolve, reject) => {
+      release = (fail) => (fail ? reject(fail) : resolve(answer));
+    });
+  };
+  return { release: (fail?: Error) => release(fail), wasCalled: () => called };
+}
+
+describe("a preview answer on its way when the setting turns off (Review v0.1.22 #6)", () => {
+  const empty = { refused: true, loaded: false, loading: false, messages: [], hasOlder: false };
+
+  async function turnOff(w: Awaited<ReturnType<typeof world>>) {
+    w.server.setWorkspaceSettings({ preview_before_join: false });
+    await w.engine.idle();
+    expect(w.engine.preview).toMatchObject(empty);
+  }
+
+  for (const outcome of ["success", "failure"] as const) {
+    const fail = () => (outcome === "failure" ? new ApiError(503, "unavailable", "try again") : undefined);
+
+    it(`the first page (${outcome}) writes nothing back`, async () => {
+      const w = await world();
+      const held = holdCall(w.engine, "history");
+      const opening = w.engine.openPreview(w.lab.id);
+      expect(held.wasCalled()).toBe(true);
+      expect(w.engine.preview).toMatchObject({ loading: true, refused: false });
+      await turnOff(w);
+      held.release(fail());
+      await expect(opening).resolves.toBeUndefined(); // no toast for a stale failure either
+      expect(w.engine.preview).toMatchObject(empty);
+      expect(w.store.workspaceSettings.preview_before_join).toBe(false);
+    });
+
+    it(`an older page (${outcome}) writes nothing back`, async () => {
+      const w = await world();
+      for (let i = 0; i < 4; i++) w.server.post(w.lab.id, w.alice.id, `more ${i}`);
+      await w.engine.openPreview(w.lab.id);
+      expect(w.engine.preview).toMatchObject({ loaded: true, hasOlder: true });
+      const held = holdCall(w.engine, "history");
+      const older = w.engine.loadPreviewOlder();
+      expect(held.wasCalled()).toBe(true);
+      await turnOff(w);
+      held.release(fail());
+      await expect(older).resolves.toBeUndefined();
+      expect(w.engine.preview).toMatchObject(empty);
+    });
+
+    it(`a thread (${outcome}) writes nothing back`, async () => {
+      const w = await world();
+      const parent = w.server.post(w.lab.id, w.alice.id, "スレッドの親").message;
+      w.server.post(w.lab.id, w.alice.id, "返信の本文", undefined, parent.id);
+      await w.engine.openPreview(w.lab.id);
+      expect(w.engine.preview!.messages.some((m) => m.id === parent.id)).toBe(true);
+      const held = holdCall(w.engine, "replies");
+      const thread = w.engine.loadPreviewThread(parent.id);
+      expect(held.wasCalled()).toBe(true);
+      await turnOff(w);
+      held.release(fail());
+      await expect(thread).resolves.toBeUndefined();
+      expect(w.engine.preview).toMatchObject(empty);
+      expect(w.engine.preview!.replies.size).toBe(0);
+      expect(w.engine.preview!.parents.size).toBe(0);
+    });
+  }
+
+  it("a page refused by the server (403) makes a thread on its way stale too", async () => {
+    const w = await world();
+    const parent = w.server.post(w.lab.id, w.alice.id, "スレッドの親").message;
+    w.server.post(w.lab.id, w.alice.id, "返信の本文", undefined, parent.id);
+    await w.engine.openPreview(w.lab.id);
+    const held = holdCall(w.engine, "replies");
+    const thread = w.engine.loadPreviewThread(parent.id);
+    // Turned off while this device missed the event: the next page is refused.
+    w.server.workspaceSettings = { show_membership_messages: true, preview_before_join: false };
+    await w.engine.retryPreview();
+    expect(w.engine.preview).toMatchObject({ refused: true, loading: false });
+    held.release();
+    await thread;
+    expect(w.engine.preview!.refused).toBe(true);
+    expect(w.engine.preview!.replies.size).toBe(0);
+  });
+
+  it("turned off and on again: only the new load writes, the old answer is dropped", async () => {
+    const w = await world();
+    const held = holdCall(w.engine, "history");
+    const opening = w.engine.openPreview(w.lab.id);
+    await turnOff(w);
+    w.server.post(w.lab.id, w.alice.id, "あとの投稿");
+    w.server.setWorkspaceSettings({ preview_before_join: true });
+    await w.engine.idle();
+    await waitFor(() => expect(w.engine.preview).toMatchObject({ refused: false, loaded: true }));
+    expect(w.engine.preview!.messages.map((m) => m.body)).toEqual(["公開の話題", "あとの投稿"]);
+    held.release(); // the first answer (without あとの投稿) arrives last
+    await opening;
+    expect(w.engine.preview!.messages.map((m) => m.body)).toEqual(["公開の話題", "あとの投稿"]);
   });
 });
