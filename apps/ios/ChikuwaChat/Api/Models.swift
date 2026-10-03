@@ -592,11 +592,14 @@ struct MessageOut: Codable, Identifiable, Equatable {
     var tasks: [MessageTaskOut] = []
     /// M88 (MEMBERSHIP.md §1): what a `type = "system"` line says (the join / leave lines); nil otherwise and from older servers.
     var systemEvent: SystemEvent? = nil
+    /// M95 (WORKFLOWS.md D4 / §8): the workflow whose form posted it; nil otherwise, from older servers, and when the field
+    /// is missing or null.
+    var workflow: MessageWorkflow? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted
         case type, mentionedUserIds, mentionAll, reactions, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
-        case priority, ackRequested, acks, collection, tasks, systemEvent
+        case priority, ackRequested, acks, collection, tasks, systemEvent, workflow
     }
 
     func mentions(_ userId: String) -> Bool { mentionAll || mentionedUserIds.contains(userId) }
@@ -707,6 +710,7 @@ extension MessageOut {
         collection = try? c.decodeIfPresent(CollectionOut.self, forKey: .collection)
         tasks = MessageTaskOut.list(c, forKey: .tasks)
         systemEvent = try? c.decodeIfPresent(SystemEvent.self, forKey: .systemEvent)
+        workflow = try? c.decodeIfPresent(MessageWorkflow.self, forKey: .workflow)
     }
 }
 

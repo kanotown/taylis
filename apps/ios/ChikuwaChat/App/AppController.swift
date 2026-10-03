@@ -33,6 +33,11 @@ final class AppController {
     /// M56: a task to show, or a board to open (a task's notification, 「自分の担当」's channel): its channel's 「タスク」 tab
     /// or 「自分のタスク」 takes it.
     var taskOpen: TaskOpen?
+    /// M95: a workflow's form, full screen over everything (MainView): from the composer's 「＋」, `/name`, the channel
+    /// details and a message's 「⚡ name」.
+    var workflowRun: WorkflowRunTarget?
+    /// M95: each channel's workflows as last read, kept a minute (their changes send no events, WORKFLOWS.md §4).
+    @ObservationIgnored var workflowLists: [String: (at: Date, list: [WorkflowOut])] = [:]
     func revealMessage(_ message: MessageOut) async -> Bool {
         await revealMessage(id: message.id, channelId: message.channelId, parentId: message.parentId)
     }
@@ -227,6 +232,8 @@ final class AppController {
         canvasLink = nil
         canvasOpen = nil
         noticeCanvas = nil
+        workflowRun = nil
+        workflowLists = [:]
         timesFeed = TimesFeedModel()
         previewLoads = [:]
         emojiLoads = []

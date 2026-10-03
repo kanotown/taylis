@@ -1044,6 +1044,9 @@ struct MessageRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 if message.isReply { replyLine }  // M15c
                 if let priority = message.priority { PriorityLabelView(priority: priority) }  // M15e
+                if let workflow = message.workflow, !message.deleted {  // M95: 「⚡ name」, opens its form
+                    WorkflowLabel(name: workflow.name) { Task { await controller.openWorkflow(id: workflow.id) } }
+                }
                 let saved = store.isBookmarked(message.id)
                 let pinnedBy = message.pinnedAt.map { _ in store.users[message.pinnedBy ?? ""]?.displayName ?? "?" }
                 if pinnedBy != nil || saved {
@@ -1383,6 +1386,11 @@ struct ComposerView: View {
     @State private var scheduleForm: ScheduleFormInitial?
     @State private var showSchedule = false
     @State private var showCustomSchedule = false
+    /// M95: 「＋」 → 「ワークフロー」, the workflow picked there (its form opens once the list has gone), and the channel's
+    /// workflows for `/name` and `/wf name` (read when `/` is typed, kept a minute).
+    @State private var showWorkflows = false
+    @State private var pickedWorkflow: WorkflowOut?
+    @State private var workflows: [WorkflowOut] = []
     @State private var customSendAt = Date().addingTimeInterval(3600)
     /// M15e: priority and "ask for acknowledgement" for a top-level post; cleared after each send.
     @State private var priority: String?
@@ -1402,6 +1410,20 @@ struct ComposerView: View {
         return Templates.candidates(prefix: prefix, in: controller.store.templates, inTimes: inTimes)
     }
     private var inTimes: Bool { controller?.store.channel(channelId)?.channel.isTimes ?? false }
+    /// M95: a channel's top-level composer offers workflows (not a thread's: they post top-level; not a DM).
+    private var offersWorkflows: Bool {
+        guard parentId == nil, let channel = controller?.store.channel(channelId)?.channel else { return false }
+        return !channel.isDm
+    }
+    /// M95: then the workflows (`/name`, `/wf name`), as on the desktop: built-in, templates, workflows.
+    private var workflowHits: [WorkflowOut] {
+        guard offersWorkflows, candidates.isEmpty, emojiCandidates.isEmpty else { return [] }
+        return Workflows.candidates(text, in: workflows)
+    }
+    private func openWorkflow(_ workflow: WorkflowOut) {
+        controller?.store.setDraft(channelId, parentId: parentId) { $0.text = "" }
+        controller?.runWorkflow(workflow, here: channelId)
+    }
     private var templates: [TemplateOut] { Templates.ordered(controller?.store.templates ?? [], inTimes: inTimes) }
 
     /// M30: a template into the input, its date put in (DATA_MODEL.md message_templates); nothing is sent.
@@ -1504,6 +1526,22 @@ struct ComposerView: View {
                     insertTemplate(template, replacing: true, after: command.args)
                     return
                 }
+                // M95: `/name` of a workflow (or `/wf name`) opens its form; what was typed goes.
+                if offersWorkflows {
+                    let channelId = channelId
+                    Task {
+                        let list = await controller.channelWorkflows(channelId) ?? controller.cachedWorkflows(channelId)
+                        if let workflow = Workflows.command(name: command.name, args: command.args, in: list) {
+                            openWorkflow(workflow)
+                        } else if command.name == "wf" {
+                            controller.error = command.args.isEmpty ? "/wf の後にワークフローの名前を続けてください"
+                                : "「\(command.args)」というワークフローはこのチャンネルにありません"
+                        } else {
+                            controller.error = "/\(command.name) というコマンドはありません (/help で一覧)"
+                        }
+                    }
+                    return
+                }
                 controller.error = "/\(command.name) というコマンドはありません (/help で一覧)"
                 return
             }
@@ -1560,6 +1598,7 @@ struct ComposerView: View {
             Button("ファイル", systemImage: "folder") { showFileImporter = true }
             Button("アンケート", systemImage: "chart.bar.doc.horizontal") { showPollForm = true }
             Button("日程調整", systemImage: "calendar.badge.clock") { scheduleForm = ScheduleFormInitial() }
+            if offersWorkflows { Button("ワークフロー", systemImage: "bolt") { showWorkflows = true } }  // M95
             if !typing && !templates.isEmpty { templateMenu }
             if !typing { Button("絵文字", systemImage: "face.smiling") { showEmojiPicker = true } }
             if parentId == nil {
@@ -1726,7 +1765,7 @@ struct ComposerView: View {
                 }
                 .padding(.top, 6)
             }
-            if !commandHits.isEmpty || !templateHits.isEmpty {
+            if !commandHits.isEmpty || !templateHits.isEmpty || !workflowHits.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(commandHits) { command in
@@ -1742,6 +1781,17 @@ struct ComposerView: View {
                             Button { insertTemplate(template, replacing: true) } label: {
                                 Text("/" + template.name).fontWeight(.semibold)
                                     + Text("  \(template.scope == "user" ? "個人 · " : "")\(Templates.summary(template.body))").foregroundStyle(.secondary)
+                            }
+                            .font(.footnote)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                        // M95: a workflow opens its form at once.
+                        ForEach(workflowHits) { workflow in
+                            Button { openWorkflow(workflow) } label: {
+                                Text("\(workflow.mark) \(Workflows.commandText(workflow))").fontWeight(.semibold)
+                                    + Text("  \(workflow.canRun ? (workflow.description.isEmpty ? "ワークフロー" : workflow.description) : "使えません")")
+                                        .foregroundStyle(.secondary)
                             }
                             .font(.footnote)
                             .buttonStyle(.bordered)
@@ -1820,6 +1870,17 @@ struct ComposerView: View {
             EmojiPickerView(custom: controller.map { Array($0.store.customEmoji.values) } ?? [], images: controller?.store.emojiImages ?? [:],
                             animations: controller?.store.emojiAnimations ?? [:],
                             onNeedImage: { emoji in controller?.loadEmojiImage(emoji) }) { glyph in insert(glyph) }
+        }
+        // M95: the channel's workflows when `/` starts the input (kept a minute by the controller).
+        .task(id: offersWorkflows && text.hasPrefix("/") ? channelId : nil) {
+            guard offersWorkflows, text.hasPrefix("/"), let controller else { return }
+            workflows = controller.cachedWorkflows(channelId)
+            if let list = await controller.channelWorkflows(channelId) { workflows = list }
+        }
+        .sheet(isPresented: $showWorkflows, onDismiss: {
+            if let picked = pickedWorkflow { pickedWorkflow = nil; openWorkflow(picked) }
+        }) {
+            if let controller { WorkflowListSheet(controller: controller, channelId: channelId, picked: $pickedWorkflow) }
         }
         .sheet(isPresented: $showPollForm) {
             if let controller { PollFormView(controller: controller, channelId: channelId, parentId: parentId) }

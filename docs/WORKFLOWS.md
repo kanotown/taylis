@@ -178,6 +178,26 @@ Android の `ignoreUnknownKeys` は知らない欄を無視する。確認済み
 5. **管理は作らない** (作成・編集は Desktop / Web で)。止める / 再開もしない。
 6. 試験: ベクタ (描き方・値の検査)、印のデコード (欄が無い・null・ある)、`/wf` の解釈、送信の再試行で同じキー。
 
+### 8.1 M95 iOS (build 84)
+
+- **ファイル**: 純粋な部分 `UI/Workflows.swift` (既定値・値の検査・描き方・`/` の解釈・`runBlockedText`)、画面
+  `UI/WorkflowViews.swift` (印・一覧・フォーム)、モデルと API `Api/WorkflowModels.swift`、`App/AppController+Workflows.swift`
+  (1 分の覚え・フォームを開く・送信の `WorkflowSubmitter`)。
+- **印**: `MessageOut.workflow` / `MessageState.workflow` (欄が無い・null・知らない形でも読める。端末の保存にも残る)。
+  名前の上に 1 行の「⚡ 名前」(行の高さは名前の長さで変わらない)。押すと `GET /workflows/{id}` を読み、実行できれば
+  フォーム、できなければ理由 (`runBlockedText`) をエラーの帯に出す。消したメッセージには出さない。
+- **一覧**: 入力欄の「＋」→「ワークフロー」(シート。選ぶとシートが閉じてからフォーム) と、チャンネル詳細の「ワークフロー」
+  (ページ)。どちらも開くたびに読み、`AppController.workflowLists` に 1 分覚える。実行できないものは薄くして押せず、理由を添える。
+  DM とスレッドの入力欄には出さない。
+- **`/`**: 組み込み → テンプレート → ワークフローの順。`/` で始めると一覧を読み、候補の帯の最後に「⚡ /名前」(空白を含む名前は
+  「/wf 名前」)。送信の `/名前`・`/wf 名前` は一覧を読んでから決める (読み終わる前に送っても開く)。
+- **フォーム**: `MainView` の全画面 (`AppController.workflowRun`)。短文 `TextField`・長文 複数行・日付 / 時刻 / 日時は
+  `DatePicker` (任意の欄は「日付を選ぶ」から始まり「クリア」で空に)・選択は `Picker`・人は `TaskAssigneePicker`
+  (`multiple` でなければ 1 人)・チェックは `Toggle`。`client_msg_id` は最初の「投稿」で作り、フォームを閉じるまで使い回す。
+  成功したら閉じ、開いた会話と送り先が違えば「#送り先 に投稿しました」。
+- **試験**: `WorkflowsTests` 12 (ベクタ・印のデコード・`/wf`・同じキーの再試行・`details.fields`・1 分の覚え)、
+  `WorkflowSnapshotTests` 2 (印・一覧・フォームの画像、印の高さ)。
+
 ## 9. 後で (M94 では作らない)
 
 - **定期的な催促** (D8): ワークフローに `reminder = {schedule (RECURRING の週ごと / 月ごと), tz, targets (グループ・人・送り先の全員)}`
