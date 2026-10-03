@@ -133,8 +133,12 @@ class ChannelState:
     members: set[uuid.UUID]
     created: bool  # made by this run (announced at the end)
     label: str = ""  # its name in the report
-    touched: bool = False  # got posts in this run
+    touched: bool = False  # got posts in this run (the whole import: read states at the end)
     locked: bool = False  # the channel row is locked for the batch being built (see _lock)
+    # Got posts in the batch being built: only these rows are written by _flush_posts, which
+    # resets the flag on commit. Review v0.1.22 #2: a channel touched by an earlier batch is not
+    # rewritten from stale values after normal posts moved it on between batches.
+    in_batch: bool = False
 
 
 def ms_to_datetime(ms: int) -> datetime:
@@ -727,6 +731,7 @@ class ImportJob:
         if state.last_message_at is None or created_at > state.last_message_at:
             state.last_message_at = created_at
         state.touched = True
+        state.in_batch = True
         self.report.counts["posts"] += 1
         per_channel["posts"] += 1
         if post["pinned"]:
@@ -755,16 +760,24 @@ class ImportJob:
         await message_repo.refresh_reply_user_ids(self.db, list(self.parent_bumps))
         self.parent_bumps.clear()
         for state in self.channels.values():
-            if state.touched:
-                await self.db.execute(
-                    update(Channel)
-                    .where(Channel.id == state.id)
-                    .values(last_seq=state.last_seq, last_message_at=state.last_message_at)
-                    .execution_options(synchronize_session=False)
+            if not state.in_batch:
+                continue
+            # Locked by this batch (_lock), so the values are current; GREATEST still guards
+            # against ever moving the sync number or the activity time backwards.
+            assert state.locked
+            await self.db.execute(
+                update(Channel)
+                .where(Channel.id == state.id)
+                .values(
+                    last_seq=func.greatest(Channel.last_seq, state.last_seq),
+                    last_message_at=func.greatest(Channel.last_message_at, state.last_message_at),
                 )
+                .execution_options(synchronize_session=False)
+            )
         await self._commit()
-        if not self.dry_run:  # the commit released the row locks (a dry run keeps them)
-            for state in self.channels.values():
+        for state in self.channels.values():
+            state.in_batch = False
+            if not self.dry_run:  # the commit released the row locks (a dry run keeps them)
                 state.locked = False
 
     def _reactions(self, post: dict[str, Any], message_id: uuid.UUID) -> None:

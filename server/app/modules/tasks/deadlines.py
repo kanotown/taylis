@@ -9,11 +9,16 @@ time already posted is never posted again; completing, deleting it or dropping a
 pending rows, and a reopened deadline gets back the ones still ahead. A time already past when
 planned is stored cancelled (no notice after the fact).
 
-The worker (`fire_notices`, in the scheduled loop) posts, per deadline, the most recent notice
-that has come (a server that was down posts once, the nearest day) through the ordinary message
-path as the bot (the bot rejoins the channel if removed; it may post in an announcement channel,
-like the other bots, but only someone allowed to change the board there sets a deadline), with
-an idempotency key from the row, and never after the deadline itself or in an archived channel.
+The worker (`fire_notices`, in the scheduled loop) takes up to `limit` deadlines with a notice
+whose time has come, each with its row locked (two workers never share a deadline), then all of
+that deadline's notices that have come; it posts the most recent one (a server that was down
+posts once, the nearest day, saying the days actually left) and marks the others done (Review
+v0.1.22 #7: the limit counted notice rows, so one deadline's backlog could fall into two batches
+and be posted twice). It posts through the ordinary message path as the bot (the bot rejoins the
+channel if removed; it may post in an announcement channel, like the other bots, but only someone
+allowed to change the board there sets a deadline), with an idempotency key from the row, never
+after the deadline itself or in an archived channel, and without mentions: nothing in the title
+or the names makes the post call anyone (Review v0.1.22 #8).
 """
 
 import logging
@@ -100,7 +105,19 @@ def notice_body(title: str, days: int, label: str, assignees: list[str]) -> str:
 
 def plain_title(title: str, names: dict[uuid.UUID, str]) -> str:
     """The title without mention tokens (the bot's post must not ping anyone) or Markdown."""
-    return notification_text(title, names).replace("<", "\uff1c").replace("*", "\uff0a")
+    return plain_name(notification_text(title, names))
+
+
+def plain_name(name: str) -> str:
+    """A display name as plain text in the bot's post: no `<…>` token (`<@id>`, `<@group:id>`,
+    `<!channel>`, `<!here>`) and no Markdown emphasis can come out of it (Review v0.1.22 #8).
+    Everything else (a Japanese name, spaces) stays as written."""
+    return name.replace("<", "\uff1c").replace("*", "\uff0a")
+
+
+def days_left(due_on: date, tz: str, now: datetime) -> int:
+    """Whole days from today (in the deadline's zone) to its date; 0 on the day."""
+    return max(0, (due_on - now.astimezone(ZoneInfo(tz)).date()).days)
 
 
 # --- planning ------------------------------------------------------------------------------------
@@ -204,9 +221,10 @@ async def _post(
     names = {uid: person.display_name for uid, person in people.items()}
     body = notice_body(
         plain_title(task.title, names),
-        notice.days_before,
+        # A late notice (the server was down) says what is true now, not what it was planned for.
+        min(notice.days_before, days_left(task.due_on, task.notice_tz, now)),
         due_label(task.due_on, task.due_at, task.notice_tz),
-        [names[uid] for uid in assignee_ids if uid in names],
+        [plain_name(names[uid]) for uid in assignee_ids if uid in names],
     )
     key = uuid.uuid5(
         _NOTICE_NAMESPACE, f"{task.id}/{notice.days_before}/{notice.fire_at.isoformat()}"
@@ -220,25 +238,24 @@ async def _post(
         MessageCreate(client_msg_id=key, body=body),
         advance_read=False,
         commit=False,
+        mentions=False,
     )
     return message.id
 
 
 async def fire_notices(db: AsyncSession, *, now: datetime | None = None, limit: int = 50) -> int:
-    """Posts the notices whose time has come (the module's note); the number posted."""
+    """Posts the notices whose time has come (the module's note); the number posted. `limit`
+    counts deadlines, not notice rows."""
     moment = now or utcnow()
-    due = await repo.due_notices(db, moment, limit)
-    by_task: dict[uuid.UUID, list[TaskDeadlineNotice]] = {}
-    for row in due:
-        by_task.setdefault(row.task_id, []).append(row)
     posted = 0
-    for task_id, rows in by_task.items():
+    for task in await repo.lock_due_deadlines(db, moment, limit):
+        task_id = task.id
+        rows = await repo.due_notices_of(db, task_id, moment)
+        if not rows:  # another worker did them between our pick and our lock
+            continue
         for row in rows:
             row.status = "cancelled"
             row.updated_at = moment
-        task = await repo.get(db, task_id)
-        if task is None:
-            continue
         wanted = _wanted(task)
         live = [row for row in rows if wanted.get(row.days_before) == row.fire_at]
         if not live or task.due_on is None or task.notice_tz is None:

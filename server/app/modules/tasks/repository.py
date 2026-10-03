@@ -341,12 +341,42 @@ async def notices_of(db: AsyncSession, task_id: uuid.UUID) -> list[TaskDeadlineN
     return list((await db.execute(stmt)).scalars().all())
 
 
-async def due_notices(db: AsyncSession, now: datetime, limit: int) -> list[TaskDeadlineNotice]:
+async def lock_due_deadlines(db: AsyncSession, now: datetime, limit: int) -> list[Task]:
+    """Up to `limit` tasks with a pending notice whose time has come, oldest notice first, each
+    row locked (FOR UPDATE SKIP LOCKED: another worker, or an edit of the deadline, holding one
+    leaves it to them). The limit counts deadlines, so one deadline's notices are never split
+    between two batches or two workers (Review v0.1.22 #7)."""
+    first = (
+        select(
+            TaskDeadlineNotice.task_id.label("task_id"),
+            func.min(TaskDeadlineNotice.fire_at).label("first_at"),
+        )
+        .where(TaskDeadlineNotice.status == "pending", TaskDeadlineNotice.fire_at <= now)
+        .group_by(TaskDeadlineNotice.task_id)
+        .subquery()
+    )
+    stmt = (
+        select(Task)
+        .join(first, first.c.task_id == Task.id)
+        .order_by(first.c.first_at, Task.id)
+        .limit(limit)
+        .with_for_update(of=Task, skip_locked=True)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def due_notices_of(
+    db: AsyncSession, task_id: uuid.UUID, now: datetime
+) -> list[TaskDeadlineNotice]:
+    """Every pending notice of the (locked) deadline whose time has come, locked."""
     stmt = (
         select(TaskDeadlineNotice)
-        .where(TaskDeadlineNotice.status == "pending", TaskDeadlineNotice.fire_at <= now)
-        .order_by(TaskDeadlineNotice.fire_at, TaskDeadlineNotice.task_id)
-        .limit(limit)
-        .with_for_update(skip_locked=True)
+        .where(
+            TaskDeadlineNotice.task_id == task_id,
+            TaskDeadlineNotice.status == "pending",
+            TaskDeadlineNotice.fire_at <= now,
+        )
+        .order_by(TaskDeadlineNotice.fire_at, TaskDeadlineNotice.days_before)
+        .with_for_update()
     )
     return list((await db.execute(stmt)).scalars().all())

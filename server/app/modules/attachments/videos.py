@@ -35,6 +35,11 @@ MAX_DURATION_MS = 2**31 - 1
 # ffprobe's JSON is a few hundred bytes; the poster is scaled to the thumbnail size by ffmpeg.
 MAX_PROBE_OUTPUT = 64 * 1024
 MAX_POSTER_OUTPUT = 16 * 1024 * 1024
+# Review v0.1.22 #5: the pipes are read in chunks while the child runs, so the caps above bound
+# what is held in memory (stdout past its cap kills the child); of stderr only the end is kept,
+# for the log.
+READ_CHUNK = 64 * 1024
+STDERR_TAIL = 4 * 1024
 # The poster is the frame at 1 s (a clip often opens on a black or blurred frame), or the first
 # frame of a clip shorter than 2 s (or when nothing came at 1 s).
 POSTER_AT_SECONDS = 1.0
@@ -134,8 +139,21 @@ def tools(settings: Settings) -> tuple[str, str] | None:
     return ffprobe, ffmpeg
 
 
+def _kill(process: asyncio.subprocess.Process) -> None:
+    try:
+        process.kill()
+    except ProcessLookupError:  # it has just exited
+        pass
+
+
 async def _run(argv: list[str], seconds: float, max_output: int) -> bytes | None:
-    """stdout of the command, or None (logged) when it fails, times out or says too much."""
+    """stdout of the command, or None (logged) when it fails, times out or says too much.
+
+    Both pipes are read in chunks as the child writes: at most `max_output` bytes of stdout are
+    held (one more chunk and the child is killed) and the last STDERR_TAIL bytes of stderr. A
+    timeout, a cancellation or the cap kills the child and waits for it, so nothing is left
+    running and the caller's semaphore is released with the process gone."""
+    name = os.path.basename(argv[0])
     try:
         process = await asyncio.create_subprocess_exec(
             *argv,
@@ -147,27 +165,52 @@ async def _run(argv: list[str], seconds: float, max_output: int) -> bytes | None
     except OSError as exc:
         log.warning("%s could not start: %s", argv[0], exc)
         return None
+    stdout, stderr = process.stdout, process.stderr
+    assert stdout is not None and stderr is not None
+    out = bytearray()
+    tail = bytearray()
+    too_much = False
+
+    async def read_stdout() -> None:
+        nonlocal too_much
+        while chunk := await stdout.read(READ_CHUNK):
+            if len(out) + len(chunk) > max_output:
+                too_much = True
+                _kill(process)
+                return
+            out.extend(chunk)
+
+    async def read_stderr() -> None:
+        while chunk := await stderr.read(READ_CHUNK):
+            tail.extend(chunk)
+            if len(tail) > STDERR_TAIL:
+                del tail[:-STDERR_TAIL]
+
+    async def finish() -> None:
+        await asyncio.gather(read_stdout(), read_stderr())
+        await process.wait()
+
     try:
-        out, err = await asyncio.wait_for(process.communicate(), seconds)
+        await asyncio.wait_for(finish(), seconds)
     except TimeoutError:
-        log.warning("%s timed out after %ss", os.path.basename(argv[0]), seconds)
+        log.warning("%s timed out after %ss", name, seconds)
         return None
     finally:
         if process.returncode is None:  # timed out or cancelled: never leave it running
-            process.kill()
+            _kill(process)
             await process.wait()
+    if too_much:
+        log.warning("%s wrote more than %d bytes: stopped", name, max_output)
+        return None
     if process.returncode != 0:
         log.info(
             "%s failed (%s): %s",
-            os.path.basename(argv[0]),
+            name,
             process.returncode,
-            err[-300:].decode(errors="replace").strip(),
+            bytes(tail[-300:]).decode(errors="replace").strip(),
         )
         return None
-    if len(out) > max_output:
-        log.warning("%s wrote %d bytes, more than expected", os.path.basename(argv[0]), len(out))
-        return None
-    return out
+    return bytes(out)
 
 
 async def _probe(

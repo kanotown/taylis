@@ -1,9 +1,14 @@
 """M79: a video's upright size, length and poster, read at upload and by the backfill."""
 
+import asyncio
 import io
 import json
+import os
 import shutil
 import subprocess
+import sys
+import time
+import tracemalloc
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -408,3 +413,95 @@ async def test_backfill_marks_missing_bytes_as_looked_at(
     row = await fresh(app, Attachment, uuid.UUID(meta["id"]))
     assert row is not None and row.video_probed_at is not None and row.width is None
     assert row.video_probed_at <= utcnow()
+
+
+# --- Review v0.1.22 #5: what is read from the child stays bounded ---
+
+
+def _child(tmp_path: Path, body: str) -> tuple[Path, Path]:
+    """An executable Python script standing in for ffprobe / ffmpeg; it writes its pid first."""
+    pid_file = tmp_path / "child.pid"
+    script = tmp_path / "fake-tool"
+    script.write_text(
+        f"#!{sys.executable}\n"
+        "import os, sys, time\n"
+        f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+        "chunk = b'x' * 65536\n" + body
+    )
+    script.chmod(0o755)
+    return script, pid_file
+
+
+def _gone(pid_file: Path) -> bool:
+    try:
+        os.kill(int(pid_file.read_text()), 0)
+    except ProcessLookupError:
+        return True
+    return False
+
+
+async def _measure(coro: Any) -> tuple[Any, int, float]:
+    tracemalloc.start()
+    started = time.monotonic()
+    try:
+        result = await coro
+        return result, tracemalloc.get_traced_memory()[1], time.monotonic() - started
+    finally:
+        tracemalloc.stop()
+
+
+async def test_a_flood_on_stderr_keeps_only_its_tail(tmp_path: Path) -> None:
+    script, pid_file = _child(
+        tmp_path,
+        "for _ in range(256):\n    sys.stderr.buffer.write(chunk)\n"  # 16 MiB
+        "sys.stderr.buffer.flush()\nsys.stdout.buffer.write(b'ok')\n",
+    )
+    out, peak, _ = await _measure(videos._run([str(script)], 60, 1024))
+    assert out == b"ok"
+    assert peak < 2 * 1024 * 1024, peak  # was ~32 MiB: communicate() held both streams
+    assert _gone(pid_file)
+
+
+async def test_a_flood_on_both_streams_is_stopped_at_the_stdout_cap(tmp_path: Path) -> None:
+    script, pid_file = _child(
+        tmp_path,
+        "while True:\n    sys.stderr.buffer.write(chunk)\n    sys.stdout.buffer.write(chunk)\n",
+    )
+    out, peak, elapsed = await _measure(videos._run([str(script)], 60, 1024 * 1024))
+    assert out is None
+    assert elapsed < 20  # killed at the cap, long before the timeout
+    assert peak < 4 * 1024 * 1024, peak
+    assert _gone(pid_file)
+
+
+async def test_timeout_and_cancel_kill_the_child_and_release_the_slot(
+    tmp_path: Path, test_settings: Settings
+) -> None:
+    script, pid_file = _child(
+        tmp_path, "while True:\n    sys.stderr.buffer.write(chunk[:1024])\n    time.sleep(0.01)\n"
+    )
+    settings = test_settings.model_copy(
+        update={
+            "ffprobe_path": str(script),
+            "ffmpeg_path": str(script),
+            "video_probe_timeout_seconds": 0.5,
+            "video_probe_max_concurrent": 1,
+        }
+    )
+    slot = videos._semaphore(1)
+    info = await videos.probe_video(str(tmp_path / "clip.mp4"), settings)
+    assert info == videos.VideoInfo(None, None, None, None)
+    assert _gone(pid_file) and not slot.locked()
+
+    pid_file.unlink()
+    slow = settings.model_copy(update={"video_probe_timeout_seconds": 60})
+    task = asyncio.create_task(videos.probe_video(str(tmp_path / "clip.mp4"), slow))
+    for _ in range(500):
+        if pid_file.exists() and pid_file.read_text():
+            break
+        await asyncio.sleep(0.01)
+    assert slot.locked()  # the probe holds the only slot
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert _gone(pid_file) and not slot.locked()

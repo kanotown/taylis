@@ -649,3 +649,71 @@ def test_cli_checks_the_file_options_and_reads_the_token_from_a_file(tmp_path: P
     token.write_text(f"  {TOKEN}\n", encoding="utf-8")
     assert read_secret_file(str(token)) == TOKEN
     assert read_secret_file(None) is None
+
+
+async def test_normal_posts_between_batches_keep_the_seq(
+    app: FastAPI, db: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review v0.1.22 #2, as for Mattermost (the batches are core.ImportJob's)."""
+    from tests.test_review_v022 import check_seqs_after_import, interleave_normal_posts
+
+    await _people(db)
+    posted = interleave_normal_posts(monkeypatch, app)
+    path = write_zip(tmp_path / "export.zip", export_data())
+    await _run(app, db, path, downloads(tmp_path / "cache", FakeSlack()))
+    await check_seqs_after_import(app, posted)
+
+
+async def test_the_token_goes_only_over_https_to_slack_hosts(tmp_path: Path) -> None:
+    """Review v0.1.22 #4: a plain-HTTP URL is refused before anything is sent, a redirect to
+    plain HTTP too, and the token rule (HTTPS + a Slack file host) holds at every hop."""
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        url = str(request.url)
+        redirects = {
+            "https://files.slack.com/r/to-http": "http://files.slack.com/F1/plain.png",
+            "https://files.slack.com/r/to-other": "https://cdn.example.com/F2/other.pdf",
+            "https://cdn.example.com/r/to-slack": "https://files.slack.com/F3/back.pdf",
+            "https://files.slack.com/r/loop": "/r/loop",
+        }
+        if url in redirects:
+            return httpx.Response(302, headers={"location": redirects[url]})
+        return httpx.Response(200, content=b"%PDF-1.4 ok", headers={"content-type": "x/y"})
+
+    source = FileSource(
+        cache_dir=tmp_path / "cache",
+        download=True,
+        token=TOKEN,
+        backoff_seconds=0,
+        transport=httpx.MockTransport(handler),
+    )
+    files = [
+        _file("H1", "a.pdf", url="http://files.slack.com/files-pri/T1-H1/a.pdf", size=0),
+        _file("H2", "b.pdf", url="https://files.slack.com/r/to-http", size=0),
+        _file("H3", "c.pdf", url="https://files.slack.com/r/to-other", size=0),
+        _file("H4", "d.pdf", url="https://cdn.example.com/r/to-slack", size=0),
+        _file("H5", "e.pdf", url="https://files.slack.com/r/loop", size=0),
+        _file("H6", "f.pdf", url="https://files.slack.com/files-pri/T1-H6/f.pdf", size=0),
+    ]
+    await source.fetch(files)
+
+    assert "HTTPS" in source.failures["H1"] and "HTTPS" in source.failures["H2"]
+    assert "転送" in source.failures["H5"]
+    for done in (files[2], files[3], files[5]):
+        assert source.locate(done) is not None
+    assert all(r.url.scheme == "https" for r in requests)  # nothing ever went over plain HTTP
+    assert not any("H1" in str(r.url) for r in requests)
+    for request in requests:
+        sent = request.headers.get("authorization")
+        if request.url.host == "files.slack.com":
+            assert sent == f"Bearer {TOKEN}"
+        else:
+            assert sent is None, request.url
+    assert {str(r.url) for r in requests} >= {
+        "https://cdn.example.com/F2/other.pdf",
+        "https://files.slack.com/F3/back.pdf",
+    }
+    assert sum(1 for r in requests if r.url.path == "/r/loop") == 6  # 1 + MAX_REDIRECTS
+    assert not list((tmp_path / "cache").rglob("*.part"))

@@ -43,7 +43,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import bad_request, conflict, forbidden, not_found
+from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.ids import uuid7
 from app.core.time import utcnow
 from app.events.envelope import Audience
@@ -1064,11 +1064,17 @@ async def get_task(db: AsyncSession, actor: User, task_id: uuid.UUID) -> TaskOut
 
 
 async def _can_read(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> bool:
-    """A conversation's messages: its members, and a public channel's everyone but a guest."""
-    if await channels.membership_of(db, actor.id, channel_id) is not None:
-        return True
-    channel = await channels.require_channel(db, channel_id)
-    return channel.type == "public" and not actor.is_guest
+    """Whether the actor may read a conversation's messages: exactly the rule of a message read
+    (channels.require_readable: its members, and in a public channel everyone but a guest while
+    the workspace allows the preview before joining, M88). Review v0.1.22 #1: a task's excerpt
+    must not become a way around that rule."""
+    try:
+        await channels.require_readable(db, actor, channel_id)
+    except AppError as error:
+        if error.status == 403:
+            return False
+        raise
+    return True
 
 
 async def _source(

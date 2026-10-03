@@ -65,6 +65,14 @@ class ActivityReadData(BaseModel):
     read_at: datetime
 
 
+class ActivityUpdatedData(BaseModel):
+    """To me: activity items I may hold changed in place (Review v0.1.22: a canvas version's body
+    was erased, and the excerpts taken from it with it). A client showing or keeping the list
+    reads it again (or drops the excerpt of these items); the badge does not change."""
+
+    item_ids: list[UUID]
+
+
 class ReactionAddedData(BaseModel):
     """To the message's author: someone reacted to it (the activity badge; a push if they asked for
     one)."""
