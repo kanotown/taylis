@@ -5,6 +5,7 @@ import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.SystemEventOut
+import jp.chikuwachat.android.api.MessageWorkflowOut
 import jp.chikuwachat.android.api.WorkspaceSettingsOut
 import jp.chikuwachat.android.api.PollOut
 import jp.chikuwachat.android.platform.AvatarCache
@@ -117,6 +118,8 @@ data class MessageState(
     val tasks: List<MessageTaskOut> = emptyList(),
     /** M89 (MEMBERSHIP.md §5): a system row's event, kept so a restart writes the line again; rows persisted earlier lack it. */
     val systemEvent: SystemEventOut? = null,
+    /** M95: the workflow that posted it (MessageOut.workflow); rows persisted earlier lack it (no Room version: it is JSON). */
+    val workflow: MessageWorkflowOut? = null,
 ) {
     /** M88: a system row (the join / leave lines): one muted line, never grouped, no actions, never unread. */
     val isSystem: Boolean get() = type != "user"
@@ -138,7 +141,7 @@ data class MessageState(
             parentId = message.parentId, alsoInChannel = message.alsoInChannel, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, replyUserIds = message.replyUserIds, attachments = message.attachments,
             pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy, poll = message.poll,
             priority = message.priority, ackRequested = message.ackRequested, acks = message.acks, type = message.type,
-            collection = message.collection, tasks = message.tasks, systemEvent = message.systemEvent,
+            collection = message.collection, tasks = message.tasks, systemEvent = message.systemEvent, workflow = message.workflow,
         )
 
         fun placeholder(
@@ -321,7 +324,7 @@ fun MessageState.toOut(): MessageOut? {
         parentId = parentId, alsoInChannel = alsoInChannel, body = body, mentionedUserIds = mentionedUserIds, mentionAll = mentionAll, reactions = reactions,
         attachments = attachments, replyCount = replyCount, lastReplyAt = lastReplyAt, replyUserIds = replyUserIds, createdAt = createdAt, editedAt = editedAt, deleted = deleted,
         pinnedAt = pinnedAt, pinnedBy = pinnedBy, poll = poll, priority = priority, ackRequested = ackRequested, acks = acks, type = type,
-        collection = collection, tasks = tasks,
+        collection = collection, tasks = tasks, workflow = workflow,
     )
 }
 

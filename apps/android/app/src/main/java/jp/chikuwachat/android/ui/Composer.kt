@@ -36,6 +36,7 @@ import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Code
@@ -100,6 +101,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import jp.chikuwachat.android.api.TemplateOut
+import jp.chikuwachat.android.api.WorkflowOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.SendOptions
 import kotlinx.coroutines.launch
@@ -170,6 +172,19 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         val value = Templates.insertButton(draft, template.body, LocalDate.now())
         edit(ComposerFormat.Result(value, value.length, value.length))
     }
+    // M95 (WORKFLOWS.md §8 2.-3.): the workflows this channel offers (`/name`, `/wf name`, ＋ → ワークフロー); not in a
+    // thread's composer (the post is a top-level one in the target) nor in a DM. Read once the input starts with `/`.
+    val offersWorkflows = parentId == null && channelState?.channel?.type.let { it == "public" || it == "private" }
+    var workflowList by remember(channelId) { mutableStateOf<List<WorkflowOut>>(emptyList()) }
+    val slashTyped = offersWorkflows && Workflows.mayBeCommand(draft)
+    LaunchedEffect(channelId, slashTyped) {
+        if (slashTyped) controller.channelWorkflows(channelId).onSuccess { workflowList = it }
+    }
+    /** `/name` or a candidate of a workflow: what was typed goes (unless it changed meanwhile) and the form opens. */
+    fun runWorkflow(workflow: WorkflowOut, typed: String) {
+        store.setDraft(channelId, parentId) { if (it.text == typed) it.copy(text = "") else it }
+        controller.openWorkflow(workflow, channelId)
+    }
     val maxAttachments = store.limits?.maxAttachmentsPerMessage ?: 10
     /** Uploads into this draft; [cleanup] runs once each upload is over (the camera's file). */
     fun uploadPicked(uris: List<android.net.Uri>, cleanup: () -> Unit = {}) {
@@ -220,7 +235,9 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         val commandHits = if (candidates.isEmpty() && emojiHits.isEmpty()) SlashCommands.candidates(draft) else emptyList()
         // M30: the templates after the built-in commands; picking one puts its body in at once (`/` alone: the input is empty).
         val templateHits = if (candidates.isEmpty() && emojiHits.isEmpty()) SlashCommands.prefix(draft)?.let { Templates.candidates(templates, it) } ?: emptyList() else emptyList()
-        if (commandHits.isNotEmpty() || templateHits.isNotEmpty()) {
+        // M95: then the workflows (「⚡ /name」, or `/wf name` for a name with spaces); picking one opens its form.
+        val workflowHits = if (offersWorkflows && candidates.isEmpty() && emojiHits.isEmpty()) Workflows.candidates(draft, workflowList) else emptyList()
+        if (commandHits.isNotEmpty() || templateHits.isNotEmpty() || workflowHits.isNotEmpty()) {
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(commandHits, key = { it.name }) { command ->
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.clickable { setText("/" + command.name + " ") }) {
@@ -230,6 +247,16 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 items(templateHits, key = { "template:" + it.id }) { template ->
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.clickable { setText(Templates.expand(template.body, LocalDate.now())) }) {
                         Text("/" + template.name + "  " + Templates.kindLabel(template), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                    }
+                }
+                items(workflowHits, key = { "workflow:" + it.id }) { workflow ->
+                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.clickable { runWorkflow(workflow, draft) }) {
+                        val command = if (workflow.name.any { it.isWhitespace() }) "/wf " + workflow.name else "/" + workflow.name
+                        Text(
+                            workflowEmoji(workflow) + " " + command + "  " + workflow.description.ifBlank { "ワークフロー" } + if (!workflow.canRun) " (使えません)" else "",
+                            style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 320.dp).padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
                     }
                 }
             }
@@ -329,6 +356,30 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                     // M30: `/name [文]` of a template is not sent: its body (then 文 on the next line) goes into the input.
                     val template = Templates.find(store.templates.values, command.name)
                     if (template != null) { setText(Templates.insertCommand(template.body, command.args, LocalDate.now())); return }
+                    // M95: `/name` of a workflow (or `/wf name`) opens its form; the list is read now if it is not here yet.
+                    if (offersWorkflows) {
+                        val typed = draft
+                        controller.scope.launch {
+                            controller.channelWorkflows(channelId)
+                                .onSuccess { list ->
+                                    workflowList = list
+                                    val workflow = Workflows.findCommand(command.name, command.args, list)
+                                    when {
+                                        workflow != null -> runWorkflow(workflow, typed)
+                                        command.name == "wf" && command.args.isBlank() -> controller.error = "/wf の後にワークフローの名前を続けてください"
+                                        command.name == "wf" -> controller.error = "「${command.args}」というワークフローはこのチャンネルにありません"
+                                        else -> controller.error = "/${command.name} というコマンドはありません (/help で一覧)"
+                                    }
+                                }
+                                .onFailure {
+                                    // A server before M94 has no list (404): the name is simply no command there.
+                                    if (it is jp.chikuwachat.android.api.ApiException.Api && it.status == 404 && command.name != "wf") {
+                                        controller.error = "/${command.name} というコマンドはありません (/help で一覧)"
+                                    } else controller.report(it)
+                                }
+                        }
+                        return
+                    }
                     controller.error = "/${command.name} というコマンドはありません (/help で一覧)"
                     return
                 }
@@ -392,6 +443,8 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         var plusOpen by remember { mutableStateOf(false) }
         if (plusOpen) PlusSheet(
             hasCamera = hasCamera, templates = templates, canSchedule = canSchedule,
+            workflows = if (offersWorkflows) ({ onRun -> ChannelWorkflowList(controller, channelId, onRun) }) else null,
+            onWorkflow = { controller.openWorkflow(it, channelId) },
             onDismiss = { plusOpen = false },
             onPhotos = { mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
             onCamera = { openCamera?.invoke() },
@@ -547,6 +600,9 @@ private fun PlusSheet(
     hasCamera: Boolean,
     templates: List<TemplateOut>,
     canSchedule: Boolean,
+    /** M95: the channel's workflow list (null: none offered here, a thread or a DM), and what a picked one does. */
+    workflows: (@Composable (onRun: (WorkflowOut) -> Unit) -> Unit)?,
+    onWorkflow: (WorkflowOut) -> Unit,
     onDismiss: () -> Unit,
     onPhotos: () -> Unit,
     onCamera: () -> Unit,
@@ -559,6 +615,7 @@ private fun PlusSheet(
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     var showingTemplates by remember { mutableStateOf(false) }
+    var showingWorkflows by remember { mutableStateOf(false) }
     fun close(then: () -> Unit) {
         scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss(); then() }
     }
@@ -576,7 +633,12 @@ private fun PlusSheet(
                     Text(label, color = color, style = MaterialTheme.typography.bodyLarge)
                 }
             }
-            if (showingTemplates) {
+            if (showingWorkflows && workflows != null) {
+                // M95: read each time it opens (kept a minute); a greyed row says why it cannot run.
+                item("ワークフロー", Icons.AutoMirrored.Outlined.ArrowBack) { showingWorkflows = false }
+                HorizontalDivider()
+                workflows { workflow -> close { onWorkflow(workflow) } }
+            } else if (showingTemplates) {
                 item("テンプレート", Icons.AutoMirrored.Outlined.ArrowBack) { showingTemplates = false }
                 HorizontalDivider()
                 if (templates.isEmpty()) {
@@ -601,6 +663,7 @@ private fun PlusSheet(
                 item("アンケート", Icons.Outlined.Poll) { close(onPoll) }
                 item("日程調整", Icons.Outlined.EventAvailable) { close(onSchedulePoll) }
                 item("テンプレート", Icons.Outlined.PostAdd) { showingTemplates = true }
+                if (workflows != null) item("ワークフロー", Icons.Outlined.Bolt) { showingWorkflows = true }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 item("後で送信…", Icons.Outlined.Schedule, enabled = canSchedule) { close(onSchedule) }
             }

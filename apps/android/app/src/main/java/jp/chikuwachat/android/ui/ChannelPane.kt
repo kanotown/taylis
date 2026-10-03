@@ -606,6 +606,10 @@ fun MessageRow(
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 if (message.isReply) ReplyLine(message, store, version, onOpenThread)  // M15c
+                // M95 (WORKFLOWS.md §8 1.): 「⚡ name」 above a message a workflow posted; a tap opens its form.
+                message.workflow?.takeIf { !message.deleted && !message.pending }?.let { workflow ->
+                    WorkflowLabel(workflow) { controller.scope.launch { controller.openWorkflowById(workflow.id, message.channelId) } }
+                }
                 message.priority?.let { PriorityLabel(it, Modifier.padding(bottom = 2.dp)) }  // M15e
                 val saved = store.isBookmarked(message.id)
                 val pinnedBy = message.pinnedAt?.let { store.users[message.pinnedBy ?: ""]?.displayName ?: "?" }
