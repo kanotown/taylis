@@ -347,8 +347,29 @@ async def test_nonce_provider_failures_and_cancel(
         params={"state": state, "error": "access_denied"},
         headers={"Cookie": f"{sso.COOKIE}={state}"},
     )
-    assert back.headers["location"] == "chikuwachat://sso?sso_error=cancelled"
+    # The desktop app is answered with a page that opens it (a bare 302 to the scheme left the
+    # browser tab blank, looking like it was still loading).
+    assert back.status_code == 200
+    assert back.headers["content-type"].startswith("text/html")
+    assert back.headers["cache-control"] == "no-store"
+    assert back.headers["referrer-policy"] == "no-referrer"
+    page = back.text
+    assert 'content="0;url=chikuwachat://sso?sso_error=cancelled"' in page
+    assert 'href="chikuwachat://sso?sso_error=cancelled"' in page
+    assert 'location.replace("chikuwachat://sso?sso_error=cancelled")' in page
+    assert "このタブは閉じてかまいません" in page
     assert await db.scalar(select(SsoTicket.ticket_hash)) is None
+
+    # iOS and Android still get the redirect (their browser views close on the scheme).
+    for platform in ("ios", "android"):
+        _, state, _ = await begin(client, platform=platform)
+        back = await client.get(
+            CALLBACK,
+            params={"state": state, "error": "access_denied"},
+            headers={"Cookie": f"{sso.COOKIE}={state}"},
+        )
+        assert back.status_code == 302
+        assert back.headers["location"] == "chikuwachat://sso?sso_error=cancelled"
 
 
 # --- the ID token's claims -------------------------------------------------------------------

@@ -15,6 +15,7 @@ import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import NamedTuple
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,6 +76,14 @@ def return_url(
         return f"{settings.public_base_url.rstrip('/')}/#{key}={value}"
     key = "ticket" if ticket is not None else "sso_error"
     return f"{NATIVE_RETURN}?{key}={value}"
+
+
+class Completion(NamedTuple):
+    """Where the callback sends the browser, and for which client (the router answers a desktop
+    sign-in with a page instead of a bare redirect to the custom scheme)."""
+
+    location: str
+    platform: str
 
 
 def cookie_secure(settings: Settings) -> bool:
@@ -141,13 +150,13 @@ async def complete(
     error: str | None,
     cookie: str | None,
     ip: str | None,
-) -> str:
+) -> Completion:
     """Google's return: the URL to send the browser to, with a ticket or an error code."""
     row = await repo.get_request(db, state) if state and TOKEN_PATTERN.match(state) else None
     if row is None:
         # Unknown state: nothing says which app started it, so the web page gets the error.
         log.info("sso sign-in refused", extra={"reason": "expired", "ip": ip})
-        return return_url(settings, "web", error="expired")
+        return Completion(return_url(settings, "web", error="expired"), "web")
     now = utcnow()
     pending = _Pending(row.nonce, row.code_verifier, row.challenge, row.platform, row.expires_at)
     first_use = row.used_at is None
@@ -178,8 +187,10 @@ async def complete(
     except SsoFailure as failure:
         await db.rollback()
         log.info("sso sign-in refused", extra={"reason": failure.code, "ip": ip})
-        return return_url(settings, pending.platform, error=failure.code)
-    return return_url(settings, pending.platform, ticket=ticket)
+        return Completion(
+            return_url(settings, pending.platform, error=failure.code), pending.platform
+        )
+    return Completion(return_url(settings, pending.platform, ticket=ticket), pending.platform)
 
 
 def _check_claims(claims: OIDCClaims, pending: _Pending, settings: Settings) -> None:
