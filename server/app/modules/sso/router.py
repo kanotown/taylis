@@ -1,10 +1,12 @@
 """Google sign-in endpoints (M48, docs/SSO.md §3). None needs a login: the state cookie, the
 ticket and the app's verifier stand in for it."""
 
+import html
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.core.db import Db
 from app.core.errors import not_found, rate_limited
@@ -89,7 +91,14 @@ async def sso_google_start(
     "/auth/sso/google/callback",
     status_code=302,
     response_class=RedirectResponse,
-    responses={302: {"description": "Back to the app with a ticket or sso_error"}},
+    responses={
+        302: {"description": "Back to the app with a ticket or sso_error"},
+        200: {
+            "description": "Desktop: a page that opens the app (chikuwachat://sso?…) and says the "
+            "tab may be closed",
+            "content": {"text/html": {}},
+        },
+    },
 )
 async def sso_google_callback(
     request: Request,
@@ -97,12 +106,12 @@ async def sso_google_callback(
     code: Annotated[str | None, Query(max_length=4096)] = None,
     state: Annotated[str | None, Query(max_length=256)] = None,
     error: Annotated[str | None, Query(max_length=256)] = None,
-) -> RedirectResponse:
+) -> Response:
     """Google's redirect. Web: `<PUBLIC_BASE_URL>/#sso_ticket=…` (or `#sso_error=`); the apps:
     `chikuwachat://sso?ticket=…` (or `?sso_error=`)."""
     provider = _google(request)
     _throttle(request)
-    location = await service.complete(
+    done = await service.complete(
         db,
         provider,
         request.app.state.settings,
@@ -112,7 +121,14 @@ async def sso_google_callback(
         cookie=request.cookies.get(service.COOKIE),
         ip=_client_ip(request),
     )
-    response = RedirectResponse(location, status_code=302)
+    # The desktop app is opened from the user's own browser: after a bare 302 to the custom scheme
+    # the tab is left blank and looks like it is still loading. Answer with a short page that opens
+    # the app and says the tab can be closed (iOS / Android close their browser view themselves).
+    response: Response = (
+        _desktop_return_page(done.location)
+        if done.platform == "desktop" and done.location.startswith(service.NATIVE_RETURN)
+        else RedirectResponse(done.location, status_code=302)
+    )
     _no_store(response)
     response.headers["Referrer-Policy"] = "no-referrer"
     response.delete_cookie(
@@ -138,3 +154,39 @@ async def sso_exchange(
     if web_session.is_web(body.device.platform):
         web_session.issue(response, request, tokens)
     return tokens
+
+
+def _desktop_return_page(location: str) -> HTMLResponse:
+    """The page a desktop sign-in ends on: opens Taylis through the custom scheme (meta refresh and
+    script, a button if both are blocked) and says the tab may be closed. The ticket is in the page
+    only as the app link; the response is no-store with no referrer, like the redirect."""
+    href = html.escape(location, quote=True)
+    body = f"""<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="0;url={href}">
+<title>Taylis に戻ります</title>
+<style>
+body{{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",
+sans-serif;margin:0;display:flex;min-height:100vh;align-items:center;
+justify-content:center;background:#f6f6f8;color:#1f1f24}}
+margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;
+background:#f6f6f8;color:#1f1f24}}
+main{{text-align:center;padding:32px;max-width:420px}}
+h1{{font-size:20px;margin:0 0 12px}}p{{color:#5c5c66;line-height:1.6;margin:0 0 20px}}
+a{{display:inline-block;background:#5b5bd6;color:#fff;text-decoration:none;
+padding:10px 18px;border-radius:10px}}
+padding:10px 18px;border-radius:10px}}
+@media (prefers-color-scheme:dark){{body{{background:#17171c;color:#ececf1}}p{{color:#a4a4b0}}}}
+</style></head>
+<body><main>
+<h1>ログインしました</h1>
+<p>Taylis に戻ります。このタブは閉じてかまいません。<br>
+アプリが開かないときは、下のボタンを押してください。</p>
+アプリが開かないときは、下のボタンを押してください。</p>
+<a href="{href}">Taylis を開く</a>
+</main>
+<script>location.replace({json.dumps(location)});</script>
+</body></html>"""
+    return HTMLResponse(body, status_code=200)

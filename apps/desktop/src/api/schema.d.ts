@@ -9238,6 +9238,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Desktop: a page that opens the app (chikuwachat://sso?…) and says the tab may be closed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": unknown;
+                };
+            };
             /** @description Back to the app with a ticket or sso_error */
             302: {
                 headers: {

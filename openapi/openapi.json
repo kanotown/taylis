@@ -13908,6 +13908,12 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "text/html": {}
+            },
+            "description": "Desktop: a page that opens the app (chikuwachat://sso?…) and says the tab may be closed"
+          },
           "302": {
             "description": "Back to the app with a ticket or sso_error"
           },

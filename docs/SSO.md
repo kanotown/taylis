@@ -87,6 +87,9 @@ SSO が無効なら 3 つとも 404 `sso_disabled`。
 5. 使い捨てのチケット (32 バイト乱数。DB には SHA-256 だけ) を作る。有効 2 分・1 回だけ・`challenge` と
    `platform` とユーザーに紐づく。
 6. 戻す: Web は `<PUBLIC_BASE_URL>/#sso_ticket=<ticket>`、ほかは `chikuwachat://sso?ticket=<ticket>` へ 302。
+   Desktop だけは 302 ではなく 200 の小さなページ (「ログインしました。Taylis に戻ります。このタブは閉じてかまいません」、meta refresh と
+   スクリプトで `chikuwachat://sso?…` を開き、開かないときのボタン付き) を返す。既定のブラウザから開くため、302 だけではタブが
+   読み込み中のような空白のまま残った (2026-10-04)。iOS (ASWebAuthenticationSession) と Android (Custom Tabs) は 302 のまま。
    フラグメントにするのは、チケットがサーバのアクセスログやリファラに残らないため。
 
 失敗したら同じ戻り先に `sso_error=<code>` を付けて戻す。コードは `cancelled` (Google で取り消し、`error=access_denied`)、`expired`
