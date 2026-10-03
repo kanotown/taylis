@@ -20,9 +20,10 @@
 		reverse_proxy app:8000
 	}
 
-	# Profile pictures: the app takes up to 5 MB (AVATAR_MAX_BYTES). The clients crop and shrink them first, but an
-	# older client may still send a whole photo, which the 1 MB below would refuse before the app could explain.
-	@avatar path /api/v1/users/me/avatar
+	# Profile pictures and the workspace icon (M93): the app takes up to 5 MB (AVATAR_MAX_BYTES). The clients crop and
+	# shrink profile pictures first, but an older client may still send a whole photo, and the icon is sent as picked;
+	# the 1 MB below cut a 1 MB logo off mid-body (the app answered 400, the Mac app showed a connection error, 2026-10-04).
+	@avatar path /api/v1/users/me/avatar /api/v1/admin/workspace-settings/icon
 	handle @avatar {
 		request_body {
 			max_size 6MB
