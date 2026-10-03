@@ -101,6 +101,12 @@ function renderRail(controller: ReturnType<typeof railController>) {
 
 const tileNames = () => within(screen.getByRole("navigation", { name: "ワークスペース" })).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
 
+const rail = () => screen.getByRole("navigation", { name: "ワークスペース" });
+/** Each tile's slot, in the order drawn. */
+const slots = () => [...document.querySelectorAll<HTMLElement>("[data-workspace]")];
+/** How far each tile is drawn from its slot while a drag is under way (px). */
+const offsets = () => slots().map((node) => Number(/translateY\((-?\d+(?:\.\d+)?)px\)/.exec(node.style.transform)?.[1] ?? 0));
+
 /** jsdom lays nothing out: each tile is 40 px high with 12 px between them, from y = 0. */
 function layOut(): void {
   for (const [index, node] of [...document.querySelectorAll<HTMLElement>("[data-workspace]")].entries()) {
@@ -109,31 +115,62 @@ function layOut(): void {
 }
 
 describe("the rail", () => {
-  it("drags a tile below the others with a drop indicator, and the click that ends the drag does not switch", () => {
-    const controller = railController([A, B, C]);
-    const view = renderRail(controller);
-    layOut();
-    const alpha = screen.getByRole("button", { name: "Alpha" });
-    fireEvent.pointerDown(alpha, { pointerId: 1, button: 0, clientY: 20 });
-    expect(screen.queryByTestId("workspace-drop-indicator")).toBeNull();
-    fireEvent.pointerMove(alpha, { pointerId: 1, clientY: 22 }); // under the threshold: still a click
-    expect(screen.queryByTestId("workspace-drop-indicator")).toBeNull();
-    fireEvent.pointerMove(alpha, { pointerId: 1, clientY: 60 }); // above Beta's middle: slot 1
-    // Slot 1 (right below Alpha itself) shows no indicator: dropping there changes nothing.
-    expect(screen.queryByTestId("workspace-drop-indicator")).toBeNull();
-    fireEvent.pointerMove(alpha, { pointerId: 1, clientY: 140 });
-    const indicator = screen.getByTestId("workspace-drop-indicator");
-    expect(indicator.closest("[data-workspace]")?.getAttribute("data-workspace")).toBe(C.serverUrl);
-    fireEvent.pointerUp(alpha, { pointerId: 1, clientY: 140 });
-    fireEvent.click(alpha);
-    expect(controller.moveWorkspace).toHaveBeenCalledWith(A.serverUrl, 2);
-    expect(controller.switchWorkspace).not.toHaveBeenCalled();
-    view.rerender();
-    expect(tileNames()).toEqual(["Beta", "Gamma", "Alpha", "ワークスペースを追加"]);
-    expect(screen.getByRole("status").textContent).toBe("Alpha を 3 番目に移動しました");
-    // A plain click still switches.
-    fireEvent.click(screen.getByRole("button", { name: "Gamma" }));
-    expect(controller.switchWorkspace).toHaveBeenCalledWith(C.serverUrl);
+  it("lifts the tile, slides the others apart to open the drop gap, and the click that ends the drag does not switch", () => {
+    vi.useFakeTimers();
+    try {
+      const controller = railController([A, B, C]);
+      const view = renderRail(controller);
+      layOut();
+      const alpha = screen.getByRole("button", { name: "Alpha" });
+      fireEvent.pointerDown(alpha, { pointerId: 1, button: 0, clientY: 20 });
+      fireEvent.pointerMove(alpha, { pointerId: 1, clientY: 22 }); // under the threshold: still a click
+      expect(screen.queryByTestId("workspace-drag-ghost")).toBeNull();
+      expect(rail().dataset["dropGap"]).toBeUndefined();
+      expect(document.body.classList.contains("workspace-dragging")).toBe(false);
+
+      fireEvent.pointerMove(alpha, { pointerId: 1, clientY: 60 }); // the lifted tile's middle above Beta's: slot 1
+      const ghost = screen.getByTestId("workspace-drag-ghost");
+      expect(ghost.style.top).toBe("40px"); // follows the pointer, keeping the grip (pressed 20 px into the tile)
+      expect(ghost.className).toContain("scale-110");
+      expect(rail().dataset["dropGap"]).toBe("1");
+      expect(offsets()).toEqual([0, 0, 0]); // slot 1 is right below Alpha itself: nothing moves
+      expect(document.body.classList.contains("workspace-dragging")).toBe(true); // the grabbing hand
+      // Alpha's own place shows as a dimmed empty slot.
+      expect(screen.getByTestId("workspace-drop-gap").closest("[data-workspace]")?.getAttribute("data-workspace")).toBe(A.serverUrl);
+      expect(alpha.className).toContain("opacity-0");
+
+      fireEvent.pointerMove(alpha, { pointerId: 1, clientY: 100 }); // past Beta's middle: slot 2
+      expect(rail().dataset["dropGap"]).toBe("2");
+      expect(offsets()).toEqual([52, -52, 0]); // Beta slides up, the gap opens where Beta was
+      expect(slots()[0]!.style.transition).toBe("transform 120ms ease");
+
+      fireEvent.pointerMove(alpha, { pointerId: 1, clientY: 400 }); // far below: kept half a slot under Gamma
+      expect(screen.getByTestId("workspace-drag-ghost").style.top).toBe("130px");
+      expect(rail().dataset["dropGap"]).toBe("3");
+      expect(offsets()).toEqual([104, -52, -52]);
+
+      fireEvent.pointerUp(alpha, { pointerId: 1, clientY: 400 });
+      fireEvent.click(alpha);
+      expect(controller.moveWorkspace).toHaveBeenCalledWith(A.serverUrl, 2);
+      expect(controller.switchWorkspace).not.toHaveBeenCalled();
+      view.rerender();
+      expect(tileNames()).toEqual(["Beta", "Gamma", "Alpha", "ワークスペースを追加"]);
+      expect(screen.getByRole("status").textContent).toBe("Alpha を 3 番目に移動しました");
+      // The lifted copy glides into its new slot; the tiles, already in their new order, do not animate.
+      expect(screen.getByTestId("workspace-drag-ghost").style.top).toBe("104px");
+      expect(screen.getByTestId("workspace-drag-ghost").className).toContain("scale-100");
+      expect(offsets()).toEqual([0, 0, 0]);
+      for (const slot of slots()) expect(slot.style.transition).toBe("");
+      expect(document.body.classList.contains("workspace-dragging")).toBe(false);
+      act(() => vi.advanceTimersByTime(200));
+      expect(screen.queryByTestId("workspace-drag-ghost")).toBeNull();
+      expect(screen.queryByTestId("workspace-drop-gap")).toBeNull();
+      // A plain click still switches.
+      fireEvent.click(screen.getByRole("button", { name: "Gamma" }));
+      expect(controller.switchWorkspace).toHaveBeenCalledWith(C.serverUrl);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("drops a tile above the first one", () => {
@@ -143,23 +180,91 @@ describe("the rail", () => {
     const gamma = screen.getByRole("button", { name: "Gamma" });
     fireEvent.pointerDown(gamma, { pointerId: 7, button: 0, clientY: 124 });
     fireEvent.pointerMove(gamma, { pointerId: 7, clientY: 5 });
-    expect(screen.getByTestId("workspace-drop-indicator").closest("[data-workspace]")?.getAttribute("data-workspace")).toBe(A.serverUrl);
+    expect(rail().dataset["dropGap"]).toBe("0");
+    expect(offsets()).toEqual([52, 52, -104]); // Alpha and Beta slide down; Gamma's empty slot takes the top
     fireEvent.pointerUp(gamma, { pointerId: 7, clientY: 5 });
     expect(controller.moveWorkspace).toHaveBeenCalledWith(C.serverUrl, 0);
   });
 
-  it("cancels a drag with Esc", () => {
+  it("a press without a drag is a click, and a click after a drag that never fired its own click still switches", () => {
     const controller = railController([A, B, C]);
     renderRail(controller);
     layOut();
-    const alpha = screen.getByRole("button", { name: "Alpha" });
-    fireEvent.pointerDown(alpha, { pointerId: 1, button: 0, clientY: 20 });
-    fireEvent.pointerMove(alpha, { pointerId: 1, clientY: 140 });
-    expect(screen.getByTestId("workspace-drop-indicator")).toBeTruthy();
-    fireEvent.keyDown(alpha, { key: "Escape" });
-    expect(screen.queryByTestId("workspace-drop-indicator")).toBeNull();
-    fireEvent.pointerUp(alpha, { pointerId: 1, clientY: 140 });
-    expect(controller.moveWorkspace).not.toHaveBeenCalled();
+    const beta = screen.getByRole("button", { name: "Beta" });
+    fireEvent.pointerDown(beta, { pointerId: 1, button: 0, clientY: 72 });
+    fireEvent.pointerUp(beta, { pointerId: 1, clientY: 73 });
+    fireEvent.click(beta);
+    expect(controller.switchWorkspace).toHaveBeenCalledWith(B.serverUrl);
+    // A drag whose ending click got lost (the tile moved under the pointer): the next press starts afresh.
+    fireEvent.pointerDown(beta, { pointerId: 2, button: 0, clientY: 72 });
+    fireEvent.pointerMove(beta, { pointerId: 2, clientY: 90 });
+    fireEvent.pointerUp(beta, { pointerId: 2, clientY: 90 });
+    const gamma = screen.getByRole("button", { name: "Gamma" });
+    fireEvent.pointerDown(gamma, { pointerId: 3, button: 0, clientY: 124 });
+    fireEvent.pointerUp(gamma, { pointerId: 3, clientY: 124 });
+    fireEvent.click(gamma);
+    expect(controller.switchWorkspace).toHaveBeenLastCalledWith(C.serverUrl);
+  });
+
+  it("cancels a drag with Esc: the order stays and everything slides back", () => {
+    vi.useFakeTimers();
+    try {
+      const controller = railController([A, B, C]);
+      renderRail(controller);
+      layOut();
+      const alpha = screen.getByRole("button", { name: "Alpha" });
+      fireEvent.pointerDown(alpha, { pointerId: 1, button: 0, clientY: 20 });
+      fireEvent.pointerMove(alpha, { pointerId: 1, clientY: 140 });
+      expect(offsets()).toEqual([104, -52, -52]);
+      fireEvent.keyDown(document.body, { key: "Escape" }); // from anywhere, not only the focused tile
+      expect(rail().dataset["dropGap"]).toBeUndefined();
+      expect(offsets()).toEqual([0, 0, 0]);
+      expect(slots()[1]!.style.transition).toBe("transform 120ms ease"); // they animate back
+      expect(screen.getByTestId("workspace-drag-ghost").style.top).toBe("0px"); // back to Alpha's slot
+      fireEvent.pointerMove(alpha, { pointerId: 1, clientY: 100 }); // the cancelled drag no longer moves anything
+      expect(offsets()).toEqual([0, 0, 0]);
+      fireEvent.pointerUp(alpha, { pointerId: 1, clientY: 100 });
+      expect(controller.moveWorkspace).not.toHaveBeenCalled();
+      act(() => vi.advanceTimersByTime(200));
+      expect(screen.queryByTestId("workspace-drag-ghost")).toBeNull();
+      expect(tileNames().slice(0, 3)).toEqual(["Alpha", "Beta", "Gamma"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with reduced motion: nothing slides, but the gap opens and the tile is lifted; drop and Esc end at once", () => {
+    const matchMedia = vi.fn((query: string) => ({ matches: query === "(prefers-reduced-motion: reduce)", media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+    vi.stubGlobal("matchMedia", matchMedia);
+    try {
+      const controller = railController([A, B, C]);
+      const view = renderRail(controller);
+      layOut();
+      const alpha = screen.getByRole("button", { name: "Alpha" });
+      fireEvent.pointerDown(alpha, { pointerId: 1, button: 0, clientY: 20 });
+      fireEvent.pointerMove(alpha, { pointerId: 1, clientY: 140 });
+      expect(offsets()).toEqual([104, -52, -52]);
+      for (const slot of slots()) expect(slot.style.transition).toBe("");
+      const ghost = screen.getByTestId("workspace-drag-ghost");
+      expect(ghost.className).toContain("scale-110");
+      expect(ghost.style.transition).toBe("none");
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(screen.queryByTestId("workspace-drag-ghost")).toBeNull();
+      expect(offsets()).toEqual([0, 0, 0]);
+      fireEvent.pointerUp(alpha, { pointerId: 1, clientY: 140 });
+      expect(controller.moveWorkspace).not.toHaveBeenCalled();
+
+      fireEvent.pointerDown(alpha, { pointerId: 2, button: 0, clientY: 20 });
+      fireEvent.pointerMove(alpha, { pointerId: 2, clientY: 100 });
+      fireEvent.pointerUp(alpha, { pointerId: 2, clientY: 100 });
+      fireEvent.click(alpha);
+      view.rerender();
+      expect(screen.queryByTestId("workspace-drag-ghost")).toBeNull();
+      expect(tileNames().slice(0, 3)).toEqual(["Beta", "Alpha", "Gamma"]);
+      expect(controller.switchWorkspace).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("moves the focused tile with Alt+↑/↓ and keeps the focus on it", async () => {

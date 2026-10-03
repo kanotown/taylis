@@ -100,6 +100,9 @@
 .fold-inner { min-height: 0; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .fold-row { transition: none; } }
 
+/* A workspace tile is lifted (M93): the grabbing hand wherever the pointer goes, and no text selection. */
+body.workspace-dragging, body.workspace-dragging * { cursor: grabbing !important; user-select: none; }
+
 /* Radix open/close motion. Tailwind's translate utilities use the `translate` property, so these
    keyframes must not translate through `transform` (the two would add up and the dialog would start
    at the top-left corner); they only fade and scale. */
