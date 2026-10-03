@@ -1622,7 +1622,12 @@ CREATE TABLE import_refs (
 - **read_states / thread_follows**: 読み込んだメッセージは全メンバーが既読 (`last_read_seq = last_seq`)、
   スレッドの参加者 (親の投稿者と返信した人) はフォローして既読。
 - **users**: 移行元の人は、指定・前回の移行・同じメールアドレスの順で既存のアカウントに対応付け、それ以外で
-  投稿かリアクションのある人は無効化済みのアカウント (bot は `role = 'bot'`) を作る。
+  投稿かリアクションのある人は無効化済みのアカウント (bot は `role = 'bot'`) を作る。M91 (Slack): メールアドレスは
+  `--email-domain-map FROM=TO` で替えてから照合・保存する (移行元のアドレスは結果の表にだけ出し、アカウントにも
+  import_refs にも残さない。作成の監査ログの `details.source_id` で移行元の人が分かる)。`--activate-domain` の
+  ドメインのふつうのメンバー (ゲスト・bot・削除済みでない) は**有効**でパスワード無しのアカウント (Google でログインが
+  アドレスで結び付ける。投稿が無くても読み込むチャンネルのメンバーなら作る)、Slack のゲスト (`is_restricted` /
+  `is_ultra_restricted`) は `role = 'guest'` の無効化済み。新しい人のユーザー名はアドレスの @ の前 (学籍番号)。
 
 Slack (M87、`app.cli import-slack`、infra/README.md「Slack からの移行」) も同じ表と同じ規則で、`source = 'slack'`。
 Slack のメッセージには全体で一意の id が無いので、`source_id` は次の形にする (スキーマは変えない):

@@ -3,7 +3,7 @@
 An importer (Mattermost, Slack) turns its source into plain records and subclasses ``ImportJob``:
 
 - user: ``id``, ``username``, ``email``, ``first_name``, ``last_name``, ``nickname``,
-  ``position``, ``is_bot``
+  ``position``, ``is_bot`` and optionally ``deleted`` and ``guest`` (M91)
 - channel: ``id``, ``name``, ``display_name``, ``private`` (or ``channel_type``: public,
   private, dm, group_dm), ``header``, ``purpose``, ``creator_id``, ``create_at``, ``delete_at`` and
   ``members`` (``user_id``, ``admin``)
@@ -23,7 +23,7 @@ import logging
 import re
 import uuid
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -50,12 +50,14 @@ from app.modules.channels.models import DM_TYPES, Channel, ChannelMember
 from app.modules.emoji import service as emoji_service
 from app.modules.emoji.models import CustomEmoji
 from app.modules.groups import service as groups
+from app.modules.groups.schemas import RESERVED_NAMES
 from app.modules.importer.models import ImportRef
 from app.modules.messages import repository as message_repo
 from app.modules.messages.mentions import extract_mentions
 from app.modules.messages.models import Message, Reaction
 from app.modules.messages.schemas import EMOJI_PATTERN
 from app.modules.reads.models import ReadState
+from app.modules.sso.service import username_base
 from app.modules.threads.models import ThreadFollow
 from app.modules.users.events import USER_DEACTIVATED, emit_user_event
 from app.modules.users.models import User
@@ -92,10 +94,54 @@ class ImportFailed(Exception):
     """The dump or the options cannot be imported; nothing was committed by the failing step."""
 
 
+# What happened to a source person (M91), as the people table of the report shows it.
+ACTION_USER = "--user"
+ACTION_PREVIOUS = "previous run"
+ACTION_EMAIL = "existing email"
+ACTION_ACTIVE = "create active"
+ACTION_DEACTIVATED = "create deactivated"
+ACTION_GUEST = "create guest"
+ACTION_BOT = "bot"
+ACTION_SKIP = "skip (nothing to import)"
+ACTIONS = (
+    ACTION_USER,
+    ACTION_PREVIOUS,
+    ACTION_EMAIL,
+    ACTION_ACTIVE,
+    ACTION_DEACTIVATED,
+    ACTION_GUEST,
+    ACTION_BOT,
+    ACTION_SKIP,
+)
+_HOW = {  # the older one-line form (report.people)
+    ACTION_USER: "--user",
+    ACTION_PREVIOUS: "前回の移行",
+    ACTION_EMAIL: "メールアドレス一致",
+    ACTION_ACTIVE: "新規 (有効)",
+    ACTION_DEACTIVATED: "新規 (無効化済み)",
+    ACTION_GUEST: "新規 ゲスト (無効化済み)",
+    ACTION_BOT: "新規 bot",
+}
+
+
+@dataclass
+class PersonRow:
+    """One source person in the people table: who they were there and what they are here. The
+    source e-mail address is kept here (the report) only, never on the account (M91)."""
+
+    source_id: str
+    name: str
+    source_email: str
+    username: str  # "" when skipped
+    email: str
+    action: str
+
+
 @dataclass
 class Report:
     dry_run: bool
     people: list[str] = field(default_factory=list)  # "@source → @chikuwa (how)"
+    people_rows: list[PersonRow] = field(default_factory=list)  # M91: the people table
     counts: Counter[str] = field(default_factory=Counter)
     warnings: list[str] = field(default_factory=list)
     # Reaction names kept as ":name:" text with no image yet: a custom emoji of that name added
@@ -123,6 +169,7 @@ class Person:
     id: uuid.UUID
     username: str
     active: bool  # a member who can log in: memberships, follows and read state
+    guest: bool = False  # never a channel owner (SECURITY.md: guests and bots own nothing)
 
 
 @dataclass
@@ -227,6 +274,9 @@ class ImportJob:
     source_label: ClassVar[str]  # in messages ("Mattermost", "Slack")
     namespace: ClassVar[uuid.UUID]  # client_msg_id and attachment ids derive from source ids
     name_suffix: ClassVar[str]  # a taken username becomes "name-<suffix>"
+    # A new person's username comes from their address's local part (M91, Slack) rather than
+    # from the source username (Mattermost, which was imported that way).
+    username_from_email: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -239,9 +289,18 @@ class ImportJob:
         blobs: BlobStore,
         settings: Settings,
         dry_run: bool,
+        email_domain_map: Mapping[str, str] | None = None,
+        activate_domains: Collection[str] = (),
     ) -> None:
         self.db = db
         self.users = users
+        # M91: `local@FROM` is `local@TO` here, for matching and for a created account's address.
+        self.email_domain_map = {
+            old.lower().lstrip("@"): new.lower().lstrip("@")
+            for old, new in (email_domain_map or {}).items()
+        }
+        # M91: regular members whose (mapped) address is in one of these get active accounts.
+        self.activate_domains = {d.lower().lstrip("@") for d in activate_domains}
         self.channel_records = channel_records
         self.user_map = {k.lower().lstrip("@"): v.lower().lstrip("@") for k, v in user_map.items()}
         self.actor = actor
@@ -279,6 +338,10 @@ class ImportJob:
             needed.update(r["user_id"] for r in post["reactions"])
         return needed
 
+    def channel_member_ids(self) -> set[str]:
+        """Source people who are members of a channel being imported."""
+        return {m["user_id"] for record in self.channel_records for m in record["members"]}
+
     async def _emoji(self) -> None:
         """Custom emoji the posts use (before the posts, so reactions find them)."""
         self.custom_emoji = set((await self.db.execute(select(CustomEmoji.name))).scalars().all())
@@ -315,6 +378,14 @@ class ImportJob:
     @property
     def dry_run(self) -> bool:
         return self.report.dry_run
+
+    async def people_preview(self) -> Report:
+        """Only the people step, always rolled back: the table before a real run (M91)."""
+        try:
+            await self._people()
+        finally:
+            await self.db.rollback()
+        return self.report
 
     async def run(self) -> Report:
         try:
@@ -374,29 +445,83 @@ class ImportJob:
     def _mapped_target(self, record: dict[str, Any]) -> str | None:
         return next((self.user_map[k] for k in self.user_keys(record) if k in self.user_map), None)
 
+    def target_email(self, record: dict[str, Any]) -> str | None:
+        """The source address as it is here: ``--email-domain-map`` applied, lower case."""
+        email = str(record.get("email") or "").strip()
+        if not email:
+            return None
+        local, at, domain = email.rpartition("@")
+        if not at:
+            return email.lower()
+        return f"{local}@{self.email_domain_map.get(domain.lower(), domain)}".lower()
+
+    def _creates_active(self, record: dict[str, Any], email: str | None) -> bool:
+        """A regular member there (no bot, guest or deleted account) whose address is in an
+        ``--activate-domain``: they sign in through Google, so their account is ready (M91)."""
+        if record["is_bot"] or record.get("guest") or record.get("deleted") or email is None:
+            return False
+        return _EMAIL.match(email) is not None and email.rsplit("@", 1)[1] in self.activate_domains
+
+    def _create_action(self, record: dict[str, Any]) -> str:
+        if record["is_bot"]:
+            return ACTION_BOT
+        if record.get("guest"):
+            return ACTION_GUEST
+        if self._creates_active(record, self.target_email(record)):
+            return ACTION_ACTIVE
+        return ACTION_DEACTIVATED
+
     async def _people(self) -> None:
         self._check_user_map()
         # Only people with something to show get a new account: members who never posted or
-        # reacted are left out, and so are people who are only mentioned.
+        # reacted are left out, and so are people who are only mentioned. M91: a person who gets
+        # an active account also comes for their channel memberships alone.
         needed = self.needed_user_ids()
+        members = self.channel_member_ids()
         refs = await self._refs("user")
         for record in sorted(self.users.values(), key=lambda u: u["username"].lower()):
-            user, how = await self._existing_account(record, refs)
+            user, action = await self._existing_account(record, refs)
             if user is None:
-                if record["id"] not in needed:
+                action = self._create_action(record)
+                if record["id"] not in needed and not (
+                    action == ACTION_ACTIVE and record["id"] in members
+                ):
+                    self._row(record, None, ACTION_SKIP)
                     continue
-                user = await self._new_account(record)
-                how = "新規 bot" if record["is_bot"] else "新規 (無効化済み)"
+                user = await self._new_account(record, action)
                 self.report.counts["users_created"] += 1
-                self.report.unmapped.append(f"@{record['username']} → @{user.username} ({how})")
+                self.report.unmapped.append(
+                    f"@{record['username']} → @{user.username} ({_HOW[action]})"
+                )
             else:
                 self.report.counts["users_mapped"] += 1
             if record["id"] not in refs:
                 self._ref("user", record["id"], user.id)
-            person = Person(user.id, user.username, user.is_active and user.role != "bot")
+            person = Person(
+                user.id, user.username, user.is_active and user.role != "bot", user.is_guest
+            )
             self.people[record["id"]] = person
             self.by_source_name[record["username"].lower()] = person
-            self.report.people.append(f"@{record['username']} → @{user.username} ({how})")
+            self.report.people.append(f"@{record['username']} → @{user.username} ({_HOW[action]})")
+            self._row(record, user, action)
+
+    def _row(self, record: dict[str, Any], user: User | None, action: str) -> None:
+        full_name = f"{record['first_name']} {record['last_name']}".strip()
+        name = record["username"]
+        shown = record["nickname"] or full_name
+        if shown and shown != name:
+            name = f"{name} ({shown})"
+        self.report.people_rows.append(
+            PersonRow(
+                source_id=record["id"],
+                name=name,
+                source_email=str(record.get("email") or ""),
+                username=user.username if user is not None else "",
+                email=(user.email or "") if user is not None else (self.target_email(record) or ""),
+                action=action,
+            )
+        )
+        self.report.counts[f"people: {action}"] += 1
 
     async def _existing_account(
         self, record: dict[str, Any], refs: dict[str, uuid.UUID]
@@ -412,19 +537,22 @@ class ImportJob:
                     f"--user {record['username']}={target}: an earlier run imported "
                     f"@{record['username']} as another account"
                 )
-            return user, "--user"
+            return user, ACTION_USER
         if earlier is not None:
             user = await self.db.get(User, earlier)
             if user is None:
                 raise ImportFailed(f"@{record['username']}: imported before, now gone")
-            return user, "前回の移行"
-        if record["email"]:
-            user = (
-                await self.db.execute(select(User).where(User.email == record["email"]))
-            ).scalar_one_or_none()
+            return user, ACTION_PREVIOUS
+        email = self.target_email(record)
+        if email:
+            user = await self._user_by_email(email)
             if user is not None:
-                return user, "メールアドレス一致"
+                return user, ACTION_EMAIL
         return None, ""
+
+    async def _user_by_email(self, email: str) -> User | None:
+        """``users.email`` is CITEXT: the match ignores case, as Google sign-in's does."""
+        return (await self.db.execute(select(User).where(User.email == email))).scalar_one_or_none()
 
     async def _user_by_name(self, username: str) -> User | None:
         return (
@@ -432,43 +560,76 @@ class ImportJob:
         ).scalar_one_or_none()
 
     async def _free_username(self, wanted: str) -> str:
+        """``wanted``, else ``wanted-<suffix>``, ``wanted-<suffix>3`` …: deterministic for the
+        same accounts here and the same source (people are taken in username order)."""
         suffix = self.name_suffix
         base = wanted.lower() if USERNAME.match(wanted.lower()) else f"{suffix}-user"
         candidate, n = base, 1
-        while await self._user_by_name(candidate) is not None or await groups.name_in_use(
-            self.db, candidate
+        while (
+            candidate in RESERVED_NAMES
+            or await self._user_by_name(candidate) is not None
+            or await groups.name_in_use(self.db, candidate)
         ):
             n += 1
             candidate = f"{base[: 29 - len(suffix)]}-{suffix}{n if n > 2 else ''}"
         return candidate
 
-    async def _new_account(self, record: dict[str, Any]) -> User:
-        username = await self._free_username(record["username"])
-        if username != record["username"].lower():
+    async def _new_account(self, record: dict[str, Any], action: str) -> User:
+        """A bot, or a person's account: active (``create active``: no password, they sign in
+        through Google, which finds the account by its address), a deactivated guest, or a
+        deactivated member. None of them joins the default channels (M90): memberships come
+        from the source."""
+        email = self.target_email(record)
+        if email is not None and not _EMAIL.match(email):
+            email = None
+        # M91: the address's local part (a student id) names a person's account, as Google
+        # sign-in would name it; else (and for bots) the source username.
+        wanted = (
+            username_base(email)
+            if email is not None and action != ACTION_BOT and self.username_from_email
+            else record["username"]
+        )
+        username = await self._free_username(wanted)
+        if username != wanted.lower():
             self.report.warn(
-                f"@{record['username']}: その名前は使用中なので @{username} として作成 "
+                f"@{record['username']}: @{wanted.lower()} は使えないので @{username} として作成 "
                 f"(同じ人なら --user {record['username']}=<ユーザー名> を指定)"
             )
         full_name = f"{record['first_name']} {record['last_name']}".strip()
         display_name = (record["nickname"] or full_name or record["username"])[:80]
-        if record["is_bot"]:
+        if action == ACTION_BOT:
             return await admin.create_bot_in_tx(
                 self.db, actor_id=self.actor.id, username=username, display_name=display_name
             )
-        email = record["email"] if record["email"] and _EMAIL.match(record["email"]) else None
+        if email is not None and await self._user_by_email(email) is not None:
+            # Taken by a person made earlier in this run (two source people, one address).
+            self.report.warn(
+                f"@{record['username']}: {email} は使用中なのでメールアドレス無しで作成"
+            )
+            email = None
+        active = action == ACTION_ACTIVE
         user = await admin.create_user_in_tx(
             self.db,
-            AdminUserCreate(username=username, display_name=display_name, email=email),
-            password_hash=await hash_password(generate_temporary_password(32)),
-            must_change_password=True,
+            AdminUserCreate(
+                username=username,
+                display_name=display_name,
+                email=email,
+                role="guest" if action == ACTION_GUEST else "member",
+            ),
+            # Active: no password at all, like an account Google sign-in made (M48); the first
+            # sign-in links it. Deactivated: an unknown temporary one, as before.
+            password_hash=None if active else await hash_password(generate_temporary_password(32)),
+            must_change_password=not active,
             actor_id=self.actor.id,
-            details={"source": self.source},
+            details={"source": self.source, "source_id": record["id"]},
             join_default_channels=False,  # M90: memberships come from the source
         )
         user.title = clip(record["position"], 80)
-        user.deactivated_at = utcnow()
+        if not active:
+            user.deactivated_at = utcnow()
         await self.db.flush()
-        await emit_user_event(self.db, USER_DEACTIVATED, user)
+        if not active:
+            await emit_user_event(self.db, USER_DEACTIVATED, user)
         return user
 
     def _person_id(self, source_user_id: str | None) -> uuid.UUID:
@@ -521,7 +682,8 @@ class ImportJob:
                 await self._dm_channel(record, kind, refs)
                 continue
             members = {
-                self.people[m["user_id"]].id: m["admin"] or m["user_id"] == record["creator_id"]
+                self.people[m["user_id"]].id: (m["admin"] or m["user_id"] == record["creator_id"])
+                and not self.people[m["user_id"]].guest
                 for m in record["members"]
                 if m["user_id"] in self.people and self.people[m["user_id"]].active
             }

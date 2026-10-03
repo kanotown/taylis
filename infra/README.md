@@ -512,16 +512,101 @@ Slack の無料プランで見えなくなった古いファイル (`hidden_by_l
 
 **人の対応付け** (先に当てはまったもの):
 
-1. `--user slackの名前=chikuwaの名前`。左は Slack のユーザー名・表示名・ユーザー id (`U…`) のどれでもよい (表示名に
-   空白があれば `--user "Hanako S=hana"` のように引用符で囲む)。指定先は既に存在すること
+1. `--user slackの名前=taylisのユーザー名`。左は Slack のユーザー名・表示名・ユーザー id (`U…`)・メールアドレスの
+   どれでもよい (表示名に空白があれば `--user "Hanako S=hana"` のように引用符で囲む)。指定先は既に存在すること
 2. 前回の移行で対応付けたアカウント
-3. 同じメールアドレスのアカウント (users.json の `profile.email`。書き出しの種類によっては入っていない)
-4. それ以外で投稿かリアクションのある人は、新しく**無効化済み**のアカウントを作る (bot は bot アカウント。
-   users.json に無い bot も `bot_id` / 表示名ごとに 1 つ作る)。名前が使用中なら `名前-slack` にして警告を出す
+3. 同じメールアドレスのアカウント (users.json の `profile.email`。書き出しの種類によっては入っていない)。
+   `--email-domain-map FROM=TO` (M91、何回でも、大文字小文字は区別しない) があれば、`名前@FROM` を `名前@TO` として
+   探す (Slack は `…@vc.ibaraki.ac.jp`、Taylis の Google ログインは `…@g.ibaraki.ac.jp` のような場合)
+4. それ以外は新しく作る。作るのは投稿かリアクションのある人 (と、5 の人は読み込むチャンネルのメンバーなら投稿が
+   無くても)。メールアドレスは 3 で替えたもの (Slack のアドレスはアカウントに残さず、結果の表にだけ出る)、
+   ユーザー名はアドレスの @ の前 (学籍番号。アドレスが無ければ Slack のユーザー名)。使用中なら `名前-slack`、
+   `名前-slack3` … にして警告を出す
+5. 作る人のうち、`--activate-domain DOMAIN` (M91、何回でも) のアドレスで、Slack のふつうのメンバー (ゲスト・bot・
+   削除済みでない) は**有効**なアカウント (ロール member、パスワード無し)。Google でログインするとアドレスで
+   このアカウントに結び付く (SSO.md §4 の 2)。最初のログインから Slack のチャンネル・履歴・既読がそのまま見える
+6. Slack のゲスト (`is_restricted` / `is_ultra_restricted`) は**ゲスト** (`role = guest`) の無効化済み。それ以外
+   (ドメインの外の人、Slack で削除済みの人。ドメインの中でも) は**無効化済み**のメンバー。bot は bot アカウント
+   (users.json に無い bot も `bot_id` / 表示名ごとに 1 つ)。無効化済みの人はチャンネルのメンバーにならない
+   (後で有効にしたら管理者がチャンネルに入れる)。ゲストはチャンネルの作成者でもオーナーにしない
+
+作った人は M90 の既定のチャンネルには入らない (チャンネルは Slack から)。入れたいときは読み込みの後で、管理 →「設定」の
+「既定のチャンネル」の「今いる人も全員入れる」を押す。
+
+結果の最初に、人ごとの表 (Slack id・名前・Slack のアドレス → ユーザー名・アドレス・何をするか) と、何をするかごとの
+人数が出る。何をするかは `--user` / `previous run` (前回の移行) / `existing email` / `create active` /
+`create deactivated` / `create guest` / `bot` / `skip (nothing to import)` (投稿もメンバーシップも無いので作らない。
+その人も後で Google でログインすれば自動で作られる)。`--people-only` はこの表だけを出す (何も書かない。
+チャンネル名の確認とファイルは見ない。投稿者を知るためにメッセージの JSON は読む)。
 
 **チャンネル名**: Slack のチャンネル名をそのまま使う。読み込み先に同じ名前があると、何も書かずに止まる (例: `#general`)。
 その場合は `--channel-prefix slack-` のように前置きを付ける (新しく作るチャンネルがすべて `slack-general` などになる)。
 2 回目以降は前回作ったチャンネルに足すので、前置きは同じでなくてもよい。
+
+**研究室の Slack を taylis に移す (M91)**: 12 GB の VPS の `/srv/chikuwachat` (既存の nginx の後ろ、`--behind-proxy`)。
+Slack は `学籍番号@vc.ibaraki.ac.jp`、taylis は Google でログイン (許可ドメイン `g.ibaraki.ac.jp`、自動作成オン)。
+以下はサーバーで root として。`--actor` は taylis の管理者のユーザー名 (`kano`)。
+
+手元の Mac から書き出しを送る:
+
+```sh
+ssh root@<taylis のサーバー> install -d -m 700 /srv/chikuwachat/import
+scp ~/Downloads/'<ワークスペース> Slack export <期間>.zip' root@<taylis のサーバー>:/srv/chikuwachat/import/slack-export.zip
+```
+
+サーバーで、最初に一度だけ (イメージは deploy.conf の `REGISTRY` と `.release` のタグ):
+
+```sh
+cd /srv/chikuwachat/infra
+set -a && . ./deploy.conf && set +a
+export CHIKUWA_SERVER_IMAGE="$REGISTRY/chikuwachat-server:$(cat .release)"
+export CHIKUWA_WEB_IMAGE="$REGISTRY/chikuwachat-web:$(cat .release)"
+chmod 600 /srv/chikuwachat/import/slack-export.zip
+```
+
+**1.** 人の表だけを見る (`--people-only`、何も書かない)。表は `/srv/chikuwachat/import/people.txt` にも残る
+(横に長いので `less -S` で見る)。`create active` が研究室の人、`create guest` と `create deactivated` が
+有効にならない人。違う人がいれば、Taylis でその人のアカウントを先に作り (管理画面か招待)、`--user` を足して
+もう一度 1. を実行する (例: `--user U0123ABCD=yamada`、`--user guest@example.com=sato`):
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml --profile proxy \
+  run --rm -T --no-deps --user root -e RUN_MIGRATIONS=false -v /srv/chikuwachat/import:/import app \
+  python -m app.cli import-slack /import/slack-export.zip --actor kano \
+  --email-domain-map vc.ibaraki.ac.jp=g.ibaraki.ac.jp --activate-domain g.ibaraki.ac.jp \
+  --people-only 2>&1 | tee /srv/chikuwachat/import/people.txt
+```
+
+**2.** 試し読み (`--dry-run`、何も書かない。チャンネル名の衝突・件数・取れないファイルが出る。ファイルは
+`/srv/chikuwachat/import/files` にダウンロードされ、3. で使い回す)。1. で足した `--user` は同じく付ける。
+`channels already exist` で止まったら `--channel-prefix slack-` を足す:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml --profile proxy \
+  run --rm -T --no-deps --user root -e RUN_MIGRATIONS=false -v /srv/chikuwachat/import:/import app \
+  python -m app.cli import-slack /import/slack-export.zip --actor kano \
+  --email-domain-map vc.ibaraki.ac.jp=g.ibaraki.ac.jp --activate-domain g.ibaraki.ac.jp \
+  --download --files-cache /import/files --dry-run 2>&1 | tee /srv/chikuwachat/import/dry-run.txt
+```
+
+**3.** 本番 (2. から `--dry-run` を外しただけ。もう一度実行しても、増えたメッセージだけを足し、人は前回と同じ
+アカウントに対応付ける):
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml --profile proxy \
+  run --rm -T --no-deps --user root -e RUN_MIGRATIONS=false -v /srv/chikuwachat/import:/import app \
+  python -m app.cli import-slack /import/slack-export.zip --actor kano \
+  --email-domain-map vc.ibaraki.ac.jp=g.ibaraki.ac.jp --activate-domain g.ibaraki.ac.jp \
+  --download --files-cache /import/files 2>&1 | tee /srv/chikuwachat/import/import.txt
+```
+
+**4.** Web で管理 →「設定」→「既定のチャンネル」の「今いる人も全員入れる」を押す (読み込んだ人を「全体連絡」などへ)。
+研究室の人は Google (`…@g.ibaraki.ac.jp`) でログインすると、自分のアカウントに Slack の履歴がある状態で入れる。
+ゲストや無効化済みの人を使えるようにするときは、管理画面で有効にしてチャンネルに入れる。
+
+**5.** 終わったら `rm -rf /srv/chikuwachat/import` (書き出し・キャッシュ・結果に全メッセージとアドレスが入っている)。
+
+ファイルが 403 やログイン画面で取れないときは下の「添付ファイル」の `--slack-token-file` を 2. と 3. に足す。
 
 **添付ファイル**: Slack の書き出しにはファイルそのものは入っておらず、ダウンロード用の URL (`url_private_download`。
 標準の書き出しには `?t=` のトークンが付いている) だけがある。
