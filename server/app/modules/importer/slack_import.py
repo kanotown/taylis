@@ -361,7 +361,9 @@ class FileSource:
     cache_dir: Path | None = None
     download: bool = False
     token: str | None = None
-    max_bytes: int = 100 * 1024 * 1024
+    # 0 = the server's ATTACHMENT_MAX_BYTES (set by run_import): a fixed 100 MB here used to cap the
+    # download even when an import run raised the limit (the lab's 592 MB videos, 2026-10-03).
+    max_bytes: int = 0
     concurrency: int = 4
     attempts: int = 4
     backoff_seconds: float = 1.0
@@ -489,7 +491,7 @@ class FileSource:
         if urlsplit(url).scheme != "https":
             return "HTTPS でない URL は取得しない"
         size = f.get("size")
-        if isinstance(size, int) and size > self.max_bytes:
+        if self.max_bytes and isinstance(size, int) and size > self.max_bytes:
             return f"添付の上限 ({self.max_bytes} バイト) を超える"
         dest = self._cached(f)
         assert dest is not None
@@ -538,7 +540,7 @@ class FileSource:
         with part.open("wb") as out:
             async for chunk in response.aiter_bytes(1024 * 1024):
                 written += len(chunk)
-                if written > self.max_bytes:
+                if self.max_bytes and written > self.max_bytes:
                     out.close()
                     await run_in_threadpool(part.unlink, True)
                     return f"添付の上限 ({self.max_bytes} バイト) を超える"
@@ -1453,7 +1455,11 @@ async def import_slack(
             if not options.emoji_dir.exists():
                 raise ImportFailed(f"--emoji-dir {options.emoji_dir}: no such directory or ZIP")
             images = EmojiImages(options.emoji_dir)
-        files.max_bytes = min(files.max_bytes, settings.attachment_max_bytes)
+        files.max_bytes = (
+            min(files.max_bytes, settings.attachment_max_bytes)
+            if files.max_bytes
+            else settings.attachment_max_bytes
+        )
         job = SlackImport(
             db,
             export,
