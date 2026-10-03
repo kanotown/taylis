@@ -18,7 +18,7 @@ import { orderTemplates, readSchedule, SCHEDULE_USAGE } from "../ui/templates";
 import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, NetworkError } from "../api/errors";
-import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, type WorkspaceEntry } from "./workspaces";
+import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, signInName, type WorkspaceEntry } from "./workspaces";
 import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
@@ -200,6 +200,12 @@ export class AppController {
   get username(): string {
     if (this.addingWorkspace) return "";
     return this.active?.username ?? this.activeEntry?.username ?? "";
+  }
+
+  /** M96: what the login form starts with: the account's username now (it may have changed since signing in). */
+  get loginName(): string {
+    if (this.addingWorkspace) return "";
+    return this.active?.me?.username ?? (this.activeEntry ? signInName(this.activeEntry) : "");
   }
 
   private account(server: string, username: string): string {
@@ -1199,6 +1205,24 @@ export class AppController {
     }
   }
 
+  /**
+   * M96: rename myself (PATCH /users/me {username}); null when done, else the reason to show under the field (taken,
+   * reserved, 3 times in 24 hours, offline …). The saved workspace entry follows through the store (followUsername).
+   */
+  async renameMe(username: string): Promise<string | null> {
+    if (!this.api) return "ログインしていません";
+    try {
+      const me = await this.api.updateMe({ username });
+      this.me = me;
+      if (this.active) this.active.me = me;
+      this.store.setMe(me);
+      this.store.upsertUser(me);
+      return null;
+    } catch (error) {
+      return describeError(error);
+    }
+  }
+
   async updateDisplayName(displayName: string): Promise<boolean> {
     if (!this.api) return false;
     try {
@@ -1462,6 +1486,18 @@ export class AppController {
    * M93: bootstrap's and workspace.settings_updated's `icon_version` (an admin changed the icon) reach the saved entry, so
    * the rail and the switcher follow at once and keep it across restarts. Missing (a server before M93): no change.
    */
+  /**
+   * M96: a rename (mine here, on another device or by an administrator) reaches the saved entry as `loginName`, so the
+   * workspace list and the next login form show the new name. `username` stays: it names the credential and the store.
+   */
+  private followUsername(session: Session, store: Store): void {
+    const live = store.me?.username;
+    const entry = this.workspaces.find((e) => e.serverUrl === session.serverUrl);
+    if (!live || !entry || signInName(entry) === live) return;
+    this.patchEntry(session.serverUrl, { loginName: live === entry.username ? undefined : live });
+    this.emit();
+  }
+
   private followIcon(session: Session, store: Store): void {
     const live = store.workspaceSettings.icon_version;
     if (live === undefined) return;
@@ -1486,6 +1522,7 @@ export class AppController {
       if (session.store !== store) return;
       this.updateBadge();
       this.followIcon(session, store);
+      this.followUsername(session, store);
       if (this.active === session) noteVersions(store.users.values()); // M14a: pictures follow user.updated
       else this.noteRail(session);
     });

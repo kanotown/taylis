@@ -108,6 +108,7 @@
 | `workspace_id` | `GET /server` の値。プッシュの振り分けと重複登録の検出に使う |
 | `name` | `GET /server` の値。起動時とワークスペースを開いた時に読み直す |
 | `username` / `user_id` | サインインしているアカウント |
+| `login_name` | M96: サインインした後でユーザー名が変わったときの今の名前 (desktop `loginName`、iOS / Android `loginName`)。一覧の表示とログイン画面の初期値に使う。`username` は資格情報ストアとローカルストアの名前なのでサインインし直すまで変えない。端末は受け取る UserMe で追従する: 自分の変更、token の更新 (15 分以内)、起動とサインイン。desktop は `user.updated` の後の `/users/me` と bootstrap ですぐ、Android は bootstrap でも |
 | `badge` / `has_unread` | 最後に知った未読 (§6)。開いていないワークスペースの表示用 |
 | `icon_version` | M93: `GET /server` / bootstrap / イベントの値 (§3.4)。無ければ頭文字のタイル |
 

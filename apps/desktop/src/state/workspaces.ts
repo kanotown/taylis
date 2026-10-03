@@ -7,7 +7,10 @@ export interface WorkspaceEntry {
   workspaceId: string | null;
   /** GET /server; the host until known. */
   name: string;
+  /** The name signed in with: it names the saved credential and the local database (`server|username`), so it stays. */
   username: string;
+  /** M96: the account's username now, when it changed after signing in (`signInName`); missing = `username`. */
+  loginName?: string;
   userId: string | null;
   /** The session ended (signed out elsewhere, revoked): the entry stays so signing back in is one step. */
   signedOut?: boolean;
@@ -79,6 +82,11 @@ function read<T>(key: string, fallback: T): T {
 function valid(entry: unknown): entry is WorkspaceEntry {
   const e = entry as WorkspaceEntry;
   return typeof e === "object" && e !== null && typeof e.serverUrl === "string" && typeof e.username === "string" && typeof e.name === "string";
+}
+
+/** M96: the name to show and to sign in with (the account's username now; `username` may be the old one). */
+export function signInName(entry: Pick<WorkspaceEntry, "username" | "loginName">): string {
+  return entry.loginName ?? entry.username;
 }
 
 /**

@@ -9,6 +9,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { ApiClient } from "../src/api/client";
+import { ApiError } from "../src/api/errors";
 import type { UserMe, UserUpdate } from "../src/api/types";
 import { AppController } from "../src/state/app";
 import { COMPACT_QUERY } from "../src/ui/compact";
@@ -35,7 +36,7 @@ afterEach(() => {
 });
 
 /** Channel C, bob on this device (a browser) and signed in on his iPhone and an old laptop too. */
-async function setup(options: { admin?: boolean; title?: string } = {}) {
+async function setup(options: { admin?: boolean; title?: string; renameError?: ApiError } = {}) {
   const w = world({ posts: 1, lastRead: 1 });
   const bob = w.server.users.get(w.bob.id)!;
   if (options.admin) bob.role = "admin";
@@ -47,6 +48,7 @@ async function setup(options: { admin?: boolean; title?: string } = {}) {
   const updates: UserUpdate[] = [];
   const extra: Record<string, unknown> = {
     updateMe: async (patch: UserUpdate) => {
+      if (patch.username !== undefined && options.renameError) throw options.renameError;
       updates.push(patch);
       return { ...w.store.me!, ...patch } as UserMe;
     },
@@ -269,6 +271,47 @@ it("every old setting is still there: 入力 (送信キー, テンプレート),
   await back();
   await openRow("ワークスペース");
   expect(within(you()).getByRole("list", { name: "ワークスペース" })).toBeTruthy();
+  w.engine.stop();
+});
+
+it("M96 「プロフィールを編集」: the username field checks as I type, renames with its own button, says password sign-in uses the new name", async () => {
+  const { w, updates } = await setup();
+  await tap("you");
+  await openRow("プロフィールを編集");
+  const form = within(you()).getByRole("form", { name: "ユーザー名" });
+  const field = within(form).getByRole("textbox") as HTMLInputElement;
+  const submit = within(form).getByRole("button", { name: "ユーザー名を変更" }) as HTMLButtonElement;
+  expect(field.value).toBe("bob");
+  expect(submit.disabled).toBe(true); // unchanged
+  expect(within(form).getByText(/パスワードでのログインには新しいユーザー名を使います/)).toBeTruthy();
+  expect(within(form).getByText(/24 時間に 3 回まで/)).toBeTruthy();
+  for (const [typed, problem] of [["ab", "3〜32 文字にしてください"], ["bob smith", "使えるのは a-z、0-9、. _ - だけです"], ["here", "このユーザー名は予約されているため使えません"]] as const) {
+    fireEvent.change(field, { target: { value: typed } });
+    expect(within(form).getByRole("alert").textContent).toBe(problem);
+    expect(submit.disabled).toBe(true);
+  }
+  fireEvent.change(field, { target: { value: "Bob.K" } });
+  expect(field.value).toBe("bob.k"); // lowercase as typed
+  expect(within(form).queryByRole("alert")).toBeNull();
+  fireEvent.click(submit);
+  await flush();
+  expect(updates.at(-1)).toEqual({ username: "bob.k" });
+  expect(w.store.me?.username).toBe("bob.k");
+  expect(within(form).getByText("@bob.k に変更しました。次からはこの名前でログインします")).toBeTruthy();
+  w.engine.stop();
+});
+
+it("M96: the server's refusal (the daily limit, a taken name) shows under the username field", async () => {
+  const { w, updates } = await setup({ renameError: new ApiError(429, "username_change_limited", "limited", { retry_after_seconds: 3600 }) });
+  await tap("you");
+  await openRow("プロフィールを編集");
+  const form = within(you()).getByRole("form", { name: "ユーザー名" });
+  fireEvent.change(within(form).getByRole("textbox"), { target: { value: "robert" } });
+  fireEvent.click(within(form).getByRole("button", { name: "ユーザー名を変更" }));
+  await flush();
+  expect(within(form).getByRole("alert").textContent).toBe("ユーザー名を変更できるのは 24 時間に 3 回までです。しばらくしてからお試しください");
+  expect(updates).toEqual([]);
+  expect(w.store.me?.username).toBe("bob");
   w.engine.stop();
 });
 

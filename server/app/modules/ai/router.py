@@ -48,7 +48,7 @@ async def create_agent(actor: CurrentAdmin, body: AiAgentCreate, db: Db) -> AiAg
 async def update_agent(
     agent_id: UUID, actor: CurrentAdmin, body: AiAgentUpdate, db: Db
 ) -> AiAgentOut:
-    """Only the fields sent change; the username never does."""
+    """Only the fields sent change; the username changes through PATCH /admin/users/{id} (M96)."""
     return await service.update_agent(db, actor, agent_id, body)
 
 

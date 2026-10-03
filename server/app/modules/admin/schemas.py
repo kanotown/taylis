@@ -5,8 +5,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.modules.users.models import User
+from app.modules.users.schemas import USERNAME_PATTERN as USERNAME_PATTERN
 
-USERNAME_PATTERN = r"^[a-z0-9._-]{3,32}$"
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 Role = Literal["admin", "member", "guest"]  # guest (M13e): restricted to their channels
 
@@ -21,6 +21,9 @@ class AdminUserCreate(BaseModel):
 class AdminUserUpdate(BaseModel):
     role: Role | None = None
     deactivated: bool | None = None
+    # M96: rename anyone (bots too), without the self-service limit; 409 username_taken /
+    # username_reserved.
+    username: str | None = Field(default=None, pattern=USERNAME_PATTERN)
 
 
 class AdminUserOut(BaseModel):

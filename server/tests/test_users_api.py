@@ -77,7 +77,7 @@ async def test_profile_email_is_unique_without_partial_update(
     [
         {"role": "admin"},
         {"must_change_password": False},
-        {"username": "newname"},
+        {"username": "New Name"},  # M96: renaming is allowed, in the username pattern
         {"display_name": None},
         {"display_name": ""},
         {"display_name": "x" * 81},

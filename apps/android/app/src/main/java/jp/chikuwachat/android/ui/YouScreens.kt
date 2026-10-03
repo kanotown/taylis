@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -88,6 +89,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -651,8 +654,54 @@ private fun QuickReactionsSection(controller: AppController, me: UserMe) {
 }
 
 /**
- * 「プロフィールを編集」: the picture (M14a / M16g), display name, title, and on the lab roster (M23) my research topic
- * and reading; 「在席を隠す」 (L4, M31) applies at once.
+ * M96: my username with its own 「ユーザー名を変更」 (one request with its own refusals: taken, reserved, 3 times in 24
+ * hours). Typed lowercase and checked as typed ([UsernameRules]); the server's refusal stays under the field.
+ */
+@Composable
+private fun UsernameEditor(controller: AppController, current: String, hasPassword: Boolean, limited: Boolean) {
+    val scope = rememberCoroutineScope()
+    var value by rememberSaveable(current) { mutableStateOf(current) }
+    var serverError by remember { mutableStateOf<String?>(null) }
+    var saved by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val name = UsernameRules.normalize(value)
+    val changed = name != current
+    val problem = if (changed) UsernameRules.problem(value) else null
+    val message = problem ?: serverError
+    OutlinedTextField(
+        value,
+        { value = it.lowercase().take(32); serverError = null; saved = null },
+        label = { Text("ユーザー名 (3〜32 文字、a-z 0-9 . _ -)") },
+        prefix = { Text("@") },
+        singleLine = true,
+        isError = message != null,
+        supportingText = message?.let { { Text(it) } },
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = KeyboardType.Ascii),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+        OutlinedButton(
+            enabled = !busy && changed && problem == null,
+            onClick = {
+                scope.launch {
+                    busy = true
+                    val error = controller.renameMe(name)
+                    busy = false
+                    serverError = error
+                    if (error == null) saved = name
+                }
+            },
+        ) { Text("ユーザー名を変更") }
+        saved?.takeIf { it == current }?.let {
+            Hint("@$it に変更しました" + if (hasPassword) "。次からはこの名前でログインします" else "", Modifier.padding(start = 12.dp))
+        }
+    }
+    Hint(UsernameRules.hint(hasPassword) + if (limited) " " + UsernameRules.LIMIT_NOTE else "", Modifier.padding(top = 4.dp))
+}
+
+/**
+ * 「プロフィールを編集」: the picture (M14a / M16g), the username (M96, its own button), display name, title, and on the
+ * lab roster (M23) my research topic and reading; 「在席を隠す」 (L4, M31) applies at once.
  */
 @Composable
 private fun ProfileEditScreen(controller: AppController, version: Int) {
@@ -695,7 +744,8 @@ private fun ProfileEditScreen(controller: AppController, version: Int) {
                 }
             }
         }
-        OutlinedTextField(displayName, { displayName = it.take(80); saved = false }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        UsernameEditor(controller, current = controller.store.users[me.id]?.username ?: me.username, hasPassword = me.hasPassword != false, limited = me.role != "admin")
+        OutlinedTextField(displayName, { displayName = it.take(80); saved = false }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
         OutlinedTextField(title, { title = it.take(80); saved = false }, label = { Text("肩書 (任意)") }, placeholder = { Text("例: 教授 / 助教 / D1 / M2 / B4") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
         if (line != null) {
             OutlinedTextField(

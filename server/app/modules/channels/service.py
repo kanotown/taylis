@@ -632,6 +632,46 @@ async def _free_times_name(db: AsyncSession, base: str) -> str:
     raise conflict("name_taken", "A channel with this name already exists")
 
 
+def times_name_follows(name: str | None, username: str) -> bool:
+    """Whether a times channel's name is still the one made from `username` (`times-{username}`,
+    or `-2` … when that was taken): renamed by hand, it is the owner's choice and stays."""
+    if name is None:
+        return False
+    base = f"times-{username}".lower()
+    lowered = name.lower()
+    if lowered == base:
+        return True
+    suffix = lowered.removeprefix(base + "-")
+    return suffix != lowered and suffix.isdigit() and 2 <= int(suffix) <= TIMES_NAME_TRIES
+
+
+async def rename_times_for_username_in_tx(
+    db: AsyncSession, owner_id: uuid.UUID, old_username: str, new_username: str
+) -> tuple[str, str] | None:
+    """M96 (DATA_MODEL.md users「ユーザー名の変更」): the owner's times follows a new username when
+    its name still is the one made from the old (`times_name_follows`). Returns (from, to), or None
+    when there is no such times or every candidate name is taken (the name then stays). The
+    caller commits."""
+    channel = await repo.get_times_of(db, owner_id)
+    if channel is None or not times_name_follows(channel.name, old_username):
+        return None
+    base = f"times-{new_username}"
+    for n in range(1, TIMES_NAME_TRIES + 1):
+        candidate = base if n == 1 else f"{base}-{n}"
+        if candidate.lower() == (channel.name or "").lower():
+            return None  # already right (cannot happen with a changed username, but harmless)
+        if await repo.get_channel_by_name(db, candidate) is None:
+            break
+    else:
+        return None
+    previous = channel.name or ""
+    channel.name = candidate
+    channel.updated_at = utcnow()
+    await db.flush()
+    await _emit_channel(db, events.CHANNEL_UPDATED, channel, audience_type="channel")
+    return previous, candidate
+
+
 async def follow_times_in_tx(db: AsyncSession, owner_id: uuid.UUID, user_id: uuid.UUID) -> bool:
     """For the lab module: a supervisor joins their student's times, if any (caller commits)."""
     channel = await repo.get_times_of(db, owner_id)

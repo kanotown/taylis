@@ -107,6 +107,29 @@ CREATE TABLE users (
 自由登録は無い。管理者が CLI または `POST /admin/users` で作成し、仮パスワードを本人に渡す。
 削除は無効化のみ。メッセージの `sender_id` 参照を保つ。
 
+**ユーザー名の変更 (M96)**: ユーザー名は作った後も変えられる (移行なし、`server/app/modules/users/username.py`)。
+
+- 誰が: 本人は `PATCH /users/me {username}` (ゲストも。ほかの欄と同じトランザクションで、どれかが拒まれれば何も変わらない)、
+  管理者は `PATCH /admin/users/{id} {username}` (人もボットも、自分も。AI のボットの名前もここで変える)。ボットはログイン
+  しないので本人の変更は無い。
+- 検証: `^[a-z0-9._-]{3,32}$` (422)、大文字小文字を無視して一意 (citext、`409 username_taken`)、グループ名と同じ名前空間
+  (`409 username_taken`)、予約語 `here` / `channel` / `everyone` / `all` / `group` (groups の `RESERVED_NAMES`) と
+  `deleted-` で始まる名前 (匿名化した人の形) は `409 username_reserved`。今と同じ名前は変更なし (数えない)。
+- 本人の変更は 24 時間に 3 回まで (`429 username_change_limited`、`Retry-After`・`details.retry_after_seconds` / `limit` /
+  `window_hours`)。数えるのは監査ログの `user.username_changed` で本人が actor の行 (管理者による変更は数えない)。
+  管理者は制限なし。
+- 同じトランザクションで: `user.updated` (全員へ。クライアントはディレクトリ・`@` の補完・自分の表示を更新)、監査
+  `user.username_changed` (`from`・`to`・`by: self | admin`、actor)。管理者の変更は `admin.user_updated` にも残る。
+- times: 本人の times の名前が古い名前から作った形 (`times-{古い名前}`、または `-2` … `-20`) のままなら
+  `times-{新しい名前}` (使われていれば `-2` …) に変え、`channel.updated` をメンバーへ。手で付けた名前は変えない。
+  空きが無ければ名前はそのまま。監査の `times_channel {from, to}`。
+- 変わらないもの: セッションと refresh token (トークンは user id)、保存されたメンション (`<@id>`、メッセージ・キャンバス・
+  タスクの本文)、Google でログイン (アドレスで結び付け)、取り込み (import_refs)、名簿 (並べ替えに今の名前を使うだけ)。
+- **古い名前はすぐに解放する** (SECURITY.md §2.9 のなりすましの注意と監査)。古い名前が残る場所 (直さない): 本文に手で打った
+  `@古い名前` (補完を使わずに送った字そのもの)、TOTP の認証アプリのラベル (`otpauth://` は設定時の名前)、以前の
+  `cli export-channel` の書き出し、取り込みの結果の表、監査の過去の行、端末の資格情報ストアと端末の DB の名前
+  (`server|username`。サインインし直すまで古い名前のまま。表示とログイン画面の初期値は今の名前、WORKSPACES.md §4)。
+
 ### devices (端末)
 
 ```sql
@@ -192,7 +215,8 @@ CREATE UNIQUE INDEX channels_times_owner_uniq ON channels (times_owner_id) WHERE
 **times (M24)**: 一人ひとりの作業ログ用のチャンネル (Slack の times 文化)。研究室以外でも使える汎用機能。
 
 - `POST /times` で自分の times を作る (冪等: あればそれを返す 200、作れば 201)。公開チャンネル `times-{username}`
-  (名前が使われていれば `-2`, `-3` …)。作った本人が owner。名簿 (M23) の指導教員は自動でメンバーになる。
+  (名前が使われていれば `-2`, `-3` …)。ユーザー名を変えると、その形のままの名前は新しい名前に付いていく (M96、users
+  「ユーザー名の変更」)。作った本人が owner。名簿 (M23) の指導教員は自動でメンバーになる。
   後から指導教員が付いたときも、その学生の times に加える。
 - admin は既存のチャンネル (Mattermost から取り込んだ times など) を誰かの times に指定・解除できる
   (`PATCH /channels/{id}` の `times_owner_id`。DM は不可、1 人 1 つで重なれば 409 `times_exists`、guest は不可)。

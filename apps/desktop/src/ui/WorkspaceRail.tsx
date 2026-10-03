@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { AppController } from "../state/app";
-import { dropIndex, gapForPointer, hostLabel, type WorkspaceEntry } from "../state/workspaces";
+import { dropIndex, gapForPointer, hostLabel, signInName, type WorkspaceEntry } from "../state/workspaces";
 import { TRAFFIC_LIGHTS_INSET } from "../platform/env";
 import { useReservesTrafficLights } from "../platform/windowState";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
@@ -291,7 +291,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
         {announcement}
       </span>
       {leaving && (
-        <Modal title={`${leaving.name} からサインアウトしますか？`} description={`${leaving.username} @ ${hostLabel(leaving.serverUrl)}`} onClose={() => setLeaving(null)}>
+        <Modal title={`${leaving.name} からサインアウトしますか？`} description={`${signInName(leaving)} @ ${hostLabel(leaving.serverUrl)}`} onClose={() => setLeaving(null)}>
           <p className="mt-3 text-sm text-muted">この端末に保存したこのワークスペースのメッセージと下書きを消し、一覧から外します。サーバ上のデータは消えません。</p>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setLeaving(null)}>キャンセル</Button>
@@ -387,7 +387,7 @@ function WorkspaceTile({ controller, entry, index, count, tileRef, placeholder, 
       <ContextMenu.Portal>
         <ContextMenu.Content className={MENU}>
           <ContextMenu.Label className="px-2.5 py-1 text-xs text-muted">
-            {entry.username} @ {hostLabel(entry.serverUrl)}
+            {signInName(entry)} @ {hostLabel(entry.serverUrl)}
           </ContextMenu.Label>
           <ContextMenu.Item className={ITEM} onSelect={() => void controller.switchWorkspace(entry.serverUrl)}>開く</ContextMenu.Item>
           {count > 1 && (
@@ -424,7 +424,7 @@ export function WorkspaceMenu({ controller }: { controller: AppController }) {
         </button>
       </MenuTrigger>
       <MenuContent align="start" className="min-w-60">
-        {entry && <div className="px-2.5 pb-1 pt-1.5 text-xs text-muted">{entry.username} @ {hostLabel(entry.serverUrl)}</div>}
+        {entry && <div className="px-2.5 pb-1 pt-1.5 text-xs text-muted">{signInName(entry)} @ {hostLabel(entry.serverUrl)}</div>}
         {controller.multiWorkspace && (
           <MenuItem onSelect={() => controller.beginAddWorkspace()}>
             <Plus size={15} /> ワークスペースを追加…

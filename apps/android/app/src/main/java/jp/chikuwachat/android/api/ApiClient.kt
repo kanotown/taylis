@@ -269,6 +269,10 @@ class ApiClient(
     /** M11d: profile card fields; JsonNull clears a field, omitted fields keep their value. */
     suspend fun updateProfile(fields: JsonObject): UserMe = request("PATCH", "/api/v1/users/me", fields)
 
+    /** M96: a new username (409 username_taken / username_reserved, 429 username_change_limited). */
+    suspend fun updateUsername(username: String): UserMe =
+        request("PATCH", "/api/v1/users/me", buildJsonObject { put("username", username) })
+
     /**
      * M23: my research topic and reading on the lab roster (404 roster_entry_not_found while I am not on it). Both are
      * always sent, null as JSON null: an omitted field keeps its value on the server, and a data class body would lose

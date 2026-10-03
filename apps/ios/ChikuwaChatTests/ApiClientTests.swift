@@ -160,6 +160,41 @@ final class ApiClientTests: XCTestCase {
         XCTAssertTrue(seen[1].body.contains(#""display_name":"田中""#), seen[1].body)
     }
 
+    /// M96: PATCH /users/me {username}; a refusal comes back as its code (the screen shows the Japanese text).
+    func testUpdateUsernameSendsOnlyTheNameAndKeepsTheRefusalCode() async throws {
+        var seen: [(method: String, path: String, body: String)] = []
+        var refuse = false
+        StubProtocol.handler = { request in
+            let body = request.httpBodyStream.map { stream -> String in
+                stream.open(); defer { stream.close() }
+                var data = Data(); var buffer = [UInt8](repeating: 0, count: 4096)
+                while stream.hasBytesAvailable { let n = stream.read(&buffer, maxLength: buffer.count); if n <= 0 { break }; data.append(buffer, count: n) }
+                return String(decoding: data, as: UTF8.self)
+            } ?? ""
+            seen.append((request.httpMethod ?? "", request.url!.path, body))
+            if refuse {
+                return (429, Data(#"{"error":{"code":"username_change_limited","message":"limited","details":{"retry_after_seconds":3600}}}"#.utf8))
+            }
+            return (200, Data(#"{"id":"u","username":"alice.k","display_name":"Alice","role":"member","deactivated_at":null,"created_at":"","updated_at":"","email":null,"must_change_password":false}"#.utf8))
+        }
+        let client = makeClient()
+        client.accessToken = "access-1"
+        let me = try await client.updateUsername("alice.k")
+        XCTAssertEqual(me.username, "alice.k")
+        XCTAssertEqual(seen.map(\.method), ["PATCH"])
+        XCTAssertEqual(seen.map(\.path), ["/api/v1/users/me"])
+        XCTAssertEqual(seen[0].body, #"{"username":"alice.k"}"#)
+        refuse = true
+        do {
+            _ = try await client.updateUsername("alice.k2")
+            XCTFail("expected username_change_limited")
+        } catch {
+            XCTAssertEqual((error as? ApiError)?.code, "username_change_limited")
+        }
+        XCTAssertEqual(ErrorMessages.byCode["username_change_limited"], "ユーザー名を変更できるのは 24 時間に 3 回までです。しばらくしてからお試しください")
+        XCTAssertEqual(ErrorMessages.byCode["username_reserved"], "このユーザー名は予約されているため使えません")
+    }
+
     func testLoginSendsTheTotpCodeOnlyWhenGiven() async throws {
         var bodies: [String] = []
         StubProtocol.handler = { [self] request in

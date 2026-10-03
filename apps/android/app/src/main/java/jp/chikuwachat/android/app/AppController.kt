@@ -289,6 +289,19 @@ class AppController(private val app: Application) {
     var savedUsername = ""
         private set
 
+    /** M96: what the login form starts with: the account's username now (it may have changed since signing in). */
+    val loginUsername: String
+        get() = workspaces.firstOrNull { it.serverUrl == savedServer && it.username == savedUsername }?.signInName ?: savedUsername
+
+    /**
+     * M96: the account's username now reaches the saved entry (the list and the next login form show it); `username`
+     * keeps naming the refresh token and the local database. Called with every UserMe this device gets: a rename here,
+     * a token refresh (every 15 minutes at most), bootstrap and a sign-in.
+     */
+    private fun followUsername(serverUrl: String, live: String) {
+        updateWorkspace(serverUrl) { entry -> entry.copy(loginName = live.takeIf { it != entry.username }) }
+    }
+
     // --- workspaces (M16c, WORKSPACES.md) ---------------------------------------------------------
 
     /** The servers this device knows, in the order they were added. */
@@ -1026,7 +1039,7 @@ class AppController(private val app: Application) {
                 if (this@AppController.engine !== engine) return@collect
                 engineStatus = status
                 // The access token is no longer refreshed on every connect: take role and flags from bootstrap.
-                if (status == EngineStatus.ONLINE) store.me?.let { me = it }
+                if (status == EngineStatus.ONLINE) store.me?.let { me = it; followUsername(api.baseUrl, it.username) }
             }
         }
         var attached = false
@@ -1038,6 +1051,7 @@ class AppController(private val app: Application) {
                 if (this.api !== api || this.engine !== engine) return@prepare
                 me = tokens.user
                 store.setMe(tokens.user)
+                followUsername(api.baseUrl, tokens.user.username)
                 if (tokens.user.mustChangePassword) {
                     engine.stop()
                     screen = Screen.CHANGE_PASSWORD
@@ -2200,6 +2214,17 @@ class AppController(private val app: Application) {
         store.setMe(updated)
         true
     }.getOrElse { error = describe(it); false }
+
+    /** M96: rename myself; null when done, else the reason for under the field (taken, reserved, 3 times in 24 hours …). */
+    suspend fun renameMe(username: String): String? = attempt {
+        val client = api ?: return "ログインしていません"
+        val updated = client.updateUsername(username)
+        me = updated
+        store.setMe(updated)
+        store.upsertUser(updated.asPublic)
+        followUsername(client.baseUrl, updated.username)
+        null
+    }.getOrElse { describe(it) }
 
     suspend fun updateDisplayName(displayName: String): Boolean = attempt {
         val updated = api!!.updateMe(displayName = displayName.trim())

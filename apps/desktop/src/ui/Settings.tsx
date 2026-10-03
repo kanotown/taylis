@@ -5,7 +5,7 @@ import type { SessionOut, TotpStatusOut } from "../api/types";
 import { isTauri } from "../platform/env";
 import { notificationPermission, type NotificationPermissionState, requestNotificationPermission } from "../platform/notify";
 import type { AppController } from "../state/app";
-import { hostLabel, type WorkspaceEntry } from "../state/workspaces";
+import { hostLabel, signInName, type WorkspaceEntry } from "../state/workspaces";
 import { WorkspaceIcon } from "./workspaceIcons";
 import { AdminBody } from "./AdminDialog";
 import { AvatarCropDialog } from "./AvatarCropDialog";
@@ -22,6 +22,7 @@ import { StatusForm } from "./StatusDialog";
 import { TemplatesSettings } from "./TemplatesSettings";
 import { THEME_OPTIONS, themeLabel, useTheme, writeTheme } from "./theme";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
+import { UsernameEditor } from "./UsernameEditor";
 import { StatusGlyph } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
 
@@ -214,7 +215,7 @@ function logoutLabel(controller: AppController): string {
 /** 「ログアウト」's confirmation (the red row at the bottom of the list). */
 export function LogoutConfirm({ controller, onClose }: { controller: AppController; onClose: () => void }) {
   return (
-    <Modal onClose={onClose} title="ログアウトしますか？" description={controller.activeEntry ? `${controller.activeEntry.username} @ ${hostLabel(controller.activeEntry.serverUrl)}` : undefined}>
+    <Modal onClose={onClose} title="ログアウトしますか？" description={controller.activeEntry ? `${signInName(controller.activeEntry)} @ ${hostLabel(controller.activeEntry.serverUrl)}` : undefined}>
       <p className="mt-3 text-sm text-muted">この端末に保存したこのワークスペースのメッセージと下書きを消します。サーバ上のデータは消えません。</p>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>キャンセル</Button>
@@ -623,7 +624,7 @@ export function QuickReactionsSettings({ controller }: { controller: AppControll
   );
 }
 
-/** 「プロフィールを編集」: photo, name, title, my roster line (M23), 在席を隠す (L4). */
+/** 「プロフィールを編集」: photo, username (M96), name, title, my roster line (M23), 在席を隠す (L4). */
 function ProfileSection({ controller }: { controller: AppController }) {
   const me = meOf(controller);
   const [displayName, setDisplayName] = useState(me?.display_name ?? "");
@@ -679,6 +680,10 @@ function ProfileSection({ controller }: { controller: AppController }) {
             )}
           </div>
         </div>
+      )}
+      {me && (
+        // M96: its own form (one request, with its own refusals: taken, reserved, 3 times in 24 hours).
+        <UsernameEditor current={me.username} hasPassword={me.has_password !== false} limitNote={me.role !== "admin"} onSubmit={(name) => controller.renameMe(name)} />
       )}
       <form className="space-y-3" onSubmit={save}>
         <Field label="表示名">
@@ -916,7 +921,7 @@ function WorkspacesSection({ controller }: { controller: AppController }) {
                   <span className="truncate font-medium">{entry.name}</span>
                   {active && <Badge tone="accent" className="shrink-0">表示中</Badge>}
                 </div>
-                <div className="truncate text-xs text-muted">{entry.username} @ {hostLabel(entry.serverUrl)}{signedIn ? "" : " · サインインが必要です"}</div>
+                <div className="truncate text-xs text-muted">{signInName(entry)} @ {hostLabel(entry.serverUrl)}{signedIn ? "" : " · サインインが必要です"}</div>
               </div>
               {!active && controller.multiWorkspace && (
                 <Button size="sm" variant="secondary" onClick={() => void controller.switchWorkspace(entry.serverUrl)}>
@@ -940,7 +945,7 @@ function WorkspacesSection({ controller }: { controller: AppController }) {
         <p className="text-xs text-muted">ブラウザではこのサーバのワークスペースだけを開きます。複数のワークスペースはデスクトップ版で使えます。</p>
       )}
       {leaving && (
-        <Modal title={`${leaving.name} からサインアウトしますか？`} description={`${leaving.username} @ ${hostLabel(leaving.serverUrl)}`} onClose={() => setLeaving(null)}>
+        <Modal title={`${leaving.name} からサインアウトしますか？`} description={`${signInName(leaving)} @ ${hostLabel(leaving.serverUrl)}`} onClose={() => setLeaving(null)}>
           <p className="mt-3 text-sm text-muted">この端末に保存したこのワークスペースのメッセージと下書きを消し、一覧から外します。サーバ上のデータは消えません。</p>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setLeaving(null)}>キャンセル</Button>

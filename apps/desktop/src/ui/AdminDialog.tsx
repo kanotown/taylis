@@ -1,10 +1,11 @@
 import { Archive, ArchiveRestore, Copy, KeyRound, NotebookPen, Pencil, ShieldCheck, UserPlus, UserX } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
+import { describeError } from "../api/errors";
 import type { AdminUserOut, Role } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
-import { AiTab, USERNAME_FIXED_HINT } from "./AiTab";
+import { AiTab } from "./AiTab";
 import { Avatar } from "./Avatar";
 import { fullTimestamp } from "./format";
 import { CanvasTemplatesTab } from "./CanvasTemplatesTab";
@@ -16,6 +17,8 @@ import { WebhooksTab } from "./WebhooksTab";
 import { WorkflowManager } from "./WorkflowViews";
 import { WorkspaceSettingsTab } from "./WorkspaceSettingsTab";
 import { Badge, Button, cn, Field, Input, Modal, UNDERLINE_TAB, UNDERLINE_TAB_ROW } from "./primitives";
+import { USERNAME_HINT } from "./username";
+import { UsernameEditor } from "./UsernameEditor";
 
 type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates";
 
@@ -82,6 +85,8 @@ function UsersTab({ controller }: { controller: AppController }) {
   const [form, setForm] = useState({ username: "", display_name: "", email: "", role: "member" as Role });
   const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
   const [confirm, setConfirm] = useState<AdminUserOut | null>(null);
+  // M96: 「ユーザー名を変更」 (anyone, bots included; administrators are not limited).
+  const [renaming, setRenaming] = useState<AdminUserOut | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
@@ -141,7 +146,7 @@ function UsersTab({ controller }: { controller: AppController }) {
       </div>
       {creating && (
         <form className="grid grid-cols-2 gap-3 rounded-xl border border-line p-3" onSubmit={create}>
-          <Field label="ユーザー名 (3〜32 文字、a-z 0-9 . _ -)" hint={USERNAME_FIXED_HINT}>
+          <Field label="ユーザー名 (3〜32 文字、a-z 0-9 . _ -)" hint={USERNAME_HINT}>
             <Input value={form.username} pattern="[a-z0-9._-]{3,32}" required autoFocus onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} />
           </Field>
           <Field label="表示名">
@@ -168,6 +173,11 @@ function UsersTab({ controller }: { controller: AppController }) {
           {users.map((user) => {
             const self = user.id === me?.id;
             const off = !!user.deactivated_at;
+            const renameButton = !user.username.startsWith("deleted-") && (
+              <Button size="sm" variant="ghost" title="ユーザー名を変更" disabled={busy} onClick={() => setRenaming(user)}>
+                <Pencil size={14} /> ユーザー名を変更
+              </Button>
+            );
             return (
               <li key={user.id} className={cn("flex flex-wrap items-center gap-3 px-3 py-2 text-sm max-md:gap-y-1.5", off && "opacity-60")}>
                 <Avatar id={user.id} name={user.display_name} size={30} />
@@ -197,6 +207,7 @@ function UsersTab({ controller }: { controller: AppController }) {
                         </select>
                       </label>
                     )}
+                    {renameButton}
                     <Button size="sm" variant="ghost" title="仮パスワードを発行" disabled={busy} onClick={() => void run(async () => { const out = await controller.api!.adminResetPassword(user.id); setIssued({ username: user.username, password: out.temporary_password }); })}>
                       <KeyRound size={14} /> 再設定
                     </Button>
@@ -218,6 +229,7 @@ function UsersTab({ controller }: { controller: AppController }) {
                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(async () => { await controller.api!.adminUpdateUser(user.id, { deactivated: false }); })}>
                       再有効化
                     </Button>
+                    {renameButton}
                     {!user.username.startsWith("deleted-") && (
                       <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setConfirm(user)}>
                         匿名化
@@ -225,11 +237,36 @@ function UsersTab({ controller }: { controller: AppController }) {
                     )}
                   </div>
                 )}
-                {self && <span className="text-xs text-muted">自分</span>}
+                {self && (
+                  <div className="flex items-center gap-1 max-md:w-full max-md:pl-[42px]">
+                    {renameButton}
+                    <span className="text-xs text-muted">自分</span>
+                  </div>
+                )}
               </li>
             );
           })}
         </ul>
+      )}
+      {renaming && (
+        <Modal onClose={() => setRenaming(null)} title={`${renaming.display_name} のユーザー名を変更`} className="w-[480px]">
+          <div className="mt-3">
+            <UsernameEditor
+              current={renaming.username}
+              hasPassword={renaming.role !== "bot"}
+              autoFocus
+              onSubmit={async (name) => {
+                try {
+                  await controller.api!.adminUpdateUser(renaming.id, { username: name });
+                  return null;
+                } catch (error) {
+                  return describeError(error);
+                }
+              }}
+              onDone={() => { setRenaming(null); void load(); }}
+            />
+          </div>
+        </Modal>
       )}
       {confirm && (
         <Modal onClose={() => setConfirm(null)} title="ユーザーを匿名化しますか？" className="w-[440px]">

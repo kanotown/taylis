@@ -4,9 +4,8 @@ import { type FormEvent, useEffect, useState } from "react";
 import { AI_CHARACTER_MAX, AI_EFFORTS, AI_MODELS, AI_PROVIDERS, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiEffort, type AiModel, aiModelLabel, aiProviderLabel, type AiProviderName, aiProviderOf, type AiProviderOut, type AiUsageOut, DEFAULT_AI_MODEL, describeAiError } from "../api/ai";
 import type { AppController } from "../state/app";
 import { Badge, Button, cn, Field, Input, Modal, Textarea } from "./primitives";
+import { USERNAME_HINT } from "./username";
 
-/** No endpoint changes a username (bots or people): it is the @name in mentions, so the forms say so up front. */
-export const USERNAME_FIXED_HINT = "あとから変更できません (メンションの @名前 になります)";
 
 const SELECT = "h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm";
 
@@ -242,11 +241,11 @@ function AgentEditor({ row, busy, providers, onClose, onSave }: { row: AiAgentOu
             <Input value={form.name} maxLength={80} required autoFocus placeholder="例: ちくわ" onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
           {row ? (
-            <Field label="ユーザー名 (変えられません)" hint={USERNAME_FIXED_HINT}>
+            <Field label="ユーザー名" hint="管理 →「ユーザー」の「ユーザー名を変更」で変えられます">
               <Input value={`@${row.username}`} disabled readOnly />
             </Field>
           ) : (
-            <Field label="ユーザー名 (3〜32 文字、a-z 0-9 . _ -)" hint={USERNAME_FIXED_HINT}>
+            <Field label="ユーザー名 (3〜32 文字、a-z 0-9 . _ -)" hint={USERNAME_HINT}>
               <Input value={form.username} pattern="[a-z0-9._-]{3,32}" required placeholder="例: ai-chikuwa" onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} />
             </Field>
           )}

@@ -72,7 +72,7 @@ class AiAgentCreate(BaseModel):
 
 
 class AiAgentUpdate(BaseModel):
-    """Only the fields sent change; the username never does."""
+    """Only the fields sent change; the username changes through PATCH /admin/users/{id} (M96)."""
 
     name: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
     character: str | None = Field(default=None, max_length=MAX_CHARACTER_LENGTH)
