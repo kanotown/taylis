@@ -77,6 +77,7 @@ from app.modules.times_feed.router import router as times_feed_router
 from app.modules.totp.router import router as totp_router
 from app.modules.users.router import router as users_router
 from app.modules.webhooks.router import router as webhooks_router
+from app.modules.workflows.router import router as workflows_router
 from app.modules.workspace import service as workspace
 from app.modules.workspace.router import router as workspace_router
 from app.realtime.hub import RealtimeHub
@@ -326,6 +327,7 @@ def build_api_router() -> APIRouter:
     api.include_router(scheduled_router)
     api.include_router(reminders_router)
     api.include_router(recurring_router)
+    api.include_router(workflows_router)
     api.include_router(emoji_router)
     api.include_router(templates_router)
     api.include_router(groups_router)

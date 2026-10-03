@@ -18,6 +18,7 @@ import { AiBadge } from "./ai";
 import { MessageBody } from "./MessageBody";
 import { PollCard, pollHidesBody } from "./PollCard";
 import { PriorityLabel } from "./PriorityLabel";
+import { WorkflowLabel } from "./WorkflowViews";
 import { CollectionChip } from "./RecurringPosts";
 import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
@@ -989,6 +990,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           <div className="mb-0.5 text-[11px] text-muted">チャンネルにも送信済み</div>
         )}
         {message.priority && <PriorityLabel priority={message.priority} className="mb-1" />}
+        {/* M94: posted through a workflow's form. */}
+        {message.workflow && !message.deleted && <div><WorkflowLabel controller={controller} message={message} /></div>}
         {(pinnedBy || saved) && (
           <div className="mb-0.5 flex items-center gap-3 text-[11px] text-muted">
             {pinnedBy && (

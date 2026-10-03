@@ -1,0 +1,647 @@
+{
+  "_comment": "Workflow forms (docs/WORKFLOWS.md §3): how a template is rendered, which values are accepted and what the form starts with. The server (server/app/modules/workflows/render.py; it does not fill defaults) and every client's preview and form checks follow these cases.",
+  "render": [
+    {
+      "name": "absence report: a user mention, a Japanese date, the reason line",
+      "fields": [
+        {
+          "key": "報告者",
+          "label": "報告者",
+          "type": "user",
+          "required": true
+        },
+        {
+          "key": "日付",
+          "label": "日付",
+          "type": "date",
+          "required": true
+        },
+        {
+          "key": "内容",
+          "label": "報告の内容",
+          "type": "select",
+          "required": true,
+          "options": [
+            "欠席",
+            "遅刻",
+            "早退"
+          ]
+        },
+        {
+          "key": "理由",
+          "label": "理由",
+          "type": "textarea"
+        }
+      ],
+      "template": "*【報告者】* {{報告者}}\n*【報告の内容】* ゼミの{{内容}}\n*【日付】* {{日付}}\n*【理由】* {{理由}}",
+      "values": {
+        "報告者": [
+          "0190a1b2-0000-7000-8000-000000000001"
+        ],
+        "日付": "2026-07-28",
+        "内容": "欠席",
+        "理由": "体調不良のため"
+      },
+      "expected": "*【報告者】* <@0190a1b2-0000-7000-8000-000000000001>\n*【報告の内容】* ゼミの欠席\n*【日付】* 2026年7月28日 (火)\n*【理由】* 体調不良のため"
+    },
+    {
+      "name": "an empty optional field drops its whole line",
+      "fields": [
+        {
+          "key": "報告者",
+          "label": "報告者",
+          "type": "user",
+          "required": true
+        },
+        {
+          "key": "日付",
+          "label": "日付",
+          "type": "date",
+          "required": true
+        },
+        {
+          "key": "内容",
+          "label": "報告の内容",
+          "type": "select",
+          "required": true,
+          "options": [
+            "欠席",
+            "遅刻",
+            "早退"
+          ]
+        },
+        {
+          "key": "理由",
+          "label": "理由",
+          "type": "textarea"
+        }
+      ],
+      "template": "*【報告者】* {{報告者}}\n*【報告の内容】* ゼミの{{内容}}\n*【日付】* {{日付}}\n*【理由】* {{理由}}",
+      "values": {
+        "報告者": [
+          "0190a1b2-0000-7000-8000-000000000001"
+        ],
+        "日付": "2026-07-28",
+        "内容": "遅刻",
+        "理由": ""
+      },
+      "expected": "*【報告者】* <@0190a1b2-0000-7000-8000-000000000001>\n*【報告の内容】* ゼミの遅刻\n*【日付】* 2026年7月28日 (火)"
+    },
+    {
+      "name": "seminar notice: @channel from the template, a datetime, several people",
+      "fields": [
+        {
+          "key": "回",
+          "label": "回",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "日時",
+          "label": "日時",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "key": "場所",
+          "label": "場所/URL",
+          "type": "text"
+        },
+        {
+          "key": "発表者",
+          "label": "発表者",
+          "type": "user",
+          "multiple": true
+        }
+      ],
+      "template": "<!channel> *【第 {{回}} 回学部ゼミのお知らせ】*\n• *日時*：{{日時}}\n• *場所*：{{場所}}\n• *発表者*：{{発表者}}",
+      "values": {
+        "回": "6",
+        "日時": "2026-05-19T13:00",
+        "場所": "W2-101",
+        "発表者": [
+          "0190a1b2-0000-7000-8000-000000000001",
+          "0190a1b2-0000-7000-8000-000000000002"
+        ]
+      },
+      "expected": "<!channel> *【第 6 回学部ゼミのお知らせ】*\n• *日時*：2026年5月19日 (火) 13:00\n• *場所*：W2-101\n• *発表者*：<@0190a1b2-0000-7000-8000-000000000001> <@0190a1b2-0000-7000-8000-000000000002>"
+    },
+    {
+      "name": "typed text cannot mention: <@ and <! lose their <",
+      "fields": [
+        {
+          "key": "a",
+          "label": "A",
+          "type": "text"
+        },
+        {
+          "key": "b",
+          "label": "B",
+          "type": "textarea"
+        },
+        {
+          "key": "t",
+          "label": "T",
+          "type": "time"
+        },
+        {
+          "key": "ok",
+          "label": "OK",
+          "type": "checkbox"
+        }
+      ],
+      "template": "{{a}}\n{{b}}",
+      "values": {
+        "a": "<!channel> 見て <@0190a1b2-0000-7000-8000-000000000001>",
+        "b": "a<b and <!here>\n2 行目"
+      },
+      "expected": "＜!channel> 見て ＜@0190a1b2-0000-7000-8000-000000000001>\na<b and ＜!here>\n2 行目"
+    },
+    {
+      "name": "a value holding {{…}} is not read again; spaces inside braces are fine",
+      "fields": [
+        {
+          "key": "a",
+          "label": "A",
+          "type": "text"
+        },
+        {
+          "key": "b",
+          "label": "B",
+          "type": "textarea"
+        },
+        {
+          "key": "t",
+          "label": "T",
+          "type": "time"
+        },
+        {
+          "key": "ok",
+          "label": "OK",
+          "type": "checkbox"
+        }
+      ],
+      "template": "[{{ a }}] {{b}}",
+      "values": {
+        "a": "{{b}}",
+        "b": "x"
+      },
+      "expected": "[{{b}}] x"
+    },
+    {
+      "name": "time and checkbox; a line without placeholders stays",
+      "fields": [
+        {
+          "key": "a",
+          "label": "A",
+          "type": "text"
+        },
+        {
+          "key": "b",
+          "label": "B",
+          "type": "textarea"
+        },
+        {
+          "key": "t",
+          "label": "T",
+          "type": "time"
+        },
+        {
+          "key": "ok",
+          "label": "OK",
+          "type": "checkbox"
+        }
+      ],
+      "template": "固定の行\n時刻 {{t}} / 確認 {{ok}}",
+      "values": {
+        "t": "09:05",
+        "ok": true
+      },
+      "expected": "固定の行\n時刻 09:05 / 確認 はい"
+    },
+    {
+      "name": "an unchecked box is いいえ (not empty: the line stays)",
+      "fields": [
+        {
+          "key": "a",
+          "label": "A",
+          "type": "text"
+        },
+        {
+          "key": "b",
+          "label": "B",
+          "type": "textarea"
+        },
+        {
+          "key": "t",
+          "label": "T",
+          "type": "time"
+        },
+        {
+          "key": "ok",
+          "label": "OK",
+          "type": "checkbox"
+        }
+      ],
+      "template": "確認 {{ok}}",
+      "values": {},
+      "expected": "確認 いいえ"
+    },
+    {
+      "name": "leading and trailing blank lines go; markdown in values stays",
+      "fields": [
+        {
+          "key": "a",
+          "label": "A",
+          "type": "text"
+        },
+        {
+          "key": "b",
+          "label": "B",
+          "type": "textarea"
+        },
+        {
+          "key": "t",
+          "label": "T",
+          "type": "time"
+        },
+        {
+          "key": "ok",
+          "label": "OK",
+          "type": "checkbox"
+        }
+      ],
+      "template": "{{a}}\n本文\n{{b}}",
+      "values": {
+        "a": "",
+        "b": "**太字** と\n- 箇条"
+      },
+      "expected": "本文\n**太字** と\n- 箇条"
+    },
+    {
+      "name": "a line with one filled and one empty placeholder stays",
+      "fields": [
+        {
+          "key": "a",
+          "label": "A",
+          "type": "text"
+        },
+        {
+          "key": "b",
+          "label": "B",
+          "type": "textarea"
+        },
+        {
+          "key": "t",
+          "label": "T",
+          "type": "time"
+        },
+        {
+          "key": "ok",
+          "label": "OK",
+          "type": "checkbox"
+        }
+      ],
+      "template": "{{a}}/{{b}}",
+      "values": {
+        "a": "",
+        "b": "x"
+      },
+      "expected": "/x"
+    }
+  ],
+  "value_fields": [
+    {
+      "key": "short",
+      "label": "短文",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "long",
+      "label": "長文",
+      "type": "textarea"
+    },
+    {
+      "key": "day",
+      "label": "日付",
+      "type": "date"
+    },
+    {
+      "key": "at",
+      "label": "時刻",
+      "type": "time"
+    },
+    {
+      "key": "when",
+      "label": "日時",
+      "type": "datetime"
+    },
+    {
+      "key": "kind",
+      "label": "種類",
+      "type": "select",
+      "options": [
+        "欠席",
+        "遅刻"
+      ]
+    },
+    {
+      "key": "who",
+      "label": "人",
+      "type": "user"
+    },
+    {
+      "key": "many",
+      "label": "人たち",
+      "type": "user",
+      "multiple": true
+    },
+    {
+      "key": "agree",
+      "label": "同意",
+      "type": "checkbox"
+    }
+  ],
+  "values": [
+    {
+      "name": "everything fine; short text folds newlines and spaces; one id may be a string",
+      "values": {
+        "short": "  a\n b  ",
+        "long": " 1\r\n2 ",
+        "day": "2026-02-28",
+        "at": "23:59",
+        "when": "2026-10-04T09:00",
+        "kind": "遅刻",
+        "who": "0190a1b2-0000-7000-8000-000000000001",
+        "many": [
+          "0190a1b2-0000-7000-8000-000000000001",
+          "0190a1b2-0000-7000-8000-000000000002",
+          "0190a1b2-0000-7000-8000-000000000001"
+        ],
+        "agree": true
+      },
+      "cleaned": {
+        "short": "a b",
+        "long": "1\n2",
+        "day": "2026-02-28",
+        "at": "23:59",
+        "when": "2026-10-04T09:00",
+        "kind": "遅刻",
+        "who": [
+          "0190a1b2-0000-7000-8000-000000000001"
+        ],
+        "many": [
+          "0190a1b2-0000-7000-8000-000000000001",
+          "0190a1b2-0000-7000-8000-000000000002"
+        ],
+        "agree": true
+      },
+      "errors": null
+    },
+    {
+      "name": "optional fields left out are empty",
+      "values": {
+        "short": "x"
+      },
+      "cleaned": {
+        "short": "x",
+        "long": "",
+        "day": "",
+        "at": "",
+        "when": "",
+        "kind": "",
+        "who": [],
+        "many": [],
+        "agree": false
+      },
+      "errors": null
+    },
+    {
+      "name": "required missing",
+      "values": {},
+      "cleaned": null,
+      "errors": {
+        "short": "required"
+      }
+    },
+    {
+      "name": "required blank after trimming",
+      "values": {
+        "short": "   "
+      },
+      "cleaned": null,
+      "errors": {
+        "short": "required"
+      }
+    },
+    {
+      "name": "bad shapes",
+      "values": {
+        "short": "x",
+        "day": "2026-02-30",
+        "at": "24:00",
+        "when": "2026-10-04 09:00",
+        "agree": "yes",
+        "long": 3
+      },
+      "cleaned": null,
+      "errors": {
+        "long": "invalid",
+        "day": "invalid",
+        "at": "invalid",
+        "when": "invalid",
+        "agree": "invalid"
+      }
+    },
+    {
+      "name": "not an option",
+      "values": {
+        "short": "x",
+        "kind": "早退"
+      },
+      "cleaned": null,
+      "errors": {
+        "kind": "not_an_option"
+      }
+    },
+    {
+      "name": "one person only unless multiple; ids must be ids",
+      "values": {
+        "short": "x",
+        "who": [
+          "0190a1b2-0000-7000-8000-000000000001",
+          "0190a1b2-0000-7000-8000-000000000002"
+        ],
+        "many": [
+          "nope"
+        ]
+      },
+      "cleaned": null,
+      "errors": {
+        "who": "too_long",
+        "many": "invalid"
+      }
+    },
+    {
+      "name": "unknown keys are refused",
+      "values": {
+        "short": "x",
+        "extra": "y"
+      },
+      "cleaned": null,
+      "errors": {
+        "extra": "invalid"
+      }
+    },
+    {
+      "name": "too long",
+      "values": {
+        "short": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+      },
+      "cleaned": null,
+      "errors": {
+        "short": "too_long"
+      }
+    },
+    {
+      "name": "a required checkbox must be on",
+      "fields": [
+        {
+          "key": "agree",
+          "label": "同意",
+          "type": "checkbox",
+          "required": true
+        }
+      ],
+      "values": {
+        "agree": false
+      },
+      "cleaned": null,
+      "errors": {
+        "agree": "required"
+      }
+    }
+  ],
+  "keys": {
+    "valid": [
+      "日付",
+      "date_1",
+      "DOI",
+      "a",
+      "回"
+    ],
+    "invalid": [
+      "",
+      "a b",
+      "a-b",
+      "{x}",
+      "会議/雑誌名",
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ]
+  },
+  "defaults": [
+    {
+      "name": "today",
+      "type": "date",
+      "default": {
+        "kind": "today"
+      },
+      "today": "2026-10-04",
+      "expected": "2026-10-04"
+    },
+    {
+      "name": "today on a datetime: 09:00 without a time",
+      "type": "datetime",
+      "default": {
+        "kind": "today"
+      },
+      "today": "2026-10-04",
+      "expected": "2026-10-04T09:00"
+    },
+    {
+      "name": "next Tuesday from a Sunday",
+      "type": "datetime",
+      "default": {
+        "kind": "next_weekday",
+        "weekday": 1,
+        "time": "13:00"
+      },
+      "today": "2026-10-04",
+      "expected": "2026-10-06T13:00"
+    },
+    {
+      "name": "next Sunday on a Sunday is today",
+      "type": "date",
+      "default": {
+        "kind": "next_weekday",
+        "weekday": 6
+      },
+      "today": "2026-10-04",
+      "expected": "2026-10-04"
+    },
+    {
+      "name": "next Saturday from a Sunday",
+      "type": "date",
+      "default": {
+        "kind": "next_weekday",
+        "weekday": 5
+      },
+      "today": "2026-10-04",
+      "expected": "2026-10-10"
+    },
+    {
+      "name": "me",
+      "type": "user",
+      "default": {
+        "kind": "me"
+      },
+      "today": "2026-10-04",
+      "me": "0190a1b2-0000-7000-8000-000000000001",
+      "expected": [
+        "0190a1b2-0000-7000-8000-000000000001"
+      ]
+    },
+    {
+      "name": "literal choice",
+      "type": "select",
+      "default": {
+        "kind": "literal",
+        "value": "欠席"
+      },
+      "today": "2026-10-04",
+      "expected": "欠席"
+    },
+    {
+      "name": "literal checkbox",
+      "type": "checkbox",
+      "default": {
+        "kind": "literal",
+        "value": true
+      },
+      "today": "2026-10-04",
+      "expected": true
+    },
+    {
+      "name": "no default",
+      "type": "text",
+      "default": null,
+      "today": "2026-10-04",
+      "expected": ""
+    },
+    {
+      "name": "no default (user)",
+      "type": "user",
+      "default": null,
+      "today": "2026-10-04",
+      "expected": []
+    },
+    {
+      "name": "no default (checkbox)",
+      "type": "checkbox",
+      "default": null,
+      "today": "2026-10-04",
+      "expected": false
+    }
+  ]
+}

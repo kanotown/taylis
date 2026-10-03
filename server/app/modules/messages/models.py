@@ -92,6 +92,10 @@ class Message(Base):
     # M88 (docs/MEMBERSHIP.md §1): what a system message says, as data —
     # {kind, actor_id, user_ids}; NULL on people's posts. The body is its plain-text fallback.
     system_event: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # M94 (docs/WORKFLOWS.md D4): posted through a workflow's form — which one, and its name
+    # then (the label stays when the workflow is renamed or deleted). NULL on other posts.
+    workflow_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("workflows.id"))
+    workflow_name: Mapped[str | None] = mapped_column(String(40))
 
     __table_args__ = (
         UniqueConstraint("channel_id", "seq", name="uq_messages_channel_seq"),

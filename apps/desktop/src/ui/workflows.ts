@@ -1,0 +1,322 @@
+/**
+ * Workflows (M94, docs/WORKFLOWS.md): the pure parts of the form and its preview. The server renders the message that is
+ * posted (server/app/modules/workflows/render.py); the preview and the form's checks follow the same rules, held to them
+ * by apps/shared/workflows.json. Defaults are filled here, on the device that opens the form.
+ */
+import type { FieldDefault, WorkflowField, WorkflowFieldType, WorkflowOut } from "../api/types";
+
+export type FieldValue = string | string[] | boolean;
+export type Values = Record<string, FieldValue>;
+export type ValueError = "required" | "invalid" | "too_long" | "not_an_option" | "user_not_found";
+
+export const WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"] as const; // 0 = Monday
+export const MAX_TEXT = 200;
+export const MAX_TEXTAREA = 4000;
+export const MAX_USERS = 20;
+export const MAX_FIELDS = 20;
+export const MAX_TEMPLATE = 4000;
+export const MAX_NAME = 40;
+/** The menu's mark when a workflow has no emoji of its own. */
+export const DEFAULT_EMOJI = "⚡";
+
+export const FIELD_TYPES: ReadonlyArray<[WorkflowFieldType, string]> = [
+  ["text", "短文"],
+  ["textarea", "長文"],
+  ["date", "日付"],
+  ["time", "時刻"],
+  ["datetime", "日時"],
+  ["select", "選択"],
+  ["user", "人"],
+  ["checkbox", "チェック"],
+];
+
+export const VALUE_ERROR_TEXT: Record<ValueError, string> = {
+  required: "入力してください",
+  invalid: "形式が正しくありません",
+  too_long: "長すぎます",
+  not_an_option: "選択肢から選んでください",
+  user_not_found: "選べない人が含まれています",
+};
+
+const PLACEHOLDER = /\{\{\s*([^{}\s]+)\s*\}\}/gu;
+const KEY = /^[\p{L}\p{N}_]{1,30}$/u;
+const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const DATETIME = /^(\d{4}-\d{2}-\d{2})T(([01]\d|2[0-3]):([0-5]\d))$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
+
+const length = (text: string) => [...text].length;
+
+export function validKey(key: string): boolean {
+  return key === key.normalize("NFC") && KEY.test(key);
+}
+
+/** A key made from a label: its letters, digits and `_` (spaces become `_`), not one of `taken`. */
+export function keyFromLabel(label: string, taken: Iterable<string>): string {
+  const used = new Set(taken);
+  const base = [...label.normalize("NFC").trim().replace(/\s+/gu, "_")].filter((ch) => /[\p{L}\p{N}_]/u.test(ch)).slice(0, 26).join("") || "項目";
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n++) if (!used.has(`${base}${n}`)) return `${base}${n}`;
+}
+
+/** The keys of `{{key}}`, in order of first appearance. */
+export function placeholders(template: string): string[] {
+  const keys: string[] = [];
+  for (const match of template.matchAll(PLACEHOLDER)) {
+    const key = match[1]!.normalize("NFC");
+    if (!keys.includes(key)) keys.push(key);
+  }
+  return keys;
+}
+
+export function unknownPlaceholders(template: string, keys: readonly string[]): string[] {
+  return placeholders(template).filter((key) => !keys.includes(key));
+}
+
+function parseDate(value: string): { y: number; m: number; d: number } | null {
+  const match = DATE.exec(value);
+  if (!match) return null;
+  const [y, m, d] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== m - 1 || probe.getUTCDate() !== d) return null;
+  return { y, m, d };
+}
+
+function weekdayOf(y: number, m: number, d: number): number {
+  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7; // 0 = Monday
+}
+
+/** 「2026年7月28日 (火)」 for `YYYY-MM-DD`; "" when it is not a date. */
+export function dateLabel(value: string): string {
+  const day = parseDate(value);
+  return day ? `${day.y}年${day.m}月${day.d}日 (${WEEKDAYS_JA[weekdayOf(day.y, day.m, day.d)]})` : "";
+}
+
+function validDatetime(value: string): boolean {
+  const match = DATETIME.exec(value);
+  return !!match && parseDate(match[1]!) !== null;
+}
+
+export function emptyValue(field: Pick<WorkflowField, "type">): FieldValue {
+  return field.type === "user" ? [] : field.type === "checkbox" ? false : "";
+}
+
+/** The value in its stored shape, or the reason it is refused (the server's _clean_one). */
+function cleanOne(field: WorkflowField, raw: unknown): FieldValue | { error: ValueError } {
+  const kind = field.type;
+  if (raw === undefined || raw === null) return emptyValue(field);
+  if (kind === "checkbox") return typeof raw === "boolean" ? raw : { error: "invalid" };
+  if (kind === "user") {
+    const items = typeof raw === "string" ? [raw] : raw;
+    if (!Array.isArray(items) || !items.every((i) => typeof i === "string")) return { error: "invalid" };
+    const ids: string[] = [];
+    for (const item of items as string[]) {
+      if (!UUID.test(item)) return { error: "invalid" };
+      const id = item.toLowerCase();
+      if (!ids.includes(id)) ids.push(id);
+    }
+    if (ids.length > (field.multiple ? MAX_USERS : 1)) return { error: "too_long" };
+    return ids;
+  }
+  if (typeof raw !== "string") return { error: "invalid" };
+  let value = raw.replace(/\r\n/g, "\n").replace(CONTROL, "");
+  if (kind === "text") {
+    value = value.split(/\s+/u).filter(Boolean).join(" ");
+    return length(value) > MAX_TEXT ? { error: "too_long" } : value;
+  }
+  value = value.trim();
+  if (kind === "textarea") return length(value) > MAX_TEXTAREA ? { error: "too_long" } : value;
+  if (!value) return "";
+  if (kind === "select") return (field.options ?? []).includes(value) ? value : { error: "not_an_option" };
+  if (kind === "date" && !parseDate(value)) return { error: "invalid" };
+  if (kind === "time" && !TIME.test(value)) return { error: "invalid" };
+  if (kind === "datetime" && !validDatetime(value)) return { error: "invalid" };
+  return value;
+}
+
+export function isBlank(field: Pick<WorkflowField, "type">, value: FieldValue): boolean {
+  if (field.type === "checkbox") return value !== true;
+  return value === "" || (Array.isArray(value) && value.length === 0);
+}
+
+export type CleanResult = { ok: true; values: Values } | { ok: false; errors: Record<string, ValueError> };
+
+/** Every field's value in its stored shape, or a reason per key (unknown keys included). */
+export function cleanValues(fields: readonly WorkflowField[], values: Record<string, unknown>): CleanResult {
+  const errors: Record<string, ValueError> = {};
+  const known = new Set(fields.map((f) => f.key));
+  for (const key of Object.keys(values)) if (!known.has(key)) errors[key] = "invalid";
+  const cleaned: Values = {};
+  for (const field of fields) {
+    const value = cleanOne(field, values[field.key]);
+    if (typeof value === "object" && !Array.isArray(value)) {
+      errors[field.key] = value.error;
+      continue;
+    }
+    if (field.required && isBlank(field, value)) {
+      errors[field.key] = "required";
+      continue;
+    }
+    cleaned[field.key] = value;
+  }
+  return Object.keys(errors).length > 0 ? { ok: false, errors } : { ok: true, values: cleaned };
+}
+
+/** A typed value cannot call anyone: `<@…` and `<!…` lose their `<`. */
+export function escapeText(value: string): string {
+  return value.replace(/<(?=[@!])/g, "＜");
+}
+
+export function formatValue(field: WorkflowField, value: FieldValue | undefined): string {
+  if (field.type === "checkbox") return value === true ? "はい" : "いいえ";
+  if (field.type === "user") return (Array.isArray(value) ? value : []).map((id) => `<@${id}>`).join(" ");
+  if (!value || typeof value !== "string") return "";
+  if (field.type === "date") return dateLabel(value);
+  if (field.type === "datetime") {
+    const match = DATETIME.exec(value);
+    return match && parseDate(match[1]!) ? `${dateLabel(match[1]!)} ${match[2]}` : "";
+  }
+  if (field.type === "time") return value;
+  return escapeText(value);
+}
+
+/** The message body: lines whose placeholders are all empty are left out; replaced once (the server's render). */
+export function renderWorkflow(template: string, fields: readonly WorkflowField[], values: Values): string {
+  const texts = new Map(fields.map((f) => [f.key, formatValue(f, values[f.key] ?? emptyValue(f))]));
+  const lines: string[] = [];
+  for (const line of template.replace(/\r\n/g, "\n").split("\n")) {
+    const keys = [...line.matchAll(PLACEHOLDER)].map((m) => m[1]!.normalize("NFC"));
+    if (keys.length > 0 && keys.every((key) => (texts.has(key) ? texts.get(key) === "" : false))) continue;
+    lines.push(line.replace(PLACEHOLDER, (whole, key: string) => texts.get(key.normalize("NFC")) ?? whole));
+  }
+  return lines.join("\n").replace(/^\n+|\n+$/g, "");
+}
+
+/** The preview while the form is being filled: each field that does not check out yet counts as empty. */
+export function renderPreview(template: string, fields: readonly WorkflowField[], values: Values): string {
+  const cleaned: Values = {};
+  for (const field of fields) {
+    const value = cleanOne(field, values[field.key]);
+    cleaned[field.key] = typeof value === "object" && !Array.isArray(value) ? emptyValue(field) : value;
+  }
+  return renderWorkflow(template, fields, cleaned);
+}
+
+function isoDay(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** What a field starts with (WORKFLOWS.md §3.1). `today` is the device's date (`YYYY-MM-DD` or a Date). */
+export function defaultValue(field: { type: WorkflowFieldType; default?: FieldDefault | null }, today: string | Date, me: string | null): FieldValue {
+  const spec = field.default;
+  if (!spec) return emptyValue(field);
+  const day = typeof today === "string" ? today : isoDay(today);
+  const withTime = (date: string) => (field.type === "datetime" ? `${date}T${spec.time ?? "09:00"}` : date);
+  switch (spec.kind) {
+    case "me":
+      return field.type === "user" && me ? [me] : emptyValue(field);
+    case "today":
+      return withTime(day);
+    case "next_weekday": {
+      const start = parseDate(day);
+      if (!start || spec.weekday === null || spec.weekday === undefined) return emptyValue(field);
+      const ahead = (spec.weekday - weekdayOf(start.y, start.m, start.d) + 7) % 7;
+      const date = new Date(Date.UTC(start.y, start.m - 1, start.d + ahead));
+      return withTime(`${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`);
+    }
+    case "literal":
+      if (field.type === "checkbox") return spec.value === true;
+      return typeof spec.value === "string" ? spec.value : emptyValue(field);
+  }
+  return emptyValue(field);
+}
+
+export function initialValues(fields: readonly WorkflowField[], today: string | Date, me: string | null): Values {
+  return Object.fromEntries(fields.map((field) => [field.key, defaultValue(field, today, me)]));
+}
+
+/** Example values for the editor's preview: the defaults, else a sample of each kind. */
+export function sampleValues(fields: readonly WorkflowField[], today: string | Date, me: string | null): Values {
+  const values = initialValues(fields, today, me);
+  for (const field of fields) {
+    if (!isBlank(field, values[field.key]!) || field.type === "checkbox") continue;
+    const day = typeof today === "string" ? today : isoDay(today);
+    values[field.key] =
+      field.type === "date" ? day
+      : field.type === "datetime" ? `${day}T13:00`
+      : field.type === "time" ? "13:00"
+      : field.type === "select" ? (field.options?.[0] ?? "")
+      : field.type === "user" ? (me ? [me] : [])
+      : `(${field.label})`;
+  }
+  return values;
+}
+
+const fold = (text: string) => text.normalize("NFC").toLowerCase();
+
+/**
+ * The workflow `/name` or `/wf name` opens: `name` is what parseSlashCommand read (lowercased), `args` what followed. A
+ * name with spaces opens only through `/wf`. Null when neither names one.
+ */
+export function findWorkflowCommand(name: string, args: string, workflows: readonly WorkflowOut[]): WorkflowOut | null {
+  if (name === "wf") {
+    const wanted = fold(args.trim().replace(/\s+/gu, " "));
+    return wanted ? workflows.find((w) => fold(w.name) === wanted) ?? null : null;
+  }
+  if (args.trim()) return null;
+  return workflows.find((w) => fold(w.name) === fold(name)) ?? null;
+}
+
+/** `/` candidates: workflows whose name starts with what follows `/` (no space yet) or `/wf `. */
+export function workflowCandidates(text: string, workflows: readonly WorkflowOut[]): WorkflowOut[] {
+  const wf = /^\/wf\s+(.*)$/isu.exec(text);
+  if (wf) {
+    const prefix = fold(wf[1]!.replace(/\s+/gu, " ").trimStart());
+    return workflows.filter((w) => fold(w.name).startsWith(prefix));
+  }
+  const match = /^\/([\p{L}\p{N}_-]*)$/u.exec(text);
+  if (!match) return [];
+  const prefix = fold(match[1]!);
+  return workflows.filter((w) => !/\s/u.test(w.name) && fold(w.name).startsWith(prefix));
+}
+
+/** Why I cannot submit it, for the menu; null when I can. */
+export function runBlockedText(workflow: Pick<WorkflowOut, "run_blocked">, target: string): string | null {
+  switch (workflow.run_blocked) {
+    case "disabled":
+      return "停止中";
+    case "archived":
+      return `${target} はアーカイブ済みです`;
+    case "not_a_member":
+      return `${target} に参加すると使えます`;
+    case "posting_restricted":
+      return `${target} はオーナーと管理者だけが投稿できます`;
+    default:
+      return null;
+  }
+}
+
+/** The editor's checks before saving (the server checks them again). */
+export function workflowDraftProblem(draft: { name: string; channelId: string; fields: readonly WorkflowField[]; template: string }): string | null {
+  if (!draft.name.trim()) return "名前を入れてください";
+  if (length(draft.name.trim()) > MAX_NAME) return `名前は ${MAX_NAME} 文字までです`;
+  if (!draft.channelId) return "送り先のチャンネルを選んでください";
+  if (!draft.template.trim()) return "本文の雛形を入れてください";
+  if (length(draft.template) > MAX_TEMPLATE) return `本文の雛形は ${MAX_TEMPLATE} 文字までです`;
+  const keys = draft.fields.map((f) => f.key);
+  for (const field of draft.fields) {
+    if (!validKey(field.key)) return `「${field.label || field.key}」のキーは 30 文字までの文字・数字・_ にしてください`;
+    if (!field.label.trim()) return "項目の名前を入れてください";
+    if (field.type === "select") {
+      const options = field.options ?? [];
+      if (options.length === 0 || options.some((o) => !o.trim())) return `「${field.label}」の選択肢を入れてください`;
+      if (new Set(options).size !== options.length) return `「${field.label}」の選択肢が重複しています`;
+    }
+  }
+  if (new Set(keys).size !== keys.length) return "項目のキーが重複しています";
+  const unknown = unknownPlaceholders(draft.template, keys);
+  if (unknown.length > 0) return `雛形の ${unknown.map((k) => `{{${k}}}`).join(" ")} に当たる項目がありません`;
+  return null;
+}

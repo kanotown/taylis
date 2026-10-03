@@ -1,0 +1,307 @@
+// @vitest-environment jsdom
+// M94 (docs/WORKFLOWS.md §7): the form (defaults, checks, one key per form, the server's field errors), the 「⚡ name」
+// label on a posted message, the composer's `/name`, and the editor (from a template, live preview, saving).
+process.env.TZ = "Asia/Tokyo";
+
+import { useSyncExternalStore } from "react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ApiError } from "../src/api/errors";
+import type { ChannelOut, MessageOut, UserMe, UserPublic, WorkflowOut, WorkflowTemplateOut } from "../src/api/types";
+import type { AppController } from "../src/state/app";
+import { Store } from "../src/sync/store";
+import type { ChannelState } from "../src/sync/types";
+import { Composer } from "../src/ui/Composer";
+import { MessageRow } from "../src/ui/Timeline";
+import { ChannelWorkflowsDialog, invalidateWorkflowLists, WorkflowManager, WorkflowRunDialog } from "../src/ui/WorkflowViews";
+import { FakeServer } from "./fakeServer";
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+beforeEach(() => invalidateWorkflowLists());
+
+const flush = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+const ME = "11111111-1111-4111-8111-111111111111";
+const BOB = "22222222-2222-4222-8222-222222222222";
+const people: UserPublic[] = [
+  { id: ME, username: "me", display_name: "わたし", role: "member", deactivated_at: null } as UserPublic,
+  { id: BOB, username: "bob", display_name: "ボブ", role: "member", deactivated_at: null } as UserPublic,
+];
+
+const FIELDS: WorkflowOut["fields"] = [
+  { key: "報告者", label: "報告者", type: "user", required: true, help: "", multiple: false, options: [], default: { kind: "me" } },
+  { key: "日付", label: "日付", type: "date", required: true, help: "", multiple: false, options: [], default: { kind: "today" } },
+  { key: "内容", label: "報告の内容", type: "select", required: true, help: "", multiple: false, options: ["欠席", "遅刻", "早退"], default: null },
+  { key: "理由", label: "理由", type: "textarea", required: false, help: "任意", multiple: false, options: [], default: null },
+];
+const WORKFLOW: WorkflowOut = {
+  id: "w1",
+  name: "ゼミ欠席報告",
+  emoji: "🙇",
+  description: "欠席を報告します",
+  channel_id: "c-report",
+  offered_channel_ids: ["c-report", "c-lab"],
+  fields: FIELDS,
+  template: "*【報告者】* {{報告者}}\n*【報告の内容】* ゼミの{{内容}}\n*【日付】* {{日付}}\n*【理由】* {{理由}}",
+  enabled: true,
+  created_by: ME,
+  created_at: "2026-10-01T00:00:00Z",
+  updated_at: "2026-10-01T00:00:00Z",
+  can_manage: true,
+  can_run: true,
+  run_blocked: null,
+};
+
+function makeStore(): { store: Store; channel: ChannelState } {
+  const store = new Store();
+  store.setMe({ ...people[0]! } as unknown as UserMe);
+  for (const user of people) store.upsertUser(user);
+  const base = { topic: null, purpose: null, archived: false, created_at: "2026-01-01T00:00:00Z", last_seq: 0, posting_policy: "everyone" };
+  const channel = store.upsertChannel({ id: "c-lab", type: "public", name: "lab", ...base } as unknown as ChannelOut, { isMember: true, membership: { role: "owner" } as never });
+  store.upsertChannel({ id: "c-report", type: "public", name: "報告-ゼミ欠席", ...base } as unknown as ChannelOut, { isMember: true, membership: { role: "owner" } as never });
+  return { store, channel: channel as ChannelState };
+}
+
+function controllerFor(store: Store, api: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  return {
+    store, api, isAdmin: false, version: 0, subscribe: () => () => {}, setError: vi.fn(), setNotice: vi.fn(),
+    submitWorkflow: vi.fn(async () => ({ ok: true, message: { id: "m1", channel_id: "c-report" } })),
+    ...extra,
+  } as unknown as AppController & { submitWorkflow: ReturnType<typeof vi.fn>; setNotice: ReturnType<typeof vi.fn> };
+}
+
+describe("the form", () => {
+  it("starts with the defaults, checks before posting, and posts the cleaned values once per form", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-04T10:00:00+09:00"));
+    const { store } = makeStore();
+    const controller = controllerFor(store, {});
+    const onClose = vi.fn();
+    render(<WorkflowRunDialog controller={controller} workflow={WORKFLOW} here="c-lab" onClose={onClose} />);
+    const dialog = within(screen.getByRole("dialog", { name: "🙇 ゼミ欠席報告" }));
+    // 報告者 = me, 日付 = today.
+    expect(dialog.getByLabelText("わたし を外す")).toBeTruthy();
+    expect((dialog.getByLabelText(/^日付/) as HTMLInputElement).value).toBe("2026-10-04");
+    // The preview renders as the server will: the mention, the Japanese date; the empty 理由 line is left out.
+    const preview = within(dialog.getByRole("region", { name: "プレビュー" }));
+    expect(preview.getByText(/2026年10月4日 \(日\)/)).toBeTruthy();
+    expect(preview.queryByText(/理由/)).toBeNull();
+    // 内容 is required.
+    fireEvent.click(dialog.getByRole("button", { name: "投稿" }));
+    expect(dialog.getAllByText("入力してください")).toHaveLength(1); // 内容
+    expect(controller.submitWorkflow).not.toHaveBeenCalled();
+    fireEvent.change(dialog.getByLabelText(/^報告の内容/), { target: { value: "遅刻" } });
+    fireEvent.change(dialog.getByLabelText(/^理由/), { target: { value: "電車の遅延" } });
+    expect(preview.getByText(/電車の遅延/)).toBeTruthy();
+
+    // The server refuses a field: shown under it; the second try keeps the same key.
+    controller.submitWorkflow.mockResolvedValueOnce({ ok: false, error: new ApiError(400, "workflow_values_invalid", "x", { fields: { 報告者: "user_not_found" } }) });
+    fireEvent.click(dialog.getByRole("button", { name: "投稿" }));
+    await flush();
+    expect(dialog.getByText("選べない人が含まれています")).toBeTruthy();
+    expect(dialog.getByText("入力に誤りがあります。各項目を確認してください")).toBeTruthy();
+    fireEvent.click(dialog.getByRole("button", { name: "投稿" }));
+    await flush();
+    expect(controller.submitWorkflow).toHaveBeenCalledTimes(2);
+    const [first, second] = controller.submitWorkflow.mock.calls;
+    expect(first![0]).toBe("w1");
+    expect(first![1]).toEqual({ 報告者: [ME], 日付: "2026-10-04", 内容: "遅刻", 理由: "電車の遅延" });
+    expect(second![2]).toBe(first![2]);
+    // Posted to another channel than this one: it says where.
+    expect(controller.setNotice).toHaveBeenCalledWith("#報告-ゼミ欠席 に投稿しました");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("the channel's menu lists what it offers and greys out what I cannot run", async () => {
+    const { store, channel } = makeStore();
+    const blocked = { ...WORKFLOW, id: "w2", name: "お知らせ", run_blocked: "posting_restricted" as const, can_run: false };
+    const api = { channelWorkflows: vi.fn(async () => [WORKFLOW, blocked]) };
+    const controller = controllerFor(store, api);
+    render(<ChannelWorkflowsDialog controller={controller} channel={channel} onClose={() => {}} />);
+    await flush();
+    expect(api.channelWorkflows).toHaveBeenCalledWith("c-lab");
+    const list = within(screen.getByRole("list", { name: "ワークフロー" }));
+    expect(list.getAllByText("→ #報告-ゼミ欠席 に投稿")).toHaveLength(2);
+    const restricted = list.getByText("お知らせ").closest("button")!;
+    expect(restricted.disabled).toBe(true);
+    expect(within(restricted).getByText("#報告-ゼミ欠席 はオーナーと管理者だけが投稿できます")).toBeTruthy();
+    fireEvent.click(list.getByText("ゼミ欠席報告"));
+    expect(screen.getByRole("dialog", { name: "🙇 ゼミ欠席報告" })).toBeTruthy();
+  });
+});
+
+describe("the label on a posted message", () => {
+  it("shows 「⚡ name」 and opens the form", async () => {
+    const { store } = makeStore();
+    const message = {
+      id: "m1", channel_id: "c-report", sender_id: ME, parent_id: null, seq: 1, updated_seq: 1, client_msg_id: null, type: "user",
+      body: "*【報告者】* <@" + ME + ">", mentioned_user_ids: [ME], mention_all: false, reactions: [], attachments: [], reply_count: 0,
+      last_reply_at: null, reply_user_ids: [], created_at: "2026-10-04T01:00:00Z", edited_at: null, deleted: false, poll: null, priority: null,
+      ack_requested: false, acks: [], workflow: { id: "w1", name: "ゼミ欠席報告" },
+    } as unknown as MessageOut;
+    store.upsertMessage(message);
+    const api = { baseUrl: "http://server", getWorkflow: vi.fn(async () => WORKFLOW) };
+    const controller = controllerFor(store, api, {
+      messageFocus: null, editing: null, sendKey: "shift-enter", linkPreviews: new Map(), linkPreview: vi.fn(), subscribeLinkPreviews: () => () => {},
+    });
+    render(<MessageRow controller={controller} message={store.getMessage("c-report", "m1")!} />);
+    const label = screen.getByRole("button", { name: "ゼミ欠席報告" });
+    fireEvent.click(label);
+    await flush();
+    expect(api.getWorkflow).toHaveBeenCalledWith("w1");
+    expect(screen.getByRole("dialog", { name: "🙇 ゼミ欠席報告" })).toBeTruthy();
+  });
+
+  it("an ordinary message has no label", () => {
+    const { store } = makeStore();
+    store.upsertMessage({
+      id: "m2", channel_id: "c-report", sender_id: ME, parent_id: null, seq: 2, updated_seq: 2, client_msg_id: null, type: "user", body: "hi",
+      mentioned_user_ids: [], mention_all: false, reactions: [], attachments: [], reply_count: 0, last_reply_at: null, reply_user_ids: [],
+      created_at: "2026-10-04T01:00:00Z", edited_at: null, deleted: false,
+    } as unknown as MessageOut);
+    const controller = controllerFor(store, { baseUrl: "http://server" }, {
+      messageFocus: null, editing: null, sendKey: "shift-enter", linkPreviews: new Map(), linkPreview: vi.fn(), subscribeLinkPreviews: () => () => {},
+    });
+    const { container } = render(<MessageRow controller={controller} message={store.getMessage("c-report", "m2")!} />);
+    expect(container.querySelector("[data-workflow-label]")).toBeNull();
+  });
+});
+
+describe("the editor", () => {
+  const SEED: WorkflowTemplateOut = {
+    key: "seminar_absence",
+    name: "ゼミ欠席報告",
+    emoji: "🙇",
+    description: "ゼミの欠席・遅刻・早退を報告します",
+    fields: FIELDS,
+    template: WORKFLOW.template,
+  };
+
+  it("starts from a template, previews, and creates", async () => {
+    const { store } = makeStore();
+    const api = {
+      workflows: vi.fn(async () => [] as WorkflowOut[]),
+      workflowTemplates: vi.fn(async () => [SEED]),
+      createWorkflow: vi.fn(async (body: Record<string, unknown>) => ({ ...WORKFLOW, ...body, id: "w9" })),
+    };
+    const controller = controllerFor(store, api);
+    render(<WorkflowManager controller={controller} channelId="c-report" />);
+    await flush();
+    expect(screen.getByText(/ワークフローはありません/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /ワークフローを作成/ }));
+    await flush();
+    const dialog = within(screen.getByRole("dialog", { name: "ワークフローを作成" }));
+    fireEvent.click(dialog.getByRole("button", { name: "🙇 ゼミ欠席報告" }));
+    expect((dialog.getByLabelText(/^名前/) as HTMLInputElement).value).toBe("ゼミ欠席報告");
+    expect((dialog.getByLabelText("送り先") as HTMLSelectElement).value).toBe("c-report");
+    expect(dialog.getAllByRole("listitem").filter((li) => li.hasAttribute("data-field-editor"))).toHaveLength(4);
+    // The preview fills the defaults and examples: me, a date, the first option.
+    const preview = within(dialog.getByLabelText("雛形のプレビュー"));
+    expect(preview.getByText(/ゼミの欠席/)).toBeTruthy();
+    // A placeholder naming no field stops the save.
+    fireEvent.change(dialog.getByLabelText("雛形"), { target: { value: WORKFLOW.template + "\n{{場所}}" } });
+    fireEvent.click(dialog.getByRole("button", { name: "作成" }));
+    expect(dialog.getByRole("alert").textContent).toContain("{{場所}}");
+    expect(api.createWorkflow).not.toHaveBeenCalled();
+    fireEvent.change(dialog.getByLabelText("雛形"), { target: { value: WORKFLOW.template } });
+    // Renaming a field's label renames its key and the template's placeholder with it.
+    fireEvent.change(dialog.getByLabelText("項目 4 の名前"), { target: { value: "欠席の理由" } });
+    expect((dialog.getByLabelText("項目 4 のキー") as HTMLInputElement).value).toBe("欠席の理由");
+    expect((dialog.getByLabelText("雛形") as HTMLTextAreaElement).value).toContain("{{欠席の理由}}");
+    fireEvent.click(dialog.getByRole("button", { name: "作成" }));
+    await flush();
+    expect(api.createWorkflow).toHaveBeenCalledTimes(1);
+    const body = api.createWorkflow.mock.calls[0]![0] as Record<string, unknown>;
+    expect(body).toMatchObject({ name: "ゼミ欠席報告", emoji: "🙇", channel_id: "c-report", offered_channel_ids: [] });
+    expect((body.fields as Array<{ key: string }>).map((f) => f.key)).toEqual(["報告者", "日付", "内容", "欠席の理由"]);
+    expect(screen.getByRole("status").textContent).toBe("保存しました");
+  });
+
+  it("adds, moves and removes fields", async () => {
+    const { store } = makeStore();
+    const api = { workflows: vi.fn(async () => [WORKFLOW]), workflowTemplates: vi.fn(async () => []), updateWorkflow: vi.fn(async () => WORKFLOW) };
+    const controller = controllerFor(store, api);
+    render(<WorkflowManager controller={controller} />);
+    await flush();
+    expect(screen.getByText(/#報告-ゼミ欠席 に投稿 · 項目 4 個 · ほか 1 チャンネルに表示/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /編集/ }));
+    const dialog = within(screen.getByRole("dialog", { name: "ワークフローを編集" }));
+    fireEvent.change(dialog.getByLabelText("項目を追加"), { target: { value: "checkbox" } });
+    expect((dialog.getByLabelText("項目 5 の名前") as HTMLInputElement).value).toBe("チェック");
+    fireEvent.click(dialog.getAllByRole("button", { name: "上へ" })[4]!);
+    expect((dialog.getByLabelText("項目 4 の名前") as HTMLInputElement).value).toBe("チェック");
+    fireEvent.click(dialog.getByRole("button", { name: "項目「チェック」を削除" }));
+    expect(dialog.queryByLabelText("項目 5 の名前")).toBeNull();
+    fireEvent.click(dialog.getByRole("button", { name: "保存" }));
+    await flush();
+    expect(api.updateWorkflow).toHaveBeenCalledWith("w1", expect.objectContaining({ channel_id: "c-report", offered_channel_ids: ["c-lab"] }));
+  });
+});
+
+describe("the composer (`/name`, `/wf name`)", () => {
+  async function world(extraTemplates: Array<{ id: string; name: string; body: string }> = []) {
+    const server = new FakeServer();
+    const me = server.addUser("alice");
+    const channel = server.createChannel("general", me.id);
+    const store = new Store();
+    store.upsertUser(me);
+    store.upsertChannel(channel, { isMember: true, syncedSeq: 0, oldestLoadedSeq: 0 });
+    store.replaceTemplates(extraTemplates.map((t) => ({ scope: "workspace", owner_id: null, suggest_in: "any", position: 0, created_at: "", updated_at: "", ...t })) as never);
+    const spaced = { ...WORKFLOW, id: "w3", name: "学部 ゼミ案内", channel_id: channel.id };
+    const api = { channelWorkflows: vi.fn(async () => [{ ...WORKFLOW, channel_id: channel.id }, spaced]) };
+    const setError = vi.fn();
+    const controller = {
+      store, api, setError, setNotice: vi.fn(), messageFocus: null, sendKey: "shift-enter", isAdmin: false, subscribe: () => () => {},
+      engine: { send: vi.fn(), sendTyping: vi.fn(), status: "online", unreadHold: new Map(), reloadCount: () => 0 },
+    } as unknown as AppController;
+    function View() {
+      useSyncExternalStore(store.subscribe.bind(store), () => store.version);
+      return <Composer controller={controller} channel={store.getChannel(channel.id)!} parentId={null} />;
+    }
+    render(<View />);
+    await flush();
+    const area = screen.getByRole("textbox") as HTMLTextAreaElement; // the form adds its own boxes later
+    const box = () => area;
+    const type = (value: string) => fireEvent.change(box(), { target: { value } });
+    const sendKey = async () => { await act(async () => { fireEvent.keyDown(box(), { key: "Escape" }); fireEvent.keyDown(box(), { key: "Enter", shiftKey: true }); }); };
+    return { api, box, type, sendKey, setError, channel };
+  }
+
+  it("offers workflows among the `/` candidates and opens the form", async () => {
+    const { api, box, type, sendKey, channel } = await world();
+    expect(api.channelWorkflows).toHaveBeenCalledWith(channel.id);
+    type("/ゼミ");
+    const list = within(screen.getByRole("list", { name: "コマンドの候補" }));
+    expect(list.getByText("/ゼミ欠席報告")).toBeTruthy();
+    type("/ゼミ欠席報告");
+    await sendKey();
+    expect(screen.getByRole("dialog", { name: "🙇 ゼミ欠席報告" })).toBeTruthy();
+    expect(box().value).toBe("");
+  });
+
+  it("`/wf name` opens a name with spaces", async () => {
+    const { type, sendKey } = await world();
+    type("/wf 学部 ゼミ案内");
+    await sendKey();
+    expect(screen.getByRole("dialog", { name: "🙇 学部 ゼミ案内" })).toBeTruthy();
+  });
+
+  it("an unknown `/wf` name says so", async () => {
+    const { type, sendKey, setError } = await world();
+    type("/wf ない");
+    await sendKey();
+    expect(setError).toHaveBeenCalledWith("「ない」というワークフローはこのチャンネルにありません");
+  });
+
+  it("a template of the same name comes first", async () => {
+    const { box, type, sendKey } = await world([{ id: "t1", name: "ゼミ欠席報告", body: "テンプレートの本文" }]);
+    type("/ゼミ欠席報告");
+    await sendKey();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(box().value).toBe("テンプレートの本文");
+  });
+});

@@ -2036,6 +2036,26 @@ export class AppController {
     }
   }
 
+  // --- workflows (M94, docs/WORKFLOWS.md) -----------------------------------------------------
+
+  /**
+   * Posts a workflow's filled form as me (the server renders the message). The same `clientMsgId` for a retry of the same
+   * form returns the message already posted. The error is returned, not toasted: the form stays open to show it.
+   */
+  async submitWorkflow(workflowId: string, values: Record<string, unknown>, clientMsgId: string): Promise<{ ok: true; message: MessageOut } | { ok: false; error: unknown }> {
+    if (!this.api) return { ok: false, error: new NetworkError("offline") };
+    try {
+      const message = await this.api.submitWorkflow(workflowId, { client_msg_id: clientMsgId, values });
+      this.postedHere = message.id;
+      if (this.engine) this.engine.postedFromHere(message);
+      else this.store.upsertMessage(message);
+      this.emit();
+      return { ok: true, message };
+    } catch (error) {
+      return { ok: false, error };
+    }
+  }
+
   // --- scheduling polls (M53, SCHEDULING.md) -------------------------------------------------
 
   /** A scheduling poll: the candidates as UTC instants (or dates) and the device's zone, in which the server labels them. */

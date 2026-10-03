@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, ArrowLeft, AtSign, Hash, Link2, Lock, LogOut, Megaphone, Pencil, UserPlus } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, AtSign, Hash, Link2, Lock, LogOut, Megaphone, Pencil, UserPlus, Zap } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -11,6 +11,7 @@ import { formatMuted } from "./format";
 import { channelTitle } from "./MainScreen";
 import { Badge, Button, cn, IconButton, Input } from "./primitives";
 import { RecurringPostList } from "./RecurringPosts";
+import { ChannelWorkflowsDialog } from "./WorkflowViews";
 
 /** What the details page asks MainScreen to open (the existing dialogs). */
 export type DetailsDialog = "rename" | "archive" | "leave" | "convert" | "link" | "add-member";
@@ -35,6 +36,7 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
   const canManage = controller.isAdmin || channel.membership?.role === "owner";
   const canEdit = channel.isMember && !channel.archived;
   const [members, setMembers] = useMembers(controller, channel.id, `${membersVersion}:${channel.member_count}`);
+  const [workflowsOpen, setWorkflowsOpen] = useState(false);
   // M35: the conversation's own level (null = follows my overall setting, 「既定 (…)」).
   const ownLevel: NotificationLevel | null = channel.notificationLevel ?? null;
   const overall = overallLevel(controller.store.me ?? controller.me);
@@ -125,6 +127,13 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
           <section aria-label="定期投稿">
             <h3 className={cn(HEADING, "mb-2")}>定期投稿</h3>
             <RecurringPostList controller={controller} channel={channel} />
+          </section>
+        )}
+        {isChannel && (
+          <section aria-label="ワークフロー" className="space-y-0.5">
+            <h3 className={cn(HEADING, "mb-1")}>ワークフロー</h3>
+            <Action icon={<Zap size={16} />} onClick={() => setWorkflowsOpen(true)}>ワークフロー…</Action>
+            {workflowsOpen && <ChannelWorkflowsDialog controller={controller} channel={channel} manage onClose={() => setWorkflowsOpen(false)} />}
           </section>
         )}
         {isChannel && channel.isMember && (
