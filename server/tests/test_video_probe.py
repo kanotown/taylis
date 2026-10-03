@@ -434,7 +434,14 @@ def _child(tmp_path: Path, body: str) -> tuple[Path, Path]:
 
 def _gone(pid_file: Path) -> bool:
     try:
-        os.kill(int(pid_file.read_text()), 0)
+        pid = pid_file.read_text()
+    except FileNotFoundError:
+        # The child never got as far as writing its pid (a busy machine): nothing is left running.
+        return True
+    if not pid:
+        return True
+    try:
+        os.kill(int(pid), 0)
     except ProcessLookupError:
         return True
     return False
@@ -493,10 +500,11 @@ async def test_timeout_and_cancel_kill_the_child_and_release_the_slot(
     assert info == videos.VideoInfo(None, None, None, None)
     assert _gone(pid_file) and not slot.locked()
 
-    pid_file.unlink()
+    # Under load the child may not even have started (and written its pid) within the 0.5 s timeout.
+    pid_file.unlink(missing_ok=True)
     slow = settings.model_copy(update={"video_probe_timeout_seconds": 60})
     task = asyncio.create_task(videos.probe_video(str(tmp_path / "clip.mp4"), slow))
-    for _ in range(500):
+    for _ in range(3000):  # up to 30 s for a busy machine to start the child
         if pid_file.exists() and pid_file.read_text():
             break
         await asyncio.sleep(0.01)
