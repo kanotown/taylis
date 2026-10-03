@@ -23,6 +23,28 @@
         "type": "object"
       }
     },
+    "activity.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "description": "To me: activity items I may hold changed in place (Review v0.1.22: a canvas version's body\nwas erased, and the excerpts taken from it with it). A client showing or keeping the list\nreads it again (or drops the excerpt of these items); the badge does not change.",
+        "properties": {
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "ActivityUpdatedData",
+        "type": "object"
+      }
+    },
     "ai.run_updated": {
       "audience": "user (the requester)",
       "consumes_seq": false,

@@ -1,17 +1,20 @@
 """M76 (CANVAS.md §20): canvas mentions as activity items.
 
 The canvases module records one when a save newly mentions someone (the same rule as
-canvas.mentioned, §18.1), in the save's transaction. Depends on models only (no import cycle with
-the canvases module)."""
+canvas.mentioned, §18.1), in the save's transaction; erasing a version's body blanks the excerpts
+taken from it (Review v0.1.22). Depends on models and events only (no import cycle with the
+canvases module)."""
 
 import re
 import uuid
 from collections.abc import Iterable
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.events.outbox import write_outbox
+from app.modules.activity.events import ACTIVITY_UPDATED, ActivityUpdatedData
 from app.modules.activity.models import CanvasMention
 from app.modules.messages.mentions import MENTION_GROUP, MENTION_USER, notification_text
 
@@ -93,3 +96,35 @@ async def record(
         )
     else:
         unread.rev_id, unread.actor_id, unread.excerpt, unread.at = rev_id, actor_id, excerpt, at
+
+
+async def erase_revision(db: AsyncSession, *, canvas_id: uuid.UUID, rev_id: uuid.UUID) -> None:
+    """A version's body is erased (canvases.erase_revision, in its transaction): the excerpts
+    taken from that version go too (Review v0.1.22 #3: they are copies of the erased body). The
+    items stay (who mentioned whom, when; the badge does not move) with an empty excerpt. Items a
+    later save moved to another version are not touched. activity.updated tells each person's
+    clients to read their list again. Idempotent."""
+    rows = (
+        await db.execute(
+            update(CanvasMention)
+            .where(
+                CanvasMention.canvas_id == canvas_id,
+                CanvasMention.rev_id == rev_id,
+                CanvasMention.excerpt != "",
+            )
+            .values(excerpt="")
+            .returning(CanvasMention.id, CanvasMention.user_id)
+            .execution_options(synchronize_session=False)
+        )
+    ).all()
+    per_user: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for item_id, user_id in rows:
+        per_user.setdefault(user_id, []).append(item_id)
+    for user_id, item_ids in per_user.items():
+        await write_outbox(
+            db,
+            event_type=ACTIVITY_UPDATED,
+            audience_type="user",
+            audience_id=user_id,
+            payload=ActivityUpdatedData(item_ids=sorted(item_ids)).model_dump(mode="json"),
+        )

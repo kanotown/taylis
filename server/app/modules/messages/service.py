@@ -124,12 +124,15 @@ async def create_message(
     *,
     advance_read: bool = True,
     commit: bool = True,
+    mentions: bool = True,
 ) -> tuple[Message, bool]:
     """Returns (message, created). Retrying with the same client_msg_id returns the same message.
 
     `advance_read=False` for posts nobody is looking at (scheduled sends): the sender's read
     position stays where it was. `commit=False` leaves the transaction open for a caller that
-    writes more in it (M42: a canvas shared to its conversation).
+    writes more in it (M42: a canvas shared to its conversation). `mentions=False` for an
+    automatic post that must not call anyone (Review v0.1.22 #8: the deadline bot): no user,
+    group, @channel or @here mention is taken from the body, whatever text it carries.
     """
     # A retry of a message that is already stored gets that message back, whatever happened to
     # the channel since (archived, restricted, left): otherwise the client would mark a delivered
@@ -161,8 +164,11 @@ async def create_message(
         data.poll is not None and not data.body.strip()
     ):  # M14b: previews / pushes / search see the question
         data.body = f"📊 {data.poll.question}"
-    mentioned, mention_all = extract_mentions(data.body)
-    mentioned = await _with_group_members(db, actor.id, data.body, mentioned)
+    mentioned: list[uuid.UUID] = []
+    mention_all = False
+    if mentions:
+        mentioned, mention_all = extract_mentions(data.body)
+        mentioned = await _with_group_members(db, actor.id, data.body, mentioned)
     keyword_hits = await _keyword_hits(db, channel_id, actor.id, data.body, mentioned)
     try:
         async with db.begin_nested():

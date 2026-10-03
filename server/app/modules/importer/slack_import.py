@@ -33,7 +33,8 @@ import re
 import uuid
 import zipfile
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -104,8 +105,9 @@ SKIPPED_SUBTYPES = {
 }
 DELETED_SUBTYPES = {"tombstone", "message_deleted", "message_changed", "message_replied"}
 HIDDEN_FILE_MODES = {"hidden_by_limit", "tombstone"}
-# The Authorization header goes only to Slack's own file hosts.
+# The Authorization header goes only to Slack's own file hosts, and only over HTTPS.
 SLACK_FILE_HOSTS = ("slack.com", "slack-edge.com", "slack-files.com")
+MAX_REDIRECTS = 5
 _DAY_FILE = re.compile(r"^\d{4}-\d{2}-\d{2}\.json$")
 _FILE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _CHANNEL_NAME = re.compile(CHANNEL_NAME_PATTERN)
@@ -213,6 +215,10 @@ class Export:
 # ---- files ---------------------------------------------------------------------------------------
 
 
+class _Refused(Exception):
+    """A download that is not even tried (again): the reason goes to the report."""
+
+
 @dataclass
 class FileSource:
     """Where the bytes of the export's files come from: ``files_dir`` (downloaded beforehand) or
@@ -293,7 +299,7 @@ class FileSource:
             return
         semaphore = asyncio.Semaphore(max(1, self.concurrency))
         async with httpx.AsyncClient(
-            follow_redirects=True,
+            follow_redirects=False,  # by hand (_get): the token rule holds at every hop
             timeout=httpx.Timeout(self.timeout_seconds, connect=30.0),
             transport=self.transport,
         ) as client:
@@ -311,10 +317,35 @@ class FileSource:
             await asyncio.gather(*(one(f) for f in wanted))
 
     def _headers(self, url: str) -> dict[str, str]:
-        host = (urlsplit(url).hostname or "").lower()
-        if self.token and any(host == h or host.endswith("." + h) for h in self.token_hosts):
+        """The token goes only over HTTPS to Slack's file hosts (Review v0.1.22 #4)."""
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
+        allowed = any(host == h or host.endswith("." + h) for h in self.token_hosts)
+        if self.token and parts.scheme == "https" and allowed:
             return {"Authorization": f"Bearer {self.token}"}
         return {}
+
+    @asynccontextmanager
+    async def _get(self, client: httpx.AsyncClient, url: str) -> AsyncIterator[httpx.Response]:
+        """GET, following redirects by hand: every hop must be HTTPS (a plain-HTTP URL or
+        redirect is refused before anything is sent to it) and gets the token only by _headers,
+        so a redirect never carries it anywhere the first request could not."""
+        for _ in range(MAX_REDIRECTS + 1):
+            if urlsplit(url).scheme != "https":
+                raise _Refused("HTTPS でない URL は取得しない")
+            request = client.build_request("GET", url, headers=self._headers(url))
+            response = await client.send(request, stream=True)
+            if not response.is_redirect:
+                break
+            location = response.headers.get("location", "")
+            await response.aclose()
+            url = str(response.url.join(location))
+        else:
+            raise _Refused(f"転送が {MAX_REDIRECTS} 回を超えた")
+        try:
+            yield response
+        finally:
+            await response.aclose()
 
     async def _download(self, client: httpx.AsyncClient, f: dict[str, Any]) -> str | None:
         if not _FILE_ID.match(str(f.get("id") or "")):
@@ -322,6 +353,8 @@ class FileSource:
         url = f.get("url_private_download") or f.get("url_private")
         if not isinstance(url, str) or urlsplit(url).scheme not in ("https", "http"):
             return "ダウンロードの URL が無い"
+        if urlsplit(url).scheme != "https":
+            return "HTTPS でない URL は取得しない"
         size = f.get("size")
         if isinstance(size, int) and size > self.max_bytes:
             return f"添付の上限 ({self.max_bytes} バイト) を超える"
@@ -334,7 +367,7 @@ class FileSource:
             if attempt:
                 await asyncio.sleep(self._delay(attempt, last))
             try:
-                async with client.stream("GET", url, headers=self._headers(url)) as response:
+                async with self._get(client, url) as response:
                     if response.status_code == 429 or response.status_code >= 500:
                         last = f"HTTP {response.status_code}"
                         retry_after = response.headers.get("retry-after", "")
@@ -353,6 +386,9 @@ class FileSource:
                         return error
                 part.replace(dest)
                 return None
+            except _Refused as exc:
+                part.unlink(missing_ok=True)
+                return str(exc)
             except httpx.HTTPError as exc:  # the text may hold the URL: no ?t= token in reports
                 last = _URL_TOKEN.sub(r"\1…", f"{type(exc).__name__}: {exc}")
         part.unlink(missing_ok=True)

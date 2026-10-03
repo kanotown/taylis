@@ -575,3 +575,20 @@ def test_dsn_normalization() -> None:
         asyncpg_dsn("postgres://mm:pw@localhost:5432/mattermost?sslmode=disable&connect_timeout=10")
         == "postgresql://mm:pw@localhost:5432/mattermost?sslmode=disable"
     )
+
+
+async def test_normal_posts_between_batches_keep_the_seq(
+    app: FastAPI,
+    db: AsyncSession,
+    tmp_path: Path,
+    mm_files: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review v0.1.22 #2: a later batch for another channel left the seq of a channel that got
+    a normal post in between alone (it used to write the older last_seq back)."""
+    from tests.test_review_v022 import check_seqs_after_import, interleave_normal_posts
+
+    await _people(db)
+    posted = interleave_normal_posts(monkeypatch, app)
+    await _run(app, db, _write(tmp_path / "ebi.jsonl", _records()), mm_files)
+    await check_seqs_after_import(app, posted)

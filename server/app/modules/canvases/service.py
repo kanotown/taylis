@@ -1153,6 +1153,9 @@ async def erase_revision(
         revision.kind = "erased"
         revision.body = ""
         await db.flush()
+    # The activity excerpts copied from this version (CANVAS.md §20.2), also for a version erased
+    # before Review v0.1.22 (erasing it again cleans up; migration 0072 did the old ones).
+    await canvas_mentions.erase_revision(db, canvas_id=canvas.id, rev_id=revision.id)
     out = to_revision_meta(revision)
     await db.commit()
     return out
