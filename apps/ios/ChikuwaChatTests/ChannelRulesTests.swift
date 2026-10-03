@@ -259,6 +259,50 @@ final class ChannelRulesTests: XCTestCase {
         }
     }
 
+    /// M89 (MEMBERSHIP.md §5 4.): the `system_messages` cases of apps/shared/notify-rules.json: a system line (the join /
+    /// leave lines) never notifies, whatever the facts say; from the facts and from the message as it arrives.
+    func testSystemMessagesNeverNotify() throws {
+        struct SystemCase: Decodable {
+            struct Expect: Decodable { let notify: Bool }
+            let name: String
+            let type: String
+            let level: String
+            let reply: String
+            let follower: Bool
+            let unfollowed: Bool
+            let mentioned: Bool
+            let mentionAll: Bool
+            let keyword: Bool
+            let expect: Expect
+        }
+        struct Section: Decodable { let cases: [SystemCase] }
+        struct Vectors: Decodable { let systemMessages: Section }
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/notify-rules.json")
+        let cases = try JSON.snakeDecoder.decode(Vectors.self, from: Data(contentsOf: url)).systemMessages.cases
+        XCTAssertGreaterThanOrEqual(cases.count, 3)
+        let me = UserMe(id: "me", username: "kano", displayName: "Kano", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "",
+                        email: nil, mustChangePassword: false, notifyKeywords: ["ちくわ"])
+        for c in cases {
+            let reply = try XCTUnwrap(NotificationRules.Reply(rawValue: c.reply), c.name)
+            let facts = NotificationRules.NotifyFacts(reply: reply, follower: c.follower, unfollowed: c.unfollowed, mentioned: c.mentioned,
+                                                      mentionAll: c.mentionAll, keyword: c.keyword, type: c.type)
+            XCTAssertEqual(NotificationRules.notifies(level: c.level, facts), c.expect.notify, c.name)
+            // The same facts as a person's post notify (or not) by the ordinary rule: only the type silences it.
+            var asUser = facts
+            asUser.type = "user"
+            XCTAssertEqual(NotificationRules.notifies(level: c.level, asUser), true, c.name)
+
+            var message = MessageOut(id: "s", channelId: "c1", senderId: "u2", seq: 2, updatedSeq: 2, clientMsgId: nil,
+                                     body: c.keyword ? "ちくわ が参加しました" : "Bob が参加しました", createdAt: "", editedAt: nil, deleted: false,
+                                     mentionedUserIds: c.mentioned ? ["me"] : [], mentionAll: c.mentionAll)
+            message.type = c.type
+            let live = NotificationRules.facts(of: message, me: me, thread: nil, storedFollowing: nil)
+            XCTAssertEqual(live.type, c.type, c.name)
+            XCTAssertEqual(NotificationRules.notifies(level: c.level, live), c.expect.notify, c.name)
+        }
+    }
+
     func testAThreadOnlyReplyWithoutParentThreadUsesTheStoredFollow() {
         let me = UserMe(id: "me", username: "kano", displayName: "Kano", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "",
                         email: nil, mustChangePassword: false)

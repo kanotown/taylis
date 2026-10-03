@@ -1523,10 +1523,13 @@ final class AppController {
         case "invite":
             let handles = command.args.split(separator: " ").map(String.init).filter { !$0.isEmpty }
             if handles.isEmpty { error = "/invite @名前"; return false }
+            var targets: [String] = []
             for handle in handles {
                 guard let target = user(handle) else { error = "\(handle) というユーザーはいません"; return false }
-                do { _ = try await api.addMember(channelId: channelId, userId: target.id) } catch { self.error = describe(error); return false }
+                if !targets.contains(target.id) { targets.append(target.id) }
             }
+            // M89: one request (one 「追加しました」 line); 1 by 1 on a server before M88.
+            do { _ = try await api.addMembers(channelId: channelId, userIds: targets) } catch { self.error = describe(error); return false }
             notice = "\(handles.count) 人を追加しました"
             return true
         case "join":

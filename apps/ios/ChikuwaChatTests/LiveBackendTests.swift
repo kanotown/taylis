@@ -352,6 +352,95 @@ final class LiveBackendTests: XCTestCase {
         await alice.logout()
         await bob.logout()
     }
+
+    /// M89 (MEMBERSHIP.md §5): against a server at migration 0071: adding two people at once writes one system line
+    /// that arrives with its system_event, is written with the directory's names and neither notifies nor counts as
+    /// unread; the workspace settings come with bootstrap and follow workspace.settings_updated; with the preview off a
+    /// public channel I am not in answers 403 preview_disabled. Enabled with TEST_RUNNER_LIVE_MEMBERSHIP_URL /
+    /// TEST_RUNNER_LIVE_MEMBERSHIP_USERS ("admin:pass,a:pass,b:pass"; the admin flips the settings and puts them back).
+    func testMembershipLinesAndSettings() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let liveUrl = environment["LIVE_MEMBERSHIP_URL"], let url = URL(string: liveUrl),
+              let users = environment["LIVE_MEMBERSHIP_USERS"]?.split(separator: ",").map({ $0.split(separator: ":").map(String.init) }),
+              users.count == 3 else { throw XCTSkip("LIVE_MEMBERSHIP_URL not set") }
+        let device = DeviceInfo(platform: "ios", deviceName: "live-test", appVersion: "0.1.0")
+        let admin = ApiClient(baseUrl: url), alice = ApiClient(baseUrl: url), bob = ApiClient(baseUrl: url)
+        let adminMe = try await admin.login(username: users[0][0], password: users[0][1], device: device).user
+        let aliceMe = try await alice.login(username: users[1][0], password: users[1][1], device: device).user
+        let bobMe = try await bob.login(username: users[2][0], password: users[2][1], device: device).user
+
+        func settings(_ body: [String: Bool]?) async throws -> [String: Any] {
+            var request = URLRequest(url: url.appendingPathComponent("api/v1/admin/workspace-settings"))
+            request.setValue("Bearer \(admin.accessToken ?? "")", forHTTPHeaderField: "Authorization")
+            if let body {
+                request.httpMethod = "PATCH"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+            return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        }
+        let original = try await settings(nil)
+        _ = try await settings(["show_membership_messages": true, "preview_before_join": true])
+
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: bob, connect: { url, _ in try await WebSocketTransport.connect(url: url) }, wsUrl: bob.wsUrl,
+                                store: store, getAccessToken: { bob.accessToken }, options: options)
+        var notified: [String] = []
+        engine.onNotify = { message, _ in notified.append(message.body) }
+        engine.isActive = { false }
+        await engine.start()
+        await engine.idle()
+        XCTAssertTrue(store.workspaceSettings.previewBeforeJoin)
+
+        let stamp = String(Int(Date().timeIntervalSince1970))
+        let channel = try await alice.createChannel(name: "ios-m89-" + stamp, type: "public")
+        let added = try await alice.addMembers(channelId: channel.id, userIds: [bobMe.id, adminMe.id])
+        XCTAssertEqual(Set(added.map(\.userId)), [bobMe.id, adminMe.id])
+        _ = try await alice.postMessage(channelId: channel.id, clientMsgId: UUID().uuidString.lowercased(), body: "after the line")
+        for _ in 0..<100 where store.channel(channel.id) == nil || store.channel(channel.id)!.lastSeq < 2 {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            await engine.idle()
+        }
+        await engine.openChannel(channel.id)
+        await engine.idle()
+        let rows = store.messages(channel.id)
+        let line = try XCTUnwrap(rows.first { $0.isSystem })
+        XCTAssertEqual(line.systemEvent?.kind, "members_added")
+        XCTAssertEqual(line.systemEvent?.actorId, aliceMe.id)
+        XCTAssertEqual(SystemMessage.text(line, users: store.users),
+                       "\(aliceMe.displayName) が \(SystemMessage.joinNames(line.systemEvent!.userIds.map { store.users[$0]!.displayName })) を追加しました")
+        // My read position is the line (I was added there); the post after it is the only unread.
+        XCTAssertEqual(store.channel(channel.id)?.unreadCount, 1)
+        XCTAssertFalse(notified.contains(line.body))
+
+        // The preview turned off: the event reaches the open engine, and a public channel I am not in is refused.
+        let closed = try await alice.createChannel(name: "ios-m89-closed-" + stamp, type: "public")
+        _ = try await settings(["preview_before_join": false])
+        for _ in 0..<100 where store.workspaceSettings.previewBeforeJoin {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            await engine.idle()
+        }
+        XCTAssertFalse(store.workspaceSettings.previewBeforeJoin)
+        do {
+            _ = try await bob.history(channelId: closed.id, beforeSeq: nil, limit: 10)
+            XCTFail("the history was given")
+        } catch {
+            XCTAssertTrue(PreviewJoin.isRefusal(error), "\(error)")
+        }
+
+        _ = try await settings(["show_membership_messages": original["show_membership_messages"] as? Bool ?? true,
+                                "preview_before_join": original["preview_before_join"] as? Bool ?? true])
+        engine.stop()
+        _ = try? await alice.archiveChannel(id: channel.id)
+        _ = try? await alice.archiveChannel(id: closed.id)
+        await admin.logout()
+        await alice.logout()
+        await bob.logout()
+    }
 }
 
 private func XCTAssertThrowsErrorAsync<T>(_ expression: @autoclosure () async throws -> T, file: StaticString = #filePath, line: UInt = #line) async {

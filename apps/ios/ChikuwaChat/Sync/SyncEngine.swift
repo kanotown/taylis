@@ -528,6 +528,7 @@ final class SyncEngine {
         store.replaceGroups(bootstrap.groups ?? [])
         store.replaceRoster(bootstrap.roster ?? [])
         store.replaceSidebar(bootstrap.sidebarSections ?? [])
+        store.setWorkspaceSettings(bootstrap.workspaceSettings)
         drafts.applyBootstrap(bootstrap.drafts ?? [])
         Task { await self.loadScheduled() }
         Task { await self.loadReminders() }
@@ -711,6 +712,9 @@ final class SyncEngine {
         case "reaction.added":
             // M39: someone reacted to my message (the banner is the server's push, for those who turned it on).
             scheduleActivityRefresh()
+        case "workspace.settings_updated":  // M88 (MEMBERSHIP.md §3): an open preview follows (ChannelPreviewView)
+            struct Payload: Decodable { let settings: WorkspaceSettings }
+            store.setWorkspaceSettings(try frame.data.decode(Payload.self).settings)
         case "session.revoked":
             signOut()
         default:

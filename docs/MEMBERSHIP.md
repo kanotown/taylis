@@ -128,3 +128,39 @@ times (L8) もオフなら対象外 (`channels.list_public_times_not_member` が
 9. **確認**: シミュレータ / エミュレータで、参加・退出・複数追加・除外の行が名前付きで 1 行に出ること、未読・バッジ・
    通知にならないこと、プレビューのオフで未参加のチャンネルがパネルになり参加で読めること、設定を変えると開いている
    画面が追従すること。
+
+### M89 iOS (ビルド 79、2026-10-03)
+
+§5 を iOS で実装した。サーバ・API は M88 のまま。
+
+- **モデル**: `MessageOut.systemEvent` (`SystemEvent {kind, actorId, userIds}`、kind は文字列のまま。壊れた値は nil) と
+  `BootstrapOut.workspaceSettings` (`WorkspaceSettings`、項目が無ければ true)。ローカルのメッセージは SQLite に JSON で
+  持つので、`MessageState.systemEvent` を足すだけで移行は要らない (前のビルドで保存した行は nil で読み、`body` を出す)。
+  設定は `Store.workspaceSettings` (保存しない。起動直後と M88 より前のサーバは既定値)、bootstrap と
+  `workspace.settings_updated` で置き換える。
+- **文**: `SystemMessage.text` (`UI/SystemMessage.swift`) が Desktop の `systemMessageText` と同じ規則で、名簿
+  (`store.users` の `displayName`) から作る。区切りは「、」、event が無い・知らない kind・名簿に無い人なら `body`。
+- **表示**: `MessageRow` は `type != "user"` なら `SystemMessageRow` (中央寄せの caption の灰色 1 行 + 時刻) だけを出す。
+  アイコン・名前・リアクション・スレッドの行・タップ・長押し・VoiceOver の操作は無い (操作シートを開かないので
+  「ここから未読にする」も出ない)。反転したリスト (D23) の 1 行として他の行と同じく並び、表示範囲の既読
+  (`VisibleMessageFrames`) も他の行と同じ。まとめない規則は既存の `Timeline.continues` のまま。参加前のプレビューと
+  スレッドの画面も `MessageRow` なので同じ。
+- **通知**: `NotificationRules.NotifyFacts.type` を足し、`notifies` は `type != "user"` なら false。アプリ内の通知
+  (`SyncEngine.maybeNotify`) はこれを通る。未読は前から数えない (`countsAsUnread`)。`ChannelRulesTests` が
+  `notify-rules.json` の `system_messages.cases` を事実からと届いたメッセージからの両方で読む。
+- **プレビューのオフ**: `ChannelPreviewView` は設定がオフ、または履歴が `403 preview_disabled` なら、履歴を取りに
+  行かずに「参加するとメッセージを読めます」のパネル (説明 (`purpose`、無ければトピック)・メンバー数・「参加」) を出し、
+  下の参加バーは出さない (アーカイブ済みなら参加の代わりに注記)。開いている間に設定がオフになれば行を捨ててパネル、
+  オンになれば読み込む。パーマリンク・検索から開いた未参加のチャンネルも同じパネルになる。
+- **追加**: `ApiClient.addMembers` が 2 人以上なら `POST /channels/{id}/members/batch` を 1 回 (405 なら 1 人ずつ)。
+  メンバーの追加画面と `/invite @a @b` (名前を全部確かめてから送る) が使う。
+- **管理のスイッチ**: 足していない (Web の管理を使う、§5 7.)。
+- **テスト**: `MembershipTests` (文・保存・まとめない・エンジンでの未読と通知・設定の bootstrap とイベント・
+  パネルの判定・batch と 405・行の描画) と `ChannelRulesTests.testSystemMessagesNeverNotify`。
+  `LiveBackendTests.testMembershipLinesAndSettings` (`TEST_RUNNER_LIVE_MEMBERSHIP_URL` /
+  `TEST_RUNNER_LIVE_MEMBERSHIP_USERS="admin:pass,a:pass,b:pass"`) は 0071 の開発サーバで通した。シミュレータで
+  実際の `ChannelView` (追加・除外・参加・退出の 4 種が名前付きの 1 行、未読 3 件は人の投稿だけ) と
+  `ChannelPreviewView` (オフでパネル → オンで読み込み → オフでパネル) を開発サーバの相手に描いて確かめた。
+- **残り**: 開いている間に追加されたチャンネルは、次の bootstrap まで手元の既読位置が 0 のまま (サーバは追加の行に
+  置く) なので、「新着メッセージ」の線が追加前の行の上に出ることがある (M89 より前からの、イベントで届いたチャンネルの
+  既読位置の扱い。未読数はサーバと同じ)。

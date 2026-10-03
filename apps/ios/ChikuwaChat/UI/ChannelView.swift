@@ -1020,6 +1020,15 @@ struct MessageRow: View {
     }
 
     var body: some View {
+        if message.isSystem {
+            // M89 (MEMBERSHIP.md §5 3.): one muted line; no taps, long press or VoiceOver actions (nothing to open).
+            SystemMessageRow(message: message, store: store, margin: margin, focused: controller.messageFocus?.messageId == message.id)
+        } else {
+            personRow
+        }
+    }
+
+    private var personRow: some View {
         HStack(alignment: .top, spacing: 10) {
             if compact {
                 // Grouped under the previous message: its time, small, where the avatar would be, so where one message

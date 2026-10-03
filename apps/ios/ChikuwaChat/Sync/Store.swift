@@ -133,12 +133,18 @@ struct MessageState: Codable, Identifiable, Equatable {
     var collection: CollectionOut? = nil
     /// L9 (M64): the shared tasks made from it, for their chips; rows persisted earlier lack it.
     var tasks: [MessageTaskOut] = []
+    /// M88 (MEMBERSHIP.md §5): a system line's event, kept so the line is written again with today's names after a
+    /// restart; rows persisted earlier lack it (their `body` shows).
+    var systemEvent: SystemEvent? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed, type
         case reactions, mentionedUserIds, mentionAll, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
-        case priority, ackRequested, acks, collection, tasks
+        case priority, ackRequested, acks, collection, tasks, systemEvent
     }
+
+    /// M88: a line the server writes (the join / leave lines): one muted line, never grouped, no actions.
+    var isSystem: Bool { type != "user" }
 
     func reactedBy(_ userId: String, _ emoji: String) -> Bool {
         reactions.contains { $0.emoji == emoji && $0.userIds.contains(userId) }
@@ -181,6 +187,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         acks = message.acks
         collection = message.collection
         tasks = message.tasks
+        systemEvent = message.systemEvent
     }
 
     /// Rows persisted before M8a lack the reaction / mention fields.
@@ -216,6 +223,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         acks = try c.decodeIfPresent([AckOut].self, forKey: .acks) ?? []
         collection = try? c.decodeIfPresent(CollectionOut.self, forKey: .collection)
         tasks = MessageTaskOut.list(c, forKey: .tasks)
+        systemEvent = try? c.decodeIfPresent(SystemEvent.self, forKey: .systemEvent)
     }
 
     init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = nil,
@@ -257,7 +265,7 @@ extension MessageOut {
                   alsoInChannel: state.alsoInChannel, replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, replyUserIds: state.replyUserIds, attachments: state.attachments,
                   pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy, poll: state.poll,
                   priority: state.priority, ackRequested: state.ackRequested, acks: state.acks, collection: state.collection,
-                  tasks: state.tasks)
+                  tasks: state.tasks, systemEvent: state.systemEvent)
     }
 }
 
@@ -390,6 +398,15 @@ final class Store {
     var sidebarSections: [SidebarSectionOut] = []
     /// Server limits from bootstrap (max attachment size …); nil until the first one.
     var limits: Limits?
+    /// M88 (MEMBERSHIP.md §3): the workspace's switches, from bootstrap and workspace.settings_updated. Not persisted:
+    /// the defaults (both on) until the first bootstrap.
+    private(set) var workspaceSettings = WorkspaceSettings.defaults
+
+    /// bootstrap (nil from a server before M88: the defaults) or workspace.settings_updated.
+    func setWorkspaceSettings(_ settings: WorkspaceSettings?) {
+        let next = settings ?? .defaults
+        if next != workspaceSettings { workspaceSettings = next } // every reconnect bootstraps: unchanged redraws nothing
+    }
     /// A conversation left the store (left, removed, made private); the engine forgets it as the open one.
     @ObservationIgnored var onChannelRemoved: ((String) -> Void)?
     /// L8 (TIMES_FEED.md §5, review #4): every server row given to the store (live events, the delta, pages, the answers

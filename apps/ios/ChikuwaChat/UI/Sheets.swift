@@ -170,10 +170,11 @@ struct AddMemberView: View {
                             defer { adding = false }
                             guard let api = controller.api else { return }
                             do {
-                                for userId in selected {
-                                    _ = try await api.addMember(channelId: channelId, userId: userId)
-                                    loader.members?.insert(userId)
-                                    selected.remove(userId)
+                                // M89: one request for them all (one 「追加しました」 line); 1 by 1 on a server before M88.
+                                let userIds = candidates.map(\.id).filter(selected.contains)
+                                for member in try await api.addMembers(channelId: channelId, userIds: userIds) {
+                                    loader.members?.insert(member.userId)
+                                    selected.remove(member.userId)
                                 }
                                 dismiss()
                             } catch { self.error = controller.describe(error) }

@@ -6,6 +6,20 @@ enum PreviewJoin {
     static let archivedNote = "アーカイブされたチャンネルです (読むだけ)"
 
     static func canJoin(_ channel: ChannelOut) -> Bool { !channel.archived }
+
+    /// M89 (MEMBERSHIP.md §5 5.): the panel in place of the messages when the workspace turned the preview off (the
+    /// errors.json `preview_disabled` words).
+    static let refusedTitle = "参加するとメッセージを読めます"
+
+    /// Whether the preview shows the panel: the workspace's 「参加前にチャンネルの中を見られる」 is off, or the server
+    /// answered 403 preview_disabled (it changed while this device was offline).
+    static func refused(previewBeforeJoin: Bool, refusedByServer: Bool) -> Bool { !previewBeforeJoin || refusedByServer }
+
+    /// A refusal of the preview by the server.
+    static func isRefusal(_ error: Error) -> Bool {
+        if case ApiError.api(403, "preview_disabled", _) = error { return true }
+        return false
+    }
 }
 
 /// A public channel read before joining (M27, SYNC_PROTOCOL.md §7.6.1; Slack): its messages as they are when opened,
@@ -27,13 +41,103 @@ struct ChannelPreviewView: View {
     @State private var joining = false
     /// The rows are the context of `focusMessageId`, not the newest page.
     @State private var showingContext = false
+    /// M89: the server answered 403 preview_disabled (the setting changed while offline); cleared when it turns on.
+    @State private var refusedByServer = false
+    /// The channel as `GET /channels/{id}` answers it, for the panel's member count when the list gave none.
+    @State private var fetched: ChannelOut?
     @AppStorage(Timeline.groupingKey) private var grouping = false  // M47
 
     private static let margin: CGFloat = 12
     private static let pageSize = 50
     private var channel: ChannelState? { controller.store.channel(channelId) }
+    private var previewBeforeJoin: Bool { controller.store.workspaceSettings.previewBeforeJoin }
+    private var refused: Bool { PreviewJoin.refused(previewBeforeJoin: previewBeforeJoin, refusedByServer: refusedByServer) }
 
     var body: some View {
+        Group {
+            if refused {
+                refusedPanel
+            } else {
+                preview
+            }
+        }
+        .navigationTitle(channel.map { channelTitle($0, store: controller.store) } ?? "")
+        .navigationBarTitleDisplayMode(.inline)
+        // Not `.task`: opened after going back from another conversation, the view went away and came back once as it
+        // appeared, which cancelled the load, and a view that stays is not given its task again (it spun for ever).
+        .onAppear {
+            guard !loaded && !loading && !refused else { return }
+            loading = true
+            Task {
+                await load()
+                loading = false
+            }
+        }
+        // M89: the setting changed while open: off, the rows go and the panel shows; on, the page loads.
+        .onChange(of: previewBeforeJoin) { _, on in
+            if on {
+                refusedByServer = false
+                guard !loading else { return }
+                loading = true
+                Task {
+                    await load()
+                    loading = false
+                }
+            } else {
+                clearRows()
+            }
+        }
+        .sheet(item: $thread) { target in
+            PreviewThreadView(controller: controller, parentId: target.id, parent: messages.first { $0.id == target.id })
+        }
+    }
+
+    /// M89 (MEMBERSHIP.md §5 5.): the preview is off: what the channel is (its description and member count) and one
+    /// 「参加」 button; no history is asked for, and the join bar below is not shown (one button).
+    private var refusedPanel: some View {
+        let out = channel?.channel ?? fetched
+        let count = channel?.channel.memberCount ?? fetched?.memberCount
+        return ScrollView {
+            VStack(spacing: 14) {
+                Image(systemName: "lock.open").font(.largeTitle).foregroundStyle(.secondary)
+                Text(PreviewJoin.refusedTitle).font(.headline)
+                if let text = out?.purpose ?? out?.topic, !text.isEmpty {
+                    Text(text).font(.subheadline).multilineTextAlignment(.center)
+                }
+                if let count { Text("メンバー \(count) 人").font(.subheadline).foregroundStyle(.secondary) }
+                if let out, !PreviewJoin.canJoin(out) {
+                    Text(PreviewJoin.archivedNote).font(.subheadline).foregroundStyle(.secondary)
+                } else {
+                    Button {
+                        Task { await join() }
+                    } label: {
+                        Text(joining ? "参加しています…" : "参加").frame(minWidth: 120)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(joining || channel == nil)
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity)
+            .containerRelativeFrame(.horizontal)
+        }
+        .task {
+            guard channel?.channel.memberCount == nil, fetched == nil, let api = controller.api else { return }
+            fetched = try? await api.channel(id: channelId)
+        }
+    }
+
+    private func clearRows() {
+        messages = []
+        hasMore = false
+        loaded = false
+        failure = nil
+        showingContext = false
+        thread = nil
+    }
+
+    private var preview: some View {
         VStack(spacing: 0) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -91,21 +195,6 @@ struct ChannelPreviewView: View {
             }
             joinBar
         }
-        .navigationTitle(channel.map { channelTitle($0, store: controller.store) } ?? "")
-        .navigationBarTitleDisplayMode(.inline)
-        // Not `.task`: opened after going back from another conversation, the view went away and came back once as it
-        // appeared, which cancelled the load, and a view that stays is not given its task again (it spun for ever).
-        .onAppear {
-            guard !loaded && !loading else { return }
-            loading = true
-            Task {
-                await load()
-                loading = false
-            }
-        }
-        .sheet(item: $thread) { target in
-            PreviewThreadView(controller: controller, parentId: target.id, parent: messages.first { $0.id == target.id })
-        }
     }
 
     private var joinBar: some View {
@@ -130,7 +219,7 @@ struct ChannelPreviewView: View {
 
     /// The newest page, or (a permalink, unless `latest`) the messages around the linked one.
     private func load(latest: Bool = false) async {
-        guard let api = controller.api else { return }
+        guard let api = controller.api, previewBeforeJoin else { return }
         failure = nil
         do {
             if let focusMessageId, !latest {
@@ -144,6 +233,9 @@ struct ChannelPreviewView: View {
                 showingContext = false
             }
             loaded = true
+        } catch where PreviewJoin.isRefusal(error) {
+            clearRows()
+            refusedByServer = true
         } catch {
             failure = controller.describe(error)
         }
@@ -157,6 +249,9 @@ struct ChannelPreviewView: View {
             let page = try await api.history(channelId: channelId, beforeSeq: oldest, limit: Self.pageSize)
             messages = Self.rows(page.messages) + messages
             hasMore = page.hasMore
+        } catch where PreviewJoin.isRefusal(error) {
+            clearRows()
+            refusedByServer = true
         } catch { controller.error = controller.describe(error) }
     }
 
