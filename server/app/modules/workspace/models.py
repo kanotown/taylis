@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, func, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Uuid, func, text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -37,6 +38,9 @@ class WorkspaceSettings(Base):
     preview_before_join: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true")
     )
+    # 「既定のチャンネル」 (M90, MEMBERSHIP.md §6): public channels every new non-guest account
+    # joins, in order. None = never set (SSO_DEFAULT_CHANNELS still applies to Google sign-in).
+    default_channel_ids: Mapped[list[uuid.UUID] | None] = mapped_column(ARRAY(Uuid))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

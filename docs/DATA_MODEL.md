@@ -1582,6 +1582,7 @@ CREATE TABLE workspace_settings (
   singleton                 boolean PRIMARY KEY DEFAULT true CHECK (singleton),  -- 常に 1 行 (0071 で作る)
   show_membership_messages  boolean NOT NULL DEFAULT true,   -- 「参加・退出の表示」
   preview_before_join       boolean NOT NULL DEFAULT true,   -- 「参加前にチャンネルの中を見られる」(M27 のプレビュー)
+  default_channel_ids       uuid[],                          -- M90 (0073) 「既定のチャンネル」、順序付き。NULL = 一度も保存していない
   updated_at                timestamptz NOT NULL DEFAULT now(),
   updated_by                uuid REFERENCES users(id) ON DELETE SET NULL
 );
@@ -1589,6 +1590,8 @@ CREATE TABLE workspace_settings (
 
 行が無ければ既定値 (両方 true) として読む (古いバックアップの復元)。`PATCH /admin/workspace-settings` が無ければ作る。
 変更は監査ログと `workspace.settings_updated` イベント。bootstrap の `workspace_settings` で全員に返す。
+`default_channel_ids` は管理者の GET / PATCH だけに出る (bootstrap には入れない)。外部キーは無く (配列)、使う時に
+公開・未アーカイブでないものを飛ばす (MEMBERSHIP.md §6)。
 
 ### import_refs (移行元の対応、M18・M87)
 

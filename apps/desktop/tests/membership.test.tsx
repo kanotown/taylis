@@ -162,7 +162,7 @@ describe("参加前にチャンネルの中を見られる (preview_before_join)
 
 describe("Administration → 設定", () => {
   it("shows the two switches and saves each when flipped", async () => {
-    const row: AdminWorkspaceSettingsOut = { show_membership_messages: true, preview_before_join: true, updated_at: null, updated_by: null };
+    const row = { show_membership_messages: true, preview_before_join: true, updated_at: null, updated_by: null } as AdminWorkspaceSettingsOut; // an M88 server (no default channels)
     const adminWorkspaceSettings = vi.fn(async () => row);
     const adminUpdateWorkspaceSettings = vi.fn(async (patch: object) => ({ ...row, ...patch }));
     const controller = { api: { adminWorkspaceSettings, adminUpdateWorkspaceSettings }, store: new Store(), setError: vi.fn() } as unknown as AppController;
@@ -177,7 +177,7 @@ describe("Administration → 設定", () => {
   });
 
   it("puts a switch back when the server refuses, and says so on a server before M88", async () => {
-    const row: AdminWorkspaceSettingsOut = { show_membership_messages: true, preview_before_join: true, updated_at: null, updated_by: null };
+    const row = { show_membership_messages: true, preview_before_join: true, updated_at: null, updated_by: null } as AdminWorkspaceSettingsOut; // an M88 server (no default channels)
     const setError = vi.fn();
     const controller = {
       api: { adminWorkspaceSettings: vi.fn(async () => row), adminUpdateWorkspaceSettings: vi.fn(async () => { throw new Error("offline"); }) },

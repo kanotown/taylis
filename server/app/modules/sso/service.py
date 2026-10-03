@@ -28,7 +28,6 @@ from app.modules.admin.schemas import AdminUserCreate
 from app.modules.audit import service as audit
 from app.modules.auth import service as auth
 from app.modules.auth.schemas import TokenResponse
-from app.modules.channels import service as channels
 from app.modules.groups import service as groups
 from app.modules.groups.schemas import RESERVED_NAMES
 from app.modules.sso import repository as repo
@@ -279,8 +278,10 @@ async def _resolve_user(
         must_change_password=False,
         actor_id=None,
         details={"via": "sso", "provider": provider},
+        # M90: the administrator's default channels; SSO_DEFAULT_CHANNELS only while those were
+        # never set (deprecated).
+        legacy_default_channels=settings.sso_default_channel_names,
     )
-    await _join_default_channels(db, user, settings)
     await _link(db, user, provider, claims, now)
     return user
 
@@ -299,15 +300,6 @@ async def _link(
         )
     )
     await db.flush()
-
-
-async def _join_default_channels(db: AsyncSession, user: User, settings: Settings) -> None:
-    for name in settings.sso_default_channel_names:
-        channel = await channels.find_channel_by_name(db, name)
-        if channel is None or channel.type != "public" or channel.is_archived:
-            log.warning("SSO_DEFAULT_CHANNELS names no open public channel: %s", name)
-            continue
-        await channels.add_member_in_tx(db, channel, user.id, announce=True)
 
 
 def username_base(email: str) -> str:

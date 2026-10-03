@@ -35,7 +35,7 @@
 | `SSO_GOOGLE_CLIENT_SECRET_FILE` | client secret を置いたファイルのパス (秘密はリポジトリにも環境変数の一覧にも書かない。`SSO_GOOGLE_CLIENT_SECRET` も可) |
 | `SSO_GOOGLE_ALLOWED_DOMAINS` | 受け付ける Workspace のドメイン (カンマ区切り、例 `example.ac.jp`)。**空なら SSO は無効** (誤ってすべての Google アカウントを受け付けないため) |
 | `SSO_AUTO_PROVISION` | `true` で案B (初回ログインで作成)。既定 `false`: 管理者が作った (メールアドレスが一致する) 人だけ |
-| `SSO_DEFAULT_CHANNELS` | 案B で作った人が入る公開チャンネルの名前 (カンマ区切り、例 `general,お知らせ`)。無い名前・非公開・アーカイブ済みは飛ばす (ログに警告)。既定は空 (どこにも入らない) |
+| `SSO_DEFAULT_CHANNELS` | **非推奨 (M90)**。案B で作った人が入る公開チャンネルの名前 (カンマ区切り、例 `general,お知らせ`)。無い名前・非公開・アーカイブ済みは飛ばす (ログに警告)。既定は空。管理者が「既定のチャンネル」(MEMBERSHIP.md §6) を一度も保存していない間だけ使い、保存した後 (空の一覧でも) は無視する。管理の「設定」タブにその間だけ値を出す |
 | `SSO_RATE_LIMIT_PER_IP` | 開始・callback・交換の IP ごとの回数 / 分 (既定 30。1 回のログインで 3 回) |
 | `PUBLIC_BASE_URL` | このサーバの公開 URL (例 `https://chat.example.ac.jp`)。callback の URL と Web への戻り先に使う |
 
@@ -118,7 +118,9 @@ callback と交換のあいだに無効化された人は 401 `account_disabled`
      そうしないと、アプリは知らされていない仮パスワードの変更を求める画面を出してしまう。管理者は必要なら
      パスワードのリセットで改めてパスワードを渡せる。
 3. それも無く `SSO_AUTO_PROVISION=true` なら作る (案B): 招待の受諾と同じ `create_user_in_tx` を使い、
-   `SSO_DEFAULT_CHANNELS` の公開チャンネルに入れる (サーバに「既定のチャンネル」の仕組みは無いので設定で決める)。
+   「既定のチャンネル」に入れる。M90 からは `create_user_in_tx` の中の 1 か所 (MEMBERSHIP.md §6) が管理者の一覧で決め、
+   一覧が一度も保存されていなければ従来どおり `SSO_DEFAULT_CHANNELS` (非推奨) の公開チャンネル。M48 の時点では
+   サーバに既定のチャンネルの仕組みが無かったので環境変数で決めていた。
    - ユーザー名: メールアドレスの @ の前を小文字にし、ユーザー名に使えない文字 (`USERNAME_PATTERN` の外) の並びを
      `-` に替え、前後の `-` を落としたもの (32 文字まで。3 文字に満たなければ `-user` を付ける)。
      ユーザー・グループの名前と重複するか `@here` などの予約語なら `-2`、`-3` … を付ける。

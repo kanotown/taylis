@@ -13,9 +13,13 @@ export function isSystemMessage(message: { type?: string | null }): boolean {
   return (message.type ?? "user") !== "user";
 }
 
-/** 「A、B」 as the server writes the list (the Japanese comma, no 「と」). */
+/** M90: past this many people a line lists the first ones and 「ほか N 人」 (the server's MEMBERSHIP_NAMES_SHOWN). */
+export const NAMES_SHOWN = 10;
+
+/** 「A、B」 as the server writes the list (the Japanese comma, no 「と」); 「A、… J ほか N 人」 past NAMES_SHOWN. */
 export function joinNames(names: readonly string[]): string {
-  return names.join("、");
+  if (names.length <= NAMES_SHOWN) return names.join("、");
+  return `${names.slice(0, NAMES_SHOWN).join("、")} ほか ${names.length - NAMES_SHOWN} 人`;
 }
 
 export function systemMessageText(message: Pick<MessageOut, "body" | "system_event">, nameOf: (userId: string) => string | undefined): string {

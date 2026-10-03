@@ -1041,10 +1041,23 @@ async def export_rows(db: AsyncSession, channel_id: uuid.UUID) -> list[MessageOu
 # --- system messages (M88, docs/MEMBERSHIP.md) ---------------------------------------------------
 
 
+# M90: a line naming more people than this lists the first ones and 「ほか N 人」 (「今いる人も
+# 全員入れる」 adds everyone at once). system_event keeps every id.
+MEMBERSHIP_NAMES_SHOWN = 10
+
+
+def membership_names(names: list[str]) -> str:
+    """「A、B」, or 「A、B … J ほか 5 人」 past MEMBERSHIP_NAMES_SHOWN."""
+    if len(names) <= MEMBERSHIP_NAMES_SHOWN:
+        return "、".join(names)
+    shown = "、".join(names[:MEMBERSHIP_NAMES_SHOWN])
+    return f"{shown} ほか {len(names) - MEMBERSHIP_NAMES_SHOWN} 人"
+
+
 def membership_text(kind: str, actor: str, others: list[str]) -> str:
     """The plain-text fallback of a join / leave line (clients before M88, exports). Clients that
     know `system_event` write the line themselves with today's names."""
-    names = "、".join(others)
+    names = membership_names(others)
     if kind == "member_joined":
         return f"{actor} が参加しました"
     if kind == "member_left":

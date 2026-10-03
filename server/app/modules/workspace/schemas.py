@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ServerInfoOut(BaseModel):
@@ -26,11 +26,28 @@ class WorkspaceSettingsOut(BaseModel):
     preview_before_join: bool = True
 
 
+# M90: at most this many default channels (a long list would bury a newcomer's sidebar).
+MAX_DEFAULT_CHANNELS = 20
+
+
+class DefaultChannelOut(BaseModel):
+    id: UUID
+    name: str
+
+
 class AdminWorkspaceSettingsOut(WorkspaceSettingsOut):
     """GET / PATCH /admin/workspace-settings: the settings and who changed them last."""
 
     updated_at: datetime | None = None
     updated_by: UUID | None = None
+    # M90 「既定のチャンネル」 (docs/MEMBERSHIP.md §6): the public channels every new non-guest
+    # account joins, in order. Only channels that are still public and not archived are listed.
+    default_channel_ids: list[UUID] = []
+    default_channels: list[DefaultChannelOut] = []
+    # False until an administrator saves the list once (even empty): until then Google sign-in's
+    # auto-provisioned accounts still join SSO_DEFAULT_CHANNELS (deprecated), shown here.
+    default_channels_set: bool = False
+    legacy_sso_default_channels: list[str] = []
 
 
 class WorkspaceSettingsUpdate(BaseModel):
@@ -40,3 +57,31 @@ class WorkspaceSettingsUpdate(BaseModel):
 
     show_membership_messages: bool | None = None
     preview_before_join: bool | None = None
+    # M90: the whole ordered list (send [] to clear). Each must be a public, non-archived channel
+    # (422 default_channel_not_found / default_channel_not_public / default_channel_archived);
+    # repeats are dropped.
+    default_channel_ids: list[UUID] | None = Field(default=None, max_length=MAX_DEFAULT_CHANNELS)
+
+
+class DefaultChannelsApply(BaseModel):
+    """POST /admin/workspace-settings/apply-default-channels (M90)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # True: only count who would be added (the confirmation), change nothing.
+    dry_run: bool = False
+
+
+class DefaultChannelApplied(BaseModel):
+    id: UUID
+    name: str
+    # People added to this channel (or who would be, with dry_run).
+    added: int
+
+
+class DefaultChannelsApplyOut(BaseModel):
+    dry_run: bool
+    # Distinct people added to at least one channel, and the memberships made in all.
+    users: int
+    memberships: int
+    channels: list[DefaultChannelApplied]

@@ -1,4 +1,4 @@
-# MEMBERSHIP (M88 / M89)
+# MEMBERSHIP (M88 / M89 / M90)
 
 チャンネルの参加・退出の表示と、管理者のワークスペース設定 2 つ。利用者の要望 (2026-10-03):
 「チャンネルに参加したり抜けたりしたとき、それがわかるように一言表示されるようにしたい。管理者側の設定で、その表示を
@@ -11,9 +11,9 @@ ON/OFF できるようにもしたい。管理者側の設定で、入る前に�
 
 | kind | 文 | 出る操作 |
 | --- | --- | --- |
-| `member_joined` | 「A が参加しました」 | 自分で参加 (`POST /channels/{id}/join`)、招待リンクで作ったアカウントの参加 (M12h)、Google でログインの既定チャンネル (M48)、名簿で指導教員になって学生の times に入る (M24)、自分の times に戻る |
+| `member_joined` | 「A が参加しました」 | 自分で参加 (`POST /channels/{id}/join`)、招待リンクで作ったアカウントの参加 (M12h)、Google でログインの既定チャンネル (M48)、既定のチャンネル (M90 §6、作られたアカウントが入る)、名簿で指導教員になって学生の times に入る (M24)、自分の times に戻る |
 | `member_left` | 「A が退出しました」 | 自分で抜ける (`/leave`)、オーナー・管理者が自分を外す |
-| `members_added` | 「A が B、C を追加しました」 | メンバーの追加。1 回の操作で何人追加しても 1 行 (`POST /channels/{id}/members/batch`、`/invite @a @b`)。管理者が times の持ち主を決めて追加したとき |
+| `members_added` | 「A が B、C を追加しました」 | メンバーの追加。1 回の操作で何人追加しても 1 行 (`POST /channels/{id}/members/batch`、`/invite @a @b`)。管理者が times の持ち主を決めて追加したとき。「今いる人も全員入れる」(M90 §6、チャンネルごとに 1 行) |
 | `member_removed` | 「A が B を外しました」 | オーナー・管理者による除外 |
 
 - **形**: `messages.type = "system"`、`messages.system_event = {kind, actor_id, user_ids}` (JSONB、migration 0071)。
@@ -216,3 +216,93 @@ times (L8) もオフなら対象外 (`channels.list_public_times_not_member` が
   オフで未参加のチャンネルがパネルになり、オン・オフの切り替えに開いている画面が追従し、「参加」で読めて
   「android1 が参加しました」が出ること、追加ダイアログが batch を 1 回送ること (「android1 が android2 を追加しました」)
   を確認した。レベル「すべて」での通知の無さはユニットテストだけ (エミュレータの android1 は既定のレベル)。
+
+## 6. 既定のチャンネル (M90)
+
+利用者の要望 (2026-10-03): 「「全体連絡」チャンネルと「談話スペース」をデフォルトで作成し、新規ユーザ（ゲストを除く）は
+必ずそこに入るようにしようかな。デフォルトチャンネルは、管理者側で設定できるようにも」。サーバと Desktop / Web。
+
+### 6.1 設定
+
+- `workspace_settings.default_channel_ids` (`uuid[]`、順序付き、migration 0073)。**NULL = 一度も保存していない**、
+  `[]` = 保存したが空。
+- `GET / PATCH /admin/workspace-settings` (§3、管理者のみ) に足した項目:
+  - PATCH `default_channel_ids`: 一覧の全体 (並び順のまま)。空にするには `[]`。20 個まで (21 個以上は 422)。重複は
+    黙って落とす。各チャンネルは公開で、アーカイブされていないこと。違えば 422 で、`details.channel_id` に問題の
+    チャンネル:
+    `default_channel_not_found` (無い)、`default_channel_not_public` (非公開・DM・グループ DM)、
+    `default_channel_archived` (アーカイブ済み)。文言は `apps/shared/errors.json`。
+  - GET / PATCH の応答: `default_channel_ids`、`default_channels: [{id, name}]` (名前付き。今も公開・未アーカイブの
+    ものだけを、並び順で)、`default_channels_set` (一度でも保存したか)、`legacy_sso_default_channels`
+    (保存していない間だけ、環境変数 `SSO_DEFAULT_CHANNELS` の名前。保存後は `[]`)。
+- 変更は他の項目と同じく監査ログ `workspace.settings_updated` (`{"default_channel_ids": {from, to}}`。from は保存前なら
+  null) とイベント `workspace.settings_updated` (audience all)。イベントと bootstrap の `workspace_settings` は全員向けの
+  2 つのスイッチだけで、一覧は入れない (クライアントが使わないため)。
+- **アーカイブ・非公開にしたとき**: `POST /channels/{id}/archive`、年度更新 (L7) の times のアーカイブ
+  (`set_archived_in_tx`)、`PATCH /channels/{id}` で非公開に変えたとき、同じトランザクションで一覧からそのチャンネルを外す
+  (`workspace.drop_default_channel_in_tx`)。監査ログ `workspace.settings_updated` に `{default_channel_ids: {from, to},
+  reason: "channel_archived" | "channel_made_private"}` (操作した人。年度更新は actor なし)、イベントも出す。
+  アーカイブを戻しても公開に戻しても**一覧には戻さない** (管理者が選び直す)。
+- **使う時にも確かめる**: アプリの外で消えた・変わったチャンネル (チャンネルの削除の API は無い。DB を直接触った、古い
+  バックアップの復元) は、アカウントを作る時と「今いる人も全員入れる」で飛ばす。GET にも出さない。保存された配列は
+  次の PATCH (またはそのチャンネルのアーカイブ) まで残るが、使われることはない。
+
+### 6.2 新しいアカウントが入る
+
+- **1 か所**: `admin.create_user_in_tx` の最後で `workspace.default_channels.join_in_tx` を呼ぶ。人のアカウントを作る
+  経路は全部ここを通る:
+  - 管理者の作成 (`POST /admin/users`)
+  - CLI の `create-user` / `create-admin`
+  - 招待リンクの受諾 (既定のチャンネルの後に招待のチャンネル。重なったチャンネルは 1 回だけ入る)
+  - Google でログインの自動作成 (案B)
+- **入らない人**: ゲスト (`role = guest`)、ボット (`create_bot_in_tx` は別の関数。`role = bot` は弾く)、無効の
+  アカウント。移行 (Mattermost・Slack の取り込み) は `join_default_channels=False` を渡す (メンバーシップは移行元から)。
+- **入り方**: ふつうのメンバーシップの道 (`channels.add_member_in_tx(announce=True)`): `channel.member_added` /
+  `channel.created` のイベント、既読位置、M88 の設定がオンなら「〇〇 が参加しました」(`member_joined`、actor は本人。
+  管理者が作っても「参加しました」で、招待・Google と同じ文)。オフなら行は無い。順は一覧の並び。
+- **環境変数からの移行**: 一覧が NULL (一度も保存していない) の間だけ、Google でログインの自動作成は従来どおり
+  `SSO_DEFAULT_CHANNELS` の名前で入れる (無い名前・非公開・アーカイブ済みは飛ばしてログに警告)。管理者の作成・CLI・
+  招待はこれまでも環境変数を使っていなかったので、NULL の間は既定のチャンネルなし (今までどおり)。一覧を一度保存すると
+  (空でも) 環境変数は使わない。起動時やマイグレーションで環境変数を一覧に写すことはしない (データを勝手に書かない)。
+  管理の「設定」タブは、保存前に環境変数の値を注記として出す。`SSO_DEFAULT_CHANNELS` は非推奨 (SSO.md §2、
+  `infra/.env.example`)。
+- **無効にして戻した人**: 戻しても既定のチャンネルに入れ直さない (作った時だけ。抜けたチャンネルに勝手に戻さない)。
+  入れたいときは「今いる人も全員入れる」。
+- 既定のチャンネルを抜けるのは自由 (「必ず入る」は作った時に入れるという意味で、抜けられないチャンネルは作らない)。
+
+### 6.3 今いる人も全員入れる
+
+- `POST /admin/workspace-settings/apply-default-channels` `{dry_run?: bool}` (管理者のみ。未知の項目は 422)。
+  有効な `admin` / `member` 全員を、入っていない既定のチャンネルに入れる。ゲスト・ボット・無効の人は入れない。
+  使うのは保存した一覧だけ (`SSO_DEFAULT_CHANNELS` は使わない)。
+- 応答 `DefaultChannelsApplyOut`: `{dry_run, users (1 つ以上に入った / 入る人の数), memberships (のべ), channels:
+  [{id, name, added}]}`。`dry_run: true` は数えるだけで何も変えない (確認の文に使う)。
+- **冪等**: 2 回目は誰も入らず、行も監査も増えない。
+- **行**: チャンネルごとに 1 行 `members_added` (actor は管理者、`user_ids` は入れた人全員)。M88 の設定に従う。
+  名前が 10 人を超えたら最初の 10 人と「ほか N 人」にする (「Admin が A、B、… J ほか 25 人 を追加しました」)。
+  `system_event.user_ids` は全員を持つ。この規則はサーバの `body` (`membership_names`) と Desktop の `joinNames` に
+  ある (M88 の複数追加にも同じく効く)。
+- 監査ログ `workspace.default_channels_applied` (`{users, memberships, channels: {id: added}}`、入れた人がいたときだけ)。
+- 実装: `workspace.default_channels.apply_to_everyone` → `channels.add_members_in_tx` (1 チャンネルずつ、同時の追加は
+  入れ子のトランザクションで飛ばす)。数十人の規模なので 1 トランザクションで全部。
+
+### 6.4 Desktop / Web
+
+- 管理 → 「設定」に「既定のチャンネル」の欄: 選んだチャンネルを順に並べ、行ごとに「上へ」「下へ」「外す」。下の選択欄は
+  公開・未アーカイブ・未選択のチャンネル (`GET /channels?include=public`)。選ぶ・並べ替える・外すとすぐ一覧の全体を
+  PATCH (断られたら戻してエラー)。空のときは「「全体連絡」と「談話スペース」を既定にする」ボタン (同じ名前の公開
+  チャンネルがあればそれを、無ければ作ってから既定にする。利用者の要望の 2 つ)。一度も保存していないサーバでは
+  `SSO_DEFAULT_CHANNELS` の注記。
+- 「今いる人も全員入れる」: まず `dry_run` で数え、「N 人を既定のチャンネルに追加します (のべ M 件…)」とチャンネルごとの
+  人数を出して確かめてから実行。0 人なら「全員がすでに既定のチャンネルに入っています。」とだけ出す。
+- M90 より前のサーバ (GET に `default_channel_ids` が無い): 欄に「このサーバは既定のチャンネルに対応していません。」
+  M88 より前 (404) はタブ全体が前からの「対応していません」。
+- テスト: `tests/defaultChannels.test.tsx`。
+
+### 6.5 iOS / Android
+
+変更は要らない。既定のチャンネルへの参加はふつうのメンバーシップの道なので、新しい人はログイン後の bootstrap に
+チャンネルが入っており、「今いる人も全員入れる」で入った今いる人には、メンバーの追加と同じ `channel.created`
+(本人宛て) と `channel.member_added` が届き、行は `message.created` で届く (M89 で表示済み)。管理の画面はスマホに無い
+(Web の管理を使う)。違いは 1 つだけ: 11 人以上を追加した行を、スマホは「ほか N 人」にまとめず全員の名前で出す
+(`system_event` から作るため)。読めるので必須ではないが、合わせるならスマホの文の規則に §6.3 の 10 人の規則を足す。
