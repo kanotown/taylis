@@ -1,3 +1,4 @@
+import { readPickedFiles } from "../platform/pickedFiles";
 import { ArrowDown, ArrowUp, Eye, Hash, ImageUp, Trash2, UsersRound, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -158,9 +159,9 @@ export function WorkspaceIconSection({ controller, settings, onSaved }: {
         aria-label="アイコンの画像を選ぶ"
         className="hidden"
         onChange={(event) => {
-          const file = event.target.files?.[0];
+          const picked = readPickedFiles(event.target.files);
           event.target.value = "";
-          if (file) upload(file);
+          void picked.then(([file]) => { if (file) upload(file); }, (error) => controller.setError(error));
         }}
       />
       <div className="flex shrink-0 flex-col gap-1.5 sm:flex-row">

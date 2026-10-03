@@ -7,6 +7,7 @@
  * their lines; Backspace / Delete beside one take the visible character, a copy leaves them out, a cut keeps them for a
  * paste back into a canvas editor (the line moved keeps its task).
  */
+import { readPickedFiles } from "../platform/pickedFiles";
 import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, Table as TableIcon, TextQuote } from "lucide-react";
 import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
@@ -449,9 +450,9 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
         hidden
         aria-label="キャンバスに入れる画像"
         onChange={(event) => {
-          const files = [...(event.target.files ?? [])];
+          const picked = readPickedFiles(event.target.files);
           event.target.value = "";
-          void insertImages(files);
+          void picked.then(insertImages);
         }}
       />
       {uploading > 0 && (

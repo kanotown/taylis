@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useSyncExternalStore } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AttachmentOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
@@ -82,6 +82,8 @@ describe("conversation UX", () => {
     fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(["note"], "note.txt")] } });
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", shiftKey: true });
     expect(w.send).not.toHaveBeenCalled();
+    // The picked file is read into memory first (platform/pickedFiles.ts), then uploaded.
+    await waitFor(() => expect(w.controller.api!.uploadAttachment).toHaveBeenCalled());
     view.rerender(<w.DraftComposer id={w.other.id} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "other conversation" } });
     await act(async () => { complete(attachment); });
