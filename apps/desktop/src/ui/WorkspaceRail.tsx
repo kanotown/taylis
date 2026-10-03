@@ -418,7 +418,8 @@ export function WorkspaceMenu({ controller }: { controller: AppController }) {
     <Menu>
       <MenuTrigger asChild>
         <button type="button" className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm font-semibold text-white hover:bg-white/10">
-          <WorkspaceIcon serverUrl={entry?.serverUrl} version={entry?.iconVersion} name={name} colorKey={entry?.workspaceId ?? entry?.serverUrl ?? name} className="h-6 w-6 rounded-md text-[11px]" />
+          {/* With the rail on screen (two or more workspaces) its tiles already show the icon. */}
+          {!controller.showsRail && <WorkspaceIcon serverUrl={entry?.serverUrl} version={entry?.iconVersion} name={name} colorKey={entry?.workspaceId ?? entry?.serverUrl ?? name} className="h-6 w-6 rounded-md text-[11px]" />}
           <span className="truncate">{name}</span>
           <ChevronDown size={14} className="shrink-0 opacity-70" />
         </button>

@@ -26,7 +26,7 @@ type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "workflows" 
 export function AdminDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
   return (
     // One height for every tab (the body scrolls): sized to its content, the dialog jumped and re-centred on each switch.
-    <Modal onClose={onClose} title="管理" className="flex h-[80dvh] w-[760px] flex-col overflow-hidden">
+    <Modal onClose={onClose} title="管理" focusDialog className="flex h-[80dvh] w-[760px] flex-col overflow-hidden">
       <AdminBody controller={controller} className="mt-3" />
     </Modal>
   );
