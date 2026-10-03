@@ -69,13 +69,14 @@ export function UserPopover({ controller, userId, children, className }: { contr
           </div>
         )}
         {user?.deactivated_at && <div className="border-b border-line px-4 py-2 text-xs text-muted">無効化されたアカウント</div>}
-        <div className="flex gap-2 p-3">
+        {/* My own card has two actions: stacked full width (side by side they overflowed the 288 px card). */}
+        <div className={cn("flex gap-2 p-3", me && "flex-col")}>
           {me ? (
             <>
-              <Button size="sm" variant="secondary" className="flex-1" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("chikuwa:open-status")); }}>
+              <Button size="sm" variant="secondary" className="w-full justify-center" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("chikuwa:open-status")); }}>
                 <Pencil size={14} /> ステータスを設定
               </Button>
-              <Button size="sm" variant="secondary" className="flex-1" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("chikuwa:open-profile")); }}>
+              <Button size="sm" variant="secondary" className="w-full justify-center" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("chikuwa:open-profile")); }}>
                 <UserRoundPen size={14} /> プロフィールを編集
               </Button>
             </>
