@@ -1309,10 +1309,11 @@ M73 は iOS と Android (§18.5)。
   空にする。移行 0072 は、この変更より前に消去した版の抜粋を空にした。
 - **イベント**: 抜粋を空にした人ごとに `activity.updated` `{item_ids}` (user 宛て、seq なし)。「持っているアクティビティの
   項目が書き換わった」の意味で、バッジは変わらない。
-- **端末でやること** (Desktop / Web・iOS・Android とも、まだ対応していない。対応するまでは一覧を次に読み直した時に空に
+- **端末でやること** (対応前の端末では、一覧を次に読み直した時に空に
   なる): `activity.updated` を受けたら、アクティビティの一覧を表示中・保持中なら読み直す (または `item_ids` の項目の抜粋を
   消す)。端末に保存した一覧があれば同じく直す。`excerpt` が空の項目は 3 行目 (抜粋) を出さない。知らないイベントは
   今までどおり読み飛ばしてよい (古い版の端末は壊れない)。
+- **Desktop / Web (対応済み、8579efd)**: `Store.eraseActivityExcerpts(item_ids)` が読み込み済みの一覧の抜粋をすぐ空にし、空の抜粋は行を出さない。
 - **Android (対応済み)**: `activity.updated` で `Store.blankActivityExcerpts(item_ids)` が表示中の行の抜粋をすぐ空にし
   (`ActivityText.excerpt`)、`activityRevision` を進めて表示中の一覧の 1 ページ目を読み直す (バッジは読み直さない)。抜粋が空の行は
   3 行目を出さない。一覧は端末に保存していない。テストは `ActivityCanvasTest` に 2 件。
