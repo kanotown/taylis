@@ -5,6 +5,12 @@ name: desktop
 # Windows' twice on a private repository, so they no longer run with every release.
 on:
   workflow_dispatch:
+    inputs:
+      os:
+        description: "Which installers (macOS minutes count ten times: the Mac build is usually made locally)"
+        type: choice
+        options: [windows, macos, both]
+        default: windows
 
 permissions:
   contents: read
@@ -14,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: ${{ fromJSON(inputs.os == 'both' && '["macos-latest","windows-latest"]' || (inputs.os == 'macos' && '["macos-latest"]' || '["windows-latest"]')) }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
