@@ -70,6 +70,10 @@ export class Store {
    * offline start shows the last badge; bootstrap replaces it.
    */
   activity: ActivitySummaryOut | null = null;
+  /** Review v0.1.22 #3: activity items whose excerpt the server blanked (an erased canvas revision), and a counter the
+   *  open list watches to drop those excerpts at once. */
+  erasedActivityItems: ReadonlySet<string> = new Set();
+  activityEdits = 0;
   /**
    * M88 (docs/MEMBERSHIP.md §3): the workspace settings from bootstrap and workspace.settings_updated. Not persisted: an
    * offline start reads the defaults (today's behaviour), and the next bootstrap says what they are.
@@ -638,6 +642,14 @@ export class Store {
    * read position held (a GET answered after a newer PUT) is stale and dropped: the position only moves forward. Null
    * (a server before M39, or bootstrap without it) leaves the badge to the stage-A rule (ui/mobileTabs.ts).
    */
+  /** `activity.updated`: these items' excerpts are gone on the server (CANVAS.md §20.8). */
+  eraseActivityExcerpts(itemIds: readonly string[]): void {
+    if (itemIds.length === 0) return;
+    this.erasedActivityItems = new Set([...this.erasedActivityItems, ...itemIds]);
+    this.activityEdits += 1;
+    this.emit();
+  }
+
   setActivity(summary: ActivitySummaryOut | null): void {
     const current = this.activity;
     if (summary && current && Date.parse(summary.read_at) < Date.parse(current.read_at)) return;
