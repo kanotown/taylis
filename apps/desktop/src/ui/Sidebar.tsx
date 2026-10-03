@@ -152,7 +152,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
 
   return (
     <nav data-chat-focus aria-label="チャンネルとDM" className="flex h-full min-h-0 flex-col overflow-y-auto bg-sidebar px-2 pb-4 text-sidebar-fg">
-      <div className="flex items-center gap-2.5 border-b border-white/10 px-2 py-3">
+      {/* Pinned: my avatar, search, 管理 and 設定 stay in view while the list scrolls. */}
+      <div data-testid="sidebar-header" className="sticky top-0 z-10 -mx-2 flex items-center gap-2.5 border-b border-white/10 bg-sidebar px-4 py-3">
         {me && <Avatar id={me.id} name={me.display_name} size={34} className="rounded-xl" />}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-white">{me?.display_name ?? ""}</div>

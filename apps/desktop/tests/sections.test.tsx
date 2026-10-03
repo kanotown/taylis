@@ -88,4 +88,17 @@ describe("sidebar sections (M26, Slack)", () => {
     await act(async () => { fireEvent.click(screen.getByText("作成")); });
     expect(onSubmit).toHaveBeenCalledWith({ name: "事務連絡", emoji: null, channelIds: [w.random.id, w.general.id] });
   });
+
+  it("keeps my avatar and the settings button pinned at the top of the scrolling list", () => {
+    const w = world();
+    render(
+      <Sidebar controller={w.controller as unknown as AppController} channels={[...w.store.channels.values()]} currentId={w.general.id} unreadOnly={false}
+        onToggleUnreadOnly={() => {}} onOpen={() => {}} onNewDm={() => {}} onNewChannel={() => {}} onSettings={() => {}} />,
+    );
+    const header = screen.getByTestId("sidebar-header");
+    expect(header.className).toContain("sticky");
+    expect(header.className).toContain("top-0");
+    expect(header.className).toContain("bg-sidebar");
+    expect(within(header).getByRole("button", { name: "設定" })).toBeTruthy();
+  });
 });
