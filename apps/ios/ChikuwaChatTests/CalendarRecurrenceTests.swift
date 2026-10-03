@@ -404,7 +404,7 @@ final class CalendarRecurrenceHubTests: XCTestCase {
         let api = FakeCalendarApi(weekly())
         let hub = await openHub(api)
         var said: [String] = []
-        hub.onAlarm = { said.append($0.occurrenceKey) }
+        hub.onAlarm = { event, _ in said.append(event?.occurrenceKey ?? "-") }
         func alarm(_ status: String, _ key: String) -> JSONValue {
             .object(["event_id": .string("s1"), "channel_id": .null, "alarm": .object([
                 "minutes_before": .number(10), "fire_at": .string("2026-10-06T04:50:00Z"), "status": .string(status),
@@ -591,5 +591,183 @@ final class CalendarRecurrenceSnapshotTests: XCTestCase {
             await model.create()
             _ = try render(CalendarFeedsView(model: model), style: style, name: "calendar-feeds-\(suffix).png")
         }
+    }
+}
+
+/// Review v0.1.22 #9 (CALENDAR.md §10.11): a fired alarm of one occurrence of a series says that occurrence, never another
+/// (the web's tests/calendarHub.test.ts 「an alarm for an occurrence of a series」, case for case).
+@MainActor
+final class CalendarAlarmOccurrenceTests: XCTestCase {
+    override func setUp() { CalendarDates.zoneOverride = TimeZone(identifier: "Asia/Tokyo") }
+    override func tearDown() { CalendarDates.zoneOverride = nil }
+
+    private typealias O = RecurringFixtures
+
+    // Daily at 9:00 JST from Oct 1 in #lab; the occurrence of Oct 20 alone renamed and moved to 11:00.
+    private func series(_ key: String, title: String = "朝会", startsAt: String? = nil, endsAt: String? = nil) -> CalendarEventOut {
+        O.occurrence(title, startsAt ?? key, endsAt ?? key.replacingOccurrences(of: ":00:00Z", with: ":15:00Z"), series: "s1", key: key,
+                     id: key == "2026-10-01T00:00:00Z" ? "s1" : "s1:\(key)", rrule: "FREQ=DAILY", channelId: "c1", channelName: "lab")
+    }
+
+    private var first: CalendarEventOut { series("2026-10-01T00:00:00Z") }
+    private var changed: CalendarEventOut {
+        series("2026-10-20T00:00:00Z", title: "臨時の朝会", startsAt: "2026-10-20T02:00:00Z", endsAt: "2026-10-20T02:30:00Z")
+    }
+    private let fired = CalendarAlarmOut(minutesBefore: 10, fireAt: "2026-10-20T01:50:00Z", status: "fired", occurrenceStart: "2026-10-20T00:00:00Z")
+
+    /// The occurrence as the event carries it (calendar.event.updated's shape: no can_edit, no alarm).
+    private func wire(_ event: CalendarEventOut) -> JSONValue {
+        guard case .object(var fields) = CalendarFixtures.shared(event) else { return .null }
+        fields["series_id"] = .string(event.series)
+        fields["occurrence_start"] = .string(event.occurrenceKey)
+        fields["recurring"] = .bool(event.recurring)
+        fields["rrule"] = event.rrule.map(JSONValue.string) ?? .null
+        fields["tz"] = event.tz.map(JSONValue.string) ?? .null
+        return .object(fields)
+    }
+
+    private func fire(_ hub: CalendarHub, _ seriesId: String = "s1", channelId: String? = "c1", alarm: CalendarAlarmOut? = nil,
+                      occurrence: CalendarEventOut? = nil) {
+        let alarm = alarm ?? fired
+        var fields: [String: JSONValue] = [
+            "event_id": .string(seriesId), "channel_id": channelId.map(JSONValue.string) ?? .null,
+            "alarm": .object(["minutes_before": .number(Double(alarm.minutesBefore)), "fire_at": .string(alarm.fireAt),
+                              "status": .string(alarm.status), "occurrence_start": alarm.occurrenceStart.map(JSONValue.string) ?? .null]),
+        ]
+        if let occurrence { fields["occurrence"] = wire(occurrence) }
+        hub.applyEvent("calendar.alarm.updated", .object(fields))
+    }
+
+    private final class Said {
+        var calls: [(event: CalendarEventOut?, channelId: String?)] = []
+    }
+
+    private func setup(_ rows: [CalendarEventOut]) -> (FakeCalendarApi, CalendarHub, Said) {
+        let api = FakeCalendarApi(rows)
+        // GET /calendar/events/{series_id}: the series' first occurrence, as the server answers.
+        api.eventAnswers["s1"] = first
+        let hub = CalendarHub(api: api, me: { "me" })
+        let said = Said()
+        hub.onAlarm = { event, channelId in said.calls.append((event, channelId)) }
+        return (api, hub, said)
+    }
+
+    private func eventually(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
+        for _ in 0..<200 where !condition() { await Task.yield() }
+        XCTAssertTrue(condition(), file: file, line: line)
+    }
+
+    private func openOctober(_ hub: CalendarHub) async {
+        await hub.open("view", from: CalendarDates.parseDay("2026-10-01"), to: CalendarDates.parseDay("2026-11-01"))
+    }
+
+    private func openNovember(_ hub: CalendarHub) async {
+        await hub.open("view", from: CalendarDates.parseDay("2026-11-01"), to: CalendarDates.parseDay("2026-12-01"))
+    }
+
+    func testTheEventsOccurrenceDecodesAndIsAbsentFromAnOlderServer() throws {
+        let with = JSONValue.object(["event_id": .string("s1"), "channel_id": .string("c1"), "alarm": .null, "occurrence": wire(changed)])
+        let decoded = try with.decode(CalendarAlarmUpdated.self)
+        XCTAssertEqual(decoded.occurrence?.title, "臨時の朝会")
+        XCTAssertEqual(decoded.occurrence?.occurrenceStart, "2026-10-20T00:00:00Z")
+        XCTAssertEqual(decoded.occurrence?.series, "s1")
+        XCTAssertNil(try CalendarFixtures.alarmUpdated("s1", nil).decode(CalendarAlarmUpdated.self).occurrence)
+        let null = JSONValue.object(["event_id": .string("s1"), "channel_id": .null, "alarm": .null, "occurrence": .null])
+        XCTAssertNil(try null.decode(CalendarAlarmUpdated.self).occurrence)
+    }
+
+    func testTheCalendarNeverOpenedSaysTheOccurrenceInTheEvent() async {
+        let (api, hub, said) = setup([])
+        fire(hub, occurrence: changed)
+        await eventually { said.calls.count == 1 }
+        let event = said.calls.first?.event
+        XCTAssertEqual(event?.title, "臨時の朝会")
+        XCTAssertEqual(event?.startsAt, "2026-10-20T02:00:00Z")
+        XCTAssertEqual(event?.occurrenceStart, "2026-10-20T00:00:00Z")
+        XCTAssertEqual(event?.alarm, fired)
+        XCTAssertEqual(said.calls.first?.channelId, "c1")
+        XCTAssertEqual(CalendarDates.alarmText(event), "11:00 臨時の朝会 (#lab)")
+        XCTAssertEqual(api.eventCalls, [])
+    }
+
+    func testAnotherMonthLoadedSaysTheEventsOccurrenceNotALoadedOne() async {
+        let (api, hub, said) = setup([])
+        api.rows = [series("2026-11-02T00:00:00Z"), series("2026-11-03T00:00:00Z")]
+        await openNovember(hub)
+        fire(hub, occurrence: changed)
+        await eventually { said.calls.count == 1 }
+        XCTAssertEqual(said.calls.first?.event?.title, "臨時の朝会")
+        XCTAssertEqual(said.calls.first?.event?.startsAt, "2026-10-20T02:00:00Z")
+        // The alarm went onto the loaded occurrences of the series too.
+        XCTAssertEqual(hub.window("view")?.events.map { $0.alarm?.status }, ["fired", "fired"])
+    }
+
+    func testTheServersOccurrenceWinsOverAStaleCopyHeldHere() async {
+        let (_, hub, said) = setup([series("2026-10-20T00:00:00Z")]) // read before the change
+        await openOctober(hub)
+        fire(hub, occurrence: changed)
+        await eventually { said.calls.count == 1 }
+        XCTAssertEqual(said.calls.first?.event?.title, "臨時の朝会")
+        XCTAssertEqual(said.calls.first?.event?.startsAt, "2026-10-20T02:00:00Z")
+        XCTAssertEqual(said.calls.first?.event?.canEdit, true) // the copy held here says I may edit it
+    }
+
+    func testAnAllDayOccurrenceMovedToAnotherDay() async {
+        let (_, hub, said) = setup([])
+        var day = CalendarFixtures.allDay("代理", "2026-10-21", "2026-10-21", id: "d1:2026-10-20")
+        day.seriesId = "d1"
+        day.occurrenceStart = "2026-10-20"
+        day.recurring = true
+        day.rrule = "FREQ=WEEKLY"
+        day.tz = "Asia/Tokyo"
+        let alarm = CalendarAlarmOut(minutesBefore: -480, fireAt: "2026-10-20T23:00:00Z", status: "fired", occurrenceStart: "2026-10-20")
+        fire(hub, "d1", channelId: nil, alarm: alarm, occurrence: day)
+        await eventually { said.calls.count == 1 }
+        let event = said.calls.first?.event
+        XCTAssertEqual(event?.title, "代理")
+        XCTAssertEqual(event?.startDate, "2026-10-21")
+        XCTAssertEqual(event?.allDay, true)
+        XCTAssertEqual(CalendarDates.alarmText(event), "終日 代理")
+    }
+
+    // MARK: from a server before it (no occurrence in the event)
+
+    func testOlderServerNeverOpenedSaysANeutralLineNotTheFirstOccurrence() async {
+        let (api, hub, said) = setup([])
+        fire(hub)
+        await eventually { said.calls.count == 1 }
+        XCTAssertEqual(api.eventCalls, ["s1"])
+        XCTAssertNil(said.calls.first?.event)
+        XCTAssertEqual(said.calls.first?.channelId, "c1")
+        XCTAssertEqual(CalendarDates.alarmText(said.calls.first?.event, channelName: "lab"), "予定の通知があります (#lab)")
+        XCTAssertEqual(CalendarDates.alarmText(nil), "予定の通知があります") // my own calendar: no channel
+    }
+
+    func testOlderServerAnotherMonthLoadedLetsNoneOfItsOccurrencesStandIn() async {
+        let (api, hub, said) = setup([])
+        api.rows = [series("2026-11-02T00:00:00Z")]
+        await openNovember(hub)
+        fire(hub)
+        await eventually { said.calls.count == 1 }
+        XCTAssertNil(said.calls.first?.event)
+    }
+
+    func testOlderServerSaysTheOccurrenceHeldHere() async {
+        let (api, hub, said) = setup([first, changed])
+        await openOctober(hub)
+        fire(hub)
+        await eventually { said.calls.count == 1 }
+        XCTAssertEqual(said.calls.first?.event?.title, "臨時の朝会")
+        XCTAssertEqual(said.calls.first?.event?.startsAt, "2026-10-20T02:00:00Z")
+        XCTAssertEqual(api.eventCalls, [])
+    }
+
+    func testOlderServerTheFirstOccurrenceItselfUsesTheSeriesRead() async {
+        let (_, hub, said) = setup([])
+        fire(hub, alarm: CalendarAlarmOut(minutesBefore: 10, fireAt: "2026-09-30T23:50:00Z", status: "fired", occurrenceStart: "2026-10-01T00:00:00Z"))
+        await eventually { said.calls.count == 1 }
+        XCTAssertEqual(said.calls.first?.event?.title, "朝会")
+        XCTAssertEqual(said.calls.first?.event?.occurrenceStart, "2026-10-01T00:00:00Z")
+        XCTAssertEqual(CalendarDates.alarmText(said.calls.first?.event), "9:00 朝会 (#lab)")
     }
 }

@@ -123,6 +123,18 @@ enum ActivityRules {
         return Timeline.excerpt(message.body, attachments: message.attachments, users: users, groups: groups)
     }
 
+    /// Review v0.1.22 #3 (CANVAS.md §20.8): activity.updated named these items: an erased canvas version blanked their
+    /// excerpts, so the rows held drop theirs at once (the list is read again too). Other items stay as they are.
+    static func blankingExcerpts(_ items: [ActivityItem], itemIds: Set<String>) -> [ActivityItem] {
+        guard !itemIds.isEmpty else { return items }
+        return items.map { item in
+            guard let canvas = item.canvas, itemIds.contains(canvas.itemId), !canvas.excerpt.isEmpty else { return item }
+            var next = item
+            next.canvas?.excerpt = ""
+            return next
+        }
+    }
+
     /// The row's second line: the conversation, 「#c のスレッド」 for a reply, 「#c のキャンバス」 for a canvas.
     static func whereText(_ item: ActivityItem, conversation: String) -> String {
         switch item.kind {

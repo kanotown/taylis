@@ -264,3 +264,234 @@ final class MembershipTests: XCTestCase {
         XCTAssertLessThan(image.size.height, 40)
     }
 }
+
+/// Review v0.1.22 #6 (MEMBERSHIP.md §4): a response asked for before the preview turned off (or before the server refused
+/// it) writes nothing back when it arrives, success or failure: the first page, an older page, a thread (the web's
+/// tests/membership.test.tsx, held responses).
+@MainActor
+final class PreviewRaceTests: XCTestCase {
+    /// Every call waits until the test answers it.
+    final class HeldApi: PreviewApi {
+        enum Call: Hashable { case history(Int?), context(String), replies(String), message(String) }
+        private(set) var calls: [Call] = []
+        private var waiting: [(call: Call, answer: CheckedContinuation<Any, Error>)] = []
+        /// Calls that answer at once (the rest wait).
+        var immediate: [Call: Any] = [:]
+
+        private func held<T>(_ call: Call) async throws -> T {
+            calls.append(call)
+            if let answer = immediate[call] { return answer as! T }
+            let value: Any = try await withCheckedThrowingContinuation { (answer: CheckedContinuation<Any, Error>) in waiting.append((call, answer)) }
+            return value as! T
+        }
+
+        var pending: Int { waiting.count }
+
+        func answer(_ call: Call, with value: Any) {
+            guard let index = waiting.firstIndex(where: { $0.call == call }) else { return XCTFail("\(call) is not waiting") }
+            waiting.remove(at: index).answer.resume(returning: value)
+        }
+
+        func fail(_ call: Call, _ error: Error) {
+            guard let index = waiting.firstIndex(where: { $0.call == call }) else { return XCTFail("\(call) is not waiting") }
+            waiting.remove(at: index).answer.resume(throwing: error)
+        }
+
+        func history(channelId: String, beforeSeq: Int?, limit: Int) async throws -> HistoryOut { try await held(.history(beforeSeq)) }
+        func messageContext(_ messageId: String) async throws -> [MessageOut] { try await held(.context(messageId)) }
+        func replies(messageId: String) async throws -> [MessageOut] { try await held(.replies(messageId)) }
+        func message(id: String) async throws -> MessageOut { try await held(.message(id)) }
+    }
+
+    private var enabled = true
+    private var reported: [String] = []
+    private let api = HeldApi()
+
+    private func model() -> ChannelPreviewModel {
+        ChannelPreviewModel(channelId: "c1", api: { [api] in api }, enabled: { [unowned self] in self.enabled }, describe: { _ in "failed" },
+                            report: { [unowned self] in self.reported.append($0) })
+    }
+
+    private func message(_ id: String, seq: Int, parentId: String? = nil) -> MessageOut {
+        var out = MessageOut(id: id, channelId: "c1", senderId: "a", seq: seq, updatedSeq: seq, clientMsgId: nil, body: "SECRET \(id)",
+                             createdAt: "2026-10-03T10:00:00Z", editedAt: nil, deleted: false)
+        out.parentId = parentId
+        return out
+    }
+
+    private func page(_ seqs: ClosedRange<Int>, hasMore: Bool = false) -> HistoryOut {
+        HistoryOut(channelLastSeq: seqs.upperBound, messages: seqs.map { message("m\($0)", seq: $0) }, hasMore: hasMore)
+    }
+
+    private static let refusal = ApiError.api(status: 403, code: "preview_disabled", message: "")
+
+    private func waitFor(_ count: Int) async {
+        for _ in 0..<200 where api.pending < count { await Task.yield() }
+        XCTAssertEqual(api.pending, count)
+    }
+
+    /// The rows are gone and stay gone: the panel shows (the setting is off), nothing is loading, no toast.
+    private func assertNothingWritten(_ model: ChannelPreviewModel, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(model.messages.map(\.id), [], file: file, line: line)
+        XCTAssertEqual(model.threads, [:], file: file, line: line)
+        XCTAssertFalse(model.loaded, file: file, line: line)
+        XCTAssertFalse(model.loading, file: file, line: line)
+        XCTAssertFalse(model.loadingOlder, file: file, line: line)
+        XCTAssertNil(model.failure, file: file, line: line)
+        XCTAssertEqual(reported, [], file: file, line: line)
+        XCTAssertTrue(PreviewJoin.refused(previewBeforeJoin: enabled, refusedByServer: model.refusedByServer), file: file, line: line)
+    }
+
+    func testAFirstPageOnItsWayWhenTheSettingTurnsOffWritesNothing() async {
+        for fails in [false, true] {
+            enabled = true
+            reported = []
+            let model = model()
+            let load = Task { await model.load(focus: nil) }
+            await waitFor(1)
+            enabled = false
+            model.turnedOff()
+            if fails { api.fail(.history(nil), URLError(.timedOut)) } else { api.answer(.history(nil), with: page(1...3)) }
+            await load.value
+            assertNothingWritten(model)
+        }
+    }
+
+    func testAPermalinksContextOnItsWayWritesNothing() async {
+        let model = model()
+        let load = Task { await model.load(focus: "m2") }
+        await waitFor(1)
+        enabled = false
+        model.turnedOff()
+        api.answer(.context("m2"), with: [message("m2", seq: 2)])
+        await load.value
+        assertNothingWritten(model)
+        XCTAssertFalse(model.showingContext)
+    }
+
+    func testAnOlderPageOnItsWayWritesNothing() async {
+        for fails in [false, true] {
+            enabled = true
+            reported = []
+            let model = model()
+            api.immediate[.history(nil)] = page(51...100, hasMore: true)
+            await model.load(focus: nil)
+            XCTAssertEqual(model.messages.count, 50)
+            let older = Task { await model.loadOlder() }
+            await waitFor(1)
+            XCTAssertTrue(model.loadingOlder)
+            enabled = false
+            model.turnedOff()
+            if fails { api.fail(.history(51), URLError(.networkConnectionLost)) } else { api.answer(.history(51), with: page(1...50)) }
+            await older.value
+            assertNothingWritten(model)
+        }
+    }
+
+    func testAThreadOnItsWayWritesNothing() async {
+        for fails in [false, true] {
+            enabled = true
+            reported = []
+            let model = model()
+            api.immediate[.history(nil)] = page(1...3)
+            await model.load(focus: nil)
+            // A parent the preview holds: only the replies are asked for.
+            let held = Task { await model.loadThread("m2") }
+            // A parent it does not hold: the parent first, then the replies.
+            let other = Task { await model.loadThread("p9") }
+            await waitFor(2)
+            enabled = false
+            model.turnedOff()
+            if fails {
+                api.fail(.replies("m2"), URLError(.timedOut))
+                api.fail(.message("p9"), URLError(.timedOut))
+            } else {
+                api.answer(.replies("m2"), with: [message("r1", seq: 4, parentId: "m2")])
+                api.answer(.message("p9"), with: message("p9", seq: 9))
+            }
+            await held.value
+            await other.value
+            XCTAssertFalse(api.calls.contains(.replies("p9"))) // nothing more asked once stale
+            assertNothingWritten(model)
+        }
+    }
+
+    func testAThreadsRepliesAfterItsParentAreCheckedToo() async {
+        let model = model()
+        api.immediate[.history(nil)] = page(1...3)
+        await model.load(focus: nil)
+        api.immediate[.message("p9")] = message("p9", seq: 9)
+        let thread = Task { await model.loadThread("p9") }
+        await waitFor(1)
+        XCTAssertEqual(model.threads["p9"]?.parent?.id, "p9")
+        enabled = false
+        model.turnedOff()
+        api.answer(.replies("p9"), with: [message("r1", seq: 10, parentId: "p9")])
+        await thread.value
+        assertNothingWritten(model)
+    }
+
+    /// The server refused one call (403): the others on their way are stale too, success or failure.
+    func testARefusalMakesTheOtherLoadsStale() async {
+        for fails in [false, true] {
+            enabled = true
+            reported = []
+            let model = model()
+            api.immediate[.history(nil)] = page(51...100, hasMore: true)
+            await model.load(focus: nil)
+            api.immediate[.history(nil)] = nil
+            let older = Task { await model.loadOlder() }
+            let thread = Task { await model.loadThread("m60") }
+            await waitFor(2)
+            api.fail(.history(51), Self.refusal) // the setting changed while this device was offline
+            await older.value
+            XCTAssertTrue(model.refusedByServer)
+            XCTAssertEqual(model.messages.count, 0)
+            if fails { api.fail(.replies("m60"), URLError(.timedOut)) } else { api.answer(.replies("m60"), with: [message("r1", seq: 101, parentId: "m60")]) }
+            await thread.value
+            assertNothingWritten(model)
+        }
+    }
+
+    func testTurnedOnAgainLoadsAFreshPageAndAnOldAnswerStillWritesNothing() async {
+        let model = model()
+        let first = Task { await model.load(focus: nil) }
+        await waitFor(1)
+        enabled = false
+        model.turnedOff()
+        enabled = true
+        model.turnedOn(focus: nil)
+        await waitFor(2)
+        // The page asked for after turning on answers; then the old one, which is dropped.
+        api.answer(.history(nil), with: page(1...3)) // the first waiting: the old request
+        await first.value
+        XCTAssertEqual(model.messages, []) // stale: dropped
+        api.answer(.history(nil), with: page(4...5))
+        for _ in 0..<200 where !model.loaded { await Task.yield() }
+        XCTAssertEqual(model.messages.map(\.id), ["m4", "m5"])
+        XCTAssertFalse(model.loading)
+        XCTAssertNil(model.failure)
+    }
+
+    func testWithoutAChangeTheAnswersAreWrittenAsBefore() async {
+        let model = model()
+        api.immediate[.history(nil)] = page(51...100, hasMore: true)
+        await model.load(focus: nil)
+        api.immediate[.history(51)] = page(1...50)
+        await model.loadOlder()
+        XCTAssertEqual(model.messages.count, 100)
+        api.immediate[.message("p9")] = message("p9", seq: 9)
+        api.immediate[.replies("p9")] = [message("r1", seq: 10, parentId: "p9")]
+        await model.loadThread("p9")
+        XCTAssertEqual(model.threads["p9"], ChannelPreviewModel.ThreadRows(parent: MessageState(message("p9", seq: 9)),
+                                                                       replies: [MessageState(message("r1", seq: 10, parentId: "p9"))], loaded: true))
+        // A failure that is no refusal says so (the first page in place, the others as a toast).
+        api.immediate[.history(1)] = nil
+        let older = Task { await model.loadOlder() }
+        await waitFor(1)
+        api.fail(.history(1), URLError(.timedOut))
+        await older.value
+        XCTAssertEqual(reported, ["failed"])
+        XCTAssertEqual(model.messages.count, 100)
+    }
+}

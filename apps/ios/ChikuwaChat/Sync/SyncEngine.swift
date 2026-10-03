@@ -178,7 +178,7 @@ final class SyncEngine {
         store.onDraftEdited = { [weak self] channelId, parentId in self?.drafts.edited(channelId, parentId: parentId) }
         canvases = CanvasHub(api: api as? CanvasApi, store: store, clock: options.canvasClock, options: options.canvasSave)
         calendar = CalendarHub(api: api as? CalendarApi, me: { [weak store] in store?.me?.id })
-        calendar.onAlarm = { [weak self] event in self?.onCalendarAlarm?(event) }
+        calendar.onAlarm = { [weak self] event, channelId in self?.onCalendarAlarm?(event, channelId) }
         tasks = TaskHub(api: api as? TaskApi, me: { [weak store] in store?.me?.id })
         tasks.onNotice = { [weak self] notice in self?.onTaskNotice?(notice) }
         ai = AiHub(api: api as? AiApi)
@@ -709,6 +709,11 @@ final class SyncEngine {
             // fetched again.
             if let readAt = frame.data["read_at"]?.stringValue { store.advanceActivityRead(readAt) }
             scheduleActivityRefresh()
+        case "activity.updated":
+            // Review v0.1.22 #3 (CANVAS.md §20.8): items I may hold changed in place (an erased canvas version blanked
+            // their excerpts). The list on screen drops those excerpts and reads again (ActivityFeedView); no badge change.
+            struct Payload: Decodable { let itemIds: [String] }
+            store.activityItemsUpdated(try frame.data.decode(Payload.self).itemIds)
         case "reaction.added":
             // M39: someone reacted to my message (the banner is the server's push, for those who turned it on).
             scheduleActivityRefresh()
@@ -846,8 +851,9 @@ final class SyncEngine {
 
     /// M12e: a reminder just fired while the app is open (the push covers the background case).
     var onReminder: ((ReminderOut) -> Void)?
-    /// M52: one of my calendar alarms just fired while the app is open (likewise).
-    var onCalendarAlarm: ((CalendarEventOut) -> Void)?
+    /// M52: one of my calendar alarms just fired while the app is open (likewise): nil when the occurrence it is for is
+    /// not known here (Review v0.1.22 #9), with the calendar's channel id.
+    var onCalendarAlarm: ((CalendarEventOut?, String?) -> Void)?
     /// M56: task.assigned / task.due while the app is open (likewise).
     var onTaskNotice: ((TaskNotice) -> Void)?
     /// M73: canvas.mentioned while the app is open (likewise), when the conversation's level would push it.

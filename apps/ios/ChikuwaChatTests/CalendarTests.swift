@@ -82,7 +82,13 @@ final class FakeCalendarApi: CalendarApi {
         return upcoming
     }
 
+    /// GET /calendar/events/{id}: what it answers in place of the rows (a series' first occurrence, as the server does).
+    var eventAnswers: [String: CalendarEventOut] = [:]
+    private(set) var eventCalls: [String] = []
+
     func calendarEvent(id: String) async throws -> CalendarEventOut {
+        eventCalls.append(id)
+        if let answer = eventAnswers[id] { return answer }
         guard let row = rows.first(where: { $0.id == id }) else { throw ApiError.api(status: 404, code: "calendar_event_not_found", message: "") }
         return row
     }
@@ -480,7 +486,7 @@ final class CalendarHubTests: XCTestCase {
         let api = FakeCalendarApi([zemi])
         let hub = CalendarHub(api: api, me: { "me" })
         var said: [String] = []
-        hub.onAlarm = { said.append($0.title) }
+        hub.onAlarm = { event, _ in said.append(event?.title ?? "-") }
         await hub.open("view", from: from, to: to)
         let alarm = F.alarm(10)
         hub.applyEvent("calendar.alarm.updated", F.alarmUpdated(zemi.id, alarm))
@@ -496,7 +502,7 @@ final class CalendarHubTests: XCTestCase {
         let api2 = FakeCalendarApi([far])
         let hub2 = CalendarHub(api: api2, me: { "me" })
         var said2: [String] = []
-        hub2.onAlarm = { said2.append($0.title) }
+        hub2.onAlarm = { event, _ in said2.append(event?.title ?? "-") }
         hub2.applyEvent("calendar.alarm.updated", F.alarmUpdated("far", F.alarm(10, status: "fired")))
         await eventually { said2 == ["来月の予定"] }
     }
@@ -758,7 +764,7 @@ final class CalendarEngineTests: XCTestCase {
         let engine = SyncEngine(api: server.api(for: bob.id), connect: server.connector(for: bob.id), wsUrl: URL(string: "ws://fake")!, store: store,
                                 getAccessToken: { "t" }, options: options)
         var said: [String] = []
-        engine.onCalendarAlarm = { said.append(CalendarDates.alarmText($0)) }
+        engine.onCalendarAlarm = { event, _ in said.append(CalendarDates.alarmText(event)) }
         await engine.start()
         await settle(engine)
         let hub = try XCTUnwrap(engine.calendar)

@@ -475,7 +475,11 @@ final class AppController {
             self?.notice = "⏰ " + ((reminder.note?.isEmpty == false ? reminder.note! + " — " : "") + reminder.preview)
         }
         // M52: my calendar alarm while the app is open (the server's push covers the background), worded like that push.
-        engine.onCalendarAlarm = { [weak self] event in self?.notice = "📅 " + CalendarDates.alarmText(event) }
+        // Review v0.1.22 #9: nil when the occurrence it is for is not known here: a neutral line, never another occurrence's.
+        engine.onCalendarAlarm = { [weak self] event, channelId in
+            guard let self else { return }
+            notice = "📅 " + CalendarDates.alarmText(event, channelName: channelId.flatMap { self.store.channel($0)?.channel.name })
+        }
         // M56: an assignment or a due date while the app is open, worded like the push (not with notify_tasks off or in DND).
         engine.onTaskNotice = { [weak self] notice in self?.sayTaskNotice(notice) }
         // M73: a canvas mention while the app is open, worded like the push; the notice opens the canvas.

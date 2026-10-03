@@ -107,6 +107,11 @@ times (L8) もオフなら対象外 (`channels.list_public_times_not_member` が
     `refusePreview` で進む) と `previewCurrent` を、最初のページ・古いページ・スレッドの各 suspend のあとで確かめる。古い応答の
     失敗は投げない (トーストなし)。テストは `MembershipTest` (応答を保留してオフにし、成功・失敗で返す 3 種類 × 2、403 のあとの
     スレッド、オフ → オンで古い応答が新しい行を消さない)。
+  - iOS (ビルド 80): プレビューの行と、そこから開いたスレッドの読み込みを `ChannelPreviewModel` (`UI/ChannelPreviewView.swift`)
+    に移した。世代はオフになる・サーバが 403 で断るたびに進め (画面は `.id` でチャンネルごとに作り直すので、開く・閉じるは
+    新しいモデル)、最初のページ (permalink の前後を含む)・古いページ・スレッド (親を読んだ後と返信を読んだ後の両方) の各
+    await のあとで世代・今の設定・チャンネルを確かめる。古い応答は成功でも失敗でも行・エラー表示・トーストを出さない。
+    テスト: `PreviewRaceTests` (`ChikuwaChatTests/MembershipTests.swift`)。
 - メンバーの追加ダイアログと `/invite @a @b` は `POST /channels/{id}/members/batch` で 1 回に送る (405 を返す古い
   サーバでは 1 人ずつ)。
 

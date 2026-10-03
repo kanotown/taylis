@@ -120,6 +120,13 @@ struct ActivityFeedView: View {
         .onChange(of: unread) { before, now in
             if now > before, visible, online { Task { await load(filter) } }
         }
+        // Review v0.1.22 #3 (CANVAS.md §20.8): activity.updated: the excerpts it names go from every list held at once,
+        // and the list on screen is read again (an answer already on its way is superseded by it).
+        .onChange(of: store.activityUpdates) {
+            let ids = store.takeUpdatedActivityItems()
+            for (key, page) in lists { lists[key]?.items = ActivityRules.blankingExcerpts(page.items, itemIds: ids) }
+            if visible, online { Task { await load(filter) } }
+        }
         // Being on screen reads the activity up to the newest row shown, on 「すべて」 only (ActivityRules.readsOnScreen);
         // the rows' dots stay until the view is left.
         .task(id: ReadKey(onScreen: onScreen, filter: filter, newest: ActivityRules.newest(items), readAt: store.activity?.readAt)) {
@@ -206,17 +213,20 @@ struct ActivityRowView: View {
                 if !place.isEmpty {
                     Text(place).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
-                Text(excerpt)
-                    .font(.subheadline)
-                    .foregroundStyle(unread ? .primary : .secondary)
-                    .lineLimit(2)
+                // An empty excerpt (a canvas version's body erased, CANVAS.md §20.8) shows no line.
+                if !excerpt.isEmpty {
+                    Text(excerpt)
+                        .font(.subheadline)
+                        .foregroundStyle(unread ? .primary : .secondary)
+                        .lineLimit(2)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel([unread ? "未読" : nil, ActivityRules.headlineText(item, nameOf: nameOf), place.isEmpty ? nil : place,
-                             DMList.timeLabel(item.at), excerpt].compactMap { $0 }.joined(separator: "、"))
+                             DMList.timeLabel(item.at), excerpt.isEmpty ? nil : excerpt].compactMap { $0 }.joined(separator: "、"))
         .accessibilityAddTraits(.isButton)
     }
 

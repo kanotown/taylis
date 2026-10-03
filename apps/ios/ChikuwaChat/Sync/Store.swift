@@ -867,6 +867,23 @@ final class Store {
         setActivity(current)
     }
 
+    /// Review v0.1.22 #3 (CANVAS.md §20.8): activity.updated events received; the activity list on screen follows it.
+    private(set) var activityUpdates = 0
+    /// Their item ids not yet taken by the list (takeUpdatedActivityItems).
+    @ObservationIgnored private var updatedActivityItems: Set<String> = []
+
+    /// activity.updated: items I may hold changed in place (an erased canvas version blanked their excerpts).
+    func activityItemsUpdated(_ itemIds: [String]) {
+        updatedActivityItems.formUnion(itemIds)
+        activityUpdates += 1
+    }
+
+    /// The item ids of the activity.updated events since the last call (the list applies them once).
+    func takeUpdatedActivityItems() -> Set<String> {
+        defer { updatedActivityItems = [] }
+        return updatedActivityItems
+    }
+
     /// A page of GET /threads. Rows merge so an open thread keeps its state across filter changes and
     /// refreshes; on a first page, rows the server would have listed but did not (unfollowed or deleted
     /// elsewhere) are dropped.

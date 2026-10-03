@@ -78,7 +78,7 @@ final class WhoTests: XCTestCase {
             """.utf8))
         }
         let page = [try row("c", seq: 3), try row("b", seq: 2, deleted: true), try row("a", seq: 1)] // the server: newest first
-        XCTAssertEqual(ChannelPreviewView.rows(page).map(\.id), ["a", "c"])
+        XCTAssertEqual(ChannelPreviewModel.rows(page).map(\.id), ["a", "c"])
     }
 }
 

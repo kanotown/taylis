@@ -483,6 +483,13 @@ final class FakeServer {
                                 "channel_id": .null, "seq": .null, "data": .object(["read_at": .string(readAt)])]))
     }
 
+    /// Review v0.1.22 #3 (CANVAS.md §20.8): activity.updated to one person (an erased canvas version blanked these items).
+    func emitActivityUpdated(_ userId: String, itemIds: [String]) {
+        eventId += 1
+        emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("activity.updated"), "ts": .string(now()),
+                                "channel_id": .null, "seq": .null, "data": .object(["item_ids": .array(itemIds.map(JSONValue.string))])]))
+    }
+
     /// reaction.added to the message's author (the reaction itself is `react`; the tests set the summary's counts).
     func emitReactionAdded(to authorId: String, channelId: String, messageId: String, by userId: String, emoji: String) {
         eventId += 1
