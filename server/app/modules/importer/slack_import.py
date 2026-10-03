@@ -9,9 +9,13 @@ included (they stay archived). The target can be any ChikuwaChat server: nothing
 The shared steps (people, channels, seq, threads, read state, import_refs, --dry-run) are
 ``core.ImportJob``'s, as for the Mattermost import. What is Slack's:
 
-- people: ``--user slack=chikuwa`` (the Slack username, display name or user id), an earlier run,
-  then the same e-mail address (users.json ``profile.email``). Other senders get deactivated
-  accounts, bots (``is_bot``, or a ``bot_message`` with ``bot_id`` / ``username``) bot accounts.
+- people: ``--user slack=chikuwa`` (the Slack username, display name, user id or e-mail address),
+  an earlier run, then the same e-mail address (users.json ``profile.email``, after
+  ``--email-domain-map``). Other senders get deactivated accounts, bots (``is_bot``, or a
+  ``bot_message`` with ``bot_id`` / ``username``) bot accounts. M91: regular members whose address
+  is in an ``--activate-domain`` get active accounts without a password (Google sign-in finds them
+  by the address), Slack guests (``is_restricted`` / ``is_ultra_restricted``) deactivated guest
+  accounts; a new person's username is their address's local part (a student id).
 - bodies: mrkdwn → ChikuwaChat markdown (``slack_mrkdwn``); an empty ``text`` shows the
   ``attachments`` / ``blocks`` fallback text.
 - messages: ``ts`` gives the time and the order, ``thread_ts`` the thread, ``thread_broadcast``
@@ -33,7 +37,7 @@ import re
 import uuid
 import zipfile
 from collections import Counter
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Collection, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -545,6 +549,7 @@ class SlackImport(core.ImportJob):
     source_label = "Slack"
     namespace = NAMESPACE
     name_suffix = "slack"
+    username_from_email = True
 
     def __init__(
         self,
@@ -558,6 +563,8 @@ class SlackImport(core.ImportJob):
         blobs: BlobStore,
         settings: Settings,
         dry_run: bool,
+        email_domain_map: dict[str, str] | None = None,
+        activate_domains: Collection[str] = (),
     ) -> None:
         self.export = export
         self.files = files
@@ -575,6 +582,8 @@ class SlackImport(core.ImportJob):
             blobs=blobs,
             settings=settings,
             dry_run=dry_run,
+            email_domain_map=email_domain_map,
+            activate_domains=activate_domains,
         )
         self.names: dict[str, str] = {}  # Slack channel id → its name in ChikuwaChat
         self._prescan()
@@ -601,6 +610,8 @@ class SlackImport(core.ImportJob):
                 "nickname": profile.get("display_name") or "",
                 "position": profile.get("title") or "",
                 "is_bot": is_bot,
+                "deleted": bool(u.get("deleted")),
+                "guest": bool(u.get("is_restricted") or u.get("is_ultra_restricted")),
             }
         return users
 
@@ -608,7 +619,8 @@ class SlackImport(core.ImportJob):
         raw = self.raw_users.get(record["id"], {})
         profile = raw.get("profile") or {}
         keys = [record["id"], record["username"], profile.get("display_name") or ""]
-        return [k.lower().lstrip("@") for k in dict.fromkeys(keys) if k]
+        keys += [record.get("email") or "", self.target_email(record) or ""]  # M91
+        return list(dict.fromkeys(k.lower().lstrip("@") for k in keys if k))
 
     def _display(self, user_id: str) -> str:
         record = self.users.get(user_id) if hasattr(self, "users") else None
@@ -1062,7 +1074,12 @@ async def import_slack(
     blobs: BlobStore,
     settings: Settings,
     dry_run: bool,
+    email_domain_map: dict[str, str] | None = None,
+    activate_domains: Collection[str] = (),
+    people_only: bool = False,
 ) -> Report:
+    """The import; ``people_only`` (M91) works out the people table and writes nothing: no
+    channels, posts or files (the messages are still read, to know who posted)."""
     export = Export(export_path)
     try:
         actor = await active_admin(db, actor_username)
@@ -1078,8 +1095,12 @@ async def import_slack(
             actor=actor,
             blobs=blobs,
             settings=settings,
-            dry_run=dry_run,
+            dry_run=dry_run or people_only,
+            email_domain_map=email_domain_map,
+            activate_domains=activate_domains,
         )
+        if people_only:
+            return await job.people_preview()
         await job.prepare()
         return await job.run()
     finally:

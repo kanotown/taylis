@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
@@ -355,19 +356,101 @@ def parse_user_map(pairs: Sequence[str], source: str = "MATTERMOST") -> dict[str
     return mapping
 
 
+_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_DOMAIN = re.compile(rf"^(?=.{{1,253}}$){_LABEL}(?:\.{_LABEL})+$")
+
+
+def parse_domain(value: str) -> str:
+    domain = value.strip().lower().lstrip("@")
+    if not _DOMAIN.match(domain):
+        raise ValueError(f"{value!r} is not a mail domain (e.g. g.example.ac.jp)")
+    return domain
+
+
+def parse_domain_map(pairs: Sequence[str]) -> dict[str, str]:
+    """``--email-domain-map FROM=TO`` (M91), repeatable; the domains in lower case."""
+    mapping: dict[str, str] = {}
+    for pair in pairs:
+        old, sep, new = pair.partition("=")
+        if not sep:
+            raise ValueError(f"--email-domain-map {pair}: use FROM=TO (e.g. vc.example=g.example)")
+        old, new = parse_domain(old), parse_domain(new)
+        if mapping.get(old, new) != new:
+            raise ValueError(f"--email-domain-map: {old} is mapped twice")
+        mapping[old] = new
+    return mapping
+
+
+def _width(text: str) -> int:
+    """Columns on a terminal: CJK characters take two."""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+
+
+def _fit(text: str, width: int) -> str:
+    """``text`` cut to ``width`` columns (with …) and padded to it."""
+    if _width(text) > width:
+        out = ""
+        for char in text:
+            if _width(out + char) > width - 1:
+                break
+            out += char
+        text = out + "…"
+    return text + " " * (width - _width(text))
+
+
+def print_people_table(report: Any) -> None:
+    """M91: one line per source person — who they were there, who they are here and why —
+    grouped by what happens to them, then the counts. What the administrator reviews before the
+    real run."""
+    from app.modules.importer.core import ACTIONS
+
+    rows = sorted(
+        report.people_rows,
+        key=lambda r: (ACTIONS.index(r.action), r.name.lower(), r.source_id),
+    )
+    headers = ("Slack id", "name", "Slack email", "→ username", "email", "action")
+    cells = [
+        (r.source_id, r.name, r.source_email or "-", r.username or "-", r.email or "-", r.action)
+        for r in rows
+    ]
+    caps = (14, 34, 40, 24, 40, 24)
+    widths = [
+        min(cap, max([_width(h)] + [_width(c[i]) for c in cells]))
+        for i, (h, cap) in enumerate(zip(headers, caps, strict=True))
+    ]
+    print(f"people ({len(rows)}):")
+    print("  " + "  ".join(_fit(h, w) for h, w in zip(headers, widths, strict=True)).rstrip())
+    print("  " + "  ".join("-" * w for w in widths))
+    last = None
+    for row, cell in zip(rows, cells, strict=True):
+        if last is not None and row.action != last:
+            print()
+        last = row.action
+        print("  " + "  ".join(_fit(c, w) for c, w in zip(cell, widths, strict=True)).rstrip())
+    print("people by action:")
+    counts = {a: sum(1 for r in rows if r.action == a) for a in ACTIONS}
+    for action, count in counts.items():
+        if count:
+            print(f"  {action}: {count}")
+
+
 def print_import_report(report: Any) -> None:
     """The summary of an import (M18, M87): people, counts, per channel, emoji, files, warnings."""
     print("dry run: nothing was written" if report.dry_run else "imported")
-    print("people:")
-    for line in report.people:
-        print(f"  {line}")
+    if report.people_rows:
+        print_people_table(report)
+    else:
+        print("people:")
+        for line in report.people:
+            print(f"  {line}")
     if report.unmapped:
         print("people nobody was mapped to (new accounts; map them with --user and run again):")
         for line in report.unmapped:
             print(f"  {line}")
     print("counts:")
     for key, value in sorted(report.counts.items()):
-        print(f"  {key}: {value}")
+        if not key.startswith("people: "):  # in the table's own counts
+            print(f"  {key}: {value}")
     if report.channels:
         print("per channel:")
         for label, counts in sorted(report.channels.items()):
@@ -463,6 +546,8 @@ async def _import_slack(args: argparse.Namespace) -> int:
     try:
         token = read_secret_file(args.slack_token_file)
         user_map = parse_user_map(args.user or [], "SLACK")
+        domain_map = parse_domain_map(args.email_domain_map or [])
+        activate = [parse_domain(d) for d in args.activate_domain or []]
     except (OSError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -494,12 +579,21 @@ async def _import_slack(args: argparse.Namespace) -> int:
                     blobs=build_blobstore(settings),
                     settings=settings,
                     dry_run=args.dry_run,
+                    email_domain_map=domain_map,
+                    activate_domains=activate,
+                    people_only=args.people_only,
                 )
             except (ImportFailed, ValueError) as exc:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
     finally:
         await db.dispose()
+    if args.people_only:
+        print("people only: nothing was written (channels, messages and files not looked at)")
+        print_people_table(report)
+        for line in report.warnings:
+            print(f"warning: {line}")
+        return 0
     print_import_report(report)
     if report.dry_run and args.download:
         print("(the dry run filled --files-cache; the real run reuses it)")
@@ -584,7 +678,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--user",
         action="append",
         metavar="SLACK=CHIKUWA",
-        help="map a Slack username, display name or user id to an existing account (repeatable)",
+        help="map a Slack username, display name, user id or e-mail address to an existing "
+        "account (repeatable)",
+    )
+    sl.add_argument(
+        "--email-domain-map",
+        action="append",
+        metavar="FROM=TO",
+        help="treat a Slack address local@FROM as local@TO, for matching and for new accounts "
+        "(repeatable)",
+    )
+    sl.add_argument(
+        "--activate-domain",
+        action="append",
+        metavar="DOMAIN",
+        help="create regular Slack members whose (mapped) address is in DOMAIN as active "
+        "accounts that sign in with Google (repeatable)",
+    )
+    sl.add_argument(
+        "--people-only",
+        action="store_true",
+        help="print only the people table (writes nothing, no channels / files)",
     )
     sl.add_argument("--channel-prefix", help="put before every new channel name, e.g. slack-")
     sl.add_argument("--download", action="store_true", help="download the files from Slack")

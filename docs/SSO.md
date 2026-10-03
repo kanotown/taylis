@@ -112,7 +112,9 @@ callback と交換のあいだに無効化された人は 401 `account_disabled`
 
 1. `user_identities (provider='google', subject=<sub>)` があれば、その人。
 2. 無ければ、メールアドレス (大文字小文字を区別しない) が一致するユーザーがいれば、その人に結び付ける
-   (管理者が先に作った人、または以前パスワードで作られた人)。
+   (管理者が先に作った人、または以前パスワードで作られた人。M91 の Slack の取り込みが `--activate-domain` で作った
+   有効なアカウントもここで結び付く: パスワード無し・`must_change_password = false` で、アドレスは
+   `--email-domain-map` で許可ドメインに替えたもの)。
    - その人がまだ仮パスワードのまま (`must_change_password = true`、本人が一度もパスワードを決めていない) なら、
      仮パスワードを消して Google だけの人にする (`password_hash` NULL、`must_change_password = false`)。
      そうしないと、アプリは知らされていない仮パスワードの変更を求める画面を出してしまう。管理者は必要なら

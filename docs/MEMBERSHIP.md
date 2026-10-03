@@ -257,6 +257,8 @@ times (L8) もオフなら対象外 (`channels.list_public_times_not_member` が
   - Google でログインの自動作成 (案B)
 - **入らない人**: ゲスト (`role = guest`)、ボット (`create_bot_in_tx` は別の関数。`role = bot` は弾く)、無効の
   アカウント。移行 (Mattermost・Slack の取り込み) は `join_default_channels=False` を渡す (メンバーシップは移行元から)。
+  M91 の Slack の取り込みが有効なアカウントとして作った人も同じ。既定のチャンネルにも入れたいときは、取り込みの後で
+  管理者が「設定」の「今いる人も全員入れる」を押す (有効な admin / member 全員が対象。冪等)。
 - **入り方**: ふつうのメンバーシップの道 (`channels.add_member_in_tx(announce=True)`): `channel.member_added` /
   `channel.created` のイベント、既読位置、M88 の設定がオンなら「〇〇 が参加しました」(`member_joined`、actor は本人。
   管理者が作っても「参加しました」で、招待・Google と同じ文)。オフなら行は無い。順は一覧の並び。
