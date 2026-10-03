@@ -972,6 +972,12 @@ export class SyncEngine {
         this.maybeNotifyReaction(data);
         return;
       }
+      case "activity.updated": {
+        // Review v0.1.22 #3: an erased canvas revision blanked these items' excerpts; the open list drops them now.
+        const data = frame.data as { item_ids?: string[] };
+        store.eraseActivityExcerpts(data.item_ids ?? []);
+        return;
+      }
       case "canvas.mentioned":
         // M76: an activity item too (the badge comes from the server, like a message's mention).
         this.scheduleActivityRefresh();

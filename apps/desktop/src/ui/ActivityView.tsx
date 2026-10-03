@@ -216,7 +216,8 @@ const KIND_ICON = {
 
 /** What a row quotes: the message's opening words, or (a canvas mention, M76) the line around the mention. */
 function activityExcerpt(item: ActivityItem, controller: AppController): string {
-  if (item.canvas) return item.canvas.excerpt;
+  // An erased canvas revision blanks the excerpt (`activity.updated`, review v0.1.22 #3), even in a list already loaded.
+  if (item.canvas) return controller.store.erasedActivityItems.has(item.canvas.item_id) ? "" : item.canvas.excerpt;
   const message = item.message;
   if (!message) return "";
   const store = controller.store;
@@ -282,7 +283,7 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
           <time dateTime={item.at} title={fullTimestamp(item.at)} className="shrink-0 text-xs text-muted">{dmTimeLabel(item.at)}</time>
         </span>
         {where && <span className="block truncate text-xs text-muted">{item.kind === "thread_reply" ? `${where} のスレッド` : item.kind === "canvas_mention" ? `${where} のキャンバス` : where}</span>}
-        <span className="mt-0.5 line-clamp-2 text-[13.5px] leading-snug text-ink/80">{item.kind === "reaction" ? `「${excerpt}」` : excerpt}</span>
+        {excerpt && <span className="mt-0.5 line-clamp-2 text-[13.5px] leading-snug text-ink/80">{item.kind === "reaction" ? `「${excerpt}」` : excerpt}</span>}
       </span>
     </button>
   );

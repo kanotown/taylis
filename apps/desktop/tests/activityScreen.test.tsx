@@ -307,6 +307,17 @@ it("M76: a canvas that mentions me is a row (📝, 「Alice が「議事録」�
   expect(w.server.canvasMentions.get(w.bob.id)).toHaveLength(1);
   expect(rows(view).filter((r) => r.dataset["activity"] === "canvas_mention")).toHaveLength(1);
 
+  // Review v0.1.22 #3: the revision is erased elsewhere — `activity.updated` blanks the excerpt in the open list at once.
+  const itemId = w.server.canvasMentions.get(w.bob.id)![0]!.canvas!.item_id;
+  expect(within(rows(view)[0]!).getByText("予稿 @Bob")).toBeTruthy(); // the open list keeps the excerpt it loaded
+  await act(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (w.server as any).emit(new Set([w.bob.id]), { type: "event", id: 9_999, event: "activity.updated", ts: new Date().toISOString(), channel_id: null, seq: null, data: { item_ids: [itemId] } });
+  });
+  await settle(w);
+  expect(within(rows(view)[0]!).queryByText("予稿 @Bob")).toBeNull();
+  expect(rows(view).filter((r) => r.dataset["activity"] === "canvas_mention")).toHaveLength(1);
+
   // The row opens the canvas: its conversation's 「キャンバス」 tab.
   fireEvent.click(rows(view)[0]!);
   await settle(w);
