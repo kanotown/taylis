@@ -507,7 +507,10 @@ Slack のワークスペースの書き出し (エクスポート ZIP) を、会
 bot の投稿は `attachments` / `blocks` の文字を本文にする。
 
 **読み込まないもの**: 非公開チャンネル・DM・グループ DM (下の `--include-private` / `--include-dms` を付けた時だけ)、
-参加・退出・トピックや説明や名前の変更の通知 (チャンネルのトピックと説明は channels.json から取る)、削除済みのメッセージ、
+参加・退出・トピックや説明や名前の変更の通知 (チャンネルのトピックと説明は channels.json から取る)、bot の投稿で
+本文全体が「<名前> がチャンネルに参加しました。」「@<名前>さんがチャンネルに参加しました」(`<@U…>` の形も) だけの
+もの (M92、Mattermost → Slack のブリッジが中継した参加の行。結果の `bridge_join_skipped`。人の投稿は同じ文でも読む)、
+削除済みのメッセージ、
 Slack の無料プランで見えなくなった古いファイル (`hidden_by_limit`)、編集の履歴。
 
 **人の対応付け** (先に当てはまったもの):
@@ -529,6 +532,21 @@ Slack の無料プランで見えなくなった古いファイル (`hidden_by_l
    (ドメインの外の人、Slack で削除済みの人。ドメインの中でも) は**無効化済み**のメンバー。bot は bot アカウント
    (users.json に無い bot も `bot_id` / 表示名ごとに 1 つ)。無効化済みの人はチャンネルのメンバーにならない
    (後で有効にしたら管理者がチャンネルに入れる)。ゲストはチャンネルの作成者でもオーナーにしない
+
+**bot の投稿を人の投稿にする (M92)**: `--bot-as BOT名=先` (何回でも)。`bot_message` の `username` (無ければ
+`bot_profile.name`) が BOT名 (大文字小文字を区別しない) のものを、bot アカウントではなく「先」の人の投稿として読む
+(Mattermost → Slack のブリッジが `username` に Mattermost の名前を入れて中継した投稿など)。「先」は上の対応付けの
+後で決まるので、次のどれでもよい:
+
+- Slack の人 (ユーザー id・ユーザー名・表示名・メールアドレス。`--user` と同じ探し方)。その人はこの実行で作られる
+  人でもよい (自分の投稿が無くても、bot の投稿のために上の 4〜6 の規則で作る)
+- `@ユーザー名`: Taylis に既にいる人
+- `new:表示名` / `new:表示名:guest`: 無効化済みのメンバー (`:guest` ならゲスト) を新しく作る。ユーザー名は BOT名 から
+  (`suzuki` など。使用中なら `-slack` を付ける)。2 回目以降は前回作った人を使う
+
+その名前の bot の投稿が読み込むチャンネルに無い・「先」の人がいない場合は何も書かずに止まる。人の表には
+`bot → person` (bot の名前と投稿の数 → ユーザー名) として出る。誰の名前かは実行のたびにコマンドラインで渡し、
+ファイルにして repo に置かない。
 
 作った人は M90 の既定のチャンネルには入らない (チャンネルは Slack から)。入れたいときは読み込みの後で、管理 →「設定」の
 「既定のチャンネル」の「今いる人も全員入れる」を押す。
@@ -564,6 +582,19 @@ export CHIKUWA_WEB_IMAGE="$REGISTRY/chikuwachat-web:$(cat .release)"
 chmod 600 /srv/chikuwachat/import/slack-export.zip
 ```
 
+研究室の書き出しは Mattermost からのブリッジの投稿 (bot の名前 = Mattermost のユーザー名) と日本語の名前の
+カスタム絵文字を含む (M92)。絵文字の画像の ZIP と付け替えのファイルもサーバーへ送る:
+
+```sh
+scp ~/Downloads/<絵文字の ZIP>.zip root@<taylis のサーバー>:/srv/chikuwachat/import/emoji.zip
+scp infra/slack-import/kano-lab.emoji-rename.txt root@<taylis のサーバー>:/srv/chikuwachat/import/
+```
+
+ブリッジの bot の名前ごとに `--bot-as` を 1.〜3. のすべてに付ける (例: `--bot-as 名前=U0123ABCD` (Slack の人)、
+`--bot-as 名前=@ユーザー名` (Taylis の人)、`--bot-as 名前=new:表示名:guest`)。誰かは 1. の表と dry-run の
+「bot」の行で確かめる。絵文字は 2. と 3. に
+`--emoji-dir /import/emoji.zip --emoji-rename-file /import/kano-lab.emoji-rename.txt` を付ける。
+
 **1.** 人の表だけを見る (`--people-only`、何も書かない)。表は `/srv/chikuwachat/import/people.txt` にも残る
 (横に長いので `less -S` で見る)。`create active` が研究室の人、`create guest` と `create deactivated` が
 有効にならない人。違う人がいれば、Taylis でその人のアカウントを先に作り (管理画面か招待)、`--user` を足して
@@ -586,6 +617,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compos
   run --rm -T --no-deps --user root -e RUN_MIGRATIONS=false -v /srv/chikuwachat/import:/import app \
   python -m app.cli import-slack /import/slack-export.zip --actor kano \
   --email-domain-map vc.ibaraki.ac.jp=g.ibaraki.ac.jp --activate-domain g.ibaraki.ac.jp \
+  --emoji-dir /import/emoji.zip --emoji-rename-file /import/kano-lab.emoji-rename.txt \
   --download --files-cache /import/files --dry-run 2>&1 | tee /srv/chikuwachat/import/dry-run.txt
 ```
 
@@ -597,6 +629,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compos
   run --rm -T --no-deps --user root -e RUN_MIGRATIONS=false -v /srv/chikuwachat/import:/import app \
   python -m app.cli import-slack /import/slack-export.zip --actor kano \
   --email-domain-map vc.ibaraki.ac.jp=g.ibaraki.ac.jp --activate-domain g.ibaraki.ac.jp \
+  --emoji-dir /import/emoji.zip --emoji-rename-file /import/kano-lab.emoji-rename.txt \
   --download --files-cache /import/files 2>&1 | tee /srv/chikuwachat/import/import.txt
 ```
 
@@ -628,8 +661,22 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compos
 行が残る (移行は止まらない)。この行はやり直しでは直らないので、**本番の前に `--dry-run` で失敗が無いことを確かめる**。
 
 **カスタム絵文字**: Slack の書き出しには入っていない。`--emoji-dir DIR` に `名前.png` (`.gif`・`.jpg`・`.webp`) を
-置くと、使われている名前のカスタム絵文字を作る (大きなものは Mattermost の移行と同じく縮める)。無い名前は `:名前:` の
-文字のまま入り、結果の「reactions without an emoji image」に出る (後から同じ名前のカスタム絵文字を足せば表示される)。
+置くと、使われている名前のカスタム絵文字を作る (大きなものは Mattermost の移行と同じく縮める)。`--emoji-dir` には
+画像をまとめた ZIP も渡せる (M92。中のフォルダは問わない。書き出しと同じく UTF-8 の名前に UTF-8 の印が無くても読む。
+macOS の分解された名前も同じ名前として扱う)。無い名前は `:名前:` の文字のまま入り、結果の
+「reactions without an emoji image」に出る (後から同じ名前のカスタム絵文字を足せば表示される)。
+
+Taylis のカスタム絵文字の名前は英小文字・数字・`_ + -` の 2〜32 文字なので、日本語の名前 (`完了`・`確認しました` など)
+はそのままでは作れず、そのリアクションは「reactions not imported」に出る。`--emoji-rename 元=先` (何回でも) か
+`--emoji-rename-file ファイル` (1 行に `元=先`、`#` から始まる行と空行は読まない) で名前を付け替える (M92):
+Slack の `元` の画像で Taylis のカスタム絵文字 `先` を作り、リアクションと本文の `:元:` (コードの中は除く) は `:先:` になる。
+`先` が Taylis に既にあるカスタム絵文字ならそれを使い (画像は替えない)、結果の「custom emoji」に
+`already a custom emoji here: reused` と出る。研究室の Slack の付け替えは `infra/slack-import/kano-lab.emoji-rename.txt`。
+付け替えの無い不正な名前は今までどおり「reactions not imported」に出る (`--emoji-rename` を促す一言付き)。
+
+数字の囲み (`one`〜`nine`・`zero`・`hash`・`asterisk`。1️⃣ #️⃣ *️⃣) は文字が ASCII で始まるため Taylis のリアクションに
+できない (EMOJI_PATTERN)。捨てずに `:one:` などの名前のまま入れ、「reactions without an emoji image」に
+「a reaction cannot be 1️⃣」と出る (同じ名前のカスタム絵文字を足せば表示される)。`ten` / `keycap_ten` は 🔟 になる。
 
 **書き出しを作る (Slack 側)**: ワークスペースの管理者 (またはオーナー) が、ブラウザで
 `https://<ワークスペース>.slack.com/services/export` を開く (ワークスペース名 → 「ツールと設定」→「ワークスペースの設定」
