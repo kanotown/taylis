@@ -494,6 +494,10 @@ async def update_channel(
             details={"from": channel.type, "to": data.type},
         )
         channel.type = data.type  # type: ignore[assignment]
+        if channel.type != "public":  # M90: a default channel must stay public
+            await workspace.drop_default_channel_in_tx(
+                db, channel.id, actor.id, "channel_made_private"
+            )
     channel.updated_at = utcnow()
     try:
         await db.flush()
@@ -605,6 +609,7 @@ async def set_archived_in_tx(db: AsyncSession, channel: Channel, archived: bool)
             channel_id=channel.id,
             payload=events.ChannelArchivedData(channel_id=channel.id).model_dump(mode="json"),
         )
+        await workspace.drop_default_channel_in_tx(db, channel.id, None, "channel_archived")
     else:
         await _emit_channel(db, events.CHANNEL_UPDATED, channel, audience_type="channel")
     return True
@@ -687,6 +692,7 @@ async def archive_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) 
             target_type="channel",
             target_id=channel.id,
         )
+        await workspace.drop_default_channel_in_tx(db, channel.id, actor.id, "channel_archived")
         await db.commit()
     return await _out_with_count(db, channel, membership)
 
@@ -853,6 +859,36 @@ async def add_member_in_tx(
     if announce:
         await _joined_in_tx(db, channel, actor_id or user_id, [user_id])
     return True
+
+
+async def add_members_in_tx(
+    db: AsyncSession, channel: Channel, actor_id: uuid.UUID, user_ids: list[uuid.UUID]
+) -> list[uuid.UUID]:
+    """Several memberships at once with one 「A が B、C … を追加しました」 line (M90: the
+    administrator's 「今いる人も全員入れる」); the caller commits. Returns who was added (those
+    already in, or added concurrently, are skipped). Archived channels and DMs are the caller's
+    responsibility."""
+    added: list[uuid.UUID] = []
+    for user_id in dict.fromkeys(user_ids):
+        if await repo.get_membership(db, channel.id, user_id) is not None:
+            continue
+        try:
+            async with db.begin_nested():
+                db.add(ChannelMember(channel_id=channel.id, user_id=user_id, role="member"))
+                await db.flush()
+        except IntegrityError:
+            continue
+        await reads.initialize_in_tx(db, user_id, channel.id, channel.last_seq)
+        await _emit_member(
+            db, events.CHANNEL_MEMBER_ADDED, channel.id, user_id, audience_type="channel"
+        )
+        await _emit_channel(
+            db, events.CHANNEL_CREATED, channel, audience_type="user", audience_id=user_id
+        )
+        added.append(user_id)
+    if added:
+        await _joined_in_tx(db, channel, actor_id, added)
+    return added
 
 
 async def remove_member_in_tx(db: AsyncSession, channel: Channel, user_id: uuid.UUID) -> bool:

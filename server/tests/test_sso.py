@@ -448,6 +448,48 @@ async def test_auto_provision_makes_a_member_in_the_default_channels(
     assert second.json()["user"]["id"] == me["id"]
 
 
+@pytest.mark.parametrize("saved", ["lounge", "empty"])
+async def test_the_admins_default_channels_win_over_the_env_once_set(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    google: FakeOIDC,
+    as_user: Callable[[User], None],
+    saved: str,
+) -> None:
+    """M90: SSO_DEFAULT_CHANNELS applies only while the administrator never saved the list; once
+    saved (even empty) the list decides."""
+    configure(app, sso_auto_provision=True, sso_default_channels="general")
+    root = await make_user(db, "root", role="admin")
+    as_user(root)
+    await client.post("/api/v1/channels", json={"name": "general"})
+    lounge = (await client.post("/api/v1/channels", json={"name": "lounge"})).json()
+    shown = (await client.get("/api/v1/admin/workspace-settings")).json()
+    assert shown["legacy_sso_default_channels"] == ["general"]
+    ids = [lounge["id"]] if saved == "lounge" else []
+    patched = await client.patch(
+        "/api/v1/admin/workspace-settings", json={"default_channel_ids": ids}
+    )
+    assert patched.json()["legacy_sso_default_channels"] == []
+    app.dependency_overrides.pop(get_current_user, None)
+
+    back = await sign_in(client, google, platform="android")
+    tokens = await exchange(client, back["ticket"], platform="android")
+    assert tokens.status_code == 200, tokens.text
+    joined = (
+        (
+            await db.execute(
+                select(ChannelMember.channel_id).where(
+                    ChannelMember.user_id == uuid.UUID(tokens.json()["user"]["id"])
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [str(c) for c in joined] == ids
+
+
 async def test_deactivated_accounts_are_refused(
     client: AsyncClient, db: AsyncSession, google: FakeOIDC
 ) -> None:

@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import select
@@ -27,6 +28,7 @@ from app.modules.users.events import (
     emit_user_event,
 )
 from app.modules.users.models import User
+from app.modules.workspace import default_channels
 
 log = logging.getLogger("app.admin")
 
@@ -58,12 +60,19 @@ async def create_user_in_tx(
     must_change_password: bool,
     actor_id: uuid.UUID | None,
     details: dict[str, Any] | None = None,
+    join_default_channels: bool = True,
+    legacy_default_channels: Sequence[str] = (),
 ) -> User:
     """Insert an account, its user.created event and the audit row; the caller commits.
 
     Raises ``conflict`` when the username or e-mail is taken; a concurrent insert surfaces as
     ``IntegrityError`` at commit time, which the caller maps to the same 409. ``password_hash``
     is None for an account made by Google sign-in (M48): it cannot log in with a password.
+
+    M90 (docs/MEMBERSHIP.md §6): every path that makes a person's account comes through here, so
+    this is the one place a non-guest joins the default channels (the administrator's list, else
+    ``legacy_default_channels`` = SSO_DEFAULT_CHANNELS, passed only by Google sign-in). Imports
+    pass ``join_default_channels=False``: their memberships come from the source.
     """
     await _ensure_unique(db, data.username, data.email)
     user = User(
@@ -85,6 +94,8 @@ async def create_user_in_tx(
         target_id=user.id,
         details={"username": user.username, "role": user.role, **(details or {})},
     )
+    if join_default_channels:
+        await default_channels.join_in_tx(db, user, legacy_names=legacy_default_channels)
     return user
 
 

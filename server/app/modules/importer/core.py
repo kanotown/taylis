@@ -463,6 +463,7 @@ class ImportJob:
             must_change_password=True,
             actor_id=self.actor.id,
             details={"source": self.source},
+            join_default_channels=False,  # M90: memberships come from the source
         )
         user.title = clip(record["position"], 80)
         user.deactivated_at = utcnow()

@@ -32,6 +32,8 @@ export type BootstrapOut = components["schemas"]["BootstrapOut"];
 export type WorkspaceSettingsOut = components["schemas"]["WorkspaceSettingsOut"];
 export type AdminWorkspaceSettingsOut = components["schemas"]["AdminWorkspaceSettingsOut"];
 export type WorkspaceSettingsUpdate = components["schemas"]["WorkspaceSettingsUpdate"];
+/** M90 (docs/MEMBERSHIP.md §6): 「今いる人も全員入れる」, counted (dry run) or done. */
+export type DefaultChannelsApplyOut = components["schemas"]["DefaultChannelsApplyOut"];
 export type MemberOut = components["schemas"]["MemberOut"];
 /** L4 (M31): owner / member, set by an owner or an admin. */
 export type MemberRole = MemberOut["role"];

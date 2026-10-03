@@ -209,6 +209,9 @@ server/
    M88: `channels → workspace` (設定の読み取り: プレビューの可否と参加・退出の表示)。参加・退出の一言を書くのは `messages`
    で、`messages` が import 時に `channels.set_membership_writer(post_membership_in_tx)` で登録する (channels は messages に
    依存しない、docs/MEMBERSHIP.md §1)。`workspace → audit` (設定の変更の監査)。
+   M90: `workspace.service → channels.models` (既定のチャンネルの検証。service には依存しない)。既定のチャンネルに入れる
+   処理は別のファイル `workspace/default_channels.py` (`→ channels, workspace.service, audit`) に置き、`admin`
+   (`create_user_in_tx`) と workspace の router が使う (channels → workspace.service と循環しないため、MEMBERSHIP.md §6)。
    `audit` も葉: `admin` / `auth` / `channels` が同一トランザクション内で `audit.record_in_tx()` を呼ぶ (M10)。
    `reads` は葉 (どのモジュールにも依存しない): 参加時の既読位置の初期化は `channels` が、送信者の既読は
    `messages` が同一トランザクション内で呼ぶ。`PUT /channels/{id}/read` は `channels` の router に置く

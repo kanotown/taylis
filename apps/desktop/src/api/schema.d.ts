@@ -432,7 +432,7 @@ export interface paths {
         /**
          * Get Workspace Settings
          * @description M88 (docs/MEMBERSHIP.md §3): 「参加・退出の表示」 and
-         *     「参加前にチャンネルの中を見られる」.
+         *     「参加前にチャンネルの中を見られる」; M90 (§6): 「既定のチャンネル」.
          */
         get: operations["get_workspace_settings_api_v1_admin_workspace_settings_get"];
         put?: never;
@@ -442,6 +442,28 @@ export interface paths {
         head?: never;
         /** Update Workspace Settings */
         patch: operations["update_workspace_settings_api_v1_admin_workspace_settings_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/workspace-settings/apply-default-channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Default Channels
+         * @description M90 (docs/MEMBERSHIP.md §6) 「今いる人も全員入れる」: every active non-guest, non-bot
+         *     account joins the default channels it is not in (one join line per channel). Idempotent.
+         *     `dry_run` only counts (the confirmation).
+         */
+        post: operations["apply_default_channels_api_v1_admin_workspace_settings_apply_default_channels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/ai/ask": {
@@ -3434,6 +3456,26 @@ export interface components {
          */
         AdminWorkspaceSettingsOut: {
             /**
+             * Default Channel Ids
+             * @default []
+             */
+            default_channel_ids: string[];
+            /**
+             * Default Channels
+             * @default []
+             */
+            default_channels: components["schemas"]["DefaultChannelOut"][];
+            /**
+             * Default Channels Set
+             * @default false
+             */
+            default_channels_set: boolean;
+            /**
+             * Legacy Sso Default Channels
+             * @default []
+             */
+            legacy_sso_default_channels: string[];
+            /**
              * Preview Before Join
              * @default true
              */
@@ -4681,6 +4723,50 @@ export interface components {
             name: string;
             /** Width */
             width: number;
+        };
+        /** DefaultChannelApplied */
+        DefaultChannelApplied: {
+            /** Added */
+            added: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** DefaultChannelOut */
+        DefaultChannelOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * DefaultChannelsApply
+         * @description POST /admin/workspace-settings/apply-default-channels (M90).
+         */
+        DefaultChannelsApply: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** DefaultChannelsApplyOut */
+        DefaultChannelsApplyOut: {
+            /** Channels */
+            channels: components["schemas"]["DefaultChannelApplied"][];
+            /** Dry Run */
+            dry_run: boolean;
+            /** Memberships */
+            memberships: number;
+            /** Users */
+            users: number;
         };
         /** DeltaOut */
         DeltaOut: {
@@ -7199,6 +7285,8 @@ export interface components {
          * @description PATCH /admin/workspace-settings: only the fields sent change.
          */
         WorkspaceSettingsUpdate: {
+            /** Default Channel Ids */
+            default_channel_ids?: string[] | null;
             /** Preview Before Join */
             preview_before_join?: boolean | null;
             /** Show Membership Messages */
@@ -8145,6 +8233,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminWorkspaceSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_default_channels_api_v1_admin_workspace_settings_apply_default_channels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DefaultChannelsApply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultChannelsApplyOut"];
                 };
             };
             /** @description Validation Error */

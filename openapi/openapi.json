@@ -404,6 +404,36 @@
       "AdminWorkspaceSettingsOut": {
         "description": "GET / PATCH /admin/workspace-settings: the settings and who changed them last.",
         "properties": {
+          "default_channel_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Default Channel Ids",
+            "type": "array"
+          },
+          "default_channels": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DefaultChannelOut"
+            },
+            "title": "Default Channels",
+            "type": "array"
+          },
+          "default_channels_set": {
+            "default": false,
+            "title": "Default Channels Set",
+            "type": "boolean"
+          },
+          "legacy_sso_default_channels": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Legacy Sso Default Channels",
+            "type": "array"
+          },
           "preview_before_join": {
             "default": true,
             "title": "Preview Before Join",
@@ -3873,6 +3903,93 @@
           "created_at"
         ],
         "title": "CustomEmojiOut",
+        "type": "object"
+      },
+      "DefaultChannelApplied": {
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "added"
+        ],
+        "title": "DefaultChannelApplied",
+        "type": "object"
+      },
+      "DefaultChannelOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "DefaultChannelOut",
+        "type": "object"
+      },
+      "DefaultChannelsApply": {
+        "additionalProperties": false,
+        "description": "POST /admin/workspace-settings/apply-default-channels (M90).",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          }
+        },
+        "title": "DefaultChannelsApply",
+        "type": "object"
+      },
+      "DefaultChannelsApplyOut": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/DefaultChannelApplied"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "memberships": {
+            "title": "Memberships",
+            "type": "integer"
+          },
+          "users": {
+            "title": "Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dry_run",
+          "users",
+          "memberships",
+          "channels"
+        ],
+        "title": "DefaultChannelsApplyOut",
         "type": "object"
       },
       "DeltaOut": {
@@ -10727,6 +10844,22 @@
         "additionalProperties": false,
         "description": "PATCH /admin/workspace-settings: only the fields sent change.",
         "properties": {
+          "default_channel_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Channel Ids"
+          },
           "preview_before_join": {
             "anyOf": [
               {
@@ -12165,7 +12298,7 @@
     },
     "/api/v1/admin/workspace-settings": {
       "get": {
-        "description": "M88 (docs/MEMBERSHIP.md §3): 「参加・退出の表示」 and\n「参加前にチャンネルの中を見られる」.",
+        "description": "M88 (docs/MEMBERSHIP.md §3): 「参加・退出の表示」 and\n「参加前にチャンネルの中を見られる」; M90 (§6): 「既定のチャンネル」.",
         "operationId": "get_workspace_settings_api_v1_admin_workspace_settings_get",
         "responses": {
           "200": {
@@ -12230,6 +12363,54 @@
           }
         ],
         "summary": "Update Workspace Settings",
+        "tags": [
+          "server",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/workspace-settings/apply-default-channels": {
+      "post": {
+        "description": "M90 (docs/MEMBERSHIP.md §6) 「今いる人も全員入れる」: every active non-guest, non-bot\naccount joins the default channels it is not in (one join line per channel). Idempotent.\n`dry_run` only counts (the confirmation).",
+        "operationId": "apply_default_channels_api_v1_admin_workspace_settings_apply_default_channels_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DefaultChannelsApply"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefaultChannelsApplyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Apply Default Channels",
         "tags": [
           "server",
           "admin"
