@@ -248,6 +248,10 @@ class AppController(private val app: Application) {
     var pendingTask by mutableStateOf<PendingTask?>(null)
     /** M56: the task form on screen (a card tapped, 「タスクにする」, a notification); kept here so a rotation keeps it open. */
     var taskForm by mutableStateOf<jp.chikuwachat.android.ui.TaskForm?>(null)
+    /** M95: the workflow form on screen (WORKFLOWS.md §8 4.); kept here so a rotation keeps it and its one key. */
+    var workflowForm by mutableStateOf<jp.chikuwachat.android.ui.WorkflowSession?>(null)
+    /** M95: each channel's workflows, read when a menu opens and kept a minute (§4: their changes send no events). */
+    private val workflowLists = jp.chikuwachat.android.ui.Workflows.ListCache()
     /** A message to reveal once the main screen sees it (M12b permalink tapped in a body). */
     var pendingReveal by mutableStateOf<jp.chikuwachat.android.api.MessageOut?>(null)
     /** The server we are logged into (for permalinks); null before login. */
@@ -518,6 +522,8 @@ class AppController(private val app: Application) {
         calendarFeeds = null
         pendingTask = null
         taskForm = null
+        workflowForm = null
+        workflowLists.clear()
         linkPreviews.clear()
         previewLoads.clear()
         previewsAsked.clear()
@@ -1988,6 +1994,47 @@ class AppController(private val app: Application) {
     suspend fun deleteRecurringPost(postId: String): Result<Unit> = attempt { api!!.deleteRecurringPost(postId) }
 
     suspend fun runRecurringPost(postId: String): Result<RecurringRunOut> = attempt { api!!.runRecurringPost(postId) }
+
+    // --- workflows (M95, WORKFLOWS.md §8) -------------------------------------------------------------
+    // Phones run workflows only (§8 5.). Failures of the list come back as results (the menu says so in place).
+
+    /** The channel's workflows (the ＋ menu, channel details, `/`); `fresh` reads past the one-minute cache. */
+    suspend fun channelWorkflows(channelId: String, fresh: Boolean = false): Result<List<jp.chikuwachat.android.api.WorkflowOut>> {
+        if (!fresh) workflowLists.get(channelId)?.let { return Result.success(it) }
+        return attempt { api!!.channelWorkflows(channelId) }.onSuccess { workflowLists.put(channelId, it) }
+    }
+
+    /** 「#name」 of a workflow's target, or words for one this device does not know. */
+    fun workflowTarget(channelId: String): String = store.channel(channelId)?.channel?.name?.let { "#$it" } ?: "送り先のチャンネル"
+
+    /** Opens the form, or says why it cannot run (the desktop's runBlockedText). `here`: the conversation it is opened from. */
+    fun openWorkflow(workflow: jp.chikuwachat.android.api.WorkflowOut, here: String?) {
+        if (!workflow.canRun) {
+            error = jp.chikuwachat.android.ui.Workflows.runBlockedText(workflow.runBlocked, workflowTarget(workflow.channelId)) ?: "このワークフローは使えません"
+            return
+        }
+        workflowForm = jp.chikuwachat.android.ui.WorkflowSession(workflow, here, java.time.LocalDate.now(), store.me?.id)
+    }
+
+    /** The 「⚡ name」 label: the workflow as it is now (it may have changed, stopped or gone since the message). */
+    suspend fun openWorkflowById(workflowId: String, here: String?) {
+        attempt { api!!.workflow(workflowId) }
+            .onSuccess { openWorkflow(it, here) }
+            .onFailure { report(it) }
+    }
+
+    /**
+     * Posts the open form (the server renders the message, as me). On success the form closes and the message shows like
+     * a send from here; a target other than `here` is said. A refusal stays in the form ([WorkflowSession.problem]).
+     */
+    suspend fun submitWorkflow(session: jp.chikuwachat.android.ui.WorkflowSession) {
+        val api = api ?: return
+        val message = session.submit({ id, body -> api.submitWorkflow(id, body) }, ::describe) ?: return
+        engine?.postedFromHere(message) ?: store.upsertMessage(message)
+        postedHere = message.id
+        if (workflowForm === session) workflowForm = null
+        if (session.here != null && message.channelId != session.here) notice = "${workflowTarget(message.channelId)} に投稿しました"
+    }
 
     // --- channel info & settings (UI brush-up) --------------------------------------------------
 

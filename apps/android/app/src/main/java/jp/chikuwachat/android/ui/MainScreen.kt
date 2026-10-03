@@ -459,6 +459,8 @@ fun MainScreen(controller: AppController) {
         }
     }
     controller.taskForm?.let { form -> TaskFormScreen(controller, form, version, onDismiss = { controller.taskForm = null }) }
+    // M95 (WORKFLOWS.md §8 4.): a workflow's form, from the ＋ menu, channel details, `/name` or a 「⚡ name」 label.
+    controller.workflowForm?.let { session -> WorkflowFormScreen(controller, session, version, onDismiss = { controller.workflowForm = null }) }
     AiSheets(controller) // M66: the 「要約」 choices and the summary sheet (docs/AI.md §6)
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },

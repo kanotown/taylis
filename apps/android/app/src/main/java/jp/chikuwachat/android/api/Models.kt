@@ -442,6 +442,11 @@ data class MessageOut(
      * a server before M88. The line is written from it with the directory's names (ui/SystemMessages.kt).
      */
     val systemEvent: SystemEventOut? = null,
+    /**
+     * M95 (WORKFLOWS.md §8 1.): the workflow whose form posted it (「⚡ name」 above the message); null for any other
+     * message, a deleted one, and from a server before M94.
+     */
+    val workflow: MessageWorkflowOut? = null,
 ) {
     /** Mentions me by name, group or @channel, or by one of my notification keywords (M12g). */
     fun mentions(userId: String, keywords: List<String> = emptyList()): Boolean =

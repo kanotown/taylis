@@ -223,3 +223,29 @@ Android の `ignoreUnknownKeys` は知らない欄を無視する。確認済み
   同じ名前のファイルを片方しか読まず、macOS の大文字小文字を区別しないファイルシステムでは `Workflows.tsx` と
   `workflows.ts` が同じ名前になる)。
 - **試験**: サーバ `tests/test_workflows.py` 28、Desktop `tests/workflows.test.ts` 37・`tests/workflowsUi.test.tsx` 10。
+
+### M95 Android (2026-10-04)
+
+§8 を Android (apps/android) で実装。サーバの変更なし。
+
+- **データ**: `api/WorkflowModels.kt` (`WorkflowOut` / `WorkflowField` / `FieldDefault` / `MessageWorkflowOut`)。`MessageOut.workflow` と
+  `MessageState.workflow` (Room の行は JSON なので版は上げない。M95 より前に保存した行は null)。`ApiClient.channelWorkflows` /
+  `workflow` / `submitWorkflow`。
+- **純粋な部分**: `ui/Workflows.kt` (Desktop の `ui/workflows.ts` の移植: 値の検査・描き方・プレビュー・既定値・`/` の解釈・
+  `runBlockedText` の文・1 分の一覧のキャッシュ) と `WorkflowSession` (開いたフォーム 1 つ。値・欄ごとの誤り・`client_msg_id`
+  を持ち、`AppController.workflowForm` に置くので回転しても同じキー)。
+- **画面**: `ui/WorkflowViews.kt`。投稿の上の「⚡ 名前」(押すと `GET /workflows/{id}` を読み、使えればフォーム、使えなければ
+  理由をスナックバーに。Desktop と同じ)。入力欄の「＋」→「ワークフロー」(チャンネルのトップレベルの入力欄だけ。スレッド・DM には
+  出さない) とチャンネル詳細 (メンバーのとき) の「ワークフロー」は同じ一覧 (`run_blocked` は灰色で押せず、理由を赤字)。
+  `/` の候補は組み込み → テンプレート → 「⚡ /名前」(空白を含む名前は「/wf 名前」) の順。送信時も同じ順で、テンプレートに
+  当たらなければ一覧を読んで (1 分覚える) `/名前` / `/wf 名前` を探す。M94 より前のサーバ (一覧が 404) では、一覧は「ありません」、
+  `/名前` は「というコマンドはありません」。
+- **フォーム** (全画面): 短文 / 長文は `OutlinedTextField`、日付・時刻は Material の DatePicker / TimePicker (日時は日付の後に時刻)、
+  選択はドロップダウン、人は名前で探して選ぶ (有効でボットでない人、複数可はチップ)、チェックは Switch。必須は「*」、help と
+  サーバの `details.fields` を欄の下に。下にプレビュー (`MessageBody` で描く)。成功したら閉じ、送り先が開いた会話と違えば
+  「#送り先 に投稿しました」。
+- **試験**: `WorkflowsTest` 12 (ベクタの描き方・値・キー・既定値、プレビュー、`workflow` のデコード (無い・null・ある) と保存、
+  `/wf` と候補、`runBlockedText`、キャッシュ、既定値、再試行 (通信断 → 欄の誤り → 成功) で 3 回とも同じキー、検査で止まると
+  送らない、一覧と 1 件の呼び出し)。
+- **注意**: 正規表現に `(?U)` は使えない (Android の ICU は構文エラーで、JVM の単体テストは通ってしまう)。JavaScript の `\s` に
+  当たる空白は文字の一覧で書いた (`Workflows.WS`)。エミュレータで見つけた。

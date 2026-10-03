@@ -636,6 +636,17 @@ class ApiClient(
 
     suspend fun deleteChannelLink(channelId: String, linkId: String): List<ChannelLinkOut> = request("DELETE", "/api/v1/channels/$channelId/links/$linkId")
 
+    // --- workflows (M95, WORKFLOWS.md §4; phones only run them) ------------------------------------------
+
+    /** The workflows this channel offers whose target I can read (the menu and `/`), by name; stopped ones too. */
+    suspend fun channelWorkflows(channelId: String): List<WorkflowOut> = request("GET", "/api/v1/channels/$channelId/workflows")
+
+    /** One workflow (the 「⚡ name」 label); 404 workflow_not_found when it is gone or its target is not mine to read. */
+    suspend fun workflow(id: String): WorkflowOut = request("GET", "/api/v1/workflows/$id")
+
+    /** `body`: WorkflowSession.body (`client_msg_id` and the values). 201 new, 200 the same message for a retry. */
+    suspend fun submitWorkflow(id: String, body: JsonObject): MessageOut = request("POST", "/api/v1/workflows/$id/submit", body)
+
     // --- recurring posts (L6, M59/M60, RECURRING.md §3) ----------------------------------------------
 
     /** Any reader of the channel; 404 on a server before M59. */
