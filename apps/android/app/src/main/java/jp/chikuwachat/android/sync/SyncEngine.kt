@@ -47,6 +47,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -828,6 +829,12 @@ class SyncEngine(
                 scheduleActivityRefresh()
             }
             "activity.read" -> scheduleActivityRefresh()
+            // Review v0.1.22 (CANVAS.md §20.8): items I may hold changed in place (an erased canvas version blanked their
+            // excerpts). The badge does not change: the rows shown drop the excerpt and the list reads its first page again.
+            "activity.updated" -> {
+                val ids = (frame.data["item_ids"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } ?: return
+                store.blankActivityExcerpts(ids)
+            }
             "session.revoked" -> signOut()
             // M88 (MEMBERSHIP.md §3): an admin changed a switch; the open preview follows at once (§5 item 5).
             "workspace.settings_updated" -> {
@@ -846,9 +853,10 @@ class SyncEngine(
         store.setWorkspaceSettings(value)
         val held = store.preview ?: return
         if (!value.previewBeforeJoin && !held.disabled) {
-            store.setPreview(ChannelPreview(held.channelId, disabled = true))
+            // Pages and threads still on their way are stale now (Review v0.1.22 #6).
+            replacePreview(ChannelPreview(held.channelId, disabled = true))
         } else if (value.previewBeforeJoin && held.disabled) {
-            store.setPreview(null)
+            replacePreview(null)
             if (live && currentChannelId == held.channelId && _status.value == EngineStatus.ONLINE) scope.launch { loadPreview(held.channelId) }
         }
     }
@@ -1068,7 +1076,7 @@ class SyncEngine(
         unreadHold.keys.filter { it != channelId }.forEach { unreadHold.remove(it) }
         // §7.6.1: a preview goes when another conversation opens, or when this one was joined meanwhile.
         val previewing = store.channel(channelId)?.isMember == false
-        store.preview?.let { held -> if (held.channelId != channelId || !previewing) store.setPreview(null) }
+        store.preview?.let { held -> if (held.channelId != channelId || !previewing) replacePreview(null) }
         if (_status.value != EngineStatus.ONLINE) return
         if (previewing) {
             loadPreview(channelId)
@@ -1413,50 +1421,95 @@ class SyncEngine(
         if (store.me?.role == "guest") return
         // M89 (MEMBERSHIP.md §5 item 5): the workspace turned the preview off: no history, the join panel.
         if (!store.workspaceSettings.previewBeforeJoin) {
-            store.setPreview(ChannelPreview(channelId, disabled = true))
+            replacePreview(ChannelPreview(channelId, disabled = true))
             return
         }
         val held = store.preview?.takeIf { it.channelId == channelId && !it.disabled }
         if (held?.loaded == true) return
-        if (held == null) store.setPreview(ChannelPreview(channelId))
+        if (held == null) replacePreview(ChannelPreview(channelId))
+        val gen = previewGen
         val page = try {
             api.history(channelId, null, options.pageSize)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: ApiException.Api) {
-            // Turned off while this device did not hear of it (offline): the same panel as from the setting.
-            store.updatePreview(channelId) { if (e.code == PREVIEW_DISABLED) ChannelPreview(channelId, disabled = true) else it.copy(failed = true) }
-            return
         } catch (e: Exception) {
-            store.updatePreview(channelId) { it.copy(failed = true) }
+            // Closed, turned off or refused meanwhile: nobody is looking at this answer (Review v0.1.22 #6).
+            if (!previewCurrent(channelId, gen)) return
+            // Turned off while this device did not hear of it (offline): the same panel as from the setting.
+            if (e is ApiException.Api && e.code == PREVIEW_DISABLED) refusePreview(channelId)
+            else store.updatePreview(channelId) { it.copy(failed = true) }
             return
         }
+        if (!previewCurrent(channelId, gen)) return
         store.updatePreview(channelId) { it.withPage(page, older = false) }
     }
 
     /** §7.6.1: the page before the preview's oldest row, as the reader scrolls up. */
     suspend fun loadOlderPreview(channelId: String) {
         if (_status.value != EngineStatus.ONLINE) return
+        val gen = previewGen
+        if (!previewCurrent(channelId, gen)) return
         val held = store.preview?.takeIf { it.channelId == channelId && it.loaded && it.hasOlder } ?: return
         val before = held.oldestSeq ?: return
-        val page = api.history(channelId, before, options.pageSize)
+        val page = try {
+            api.history(channelId, before, options.pageSize)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!previewCurrent(channelId, gen)) return // stale: no rows, no toast (Review v0.1.22 #6)
+            if (e is ApiException.Api && e.code == PREVIEW_DISABLED) return refusePreview(channelId)
+            throw e
+        }
+        if (!previewCurrent(channelId, gen)) return
         store.updatePreview(channelId) { it.withPage(page, older = true) }
     }
 
     /**
      * §7.6.1: a thread opened from a preview, read-only: its replies go into the preview too (a reply's parent is
      * among the preview rows, or the context a link brought). A thread opened before the page arrived starts the preview;
-     * replies that come back after the preview was closed are dropped.
+     * replies that come back after the preview was closed, turned off or refused are dropped (Review v0.1.22 #6).
      */
     suspend fun loadPreviewReplies(channelId: String, parentId: String) {
         if (_status.value != EngineStatus.ONLINE || store.channel(channelId)?.isMember != false) return
-        if (store.preview?.channelId != channelId) store.setPreview(ChannelPreview(channelId))
-        val replies = api.replies(parentId).filter { !it.deleted }.map { MessageState.from(it) }
+        if (!store.workspaceSettings.previewBeforeJoin || store.preview?.takeIf { it.channelId == channelId }?.disabled == true) return
+        if (store.preview?.channelId != channelId) replacePreview(ChannelPreview(channelId))
+        val gen = previewGen
+        val replies = try {
+            api.replies(parentId).filter { !it.deleted }.map { MessageState.from(it) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!previewCurrent(channelId, gen)) return
+            if (e is ApiException.Api && e.code == PREVIEW_DISABLED) return refusePreview(channelId)
+            throw e
+        }
+        if (!previewCurrent(channelId, gen)) return
         store.updatePreview(channelId) { it.copy(replies = it.replies + (parentId to replies)) }
     }
 
     /** The previewed conversation closed: its rows go (§7.6.1). */
-    fun closePreview() = store.setPreview(null)
+    fun closePreview() = replacePreview(null)
+
+    /**
+     * Review v0.1.22 #6 (MEMBERSHIP.md §4): the preview's load generation. Bumped whenever the preview is replaced (opened,
+     * closed, turned off or back on) and when the server refuses it: a page or thread asked for before then writes nothing
+     * back when it arrives (no rows, no `disabled = false`, no toast).
+     */
+    private var previewGen = 0
+
+    private fun replacePreview(value: ChannelPreview?) {
+        previewGen += 1
+        store.setPreview(value)
+    }
+
+    /** An answer for the preview of `channelId` asked for at `gen` may still be written: same preview, setting still on. */
+    private fun previewCurrent(channelId: String, gen: Int): Boolean =
+        gen == previewGen && store.workspaceSettings.previewBeforeJoin && store.preview?.let { it.channelId == channelId && !it.disabled } == true
+
+    /** The server refused the preview (403 preview_disabled): the join panel, and anything else on its way is stale. */
+    private fun refusePreview(channelId: String) {
+        if (store.preview?.channelId == channelId) replacePreview(ChannelPreview(channelId, disabled = true))
+    }
 
     /** The oldest seq a history page reaches; 0 once nothing older is left. */
     private fun oldestOf(page: HistoryOut): Int = if (page.hasMore) page.messages.minOfOrNull { it.seq } ?: 0 else 0

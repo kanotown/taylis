@@ -21,6 +21,12 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import java.time.ZoneId
 
+/**
+ * Review v0.1.22 #9: one of my alarms fired. `eventId` is the alarm's event (a series' id): the notification's key and what
+ * a tap opens, as before. `event`: the occurrence it is for, or null when this device cannot tell (the neutral notice).
+ */
+data class CalendarAlarmFired(val eventId: String, val channelId: String?, val event: CalendarEventOut?)
+
 /** How a range on screen stands: being read, read, failed (read again on reconnecting), or a server without a calendar. */
 enum class CalendarWindowState { LOADING, READY, FAILED, UNSUPPORTED }
 
@@ -62,8 +68,11 @@ class CalendarHub(
     /** Bumped by every change: the screens read their windows again. */
     val version: StateFlow<Int> = _version
 
-    /** One of my alarms fired (the app says so while open: the server's push is not shown then). */
-    var onAlarm: ((CalendarEventOut) -> Unit)? = null
+    /**
+     * One of my alarms fired (the app says so while open: the server's push is not shown then): the occurrence it is for,
+     * or none when this device cannot tell which occurrence that is (Review v0.1.22 #9): then the notice is neutral.
+     */
+    var onAlarm: ((CalendarAlarmFired) -> Unit)? = null
 
     val available: Boolean get() = api != null
 
@@ -216,25 +225,48 @@ class CalendarHub(
                 patchAlarm(update.eventId, update.alarm)
                 // A series' alarm fires once per occurrence: only the same occurrence fired again is not said twice.
                 val again = before?.status == "fired" && before.occurrenceStart == update.alarm?.occurrenceStart
-                if (update.alarm?.status == "fired" && !again) announce(update.eventId, update.alarm.occurrenceStart)
+                if (update.alarm?.status == "fired" && !again) announce(update.eventId, update.channelId, update.alarm, update.occurrence)
             }
         }
     }
 
     private fun <T> decode(block: () -> T): T? = runCatching(block).onFailure { Log.w("CalendarHub", "unreadable calendar event", it) }.getOrNull()
 
-    /** A fired alarm: its event (a series: the occurrence it is for) as known here, else read (it may be outside every window). */
-    private fun announce(eventId: String, occurrenceStart: String?) {
+    /**
+     * A fired alarm, said for the occurrence it is for (Review v0.1.22 #9, CALENDAR.md §10.11): (1) the one the server put
+     * in the event; from an older server (2) the occurrence held here, else (3) the event read, only when it is that
+     * occurrence (a one-off, or a series' first occurrence); (4) otherwise the neutral notice (no event), never another
+     * occurrence (GET /calendar/events/{series} answers the series' first one).
+     */
+    private fun announce(eventId: String, channelId: String?, alarm: CalendarAlarmOut, occurrence: CalendarEventOut?) {
         val callback = onAlarm ?: return
-        (occurrenceStart?.let { findOccurrence(eventId, it) } ?: find(eventId))?.let {
-            callback(it)
+        val key = alarm.occurrenceStart
+        if (occurrence != null && (key == null || occurrence.occurrenceStart == key)) {
+            val held = occurrence.occurrenceStart?.let { findOccurrence(occurrence.series, it) }
+            val canEdit = held?.canEdit ?: findSeries(eventId)?.canEdit ?: false
+            callback(CalendarAlarmFired(eventId, occurrence.channelId, occurrence.copy(canEdit = canEdit, alarm = alarm)))
             return
         }
-        val api = api ?: return
+        val fits = { e: CalendarEventOut? -> e != null && (if (key == null) !e.recurring else e.occurrenceStart == key) }
+        val known = if (key != null) findOccurrence(eventId, key) else find(eventId)
+        if (known != null && fits(known)) {
+            callback(CalendarAlarmFired(eventId, known.channelId, known))
+            return
+        }
+        val api = api
+        if (api == null) {
+            callback(CalendarAlarmFired(eventId, channelId, null))
+            return
+        }
         scope.launch {
-            // Gone, or no longer mine to see: nothing to say.
-            val event = runCatching { api.calendarEvent(eventId) }.getOrNull() ?: return@launch
-            callback(event)
+            val read = try {
+                api.calendarEvent(eventId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                return@launch // gone, or no longer mine to see: nothing to say
+            }
+            callback(CalendarAlarmFired(eventId, read.channelId ?: channelId, read.takeIf { fits(it) }))
         }
     }
 

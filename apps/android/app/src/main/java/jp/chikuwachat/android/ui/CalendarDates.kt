@@ -217,6 +217,16 @@ object CalendarDates {
         return "$whenText ${event.title}" + (event.channelName?.let { " (#$it)" } ?: "")
     }
 
+    /**
+     * Review v0.1.22 #9 (CALENDAR.md §10.11): the line for a fired alarm whose occurrence may not be known here. Known: as
+     * [alarmText] (its channel's name, else `channelName`). Unknown (null): 「予定の通知があります (#ch)」 (my own calendar:
+     * no channel), never another occurrence's title or time.
+     */
+    fun alarmText(event: CalendarEventOut?, channelName: String?): String {
+        if (event == null) return "予定の通知があります" + (channelName?.let { " (#$it)" } ?: "")
+        return alarmText(if (event.channelName == null && channelName != null) event.copy(channelName = channelName) else event)
+    }
+
     // --- colours ---------------------------------------------------------------------------------
 
     /** One fixed colour per channel (from its id, the same on every device); my own calendar is slate. ARGB. */

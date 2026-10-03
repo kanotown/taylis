@@ -883,6 +883,20 @@ class Store(private val persistence: Persistence? = null) {
     }
 
     /**
+     * Review v0.1.22 (CANVAS.md §20.8): canvas activity items whose excerpt the server blanked (activity.updated: a
+     * version's body was erased). Rows shown drop their excerpt at once; the list on screen also reads its first page
+     * again (the revision). Not persisted (nothing of the list is).
+     */
+    var blankedActivityItems: Set<String> = emptySet()
+        private set
+
+    fun blankActivityExcerpts(itemIds: Collection<String>) {
+        if (itemIds.isEmpty()) return
+        blankedActivityItems = blankedActivityItems + itemIds
+        noteActivity()
+    }
+
+    /**
      * A page of GET /threads. Rows merge so an open thread keeps its state across filter changes and
      * refreshes; on a first page, rows the server would have listed but did not (unfollowed or deleted
      * elsewhere) are dropped, except those in `keep` (threads on screen).
