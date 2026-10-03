@@ -324,6 +324,21 @@ class CollectionOut(BaseModel):
     reminded_at: datetime | None
 
 
+SystemEventKind = Literal["member_joined", "member_left", "members_added", "member_removed"]
+
+
+class SystemEventOut(BaseModel):
+    """M88 (docs/MEMBERSHIP.md §1): what a `type = "system"` message says. Clients write the line
+    from it with the names in their directory (`body` is the fallback, names as they were):
+    member_joined 「A が参加しました」, member_left 「A が退出しました」, members_added
+    「A が B、C を追加しました」, member_removed 「A が B を外しました」 (A = actor_id, B, C =
+    user_ids; for joined / left user_ids is [actor_id])."""
+
+    kind: SystemEventKind
+    actor_id: UUID
+    user_ids: list[UUID]
+
+
 class MessageOut(BaseModel):
     id: UUID
     channel_id: UUID
@@ -361,6 +376,8 @@ class MessageOut(BaseModel):
     collection: CollectionOut | None = None
     # L9: the shared tasks made from it (review requests and 「タスクにする」), oldest first.
     tasks: list[MessageTaskOut] = []
+    # M88: on a system message (type "system"), what it says; null on people's posts.
+    system_event: SystemEventOut | None = None
 
 
 class MessageRevisionOut(BaseModel):
@@ -520,6 +537,9 @@ def to_message_out(
         acks=[] if deleted else [AckOut(user_id=a.user_id, acked_at=a.acked_at) for a in acks],
         collection=None if deleted else collection,
         tasks=[] if deleted else list(tasks),
+        system_event=None
+        if deleted or not message.system_event
+        else SystemEventOut.model_validate(message.system_event),
     )
 
 

@@ -16,7 +16,11 @@ interface Case {
   expect: { notify: boolean };
 }
 
-const vectors = JSON.parse(readFileSync(new URL("../../shared/notify-rules.json", import.meta.url), "utf8")) as { cases: Case[] };
+const vectors = JSON.parse(readFileSync(new URL("../../shared/notify-rules.json", import.meta.url), "utf8")) as {
+  cases: Case[];
+  /** M88: system messages (the join / leave lines) never notify. */
+  system_messages: { cases: Array<Case & { type: string }> };
+};
 
 describe("notify rules (apps/shared/notify-rules.json)", () => {
   it.each(vectors.cases)("$name", (c) => {
@@ -28,6 +32,20 @@ describe("notify rules (apps/shared/notify-rules.json)", () => {
       mentioned: c.mentioned,
       mentionAll: c.mention_all,
       keyword: c.keyword,
+    });
+    expect(result).toBe(c.expect.notify);
+  });
+
+  it.each(vectors.system_messages.cases)("$name", (c) => {
+    const result = notifies({
+      level: c.level,
+      reply: c.reply,
+      follower: c.follower,
+      unfollowed: c.unfollowed,
+      mentioned: c.mentioned,
+      mentionAll: c.mention_all,
+      keyword: c.keyword,
+      type: c.type,
     });
     expect(result).toBe(c.expect.notify);
   });

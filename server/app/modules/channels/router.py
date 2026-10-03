@@ -15,6 +15,7 @@ from app.modules.channels.schemas import (
     MemberAdd,
     MemberOut,
     MemberRoleUpdate,
+    MembersAdd,
 )
 from app.modules.reads.schemas import ReadAllIn, ReadMark, ReadStateOut
 from app.modules.times_feed import service as times_feed
@@ -103,6 +104,21 @@ async def add_member(
         channel, _ = await service.require_member(db, user.id, channel_id)
         await request.app.state.ai_private_guard(db, channel.type, [target.id])
     return await service.add_member(db, user, channel_id, target)
+
+
+@router.post("/channels/{channel_id}/members/batch", response_model=list[MemberOut])
+async def add_members(
+    channel_id: UUID, user: CurrentUser, body: MembersAdd, db: Db, request: Request
+) -> list[MemberOut]:
+    """M88: add several people at once; the channel gets one 「追加しました」 line for them all.
+    Those already in are answered as they are."""
+    targets = await service.load_users(db, body.user_ids)
+    bots = [t.id for t in targets if t.role == "bot"]
+    if bots:  # M65: as for one (add_member)
+        channel, _ = await service.require_member(db, user.id, channel_id)
+        await request.app.state.ai_private_guard(db, channel.type, bots)
+    by_id = {t.id: t for t in targets}
+    return await service.add_members(db, user, channel_id, [by_id[uid] for uid in body.user_ids])
 
 
 @router.patch("/channels/{channel_id}/members/{user_id}", response_model=MemberOut)

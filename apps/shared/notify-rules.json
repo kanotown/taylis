@@ -21,5 +21,13 @@
     { "name": "also in channel at level all, unfollowed by hand", "level": "all", "reply": "also_in_channel", "follower": false, "unfollowed": true, "mentioned": false, "mention_all": false, "keyword": false, "expect": { "notify": true } },
     { "name": "also in channel at level mentions, follower", "level": "mentions", "reply": "also_in_channel", "follower": true, "unfollowed": false, "mentioned": false, "mention_all": false, "keyword": false, "expect": { "notify": true } },
     { "name": "also in channel at level mentions, not a follower", "level": "mentions", "reply": "also_in_channel", "follower": false, "unfollowed": false, "mentioned": false, "mention_all": false, "keyword": false, "expect": { "notify": false } }
-  ]
+  ],
+  "system_messages": {
+    "_comment": "M88 (docs/MEMBERSHIP.md §1): a system message (type \"system\": the join / leave lines) never notifies, whatever the facts say (a keyword hit on a name in its body, level all). Same fields as the cases above plus type. Read by the server and Desktop since M88, by iOS and Android from M89 (kept apart from `cases` so their older tests still pass).",
+    "cases": [
+      { "name": "system line at level all", "type": "system", "level": "all", "reply": "none", "follower": false, "unfollowed": false, "mentioned": false, "mention_all": false, "keyword": false, "expect": { "notify": false } },
+      { "name": "system line at level mentions with a keyword hit", "type": "system", "level": "mentions", "reply": "none", "follower": false, "unfollowed": false, "mentioned": false, "mention_all": false, "keyword": true, "expect": { "notify": false } },
+      { "name": "system line naming me", "type": "system", "level": "all", "reply": "none", "follower": false, "unfollowed": false, "mentioned": true, "mention_all": false, "keyword": false, "expect": { "notify": false } }
+    ]
+  }
 }

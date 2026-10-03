@@ -97,7 +97,7 @@ NULL) 本人の全体設定 `users.notification_default` (`all` / `mentions` / `
 | 条件 | 判定 | 実装時期 |
 | --- | --- | --- |
 | 送信者本人 | 除外 | M5 |
-| `type = system` のメッセージ | 除外 | M5 |
+| `type = system` のメッセージ (M88 の参加・退出の一言、docs/MEMBERSHIP.md) | 除外 (PushPlanner が `message.type` を見て捨てる。アプリ内の通知も同じ: `notify-rules.json` の `system_messages`) | M5 (表) / M88 (実装。それまで system のメッセージは作られなかった) |
 | `level = none`、`muted` (M35、解除するまで)、または `muted_until > now()` | 除外 | M5 / M35 |
 | 本文に本人の `notify_keywords` のどれかが含まれる (大文字小文字を区別しない部分一致、送信者自身は除く、M12g) | `messages.keyword_user_ids` に入り、`level = mentions` でも通知され、未読の mention_count と `GET /mentions` にも数えられる。この列はクライアントに送らない (他のメンバーに本人のキーワードが分かってしまうため。M16a)。PushPlanner は行から読む | M12g / M16a |
 | `reaction.added` (M39、自分の投稿へのリアクション) | 本人が `notify_reactions` をオンにしているときだけ `kind = reaction` (タイトル「〇〇 がリアクションしました」、サブタイトルはチャンネル、本文は絵文字と投稿の抜粋、`channel_id` / `message_id` でその投稿を開く)。その会話の level が none・ミュート中・DND・別端末でアクティブなら出さない。既読の再判定はしない (seq が無い) | M39 |

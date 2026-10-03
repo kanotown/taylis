@@ -401,6 +401,47 @@
         "title": "AdminUserUpdate",
         "type": "object"
       },
+      "AdminWorkspaceSettingsOut": {
+        "description": "GET / PATCH /admin/workspace-settings: the settings and who changed them last.",
+        "properties": {
+          "preview_before_join": {
+            "default": true,
+            "title": "Preview Before Join",
+            "type": "boolean"
+          },
+          "show_membership_messages": {
+            "default": true,
+            "title": "Show Membership Messages",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "title": "AdminWorkspaceSettingsOut",
+        "type": "object"
+      },
       "AiAgentCreate": {
         "properties": {
           "allow_private": {
@@ -1644,6 +1685,13 @@
             },
             "title": "Users",
             "type": "array"
+          },
+          "workspace_settings": {
+            "$ref": "#/components/schemas/WorkspaceSettingsOut",
+            "default": {
+              "preview_before_join": true,
+              "show_membership_messages": true
+            }
           }
         },
         "required": [
@@ -5443,6 +5491,27 @@
         "title": "MemberRoleUpdate",
         "type": "object"
       },
+      "MembersAdd": {
+        "additionalProperties": false,
+        "description": "M88: POST /channels/{id}/members/batch — several people in one action (one line\n「A が B、C を追加しました」 instead of one per person).",
+        "properties": {
+          "user_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "User Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "user_ids"
+        ],
+        "title": "MembersAdd",
+        "type": "object"
+      },
       "MembershipOut": {
         "properties": {
           "joined_at": {
@@ -5785,6 +5854,16 @@
           "seq": {
             "title": "Seq",
             "type": "integer"
+          },
+          "system_event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SystemEventOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "tasks": {
             "default": [],
@@ -8451,6 +8530,41 @@
         "title": "SubtaskUpdate",
         "type": "object"
       },
+      "SystemEventOut": {
+        "description": "M88 (docs/MEMBERSHIP.md §1): what a `type = \"system\"` message says. Clients write the line\nfrom it with the names in their directory (`body` is the fallback, names as they were):\nmember_joined 「A が参加しました」, member_left 「A が退出しました」, members_added\n「A が B、C を追加しました」, member_removed 「A が B を外しました」 (A = actor_id, B, C =\nuser_ids; for joined / left user_ids is [actor_id]).",
+        "properties": {
+          "actor_id": {
+            "format": "uuid",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "member_joined",
+              "member_left",
+              "members_added",
+              "member_removed"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "user_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "User Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "actor_id",
+          "user_ids"
+        ],
+        "title": "SystemEventOut",
+        "type": "object"
+      },
       "TaskCanvasSourceOut": {
         "description": "M72 (CANVAS.md §18.3): the canvas a task was made from, and its checklist item's text as it\nwas then (one line; it does not follow later edits). canvas_id is null once the canvas was\npurged from the trash (「元のキャンバスは削除されました」).",
         "properties": {
@@ -10591,6 +10705,53 @@
         ],
         "title": "WeeklySchedule",
         "type": "object"
+      },
+      "WorkspaceSettingsOut": {
+        "description": "M88 (docs/MEMBERSHIP.md §3): the switches every client needs (bootstrap, and the event\nworkspace.settings_updated).",
+        "properties": {
+          "preview_before_join": {
+            "default": true,
+            "title": "Preview Before Join",
+            "type": "boolean"
+          },
+          "show_membership_messages": {
+            "default": true,
+            "title": "Show Membership Messages",
+            "type": "boolean"
+          }
+        },
+        "title": "WorkspaceSettingsOut",
+        "type": "object"
+      },
+      "WorkspaceSettingsUpdate": {
+        "additionalProperties": false,
+        "description": "PATCH /admin/workspace-settings: only the fields sent change.",
+        "properties": {
+          "preview_before_join": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Before Join"
+          },
+          "show_membership_messages": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Membership Messages"
+          }
+        },
+        "title": "WorkspaceSettingsUpdate",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -11999,6 +12160,79 @@
         "summary": "Update Webhook",
         "tags": [
           "webhooks"
+        ]
+      }
+    },
+    "/api/v1/admin/workspace-settings": {
+      "get": {
+        "description": "M88 (docs/MEMBERSHIP.md §3): 「参加・退出の表示」 and\n「参加前にチャンネルの中を見られる」.",
+        "operationId": "get_workspace_settings_api_v1_admin_workspace_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWorkspaceSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Workspace Settings",
+        "tags": [
+          "server",
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "update_workspace_settings_api_v1_admin_workspace_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWorkspaceSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Workspace Settings",
+        "tags": [
+          "server",
+          "admin"
         ]
       }
     },
@@ -15648,6 +15882,69 @@
           }
         ],
         "summary": "Add Member",
+        "tags": [
+          "channels"
+        ]
+      }
+    },
+    "/api/v1/channels/{channel_id}/members/batch": {
+      "post": {
+        "description": "M88: add several people at once; the channel gets one 「追加しました」 line for them all.\nThose already in are answered as they are.",
+        "operationId": "add_members_api_v1_channels__channel_id__members_batch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembersAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemberOut"
+                  },
+                  "title": "Response Add Members Api V1 Channels  Channel Id  Members Batch Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Members",
         "tags": [
           "channels"
         ]

@@ -97,6 +97,15 @@ class MemberAdd(BaseModel):
     user_id: UUID
 
 
+class MembersAdd(BaseModel):
+    """M88: POST /channels/{id}/members/batch — several people in one action (one line
+    「A が B、C を追加しました」 instead of one per person)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_ids: list[UUID] = Field(min_length=1, max_length=50)
+
+
 class MemberRoleUpdate(BaseModel):
     """L4: PATCH /channels/{id}/members/{user_id}."""
 

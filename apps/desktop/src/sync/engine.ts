@@ -13,7 +13,7 @@ import { TimesFeedHub } from "./timesFeed";
 import { type AiApi, AiHub } from "./ai";
 import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
-import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned } from "../api/types";
+import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
@@ -507,7 +507,7 @@ export class SyncEngine {
       if (this.currentChannelId) void this.openChannel(this.currentChannelId);
       // A preview gets no events (§7.6.1): its latest page is read again, and one opened while offline (or whose first
       // page failed) loads now. Rows read before stay when the page reaches them (loadPreview).
-      else if (this.preview && !this.preview.loading) void this.loadPreview(this.preview.channelId, null).catch((err: unknown) => console.warn("could not load the preview", err));
+      else if (this.preview && !this.preview.loading && this.deps.store.workspaceSettings.preview_before_join) void this.loadPreview(this.preview.channelId, null).catch((err: unknown) => console.warn("could not load the preview", err));
     }
   }
 
@@ -731,6 +731,7 @@ export class SyncEngine {
     store.replaceTemplates(bootstrap.templates ?? []);
     store.replaceSidebar(bootstrap.sidebar_sections ?? []);
     this.drafts.applyBootstrap(bootstrap.drafts ?? []);
+    this.applyWorkspaceSettings(bootstrap.workspace_settings);
     void this.loadScheduled();
     void this.loadReminders();
   }
@@ -976,6 +977,9 @@ export class SyncEngine {
       case "session.revoked":
         this.signOut();
         return;
+      case "workspace.settings_updated":
+        this.applyWorkspaceSettings((frame.data as { settings: WorkspaceSettingsOut }).settings);
+        return;
       default:
         return;
     }
@@ -1143,6 +1147,7 @@ export class SyncEngine {
       mentioned,
       mentionAll: message.mention_all === true,
       keyword,
+      type: message.type,
     });
     if (!ok) return;
     if (this.deps.isActive?.() && this.currentChannelId === channel.id) return;
@@ -1275,6 +1280,21 @@ export class SyncEngine {
     this.closePreview();
   }
 
+  /**
+   * M88 (docs/MEMBERSHIP.md §3): the workspace settings. A preview open when 「参加前にチャンネルの中を見られる」 changes
+   * follows at once: off, its rows go and the 「参加するとメッセージを読めます」 panel shows; on, its page loads.
+   */
+  private applyWorkspaceSettings(settings: WorkspaceSettingsOut | null | undefined): void {
+    const store = this.deps.store;
+    const before = store.workspaceSettings.preview_before_join;
+    store.setWorkspaceSettings(settings);
+    const after = store.workspaceSettings.preview_before_join;
+    const preview = this.preview;
+    if (!preview || before === after) return;
+    if (!after) this.setPreview({ ...preview, messages: [], hasOlder: false, loaded: false, loading: false, refused: true, replies: new Map(), parents: new Map() });
+    else if (this.status === "online") void this.loadPreview(preview.channelId, null).catch((err: unknown) => console.warn("could not load the preview", err));
+  }
+
   // --- §7.6.1 preview before joining -----------------------------------------------------
 
   /**
@@ -1288,8 +1308,10 @@ export class SyncEngine {
     if (previous !== null) this.trimLater(previous);
     this.unreadHold.clear();
     if (this.preview?.channelId === channelId) return Promise.resolve(); // already open (a re-render, a reconnect)
-    this.setPreview({ channelId, messages: [], hasOlder: false, loaded: false, loading: false, refused: false, replies: new Map(), parents: new Map() });
-    if (this.status !== "online") return Promise.resolve();
+    // M88: with the preview off nothing is asked for; the panel says to join (the server would answer 403 anyway).
+    const refused = !this.deps.store.workspaceSettings.preview_before_join;
+    this.setPreview({ channelId, messages: [], hasOlder: false, loaded: false, loading: false, refused, replies: new Map(), parents: new Map() });
+    if (refused || this.status !== "online") return Promise.resolve();
     return this.loadPreview(channelId, null);
   }
 

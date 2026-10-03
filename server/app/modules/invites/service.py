@@ -228,7 +228,7 @@ async def accept(
                 and await channels.membership_of(db, invite.created_by, channel.id) is None
             ):
                 continue  # made private since, or the issuer left: not theirs to hand out
-            await channels.add_member_in_tx(db, channel, user.id)
+            await channels.add_member_in_tx(db, channel, user.id, announce=True)
         if invite.lab_preset:
             await _apply_lab_preset(db, invite, user)
         invite.use_count += 1

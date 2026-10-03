@@ -89,6 +89,9 @@ class Message(Base):
     ack_requested: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )
+    # M88 (docs/MEMBERSHIP.md §1): what a system message says, as data —
+    # {kind, actor_id, user_ids}; NULL on people's posts. The body is its plain-text fallback.
+    system_event: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     __table_args__ = (
         UniqueConstraint("channel_id", "seq", name="uq_messages_channel_seq"),

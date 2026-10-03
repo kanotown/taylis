@@ -155,6 +155,7 @@ async def create_message(
             raise not_found("message_not_found", "Parent message not found")
         if parent.parent_id is not None:
             raise bad_request("reply_depth", "Replies to replies are not allowed")
+        _require_user_message(parent)
 
     if (
         data.poll is not None and not data.body.strip()
@@ -505,11 +506,19 @@ async def _require_live_message(db: AsyncSession, actor: User, message_id: uuid.
     return message
 
 
+def _require_user_message(message: Message) -> None:
+    """M88 (docs/MEMBERSHIP.md §1): a system message is never edited, reacted to, pinned or
+    replied to (only an administrator deletes one)."""
+    if message.type != "user":
+        raise bad_request("system_message_readonly", "System messages cannot be changed")
+
+
 async def edit_message(
     db: AsyncSession, actor: User, message_id: uuid.UUID, data: MessageEdit
 ) -> MessageOut:
     """Only the author edits; the edit consumes a seq so delta sync picks it up (§8)."""
     message = await _require_live_message(db, actor, message_id)
+    _require_user_message(message)
     if message.sender_id != actor.id:
         raise forbidden("not_message_owner", "Only the author can edit a message")
     seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
@@ -547,6 +556,8 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
     message = await _require_live_message(db, actor, message_id)
     if message.sender_id != actor.id and actor.role != "admin":
         raise forbidden("not_message_owner", "Only the author or an admin can delete a message")
+    if message.type != "user" and actor.role != "admin":  # M88: the actor of a join line too
+        raise forbidden("not_message_owner", "Only an admin can delete a system message")
     seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
     message.deleted_at = utcnow()
     message.body = ""
@@ -604,6 +615,7 @@ async def set_pin(
     """Any member pins / unpins (Slack, Mattermost): (message, changed). A change consumes a seq so
     delta sync carries the pin state (DATA_MODEL.md 各操作と seq)."""
     message = await _require_live_message(db, actor, message_id)
+    _require_user_message(message)
     if (message.pinned_at is not None) == pinned:
         return await message_out(db, message), False
     seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
@@ -969,6 +981,7 @@ async def set_reaction(
 ) -> tuple[MessageOut, bool]:
     """Add (present=True) or remove a reaction: (message, changed). Only changes consume a seq."""
     message = await _require_live_message(db, actor, message_id)
+    _require_user_message(message)
     if present:
         changed = await repo.add_reaction(db, message.id, actor.id, emoji)
     else:
@@ -1017,3 +1030,69 @@ async def list_replies(db: AsyncSession, actor: User, parent_id: uuid.UUID) -> l
 async def export_rows(db: AsyncSession, channel_id: uuid.UUID) -> list[MessageOut]:
     """For the export-channel CLI (M10): the channel's live messages with reactions and files."""
     return await messages_out(db, await repo.list_all(db, channel_id))
+
+
+# --- system messages (M88, docs/MEMBERSHIP.md) ---------------------------------------------------
+
+
+def membership_text(kind: str, actor: str, others: list[str]) -> str:
+    """The plain-text fallback of a join / leave line (clients before M88, exports). Clients that
+    know `system_event` write the line themselves with today's names."""
+    names = "、".join(others)
+    if kind == "member_joined":
+        return f"{actor} が参加しました"
+    if kind == "member_left":
+        return f"{actor} が退出しました"
+    if kind == "members_added":
+        return f"{actor} が {names} を追加しました"
+    if kind == "member_removed":
+        return f"{actor} が {names} を外しました"
+    raise ValueError(f"unknown membership event {kind!r}")
+
+
+async def post_membership_in_tx(
+    db: AsyncSession,
+    channel_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    kind: str,
+    user_ids: list[uuid.UUID],
+) -> int:
+    """A join / leave line in the channel's timeline (`type = "system"`): it takes a seq like any
+    message, so sync carries it, but the unread counts, pushes, mentions and search leave it out
+    (they count `type = "user"` only). The sender is the actor (clients before M88 show the
+    fallback body under their name). Returns the seq; the caller commits. Registered with
+    channels below (channels does not depend on messages)."""
+    seq = await repo.allocate_seq(db, channel_id, touch_last_message=False)
+    people = await users.get_users(db, [actor_id, *user_ids])
+
+    def name(user_id: uuid.UUID) -> str:
+        person = people.get(user_id)
+        return person.display_name if person is not None else "(不明なユーザー)"
+
+    message = Message(
+        channel_id=channel_id,
+        sender_id=actor_id,
+        seq=seq,
+        updated_seq=seq,
+        type="system",
+        body=membership_text(kind, name(actor_id), [name(uid) for uid in user_ids]),
+        system_event={
+            "kind": kind,
+            "actor_id": str(actor_id),
+            "user_ids": [str(uid) for uid in user_ids],
+        },
+    )
+    db.add(message)
+    await db.flush()
+    await write_outbox(
+        db,
+        event_type=MESSAGE_CREATED,
+        audience_type="channel",
+        channel_id=channel_id,
+        seq=seq,
+        payload=MessageCreatedData(message=to_message_out(message)).model_dump(mode="json"),
+    )
+    return seq
+
+
+channels.set_membership_writer(post_membership_in_tx)

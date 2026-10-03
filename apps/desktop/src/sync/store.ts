@@ -1,6 +1,6 @@
 import type { AiAgentPublic, AiStatusOut } from "../api/ai";
 import type { AttachmentOut, ChannelLinkOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PollOut, TemplateOut } from "../api/types";
+import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
 import { type CanvasEditor, CanvasEditors } from "./canvasPresence";
@@ -44,6 +44,9 @@ export function emptySnapshot(): Snapshot {
  */
 export const CACHED_MESSAGES_PER_CHANNEL = 500;
 
+/** M88: the workspace settings a server before M88 (or an offline start) stands for: both on, as before. */
+export const DEFAULT_WORKSPACE_SETTINGS: Readonly<WorkspaceSettingsOut> = { show_membership_messages: true, preview_before_join: true };
+
 export interface Draft {
   text: string;
   attachments: AttachmentOut[];
@@ -67,6 +70,11 @@ export class Store {
    * offline start shows the last badge; bootstrap replaces it.
    */
   activity: ActivitySummaryOut | null = null;
+  /**
+   * M88 (docs/MEMBERSHIP.md §3): the workspace settings from bootstrap and workspace.settings_updated. Not persisted: an
+   * offline start reads the defaults (today's behaviour), and the next bootstrap says what they are.
+   */
+  workspaceSettings: WorkspaceSettingsOut = { ...DEFAULT_WORKSPACE_SETTINGS };
   threadsFilter: ThreadFilter = "all";
   threadsLoaded = false;
   threadsCursor: string | null = null;
@@ -636,6 +644,15 @@ export class Store {
     if (summary && current && summary.read_at === current.read_at && summary.unread_count === current.unread_count && summary.mention_unread === current.mention_unread) return;
     this.activity = summary;
     this.persist((p) => p.saveMeta("activity", summary ? JSON.stringify(summary) : null));
+    this.emit();
+  }
+
+  /** M88: bootstrap's (none from a server before M88: the defaults) or the event's settings. */
+  setWorkspaceSettings(settings: WorkspaceSettingsOut | null | undefined): void {
+    const next = { ...DEFAULT_WORKSPACE_SETTINGS, ...(settings ?? {}) };
+    const current = this.workspaceSettings;
+    if (next.show_membership_messages === current.show_membership_messages && next.preview_before_join === current.preview_before_join) return;
+    this.workspaceSettings = next;
     this.emit();
   }
 

@@ -38,6 +38,7 @@ import { BOTTOM_SLACK_PX, ListAnchor, stillAtBottom } from "./scrollAnchor";
 import { conversationScrollKey, restoreDecision, scrollMemoryFor } from "./scrollMemory";
 import { READER_BACK } from "../platform/idle";
 import { AcksDialog, ReactionsDialog } from "./WhoDialogs";
+import { isSystemMessage, systemMessageText } from "./systemMessage";
 import { TaskDialog } from "./TaskDialog";
 import { MessageTaskChips } from "./MessageTaskChips";
 import { canEditConversationTasks, messageReviewInit, messageTaskInit } from "./tasks";
@@ -677,6 +678,8 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   // The quick reactions are the emoji I used last (M25): a pick in any row changes them in every row, so they come in
   // as a prop (the memoized row would otherwise keep reading the old three until something else re-rendered it).
   const recentEmoji = useRecentEmoji();
+  // M88: a join / leave line is one muted line, never grouped, without actions (docs/MEMBERSHIP.md §1).
+  if (isSystemMessage(message)) return <SystemMessageRow message={message} store={store} rowsVersion={store.rowsVersion} thread={thread} />;
   return (
     <MessageRowView
       controller={controller}
@@ -705,6 +708,33 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
     />
   );
 }
+
+/**
+ * M88: a system message (the join / leave lines) as Slack shows it: one centred, muted line with the names from the
+ * directory and the time on hover. Still an `article` with its seq, so the list's anchoring, keyboard moves and the
+ * visible-range read marks treat it like any row; no hover bar, menu or long-press sheet.
+ */
+const SystemMessageRow = memo(function SystemMessageRow({ message, store, thread }: { message: MessageState; store: Store; rowsVersion: number; thread: boolean }) {
+  const text = systemMessageText(message, (id) => store.users.get(id)?.display_name);
+  return (
+    <article
+      key={rowKey(message)}
+      id={`${thread ? "thread" : "timeline"}-${message.id}`}
+      data-seq={message.seq ?? undefined}
+      data-system=""
+      tabIndex={0}
+      aria-keyshortcuts="ArrowUp ArrowDown Home End"
+      onKeyDown={(event) => messageRowKey(event, undefined)}
+      title={fullTimestamp(message.created_at)}
+      className="message -mx-2 my-1 flex items-center justify-center gap-2 rounded-lg px-2 py-1 text-center text-xs text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+    >
+      <span className="min-w-0 break-words">{text}</span>
+      <time className="shrink-0 tabular-nums opacity-70" dateTime={message.created_at}>
+        {timeLabel(message.created_at)}
+      </time>
+    </article>
+  );
+});
 
 export interface FeedRowProps {
   channelName: string;

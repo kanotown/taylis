@@ -2232,18 +2232,20 @@ export class AppController {
           this.setError("/invite @名前");
           return false;
         }
+        const ids: string[] = [];
         for (const handle of handles) {
           const user = byHandle(handle);
           if (!user) {
             this.setError(`${handle} というユーザーはいません`);
             return false;
           }
-          try {
-            await api.addMember(channel.id, user.id);
-          } catch (error) {
-            this.setError(error);
-            return false;
-          }
+          ids.push(user.id);
+        }
+        try {
+          await api.addMembers(channel.id, ids); // M88: one 「追加しました」 line for them all
+        } catch (error) {
+          this.setError(error);
+          return false;
         }
         this.setNotice(`${handles.length} 人を追加しました`);
         return true;

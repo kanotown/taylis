@@ -94,6 +94,8 @@ export interface NotifyCase {
   mentionAll: boolean;
   /** One of my notify_keywords is in the body. */
   keyword: boolean;
+  /** The message's type: "system" (M88's join / leave lines) never notifies. Absent = "user". */
+  type?: string | null;
 }
 
 /**
@@ -102,6 +104,7 @@ export interface NotifyCase {
  * for its followers and the people it mentions, at level "all" too; one I unfollowed by hand stays silent.
  */
 export function notifies(c: NotifyCase): boolean {
+  if ((c.type ?? "user") !== "user") return false; // M88 (docs/MEMBERSHIP.md §1)
   if (c.level === "none" || c.muted) return false;
   if (c.reply === "thread_only" && c.unfollowed) return false;
   // A follower of the thread counts as involved for any reply (the server's participants).

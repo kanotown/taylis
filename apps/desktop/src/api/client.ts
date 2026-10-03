@@ -1,5 +1,5 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
-import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate } from "./types";
+import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate, AdminWorkspaceSettingsOut, WorkspaceSettingsUpdate } from "./types";
 import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
 
@@ -206,6 +206,21 @@ export class ApiClient {
 
   addMember(channelId: string, userId: string): Promise<MemberOut> {
     return this.request("POST", `/api/v1/channels/${channelId}/members`, { user_id: userId });
+  }
+
+  /**
+   * M88: several people in one action, so the channel gets one 「A が B、C を追加しました」 line. A server before M88 has no
+   * such route (405: POST is not allowed on /members/{user_id}): one request per person there, as before.
+   */
+  async addMembers(channelId: string, userIds: string[]): Promise<MemberOut[]> {
+    try {
+      return await this.request<MemberOut[]>("POST", `/api/v1/channels/${channelId}/members/batch`, { user_ids: userIds });
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 405) throw error;
+      const added: MemberOut[] = [];
+      for (const userId of userIds) added.push(await this.addMember(channelId, userId));
+      return added;
+    }
   }
 
   createChannel(name: string, type: "public" | "private"): Promise<ChannelOut> {
@@ -982,6 +997,15 @@ export class ApiClient {
   /** `month` "YYYY-MM"; this month when left out. */
   adminAiUsage(month?: string): Promise<AiUsageOut> {
     return this.request("GET", `/api/v1/admin/ai/usage${month ? `?month=${encodeURIComponent(month)}` : ""}`);
+  }
+
+  /** M88 (docs/MEMBERSHIP.md §3): 「参加・退出の表示」 and 「参加前にチャンネルの中を見られる」 (404 on a server before it). */
+  adminWorkspaceSettings(): Promise<AdminWorkspaceSettingsOut> {
+    return this.request("GET", "/api/v1/admin/workspace-settings");
+  }
+
+  adminUpdateWorkspaceSettings(patch: WorkspaceSettingsUpdate): Promise<AdminWorkspaceSettingsOut> {
+    return this.request("PATCH", "/api/v1/admin/workspace-settings", patch);
   }
 
   /** docs/AI.md §12: the providers and whether each has its API key (404 on a server before it). */

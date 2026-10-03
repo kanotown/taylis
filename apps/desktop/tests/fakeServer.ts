@@ -5,7 +5,7 @@
  */
 import { ApiError } from "../src/api/errors";
 import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
-import type { LastMessageOut } from "../src/api/types";
+import type { LastMessageOut, WorkspaceSettingsOut } from "../src/api/types";
 import { aiProviderOf, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiAskCreate, type AiAskTargetOut, type AiProviderOut, type AiRunOut, type AiStatusOut, type AiSummaryCreate, type AiSummaryTargetOut, type AiUsageOut } from "../src/api/ai";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
@@ -494,8 +494,20 @@ export class FakeServer {
   private requireReadable(channelId: string, userId: string): ChannelRecord {
     const record = this.record(channelId);
     if (record.members.has(userId)) return record;
-    if (record.channel.type === "public" && (this.users.get(userId)?.role as string | undefined) !== "guest") return record;
+    if (record.channel.type === "public" && (this.users.get(userId)?.role as string | undefined) !== "guest") {
+      // M88: 「参加前にチャンネルの中を見られる」 off.
+      if (!this.workspaceSettings.preview_before_join) throw new ApiError(403, "preview_disabled", "Join this channel to read its messages");
+      return record;
+    }
     throw new ApiError(403, "not_a_member", "Not a member");
+  }
+
+  /** M88 (docs/MEMBERSHIP.md §3): the workspace settings (bootstrap, workspace.settings_updated to everyone). */
+  workspaceSettings: WorkspaceSettingsOut = { show_membership_messages: true, preview_before_join: true };
+
+  setWorkspaceSettings(patch: Partial<WorkspaceSettingsOut>): void {
+    this.workspaceSettings = { ...this.workspaceSettings, ...patch };
+    this.emit(new Set(this.users.keys()), { type: "event", id: ++this.eventId, event: "workspace.settings_updated", ts: now(), channel_id: null, seq: null, data: { settings: this.workspaceSettings } });
   }
 
   private requireMember(channelId: string, userId: string): ChannelRecord {
@@ -508,7 +520,7 @@ export class FakeServer {
    * Server-side post (used by fixtures for "other users" and by the api for the client). `scheduled`: a scheduled
    * send going out (M12d), which does not read the channel; `type`: a system row.
    */
-  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null, attachmentIds: string[] = [], options: SendOptions & { scheduled?: boolean; type?: string; poll?: { question: string; options: string[]; multiple?: boolean; anonymous?: boolean } } = {}): { message: MessageOut; created: boolean } {
+  post(channelId: string, senderId: string, body: string, clientMsgId = nextId(), parentId: string | null = null, attachmentIds: string[] = [], options: SendOptions & { scheduled?: boolean; type?: string; systemEvent?: MessageOut["system_event"]; poll?: { question: string; options: string[]; multiple?: boolean; anonymous?: boolean } } = {}): { message: MessageOut; created: boolean } {
     const record = this.requireMember(channelId, senderId);
     const existing = this.byClientKey.get(senderId + ":" + clientMsgId);
     if (existing) {
@@ -549,6 +561,7 @@ export class FakeServer {
       deleted: false,
       pinned_at: null,
       pinned_by: null,
+      ...(options.systemEvent ? { system_event: options.systemEvent } : {}),
     };
     if (options.poll) {
       const { question, options: choices, multiple = false, anonymous = false } = options.poll;
@@ -1485,6 +1498,7 @@ export class FakeServer {
           roster: [...this.roster.values()],
           sidebar_sections: [],
           drafts: this.draftsOf(userId),
+          workspace_settings: this.workspaceSettings,
           ...(this.activityEnabled ? { activity: this.activitySummary(userId) } : {}),
         };
       },

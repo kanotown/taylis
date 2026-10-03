@@ -32,7 +32,7 @@ import { ChannelFiles, FilesView } from "./FilesView";
 import { CanvasesView } from "./CanvasesView";
 import { RemindersView } from "./RemindersView";
 import { ChannelBrowserDialog } from "./ChannelBrowserDialog";
-import { PreviewJoinBar, PreviewThreadPane, PreviewTimeline } from "./ChannelPreview";
+import { previewCanJoin, PreviewJoinBar, previewRefused, PreviewThreadPane, PreviewTimeline } from "./ChannelPreview";
 import { BackButton, BackToList, useCompact } from "./compact";
 import { useConnectionBanner } from "./hooks";
 import { SavedView } from "./SavedView";
@@ -1381,8 +1381,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
             <div className={cn(compact || canvasTab ? "flex min-h-0 flex-1 flex-col" : "contents", shownTab !== "messages" && "invisible")} inert={shownTab !== "messages" || undefined}>
               {previewing ? (
                 <>
-                  <PreviewTimeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />
-                  <PreviewJoinBar controller={controller} channel={current} onJoin={join} />
+                  <PreviewTimeline controller={controller} channel={current} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} onJoin={join} />
+                  {(!previewRefused(controller, current.id) || !previewCanJoin(current)) && <PreviewJoinBar controller={controller} channel={current} onJoin={join} />}
                 </>
               ) : (
                 <Timeline controller={controller} channel={current} active={conversationOnScreen} onOpenThread={(id) => { setThreadChannelId(current.id); setThreadId(id); }} />

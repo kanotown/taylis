@@ -307,7 +307,7 @@ async def _join_default_channels(db: AsyncSession, user: User, settings: Setting
         if channel is None or channel.type != "public" or channel.is_archived:
             log.warning("SSO_DEFAULT_CHANNELS names no open public channel: %s", name)
             continue
-        await channels.add_member_in_tx(db, channel, user.id)
+        await channels.add_member_in_tx(db, channel, user.id, announce=True)
 
 
 def username_base(email: str) -> str:
