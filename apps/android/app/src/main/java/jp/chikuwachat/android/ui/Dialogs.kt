@@ -156,6 +156,10 @@ fun AddMemberDialog(controller: AppController, channelId: String, onDismiss: () 
         controller.members(channelId).onSuccess { memberIds = it.toSet() }.onFailure { error = controller.describe(it) }
     }
     val candidates = memberIds?.let { ids -> store.users.values.filter { it.id !in ids && it.deactivatedAt == null }.sortedBy { it.displayName } } ?: emptyList()
+    // M89 (MEMBERSHIP.md §5 item 6): pick several, then one batch (one 「追加しました」 line in the channel).
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    var busy by remember { mutableStateOf(false) }
+    val picked = selected.filter { id -> candidates.any { it.id == id } }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("メンバーを追加") },
@@ -164,26 +168,42 @@ fun AddMemberDialog(controller: AppController, channelId: String, onDismiss: () 
                 when {
                     memberIds == null && error == null -> Text("読み込み中…")
                     candidates.isEmpty() && error == null -> Text("追加できるユーザーはいません")
-                    else -> UserPicker(candidates) { user ->
-                        scope.launch {
-                            controller.addMember(channelId, user.id).onSuccess { memberIds = memberIds.orEmpty() + user.id }.onFailure { error = controller.describe(it) }
-                        }
+                    else -> UserPicker(candidates, selected, enabled = !busy) { user ->
+                        selected = if (user.id in selected) selected - user.id else selected + user.id
                     }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        confirmButton = {
+            TextButton(enabled = !busy && picked.isNotEmpty(), onClick = {
+                busy = true
+                error = null
+                scope.launch {
+                    try {
+                        controller.addMembers(channelId, picked).onSuccess { onDismiss() }.onFailure { error = controller.describe(it) }
+                    } finally { busy = false }
+                }
+            }) { Text(if (busy) "追加中…" else if (picked.isEmpty()) "追加" else "${picked.size} 人を追加") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
     )
 }
 
 @Composable
-private fun UserPicker(users: List<UserPublic>, onPick: (UserPublic) -> Unit) {
+private fun UserPicker(users: List<UserPublic>, selected: Set<String>, enabled: Boolean, onToggle: (UserPublic) -> Unit) {
     LazyColumn(Modifier.heightIn(max = 320.dp)) {
         items(users, key = { it.id }) { user ->
-            Column(Modifier.fillMaxWidth().clickable { onPick(user) }.padding(vertical = 10.dp)) {
-                Text(user.displayName)
-                Text("@" + user.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val checked = user.id in selected
+            Row(
+                Modifier.fillMaxWidth().toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = { onToggle(user) }).padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = checked, onCheckedChange = null, enabled = enabled)
+                Column(Modifier.padding(start = 8.dp)) {
+                    Text(user.displayName)
+                    Text("@" + user.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }

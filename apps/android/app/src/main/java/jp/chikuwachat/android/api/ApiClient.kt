@@ -285,6 +285,13 @@ class ApiClient(
     suspend fun addMember(channelId: String, userId: String): MemberOut =
         request("POST", "/api/v1/channels/$channelId/members", buildJsonObject { put("user_id", userId) })
 
+    /**
+     * M88 (MEMBERSHIP.md §1): several people in one action, so the channel gets one 「A が B、C を追加しました」 (at most 50;
+     * those already in are answered as they are). 405 from a server before M88 (AppController.addMembers falls back).
+     */
+    suspend fun addMembers(channelId: String, userIds: List<String>): List<MemberOut> =
+        request("POST", "/api/v1/channels/$channelId/members/batch", buildJsonObject { put("user_ids", buildJsonArray { userIds.forEach { add(JsonPrimitive(it)) } }) })
+
     /** L4 (M31): make a member an owner ("owner") or a member again ("member"); owners and admins. */
     suspend fun updateMemberRole(channelId: String, userId: String, role: String): MemberOut =
         request("PATCH", "/api/v1/channels/$channelId/members/$userId", buildJsonObject { put("role", role) })

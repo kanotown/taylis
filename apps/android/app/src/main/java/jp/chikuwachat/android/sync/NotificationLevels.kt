@@ -92,6 +92,8 @@ object NotificationLevels {
         val mentioned: Boolean = false,
         val mentionAll: Boolean = false,
         val keyword: Boolean = false,
+        /** M88: a system row (`type != "user"`: the join / leave lines), which never notifies (notify-rules.json system_messages). */
+        val system: Boolean = false,
     )
 
     /**
@@ -110,7 +112,7 @@ object NotificationLevels {
         val keyword = hitsKeyword(message.body, keywords)
         val follower = if (thread != null) meId in thread.participantIds else reply != Reply.NONE && followingHeld
         val unfollowed = reply == Reply.THREAD_ONLY && thread != null && !follower && (mentioned || keyword)
-        return Facts(reply, follower, unfollowed, mentioned, message.mentionAll, keyword)
+        return Facts(reply, follower, unfollowed, mentioned, message.mentionAll, keyword, system = message.type != "user")
     }
 
     /**
@@ -122,6 +124,7 @@ object NotificationLevels {
      */
     fun messageNotifies(level: String, facts: Facts): Boolean {
         if (level == NONE) return false
+        if (facts.system) return false
         if (facts.reply == Reply.THREAD_ONLY && facts.unfollowed) return false
         val involved = facts.mentionAll || facts.mentioned || facts.keyword || facts.follower
         if (level == MENTIONS && !involved) return false

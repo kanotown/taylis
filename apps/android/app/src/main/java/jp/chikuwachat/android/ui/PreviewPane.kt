@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -26,9 +29,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import jp.chikuwachat.android.api.WorkspaceSettingsOut
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.sync.ChannelPreview
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.MessageState
@@ -51,6 +57,8 @@ fun PreviewPane(controller: AppController, channelId: String, version: Int, onOp
     val messages = remember(preview, focus) { focus?.context?.filter { !it.deleted } ?: preview?.messages ?: emptyList() }
     val grouping = controller.groupPosts
     val items = remember(messages, me, grouping) { Timeline.build(messages, null, me, grouping = grouping).asReversed() }
+    // M89 (MEMBERSHIP.md §5 item 5): the workspace turned the preview off: the join panel, no rows (follows the switch live).
+    val refused = PreviewJoin.refused(preview, store.workspaceSettings)
     val listState = rememberLazyListState()
     var loadingOlder by remember(channelId) { mutableStateOf(false) }
     // M28c: a failed older page offers 「再読み込み」 instead of spinning for good (the effect only ran again on a new row).
@@ -70,7 +78,9 @@ fun PreviewPane(controller: AppController, channelId: String, version: Int, onOp
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (focus == null && preview?.loaded != true) {
+            if (refused) {
+                JoinToReadPanel(controller, channel)
+            } else if (focus == null && preview?.loaded != true) {
                 PreviewLoading(failed = preview?.failed == true, onRetry = { controller.scope.launch { controller.openChannel(channelId) } })
             } else {
                 LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
@@ -103,8 +113,11 @@ fun PreviewPane(controller: AppController, channelId: String, version: Int, onOp
                 }
             }
         }
-        HorizontalDivider()
-        JoinBar(controller, channel)
+        // The panel has the one button (MEMBERSHIP.md §5 item 5).
+        if (!refused) {
+            HorizontalDivider()
+            JoinBar(controller, channel)
+        }
     }
 }
 
@@ -122,6 +135,11 @@ fun PreviewThreadPane(controller: AppController, channelId: String, parentId: St
         preview?.messages?.firstOrNull { it.id == parentId } ?: focus?.context?.firstOrNull { it.id == parentId }
     }
     val replies = preview?.replies?.get(parentId)
+    // M89: turned off while the thread is open: the same panel as the channel's.
+    if (PreviewJoin.refused(preview, store.workspaceSettings)) {
+        JoinToReadPanel(controller, channel)
+        return
+    }
     val listState = rememberLazyListState()
     // M28c: a failed fetch says so with 「再読み込み」 instead of 「返信を読み込んでいます…」 for good.
     var repliesFailed by remember(parentId) { mutableStateOf(false) }
@@ -191,6 +209,46 @@ object PreviewJoin {
 
     /** Whether 「#name に参加する」 is offered: not for an archived channel (the server refuses: 409 channel_archived). */
     fun canJoin(channel: jp.chikuwachat.android.api.ChannelOut): Boolean = !channel.archived
+
+    /** M89 (MEMBERSHIP.md §5 item 5): the rows are not shown before joining: the workspace's switch, or the server's 403. */
+    fun refused(preview: ChannelPreview?, settings: WorkspaceSettingsOut): Boolean = preview?.disabled == true || !settings.previewBeforeJoin
+
+    const val REFUSED_TITLE = "参加するとメッセージを読めます"
+
+    /** What the panel says of the channel: its purpose, else its topic (as the desktop's JoinToReadPanel). */
+    fun about(channel: jp.chikuwachat.android.api.ChannelOut): String? =
+        channel.purpose?.takeIf { it.isNotBlank() } ?: channel.topic?.takeIf { it.isNotBlank() }
+
+    fun memberLine(channel: jp.chikuwachat.android.api.ChannelOut): String? = channel.memberCount?.takeIf { it > 0 }?.let { "メンバー $it 人" }
+}
+
+/**
+ * M89 (MEMBERSHIP.md §5 item 5): in place of the rows while the workspace does not show them before joining: the channel's
+ * purpose (or topic), its member count and 参加 (the bar below steps aside so there is one button).
+ */
+@Composable
+private fun JoinToReadPanel(controller: AppController, channel: ChannelState) {
+    var joining by remember(channel.id) { mutableStateOf(false) }
+    val out = channel.channel
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 48.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("#${out.name ?: ""}", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(PreviewJoin.REFUSED_TITLE, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        PreviewJoin.about(out)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
+        PreviewJoin.memberLine(out)?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (!PreviewJoin.canJoin(out)) {
+            Text(PreviewJoin.ARCHIVED_NOTE, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        } else {
+            Button(
+                enabled = !joining && controller.engineStatus == EngineStatus.ONLINE,
+                // The controller's scope: joining replaces this pane, which must not cancel the join half-way.
+                onClick = { joining = true; controller.scope.launch { try { controller.joinChannel(channel.id) } finally { joining = false } } },
+            ) { Text(if (joining) "参加しています…" else "参加") }
+        }
+    }
 }
 
 /** Where the composer would be: 「#name に参加する」, after which the conversation carries on as a joined one. */

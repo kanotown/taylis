@@ -4,6 +4,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.Limits
+import jp.chikuwachat.android.api.SystemEventOut
+import jp.chikuwachat.android.api.WorkspaceSettingsOut
 import jp.chikuwachat.android.api.PollOut
 import jp.chikuwachat.android.platform.AvatarCache
 import jp.chikuwachat.android.api.GroupOut
@@ -113,7 +115,12 @@ data class MessageState(
     val collection: CollectionOut? = null,
     /** L9 (M64): the shared tasks made from it (REVIEWS.md §2.2); rows persisted earlier lack it. */
     val tasks: List<MessageTaskOut> = emptyList(),
+    /** M89 (MEMBERSHIP.md §5): a system row's event, kept so a restart writes the line again; rows persisted earlier lack it. */
+    val systemEvent: SystemEventOut? = null,
 ) {
+    /** M88: a system row (the join / leave lines): one muted line, never grouped, no actions, never unread. */
+    val isSystem: Boolean get() = type != "user"
+
     fun reactedBy(userId: String, emoji: String): Boolean = reactions.any { it.emoji == emoji && userId in it.userIds }
 
     /** A row's key in lists: the client_msg_id, which a pending message keeps when the server confirms it. */
@@ -131,7 +138,7 @@ data class MessageState(
             parentId = message.parentId, alsoInChannel = message.alsoInChannel, replyCount = message.replyCount, lastReplyAt = message.lastReplyAt, replyUserIds = message.replyUserIds, attachments = message.attachments,
             pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy, poll = message.poll,
             priority = message.priority, ackRequested = message.ackRequested, acks = message.acks, type = message.type,
-            collection = message.collection, tasks = message.tasks,
+            collection = message.collection, tasks = message.tasks, systemEvent = message.systemEvent,
         )
 
         fun placeholder(
@@ -246,6 +253,11 @@ data class ChannelPreview(
     val hasOlder: Boolean = false,
     /** Replies of the threads opened from the preview, by parent id, oldest first. */
     val replies: Map<String, List<MessageState>> = emptyMap(),
+    /**
+     * M89 (MEMBERSHIP.md §5): the workspace turned the preview off (its setting, or the server's 403 preview_disabled): no
+     * rows; the screen shows the join panel instead.
+     */
+    val disabled: Boolean = false,
 ) {
     /** Where the next older page starts (`before_seq`). */
     val oldestSeq: Int? get() = messages.firstOrNull()?.seq
@@ -375,6 +387,14 @@ class Store(private val persistence: Persistence? = null) {
         private set
     fun setLimits(value: Limits) {
         limits = value
+    }
+    /** M88 (MEMBERSHIP.md §3): bootstrap's workspace_settings, replaced by workspace.settings_updated; not persisted. */
+    var workspaceSettings = WorkspaceSettingsOut()
+        private set
+    fun setWorkspaceSettings(value: WorkspaceSettingsOut) {
+        if (workspaceSettings == value) return
+        workspaceSettings = value
+        emit()
     }
     /** M15f: link bars of the conversations opened so far (not persisted). */
     private val channelLinks = HashMap<String, List<ChannelLinkOut>>()

@@ -2352,12 +2352,10 @@ class AppController(private val app: Application) {
             "invite" -> {
                 val handles = command.args.split(Regex("\\s+")).filter { it.isNotEmpty() }
                 if (handles.isEmpty()) { error = "/invite @名前"; return false }
-                for (handle in handles) {
-                    val target = user(handle)
-                    if (target == null) { error = "$handle というユーザーはいません"; return false }
-                    val added = addMember(channelId, target.id)
-                    if (added.isFailure) { error = describe(added.exceptionOrNull()!!); return false }
-                }
+                // M89: everyone named first, then one batch (one 「追加しました」 line, MEMBERSHIP.md §5 item 6).
+                val targets = handles.map { handle -> user(handle) ?: run { error = "$handle というユーザーはいません"; return false } }
+                val added = addMembers(channelId, targets.map { it.id })
+                if (added.isFailure) { error = describe(added.exceptionOrNull()!!); return false }
                 notice = "${handles.size} 人を追加しました"
                 true
             }
@@ -2428,6 +2426,12 @@ class AppController(private val app: Application) {
         attempt { api!!.changePassword(current, new); null }.getOrElse { describe(it) }
 
     suspend fun addMember(channelId: String, userId: String): Result<Unit> = attempt<Unit> { api!!.addMember(channelId, userId) }
+
+    /** M89 (MEMBERSHIP.md §5 item 6): several people in one batch (one line); one at a time on a 405 from an older server. */
+    suspend fun addMembers(channelId: String, userIds: List<String>): Result<Unit> = attempt {
+        val api = api!!
+        jp.chikuwachat.android.sync.AddMembers.add(userIds, batch = { api.addMembers(channelId, it) }, single = { api.addMember(channelId, it) })
+    }
 
     /**
      * A failure in words (ARCHITECTURE.md §9): the Japanese table by code, then by HTTP status, never the

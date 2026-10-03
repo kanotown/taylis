@@ -437,6 +437,11 @@ data class MessageOut(
      * server before M63. A change arrives as message.updated (change "tasks") with a new updated_seq.
      */
     val tasks: List<MessageTaskOut> = emptyList(),
+    /**
+     * M88 (MEMBERSHIP.md §1): what a `type = "system"` row says (the join / leave lines); null for people's posts and from
+     * a server before M88. The line is written from it with the directory's names (ui/SystemMessages.kt).
+     */
+    val systemEvent: SystemEventOut? = null,
 ) {
     /** Mentions me by name, group or @channel, or by one of my notification keywords (M12g). */
     fun mentions(userId: String, keywords: List<String> = emptyList()): Boolean =
@@ -508,7 +513,23 @@ data class BootstrapOut(
      * tab then keeps its stage-A lists and badge rule (MainTabs.activityBadge).
      */
     val activity: ActivitySummaryOut? = null,
+    /** M88 (MEMBERSHIP.md §3): the two workspace switches; both on from a server before M88. */
+    val workspaceSettings: WorkspaceSettingsOut = WorkspaceSettingsOut(),
 )
+
+/**
+ * M88 (MEMBERSHIP.md §1): a system row's event. `kind`: member_joined, member_left, members_added, member_removed (an
+ * unknown one falls back to the row's body). For joined / left `userIds` is `[actorId]`.
+ */
+@Serializable
+data class SystemEventOut(val kind: String, val actorId: String, val userIds: List<String> = emptyList())
+
+/**
+ * M88 (MEMBERSHIP.md §3): bootstrap's `workspace_settings` and workspace.settings_updated's `settings`. Not persisted: an
+ * offline start uses these defaults until the next bootstrap.
+ */
+@Serializable
+data class WorkspaceSettingsOut(val showMembershipMessages: Boolean = true, val previewBeforeJoin: Boolean = true)
 
 /**
  * A post template (M30, DATA_MODEL.md message_templates): `scope` "workspace" (admins edit it) or "user" (mine, then

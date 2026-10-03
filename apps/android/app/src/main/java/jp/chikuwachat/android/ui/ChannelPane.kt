@@ -556,6 +556,11 @@ fun MessageRow(
     newDot: Boolean? = null,
     onTap: (() -> Unit)? = null,
 ) {
+    // M89 (MEMBERSHIP.md §5 item 3): a join / leave line is one muted line wherever rows show (channel, thread, preview).
+    if (message.isSystem) {
+        SystemMessageRow(message, store, highlighted = controller.messageFocus?.messageId == message.id)
+        return
+    }
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
     var menuOpen by remember { mutableStateOf(false) }
     var showingReactors by remember { mutableStateOf(false) }
