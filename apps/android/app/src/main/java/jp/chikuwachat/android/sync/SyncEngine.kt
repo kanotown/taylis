@@ -26,6 +26,7 @@ import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.ThreadListOut
 import jp.chikuwachat.android.api.ThreadState
 import jp.chikuwachat.android.api.UserPublic
+import jp.chikuwachat.android.api.WorkspaceSettingsOut
 import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.api.DraftUpdated
 import jp.chikuwachat.android.api.isRefusal
@@ -97,6 +98,9 @@ const val TRIM_MARGIN = 100
 
 /** L8: live rows the Times feed may be behind by before it reads the server again (SyncEngine.timelineStale). */
 const val TIMELINE_BUFFER = 256
+
+/** M88 (MEMBERSHIP.md §3): the 403 for an unjoined public channel's rows while the workspace turned the preview off. */
+const val PREVIEW_DISABLED = "preview_disabled"
 
 /** Extras for a send (they travel with the outbox so retries keep them). */
 data class SendOptions(
@@ -608,6 +612,7 @@ class SyncEngine(
         store.replaceGroups(bootstrap.groups)
         store.replaceTemplates(bootstrap.templates)
         store.replaceSidebar(bootstrap.sidebarSections)
+        applyWorkspaceSettings(bootstrap.workspaceSettings, live = false) // the reconnect's openChannel loads a preview again
         drafts.applyBootstrap(bootstrap.drafts)
         scope.launch { loadScheduled() }
         scope.launch { loadReminders() }
@@ -824,6 +829,27 @@ class SyncEngine(
             }
             "activity.read" -> scheduleActivityRefresh()
             "session.revoked" -> signOut()
+            // M88 (MEMBERSHIP.md §3): an admin changed a switch; the open preview follows at once (§5 item 5).
+            "workspace.settings_updated" -> {
+                val settings = Codec.snake.decodeFromJsonElement(WorkspaceSettingsOut.serializer(), frame.data["settings"] ?: return)
+                applyWorkspaceSettings(settings, live = true)
+            }
+        }
+    }
+
+    /**
+     * M89 (MEMBERSHIP.md §5 item 5): the workspace switches from bootstrap or workspace.settings_updated. The preview turned
+     * off drops the rows of the one held (its screen shows the join panel); turned back on, the panel's preview is read
+     * again (live: now, if it is the open conversation; after a bootstrap the reconnect's openChannel does it).
+     */
+    private fun applyWorkspaceSettings(value: WorkspaceSettingsOut, live: Boolean) {
+        store.setWorkspaceSettings(value)
+        val held = store.preview ?: return
+        if (!value.previewBeforeJoin && !held.disabled) {
+            store.setPreview(ChannelPreview(held.channelId, disabled = true))
+        } else if (value.previewBeforeJoin && held.disabled) {
+            store.setPreview(null)
+            if (live && currentChannelId == held.channelId && _status.value == EngineStatus.ONLINE) scope.launch { loadPreview(held.channelId) }
         }
     }
 
@@ -898,7 +924,8 @@ class SyncEngine(
     private fun ChannelState.advancedTo(seq: Int, message: MessageOut, isNew: Boolean): ChannelState {
         val moved = copy(lastSeq = maxOf(lastSeq, seq))
         val inTimeline = message.parentId == null || message.alsoInChannel
-        if (!isNew || !inTimeline || !isLater(message.createdAt, channel.lastMessageAt)) return moved
+        // M88: a join / leave line does not move it either (the server keeps last_message_at; the 「最近」 order stays).
+        if (!isNew || !inTimeline || message.type != "user" || !isLater(message.createdAt, channel.lastMessageAt)) return moved
         return moved.copy(channel = channel.copy(lastMessageAt = message.createdAt))
     }
 
@@ -972,6 +999,7 @@ class SyncEngine(
     private fun maybeNotify(message: MessageOut, channel: ChannelState, thread: ParentThread? = null) {
         val me = store.me ?: return
         if (message.senderId == me.id) return
+        // M89: a join / leave line never notifies (facts.system; notify-rules.json system_messages).
         // The level resolved with my overall setting (M35), and a mute.
         val followingHeld = message.parentId?.let { store.threads[it]?.state?.following } == true
         val facts = NotificationLevels.facts(message, me.id, me.notifyKeywords, thread, followingHeld)
@@ -1383,13 +1411,22 @@ class SyncEngine(
      */
     private suspend fun loadPreview(channelId: String) {
         if (store.me?.role == "guest") return
-        val held = store.preview?.takeIf { it.channelId == channelId }
+        // M89 (MEMBERSHIP.md §5 item 5): the workspace turned the preview off: no history, the join panel.
+        if (!store.workspaceSettings.previewBeforeJoin) {
+            store.setPreview(ChannelPreview(channelId, disabled = true))
+            return
+        }
+        val held = store.preview?.takeIf { it.channelId == channelId && !it.disabled }
         if (held?.loaded == true) return
         if (held == null) store.setPreview(ChannelPreview(channelId))
         val page = try {
             api.history(channelId, null, options.pageSize)
         } catch (e: CancellationException) {
             throw e
+        } catch (e: ApiException.Api) {
+            // Turned off while this device did not hear of it (offline): the same panel as from the setting.
+            store.updatePreview(channelId) { if (e.code == PREVIEW_DISABLED) ChannelPreview(channelId, disabled = true) else it.copy(failed = true) }
+            return
         } catch (e: Exception) {
             store.updatePreview(channelId) { it.copy(failed = true) }
             return

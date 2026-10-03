@@ -48,6 +48,8 @@ import jp.chikuwachat.android.api.ThreadState
 import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
+import jp.chikuwachat.android.api.SystemEventOut
+import jp.chikuwachat.android.api.WorkspaceSettingsOut
 import jp.chikuwachat.android.sync.CLOSE_SESSION_REVOKED
 import jp.chikuwachat.android.sync.SyncApi
 import jp.chikuwachat.android.sync.WsConnector
@@ -769,8 +771,43 @@ class FakeServer {
     /** M27 (SECURITY.md §3.2): reading also a public channel not joined, except for guests; writing stays with members. */
     private fun requireReadable(channelId: String, userId: String): ChannelRecord {
         val record = channels[channelId] ?: throw ApiException.Api(404, "channel_not_found", "not found")
-        if (userId in record.members || (record.channel.type == "public" && users[userId]?.role != "guest")) return record
+        if (userId in record.members) return record
+        if (record.channel.type == "public" && users[userId]?.role != "guest") {
+            // M88: the workspace's 「参加前にチャンネルの中を見られる」 off (MEMBERSHIP.md §3; admins too).
+            if (!workspaceSettings.previewBeforeJoin) throw ApiException.Api(403, "preview_disabled", "join to read")
+            return record
+        }
         throw ApiException.Api(403, "not_a_member", "not a member")
+    }
+
+    /** M88 (MEMBERSHIP.md §3): the workspace switches (bootstrap, the preview's 403). Change with [updateWorkspaceSettings]. */
+    var workspaceSettings = WorkspaceSettingsOut()
+
+    /**
+     * PATCH /admin/workspace-settings as the real server announces it: workspace.settings_updated to everyone. `announce`
+     * false: changed while the client did not hear of it (offline).
+     */
+    fun updateWorkspaceSettings(settings: WorkspaceSettingsOut, announce: Boolean = true) {
+        workspaceSettings = settings
+        if (announce) emit(users.keys.toSet(), event("workspace.settings_updated", null, null, buildJsonObject {
+            put("settings", Codec.snake.encodeToJsonElement(WorkspaceSettingsOut.serializer(), settings))
+        }))
+    }
+
+    /** M88: a join / leave line as the server writes it (type "system", sender the actor, a seq, never unread). */
+    fun postSystem(channelId: String, event: SystemEventOut, body: String): MessageOut {
+        val record = channels.getValue(channelId)
+        val seq = record.channel.lastSeq + 1
+        record.channel = record.channel.copy(lastSeq = seq) // last_message_at stays (MEMBERSHIP.md §1)
+        val message = MessageOut(
+            id = nextId(), channelId = channelId, senderId = event.actorId, seq = seq, updatedSeq = seq, clientMsgId = null, body = body,
+            type = "system", systemEvent = event, createdAt = now(), deleted = false,
+        )
+        record.messages.add(message)
+        emit(record.members, event("message.created", channelId, seq, buildJsonObject {
+            put("message", Codec.snake.encodeToJsonElement(MessageOut.serializer(), message))
+        }))
+        return message
     }
 
     // --- polls (M14b, M27) ----------------------------------------------------------------------
@@ -1015,6 +1052,7 @@ class FakeServer {
             roster = roster.values.toList(),
             drafts = draftsOf(userId),
             activity = activity[userId],
+            workspaceSettings = workspaceSettings,
         )
     }
 

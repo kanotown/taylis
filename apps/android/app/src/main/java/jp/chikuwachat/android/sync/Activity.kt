@@ -25,6 +25,7 @@ object ActivityRules {
      */
     fun isActivity(message: MessageOut, me: UserMe?, thread: ParentThread?, followingHeld: Boolean): Boolean {
         if (me == null || message.deleted || message.senderId == me.id) return false
+        if (message.type != "user") return false // M88: a join / leave line is never an activity item
         if (message.mentions(me.id, me.notifyKeywords)) return true
         if (message.parentId == null) return false
         return followingHeld || thread?.participantIds?.contains(me.id) == true

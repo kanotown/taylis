@@ -147,13 +147,51 @@ class NotificationLevelsTest {
     private data class NotifyExpected(val notify: Boolean)
 
     @Serializable
-    private data class NotifyVectors(val cases: List<NotifyCase>)
+    private data class NotifyVectors(val cases: List<NotifyCase>, val systemMessages: SystemVectors? = null)
+
+    /** M88: the `system_messages` section, the same facts plus the message's `type`. */
+    @Serializable
+    private data class SystemCase(
+        val name: String, val type: String, val level: String, val reply: String, val follower: Boolean, val unfollowed: Boolean,
+        val mentioned: Boolean, val mentionAll: Boolean, val keyword: Boolean, val expect: NotifyExpected,
+    )
+
+    @Serializable
+    private data class SystemVectors(val cases: List<SystemCase>)
 
     /** The file the server and the other clients test against: from the module (apps/android/app), ../../shared. */
-    private fun notifyVectors(): List<NotifyCase> {
+    private fun vectorFile(): NotifyVectors {
         val file = File("../../shared/notify-rules.json")
         check(file.isFile) { "apps/shared/notify-rules.json not found from ${File("").absolutePath}" }
-        return Codec.snake.decodeFromString(NotifyVectors.serializer(), file.readText()).cases
+        return Codec.snake.decodeFromString(NotifyVectors.serializer(), file.readText())
+    }
+
+    private fun notifyVectors(): List<NotifyCase> = vectorFile().cases
+
+    /**
+     * M89 (MEMBERSHIP.md §5 item 4): a join / leave line never notifies, whatever else the facts say: from the rule, from
+     * the channel entry point and from the facts the engine reads off the message.
+     */
+    @Test fun sharedSystemMessageRules() {
+        val cases = vectorFile().systemMessages?.cases ?: emptyList()
+        assertTrue(cases.isNotEmpty())
+        for (case in cases) {
+            val facts = NotificationLevels.Facts(
+                replyKind(case.reply), follower = case.follower, unfollowed = case.unfollowed,
+                mentioned = case.mentioned, mentionAll = case.mentionAll, keyword = case.keyword, system = case.type != "user",
+            )
+            assertEquals(case.name, case.expect.notify, NotificationLevels.messageNotifies(case.level, facts))
+            assertEquals(case.name, case.expect.notify, NotificationLevels.notifies(channel(own = case.level), "mentions", "me", facts, now))
+            val message = MessageOut(
+                id = "m", channelId = "c", senderId = "alice", seq = 5, updatedSeq = 5, parentId = null,
+                body = "Alice が参加しました" + if (case.keyword) " deploy" else "", type = case.type,
+                mentionedUserIds = if (case.mentioned) listOf("me") else emptyList(), mentionAll = case.mentionAll,
+                createdAt = "2026-10-03T00:00:00Z", deleted = false,
+            )
+            val read = NotificationLevels.facts(message, "me", listOf("Deploy"), null, followingHeld = false)
+            assertTrue(case.name, read.system)
+            assertEquals(case.name, case.expect.notify, NotificationLevels.messageNotifies(case.level, read))
+        }
     }
 
     private fun replyKind(reply: String) = when (reply) {

@@ -164,3 +164,35 @@ times (L8) もオフなら対象外 (`channels.list_public_times_not_member` が
 - **残り**: 開いている間に追加されたチャンネルは、次の bootstrap まで手元の既読位置が 0 のまま (サーバは追加の行に
   置く) なので、「新着メッセージ」の線が追加前の行の上に出ることがある (M89 より前からの、イベントで届いたチャンネルの
   既読位置の扱い。未読数はサーバと同じ)。
+
+### M89 Android
+
+- **モデル**: `MessageOut.systemEvent` (`SystemEventOut {kind, actorId, userIds}`)、`BootstrapOut.workspaceSettings`
+  (`WorkspaceSettingsOut`、無いサーバでは両方 true)。ローカルの行 `MessageState.systemEvent` に持つ。Room の messages は
+  行の JSON を 1 列に入れる形なので、項目を足すだけで移行は要らない (スキーマは 2 のまま。前の行は `systemEvent` が無く
+  `body` を出す)。設定は `Store.workspaceSettings` (保存しない)。`workspace.settings_updated` で置き換える
+  (`SyncEngine.applyWorkspaceSettings`)。
+- **文**: `ui/SystemMessages.kt` の `SystemMessages.text` (Desktop の `systemMessageText` と同じ規則)。名前は
+  `store.users` と自分の `display_name`。
+- **表示**: `MessageRow` の先頭で `type != "user"` を `SystemMessageRow` (中央寄せの小さい灰色の文 + 時刻) に分ける。
+  チャンネル・スレッド・プレビュー・Times フィード (前から出さない) のどれもこの 1 か所を通る。タップ・長押しは無し
+  (操作シート・「ここから未読にする」・スレッドが開かない)、まとめない (`Timeline.continues` の既存の規則)。
+- **未読・通知**: `NotificationLevels.Facts.system` (`type != "user"`) を `messageNotifies` が最初に見て false。
+  アクティビティの印 (`ActivityRules.isActivity`) にもしない。ライブの行で `lastMessageAt` を動かさない (サーバと同じ、
+  「最近」の順を変えない)。
+- **プレビューのオフ**: `ChannelPreview.disabled`。設定がオフなら `loadPreview` は履歴を取らずに `disabled` にする。
+  `403 preview_disabled` も同じ。画面は `PreviewJoin.refused` (preview の `disabled` か設定のオフ) で「参加すると
+  メッセージを読めます」のパネル (`#name`・目的 (無ければトピック)・「メンバー N 人」・「参加」。アーカイブ済みは注記) を
+  出し、下の参加バーは出さない。開いている間に設定がオフになれば行を捨ててパネル、オンになればその場で読み込む。
+  パーマリンク・検索からの 403 は前からの `describe` で errors.json の文言が出る。
+- **追加**: メンバーの追加ダイアログを複数選択 (チェック + 「N 人を追加」) にし、`/invite @a @b` も全員を名前解決して
+  から送る。`sync/AddMembers.kt` が `POST /channels/{id}/members/batch` を 50 人ずつ送り、405 なら 1 人ずつ。
+- **管理画面**: Android には無いので 2 つのスイッチは足していない (Web の管理を使う)。
+- **テスト**: `MembershipTest` (13: 文・まとめない・デコードと保存・ライブの行が未読・通知にならない・設定の bootstrap と
+  イベント・プレビューのオフとライブの追従・403・パネルの文言・batch と 405)、`NotificationLevelsTest.sharedSystemMessageRules`
+  (notify-rules.json の `system_messages`)。
+- **エミュレータ (ChikuwaChat_Pixel_9、開発サーバ 0071)**: 複数追加・退出・参加・除外の 4 種が名前付きの 1 行で出て
+  (開いている間のライブの行も)、チャンネルは未読にならず、システム行の長押し・タップで何も開かないこと、プレビューの
+  オフで未参加のチャンネルがパネルになり、オン・オフの切り替えに開いている画面が追従し、「参加」で読めて
+  「android1 が参加しました」が出ること、追加ダイアログが batch を 1 回送ること (「android1 が android2 を追加しました」)
+  を確認した。レベル「すべて」での通知の無さはユニットテストだけ (エミュレータの android1 は既定のレベル)。
