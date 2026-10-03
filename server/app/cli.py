@@ -608,6 +608,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # Every module's models, so that relationships and foreign keys resolve whichever tables a
+    # command touches (probe-videos failed in production on attachments.canvas_id → canvases).
+    import app.models_registry  # noqa: F401
+
     result: int = args.func(args)
     return result
 
