@@ -2,10 +2,10 @@ import { isTauri } from "./env";
 
 let shown: number | null = null;
 /** The browser tab says which workspace it is (M16c): the name from GET /server. */
-let titleBase = "ChikuwaChat";
+let titleBase = "taylis";
 
 export function setTitleBase(name: string): void {
-  titleBase = name || "ChikuwaChat";
+  titleBase = name || "taylis";
   if (!isTauri() && typeof document !== "undefined") document.title = shown ? `(${shown}) ${titleBase}` : titleBase;
 }
 

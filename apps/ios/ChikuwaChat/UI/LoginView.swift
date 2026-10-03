@@ -42,7 +42,7 @@ struct LoginView: View {
 
     private var title: String {
         switch mode {
-        case .initial: return "ChikuwaChat"
+        case .initial: return "taylis"
         case .add: return "ワークスペースを追加"
         case .relogin(let workspace): return workspace.name
         }
@@ -73,7 +73,7 @@ struct LoginView: View {
                     } header: {
                         Text("サーバ")
                     } footer: {
-                        if isAdding { Text("別の ChikuwaChat サーバにログインします。https:// は省略できます。") }
+                        if isAdding { Text("別の taylis サーバにログインします。https:// は省略できます。") }
                     }
                 }
                 Section("アカウント") {

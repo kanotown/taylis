@@ -22,6 +22,6 @@ class TotpTest {
     }
 
     @Test fun formatsRecoveryCodesForTheClipboard() {
-        assertEquals("ChikuwaChat の回復コード (各 1 回だけ使えます)\n\nabcde-fghjk\nmnpqr-stuvw", Totp.recoveryCodesText(listOf("abcde-fghjk", "mnpqr-stuvw")))
+        assertEquals("taylis の回復コード (各 1 回だけ使えます)\n\nabcde-fghjk\nmnpqr-stuvw", Totp.recoveryCodesText(listOf("abcde-fghjk", "mnpqr-stuvw")))
     }
 }

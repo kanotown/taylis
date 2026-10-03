@@ -804,7 +804,7 @@ class SlackImport(core.ImportJob):
         self._check_user_map()
         for target in sorted(set(self.user_map.values())):
             if await self._user_by_name(target) is None:
-                raise ImportFailed(f"--user …={target}: no ChikuwaChat user {target}")
+                raise ImportFailed(f"--user …={target}: no taylis user {target}")
         refs = await self._refs("channel")
         clashes: list[str] = []
         prefix = self.options.channel_prefix
@@ -829,9 +829,7 @@ class SlackImport(core.ImportJob):
                 else "give --channel-prefix (e.g. --channel-prefix slack-) to import them "
                 "under other names"
             )
-            raise ImportFailed(
-                f"channels already exist in ChikuwaChat: {', '.join(clashes)}; {hint}"
-            )
+            raise ImportFailed(f"channels already exist in taylis: {', '.join(clashes)}; {hint}")
         posts = await self._refs("post")
         file_refs = await self._refs("file")
         await self.db.rollback()  # downloads can take long: hold no transaction meanwhile

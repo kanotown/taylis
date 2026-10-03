@@ -28,9 +28,9 @@ targets:
     info:
       path: ChikuwaChat/Info.plist
       properties:
-        CFBundleDisplayName: ChikuwaChat
+        CFBundleDisplayName: taylis
         CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "80"
+        CFBundleVersion: "81"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         # The server URL is user-provided; self-hosted LAN deployments may use plain HTTP.

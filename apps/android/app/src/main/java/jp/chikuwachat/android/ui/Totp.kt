@@ -29,5 +29,5 @@ object Totp {
 
     /** The recovery codes as one text block for the clipboard. */
     fun recoveryCodesText(codes: List<String>): String =
-        (listOf("ChikuwaChat の回復コード (各 1 回だけ使えます)", "") + codes).joinToString("\n")
+        (listOf("taylis の回復コード (各 1 回だけ使えます)", "") + codes).joinToString("\n")
 }

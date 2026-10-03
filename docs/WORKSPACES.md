@@ -34,7 +34,7 @@
 - `workspace_id` は `workspace_identity` テーブルの 1 行 (DATA_MODEL.md)。migration 0034 で作られ、
   バックアップ / 復元で保たれる。行が失われていた場合は起動時に新しい値で作り直す
   (クライアントは次に `GET /server` を読んだ時に新しい値を覚える)。
-- `name` は環境変数 `WORKSPACE_NAME`。空なら `APP_NAME` (既定 `ChikuwaChat`)。切り替え UI の表示名。
+- `name` は環境変数 `WORKSPACE_NAME`。空なら `APP_NAME` (既定 `taylis`)。切り替え UI の表示名。
 - 返すのはログイン画面でも見える程度の情報 (名前と API バージョン) だけ。
 
 ### 3.2 `GET /api/v1/sync/summary`
@@ -83,7 +83,7 @@ iOS / Android は保存済みの refresh token があるときだけ移行する
 ### 5.1 追加
 
 1. サーバー URL を入力する (スキームが無ければ `https://` を補う)。
-2. `GET /server` を読む。`product` が違う / JSON でない → 「ChikuwaChat のサーバーではありません」。
+2. `GET /server` を読む。`product` が違う / JSON でない → 「taylis のサーバーではありません」。
    ネットワークエラーは共通の文言 (errors.json の network)。
 3. `workspace_id` が登録済みのワークスペースと同じなら追加せず、そのワークスペースに切り替える
    (同じサーバーに別の URL で入り直すのを防ぐ。1 サーバーにつき 1 アカウント)。

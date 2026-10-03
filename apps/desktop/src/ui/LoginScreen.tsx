@@ -58,8 +58,8 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
             <MessageCircle size={24} />
           </span>
           <div>
-            <h1 className="text-xl font-bold tracking-tight">{adding ? "ワークスペースを追加" : entry ? entry.name : "ChikuwaChat"}</h1>
-            <p className="text-xs text-muted">{adding ? "別の ChikuwaChat サーバにログインします" : entry?.signedOut ? "もう一度ログインしてください" : "チームのチャットにログイン"}</p>
+            <h1 className="text-xl font-bold tracking-tight">{adding ? "ワークスペースを追加" : entry ? entry.name : "taylis"}</h1>
+            <p className="text-xs text-muted">{adding ? "別の taylis サーバにログインします" : entry?.signedOut ? "もう一度ログインしてください" : "チームのチャットにログイン"}</p>
           </div>
         </div>
         {isWeb() ? (

@@ -153,7 +153,7 @@ async def _push_test(username: str, body: str) -> int:
             payload = PushPayload(
                 kind="test",
                 workspace_id=await workspace.workspace_id(session),
-                title="ChikuwaChat",
+                title="taylis",
                 body=body,
                 sent_at=utcnow(),
             ).model_dump(mode="json")

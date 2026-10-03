@@ -26,5 +26,5 @@ export function totpErrorText(error: unknown): string {
 
 /** The recovery codes as one text block for the clipboard or a file. */
 export function recoveryCodesText(codes: readonly string[]): string {
-  return ["ChikuwaChat の回復コード (各 1 回だけ使えます)", "", ...codes].join("\n");
+  return ["taylis の回復コード (各 1 回だけ使えます)", "", ...codes].join("\n");
 }

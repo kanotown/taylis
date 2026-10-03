@@ -115,7 +115,7 @@ const jumpRows = () => [...jump()!.querySelectorAll<HTMLButtonElement>("[data-ju
 it("the header: the workspace's name and ⋯ (no avatar, search icon or ＋); ⋯ holds the home's actions", async () => {
   const { w } = await setup();
   const header = home().querySelector("header")!;
-  expect(header.textContent).toContain("ChikuwaChat");
+  expect(header.textContent).toContain("taylis");
   expect(within(header).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["ホームのメニュー"]);
   expect(header.querySelector("img, [data-avatar]")).toBeNull();
   const menu = await openHomeMenu();

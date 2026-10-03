@@ -406,9 +406,7 @@ class ImportJob:
         if target is not None:
             user = await self._user_by_name(target)
             if user is None:
-                raise ImportFailed(
-                    f"--user {record['username']}={target}: no ChikuwaChat user {target}"
-                )
+                raise ImportFailed(f"--user {record['username']}={target}: no taylis user {target}")
             if earlier is not None and earlier != user.id:
                 raise ImportFailed(
                     f"--user {record['username']}={target}: an earlier run imported "
