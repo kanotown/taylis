@@ -16,7 +16,7 @@ export function cn(...inputs: ClassValue[]): string {
  * the tabs' own 2 px underline (`UNDERLINE_TAB`) covers from inside the row.
  */
 export const UNDERLINE_TAB_ROW = "flex shrink-0 overflow-x-auto overflow-y-hidden overscroll-x-contain shadow-[inset_0_-1px_0_var(--line)]";
-export const UNDERLINE_TAB = "shrink-0 whitespace-nowrap border-b-2 text-sm font-medium transition-colors";
+export const UNDERLINE_TAB = "shrink-0 whitespace-nowrap rounded-t-md border-b-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "link";
 type Size = "sm" | "md" | "icon";
@@ -117,6 +117,7 @@ export function Modal({
   children,
   className,
   hideClose = false,
+  focusDialog = false,
 }: {
   onClose: () => void;
   title: string;
@@ -124,12 +125,16 @@ export function Modal({
   children: ReactNode;
   className?: string;
   hideClose?: boolean;
+  /** Focus the dialog itself on open instead of its first control (e.g. a tab row, whose clipped focus ring looked
+   *  like a selected gap between the first two tabs in the macOS app). */
+  focusDialog?: boolean;
 }) {
   return (
     <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="rx-overlay fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]" />
         <Dialog.Content
+          onOpenAutoFocus={focusDialog ? (event) => { event.preventDefault(); (event.currentTarget as HTMLElement | null)?.focus(); } : undefined}
           className={cn(
             "rx-dialog fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[460px] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-line bg-canvas p-5 text-ink shadow-2xl focus:outline-none max-md:p-4",
             className,
