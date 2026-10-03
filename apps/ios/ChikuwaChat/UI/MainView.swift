@@ -161,6 +161,10 @@ struct MainView: View {
         .sheet(item: $controller.canvasLink) { target in
             CanvasLinkSheet(controller: controller, canvasId: target.id)
         }
+        // M95: a workflow's form (WORKFLOWS.md §8 4.), from wherever it was opened.
+        .fullScreenCover(item: $controller.workflowRun) { target in
+            WorkflowFormView(controller: controller, target: target)
+        }
         .onChange(of: homeSelection) { _, id in
             guard let id else { return }
             homeSelection = nil

@@ -569,6 +569,8 @@ struct TaskAssigneePicker: View {
     @Binding var selected: [String]
     /// The page's title (L6's 「提出する人」 picks people the same way).
     var title = "担当者"
+    /// M95: one person only (a workflow's 「人」 field without `multiple`): a pick replaces the one chosen.
+    var single = false
     @State private var query = ""
 
     private struct Row: Identifiable {
@@ -600,7 +602,7 @@ struct TaskAssigneePicker: View {
             }
             ForEach(shown) { row in
                 Button {
-                    if selected.contains(row.id) { selected.removeAll { $0 == row.id } } else { selected.append(row.id) }
+                    if selected.contains(row.id) { selected.removeAll { $0 == row.id } } else if single { selected = [row.id] } else { selected.append(row.id) }
                 } label: {
                     HStack(spacing: 10) {
                         AvatarView(id: row.id, name: row.name, size: 30)

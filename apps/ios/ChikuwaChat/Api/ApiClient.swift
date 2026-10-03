@@ -46,7 +46,7 @@ extension ErrorMessages {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, MyCanvasesApi, CalendarApi, CalendarFeedApi, TaskApi, RecurringApi, AiApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, MyCanvasesApi, CalendarApi, CalendarFeedApi, TaskApi, RecurringApi, AiApi, WorkflowApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -1132,6 +1132,34 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// M71: my recent runs of one kind (20, newest first).
     func aiRuns(kind: String) async throws -> [AiRunOut] {
         try await request("GET", Self.pathWithQuery("/api/v1/ai/runs", [URLQueryItem(name: "kind", value: kind)]))
+    }
+
+    // MARK: workflows (M95, WORKFLOWS.md §4 and §8: running them only)
+
+    func channelWorkflows(channelId: String) async throws -> [WorkflowOut] {
+        try await request("GET", "/api/v1/channels/\(channelId)/workflows")
+    }
+
+    func workflow(id: String) async throws -> WorkflowOut { try await request("GET", "/api/v1/workflows/\(id)") }
+
+    /// 400 workflow_values_invalid comes back as WorkflowValuesInvalid with its `details.fields`.
+    func submitWorkflow(id: String, clientMsgId: String, values: [String: JSONValue]) async throws -> MessageOut {
+        let body: JSONValue = .object(["client_msg_id": .string(clientMsgId), "values": .object(values)])
+        return try await request("POST", "/api/v1/workflows/\(id)/submit", body: body, onError: Self.workflowSubmitFailure)
+    }
+
+    static func workflowSubmitFailure(status: Int, data: Data) -> Error? {
+        struct Envelope: Decodable {
+            struct Inner: Decodable { let code: String; let details: JSONValue? }
+            let error: Inner
+        }
+        guard status == 400, let envelope = try? JSON.plainDecoder.decode(Envelope.self, from: data),
+              envelope.error.code == "workflow_values_invalid" else { return nil }
+        var fields: [String: String] = [:]
+        if case .object(let map)? = envelope.error.details?["fields"] {
+            for (key, value) in map { if let reason = value.stringValue { fields[key] = reason } }
+        }
+        return WorkflowValuesInvalid(fields: fields)
     }
 
     // MARK: transport

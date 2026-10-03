@@ -491,6 +491,18 @@ struct ChannelInfoView: View {
                         }
                     }
                 }
+                if isChannel {
+                    // M95: the workflows the channel offers (read when the page opens); running only.
+                    Section {
+                        NavigationLink {
+                            WorkflowListView(controller: controller, channelId: channelId) { workflow in
+                                controller.runWorkflow(workflow, here: channelId)
+                            }
+                        } label: {
+                            Label("ワークフロー", systemImage: "bolt")
+                        }
+                    }
+                }
                 if isChannel && channel.isMember {
                     RecurringPostsSection(controller: controller, channel: channel)  // L6 (M60)
                     manageSection(channel)

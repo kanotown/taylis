@@ -136,11 +136,13 @@ struct MessageState: Codable, Identifiable, Equatable {
     /// M88 (MEMBERSHIP.md §5): a system line's event, kept so the line is written again with today's names after a
     /// restart; rows persisted earlier lack it (their `body` shows).
     var systemEvent: SystemEvent? = nil
+    /// M95 (WORKFLOWS.md §8): the workflow whose form posted it (「⚡ name」 above it); rows persisted earlier lack it.
+    var workflow: MessageWorkflow? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed, type
         case reactions, mentionedUserIds, mentionAll, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
-        case priority, ackRequested, acks, collection, tasks, systemEvent
+        case priority, ackRequested, acks, collection, tasks, systemEvent, workflow
     }
 
     /// M88: a line the server writes (the join / leave lines): one muted line, never grouped, no actions.
@@ -188,6 +190,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         collection = message.collection
         tasks = message.tasks
         systemEvent = message.systemEvent
+        workflow = message.workflow
     }
 
     /// Rows persisted before M8a lack the reaction / mention fields.
@@ -224,6 +227,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         collection = try? c.decodeIfPresent(CollectionOut.self, forKey: .collection)
         tasks = MessageTaskOut.list(c, forKey: .tasks)
         systemEvent = try? c.decodeIfPresent(SystemEvent.self, forKey: .systemEvent)
+        workflow = try? c.decodeIfPresent(MessageWorkflow.self, forKey: .workflow)
     }
 
     init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = nil,
@@ -265,7 +269,7 @@ extension MessageOut {
                   alsoInChannel: state.alsoInChannel, replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, replyUserIds: state.replyUserIds, attachments: state.attachments,
                   pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy, poll: state.poll,
                   priority: state.priority, ackRequested: state.ackRequested, acks: state.acks, collection: state.collection,
-                  tasks: state.tasks, systemEvent: state.systemEvent)
+                  tasks: state.tasks, systemEvent: state.systemEvent, workflow: state.workflow)
     }
 }
 
