@@ -77,8 +77,15 @@ jobs:
     # Also after a skipped build (a redeploy of an existing tag), never after a failed one.
     if: ${{ !failure() && !cancelled() }}
     runs-on: [self-hosted, Linux, X64]
-    # The SSH secrets live in this environment; restrict it to v* tags in the repository settings.
-    environment: production
+    # One deploy per server: the lab's ChikuwaChat (production) and the taylis server on the
+    # 12 GB VPS. Each environment holds its own SSH secrets; restrict both to v* tags in the repository settings. A
+    # server whose secrets are not set yet is skipped, never failed.
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        target: [production, taylis]
+    environment: ${{ matrix.target }}
     permissions:
       contents: read
       packages: write # pull on the server; after a good deploy, drop images older than the newest three
@@ -86,7 +93,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
-      - name: SSH to the production server
+      - name: SSH to the ${{ matrix.target }} server
+        id: ssh
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -94,8 +102,13 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
+          if [ -z "$DEPLOY_HOST" ] && [ "${{ matrix.target }}" != production ]; then
+            echo "::notice::no DEPLOY_HOST in the ${{ matrix.target }} environment: this server is skipped"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           [ -n "$DEPLOY_HOST" ] && [ -n "$DEPLOY_SSH_KEY" ] && [ -n "$DEPLOY_KNOWN_HOSTS" ] \
-            || { echo "set DEPLOY_HOST, DEPLOY_SSH_KEY and DEPLOY_KNOWN_HOSTS in the production environment" >&2; exit 1; }
+            || { echo "set DEPLOY_HOST, DEPLOY_SSH_KEY and DEPLOY_KNOWN_HOSTS in the ${{ matrix.target }} environment" >&2; exit 1; }
           # The runner is our own VPS: the key goes to this job's temporary folder, which the runner empties,
           # never to ~/.ssh where it would outlive the job.
           dir="$RUNNER_TEMP/deploy-ssh"
@@ -115,12 +128,14 @@ jobs:
             echo "  ServerAliveInterval 30"
           } > "$dir/config"
       - name: Upload the release's infra files
+        if: steps.ssh.outputs.skip != 'true'
         run: |
           # shellcheck disable=SC2029 # the tag is meant to expand here; the server checks it again
           tar -czf - -C infra docker-compose.yml docker-compose.prod.yml docker-compose.release.yml \
               docker-compose.behind-proxy.yml Caddyfile backup.sh restore.sh deploy.sh \
             | ssh -F "$RUNNER_TEMP/deploy-ssh/config" production upload "$TAG"
       - name: Deploy (backup, pull, restart, /readyz, roll back on failure)
+        if: steps.ssh.outputs.skip != 'true'
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -133,12 +148,14 @@ jobs:
       # pushes would stop). The server keeps the current and the previous release; three here leave room for a
       # rollback from the Actions tab.
       - name: Keep the newest three server images
+        if: matrix.target == 'production'
         uses: actions/delete-package-versions@v5
         with:
           package-name: chikuwachat-server
           package-type: container
           min-versions-to-keep: 3
       - name: Keep the newest three web images
+        if: matrix.target == 'production'
         uses: actions/delete-package-versions@v5
         with:
           package-name: chikuwachat-web
