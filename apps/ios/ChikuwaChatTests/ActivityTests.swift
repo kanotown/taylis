@@ -319,6 +319,38 @@ final class ActivityTests: XCTestCase {
         w.engine.stop()
     }
 
+    /// Review v0.1.22 #3 (CANVAS.md §20.8): an erased canvas version blanks the excerpts taken from it; activity.updated
+    /// names the items, the list held drops those excerpts (only theirs) and the row shows no excerpt line.
+    func testActivityUpdatedBlanksTheNamedCanvasExcerpts() async throws {
+        let w = makeWorld()
+        await w.engine.start()
+        await settle(w.engine)
+        XCTAssertEqual(w.store.activityUpdates, 0)
+        w.server.emitActivityUpdated(w.bob.id, itemIds: ["i1", "i3"])
+        await settle(w.engine)
+        XCTAssertEqual(w.store.activityUpdates, 1)
+        w.server.emitActivityUpdated(w.bob.id, itemIds: ["i2"])
+        await settle(w.engine)
+        XCTAssertEqual(w.store.activityUpdates, 2)
+        XCTAssertEqual(w.store.takeUpdatedActivityItems(), ["i1", "i2", "i3"]) // both events, taken once
+        XCTAssertEqual(w.store.takeUpdatedActivityItems(), [])
+        XCTAssertEqual(summaryCalls(w.api), 0) // the badge does not change
+        w.engine.stop()
+
+        func canvasItem(_ itemId: String, revId: String, excerpt: String) -> ActivityItem {
+            ActivityItem(kind: "canvas_mention", at: "2026-10-01T00:00:00Z", message: nil, actorIds: ["u1"],
+                         canvas: ActivityCanvas(itemId: itemId, canvasId: "cv", channelId: "c1", title: "議事録", excerpt: excerpt, revId: revId))
+        }
+        let message = MessageOut(id: "m1", channelId: "c1", senderId: "u1", seq: 1, updatedSeq: 1, clientMsgId: nil, body: "SECRET in a message",
+                                 createdAt: "", editedAt: nil, deleted: false)
+        let items = [canvasItem("i1", revId: "r1", excerpt: "@Bob SECRET-TO-ERASE"), canvasItem("i9", revId: "r2", excerpt: "@Bob 残る行"),
+                     ActivityItem(kind: "mention", at: "2026-10-01T00:00:00Z", message: message, actorIds: ["u1"])]
+        let blanked = ActivityRules.blankingExcerpts(items, itemIds: ["i1", "m1"])
+        XCTAssertEqual(blanked.map { ActivityRules.excerpt($0, users: [:]) }, ["", "@Bob 残る行", "SECRET in a message"])
+        XCTAssertEqual(blanked[0].canvas?.title, "議事録") // the item stays (who mentioned me, and when, is no secret)
+        XCTAssertEqual(ActivityRules.blankingExcerpts(items, itemIds: []), items)
+    }
+
     func testAServerBeforeM39KeepsStageA() async throws {
         let w = makeWorld(activity: false)
         await w.engine.start()

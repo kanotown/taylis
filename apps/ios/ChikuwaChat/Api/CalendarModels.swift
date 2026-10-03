@@ -101,6 +101,20 @@ struct CalendarAlarmUpdated: Decodable {
     let eventId: String
     let channelId: String?
     let alarm: CalendarAlarmOut?
+    /// Review v0.1.22 #9 (CALENDAR.md §10.11): the occurrence the alarm is for, resolved by the server with its edits (a
+    /// changed occurrence's own title and times; a one-off: the event). Shaped like calendar.event.updated's `event` (no
+    /// can_edit, no alarm). nil when there is none, and from a server before it (absent); read leniently.
+    let occurrence: CalendarEventOut?
+
+    private enum CodingKeys: String, CodingKey { case eventId, channelId, alarm, occurrence }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        eventId = try c.decode(String.self, forKey: .eventId)
+        channelId = try c.decodeIfPresent(String.self, forKey: .channelId)
+        alarm = try c.decodeIfPresent(CalendarAlarmOut.self, forKey: .alarm)
+        occurrence = (try? c.decodeIfPresent(CalendarEventOut.self, forKey: .occurrence)) ?? nil
+    }
 }
 
 /// The times of an event, in either form (POST and PATCH send one pair and null the other).

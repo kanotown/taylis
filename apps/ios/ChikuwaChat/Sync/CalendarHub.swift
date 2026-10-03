@@ -54,8 +54,11 @@ final class CalendarHub {
     @ObservationIgnored private let api: CalendarApi?
     @ObservationIgnored private let me: () -> String?
     @ObservationIgnored private let tz: () -> String
-    /// One of my alarms fired (said in the app while it is open; the push covers the background).
-    @ObservationIgnored var onAlarm: ((CalendarEventOut) -> Void)?
+    /// One of my alarms fired (said in the app while it is open; the push covers the background): the occurrence it is
+    /// for, or nil when this device cannot tell which occurrence that is (an older server, not held here); then it is said
+    /// neutrally (the `String?` names the calendar's channel), never with another occurrence's title or time (Review
+    /// v0.1.22 #9).
+    @ObservationIgnored var onAlarm: ((CalendarEventOut?, String?) -> Void)?
 
     init(api: CalendarApi?, me: @escaping () -> String?, tz: @escaping () -> String = { CalendarDates.zoneId }) {
         self.api = api
@@ -230,22 +233,40 @@ final class CalendarHub {
             patchAlarm(payload.eventId, payload.alarm)
             // A series fires once per occurrence: the same status for another occurrence is news.
             let again = before?.status == "fired" && before?.occurrenceStart == payload.alarm?.occurrenceStart
-            if payload.alarm?.status == "fired" && !again {
-                let occurrence = payload.alarm?.occurrenceStart
-                Task { await announce(payload.eventId, occurrence: occurrence) }
+            if let alarm = payload.alarm, alarm.status == "fired", !again {
+                Task { await announce(payload.eventId, channelId: payload.channelId, alarm: alarm, occurrence: payload.occurrence) }
             }
         default:
             break
         }
     }
 
-    /// A fired alarm: its event (a series: the occurrence it is for) as known here, else read (it may be outside every
-    /// window).
-    private func announce(_ eventId: String, occurrence: String?) async {
+    /// A fired alarm, said for the occurrence it is for (Review v0.1.22 #9, CALENDAR.md §10.11): the one the server put in
+    /// the event; from an older server, the occurrence as held here, else the event read (a one-off, or a series whose
+    /// first occurrence is the one). Anything else would be another occurrence's title and time: the neutral notice instead.
+    private func announce(_ eventId: String, channelId: String?, alarm: CalendarAlarmOut, occurrence: CalendarEventOut?) async {
         guard let onAlarm else { return }
-        var event = occurrence.flatMap { findOccurrence(eventId, $0) } ?? find(eventId)
-        if event == nil, let api { event = try? await api.calendarEvent(id: eventId) } // gone or no longer mine: nothing to say
-        if let event { onAlarm(event) }
+        let key = alarm.occurrenceStart
+        if var occurrence, key == nil || occurrence.occurrenceStart == key {
+            let held = occurrence.occurrenceStart.flatMap { findOccurrence(occurrence.series, $0) }
+            occurrence.canEdit = held?.canEdit ?? findSeries(eventId)?.canEdit ?? false
+            occurrence.alarm = alarm
+            onAlarm(occurrence, occurrence.channelId)
+            return
+        }
+        func fits(_ event: CalendarEventOut?) -> Bool {
+            guard let event else { return false }
+            return key.map { event.occurrenceStart == $0 } ?? !event.recurring
+        }
+        var event = key.map { findOccurrence(eventId, $0) } ?? find(eventId)
+        if !fits(event), let api {
+            do {
+                event = try await api.calendarEvent(id: eventId)
+            } catch {
+                return // gone or no longer mine to see: nothing to say
+            }
+        }
+        onAlarm(fits(event) ? event : nil, event?.channelId ?? channelId)
     }
 
     /// An event as it is now: into every window it overlaps (out of those it left), and into the counts that hold it. A

@@ -1317,6 +1317,9 @@ M73 は iOS と Android (§18.5)。
 - **Android (対応済み)**: `activity.updated` で `Store.blankActivityExcerpts(item_ids)` が表示中の行の抜粋をすぐ空にし
   (`ActivityText.excerpt`)、`activityRevision` を進めて表示中の一覧の 1 ページ目を読み直す (バッジは読み直さない)。抜粋が空の行は
   3 行目を出さない。一覧は端末に保存していない。テストは `ActivityCanvasTest` に 2 件。
+- **iOS (ビルド 80)**: エンジンが `activity.updated` を Store に渡し (`activityItemsUpdated`、`activityUpdates` を数える)、
+  アクティビティ画面は保持しているすべての絞り込みの一覧から `item_ids` の抜粋をすぐ消し (`ActivityRules.blankingExcerpts`)、
+  表示中でオンラインなら今の一覧を読み直す。一覧は端末に保存していない。抜粋が空の行は 3 行目を出さない。
 
 ## 21. スマホのホームの「キャンバス」 (M78)
 

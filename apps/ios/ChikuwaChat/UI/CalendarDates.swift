@@ -254,10 +254,13 @@ enum CalendarDates {
         return "\(startText)〜\(endText)"
     }
 
-    /// The in-app word when my alarm fires, as the server's push: 「14:00 ゼミ (#m2-進捗)」, 「終日 学会」.
-    static func alarmText(_ event: CalendarEventOut) -> String {
+    /// The in-app word when my alarm fires, as the server's push: 「14:00 ゼミ (#m2-進捗)」, 「終日 学会」. `event` nil (the
+    /// occurrence is not known here, Review v0.1.22 #9): 「予定の通知があります (#…)」, never another occurrence's title.
+    /// `channelName` is the calendar's channel from the channel list, used when the event names none.
+    static func alarmText(_ event: CalendarEventOut?, channelName: String? = nil) -> String {
+        guard let event else { return "予定の通知があります" + (channelName.map { " (#\($0))" } ?? "") }
         let when = event.allDay ? "終日" : clock(event.startsAt)
-        return "\(when) \(event.title)" + (event.channelName.map { " (#\($0))" } ?? "")
+        return "\(when) \(event.title)" + ((event.channelName ?? channelName).map { " (#\($0))" } ?? "")
     }
 
     /// A channel's tab: 「予定 2」 while it has events today or tomorrow.

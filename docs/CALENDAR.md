@@ -401,3 +401,8 @@ iOS と Android に同じもの: フォームの「繰り返し」(Web と同じ
 文は `CalendarDates.alarmText(event?, channelName)` (中立の文のチャンネル名は手元のチャンネル一覧から)。通知のキー
 `calendar:<series_id>`・押したときの動き (系列の id で開く)・DND は変えていない。JVM テスト `CalendarHubTest` に 9 件 (上の 4 の各場合と
 `occurrence: null`)。
+**iOS (ビルド 80)**: `CalendarAlarmUpdated.occurrence` (省略可・null 可、読めなければ nil) を足し、`CalendarHub.announce` を
+上の (1)〜(4) にした。`onAlarm` / `SyncEngine.onCalendarAlarm` は `(CalendarEventOut?, channelId)` で、nil は回が分からないとき。
+アプリ内の通知の文は `CalendarDates.alarmText(event, channelName:)` (nil なら「予定の通知があります (#ch)」、チャンネル名は
+手元のチャンネル一覧から)。アプリ内の通知は押しても何も開かない (今まで通り)、プッシュとその押したときの動きは変えていない。
+テスト: `CalendarAlarmOccurrenceTests` (`ChikuwaChatTests/CalendarRecurrenceTests.swift`、Desktop の 8 件と読み取り 1 件)。
