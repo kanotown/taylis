@@ -381,6 +381,55 @@ def parse_domain_map(pairs: Sequence[str]) -> dict[str, str]:
     return mapping
 
 
+def parse_bot_as(pairs: Sequence[str]) -> dict[str, str]:
+    """``--bot-as BOTNAME=TARGET`` (M92), repeatable; the bot names compared in lower case.
+    TARGET (a Slack user, ``@taylis-user`` or ``new:<display name>[:guest]``) is checked by the
+    import, which knows the export's people."""
+    mapping: dict[str, str] = {}
+    for pair in pairs:
+        bot, sep, target = pair.partition("=")
+        bot, target = bot.strip(), target.strip()
+        if not sep or not bot or not target:
+            raise ValueError(
+                f"--bot-as {pair}: use BOTNAME=TARGET (a Slack user, @taylis-user or "
+                "new:<display name>[:guest])"
+            )
+        key = unicodedata.normalize("NFC", bot.lower())
+        if mapping.get(key, target) != target:
+            raise ValueError(f"--bot-as: {bot} is mapped twice")
+        mapping[key] = target
+    return mapping
+
+
+def parse_emoji_renames(pairs: Sequence[str], files: Sequence[str] = ()) -> dict[str, str]:
+    """``--emoji-rename FROM=TO`` and the lines of ``--emoji-rename-file`` (``FROM=TO``, blank
+    lines and ``#`` comments skipped) (M92). TO must be a custom emoji name."""
+    from app.modules.emoji.service import NAME
+
+    entries = [(f"--emoji-rename {pair}", pair) for pair in pairs]
+    for path in files:
+        text = Path(path).read_text(encoding="utf-8")
+        for number, line in enumerate(text.splitlines(), 1):
+            line = line.strip()
+            if line and not line.startswith("#"):
+                entries.append((f"{path}:{number}", line))
+    mapping: dict[str, str] = {}
+    for where, pair in entries:
+        old, sep, new = pair.partition("=")
+        old = unicodedata.normalize("NFC", old.strip().strip(":"))
+        new = new.strip().strip(":").lower()
+        if not sep or not old or not new:
+            raise ValueError(f"{where}: use FROM=TO (e.g. 完了=kanryo)")
+        if not NAME.match(new):
+            raise ValueError(
+                f"{where}: {new!r} is not a custom emoji name (a-z 0-9 _ + -, 2 to 32 characters)"
+            )
+        if mapping.get(old, new) != new:
+            raise ValueError(f"{where}: {old} is renamed twice")
+        mapping[old] = new
+    return mapping
+
+
 def _width(text: str) -> int:
     """Columns on a terminal: CJK characters take two."""
     return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
@@ -460,13 +509,23 @@ def print_import_report(report: Any) -> None:
         from app.modules.emoji.service import NAME
 
         print("reactions without an emoji image (add a custom emoji of the same name to show it):")
+        from app.modules.importer.core import standard_glyph
+
         for name, count in report.unmatched_emoji.most_common():
             note = "" if NAME.match(name) else "  (not a valid custom emoji name)"
+            glyph = standard_glyph(name)
+            if glyph is not None:  # M92: a keycap, which a reaction cannot be as a glyph
+                note = f"  (a reaction cannot be {glyph}; a custom emoji :{name}: would show)"
             print(f"  :{name}: {count} times{note}")
+    if getattr(report, "emoji_lines", None):
+        print("custom emoji (--emoji-dir / --emoji-rename):")
+        for line in report.emoji_lines:
+            print(f"  {line}")
     if report.dropped_emoji:
         print("reactions not imported (the name is not a valid reaction):")
         for name, count in report.dropped_emoji.most_common():
-            print(f"  {name} {count} times")
+            hint = "" if name.isascii() else "  (give it a name with --emoji-rename FROM=TO)"
+            print(f"  {name} {count} times{hint}")
     if report.failed_files:
         print(f"files not brought over ({len(report.failed_files)}):")
         for line in report.failed_files[:500]:
@@ -548,6 +607,8 @@ async def _import_slack(args: argparse.Namespace) -> int:
         user_map = parse_user_map(args.user or [], "SLACK")
         domain_map = parse_domain_map(args.email_domain_map or [])
         activate = [parse_domain(d) for d in args.activate_domain or []]
+        bot_as = parse_bot_as(args.bot_as or [])
+        renames = parse_emoji_renames(args.emoji_rename or [], args.emoji_rename_file or [])
     except (OSError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -563,6 +624,8 @@ async def _import_slack(args: argparse.Namespace) -> int:
         include_private=args.include_private,
         include_dms=args.include_dms,
         emoji_dir=Path(args.emoji_dir) if args.emoji_dir else None,
+        bot_as=bot_as,
+        emoji_renames=renames,
     )
     settings = get_settings()
     db = Database(settings.database_url)
@@ -708,7 +771,30 @@ def build_parser() -> argparse.ArgumentParser:
     sl.add_argument("--files-cache", help="where downloads are kept (a rerun resumes from it)")
     sl.add_argument("--download-concurrency", type=int, default=4, help="downloads at once")
     sl.add_argument("--files-dir", help="files downloaded beforehand (<file id>/<name>, …)")
-    sl.add_argument("--emoji-dir", help="custom emoji images named <name>.png / .gif / …")
+    sl.add_argument(
+        "--bot-as",
+        action="append",
+        metavar="BOTNAME=TARGET",
+        help="import a bot's posts (bot_message username / bot_profile.name, any case) as a "
+        "person's: a Slack user (id, username, display name, e-mail), @taylis-username, or "
+        "new:<display name>[:guest] for a new deactivated account (repeatable)",
+    )
+    sl.add_argument(
+        "--emoji-dir", help="custom emoji images named <name>.png / .gif / …: a folder or a ZIP"
+    )
+    sl.add_argument(
+        "--emoji-rename",
+        action="append",
+        metavar="FROM=TO",
+        help="the Slack custom emoji FROM becomes the custom emoji TO (image, reactions, "
+        ":FROM: in text) (repeatable)",
+    )
+    sl.add_argument(
+        "--emoji-rename-file",
+        action="append",
+        metavar="PATH",
+        help="FROM=TO lines (# comments) as for --emoji-rename (repeatable)",
+    )
     sl.add_argument("--include-private", action="store_true", help="also groups.json")
     sl.add_argument("--include-dms", action="store_true", help="also dms.json and mpims.json")
     sl.add_argument("--dry-run", action="store_true", help="check everything, write nothing")

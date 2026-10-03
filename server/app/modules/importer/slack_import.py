@@ -27,6 +27,11 @@ The shared steps (people, channels, seq, threads, read state, import_refs, --dry
   downloaded (``--download``, into the resumable ``--files-cache``) or read from ``--files-dir``,
   checked like uploads (size limit, type from the content) and get thumbnails and video posters.
   A file that cannot be had is reported and leaves a line in the message, never stops the import.
+- bridges (M92): ``--bot-as BOTNAME=TARGET`` imports a bot's posts (a Mattermost → Slack bridge
+  posting as ``username``) as a person's; the bridge's relayed "X がチャンネルに参加しました" lines
+  are left out. Custom emoji come from ``--emoji-dir`` (a folder or a ZIP); ``--emoji-rename``
+  gives a Slack name that is no valid Taylis name (Japanese) a new one, for the image, the
+  reactions and ``:name:`` in the text.
 """
 
 import asyncio
@@ -34,6 +39,7 @@ import hashlib
 import json
 import logging
 import re
+import unicodedata
 import uuid
 import zipfile
 from collections import Counter
@@ -62,10 +68,15 @@ from app.modules.channels.schemas import CHANNEL_NAME_PATTERN
 from app.modules.emoji import service as emoji_service
 from app.modules.importer import core
 from app.modules.importer.core import (
+    ACTION_BOT_AS,
+    ACTION_DEACTIVATED,
+    ACTION_GUEST,
     REACTION,
     USERNAME,
     ChannelState,
     ImportFailed,
+    Person,
+    PersonRow,
     Report,
     active_admin,
     standard_glyph,
@@ -116,9 +127,15 @@ _DAY_FILE = re.compile(r"^\d{4}-\d{2}-\d{2}\.json$")
 _FILE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _CHANNEL_NAME = re.compile(CHANNEL_NAME_PATTERN)
 _SHORTCODE_NAMES = re.compile(r"(?<![\w:]):([a-z0-9_+'-]{1,64}):")
+_CODE_SPAN = re.compile(r"```.*?```|`[^`\n]+`", re.DOTALL)  # as slack_mrkdwn reads code
 _URL_TOKEN = re.compile(r"([?&]t=)[^&\s'\"]+")
 _SLUG_DROP = re.compile(r"[^a-z0-9._-]+")
 EMOJI_EXTENSIONS = (".png", ".gif", ".jpg", ".jpeg", ".webp")
+# M92: what a Mattermost → Slack bridge relays when someone joins a channel there, as a bot post
+# of its own: "suzuki がチャンネルに参加しました。", "@99x9999zさんがチャンネルに参加しました".
+_JOINER = r"(?:<@[A-Za-z0-9]+(?:\|[^>\n]*)?>|@?[^\s<>@][^\n<>]{0,63}?)"
+BRIDGE_JOIN = re.compile(rf"^\s*{_JOINER}\s*(?:さん\s*)?がチャンネルに参加しました[。.]?\s*$")
+BOT_AS_PREFIX = "bot-as:"
 PLACEHOLDER = "📎 {name} (Slack から取得できませんでした)"
 
 
@@ -229,6 +246,103 @@ class Export:
                 out.extend(m for m in day if isinstance(m, dict) and m.get("ts"))
         out.sort(key=lambda m: ts_to_us(m["ts"]))
         return out
+
+
+def nfc(text: str) -> str:
+    """Names compared as NFC: macOS writes file names decomposed (ご as こ + ゛)."""
+    return unicodedata.normalize("NFC", text)
+
+
+class EmojiImages:
+    """Custom emoji images by name (M92): ``--emoji-dir`` is a folder of ``<name>.png`` (``.gif``,
+    ``.jpg``, ``.webp``) or a ZIP of them, whose UTF-8 names may lack the UTF-8 flag (as in the
+    export). Folders inside the ZIP do not matter; with two images of one name the extension
+    listed first in EMOJI_EXTENSIONS wins."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._zip: zipfile.ZipFile | None = None
+        found: dict[str, tuple[int, str | Path]] = {}
+
+        def add(file_name: str, where: str | Path) -> None:
+            base = file_name.rsplit("/", 1)[-1]
+            stem, dot, ext = base.rpartition(".")
+            extension = f".{ext.lower()}"
+            if not dot or not stem or base.startswith("._") or extension not in EMOJI_EXTENSIONS:
+                return
+            rank = EMOJI_EXTENSIONS.index(extension)
+            key = nfc(stem)
+            if key not in found or rank < found[key][0]:
+                found[key] = (rank, where)
+
+        if path.is_dir():
+            for entry in sorted(path.iterdir()):
+                if entry.is_file():
+                    add(entry.name, entry)
+        else:
+            try:
+                self._zip = zipfile.ZipFile(path)
+            except (OSError, zipfile.BadZipFile) as exc:
+                raise ImportFailed(f"--emoji-dir {path}: not a directory or a ZIP ({exc})") from exc
+            for info in self._zip.infolist():
+                name = _member_name(info)
+                if not info.is_dir() and not name.startswith("__MACOSX/"):
+                    add(name, info.filename)
+        self._files = {name: where for name, (_, where) in found.items()}
+
+    def __len__(self) -> int:
+        return len(self._files)
+
+    def get(self, name: str) -> bytes | None:
+        key = nfc(name)
+        where = self._files.get(key, self._files.get(key.lower()))
+        if where is None:
+            return None
+        if isinstance(where, Path):
+            return where.read_bytes()
+        assert self._zip is not None
+        return self._zip.read(where)
+
+    def close(self) -> None:
+        if self._zip is not None:
+            self._zip.close()
+
+
+@dataclass(frozen=True)
+class BotTarget:
+    """Whose a ``--bot-as`` bot's posts are: a Slack person (``slack``, their user id), an
+    existing Taylis account (``user``, its username) or a new deactivated one (``new``, its
+    display name)."""
+
+    kind: str
+    value: str
+    guest: bool = False
+
+
+def parse_bot_target(bot: str, target: str) -> BotTarget:
+    """``TARGET`` of ``--bot-as``: ``@username``, ``new:<display name>[:guest]`` or else a Slack
+    user (``value`` is then the name to look up); raises ImportFailed when it is none."""
+    target = target.strip()
+    if target.lower().startswith("new:"):
+        display = target[4:]
+        guest = display.lower().endswith(":guest")
+        if guest:
+            display = display[: -len(":guest")]
+        display = display.strip()
+        if not display or len(display) > 80:
+            raise ImportFailed(
+                f"--bot-as {bot}={target}: new:<display name>[:guest] needs a display name "
+                "(at most 80 characters)"
+            )
+        return BotTarget("new", display, guest)
+    if target.startswith("@"):
+        name = target[1:].strip().lower()
+        if not name:
+            raise ImportFailed(f"--bot-as {bot}={target}: @ needs a Taylis username")
+        return BotTarget("user", name)
+    if not target:
+        raise ImportFailed(f"--bot-as {bot}=: give a Slack user, @taylis-user or new:<name>")
+    return BotTarget("slack", target.lower())
 
 
 # ---- files ---------------------------------------------------------------------------------------
@@ -556,7 +670,11 @@ class Options:
     channel_prefix: str = ""
     include_private: bool = False
     include_dms: bool = False
-    emoji_dir: Path | None = None
+    emoji_dir: Path | None = None  # a folder or (M92) a ZIP of <name>.png …
+    # M92: a bot's name → whose posts they are (parse_bot_target).
+    bot_as: dict[str, str] = field(default_factory=dict)
+    # M92: a Slack custom emoji name → the Taylis custom emoji name it becomes.
+    emoji_renames: dict[str, str] = field(default_factory=dict)
 
 
 class SlackImport(core.ImportJob):
@@ -586,6 +704,30 @@ class SlackImport(core.ImportJob):
         self.options = options
         self.raw_users: dict[str, dict[str, Any]] = {}
         self.bots_by_bot_id: dict[str, str] = {}  # Slack bot id → user id (users.json)
+        # M92: --bot-as names (lower case, NFC) → the target as given; the posts found per name,
+        # the label as the export wrote it, and the targets (checked by _people).
+        self.bot_as = {nfc(k.strip().lower()): v for k, v in options.bot_as.items()}
+        self.bot_as_posts: Counter[str] = Counter()
+        self.bot_as_labels: dict[str, str] = {}
+        self.bot_targets: dict[str, BotTarget] = {}
+        # M92: Slack emoji name → Taylis name, and back (a name may be the target of several).
+        self.emoji_renames = {
+            nfc(k.strip().strip(":")): v.strip().strip(":").lower()
+            for k, v in options.emoji_renames.items()
+        }
+        self.renamed_from: dict[str, list[str]] = {}
+        for old, new in sorted(self.emoji_renames.items()):
+            self.renamed_from.setdefault(new, []).append(old)
+        self._rename_pattern = (
+            re.compile(
+                r"(?<![A-Za-z0-9_:]):("
+                + "|".join(re.escape(k) for k in sorted(self.emoji_renames, key=len, reverse=True))
+                + r"):"
+            )
+            if self.emoji_renames
+            else None
+        )
+        self.emoji_images: EmojiImages | None = None
         users = self._read_users()
         records = self._read_channels(users)
         super().__init__(
@@ -602,6 +744,12 @@ class SlackImport(core.ImportJob):
         )
         self.names: dict[str, str] = {}  # Slack channel id → its name in ChikuwaChat
         self._prescan()
+        unused = sorted(set(self.bot_as) - set(self.bot_as_posts))
+        if unused:
+            raise ImportFailed(
+                f"--bot-as {unused[0]}=…: no bot post with that name (username / "
+                "bot_profile.name) in the channels being imported"
+            )
 
     # ---- users and channels from the export ----------------------------------------------
 
@@ -714,13 +862,62 @@ class SlackImport(core.ImportJob):
         for record in self.channel_records:
             last = record["create_at"]
             for message in self.export.messages(record["folder"]):
-                self._sender(message)
                 last = max(last, ts_to_us(message["ts"]))
+                if self._bridge_join(message):  # M92: never a sender of its own
+                    self.report.counts["bridge_join_skipped"] += 1
+                    continue
+                name = self._bot_as_name(message)
+                if name is not None and self._importable(message):
+                    self.bot_as_posts[name] += 1
+                self._sender(message)
             if record["archived"]:
                 record["delete_at"] = last
 
+    def _is_bot_post(self, message: dict[str, Any]) -> bool:
+        """Posted by a bot (an integration or a bridge), not by a person of users.json."""
+        if message.get("subtype") == "bot_message":
+            return True
+        user = message.get("user")
+        profile = message.get("bot_profile") or {}
+        has_bot = bool(message.get("bot_id") or profile.get("id"))
+        return has_bot and not (isinstance(user, str) and user in self.raw_users)
+
+    def _bridge_join(self, message: dict[str, Any]) -> bool:
+        """A bridge's relayed join line (M92): a bot post that says only that someone joined.
+        People's own posts are never taken for one."""
+        text = message.get("text")
+        return (
+            isinstance(text, str)
+            and self._is_bot_post(message)
+            and BRIDGE_JOIN.match(text) is not None
+        )
+
+    def _bot_as_name(self, message: dict[str, Any]) -> str | None:
+        """The ``--bot-as`` name of a bot post (its ``username``, else ``bot_profile.name``)."""
+        if not self.bot_as or not self._is_bot_post(message):
+            return None
+        profile = message.get("bot_profile") or {}
+        for label in (message.get("username"), profile.get("name")):
+            if isinstance(label, str) and nfc(label.strip().lower()) in self.bot_as:
+                key = nfc(label.strip().lower())
+                self.bot_as_labels.setdefault(key, label.strip())
+                return key
+        return None
+
+    @staticmethod
+    def _importable(message: dict[str, Any]) -> bool:
+        subtype = message.get("subtype")
+        if message.get("type", "message") != "message" or subtype in SKIPPED_SUBTYPES:
+            return False
+        return not (
+            subtype in DELETED_SUBTYPES or message.get("hidden") or message.get("is_deleted")
+        )
+
     def _sender(self, message: dict[str, Any]) -> str | None:
         """The sender's user id (made up for bots and people users.json does not have)."""
+        bot_as = self._bot_as_name(message)
+        if bot_as is not None:
+            return (BOT_AS_PREFIX + bot_as)[:64]  # a person: resolved by _people (M92)
         user = message.get("user")
         if isinstance(user, str) and user in self.users:
             return user
@@ -779,9 +976,7 @@ class SlackImport(core.ImportJob):
 
     def _post_record(self, m: dict[str, Any], channel: dict[str, Any]) -> dict[str, Any] | None:
         subtype = m.get("subtype")
-        if m.get("type", "message") != "message" or subtype in SKIPPED_SUBTYPES:
-            return None
-        if subtype in DELETED_SUBTYPES or m.get("hidden") or m.get("is_deleted"):
+        if not self._importable(m) or self._bridge_join(m):
             return None
         sender = self._sender(m)
         if sender is None:
@@ -793,10 +988,11 @@ class SlackImport(core.ImportJob):
         text = str(m.get("text") or "")
         if not text.strip():
             text = fallback_text(m)
+        text = self._rename_in_text(text)
         pin = channel["pins"].get(ts)
         pinned = channel["id"] in (m.get("pinned_to") or []) or pin is not None
         reactions = [
-            {"user_id": u, "emoji_name": str(r["name"]), "create_at": created}
+            {"user_id": u, "emoji_name": self._renamed(str(r["name"])), "create_at": created}
             for r in m.get("reactions") or []
             if isinstance(r, dict) and r.get("name")
             for u in r.get("users") or []
@@ -816,12 +1012,135 @@ class SlackImport(core.ImportJob):
             "also_in_channel": subtype == "thread_broadcast",
         }
 
+    def _renamed(self, name: str) -> str:
+        """A reaction name after ``--emoji-rename`` (``完了::skin-tone-2`` keeps its tone)."""
+        base, sep, tone = name.partition("::")
+        new = self.emoji_renames.get(nfc(base))
+        return f"{new}{sep}{tone}" if new is not None else name
+
+    def _rename_in_text(self, text: str) -> str:
+        """``:FROM:`` → ``:TO:`` outside code (where Slack shows the text as it is)."""
+        pattern = self._rename_pattern
+        if pattern is None or ":" not in text:
+            return text
+
+        def renamed(part: str) -> str:
+            return pattern.sub(lambda m: f":{self.emoji_renames[m.group(1)]}:", part)
+
+        text = nfc(text)
+        out: list[str] = []
+        last = 0
+        for match in _CODE_SPAN.finditer(text):
+            out += [renamed(text[last : match.start()]), match.group(0)]
+            last = match.end()
+        out.append(renamed(text[last:]))
+        return "".join(out)
+
     def needed_user_ids(self) -> set[str]:
         needed = super().needed_user_ids()
         for record in self.channel_records:
             if record["channel_type"] in ("dm", "group_dm"):  # the people make the DM
                 needed.update(m["user_id"] for m in record["members"])
+        # M92: a bridge bot's posts are their target's: a Slack person gets an account for them.
+        for key in [k for k in needed if k.startswith(BOT_AS_PREFIX)]:
+            needed.discard(key)
+            target = self.bot_targets.get(key)
+            if target is not None and target.kind == "slack":
+                needed.add(target.value)
         return needed
+
+    # ---- people: bots that are people (M92) ------------------------------------------------
+
+    def _resolve_bot_targets(self) -> None:
+        """Each ``--bot-as`` target checked and, for a Slack person, found (by user id, username,
+        display name or address, as ``--user`` finds them)."""
+        owners: dict[str, set[str]] = {}
+        for record in self.users.values():
+            if record["id"].startswith("bot:"):
+                continue
+            for key in self.user_keys(record):
+                owners.setdefault(nfc(key), set()).add(record["id"])
+        for name, raw in sorted(self.bot_as.items()):
+            target = parse_bot_target(name, raw)
+            if target.kind == "slack":
+                ids = owners.get(nfc(target.value), set())
+                if not ids:
+                    raise ImportFailed(
+                        f"--bot-as {name}={raw}: no such Slack user in the file "
+                        "(an existing Taylis user is @username, a new one new:<display name>)"
+                    )
+                if len(ids) > 1:
+                    raise ImportFailed(
+                        f"--bot-as {name}={raw}: several Slack users have that name; "
+                        "give the user id"
+                    )
+                target = BotTarget("slack", next(iter(ids)))
+            self.bot_targets[(BOT_AS_PREFIX + name)[:64]] = target
+
+    async def _people(self) -> None:
+        """The people (core), then the bridge bots as the people they stand for: a Slack person
+        is the account the people step chose, so the targets are resolved after it."""
+        self._resolve_bot_targets()
+        await super()._people()
+        refs = await self._refs("user")
+        for key, target in sorted(self.bot_targets.items()):
+            await self._bot_person(key, target, refs)
+
+    async def _bot_person(self, key: str, target: BotTarget, refs: dict[str, uuid.UUID]) -> None:
+        name = key[len(BOT_AS_PREFIX) :]
+        label = self.bot_as_labels.get(name, name)
+        user: User | None
+        if target.kind == "slack":
+            person = self.people.get(target.value)
+            if person is None:  # needed_user_ids asked for them
+                raise ImportFailed(f"--bot-as {name}: the Slack user {target.value} got no account")
+            user = await self.db.get(User, person.id)
+            how = f"--bot-as, Slack {target.value}"
+        elif target.kind == "user":
+            user = await self._user_by_name(target.value)
+            if user is None:
+                raise ImportFailed(f"--bot-as {name}=@{target.value}: no such Taylis user")
+            how = "--bot-as"
+        else:
+            earlier = refs.get(key)
+            user = await self.db.get(User, earlier) if earlier is not None else None
+            if earlier is not None and user is None:
+                raise ImportFailed(f"--bot-as {name}: imported before, now gone")
+            how = "--bot-as, previous run"
+            if user is None:
+                record = {
+                    "id": key,
+                    "username": slug(name) or "bot-user",
+                    "email": None,
+                    "first_name": "",
+                    "last_name": "",
+                    "nickname": target.value,
+                    "position": "",
+                    "is_bot": False,
+                    "guest": target.guest,
+                }
+                user = await self._new_account(
+                    record, ACTION_GUEST if target.guest else ACTION_DEACTIVATED
+                )
+                self._ref("user", key, user.id)
+                self.report.counts["users_created"] += 1
+                how = "--bot-as, new" + (" guest" if target.guest else "")
+        assert user is not None
+        self.people[key] = Person(
+            user.id, user.username, user.is_active and user.role != "bot", user.is_guest
+        )
+        self.report.people.append(f"bot {label} → @{user.username} ({how})")
+        self.report.people_rows.append(
+            PersonRow(
+                source_id=f"bot:{label}"[:64],
+                name=f"{label} ({self.bot_as_posts[name]} posts)",
+                source_email="",
+                username=user.username,
+                email=user.email or "",
+                action=ACTION_BOT_AS,
+            )
+        )
+        self.report.counts[f"people: {ACTION_BOT_AS}"] += 1
 
     # ---- before anything is written ------------------------------------------------------
 
@@ -894,42 +1213,67 @@ class SlackImport(core.ImportJob):
 
     async def _emoji(self) -> None:
         """Names that are no standard emoji and no custom emoji yet become custom emoji when
-        --emoji-dir has an image of that name (``<name>.png`` etc.)."""
+        --emoji-dir has an image of that name (``<name>.png`` etc.). M92: a name renamed with
+        --emoji-rename (the posts use the new name already) takes the old name's image, and a
+        new name that is a custom emoji here already is reused. import_refs keeps Slack's name."""
         await super()._emoji()
-        directory = self.options.emoji_dir
-        if directory is None:
+        images = self.emoji_images
+        if images is None and not self.emoji_renames:
             return
         refs = await self._refs("emoji")
         used: set[str] = set()
         for post in self.posts():
             used.update(r["emoji_name"].split("::", 1)[0].lower() for r in post["reactions"])
             used.update(_SHORTCODE_NAMES.findall(post["message"]))
+            # also right after Japanese text ("了解:kanryo:"), which _SHORTCODE_NAMES skips
+            used.update(n for n in self.renamed_from if f":{n}:" in post["message"])
         for name in sorted(used):
-            if name in refs or name in self.custom_emoji or standard_glyph(name) is not None:
+            froms = self.renamed_from.get(name, [])
+            slack_name = froms[0] if froms else name
+            label = f":{slack_name}: → :{name}:" if froms else f":{name}:"
+            if slack_name in refs or name in refs:
+                if froms:
+                    self.report.emoji_lines.append(f"{label} imported before")
+                continue
+            if name in self.custom_emoji:
+                if froms:
+                    self.report.emoji_lines.append(f"{label} already a custom emoji here: reused")
+                    self.report.counts["emoji_reused"] += 1
+                continue
+            if standard_glyph(name) is not None:
+                if froms:
+                    self.report.emoji_lines.append(f"{label} is a standard emoji")
                 continue
             if not emoji_service.NAME.match(name):
                 continue
-            path = next(
-                (
-                    directory / f"{name}{ext}"
-                    for ext in EMOJI_EXTENSIONS
-                    if (directory / f"{name}{ext}").is_file()
-                ),
-                None,
-            )
-            if path is None:
+            data = images.get(slack_name) if images is not None else None
+            if data is None:
+                if froms:
+                    self.report.emoji_lines.append(
+                        f"{label} no image of :{slack_name}: in --emoji-dir (kept as :{name}:)"
+                    )
                 continue
-            emoji_id = await self._add_custom_emoji(name, path.read_bytes(), self.actor.id)
+            emoji_id = await self._add_custom_emoji(name, data, self.actor.id)
             if emoji_id is not None:
-                self._ref("emoji", name, emoji_id)
+                self._ref("emoji", slack_name, emoji_id)
+                self.report.emoji_lines.append(f"{label} created")
+                if froms:
+                    self.report.counts["emoji_renamed"] += 1
 
     def reaction_emoji(self, name: str) -> str | None:
-        """``+1::skin-tone-2`` is 👍🏼's glyph with the tone; a custom name drops the tone."""
+        """``+1::skin-tone-2`` is 👍🏼's glyph with the tone; a custom name drops the tone.
+        M92: a keycap (``one`` 1️⃣ … ``zero``, ``hash`` #️⃣, ``asterisk``) begins with an ASCII
+        character, which a reaction cannot (EMOJI_PATTERN): it stays ``:one:``, shown once a
+        custom emoji of that name is added (``ten`` / ``keycap_ten`` 🔟 is a glyph as before)."""
         base, _, tone = name.lower().partition("::")
         glyph = standard_glyph(base)
         if base not in self.custom_emoji and glyph is not None:
             toned = with_skin_tone(glyph, tone.removeprefix("skin-tone-") or None)
-            return toned if REACTION.match(toned) else glyph if REACTION.match(glyph) else None
+            if REACTION.match(toned):
+                return toned
+            if REACTION.match(glyph):
+                return glyph
+            self.report.counts["reactions_keycap_as_name"] += 1
         token = f":{base}:"
         return token if REACTION.match(token) else None
 
@@ -1096,10 +1440,19 @@ async def import_slack(
     """The import; ``people_only`` (M91) works out the people table and writes nothing: no
     channels, posts or files (the messages are still read, to know who posted)."""
     export = Export(export_path)
+    images: EmojiImages | None = None
     try:
         actor = await active_admin(db, actor_username)
-        if options.emoji_dir is not None and not options.emoji_dir.is_dir():
-            raise ImportFailed(f"--emoji-dir {options.emoji_dir}: not a directory")
+        for old, new in options.emoji_renames.items():
+            if not emoji_service.NAME.match(new.strip().strip(":").lower()):
+                raise ImportFailed(
+                    f"--emoji-rename {old}={new}: not a custom emoji name "
+                    "(a-z 0-9 _ + -, 2 to 32 characters)"
+                )
+        if options.emoji_dir is not None:
+            if not options.emoji_dir.exists():
+                raise ImportFailed(f"--emoji-dir {options.emoji_dir}: no such directory or ZIP")
+            images = EmojiImages(options.emoji_dir)
         files.max_bytes = min(files.max_bytes, settings.attachment_max_bytes)
         job = SlackImport(
             db,
@@ -1114,9 +1467,12 @@ async def import_slack(
             email_domain_map=email_domain_map,
             activate_domains=activate_domains,
         )
+        job.emoji_images = images
         if people_only:
             return await job.people_preview()
         await job.prepare()
         return await job.run()
     finally:
         export.close()
+        if images is not None:
+            images.close()

@@ -102,6 +102,7 @@ ACTION_ACTIVE = "create active"
 ACTION_DEACTIVATED = "create deactivated"
 ACTION_GUEST = "create guest"
 ACTION_BOT = "bot"
+ACTION_BOT_AS = "bot → person"  # M92: a bridge bot's posts are a person's (--bot-as)
 ACTION_SKIP = "skip (nothing to import)"
 ACTIONS = (
     ACTION_USER,
@@ -111,6 +112,7 @@ ACTIONS = (
     ACTION_DEACTIVATED,
     ACTION_GUEST,
     ACTION_BOT,
+    ACTION_BOT_AS,
     ACTION_SKIP,
 )
 _HOW = {  # the older one-line form (report.people)
@@ -121,6 +123,7 @@ _HOW = {  # the older one-line form (report.people)
     ACTION_DEACTIVATED: "新規 (無効化済み)",
     ACTION_GUEST: "新規 ゲスト (無効化済み)",
     ACTION_BOT: "新規 bot",
+    ACTION_BOT_AS: "bot の投稿をこの人に",
 }
 
 
@@ -149,6 +152,8 @@ class Report:
     unmatched_emoji: Counter[str] = field(default_factory=Counter)
     # Reaction names that cannot be stored at all (not a valid reaction), with how often.
     dropped_emoji: Counter[str] = field(default_factory=Counter)
+    # M92: custom emoji made or renamed, one line each (":完了: → :kanryo: created").
+    emoji_lines: list[str] = field(default_factory=list)
     # Per channel (its ChikuwaChat name): posts, replies, files, files_failed.
     channels: dict[str, Counter[str]] = field(default_factory=dict)
     # Source people who got a new account (deactivated, or a bot): nobody was mapped to them.
