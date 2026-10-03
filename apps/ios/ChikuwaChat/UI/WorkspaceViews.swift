@@ -49,7 +49,7 @@ struct WorkspaceRow: View {
             WorkspaceTile(workspace: workspace, size: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text(workspace.name).font(.body.weight(active ? .semibold : .regular)).lineLimit(1)
-                Text(workspace.isSignedIn ? "\(workspace.username) @ \(workspace.host)" : "サインインが必要です · \(workspace.host)")
+                Text(workspace.isSignedIn ? "\(workspace.signInName) @ \(workspace.host)" : "サインインが必要です · \(workspace.host)")
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 8)
@@ -112,7 +112,7 @@ struct WorkspaceListView: View {
             Button("サインアウト", role: .destructive) { Task { await controller.signOutWorkspace(workspace.serverUrl) } }
             Button("キャンセル", role: .cancel) {}
         } message: { workspace in
-            Text("\(workspace.username) @ \(workspace.host)\nこの端末に保存したこのワークスペースのメッセージと下書きを消し、一覧から外します。サーバ上のデータは消えません。")
+            Text("\(workspace.signInName) @ \(workspace.host)\nこの端末に保存したこのワークスペースのメッセージと下書きを消し、一覧から外します。サーバ上のデータは消えません。")
         }
         .sheet(isPresented: $adding) {
             LoginView(controller: controller, mode: .add) { adding = false }

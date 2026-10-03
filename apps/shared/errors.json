@@ -185,6 +185,8 @@
     "url_not_allowed": "この URL は開けません",
     "user_deactivated": "このユーザーは無効化されています",
     "user_not_found": "ユーザーが見つかりません",
+    "username_change_limited": "ユーザー名を変更できるのは 24 時間に 3 回までです。しばらくしてからお試しください",
+    "username_reserved": "このユーザー名は予約されているため使えません",
     "username_taken": "このユーザー名はすでに使われています",
     "validation_error": "入力内容を確認してください",
     "webhook_not_found": "Webhook が見つかりません",

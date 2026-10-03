@@ -19,14 +19,20 @@ data class Workspace(
     val workspaceId: String? = null,
     /** GET /server; the host until known. */
     val name: String,
+    /** The name signed in with: it names the refresh token and the local database, so it stays after a rename. */
     val username: String,
+    /** M96: the account's username now, when it changed after signing in; null = [username]. */
+    val loginName: String? = null,
     val userId: String? = null,
     /** The session ended (revoked, refused refresh): the entry stays so that signing back in is one step. */
     val signedOut: Boolean = false,
     /** Last known unread marks of a workspace that is not open (GET /sync/summary, pushes; §6). */
     val badge: Int = 0,
     val hasUnread: Boolean = false,
-)
+) {
+    /** M96: the name to show and to sign in with ([username] may be the old one). */
+    val signInName: String get() = loginName ?: username
+}
 
 /** M16c: the workspace list, its storage and migration, URL rules, tiles and push routing (WORKSPACES.md). */
 object Workspaces {

@@ -163,6 +163,25 @@ refresh(token):
 - 作成・結び付け・ログインは監査ログに残る (`admin.user_created` の `via: sso`、`auth.sso_linked`、
   `auth.sso_login`。チケット・トークンは載せない)。開始・callback・交換は IP ごとに 30 回 / 分。
 
+### 2.9 ユーザー名の変更 (M96)
+
+規則の全体は DATA_MODEL.md users「ユーザー名の変更」。安全面の要点:
+
+- 本人 (`PATCH /users/me` の `username`、ゲストも) と管理者 (`PATCH /admin/users/{id}` の `username`、ボットも) だけが変えられる。
+  ボットはセッションを持たないので本人の変更は無い。検証はサーバだけが決める (パターン、大文字小文字を無視した一意、
+  グループ名と予約語 `here` / `channel` / `everyone` / `all` / `group`、`deleted-…` は `409 username_reserved`)。
+- 本人の変更は 24 時間に 3 回まで (`429 username_change_limited`、`Retry-After` と `details.retry_after_seconds`)。数えるのは
+  監査ログの `user.username_changed` (本人が actor の行) なので、再起動しても続き、行のロック (SELECT … FOR UPDATE) で
+  同時の要求もすり抜けない。管理者は制限しない (自分の変更も)。
+- セッション・refresh token・端末はそのまま (トークンは user id を指す)。パスワードでのログインはすぐ新しい名前だけになり、
+  古い名前でのログインは他の知らない名前と同じ `401 invalid_credentials`。
+- **古い名前はすぐに解放する**。別の人が古い名前を取ると、古い名前を覚えている人 (メッセージに手で打った `@古い名前`、
+  外部に貼った「@古い名前 に連絡」、以前の書き出し、TOTP アプリのラベル) に対してなりすましに見える余地がある。
+  保存されたメンションは `<@id>` なので履歴の宛先は変わらない。対策は監査だけ: すべての変更が `user.username_changed`
+  (`from`・`to`・`by: self | admin`、actor) に残るので、管理者は「いつ誰がその名前だったか」を確かめられる。予約や
+  猶予期間は作らない (数十人の招待制の研究室で、名前の取り合いより、間違えた名前をすぐ直せる方が大事と判断)。
+  `deleted-…` は匿名化した人の名前なので誰も名乗れない。
+
 ## 3. 認可
 
 ### 3.1 ロール
@@ -365,7 +384,7 @@ admin だけ。中の名前は作った時点の表示名で、メンバーに�
 | 添付 | 1 メッセージ 10 件、1 キャンバス 100 件 (M42)、1 件 100 MB |
 | プロフィール画像 | 5 MB、PNG / JPEG / GIF / WebP。正方形に切って 256px の PNG に作り直す (メタデータは残らない) |
 | チャンネル名 | 1〜80 文字。一意 (大文字小文字無視) |
-| ユーザー名 | 3〜32 文字、`[a-z0-9._-]` |
+| ユーザー名 | 3〜32 文字、`[a-z0-9._-]`。予約語とグループ名は不可。本人の変更は 24 時間に 3 回 (M96、§2.9) |
 | 検索クエリ | 200 文字。`has=` フラグは 5 個まで (超えたら `422`。以前は 500 だった、M28a) |
 | ページング `limit` | 最大 200 |
 | リマインダー | 1 人 200 件 (pending + fired、`409 too_many_reminders`、M28a) |
@@ -439,7 +458,8 @@ admin だけ。中の名前は作った時点の表示名で、メンバーに�
 - アクセスログのパスは、URL に秘密が入るもの (`/api/v1/hooks/{token}`、`/invite/{token}`、`/api/v1/invites/{token}/…`、
   `/api/v1/calendar/ical/{token}.ics`) を `***` に置き換えて記録する (§7: トークンをログに残さない)。
 - 管理者操作 (ユーザー作成、パスワードリセット、ロール変更、無効化、セッション失効、他人のメッセージ削除) は
-  `audit_logs` に記録する (M10)。
+  `audit_logs` に記録する (M10)。ユーザー名の変更は本人のものも `user.username_changed` (`from`・`to`・`by`、times の
+  改名があれば `times_channel {from, to}`) に残る (M96、§2.9)。
 - キャンバスの削除・復元・編集の制限の変更・版の本文の消去も `audit_logs` に記録する (`canvas.delete` / `canvas.restore` /
   `canvas.edit_policy` / `canvas.revision_erased`、M41)。ゴミ箱からの完全削除は周期ジョブが `canvas.purge` (actor なし、
   会話・題名・削除者・版の数) を残す (M42)。

@@ -189,6 +189,8 @@ object ErrorMessages {
         "url_not_allowed" to "この URL は開けません",
         "user_deactivated" to "このユーザーは無効化されています",
         "user_not_found" to "ユーザーが見つかりません",
+        "username_change_limited" to "ユーザー名を変更できるのは 24 時間に 3 回までです。しばらくしてからお試しください",
+        "username_reserved" to "このユーザー名は予約されているため使えません",
         "username_taken" to "このユーザー名はすでに使われています",
         "validation_error" to "入力内容を確認してください",
         "webhook_not_found" to "Webhook が見つかりません",

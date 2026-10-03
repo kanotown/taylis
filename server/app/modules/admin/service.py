@@ -21,6 +21,7 @@ from app.modules.groups import service as groups
 from app.modules.lab import service as lab
 from app.modules.sso import repository as sso_repo
 from app.modules.totp import service as totp
+from app.modules.users import username as usernames
 from app.modules.users.events import (
     USER_CREATED,
     USER_DEACTIVATED,
@@ -170,6 +171,10 @@ async def update_user(
     user = await _get_user(db, user_id)
     if user.id == actor.id and (data.role is not None or data.deactivated is not None):
         raise conflict("cannot_modify_self", "Administrators cannot change their own account")
+    if data.username is not None:
+        # M96: any account, bots included, without the self-service limit (users/username.py).
+        locked = await db.get(User, user_id, with_for_update=True, populate_existing=True)
+        await usernames.rename_in_tx(db, locked or user, data.username, actor=actor)
     now = utcnow()
     if data.role is not None:
         user.role = data.role
@@ -189,7 +194,11 @@ async def update_user(
         target_id=user.id,
         details=data.model_dump(exclude_none=True, mode="json"),
     )
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:  # M96: the new username was taken meanwhile
+        await db.rollback()
+        raise conflict("username_taken", "Username is already in use") from exc
     return user
 
 

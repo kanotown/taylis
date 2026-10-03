@@ -96,7 +96,7 @@ final class AppController {
     }
 
     var loginUsername: String {
-        activeWorkspace?.username ?? lastSignIn?.username ?? defaults.string(forKey: Workspaces.legacyUsernameKey) ?? ""
+        activeWorkspace?.signInName ?? lastSignIn?.username ?? defaults.string(forKey: Workspaces.legacyUsernameKey) ?? ""
     }
 
     /// M16b: where the open account's recent searches are kept on this device.
@@ -135,6 +135,13 @@ final class AppController {
 
     private func persistWorkspaces() {
         Workspaces.save(Workspaces.Saved(list: workspaces, active: activeServerUrl), to: defaults)
+    }
+
+    /// M96: the account's username now reaches the saved entry (the list and the next login form show it); `username`
+    /// keeps naming the Keychain item and the local database. Called with every UserMe this device gets: a rename here,
+    /// a token refresh (every 15 minutes at most) and a sign-in.
+    func followUsername(_ live: String, serverUrl: String) {
+        patch(serverUrl) { entry in entry.loginName = live == entry.username ? nil : live }
     }
 
     /// Changes one entry and saves the list when something changed.
@@ -460,6 +467,7 @@ final class AppController {
             guard let cached = store.me, !cached.mustChangePassword else { return false }
             me = cached
         } else if let me { store.setMe(me) }
+        if let me { followUsername(me.username, serverUrl: serverUrl) }  // M96
         AvatarCache.shared.fetcher = { [weak api] path in
             guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "") }
             return try await api.fetchData(path)
@@ -524,6 +532,7 @@ final class AppController {
                 guard let self, self.api === api, self.engine === engine else { return }
                 self.me = tokens.user
                 self.store.setMe(tokens.user)
+                self.followUsername(tokens.user.username, serverUrl: serverUrl)
                 if tokens.user.mustChangePassword {
                     engine?.stop()
                     self.screen = .changePassword
@@ -1298,6 +1307,19 @@ final class AppController {
             store.setMe(updated)
             return true
         } catch { self.error = describe(error); return false }
+    }
+
+    /// M96: rename myself; nil when done, else the reason for under the field (taken, reserved, 3 times in 24 hours …).
+    func renameMe(_ username: String) async -> String? {
+        guard let api, let serverUrl = activeServerUrl else { return "ログインしていません" }
+        do {
+            let updated = try await api.updateUsername(username)
+            me = updated
+            store.setMe(updated)
+            store.upsertUser(updated.asPublic)
+            followUsername(updated.username, serverUrl: serverUrl)
+            return nil
+        } catch { return describe(error) }
     }
 
     func updateDisplayName(_ displayName: String) async -> Bool {

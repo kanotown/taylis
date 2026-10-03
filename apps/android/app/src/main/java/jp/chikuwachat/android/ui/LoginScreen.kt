@@ -59,7 +59,7 @@ fun LoginScreen(controller: AppController) {
         return
     }
     var server by rememberSaveable { mutableStateOf(if (adding) "" else controller.savedServer) }
-    var username by rememberSaveable { mutableStateOf(if (adding) "" else controller.savedUsername) }
+    var username by rememberSaveable { mutableStateOf(if (adding) "" else controller.loginUsername) }
     var password by rememberSaveable { mutableStateOf("") }
     var totpCode by rememberSaveable { mutableStateOf("") }
     val needsCode = controller.totpRequired

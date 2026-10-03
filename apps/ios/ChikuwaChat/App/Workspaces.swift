@@ -12,7 +12,10 @@ struct Workspace: Codable, Equatable, Identifiable {
     var workspaceId: String?
     /// GET /server; the host until known.
     var name: String
+    /// The name signed in with: it names the Keychain item and the local database, so it stays after a rename.
     var username: String
+    /// M96: the account's username now, when it changed after signing in; nil = `username`.
+    var loginName: String?
     var userId: String?
     /// The session ended without the user leaving (revoked elsewhere, refresh refused): kept for signing back in.
     var signedOut: Bool?
@@ -23,6 +26,8 @@ struct Workspace: Codable, Equatable, Identifiable {
     var id: String { serverUrl }
     /// Names this account's Keychain item, local store and recent searches.
     var account: String { "\(serverUrl)|\(username)" }
+    /// M96: the name to show and to sign in with (`username` may be the old one).
+    var signInName: String { loginName ?? username }
     var isSignedIn: Bool { signedOut != true }
     var host: String { Workspaces.host(serverUrl) }
     /// The key of the tile colour (same as the desktop rail).
@@ -31,25 +36,27 @@ struct Workspace: Codable, Equatable, Identifiable {
     /// Something waits there (for the switcher; the open workspace shows its own counts).
     var hasNews: Bool { isSignedIn && ((badge ?? 0) > 0 || hasUnread == true) }
 
-    init(serverUrl: String, workspaceId: String? = nil, name: String? = nil, username: String, userId: String? = nil,
+    init(serverUrl: String, workspaceId: String? = nil, name: String? = nil, username: String, loginName: String? = nil, userId: String? = nil,
          signedOut: Bool? = nil, badge: Int? = nil, hasUnread: Bool? = nil) {
         self.serverUrl = serverUrl
         self.workspaceId = workspaceId
         self.name = name ?? Workspaces.host(serverUrl)
         self.username = username
+        self.loginName = loginName
         self.userId = userId
         self.signedOut = signedOut
         self.badge = badge
         self.hasUnread = hasUnread
     }
 
-    private enum CodingKeys: String, CodingKey { case serverUrl, workspaceId, name, username, userId, signedOut, badge, hasUnread }
+    private enum CodingKeys: String, CodingKey { case serverUrl, workspaceId, name, username, loginName, userId, signedOut, badge, hasUnread }
 
     /// A damaged field loses only itself; a row without its server or account is not a workspace.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         serverUrl = try c.decode(String.self, forKey: .serverUrl)
         username = try c.decode(String.self, forKey: .username)
+        loginName = try? c.decodeIfPresent(String.self, forKey: .loginName)
         workspaceId = try? c.decodeIfPresent(String.self, forKey: .workspaceId)
         name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? Workspaces.host(serverUrl)
         userId = try? c.decodeIfPresent(String.self, forKey: .userId)

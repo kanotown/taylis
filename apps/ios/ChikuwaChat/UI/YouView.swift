@@ -73,7 +73,7 @@ struct YouView: View {
 
     private func header(_ me: UserMe) -> some View {
         let user = mePublic
-        let subtitle = "@\(me.username)" + ((user?.title ?? me.title).flatMap { $0.isEmpty ? nil : " · \($0)" } ?? "")
+        let subtitle = "@\(user?.username ?? me.username)" + ((user?.title ?? me.title).flatMap { $0.isEmpty ? nil : " · \($0)" } ?? "")
         return HStack(spacing: 14) {
             AvatarView(id: me.id, name: me.displayName, size: 64, presence: controller.store.presenceOf(me.id))
             VStack(alignment: .leading, spacing: 3) {
@@ -497,7 +497,8 @@ struct AppearanceView: View {
 
 // MARK: - プロフィールを編集
 
-/// Photo (M14a / M16g), display name, title, my own roster fields (M23), and hiding my presence (L4).
+/// Photo (M14a / M16g), username (M96, its own screen), display name, title, my own roster fields (M23), and hiding
+/// my presence (L4).
 struct ProfileEditView: View {
     @Bindable var controller: AppController
     @State private var displayName = ""
@@ -554,6 +555,16 @@ struct ProfileEditView: View {
                     if me.avatarUpdatedAt != nil {
                         Button("写真を削除", systemImage: "trash", role: .destructive) { Task { _ = await controller.deleteAvatar() } }
                     }
+                }
+                // M96: the username has its own screen (one request with its own refusals and the daily limit).
+                Section {
+                    NavigationLink {
+                        UsernameEditView(controller: controller)
+                    } label: {
+                        LabeledContent("ユーザー名", value: "@\(controller.store.users[me.id]?.username ?? me.username)")
+                    }
+                } footer: {
+                    Text("メンションの @名前 と、パスワードでのログインに使います。")
                 }
                 Section {
                     LabeledContent("表示名") {
@@ -641,6 +652,76 @@ struct ProfileEditView: View {
         if ok, lineChanged { ok = await controller.updateMyRosterLine(researchTopic: Self.cleaned(topic), reading: Self.cleaned(reading)) }
         saved = ok
         busy = false
+    }
+}
+
+// MARK: - ユーザー名 (M96)
+
+/// My username: typed lowercase, checked as typed (UsernameRules), sent with 「変更」; the server's refusal (taken,
+/// reserved, 3 times in 24 hours) stays under the field. Done, it goes back to the profile.
+struct UsernameEditView: View {
+    @Bindable var controller: AppController
+    @Environment(\.dismiss) private var dismiss
+    @State private var value = ""
+    @State private var serverError: String?
+    @State private var busy = false
+    @FocusState private var focused: Bool
+
+    private var me: UserMe? { controller.store.me ?? controller.me }
+    private var current: String { me.map { controller.store.users[$0.id]?.username ?? $0.username } ?? "" }
+    private var name: String { UsernameRules.normalize(value) }
+    private var changed: Bool { !current.isEmpty && name != current }
+    private var problem: String? { changed ? UsernameRules.problem(value) : nil }
+    private var message: String? { problem ?? serverError }
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 2) {
+                    Text("@").foregroundStyle(.secondary)
+                    TextField("ユーザー名", text: $value)
+                        .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .focused($focused)
+                        .submitLabel(.done)
+                        .onSubmit { Task { await save() } }
+                        .onChange(of: value) { _, typed in
+                            serverError = nil
+                            let lower = typed.lowercased()
+                            if lower != typed { value = lower }
+                        }
+                        .accessibilityIdentifier("username-field")
+                }
+            } header: {
+                Text("3〜32 文字、a-z 0-9 . _ -")
+            } footer: {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let message {
+                        Text(message).foregroundStyle(.red).accessibilityIdentifier("username-error")
+                    }
+                    Text(UsernameRules.hint(hasPassword: me?.passwordSet ?? true)
+                         + (me?.role == "admin" ? "" : " " + UsernameRules.limitNote))
+                }
+            }
+        }
+        .navigationTitle("ユーザー名")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                if busy { ProgressView() } else {
+                    Button("変更") { Task { await save() } }.disabled(!changed || problem != nil)
+                }
+            }
+        }
+        .onAppear { if value.isEmpty { value = current }; focused = true }
+    }
+
+    private func save() async {
+        guard changed, problem == nil, !busy else { return }
+        busy = true
+        let error = await controller.renameMe(name)
+        busy = false
+        serverError = error
+        if error == nil { dismiss() }
     }
 }
 

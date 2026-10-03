@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { AdminBody } from "../src/ui/AdminDialog";
+import { USERNAME_HINT } from "../src/ui/username";
 import { FakeServer } from "./fakeServer";
 
 afterEach(() => {
@@ -104,14 +105,14 @@ it("a taken username is shown in Japanese", async () => {
   expect(screen.getByRole("dialog")).toBeTruthy(); // stays open
 });
 
-it("edits a bot: the username is fixed, only changes are sent", async () => {
+it("edits a bot: the username is not edited here (M96: 管理 →「ユーザー」 renames it), only changes are sent", async () => {
   const { server, agent } = await setup();
   await openTab();
   fireEvent.click(screen.getByRole("button", { name: /編集/ }));
   await settle();
   const dialog = screen.getByRole("dialog");
-  expect((within(dialog).getByLabelText(/ユーザー名 \(変えられません\)/) as HTMLInputElement).disabled).toBe(true);
-  expect(within(dialog).getByText("あとから変更できません (メンションの @名前 になります)")).toBeTruthy();
+  expect((within(dialog).getByLabelText(/^ユーザー名/) as HTMLInputElement).disabled).toBe(true);
+  expect(within(dialog).getByText("管理 →「ユーザー」の「ユーザー名を変更」で変えられます")).toBeTruthy();
   fireEvent.click(within(dialog).getByRole("checkbox", { name: "有効" }));
   fireEvent.change(within(dialog).getByLabelText("考える量"), { target: { value: "high" } });
   fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
@@ -120,18 +121,18 @@ it("edits a bot: the username is fixed, only changes are sent", async () => {
   expect(screen.getByText("停止中")).toBeTruthy();
 });
 
-it("the username cannot change later: the bot form and the user form say so when creating (2026-10-02)", async () => {
+it("the creation forms say what the username is for and that it can change later (M96; fixed before)", async () => {
   await setup();
-  // 「ユーザー」 (the first tab): no endpoint renames a user either.
+  // 「ユーザー」 (the first tab).
   fireEvent.click(screen.getByRole("button", { name: /ユーザーを作成/ }));
   await settle();
   const userField = screen.getByLabelText(/ユーザー名/).closest("label")!;
-  expect(within(userField).getByText("あとから変更できません (メンションの @名前 になります)")).toBeTruthy();
+  expect(within(userField).getByText(USERNAME_HINT)).toBeTruthy();
   await openTab();
   fireEvent.click(screen.getByRole("button", { name: /ボットを作成/ }));
   await settle();
   const botField = within(screen.getByRole("dialog")).getByLabelText(/ユーザー名/).closest("label")!;
-  expect(within(botField).getByText("あとから変更できません (メンションの @名前 になります)")).toBeTruthy();
+  expect(within(botField).getByText(USERNAME_HINT)).toBeTruthy();
 });
 
 it("deletes a bot after asking", async () => {

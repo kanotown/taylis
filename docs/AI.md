@@ -134,7 +134,7 @@ AiUsageOut   = {month: "YYYY-MM", budget_usd: number, total_cost_usd: number, to
   - `POST /admin/ai/agents {username, name, character, model, effort?, allow_private?, enabled?}` → `201 AiAgentOut`。
     `model` は `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-4-5` / `gpt-6.1-sol` / `gpt-6-luna` (OpenAI の 2 つは §12 で追加)、`effort` は `low` / `medium` / `high` (既定 `medium`)。
     ユーザー名が使われていれば `409 username_taken`。
-  - `PATCH /admin/ai/agents/{id}` (送った項目だけ。`username` は変えられない) → `AiAgentOut`。
+  - `PATCH /admin/ai/agents/{id}` (送った項目だけ。`username` はここでは変えない。ボットのユーザー名は `PATCH /admin/users/{id}` で変える、M96) → `AiAgentOut`。
   - `DELETE /admin/ai/agents/{id}` → 204 (ボットは全チャンネルから抜けて無効化。投稿は残る)。
   - `GET /admin/ai/usage?month=YYYY-MM` (省略は今月) → `AiUsageOut`。
   - (§12 で追加) `GET /admin/ai/providers` → `AiProviderOut[]` = `[{name: "anthropic"|"openai", configured: bool,

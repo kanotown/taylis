@@ -7,6 +7,7 @@ from app.core.errors import forbidden, not_found
 from app.modules.auth.deps import CurrentUser
 from app.modules.channels import service as channels  # M13e guest visibility (ARCHITECTURE.md §5)
 from app.modules.users import service
+from app.modules.users import username as usernames
 from app.modules.users.schemas import UserMe, UserPublic, UserUpdate, to_user_me, to_user_public
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -40,6 +41,11 @@ async def update_me(request: Request, user: CurrentUser, body: UserUpdate, db: D
         # M48: Google sign-in links by address (docs/SSO.md §4); an unverified address of a
         # sign-in domain typed here would let its real owner land in this account.
         raise forbidden("email_domain_reserved", "This domain's addresses come from Google sign-in")
+    if body.username is not None:
+        # M96: renaming myself (3 times in 24 hours); the same transaction as the rest.
+        locked = await service.get_user(db, user.id, for_update=True)
+        if locked is not None:
+            await usernames.rename_in_tx(db, locked, body.username, actor=user)
     updated = await service.update_me(db, user.id, body)
     if body.presence_hidden is not None:
         # L4: the hub (process-local presence) announces me as offline, or as I am again.

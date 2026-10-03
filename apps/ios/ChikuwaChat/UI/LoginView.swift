@@ -214,7 +214,7 @@ struct LoginView: View {
         case .add:
             break
         case .relogin(let workspace):
-            username = workspace.username
+            username = workspace.signInName
         }
     }
 

@@ -110,7 +110,7 @@ export interface paths {
         head?: never;
         /**
          * Update Agent
-         * @description Only the fields sent change; the username never does.
+         * @description Only the fields sent change; the username changes through PATCH /admin/users/{id} (M96).
          */
         patch: operations["update_agent_api_v1_admin_ai_agents__agent_id__patch"];
         trace?: never;
@@ -3611,6 +3611,8 @@ export interface components {
             deactivated?: boolean | null;
             /** Role */
             role?: ("admin" | "member" | "guest") | null;
+            /** Username */
+            username?: string | null;
         };
         /**
          * AdminWorkspaceSettingsOut
@@ -3749,7 +3751,7 @@ export interface components {
         };
         /**
          * AiAgentUpdate
-         * @description Only the fields sent change; the username never does.
+         * @description Only the fields sent change; the username changes through PATCH /admin/users/{id} (M96).
          */
         AiAgentUpdate: {
             /** Allow Private */
@@ -7359,6 +7361,8 @@ export interface components {
             status_text?: string | null;
             /** Title */
             title?: string | null;
+            /** Username */
+            username?: string | null;
         };
         /** ValidationError */
         ValidationError: {

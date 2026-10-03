@@ -10,7 +10,7 @@ import { WorkspaceIcon } from "./workspaceIcons";
 
 export function LoginScreen({ controller, onDone, onInvite }: { controller: AppController; onDone: () => void; onInvite?: () => void }) {
   const [server, setServer] = useState(controller.serverUrl);
-  const [username, setUsername] = useState(controller.username);
+  const [username, setUsername] = useState(controller.loginName);
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [busy, setBusy] = useState(false);

@@ -276,6 +276,11 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         return try await request("PATCH", "/api/v1/users/me", body: .object(body))
     }
 
+    /// M96: a new username (409 username_taken / username_reserved, 429 username_change_limited).
+    func updateUsername(_ username: String) async throws -> UserMe {
+        try await request("PATCH", "/api/v1/users/me", body: .object(["username": .string(username)]))
+    }
+
     /// M11d: profile card fields; `.null` clears a field, omitted fields keep their value.
     func updateProfile(_ fields: [String: JSONValue]) async throws -> UserMe {
         try await request("PATCH", "/api/v1/users/me", body: .object(fields))

@@ -177,7 +177,7 @@ private fun SignOutWorkspaceDialog(controller: AppController, entry: Workspace, 
         title = { Text("${entry.name} からサインアウトしますか？") },
         text = {
             Text(
-                "${entry.username} @ ${Workspaces.hostLabel(entry.serverUrl)}\n\nこの端末に保存したこのワークスペースのメッセージと下書きを消し、一覧から外します。サーバ上のデータは消えません。",
+                "${entry.signInName} @ ${Workspaces.hostLabel(entry.serverUrl)}\n\nこの端末に保存したこのワークスペースのメッセージと下書きを消し、一覧から外します。サーバ上のデータは消えません。",
             )
         },
         confirmButton = {
@@ -203,7 +203,7 @@ private fun WorkspaceRow(controller: AppController, entry: Workspace, onOpen: ()
         headlineContent = { Text(entry.name, fontWeight = if (unread || badge > 0) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
             Text(
-                if (entry.signedOut) "サインインが必要です" else "${entry.username} @ ${Workspaces.hostLabel(entry.serverUrl)}",
+                if (entry.signedOut) "サインインが必要です" else "${entry.signInName} @ ${Workspaces.hostLabel(entry.serverUrl)}",
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                 color = if (entry.signedOut) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -396,6 +396,18 @@
               }
             ],
             "title": "Role"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9._-]{3,32}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
           }
         },
         "title": "AdminUserUpdate",
@@ -659,7 +671,7 @@
         "type": "object"
       },
       "AiAgentUpdate": {
-        "description": "Only the fields sent change; the username never does.",
+        "description": "Only the fields sent change; the username changes through PATCH /admin/users/{id} (M96).",
         "properties": {
           "allow_private": {
             "anyOf": [
@@ -10702,6 +10714,18 @@
               }
             ],
             "title": "Title"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9._-]{3,32}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
           }
         },
         "title": "UserUpdate",
@@ -11812,7 +11836,7 @@
         ]
       },
       "patch": {
-        "description": "Only the fields sent change; the username never does.",
+        "description": "Only the fields sent change; the username changes through PATCH /admin/users/{id} (M96).",
         "operationId": "update_agent_api_v1_admin_ai_agents__agent_id__patch",
         "parameters": [
           {

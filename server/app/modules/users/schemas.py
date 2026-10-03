@@ -9,6 +9,8 @@ from app.core.time import utcnow
 from app.modules.users.models import User
 
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+# Every username (admin.schemas, invites and the AI bots import it from here); cli.py repeats it.
+USERNAME_PATTERN = r"^[a-z0-9._-]{3,32}$"
 
 
 TIME_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"
@@ -122,6 +124,9 @@ class UserUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     display_name: str | None = Field(default=None, min_length=1, max_length=80)
+    # M96: a new username (3-32 of a-z 0-9 . _ -). Password sign-in uses it at once; 409
+    # username_taken / username_reserved, 429 username_change_limited (3 in 24 hours).
+    username: str | None = Field(default=None, pattern=USERNAME_PATTERN)
     email: str | None = Field(default=None, max_length=254, pattern=EMAIL_PATTERN)
     # M11d: send null to clear. Omitted fields keep their value (model_fields_set).
     title: str | None = Field(default=None, max_length=80)
@@ -177,11 +182,11 @@ class UserUpdate(BaseModel):
             cleaned.append(word)
         return cleaned
 
-    @field_validator("display_name")
+    @field_validator("display_name", "username")
     @classmethod
-    def display_name_not_null(cls, value: str | None) -> str:
+    def not_null(cls, value: str | None) -> str:
         if value is None:
-            raise ValueError("Display name cannot be null")
+            raise ValueError("Cannot be null")
         return value
 
 

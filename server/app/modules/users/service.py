@@ -57,6 +57,8 @@ async def list_users(db: AsyncSession) -> list[User]:
 
 
 async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> User:
+    """Everything but `username`, which users.username.rename_in_tx applies first in the same
+    transaction (the router calls both; this commits)."""
     user = await require_user(db, user_id)
     if data.email is not None and await repo.email_taken(db, data.email, user.id):
         raise conflict("email_taken", "Email is already in use")
@@ -105,6 +107,8 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
+        if "uq_users_username" in str(exc.orig):  # M96: taken meanwhile by someone else
+            raise conflict("username_taken", "Username is already in use") from exc
         raise conflict("email_taken", "Email is already in use") from exc
     return user
 
