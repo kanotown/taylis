@@ -1583,6 +1583,7 @@ CREATE TABLE workspace_settings (
   show_membership_messages  boolean NOT NULL DEFAULT true,   -- 「参加・退出の表示」
   preview_before_join       boolean NOT NULL DEFAULT true,   -- 「参加前にチャンネルの中を見られる」(M27 のプレビュー)
   default_channel_ids       uuid[],                          -- M90 (0073) 「既定のチャンネル」、順序付き。NULL = 一度も保存していない
+  icon_key                  text,                            -- M93 (0074) ワークスペースのアイコン (オブジェクトストアの `workspace-icon/<uuid7>`、256 px の PNG)。NULL = 無し (頭文字のタイル)
   updated_at                timestamptz NOT NULL DEFAULT now(),
   updated_by                uuid REFERENCES users(id) ON DELETE SET NULL
 );
@@ -1592,6 +1593,8 @@ CREATE TABLE workspace_settings (
 変更は監査ログと `workspace.settings_updated` イベント。bootstrap の `workspace_settings` で全員に返す。
 `default_channel_ids` は管理者の GET / PATCH だけに出る (bootstrap には入れない)。外部キーは無く (配列)、使う時に
 公開・未アーカイブでないものを飛ばす (MEMBERSHIP.md §6)。
+`icon_key` はキーの最後の部分 (アップロードごとの uuid7) を版 `icon_version` として、`GET /server` (認証不要)・bootstrap・
+イベントに出す。画像は `GET /server/icon` (認証不要。WORKSPACES.md §3.4)。
 
 ### import_refs (移行元の対応、M18・M87)
 

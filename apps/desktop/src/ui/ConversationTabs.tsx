@@ -41,7 +41,7 @@ export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, o
 }) {
   const hasLinks = controller.store.linksOf(channel.id).length > 0 || canEditLinks(channel, controller);
   return (
-    <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-2 [scrollbar-width:none]">
+    <div className="flex shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-2 [scrollbar-width:none]">
       <div role="tablist" aria-label="会話の表示" className="flex shrink-0 items-center">
         {TABS.filter(([value]) => (value !== "events" && value !== "tasks") || channel.type === "public" || channel.type === "private").map(([value, label]) => (
           <button

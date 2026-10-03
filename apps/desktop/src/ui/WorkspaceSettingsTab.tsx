@@ -1,10 +1,11 @@
-import { ArrowDown, ArrowUp, Eye, Hash, UsersRound, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, Eye, Hash, ImageUp, Trash2, UsersRound, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import type { AdminWorkspaceSettingsOut, ChannelOut, DefaultChannelsApplyOut, WorkspaceSettingsUpdate } from "../api/types";
 import type { AppController } from "../state/app";
 import { fullTimestamp } from "./format";
 import { Button, cn } from "./primitives";
+import { WorkspaceIcon } from "./workspaceIcons";
 
 const CARD = "flex items-center gap-3 rounded-xl border border-line px-3 py-2";
 
@@ -58,6 +59,7 @@ export function WorkspaceSettingsTab({ controller }: { controller: AppController
   const changedBy = settings.updated_by ? controller.store.users.get(settings.updated_by)?.display_name : null;
   return (
     <div className="mt-4 space-y-3">
+      <WorkspaceIconSection controller={controller} settings={settings} onSaved={setSettings} />
       <label className={cn(CARD, "cursor-pointer")}>
         <UsersRound size={18} className="shrink-0 text-muted" />
         <span className="min-w-0 flex-1 text-sm">
@@ -96,6 +98,81 @@ export function WorkspaceSettingsTab({ controller }: { controller: AppController
           最終変更: {changedBy} ({fullTimestamp(settings.updated_at)})
         </p>
       )}
+    </div>
+  );
+}
+
+/** M93: the picture types the server takes for the icon (it crops the middle square and makes a 256 px PNG). */
+export const ICON_ACCEPT = "image/png,image/jpeg,image/webp";
+
+/**
+ * M93 (WORKSPACES.md §3.4) 「アイコン」: the workspace's logo on everyone's rail, switcher and login screen (public, before
+ * signing in). Choosing a file uploads it at once; 「削除」 returns to the letter tile. A server before M93 has no
+ * `icon_version` in the settings: the section is not shown.
+ */
+export function WorkspaceIconSection({ controller, settings, onSaved }: {
+  controller: AppController;
+  settings: AdminWorkspaceSettingsOut;
+  onSaved: (row: AdminWorkspaceSettingsOut) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  if (settings.icon_version === undefined) return null;
+  const entry = controller.activeEntry;
+  const name = controller.workspaceName;
+  const version = settings.icon_version ?? null;
+
+  const apply = async (call: () => Promise<AdminWorkspaceSettingsOut>) => {
+    setBusy(true);
+    try {
+      const row = await call();
+      onSaved(row);
+      // This device follows at once (the others through workspace.settings_updated).
+      controller.store.setWorkspaceSettings({ ...controller.store.workspaceSettings, icon_version: row.icon_version ?? null });
+    } catch (error) {
+      controller.setError(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const upload = (file: File) => {
+    const api = controller.api;
+    if (api) void apply(() => api.adminUploadWorkspaceIcon(file, file.name));
+  };
+  const remove = () => {
+    const api = controller.api;
+    if (api) void apply(() => api.adminDeleteWorkspaceIcon());
+  };
+
+  return (
+    <div className={CARD} data-testid="workspace-icon-section">
+      <WorkspaceIcon serverUrl={entry?.serverUrl ?? controller.serverUrl} version={version} name={name} colorKey={entry?.workspaceId ?? entry?.serverUrl ?? name} className="h-12 w-12 rounded-xl text-lg" />
+      <span className="min-w-0 flex-1 text-sm">
+        アイコン
+        <span className="block text-xs text-muted">ワークスペースの一覧・切り替え・ログイン画面に出ます (ログイン前の画面にも出るので、公開してよい画像にしてください)。PNG・JPEG・WebP。正方形でない画像は中央を切り抜きます。無いときは名前の頭文字を表示します。</span>
+      </span>
+      <input
+        ref={input}
+        type="file"
+        accept={ICON_ACCEPT}
+        aria-label="アイコンの画像を選ぶ"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) upload(file);
+        }}
+      />
+      <div className="flex shrink-0 flex-col gap-1.5 sm:flex-row">
+        <Button size="sm" variant="secondary" disabled={busy} onClick={() => input.current?.click()}>
+          <ImageUp size={14} /> {version ? "変更…" : "画像を選ぶ…"}
+        </Button>
+        {version && (
+          <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={remove}>
+            <Trash2 size={14} /> 削除
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

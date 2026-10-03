@@ -1008,6 +1008,31 @@ export class ApiClient {
     return this.request("PATCH", "/api/v1/admin/workspace-settings", patch);
   }
 
+  /** M93 (WORKSPACES.md §3.4): the workspace icon (PNG / JPEG / WebP; the server crops it square, 256 px). */
+  async adminUploadWorkspaceIcon(file: Blob, filename: string): Promise<AdminWorkspaceSettingsOut> {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
+    const form = new FormData();
+    form.append("file", file, filename);
+    const send = async (): Promise<Response> =>
+      this.rawFetch(`${this.baseUrl}/api/v1/admin/workspace-settings/icon`, {
+        method: "POST",
+        headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}`, Accept: "application/json" } : { Accept: "application/json" },
+        body: form,
+      });
+    let response = await send();
+    if (response.status === 401) {
+      await this.refresh();
+      response = await send();
+    }
+    if (!response.ok) throw await this.errorFromResponse(response);
+    return readJson<AdminWorkspaceSettingsOut>(response);
+  }
+
+  /** M93: back to the letter tile. */
+  adminDeleteWorkspaceIcon(): Promise<AdminWorkspaceSettingsOut> {
+    return this.request("DELETE", "/api/v1/admin/workspace-settings/icon");
+  }
+
   /** M90 (docs/MEMBERSHIP.md §6): everyone (not guests or bots) into the default channels; `dryRun` only counts. */
   adminApplyDefaultChannels(dryRun: boolean): Promise<DefaultChannelsApplyOut> {
     return this.request("POST", "/api/v1/admin/workspace-settings/apply-default-channels", { dry_run: dryRun });
@@ -1207,6 +1232,17 @@ export class ApiClient {
   /** GET /server (M16c, no sign-in): which workspace this URL is (WORKSPACES.md §3.1). */
   serverInfo(): Promise<ServerInfoOut> {
     return this.request("GET", "/api/v1/server");
+  }
+
+  /** GET /server/icon (M93, no sign-in): the workspace icon of `version` (GET /server's `icon_version`). */
+  async serverIcon(version: string): Promise<Blob> {
+    const response = await this.rawFetch(`${this.baseUrl}/api/v1/server/icon?v=${encodeURIComponent(version)}`, {});
+    if (!response.ok) throw await this.errorFromResponse(response);
+    try {
+      return await response.blob();
+    } catch (err) {
+      throw new NetworkError(err);
+    }
   }
 
   /** GET /sync/summary (M16c): the switcher badge of a workspace that is not open. */

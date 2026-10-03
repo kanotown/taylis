@@ -1,9 +1,12 @@
 import { Loader2, MessageCircle, ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
+import { ApiClient } from "../api/client";
 import { isWeb } from "../platform/env";
 import type { AppController } from "../state/app";
+import { isServerInfo, normalizeServerUrl } from "../state/workspaces";
 import { Button, Field, Input } from "./primitives";
+import { WorkspaceIcon } from "./workspaceIcons";
 
 export function LoginScreen({ controller, onDone, onInvite }: { controller: AppController; onDone: () => void; onInvite?: () => void }) {
   const [server, setServer] = useState(controller.serverUrl);
@@ -34,6 +37,34 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
     };
   }, [controller, methodsKey]);
 
+  // M93: the workspace's icon (public, GET /server) in place of the app's mark, before signing in. A registered
+  // workspace shows the one it knows at once; the server is asked again (as the URL is typed, in the desktop app).
+  const [icon, setIcon] = useState<{ server: string; version: string } | null>(() => (entry?.iconVersion ? { server: entry.serverUrl, version: entry.iconVersion } : null));
+  const iconKey = isWeb() ? controller.serverUrl : server.trim();
+  useEffect(() => {
+    const target = normalizeServerUrl(iconKey);
+    if (!target) {
+      setIcon(null);
+      return;
+    }
+    let current = true;
+    const timer = setTimeout(() => {
+      new ApiClient(target)
+        .serverInfo()
+        .then((info: unknown) => {
+          if (!current || !isServerInfo(info) || info.icon_version === undefined) return;
+          setIcon(info.icon_version ? { server: target, version: info.icon_version } : null);
+        })
+        .catch(() => {
+          /* not a server (yet): keep the app's mark */
+        });
+    }, entry && iconKey === entry.serverUrl ? 0 : 400);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [iconKey, entry]);
+
   const signInWithGoogle = async () => {
     setLeaving(true);
     await controller.startGoogleSignIn(server);
@@ -54,9 +85,13 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
     <AuthShell>
       <form className="space-y-4" onSubmit={submit}>
         <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white shadow-md">
-            <MessageCircle size={24} />
-          </span>
+          {icon ? (
+            <WorkspaceIcon serverUrl={icon.server} version={icon.version} name={entry?.name ?? ""} colorKey={entry?.workspaceId ?? icon.server} className="h-11 w-11 rounded-2xl text-lg shadow-md" />
+          ) : (
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white shadow-md">
+              <MessageCircle size={24} />
+            </span>
+          )}
           <div>
             <h1 className="text-xl font-bold tracking-tight">{adding ? "ワークスペースを追加" : entry ? entry.name : "Taylis"}</h1>
             <p className="text-xs text-muted">{adding ? "別の Taylis サーバにログインします" : entry?.signedOut ? "もう一度ログインしてください" : "チームのチャットにログイン"}</p>

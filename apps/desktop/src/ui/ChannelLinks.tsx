@@ -36,7 +36,7 @@ export function ChannelLinksBar({ controller, channel, onAdd, onEdit }: {
 }) {
   if (controller.store.linksOf(channel.id).length === 0) return null;
   return (
-    <div className="flex items-center gap-1 overflow-x-auto border-b border-line px-3 py-1" aria-label="リンク">
+    <div className="flex items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-3 py-1" aria-label="リンク">
       <ChannelLinkChips controller={controller} channel={channel} onAdd={onAdd} onEdit={onEdit} />
     </div>
   );

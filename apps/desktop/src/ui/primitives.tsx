@@ -9,6 +9,15 @@ export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * M93: a row of underlined tabs that scrolls sideways when it does not fit (管理, 検索). Only sideways: `overflow-x: auto`
+ * alone makes the other axis `auto` too, and the tabs' old `-mb-px` (their underline over the row's border) then
+ * overflowed by one pixel, so the row scrolled up and down a little. The row's line is an inset shadow instead, which
+ * the tabs' own 2 px underline (`UNDERLINE_TAB`) covers from inside the row.
+ */
+export const UNDERLINE_TAB_ROW = "flex shrink-0 overflow-x-auto overflow-y-hidden overscroll-x-contain shadow-[inset_0_-1px_0_var(--line)]";
+export const UNDERLINE_TAB = "shrink-0 whitespace-nowrap border-b-2 text-sm font-medium transition-colors";
+
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "link";
 type Size = "sm" | "md" | "icon";
 

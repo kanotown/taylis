@@ -14,7 +14,7 @@ import { channelTitle } from "./MainScreen";
 import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
 import { BackButton, BackToList } from "./compact";
-import { Badge, Button, cn, IconButton, Input, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { Badge, Button, cn, IconButton, Input, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger, UNDERLINE_TAB, UNDERLINE_TAB_ROW } from "./primitives";
 import { DATE_PRESETS, dateLabel, EMPTY_SEARCH, HAS_FLAGS, HAS_LABELS, hasFilters, isEmptySearch, type SearchParams, type SearchSort, toQuery, totalLabel } from "./search";
 
 export type SearchTab = "messages" | "files" | "canvases";
@@ -163,7 +163,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
           </IconButton>
         )}
       </header>
-      <div className="flex shrink-0 items-center gap-4 border-b border-line px-4">
+      <div role="tablist" aria-label="検索の対象" className={cn(UNDERLINE_TAB_ROW, "items-center gap-4 px-4")}>
         <TabButton active={tab === "messages"} onClick={() => onTabChange("messages")}>メッセージ</TabButton>
         <TabButton active={tab === "files"} onClick={() => onTabChange("files")}>ファイル</TabButton>
         {onOpenCanvas && <TabButton active={tab === "canvases"} onClick={() => onTabChange("canvases")}>キャンバス</TabButton>}
@@ -222,7 +222,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       role="tab"
       aria-selected={active}
       onClick={onClick}
-      className={cn("-mb-px border-b-2 px-1 py-2 text-sm font-medium transition-colors", active ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink")}
+      className={cn(UNDERLINE_TAB, "px-1 py-2", active ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink")}
     >
       {children}
     </button>

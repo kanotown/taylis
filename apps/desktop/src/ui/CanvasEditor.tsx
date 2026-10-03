@@ -364,7 +364,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
 
   return (
     <div className={cn("relative flex min-h-0 flex-col", className)} style={style}>
-      <div role="toolbar" aria-label="書式" className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line px-2 py-1 [scrollbar-width:none]">
+      <div role="toolbar" aria-label="書式" className="flex shrink-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden border-b border-line px-2 py-1 [scrollbar-width:none]">
         {tools.map((tool, index) =>
           tool === "gap" ? (
             <span key={index} aria-hidden className="mx-1 h-4 w-px shrink-0 bg-line" />

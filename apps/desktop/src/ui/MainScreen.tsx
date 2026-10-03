@@ -40,7 +40,8 @@ import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
 import { WorkspaceMenu } from "./WorkspaceRail";
 import { startSummary, SummaryDialog, SummaryMenuItems, summaryAvailable } from "./ai";
-import { isWeb, overlayTitleBar, TRAFFIC_LIGHTS_INSET } from "../platform/env";
+import { isWeb, TRAFFIC_LIGHTS_INSET } from "../platform/env";
+import { useReservesTrafficLights } from "../platform/windowState";
 import { EMPTY_SEARCH, pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
 import { HomeView } from "./HomeView";
 import { JumpView } from "./JumpView";
@@ -67,7 +68,7 @@ import { ActivityView } from "./ActivityView";
 import { DmListView } from "./DmListView";
 import { MobileTabBar } from "./MobileTabBar";
 import { landingTab, landOn, MOBILE_TABS, type MobileTab, tapTab } from "./mobileTabs";
-import { SettingsDialog } from "./Settings";
+import { SettingsDialog, type SettingsSection } from "./Settings";
 import { TimesFeedView } from "./TimesFeedView";
 import { YouView } from "./YouView";
 
@@ -134,8 +135,12 @@ function readUnreadOnly(): boolean {
 export function MainScreen({ controller }: { controller: AppController }) {
   const engine = controller.engine;
   const store = controller.store;
+  // macOS: room for the window buttons, except in full screen where macOS hides them (M93).
+  const trafficLights = useReservesTrafficLights();
   const [currentId, setCurrentId] = useState<string | null>(() => engine?.currentChannelId ?? engine?.preview?.channelId ?? [...store.channels.values()].find((channel) => channel.isMember)?.id ?? null);
   const [dialog, setDialog] = useState<Dialog>(null);
+  // M93: the section the settings open on (「プロフィールを編集」 from my profile card opens 「プロフィール」).
+  const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>(undefined);
   const [editingLink, setEditingLink] = useState<ChannelLinkOut | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   // "threads": the centre column lists followed threads (THREADS.md §5); the selected one opens on the right.
@@ -825,6 +830,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   };
   const goHistoryRef = useRef(goHistory);
   goHistoryRef.current = goHistory;
+  const selectTabRef = useRef(selectTab);
+  selectTabRef.current = selectTab;
   const historyLabels = historyShortcutLabels();
 
   const toggleUnreadOnly = () => {
@@ -918,10 +925,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
     // Profile cards (UserPopover) ask the screen to open a DM or the status editor.
     const onOpenChannel = (event: Event) => open(String((event as CustomEvent<string>).detail));
     const onOpenStatus = () => setDialog("status");
+    const onOpenProfile = () => {
+      if (state.current.compact) selectTabRef.current("you");
+      else {
+        setSettingsSection("profile");
+        setDialog("settings");
+      }
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("chikuwa:quick-switch", onSwitch);
     window.addEventListener("chikuwa:open-channel", onOpenChannel);
     window.addEventListener("chikuwa:open-status", onOpenStatus);
+    window.addEventListener("chikuwa:open-profile", onOpenProfile);
     // M67: the mouse's back / forward buttons in the desktop app (a browser makes them its own Back / Forward, which the
     // web build's history entries already follow).
     const onMouse = (event: MouseEvent) => {
@@ -938,6 +953,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       window.removeEventListener("chikuwa:quick-switch", onSwitch);
       window.removeEventListener("chikuwa:open-channel", onOpenChannel);
       window.removeEventListener("chikuwa:open-status", onOpenStatus);
+      window.removeEventListener("chikuwa:open-profile", onOpenProfile);
     };
   }, [controller]);
 
@@ -1217,7 +1233,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 </Menu>
               )}
               {canvasTab && !compact && fit === "full" && (
-                <div role="tablist" aria-label="会話の表示" className="ml-1 flex min-w-[6rem] shrink-[4] overflow-x-auto rounded-lg bg-panel-2 p-0.5 text-xs font-medium [scrollbar-width:none]">
+                <div role="tablist" aria-label="会話の表示" className="ml-1 flex min-w-[6rem] shrink-[4] overflow-x-auto overflow-y-hidden rounded-lg bg-panel-2 p-0.5 text-xs font-medium [scrollbar-width:none]">
                   {headerTabs.map(([value, label]) => (
                     <button
                       key={value}
@@ -1470,7 +1486,16 @@ export function MainScreen({ controller }: { controller: AppController }) {
         />
       )}
       {dialog === "topic" && current && <TopicDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
-      {dialog === "settings" && <SettingsDialog controller={controller} onClose={() => setDialog(null)} />}
+      {dialog === "settings" && (
+        <SettingsDialog
+          controller={controller}
+          initialSection={settingsSection}
+          onClose={() => {
+            setDialog(null);
+            setSettingsSection(undefined);
+          }}
+        />
+      )}
       {dialog === "status" && <StatusDialog controller={controller} onClose={() => setDialog(null)} />}
       {dialog === "admin" && <AdminDialog controller={controller} onClose={() => setDialog(null)} />}
       {dialog === "browse" && <ChannelBrowserDialog controller={controller} onClose={() => setDialog(null)} onOpen={open} onCreate={() => setDialog("channel")} />}
@@ -1622,7 +1647,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       <div
         data-tauri-drag-region
         className="flex h-10 min-w-0 items-center bg-sidebar px-2"
-        style={overlayTitleBar() && !controller.showsRail ? { paddingLeft: TRAFFIC_LIGHTS_INSET } : undefined}
+        style={trafficLights && !controller.showsRail ? { paddingLeft: TRAFFIC_LIGHTS_INSET } : undefined}
       >
         <WorkspaceMenu controller={controller} />
       </div>

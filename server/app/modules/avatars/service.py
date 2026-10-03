@@ -25,7 +25,7 @@ SIDE = 256
 READ_CHUNK = 64 * 1024
 
 
-def _square_png(data: bytes) -> bytes:
+def square_png(data: bytes) -> bytes:
     """Centre-cropped to a square, 256px, re-encoded as PNG (so no metadata survives)."""
     with open_checked(data) as image:  # the pixel count is checked before anything decodes
         upright = ImageOps.exif_transpose(image) or image
@@ -41,7 +41,9 @@ def _square_png(data: bytes) -> bytes:
     return out.getvalue()
 
 
-async def _read(file: UploadFile, limit: int) -> bytes:
+async def read_upload(file: UploadFile, limit: int, prefix: str = "avatar") -> bytes:
+    """The whole upload, refused past ``limit`` (``<prefix>_too_large``) or when empty
+    (``<prefix>_empty``). Also used for the workspace icon (M93)."""
     chunks: list[bytes] = []
     size = 0
     while True:
@@ -50,22 +52,22 @@ async def _read(file: UploadFile, limit: int) -> bytes:
             break
         size += len(chunk)
         if size > limit:
-            raise AppError(413, "avatar_too_large", f"Pictures are limited to {limit} bytes")
+            raise AppError(413, f"{prefix}_too_large", f"Pictures are limited to {limit} bytes")
         chunks.append(chunk)
     if size == 0:
-        raise bad_request("avatar_empty", "The file is empty")
+        raise bad_request(f"{prefix}_empty", "The file is empty")
     return b"".join(chunks)
 
 
 async def upload(
     db: AsyncSession, actor: User, file: UploadFile, settings: Settings, blobs: BlobStore
 ) -> User:
-    data = await _read(file, settings.avatar_max_bytes)
+    data = await read_upload(file, settings.avatar_max_bytes)
     kind = filetype.guess(data[:8192])
     if kind is None or kind.mime not in IMAGE_TYPES:
         raise bad_request("avatar_not_image", "Use a PNG, GIF, JPEG or WebP image")
     try:
-        png = await run_in_threadpool(_square_png, data)
+        png = await run_in_threadpool(square_png, data)
     except ImageTooLarge as exc:
         raise AppError(422, "image_too_large", "The image has too many pixels") from exc
     except Exception as exc:
@@ -75,7 +77,7 @@ async def upload(
     previous = actor.avatar_key
     user = await users.set_avatar(db, actor.id, key)
     if previous:
-        await _forget(blobs, previous)
+        await forget(blobs, previous)
     return user
 
 
@@ -83,11 +85,11 @@ async def remove(db: AsyncSession, actor: User, blobs: BlobStore) -> User:
     previous = actor.avatar_key
     user = await users.set_avatar(db, actor.id, None)
     if previous:
-        await _forget(blobs, previous)
+        await forget(blobs, previous)
     return user
 
 
-async def _forget(blobs: BlobStore, key: str) -> None:
+async def forget(blobs: BlobStore, key: str) -> None:
     try:
         await blobs.delete(key)
     except Exception:  # the row already moved on; a stray object is harmless

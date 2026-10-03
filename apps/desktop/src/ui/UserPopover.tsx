@@ -1,4 +1,4 @@
-import { MessageSquare, Pencil } from "lucide-react";
+import { MessageSquare, Pencil, UserRoundPen } from "lucide-react";
 import { Fragment, type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -14,7 +14,8 @@ import { Button, cn, PopoverContent, PopoverRoot, PopoverTrigger } from "./primi
 /**
  * The profile card (M11d) behind an avatar or a name: display name, @username, title, custom status,
  * presence, and a way to message the person. Opening a DM / the status editor goes through window
- * events so any screen can host the trigger.
+ * events so any screen can host the trigger. My own card (M93: also behind my picture in the sidebar header) offers
+ * 「ステータスを設定」 and 「プロフィールを編集」 instead.
  */
 export function UserPopover({ controller, userId, children, className }: { controller: AppController; userId: string; children: ReactNode; className?: string }) {
   const [open, setOpen] = useState(false);
@@ -36,7 +37,7 @@ export function UserPopover({ controller, userId, children, className }: { contr
   return (
     <PopoverRoot open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" className={cn("rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/40", className)} aria-label={`${user?.display_name ?? "?"} のプロフィール`}>
+        <button type="button" className={cn("rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/40", className)} aria-label={me ? `自分のプロフィール (${user?.display_name ?? ""})` : `${user?.display_name ?? "?"} のプロフィール`}>
           {children}
         </button>
       </PopoverTrigger>
@@ -70,9 +71,14 @@ export function UserPopover({ controller, userId, children, className }: { contr
         {user?.deactivated_at && <div className="border-b border-line px-4 py-2 text-xs text-muted">無効化されたアカウント</div>}
         <div className="flex gap-2 p-3">
           {me ? (
-            <Button size="sm" variant="secondary" className="flex-1" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("chikuwa:open-status")); }}>
-              <Pencil size={14} /> ステータスを設定
-            </Button>
+            <>
+              <Button size="sm" variant="secondary" className="flex-1" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("chikuwa:open-status")); }}>
+                <Pencil size={14} /> ステータスを設定
+              </Button>
+              <Button size="sm" variant="secondary" className="flex-1" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("chikuwa:open-profile")); }}>
+                <UserRoundPen size={14} /> プロフィールを編集
+              </Button>
+            </>
           ) : (
             <Button size="sm" className="flex-1" onClick={() => void openDm()} disabled={!!user?.deactivated_at}>
               <MessageSquare size={14} /> メッセージを送る

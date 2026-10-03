@@ -696,7 +696,7 @@ private fun ProfileEditScreen(controller: AppController, version: Int) {
             }
         }
         OutlinedTextField(displayName, { displayName = it.take(80); saved = false }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(title, { title = it.take(80); saved = false }, label = { Text("肩書 (任意)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        OutlinedTextField(title, { title = it.take(80); saved = false }, label = { Text("肩書 (任意)") }, placeholder = { Text("例: 教授 / 助教 / D1 / M2 / B4") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
         if (line != null) {
             OutlinedTextField(
                 topic, { topic = it.take(200); saved = false }, label = { Text("研究テーマ (任意)") }, placeholder = { Text("例: 拡散モデルによる音声合成") },

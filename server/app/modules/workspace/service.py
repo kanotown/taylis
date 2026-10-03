@@ -5,15 +5,22 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
+import filetype
+from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
-from app.core.errors import AppError
+from app.core.errors import AppError, bad_request, not_found
 from app.core.ids import uuid7
+from app.core.settings import Settings
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
+from app.modules.attachments.blobstore import BlobStore
+from app.modules.attachments.images import ImageTooLarge
 from app.modules.audit import service as audit
+from app.modules.avatars import service as avatars
 from app.modules.channels.models import Channel
 from app.modules.workspace.events import WORKSPACE_SETTINGS_UPDATED, WorkspaceSettingsUpdatedData
 from app.modules.workspace.models import WorkspaceIdentity, WorkspaceSettings
@@ -64,6 +71,7 @@ async def settings(db: AsyncSession) -> WorkspaceSettingsOut:
     return WorkspaceSettingsOut(
         show_membership_messages=row.show_membership_messages,
         preview_before_join=row.preview_before_join,
+        icon_version=icon_version_of(row.icon_key),
     )
 
 
@@ -101,6 +109,7 @@ async def admin_settings(
     return AdminWorkspaceSettingsOut(
         show_membership_messages=row.show_membership_messages,
         preview_before_join=row.preview_before_join,
+        icon_version=icon_version_of(row.icon_key),
         updated_at=row.updated_at,
         updated_by=row.updated_by,
         default_channel_ids=[c.id for c in usable],
@@ -226,3 +235,94 @@ async def drop_default_channel_in_tx(
         },
     )
     return True
+
+
+# --- icon (M93, WORKSPACES.md §3.4) -------------------------------------------------------------
+
+ICON_PREFIX = "workspace-icon/"
+# PNG, JPEG and WebP (not GIF: an animated logo on the rail would be noise).
+ICON_TYPES = {"image/png", "image/jpeg", "image/webp"}
+
+
+def icon_version_of(key: str | None) -> str | None:
+    """The key's last part (a fresh uuid7 per upload) is the version clients cache by."""
+    return key.rsplit("/", 1)[-1] if key else None
+
+
+async def icon_version(db: AsyncSession) -> str | None:
+    row = await _row(db)
+    return None if row is None else icon_version_of(row.icon_key)
+
+
+async def icon_key(db: AsyncSession) -> str:
+    """GET /server/icon: the object to stream, or 404 workspace_icon_not_found."""
+    row = await _row(db)
+    if row is None or not row.icon_key:
+        raise not_found("workspace_icon_not_found", "This workspace has no icon")
+    return row.icon_key
+
+
+async def _set_icon(db: AsyncSession, actor_id: uuid.UUID, key: str | None) -> str | None:
+    """Store the new key (audited and announced like any setting); returns the replaced key."""
+    await db.execute(
+        insert(WorkspaceSettings)
+        .values(singleton=True)
+        .on_conflict_do_nothing(index_elements=["singleton"])
+    )
+    row = await _row(db, for_update=True)
+    assert row is not None
+    previous = row.icon_key
+    if previous == key:
+        return None
+    row.icon_key = key
+    row.updated_at = utcnow()
+    row.updated_by = actor_id
+    await db.flush()
+    await _announce_change(
+        db,
+        actor_id,
+        {"icon": {"from": icon_version_of(previous), "to": icon_version_of(key)}},
+    )
+    await db.commit()
+    return previous
+
+
+async def upload_icon(
+    db: AsyncSession,
+    actor_id: uuid.UUID,
+    file: UploadFile,
+    settings: Settings,
+    blobs: BlobStore,
+    legacy_default_channels: Sequence[str] = (),
+) -> AdminWorkspaceSettingsOut:
+    """POST /admin/workspace-settings/icon: a PNG / JPEG / WebP, centre-cropped square and
+    resized to 256px PNG (as a profile picture, so no metadata survives)."""
+    data = await avatars.read_upload(file, settings.avatar_max_bytes, prefix="workspace_icon")
+    kind = filetype.guess(data[:8192])
+    if kind is None or kind.mime not in ICON_TYPES:
+        raise bad_request("workspace_icon_not_image", "Use a PNG, JPEG or WebP image")
+    try:
+        png = await run_in_threadpool(avatars.square_png, data)
+    except ImageTooLarge as exc:
+        raise AppError(422, "image_too_large", "The image has too many pixels") from exc
+    except Exception as exc:
+        raise bad_request("workspace_icon_not_image", "The image could not be read") from exc
+    key = f"{ICON_PREFIX}{uuid7()}"
+    await blobs.put(key, png, "image/png")
+    previous = await _set_icon(db, actor_id, key)
+    if previous:
+        await avatars.forget(blobs, previous)
+    return await admin_settings(db, legacy_default_channels)
+
+
+async def remove_icon(
+    db: AsyncSession,
+    actor_id: uuid.UUID,
+    blobs: BlobStore,
+    legacy_default_channels: Sequence[str] = (),
+) -> AdminWorkspaceSettingsOut:
+    """DELETE /admin/workspace-settings/icon: back to the letter tile (idempotent)."""
+    previous = await _set_icon(db, actor_id, None)
+    if previous:
+        await avatars.forget(blobs, previous)
+    return await admin_settings(db, legacy_default_channels)

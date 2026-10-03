@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Uuid, func, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Text, Uuid, func, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,6 +41,10 @@ class WorkspaceSettings(Base):
     # 「既定のチャンネル」 (M90, MEMBERSHIP.md §6): public channels every new non-guest account
     # joins, in order. None = never set (SSO_DEFAULT_CHANNELS still applies to Google sign-in).
     default_channel_ids: Mapped[list[uuid.UUID] | None] = mapped_column(ARRAY(Uuid))
+    # M93 (WORKSPACES.md §3.4): the workspace's icon, a 256px square PNG in the object store
+    # (`workspace-icon/<uuid7>`). The key's last part is the version clients cache by. None: the
+    # clients draw the letter tile.
+    icon_key: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

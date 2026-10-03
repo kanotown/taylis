@@ -561,7 +561,7 @@ struct ProfileEditView: View {
                             .onChange(of: displayName) { _, _ in saved = false }
                     }
                     LabeledContent("肩書") {
-                        TextField("任意", text: $title).multilineTextAlignment(.trailing)
+                        TextField("例: 教授 / 助教 / D1 / M2 / B4", text: $title).multilineTextAlignment(.trailing)
                             .onChange(of: title) { _, _ in saved = false }
                     }
                     if rosterLine != nil {
