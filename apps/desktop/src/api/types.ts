@@ -28,6 +28,10 @@ export interface ParentThread {
 export type HistoryOut = components["schemas"]["HistoryOut"];
 export type DeltaOut = components["schemas"]["DeltaOut"];
 export type BootstrapOut = components["schemas"]["BootstrapOut"];
+/** M88 (docs/MEMBERSHIP.md §3): the workspace switches every client follows; the admin form adds who changed them. */
+export type WorkspaceSettingsOut = components["schemas"]["WorkspaceSettingsOut"];
+export type AdminWorkspaceSettingsOut = components["schemas"]["AdminWorkspaceSettingsOut"];
+export type WorkspaceSettingsUpdate = components["schemas"]["WorkspaceSettingsUpdate"];
 export type MemberOut = components["schemas"]["MemberOut"];
 /** L4 (M31): owner / member, set by an owner or an admin. */
 export type MemberRole = MemberOut["role"];

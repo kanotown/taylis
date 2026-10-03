@@ -17,7 +17,7 @@ import { ChannelIntro, MessageRow } from "./Timeline";
  * Deliberately apart from Timeline, which is about the member's read position (anchoring, the unread divider and
  * banner, read marks): none of that exists here. Rows are read-only; older pages load on scrolling up.
  */
-export function PreviewTimeline({ controller, channel, onOpenThread }: { controller: AppController; channel: ChannelState; onOpenThread?: (id: string) => void }) {
+export function PreviewTimeline({ controller, channel, onOpenThread, onJoin }: { controller: AppController; channel: ChannelState; onOpenThread?: (id: string) => void; onJoin?: (channelId: string) => Promise<unknown> }) {
   const engine = controller.engine;
   const preview = previewOf(controller, channel.id);
   // A permalink into the channel (M12b) shows the rows around the message, as in a channel of mine.
@@ -95,12 +95,7 @@ export function PreviewTimeline({ controller, channel, onOpenThread }: { control
           </div>
         )}
         {!focus && preview?.loaded && !preview.hasOlder && messages.length > 0 && <ChannelIntro controller={controller} channel={channel} />}
-        {preview?.refused && !focus && (
-          <div className="flex flex-col items-center gap-2 px-4 py-16 text-center text-sm text-muted">
-            <Eye size={22} />
-            参加するとメッセージを読めます
-          </div>
-        )}
+        {preview?.refused && !focus && <JoinToReadPanel controller={controller} channel={channel} onJoin={onJoin} />}
         {preview && !preview.loaded && !preview.loading && !preview.refused && !focus && (
           // Offline, the engine loads it once connected; online, the first page failed.
           <div className="flex flex-col items-center gap-2 px-4 py-16 text-center text-sm text-muted">
@@ -140,6 +135,42 @@ export function PreviewTimeline({ controller, channel, onOpenThread }: { control
       </div>
     </div>
   );
+}
+
+/**
+ * In place of the rows when the server will not show them before joining (M88: 「参加前にチャンネルの中を見られる」 off, or a
+ * server before M27): what the browser shows of the channel (purpose, topic, members) and 参加. The bar below steps aside
+ * (previewRefused) so there is one button.
+ */
+function JoinToReadPanel({ controller, channel, onJoin }: { controller: AppController; channel: ChannelState; onJoin?: (channelId: string) => Promise<unknown> }) {
+  const [busy, setBusy] = useState(false);
+  const about = channel.purpose || channel.topic;
+  return (
+    <div data-testid="join-to-read" className="flex flex-col items-center gap-3 px-4 py-16 text-center text-sm text-muted">
+      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+        <Eye size={22} />
+      </span>
+      <strong className="text-base text-ink">参加するとメッセージを読めます</strong>
+      {about && <p className="max-w-md whitespace-pre-wrap break-words">{about}</p>}
+      {!!channel.member_count && <span className="text-xs">メンバー {channel.member_count} 人</span>}
+      {onJoin && previewCanJoin(channel) && (
+        <Button
+          disabled={busy || controller.engine?.status !== "online"}
+          onClick={() => {
+            setBusy(true);
+            void onJoin(channel.id).finally(() => setBusy(false));
+          }}
+        >
+          {busy ? "参加しています…" : "参加"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** Whether the open preview of this channel shows the join panel instead of rows (JoinToReadPanel has the button then). */
+export function previewRefused(controller: AppController, channelId: string): boolean {
+  return previewOf(controller, channelId)?.refused === true;
 }
 
 /** What the preview's bar says in place of the button when the channel is archived (joining it is refused: 409 channel_archived). */

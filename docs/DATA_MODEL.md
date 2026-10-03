@@ -1223,7 +1223,7 @@ PUSH_NOTIFICATIONS.md §4)。M35 の移行で、種別の旧既定と同じ `lev
 CREATE TABLE messages (
   id                  uuid PRIMARY KEY,                    -- UUIDv7 (サーバ生成)
   channel_id          uuid NOT NULL REFERENCES channels(id),
-  sender_id           uuid REFERENCES users(id),           -- system メッセージは NULL
+  sender_id           uuid REFERENCES users(id),           -- system メッセージ (M88) は操作した人
   parent_id           uuid REFERENCES messages(id),        -- スレッド返信。1 段のみ (返信の返信は不可)
   also_in_channel     boolean NOT NULL DEFAULT false,      -- M15c: 返信をチャンネルのタイムラインにも出す。parent_id 必須 (CHECK)
   seq                 bigint NOT NULL,                     -- 作成時に採番 (チャンネル内シーケンス)
@@ -1242,6 +1242,7 @@ CREATE TABLE messages (
   deleted_at          timestamptz,                         -- トゥームストーン
   pinned_at           timestamptz,                         -- M11c: ピン留め (メンバーなら誰でも)。外すと NULL
   pinned_by           uuid REFERENCES users(id),
+  system_event        jsonb,                               -- M88: type = 'system' の中身 {kind, actor_id, user_ids} (0071)。人の投稿は NULL
   UNIQUE (channel_id, seq)
 );
 CREATE UNIQUE INDEX messages_client_msg_id_uniq ON messages (sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL;
@@ -1573,6 +1574,21 @@ CREATE TABLE workspace_identity (
 
 `GET /api/v1/server` とプッシュのペイロードで `workspace_id` として返す。クライアントはこの値で
 通知をワークスペースに振り分ける。データなのでバックアップ / 復元で保たれる。行が無ければ起動時に作る。
+
+### workspace_settings (ワークスペースの設定、M88、docs/MEMBERSHIP.md §3)
+
+```sql
+CREATE TABLE workspace_settings (
+  singleton                 boolean PRIMARY KEY DEFAULT true CHECK (singleton),  -- 常に 1 行 (0071 で作る)
+  show_membership_messages  boolean NOT NULL DEFAULT true,   -- 「参加・退出の表示」
+  preview_before_join       boolean NOT NULL DEFAULT true,   -- 「参加前にチャンネルの中を見られる」(M27 のプレビュー)
+  updated_at                timestamptz NOT NULL DEFAULT now(),
+  updated_by                uuid REFERENCES users(id) ON DELETE SET NULL
+);
+```
+
+行が無ければ既定値 (両方 true) として読む (古いバックアップの復元)。`PATCH /admin/workspace-settings` が無ければ作る。
+変更は監査ログと `workspace.settings_updated` イベント。bootstrap の `workspace_settings` で全員に返す。
 
 ### import_refs (移行元の対応、M18・M87)
 

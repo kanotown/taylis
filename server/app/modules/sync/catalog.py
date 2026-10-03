@@ -27,6 +27,7 @@ from app.modules.tasks import events as task_events
 from app.modules.templates import events as template_events
 from app.modules.threads import events as thread_events
 from app.modules.users import events as user_events
+from app.modules.workspace import events as workspace_events
 from app.realtime.protocol import (
     CLOSE_AUTH_FAILED,
     CLOSE_RECONNECT,
@@ -124,6 +125,11 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
         False,
     ),
     ai_events.AI_RUN_UPDATED: (ai_events.AiRunUpdatedData, "user (the requester)", False),
+    workspace_events.WORKSPACE_SETTINGS_UPDATED: (
+        workspace_events.WorkspaceSettingsUpdatedData,
+        "all",
+        False,
+    ),
 }
 
 

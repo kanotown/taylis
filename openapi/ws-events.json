@@ -2553,6 +2553,17 @@
                 "title": "Seq",
                 "type": "integer"
               },
+              "system_event": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/SystemEventOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "tasks": {
                 "default": [],
                 "items": {
@@ -3084,6 +3095,41 @@
               }
             },
             "title": "SlotAnswersOut",
+            "type": "object"
+          },
+          "SystemEventOut": {
+            "description": "M88 (docs/MEMBERSHIP.md §1): what a `type = \"system\"` message says. Clients write the line\nfrom it with the names in their directory (`body` is the fallback, names as they were):\nmember_joined 「A が参加しました」, member_left 「A が退出しました」, members_added\n「A が B、C を追加しました」, member_removed 「A が B を外しました」 (A = actor_id, B, C =\nuser_ids; for joined / left user_ids is [actor_id]).",
+            "properties": {
+              "actor_id": {
+                "format": "uuid",
+                "title": "Actor Id",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "member_joined",
+                  "member_left",
+                  "members_added",
+                  "member_removed"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "User Ids",
+                "type": "array"
+              }
+            },
+            "required": [
+              "kind",
+              "actor_id",
+              "user_ids"
+            ],
+            "title": "SystemEventOut",
             "type": "object"
           }
         },
@@ -3482,6 +3528,17 @@
                 "title": "Seq",
                 "type": "integer"
               },
+              "system_event": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/SystemEventOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "tasks": {
                 "default": [],
                 "items": {
@@ -4013,6 +4070,41 @@
               }
             },
             "title": "SlotAnswersOut",
+            "type": "object"
+          },
+          "SystemEventOut": {
+            "description": "M88 (docs/MEMBERSHIP.md §1): what a `type = \"system\"` message says. Clients write the line\nfrom it with the names in their directory (`body` is the fallback, names as they were):\nmember_joined 「A が参加しました」, member_left 「A が退出しました」, members_added\n「A が B、C を追加しました」, member_removed 「A が B を外しました」 (A = actor_id, B, C =\nuser_ids; for joined / left user_ids is [actor_id]).",
+            "properties": {
+              "actor_id": {
+                "format": "uuid",
+                "title": "Actor Id",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "member_joined",
+                  "member_left",
+                  "members_added",
+                  "member_removed"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "User Ids",
+                "type": "array"
+              }
+            },
+            "required": [
+              "kind",
+              "actor_id",
+              "user_ids"
+            ],
+            "title": "SystemEventOut",
             "type": "object"
           }
         },
@@ -4412,6 +4504,17 @@
                 "title": "Seq",
                 "type": "integer"
               },
+              "system_event": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/SystemEventOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "tasks": {
                 "default": [],
                 "items": {
@@ -4887,6 +4990,41 @@
               }
             },
             "title": "SlotAnswersOut",
+            "type": "object"
+          },
+          "SystemEventOut": {
+            "description": "M88 (docs/MEMBERSHIP.md §1): what a `type = \"system\"` message says. Clients write the line\nfrom it with the names in their directory (`body` is the fallback, names as they were):\nmember_joined 「A が参加しました」, member_left 「A が退出しました」, members_added\n「A が B、C を追加しました」, member_removed 「A が B を外しました」 (A = actor_id, B, C =\nuser_ids; for joined / left user_ids is [actor_id]).",
+            "properties": {
+              "actor_id": {
+                "format": "uuid",
+                "title": "Actor Id",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "member_joined",
+                  "member_left",
+                  "members_added",
+                  "member_removed"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "user_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "User Ids",
+                "type": "array"
+              }
+            },
+            "required": [
+              "kind",
+              "actor_id",
+              "user_ids"
+            ],
+            "title": "SystemEventOut",
             "type": "object"
           }
         },
@@ -7013,6 +7151,41 @@
           "user"
         ],
         "title": "UserEventData",
+        "type": "object"
+      }
+    },
+    "workspace.settings_updated": {
+      "audience": "all",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "WorkspaceSettingsOut": {
+            "description": "M88 (docs/MEMBERSHIP.md §3): the switches every client needs (bootstrap, and the event\nworkspace.settings_updated).",
+            "properties": {
+              "preview_before_join": {
+                "default": true,
+                "title": "Preview Before Join",
+                "type": "boolean"
+              },
+              "show_membership_messages": {
+                "default": true,
+                "title": "Show Membership Messages",
+                "type": "boolean"
+              }
+            },
+            "title": "WorkspaceSettingsOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "settings": {
+            "$ref": "#/$defs/WorkspaceSettingsOut"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "title": "WorkspaceSettingsUpdatedData",
         "type": "object"
       }
     }

@@ -91,6 +91,7 @@
 - `activity` (M39) は `{ read_at, unread_count, mention_unread }`: アクティビティ (メンション、自分の投稿へのリアクション、フォロー中のスレッドへの他の人の返信) のうち `read_at` より新しいものの数 (99 まで)。一覧は `GET /activity?filter=all|mentions|reactions|threads&cursor=`、既読は `PUT /activity/read {read_at}` (進むだけ)。再接続のたびに bootstrap の値で直し、接続中は `reaction.added`・自分へのメンションや フォロー中のスレッドの `message.created`・`activity.read` で `GET /activity/summary` を取り直す。
 - `bookmarks` は自分が保存したメッセージの id (新しい順)。本文つきの一覧は `GET /bookmarks`。変化は `bookmark.updated` で届く。
 - `favorites` は自分がお気に入りにしたチャンネルの id (`channels` に含まれるものだけ、M12a)。変化は `favorite.updated` で届く。
+- `workspace_settings` (M88) は `{ show_membership_messages, preview_before_join }` (docs/MEMBERSHIP.md §3)。M88 より前のサーバは送らない (両方 true とみなす)。変化は `workspace.settings_updated` で届く。
 
 ### 4.2 `GET /api/v1/channels/{id}/messages?before_seq=&limit=50`
 
@@ -262,6 +263,10 @@
 | `channel.member_updated` | channel | — | `{ channel_id, user_id, role }` (L4、M31)。オーナーの追加・解除 (`PATCH /channels/{id}/members/{user_id}`)。自分なら `membership.role` を変え、開いているメンバー一覧を読み直す |
 | `user.created` / `user.updated` / `user.deactivated` | all | — | `{ user }` (UserPublic)。本人だけの設定 (UserMe の `notify_keywords`・`notification_default`・`notify_reactions`・`quick_reactions` など) は載らない。`PATCH /users/me` はどの項目でも `updated_at` を進めて `user.updated` を出すので、**自分についての `user.updated` の `updated_at` が手元の `me` より新しければ、別の端末が設定を変えた**: クライアントは `GET /users/me` を読み直して `me` を置き換える (M50。読み直さない端末も次の bootstrap の `me` で揃う) |
 | `session.revoked` | session | — | `{ reason }` |
+| `workspace.settings_updated` | all | — | `{ settings: { show_membership_messages, preview_before_join } }` (M88、docs/MEMBERSHIP.md §3)。管理者がワークスペースの設定を変えた。手元の値を置き換え、開いているプレビューを追従させる (オフなら行を捨てて「参加するとメッセージを読めます」、オンなら読み込む) |
+
+`message.created` の `message.type` が `"system"` の行 (M88 の参加・退出の一言。`system_event` に `{kind, actor_id, user_ids}`) も
+seq を 1 つ取り、ふつうの行と同じに差分・マージする。未読・通知・メンションには数えない (§10.1 12.、docs/MEMBERSHIP.md §1)。
 
 `message` オブジェクトの形は REST と同一 (`openapi/openapi.json` の `MessageOut` スキーマ)。フレームと各イベントの
 `data` の JSON Schema は `openapi/ws-events.json` に生成される。
@@ -393,6 +398,9 @@ else:
   カーソル・既読位置・未読は持たず、既読も送らない。ローカルの永続キャッシュ (SQLite / スナップショット) にも書かない。
   閉じるか別の会話を開いたら捨てる。
 - 行のタップでスレッドを開けるが返信欄は無い。リアクション・投票・確認・長押しの操作は出さない (サーバも 403)。
+- M88: 管理者が「参加前にチャンネルの中を見られる」(`workspace_settings.preview_before_join`) を切ると、サーバは未参加の
+  公開チャンネルの読み取りを `403 preview_disabled` で断る。クライアントは設定がオフなら履歴を取りに行かず、見出しと
+  「参加するとメッセージを読めます」(説明・人数・「参加」) を出す。403 が返った時も同じ表示 (docs/MEMBERSHIP.md §3〜§5)。
 
 ### 7.7 保持件数の上限 (M22)
 

@@ -74,6 +74,8 @@ class PushPlanner:
         ):
             return
         message = event.payload.get("message") or {}
+        if message.get("type", "user") != "user":
+            return  # M88: a join / leave line is never pushed (docs/MEMBERSHIP.md §1)
         sender_id = uuid.UUID(str(message["sender_id"]))
         recipients = [uid for uid in audience.ids if uid != sender_id]
         if not recipients:

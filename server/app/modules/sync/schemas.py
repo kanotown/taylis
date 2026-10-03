@@ -14,6 +14,7 @@ from app.modules.sidebar.schemas import SidebarSectionOut
 from app.modules.templates.schemas import TemplateOut
 from app.modules.threads.schemas import ThreadSummary
 from app.modules.users.schemas import UserMe, UserPublic
+from app.modules.workspace.schemas import WorkspaceSettingsOut
 
 
 class Limits(BaseModel):
@@ -56,6 +57,9 @@ class BootstrapOut(BaseModel):
     # M39: the activity tab's badge (GET /activity/summary); activity.read and reaction.added move
     # it.
     activity: ActivitySummaryOut | None = None
+    # M88: the workspace settings (docs/MEMBERSHIP.md §3); changes arrive as
+    # workspace.settings_updated.
+    workspace_settings: WorkspaceSettingsOut = WorkspaceSettingsOut()
 
 
 class UnreadSummaryOut(BaseModel):

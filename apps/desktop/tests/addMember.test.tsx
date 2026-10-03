@@ -16,9 +16,9 @@ function fixture() {
   store.setMe({ ...me, email: null, must_change_password: false, notify_keywords: [], presence_hidden: false, notification_default: "mentions", notify_reactions: false, notify_tasks: true, has_password: true });
   [me, member, other].forEach((user) => store.upsertUser(user));
   const members = vi.fn();
-  const addMember = vi.fn(async () => {});
-  const controller = { store, api: { members, addMember }, describe: () => "ネットワークに接続できません" } as unknown as AppController;
-  return { controller, members, addMember, member, other };
+  const addMembers = vi.fn(async () => []);
+  const controller = { store, api: { members, addMembers }, describe: () => "ネットワークに接続できません" } as unknown as AppController;
+  return { controller, members, addMembers, member, other };
 }
 
 it("does not offer users after a failed load and retries before allowing additions", async () => {
@@ -33,7 +33,8 @@ it("does not offer users after a failed load and retries before allowing additio
   expect(screen.queryByText(f.member.display_name)).toBeNull();
   fireEvent.click(other);
   fireEvent.click(screen.getByRole("button", { name: "追加" }));
-  expect(f.addMember).toHaveBeenCalledWith("c", f.other.id);
+  // M88: everyone chosen in one request (one 「追加しました」 line).
+  expect(f.addMembers).toHaveBeenCalledWith("c", [f.other.id]);
 });
 
 it("ignores an old channel response after switching channels", async () => {

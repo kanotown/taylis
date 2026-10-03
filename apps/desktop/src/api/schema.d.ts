@@ -422,6 +422,28 @@ export interface paths {
         patch: operations["update_webhook_api_v1_admin_webhooks__webhook_id__patch"];
         trace?: never;
     };
+    "/api/v1/admin/workspace-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workspace Settings
+         * @description M88 (docs/MEMBERSHIP.md §3): 「参加・退出の表示」 and
+         *     「参加前にチャンネルの中を見られる」.
+         */
+        get: operations["get_workspace_settings_api_v1_admin_workspace_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Workspace Settings */
+        patch: operations["update_workspace_settings_api_v1_admin_workspace_settings_patch"];
+        trace?: never;
+    };
     "/api/v1/ai/ask": {
         parameters: {
             query?: never;
@@ -1482,6 +1504,27 @@ export interface paths {
         put?: never;
         /** Add Member */
         post: operations["add_member_api_v1_channels__channel_id__members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/channels/{channel_id}/members/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Members
+         * @description M88: add several people at once; the channel gets one 「追加しました」 line for them all.
+         *     Those already in are answered as they are.
+         */
+        post: operations["add_members_api_v1_channels__channel_id__members_batch_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3385,6 +3428,26 @@ export interface components {
             /** Role */
             role?: ("admin" | "member" | "guest") | null;
         };
+        /**
+         * AdminWorkspaceSettingsOut
+         * @description GET / PATCH /admin/workspace-settings: the settings and who changed them last.
+         */
+        AdminWorkspaceSettingsOut: {
+            /**
+             * Preview Before Join
+             * @default true
+             */
+            preview_before_join: boolean;
+            /**
+             * Show Membership Messages
+             * @default true
+             */
+            show_membership_messages: boolean;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Updated By */
+            updated_by?: string | null;
+        };
         /** AiAgentCreate */
         AiAgentCreate: {
             /**
@@ -3864,6 +3927,13 @@ export interface components {
             threads: components["schemas"]["ThreadSummary"];
             /** Users */
             users: components["schemas"]["UserPublic"][];
+            /**
+             * @default {
+             *       "preview_before_join": true,
+             *       "show_membership_messages": true
+             *     }
+             */
+            workspace_settings: components["schemas"]["WorkspaceSettingsOut"];
         };
         /** CalendarAlarmIn */
         CalendarAlarmIn: {
@@ -5162,6 +5232,15 @@ export interface components {
              */
             role: "owner" | "member";
         };
+        /**
+         * MembersAdd
+         * @description M88: POST /channels/{id}/members/batch — several people in one action (one line
+         *     「A が B、C を追加しました」 instead of one per person).
+         */
+        MembersAdd: {
+            /** User Ids */
+            user_ids: string[];
+        };
         /** MembershipOut */
         MembershipOut: {
             /**
@@ -5306,6 +5385,7 @@ export interface components {
             sender_id: string;
             /** Seq */
             seq: number;
+            system_event?: components["schemas"]["SystemEventOut"] | null;
             /**
              * Tasks
              * @default []
@@ -6364,6 +6444,28 @@ export interface components {
             title?: string | null;
         };
         /**
+         * SystemEventOut
+         * @description M88 (docs/MEMBERSHIP.md §1): what a `type = "system"` message says. Clients write the line
+         *     from it with the names in their directory (`body` is the fallback, names as they were):
+         *     member_joined 「A が参加しました」, member_left 「A が退出しました」, members_added
+         *     「A が B、C を追加しました」, member_removed 「A が B を外しました」 (A = actor_id, B, C =
+         *     user_ids; for joined / left user_ids is [actor_id]).
+         */
+        SystemEventOut: {
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "member_joined" | "member_left" | "members_added" | "member_removed";
+            /** User Ids */
+            user_ids: string[];
+        };
+        /**
          * TaskCanvasSourceOut
          * @description M72 (CANVAS.md §18.3): the canvas a task was made from, and its checklist item's text as it
          *     was then (one line; it does not follow later edits). canvas_id is null once the canvas was
@@ -7074,6 +7176,33 @@ export interface components {
             time: string;
             /** Weekdays */
             weekdays: number[];
+        };
+        /**
+         * WorkspaceSettingsOut
+         * @description M88 (docs/MEMBERSHIP.md §3): the switches every client needs (bootstrap, and the event
+         *     workspace.settings_updated).
+         */
+        WorkspaceSettingsOut: {
+            /**
+             * Preview Before Join
+             * @default true
+             */
+            preview_before_join: boolean;
+            /**
+             * Show Membership Messages
+             * @default true
+             */
+            show_membership_messages: boolean;
+        };
+        /**
+         * WorkspaceSettingsUpdate
+         * @description PATCH /admin/workspace-settings: only the fields sent change.
+         */
+        WorkspaceSettingsUpdate: {
+            /** Preview Before Join */
+            preview_before_join?: boolean | null;
+            /** Show Membership Messages */
+            show_membership_messages?: boolean | null;
         };
     };
     responses: never;
@@ -7963,6 +8092,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workspace_settings_api_v1_admin_workspace_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWorkspaceSettingsOut"];
+                };
+            };
+        };
+    };
+    update_workspace_settings_api_v1_admin_workspace_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWorkspaceSettingsOut"];
                 };
             };
             /** @description Validation Error */
@@ -10180,6 +10362,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_members_api_v1_channels__channel_id__members_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembersAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberOut"][];
                 };
             };
             /** @description Validation Error */

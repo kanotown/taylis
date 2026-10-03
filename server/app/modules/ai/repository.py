@@ -313,6 +313,7 @@ async def timeline_before(
             Message.channel_id == channel_id,
             Message.seq < before_seq,
             Message.deleted_at.is_(None),
+            Message.type == "user",  # M88: join / leave lines are not conversation
             timeline_filter(),
         )
         .order_by(Message.seq.desc())
@@ -331,7 +332,11 @@ async def channel_range(
 ) -> tuple[list[Message], int]:
     """Live messages of a channel (replies included) after a seq or since a time: the newest
     `limit`, oldest first, and how many there are in all."""
-    conditions = [Message.channel_id == channel_id, Message.deleted_at.is_(None)]
+    conditions = [
+        Message.channel_id == channel_id,
+        Message.deleted_at.is_(None),
+        Message.type == "user",  # M88: join / leave lines are not conversation
+    ]
     if after_seq is not None:
         conditions.append(Message.seq > after_seq)
     if since is not None:

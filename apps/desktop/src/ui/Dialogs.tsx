@@ -137,11 +137,8 @@ export function AddMemberDialog({ controller, channelId, onClose }: { controller
     setAdding(true);
     setError(null);
     try {
-      for (const userId of selected) {
-        await controller.api.addMember(channelId, userId);
-        setMembers((values) => new Set([...(values ?? []), userId]));
-        setSelected((values) => values.filter((id) => id !== userId));
-      }
+      // M88: everyone chosen in one request (one 「追加しました」 line in the channel).
+      await controller.api.addMembers(channelId, selected);
       onClose();
     } catch (err) {
       setError(controller.describe(err));

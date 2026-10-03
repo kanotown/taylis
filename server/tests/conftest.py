@@ -34,6 +34,7 @@ if _WORKER:
     _url = _url.set(database=f"{_url.database}_{_WORKER}")
     TEST_DATABASE_URL = _url.render_as_string(hide_password=False)
 TABLES = [
+    "workspace_settings",
     "sso_tickets",
     "sso_requests",
     "user_identities",
@@ -130,9 +131,21 @@ def migrated_database() -> str:
     return TEST_DATABASE_URL
 
 
+# M88: the join / leave lines are on by default in a workspace, but they take channel seqs, and
+# most tests count seqs and messages from a channel's start. Tests begin with the lines off; the
+# M88 tests (test_membership_messages.py) turn them on.
+TEST_WORKSPACE_SETTINGS = text(
+    "INSERT INTO workspace_settings (singleton, show_membership_messages, preview_before_join) "
+    "VALUES (true, false, true) ON CONFLICT (singleton) DO UPDATE "
+    "SET show_membership_messages = false, preview_before_join = true"
+)
+
+
 @pytest.fixture
 async def app(test_settings: Settings, migrated_database: str) -> AsyncIterator[FastAPI]:
     application = create_app(test_settings)
+    async with application.state.db.engine.begin() as conn:
+        await conn.execute(TEST_WORKSPACE_SETTINGS)
     try:
         yield application
     finally:
@@ -189,6 +202,8 @@ async def live(test_settings: Settings, migrated_database: str) -> AsyncIterator
         }
     )
     application = create_app(settings)
+    async with application.state.db.engine.begin() as conn:
+        await conn.execute(TEST_WORKSPACE_SETTINGS)
     port = _free_port()
     config = uvicorn.Config(
         application, host="127.0.0.1", port=port, log_config=None, access_log=False, lifespan="on"

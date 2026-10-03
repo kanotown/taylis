@@ -2,6 +2,7 @@
 
 import hashlib
 import uuid
+from collections.abc import Awaitable, Callable
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +28,7 @@ from app.modules.channels.schemas import (
 from app.modules.reads import service as reads
 from app.modules.reads.schemas import ReadMark, ReadStateOut
 from app.modules.users.models import User
+from app.modules.workspace import service as workspace
 
 MAX_DM_MEMBERS = 9
 
@@ -210,6 +212,67 @@ async def _emit_member(
     )
 
 
+# --- join / leave lines (M88, docs/MEMBERSHIP.md §1) -------------------------------------------
+
+# (db, channel_id, actor_id, kind, user_ids) -> the line's seq. The messages module registers it
+# (channels does not depend on messages).
+MembershipWriter = Callable[
+    [AsyncSession, uuid.UUID, uuid.UUID, str, list[uuid.UUID]], Awaitable[int]
+]
+_membership_writer: MembershipWriter | None = None
+
+
+def set_membership_writer(writer: MembershipWriter | None) -> None:
+    global _membership_writer
+    _membership_writer = writer
+
+
+async def _bot_ids(db: AsyncSession, user_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    if not user_ids:
+        return set()
+    stmt = select(User.id).where(User.id.in_(user_ids), User.role == "bot")
+    return set((await db.execute(stmt)).scalars().all())
+
+
+async def announce_membership_in_tx(
+    db: AsyncSession,
+    channel: Channel,
+    actor_id: uuid.UUID,
+    kind: str,
+    user_ids: list[uuid.UUID],
+) -> int | None:
+    """A join / leave line in a public or private channel, unless 「参加・退出の表示」 is off. Not
+    in DMs or archived channels, never about bots (webhooks, recurring posts, the AI) nor by
+    them. Returns its seq (None when nothing was written); the caller commits."""
+    if _membership_writer is None or channel.type not in ("public", "private"):
+        return None
+    if channel.is_archived:
+        return None
+    bots = await _bot_ids(db, [actor_id, *user_ids])
+    subjects = [uid for uid in dict.fromkeys(user_ids) if uid not in bots]
+    if actor_id in bots or not subjects:
+        return None
+    if not (await workspace.settings(db)).show_membership_messages:
+        return None
+    seq = await _membership_writer(db, channel.id, actor_id, kind, subjects)
+    await db.refresh(
+        channel, ["last_seq"]
+    )  # the answer (a join's ChannelOut) carries the line's seq
+    return seq
+
+
+async def _joined_in_tx(
+    db: AsyncSession, channel: Channel, actor_id: uuid.UUID, user_ids: list[uuid.UUID]
+) -> None:
+    """After memberships were added: the line (joined when the actor is the one who came, added
+    otherwise), and the newcomers' read position after it (their own line is not news to them)."""
+    kind = "member_joined" if user_ids == [actor_id] else "members_added"
+    seq = await announce_membership_in_tx(db, channel, actor_id, kind, user_ids)
+    if seq is not None:
+        for user_id in user_ids:
+            await reads.initialize_in_tx(db, user_id, channel.id, seq)
+
+
 # --- access checks ----------------------------------------------------------------------------
 
 
@@ -283,8 +346,17 @@ async def require_readable(db: AsyncSession, actor: User, channel_id: uuid.UUID)
     if await repo.get_membership(db, channel_id, actor.id) is not None:
         return channel
     if channel.type == "public" and not actor.is_guest:
+        # M88 (docs/MEMBERSHIP.md §3): an administrator can turn the preview off; administrators
+        # are no exception (they join like everyone else).
+        if not await preview_allowed(db):
+            raise forbidden("preview_disabled", "Join this channel to read its messages")
         return channel
     raise forbidden("not_a_member", "You are not a member of this channel")
+
+
+async def preview_allowed(db: AsyncSession) -> bool:
+    """M88: whether public channels can be read before joining (the workspace setting)."""
+    return (await workspace.settings(db)).preview_before_join
 
 
 def require_writable(channel: Channel) -> None:
@@ -357,7 +429,7 @@ async def list_channels(db: AsyncSession, actor: User, *, include_public: bool) 
 
 async def list_public_times_not_member(db: AsyncSession, actor: User) -> list[ChannelOut]:
     """is:times (L8) widens the search to these; never for guests (M13e)."""
-    if actor.is_guest:
+    if actor.is_guest or not await preview_allowed(db):  # M88: no preview, no reading them
         return []
     rows = await repo.list_public_times_not_member(db, actor.id)
     counts = await repo.member_counts_for_channels(db, [c.id for c in rows])
@@ -465,7 +537,7 @@ async def ensure_times(
         membership = await repo.get_membership(db, existing.id, actor.id)
         if membership is None and not existing.is_archived:
             # I had left my own times: back in, as its owner again.
-            await add_member_in_tx(db, existing, actor.id)
+            await add_member_in_tx(db, existing, actor.id, announce=True)
             membership = await repo.get_membership(db, existing.id, actor.id)
             if membership is not None:
                 membership.role = "owner"
@@ -560,7 +632,7 @@ async def follow_times_in_tx(db: AsyncSession, owner_id: uuid.UUID, user_id: uui
     channel = await repo.get_times_of(db, owner_id)
     if channel is None or channel.is_archived or user_id == owner_id:
         return False
-    return await add_member_in_tx(db, channel, user_id)
+    return await add_member_in_tx(db, channel, user_id, announce=True)
 
 
 async def _set_times_owner(
@@ -579,7 +651,7 @@ async def _set_times_owner(
             raise conflict("times_exists", "That person already has a times channel")
         membership = await repo.get_membership(db, channel.id, owner_id)
         if membership is None:
-            await add_member_in_tx(db, channel, owner_id)
+            await add_member_in_tx(db, channel, owner_id, announce=True, actor_id=actor.id)
             membership = await repo.get_membership(db, channel.id, owner_id)
         if membership is not None and membership.role != "owner":
             membership.role = "owner"
@@ -660,6 +732,7 @@ async def join_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> 
             await _emit_channel(
                 db, events.CHANNEL_CREATED, channel, audience_type="user", audience_id=actor.id
             )
+            await _joined_in_tx(db, channel, actor_id, [actor_id])
             await db.commit()
         except IntegrityError:
             await db.rollback()  # a concurrent join won: answer with that membership
@@ -685,6 +758,8 @@ async def leave_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID) ->
         audience_id=actor.id,
     )
     await db.delete(membership)
+    await db.flush()
+    await announce_membership_in_tx(db, channel, actor.id, "member_left", [actor.id])
     await db.commit()
 
 
@@ -696,35 +771,50 @@ async def list_members(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> 
 async def add_member(
     db: AsyncSession, actor: User, channel_id: uuid.UUID, target: User
 ) -> MemberOut:
+    return (await add_members(db, actor, channel_id, [target]))[0]
+
+
+async def add_members(
+    db: AsyncSession, actor: User, channel_id: uuid.UUID, targets: list[User]
+) -> list[MemberOut]:
+    """Add people (M88: several in one action, one 「A が B、C を追加しました」 line); those
+    already in are answered as they are. One MemberOut per target, in order."""
     require_not_guest(actor)
     channel, _ = await require_member(db, actor.id, channel_id)
     _require_not_dm(channel)
     require_writable(channel)
-    if not target.is_active:
+    if any(not target.is_active for target in targets):
         raise conflict("user_deactivated", "User is deactivated")
-    existing = await repo.get_membership(db, channel_id, target.id)
-    if existing is not None:
-        return to_member_out(existing)
-    target_id = target.id  # instances expire on rollback
-    membership = ChannelMember(channel_id=channel_id, user_id=target.id, role="member")
-    await reads.initialize_in_tx(db, target.id, channel_id, channel.last_seq)
-    db.add(membership)
-    try:
-        await db.flush()
+    actor_id = actor.id
+    target_ids = list(dict.fromkeys(target.id for target in targets))
+    added: list[uuid.UUID] = []
+    for target_id in target_ids:
+        if await repo.get_membership(db, channel_id, target_id) is not None:
+            continue
+        try:
+            async with db.begin_nested():
+                db.add(ChannelMember(channel_id=channel_id, user_id=target_id, role="member"))
+                await db.flush()
+        except IntegrityError:
+            continue  # added concurrently: that membership is the answer
+        await reads.initialize_in_tx(db, target_id, channel_id, channel.last_seq)
         await _emit_member(
-            db, events.CHANNEL_MEMBER_ADDED, channel.id, target.id, audience_type="channel"
+            db, events.CHANNEL_MEMBER_ADDED, channel_id, target_id, audience_type="channel"
         )
         await _emit_channel(
-            db, events.CHANNEL_CREATED, channel, audience_type="user", audience_id=target.id
+            db, events.CHANNEL_CREATED, channel, audience_type="user", audience_id=target_id
         )
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        existing = await repo.get_membership(db, channel_id, target_id)
-        if existing is None:
-            raise
-        return to_member_out(existing)
-    return to_member_out(membership)
+        added.append(target_id)
+    if added:
+        await _joined_in_tx(db, channel, actor_id, added)
+    await db.commit()
+    by_id: dict[uuid.UUID, MemberOut] = {}
+    for target_id in target_ids:
+        membership = await repo.get_membership(db, channel_id, target_id)
+        if membership is None:  # removed again in the meantime
+            raise not_found("member_not_found", "User is not a member of this channel")
+        by_id[target_id] = to_member_out(membership)
+    return [by_id[target_id] for target_id in target_ids]
 
 
 async def membership_of(
@@ -733,12 +823,20 @@ async def membership_of(
     return await repo.get_membership(db, channel_id, user_id)
 
 
-async def add_member_in_tx(db: AsyncSession, channel: Channel, user_id: uuid.UUID) -> bool:
+async def add_member_in_tx(
+    db: AsyncSession,
+    channel: Channel,
+    user_id: uuid.UUID,
+    *,
+    announce: bool = False,
+    actor_id: uuid.UUID | None = None,
+) -> bool:
     """Membership for a freshly created account (M12h invites); the caller commits.
 
     Returns False when the user already belongs to the channel. Archived channels and DMs are the
     caller's responsibility (invites drop them silently, as the invite may be older than the
-    archive).
+    archive). `announce` (M88): the join line — 「参加しました」, or 「追加しました」 by `actor_id`.
+    Off for bots' plumbing and the lab rollover (a bulk operation with its own undo).
     """
     if await repo.get_membership(db, channel.id, user_id) is not None:
         return False
@@ -752,6 +850,8 @@ async def add_member_in_tx(db: AsyncSession, channel: Channel, user_id: uuid.UUI
     await _emit_channel(
         db, events.CHANNEL_CREATED, channel, audience_type="user", audience_id=user_id
     )
+    if announce:
+        await _joined_in_tx(db, channel, actor_id or user_id, [user_id])
     return True
 
 
@@ -796,6 +896,11 @@ async def remove_member(
         audience_id=target_user_id,
     )
     await db.delete(membership)
+    await db.flush()
+    if target_user_id == actor.id:  # an owner or admin removing themselves left
+        await announce_membership_in_tx(db, channel, actor.id, "member_left", [actor.id])
+    else:
+        await announce_membership_in_tx(db, channel, actor.id, "member_removed", [target_user_id])
     await db.commit()
 
 
