@@ -884,7 +884,7 @@ final class AppController {
         Task {
             defer { emojiLoads.remove(emoji.id) }
             guard let data = try? await api.fetchData("/api/v1/emoji/\(emoji.id)/image"),
-                  let decoded = await Task.detached(operation: { CustomEmoji.decode(data) }).value else { return }
+                  let decoded = await Task.detached(operation: { CustomEmoji.decode(data, pack: emoji.packId != nil) }).value else { return }
             if let animation = decoded.animation { store.emojiAnimations[emoji.id] = animation }
             store.emojiImages[emoji.id] = decoded.still
         }

@@ -1087,7 +1087,7 @@ struct MessageRow: View {
                 if !message.body.isEmpty && !PollCardView.hidesBody(message.body, poll: message.poll) {
                     MessageBodyView(text: message.body, users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
                                     customEmoji: store.customEmoji, emojiImages: store.emojiImages, emojiAnimations: store.emojiAnimations,
-                                    onNeedEmojiImage: { controller.loadEmojiImage($0) }, keywords: store.me?.notifyKeywords ?? [])
+                                    onNeedEmojiImage: { controller.loadEmojiImage($0) }, keywords: store.me?.notifyKeywords ?? [], jumbo: true)
                         .environment(\.openURL, OpenURLAction { url in
                             if url.scheme == CanvasLink.scheme, let id = url.host {  // M45
                                 controller.canvasLink = CanvasLinkTarget(id: id)
