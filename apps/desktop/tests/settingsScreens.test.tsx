@@ -248,6 +248,22 @@ it("「表示」: ライト / ダーク pin the colours on <html> and are kept o
   w.engine.stop();
 });
 
+it("「表示」 → テーマの色: a palette goes on <html> and stays on this device; 文字の大きさ is the desktop app's (a browser zooms itself)", async () => {
+  const { w } = await setup();
+  await tap("you");
+  await openRow("表示 端末に合わせる");
+  const colours = within(you()).getByRole("radiogroup", { name: "テーマの色" });
+  expect(within(colours).getAllByRole("radio")).toHaveLength(6);
+  expect((within(colours).getByRole("radio", { name: "Taylis (栗)" }) as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(within(colours).getByRole("radio", { name: "緑" }));
+  expect(document.documentElement.dataset["palette"]).toBe("green");
+  expect(localStorage.getItem("chikuwa.prefs.palette")).toBe("green");
+  fireEvent.click(within(colours).getByRole("radio", { name: "Taylis (栗)" }));
+  expect(document.documentElement.dataset["palette"]).toBeUndefined();
+  expect(within(you()).queryByRole("combobox", { name: "文字の大きさ" })).toBeNull();
+  w.engine.stop();
+});
+
 it("every old setting is still there: 入力 (送信キー, テンプレート), プロフィール (写真, 表示名, 肩書, 在席を隠す), 通知 (全体, キーワード, 端末の通知), ワークスペース", async () => {
   const { w, updates } = await setup();
   await tap("you");

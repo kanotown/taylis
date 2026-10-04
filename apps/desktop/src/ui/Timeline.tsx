@@ -567,7 +567,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
           }}
           className={cn(
             "absolute bottom-3 right-6 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-lg transition-colors",
-            unseenBelow > 0 ? "border-accent bg-accent text-white hover:bg-accent/90" : "border-line bg-canvas text-ink hover:bg-panel",
+            unseenBelow > 0 ? "border-accent bg-accent-solid text-white hover:bg-accent-solid/90" : "border-line bg-canvas text-ink hover:bg-panel",
           )}
         >
           <ArrowDown size={14} />

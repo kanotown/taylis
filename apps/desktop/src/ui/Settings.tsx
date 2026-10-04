@@ -3,6 +3,7 @@ import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "rea
 
 import type { SessionOut, TotpStatusOut } from "../api/types";
 import { isTauri } from "../platform/env";
+import { DEFAULT_ZOOM, stepZoom, useZoom, writeZoom, ZOOM_STEPS, zoomLabel } from "../platform/zoom";
 import { notificationPermission, type NotificationPermissionState, requestNotificationPermission } from "../platform/notify";
 import type { AppController } from "../state/app";
 import { hostLabel, signInName, type WorkspaceEntry } from "../state/workspaces";
@@ -22,7 +23,7 @@ import { StatusForm } from "./StatusDialog";
 import { TemplatesSettings } from "./TemplatesSettings";
 import { TestNotificationCard } from "./TestNotification";
 import { displayTitle } from "./roster";
-import { THEME_OPTIONS, themeLabel, useTheme, writeTheme } from "./theme";
+import { PALETTES, THEME_OPTIONS, themeLabel, usePalette, useTheme, writePalette, writeTheme } from "./theme";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { UsernameEditor } from "./UsernameEditor";
 import { StatusGlyph } from "./UserPopover";
@@ -206,7 +207,7 @@ function sectionSubtitle(section: SettingsSection): string | undefined {
     case "notifications":
       return "全体の設定・キーワード・端末の通知";
     case "appearance":
-      return "端末に合わせる / ライト / ダーク";
+      return isTauri() ? "ライト / ダーク・テーマの色・文字の大きさ" : "ライト / ダーク・テーマの色";
     case "input":
       return "送信キー・リアクションの候補・テンプレート";
     case "profile":
@@ -507,9 +508,14 @@ function NotificationsSection({ controller }: { controller: AppController }) {
   );
 }
 
-/** 「表示」: 端末に合わせる / ライト / ダーク and 「連続した投稿をまとめる」 (M47), on this device only. */
-function AppearanceSection({ controller }: { controller: AppController }) {
+/**
+ * 「表示」: 端末に合わせる / ライト / ダーク, 「テーマの色」, 「文字の大きさ」 (the desktop app; a browser zooms by itself) and
+ * 「連続した投稿をまとめる」 (M47), on this device only.
+ */
+function AppearanceSection({ controller, desktop = isTauri() }: { controller: AppController; desktop?: boolean }) {
   const theme = useTheme();
+  const palette = usePalette();
+  const zoom = useZoom();
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -523,6 +529,57 @@ function AppearanceSection({ controller }: { controller: AppController }) {
         </div>
         <p className="text-xs text-muted">この端末だけの設定です。「端末に合わせる」は OS のライト / ダークに従います。</p>
       </div>
+      <section className="space-y-2">
+        <h3 className={HEADING}>テーマの色</h3>
+        <div role="radiogroup" aria-label="テーマの色" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {PALETTES.map((option) => (
+            <label
+              key={option.value}
+              className={cn(
+                "flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl border px-2.5 py-2 text-sm hover:bg-panel has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/50",
+                palette === option.value ? "border-accent bg-accent-soft/50" : "border-line",
+              )}
+            >
+              <input type="radio" name="palette" className="sr-only" checked={palette === option.value} onChange={() => writePalette(option.value)} />
+              <span aria-hidden className="flex h-7 w-7 shrink-0 overflow-hidden rounded-lg ring-1 ring-black/10">
+                <span className="w-1/2" style={{ background: option.swatch.sidebar }} />
+                <span className="w-1/2" style={{ background: option.swatch.accent }} />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-muted">サイドバーとアクセント (リンク・ボタン・選択中の行) の色です。ライト / ダークのどちらにも効きます。</p>
+      </section>
+      {desktop && (
+        <section className="space-y-2">
+          <h3 className={HEADING}>文字の大きさ</h3>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="icon" aria-label="小さく" disabled={zoom <= ZOOM_STEPS[0]} onClick={() => writeZoom(stepZoom(zoom, -1))}>
+              −
+            </Button>
+            <select
+              aria-label="文字の大きさ"
+              className="h-8 rounded-lg border border-line bg-canvas px-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+              value={String(zoom)}
+              onChange={(e) => writeZoom(Number(e.target.value))}
+            >
+              {ZOOM_STEPS.map((step) => (
+                <option key={step} value={String(step)}>
+                  {zoomLabel(step)}
+                  {step === DEFAULT_ZOOM ? " (標準)" : ""}
+                </option>
+              ))}
+            </select>
+            <Button variant="secondary" size="icon" aria-label="大きく" disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]!} onClick={() => writeZoom(stepZoom(zoom, 1))}>
+              ＋
+            </Button>
+          </div>
+          <p className="text-xs text-muted">
+            画面全体を拡大・縮小します。{modKeyName()} + 「+」 / {modKeyName()} + 「-」 / {modKeyName()} + 「0」 (標準に戻す) でも変えられます。
+          </p>
+        </section>
+      )}
       {/* M47: the open timelines and threads follow a change at once (AppController.groupPosts). */}
       <label className={cn(CARD, "cursor-pointer")}>
         <Rows3 size={18} className="text-muted" />

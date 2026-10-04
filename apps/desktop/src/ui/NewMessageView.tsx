@@ -156,7 +156,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
                   <Avatar id={user.id} name={user.display_name} size={24} className="rounded-md text-[10px]" presence={store.presenceOf(user.id)} presenceClassName="border border-canvas" />
                   <span className="min-w-0 truncate">{user.display_name}</span>
                   <span className="min-w-0 flex-1 truncate text-[13px] text-muted">@{user.username}</span>
-                  <span aria-hidden="true" className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full border", on ? "border-accent bg-accent text-white" : "border-line")}>
+                  <span aria-hidden="true" className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full border", on ? "border-accent bg-accent-solid text-white" : "border-line")}>
                     {on && <Check size={13} />}
                   </span>
                 </button>

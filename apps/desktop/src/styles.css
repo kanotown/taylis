@@ -1,7 +1,92 @@
 @import "tailwindcss";
 
 /* Semantic tokens: light by default, dark follows the OS (prefers-color-scheme) unless 「表示」 (M40, ui/theme.ts)
-   pins one with <html data-theme="light" | "dark">. The brand colour is #5b5bd6 (lighter on dark to stay readable). */
+   pins one with <html data-theme="light" | "dark">.
+
+   「テーマの色」 (ui/theme.ts PALETTES) picks the brand colours with <html data-palette>: the sidebar and the rail, the
+   accent (links, the active row, focus rings, selection) and its tints. Each palette gives its light and dark values
+   (--p-*), and the light / dark blocks below take one or the other, so the two choices combine freely. The default is
+   Taylis, the browns of the app icon (apps/shared/brand/appicon.png: the chocolate #3D2A1E of the squirrel and the
+   caramel #C08860, darkened to stay readable).
+
+   --accent is the accent as text and lines (links, text-accent, borders, rings); --accent-solid is the fill under white
+   text (bg-accent-solid: primary buttons, the selected day). They are the same in light mode; in dark mode the text one
+   is light (readable on the dark canvas) and the fill stays dark (readable under white). Contrast (WCAG AA, 4.5:1) of
+   every palette is checked by tests/theme.test.ts. */
+:root {
+  --p-sidebar: #3b2b21;
+  --p-sidebar-fg: #e0d0c2;
+  --p-accent: #8f5530;
+  --p-accent-solid: #8f5530;
+  --p-accent-soft: #f6ece3;
+  --p-sidebar-dark: #1d1611;
+  --p-sidebar-fg-dark: #cdbcad;
+  --p-accent-dark: #dba67c;
+  --p-accent-solid-dark: #8f5530;
+  --p-accent-soft-dark: #3a2a1f;
+}
+/* 藍: the colours before 「テーマの色」 (the accent a little darker for white text). */
+:root[data-palette="indigo"] {
+  --p-sidebar: #2a2340;
+  --p-sidebar-fg: #c8c2d8;
+  --p-accent: #5050c8;
+  --p-accent-solid: #5050c8;
+  --p-accent-soft: #ecebff;
+  --p-sidebar-dark: #14111c;
+  --p-sidebar-fg-dark: #b7b1c7;
+  --p-accent-dark: #9a9af5;
+  --p-accent-solid-dark: #5050c8;
+  --p-accent-soft-dark: #2a2a4a;
+}
+:root[data-palette="green"] {
+  --p-sidebar: #1e3a2f;
+  --p-sidebar-fg: #c4d9cd;
+  --p-accent: #2e7550;
+  --p-accent-solid: #2e7550;
+  --p-accent-soft: #e4f2ea;
+  --p-sidebar-dark: #111c17;
+  --p-sidebar-fg-dark: #b2c9bc;
+  --p-accent-dark: #6fcf98;
+  --p-accent-solid-dark: #2e7550;
+  --p-accent-soft-dark: #1d3a2b;
+}
+:root[data-palette="purple"] {
+  --p-sidebar: #3a2150;
+  --p-sidebar-fg: #d6c6e4;
+  --p-accent: #7c3fb0;
+  --p-accent-solid: #7c3fb0;
+  --p-accent-soft: #f3eafb;
+  --p-sidebar-dark: #1a1124;
+  --p-sidebar-fg-dark: #c3b3d3;
+  --p-accent-dark: #c39af0;
+  --p-accent-solid-dark: #7c3fb0;
+  --p-accent-soft-dark: #35224a;
+}
+:root[data-palette="rose"] {
+  --p-sidebar: #4a1e2c;
+  --p-sidebar-fg: #e6c9d1;
+  --p-accent: #b02f50;
+  --p-accent-solid: #b02f50;
+  --p-accent-soft: #fbe9ee;
+  --p-sidebar-dark: #1f1015;
+  --p-sidebar-fg-dark: #d3b5be;
+  --p-accent-dark: #f590a8;
+  --p-accent-solid-dark: #b02f50;
+  --p-accent-soft-dark: #4a1f2c;
+}
+:root[data-palette="gray"] {
+  --p-sidebar: #2c2e33;
+  --p-sidebar-fg: #cfd2d8;
+  --p-accent: #4f5b6b;
+  --p-accent-solid: #4f5b6b;
+  --p-accent-soft: #eceef2;
+  --p-sidebar-dark: #141518;
+  --p-sidebar-fg-dark: #b9bcc3;
+  --p-accent-dark: #a9b4c4;
+  --p-accent-solid-dark: #556274;
+  --p-accent-soft-dark: #2b2f36;
+}
+
 :root {
   --canvas: #ffffff;
   --panel: #f6f6f9;
@@ -9,14 +94,15 @@
   --ink: #1c1b22;
   --muted-fg: #6c6b7a;
   --line: #e3e3ea;
-  --accent: #5b5bd6;
-  --accent-soft: #ecebff;
+  --accent: var(--p-accent);
+  --accent-solid: var(--p-accent-solid);
+  --accent-soft: var(--p-accent-soft);
   --danger: #d64550;
   --success: #2bac76;
   --warning: #e08a00;
   --mark: #ffe58a;
-  --sidebar: #2a2340;
-  --sidebar-fg: #c8c2d8;
+  --sidebar: var(--p-sidebar);
+  --sidebar-fg: var(--p-sidebar-fg);
   --sidebar-hover: rgba(255, 255, 255, 0.08);
   --sidebar-active: rgba(255, 255, 255, 0.16);
   color-scheme: light dark;
@@ -29,12 +115,13 @@
     --ink: #e9e9ef;
     --muted-fg: #9b9baa;
     --line: #2f3039;
-    --accent: #7f7ff2;
-    --accent-soft: #2a2a4a;
+    --accent: var(--p-accent-dark);
+    --accent-solid: var(--p-accent-solid-dark);
+    --accent-soft: var(--p-accent-soft-dark);
     --danger: #ff6b70;
     --mark: #6b5a1a;
-    --sidebar: #14111c;
-    --sidebar-fg: #b7b1c7;
+    --sidebar: var(--p-sidebar-dark);
+    --sidebar-fg: var(--p-sidebar-fg-dark);
   }
 }
 :root[data-theme="dark"] {
@@ -44,12 +131,13 @@
   --ink: #e9e9ef;
   --muted-fg: #9b9baa;
   --line: #2f3039;
-  --accent: #7f7ff2;
-  --accent-soft: #2a2a4a;
+  --accent: var(--p-accent-dark);
+  --accent-solid: var(--p-accent-solid-dark);
+  --accent-soft: var(--p-accent-soft-dark);
   --danger: #ff6b70;
   --mark: #6b5a1a;
-  --sidebar: #14111c;
-  --sidebar-fg: #b7b1c7;
+  --sidebar: var(--p-sidebar-dark);
+  --sidebar-fg: var(--p-sidebar-fg-dark);
 }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -63,6 +151,7 @@
   --color-muted: var(--muted-fg);
   --color-line: var(--line);
   --color-accent: var(--accent);
+  --color-accent-solid: var(--accent-solid);
   --color-accent-soft: var(--accent-soft);
   --color-danger: var(--danger);
   --color-success: var(--success);

@@ -166,7 +166,7 @@ export function HomeView(props: HomeViewProps) {
         title="新しいメッセージ"
         onClick={props.onCompose}
         data-compose-fab=""
-        className="absolute bottom-4 right-4 z-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent text-white shadow-lg shadow-black/20 transition-transform hover:brightness-110 active:scale-95"
+        className="absolute bottom-4 right-4 z-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-solid text-white shadow-lg shadow-black/20 transition-transform hover:brightness-110 active:scale-95"
       >
         <SquarePen size={24} />
       </button>

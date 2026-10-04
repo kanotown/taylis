@@ -59,7 +59,7 @@ function AnswerButtons({ label, current, disabled, onPress }: { label: string; c
             onClick={() => onPress(answer)}
             className={cn(
               "flex h-7 w-8 items-center justify-center rounded-md border text-sm font-semibold transition-colors max-md:h-9 max-md:w-11",
-              on ? "border-accent bg-accent text-white" : cn("border-line bg-canvas hover:border-accent/60", MARK_TONE[answer]),
+              on ? "border-accent bg-accent-solid text-white" : cn("border-line bg-canvas hover:border-accent/60", MARK_TONE[answer]),
               disabled && "cursor-default opacity-60 hover:border-line",
             )}
           >

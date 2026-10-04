@@ -221,7 +221,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
       aria-label="ワークスペース"
       data-tauri-drag-region
       className="flex w-[68px] shrink-0 flex-col items-center gap-3 overflow-y-auto border-r border-black/20 bg-[color-mix(in_srgb,var(--sidebar)_78%,black)] py-3"
-      style={trafficLights ? { paddingTop: 48, width: TRAFFIC_LIGHTS_INSET } : undefined}
+      style={trafficLights ? { paddingTop: `calc(48px / var(--ui-zoom, 1))`, width: `max(68px, calc(${TRAFFIC_LIGHTS_INSET}px / var(--ui-zoom, 1)))` } : undefined}
       data-drop-gap={lifted ? drag.gap : undefined}
     >
       {entries.map((entry, index) => (

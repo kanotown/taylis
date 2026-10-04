@@ -412,7 +412,7 @@ export function RepeatPicker({ repeat, start, onChange }: { repeat: RepeatDraft;
                 onClick={() => set({ weekdays: on ? repeat.weekdays.filter((d) => d !== day) : [...repeat.weekdays, day] })}
                 className={cn(
                   "h-8 w-8 rounded-full border text-xs font-medium",
-                  on ? "border-accent bg-accent text-white" : "border-line text-muted hover:text-ink",
+                  on ? "border-accent bg-accent-solid text-white" : "border-line text-muted hover:text-ink",
                 )}
               >
                 {name}

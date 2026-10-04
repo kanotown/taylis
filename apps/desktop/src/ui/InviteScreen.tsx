@@ -68,7 +68,7 @@ export function InviteScreen({ controller, onBack, onDone, initialLink }: { cont
     <AuthShell>
       <form className="space-y-4" onSubmit={target ? join : check}>
         <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white shadow-md">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-solid text-white shadow-md">
             <Ticket size={24} />
           </span>
           <div>

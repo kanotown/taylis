@@ -130,8 +130,8 @@ describe("the rail under the macOS window buttons", () => {
       await watchFullscreen(async () => ({ isFullscreen: async () => full, onResized: async (handler) => { resized = handler; return () => {}; } }));
       render(<WorkspaceRail controller={railController([A, B])} />);
       const rail = screen.getByRole("navigation", { name: "ワークスペース" });
-      expect(rail.style.paddingTop).toBe("48px");
-      expect(rail.style.width).toBe("84px");
+      expect(rail.style.paddingTop).toBe("calc(48px / var(--ui-zoom, 1))"); // points: the same space at any zoom (platform/zoom.ts)
+      expect(rail.style.width).toBe("max(68px, calc(84px / var(--ui-zoom, 1)))");
       full = true;
       await act(async () => {
         resized?.();
@@ -144,7 +144,7 @@ describe("the rail under the macOS window buttons", () => {
         resized?.();
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
-      expect(rail.style.paddingTop).toBe("48px");
+      expect(rail.style.paddingTop).toBe("calc(48px / var(--ui-zoom, 1))"); // points: the same space at any zoom (platform/zoom.ts)
     } finally {
       restore();
     }

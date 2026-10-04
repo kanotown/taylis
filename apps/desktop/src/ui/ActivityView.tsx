@@ -210,7 +210,7 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
 
 const KIND_ICON = {
   mention: { Icon: AtSign, className: "bg-rose-500" },
-  thread_reply: { Icon: MessagesSquare, className: "bg-accent" },
+  thread_reply: { Icon: MessagesSquare, className: "bg-accent-solid" },
   reaction: { Icon: SmilePlus, className: "bg-amber-500" },
 } as const;
 

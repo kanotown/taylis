@@ -33,7 +33,8 @@ export function titleBarKind(): TitleBarKind {
   return "native";
 }
 
-/** macOS window buttons end at x = 76 (trafficLightPosition x = 16); reserve 8 px after them. */
+/** macOS window buttons end at x = 76 (trafficLightPosition x = 16); reserve 8 px after them (points: the users divide
+ * it by the zoom, platform/zoom.ts). */
 export const TRAFFIC_LIGHTS_INSET = 84;
 
 /** The same bundle opened in a browser (M12j): served by Caddy next to the API, same origin, cookie session. */
