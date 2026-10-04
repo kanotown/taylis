@@ -173,7 +173,7 @@ Hub は接続した時点を使用中と数える。使っていない状態で�
 payload と並べて保存する。プロバイダは `parent_id` も端末へ送り (APNs の本体、FCM の data)、返信の通知をタップすると
 そのスレッドが開く (M28d。以前はチャンネルだけが開いた)。`kind = calendar` (M51) は `event_id` も送る (APNs の本体、FCM の
 data)。`kind = task` (M55) は `task_id` を送る (同じく。自分用のタスクは `channel_id` が null)。`kind = canvas` (M72) は `canvas_id`
-を送る (同じく)。クライアントは知らない項目を無視する。
+を送る (同じく)。`kind = test` (§15) は会話を持たず、タップでアプリを開くだけ。クライアントは知らない項目を無視する。
 
 | 項目 | APNs | FCM (Android) |
 | --- | --- | --- |
@@ -287,7 +287,8 @@ Team ID、Key ID、Bundle ID、鍵の場所はすべて環境変数または秘�
 
 - `PushPlanner` の判定はユニットテスト (ルール表 §4 を 1 行 1 ケースで)。
 - `PushSender` は `FakePushProvider` で at-least-once とリース、backoff、トークン無効化を検証。
-- 実機確認: `uv run python -m app.cli push-test --user <username>` でテスト通知を送る。
+- 実機確認: `uv run python -m app.cli push-test --user <username>` でテスト通知を送る。利用者は設定の「通知」の
+  「テスト通知を送る」で自分の端末に送れる (§15)。
 - iOS は Apple Developer Program と実機が必要 (シミュレータは APNs を受け取れない)。
   Android は Google Play services 入りのエミュレータで確認できる。
 - 監視: `push_deliveries` の `failed` 件数と `attempts` の分布をログに出す。
@@ -324,3 +325,73 @@ Team ID、Key ID、Bundle ID、鍵の場所はすべて環境変数または秘�
   `Notifier` がチャンネルごとの通知 (id = channel_id) を出し、タップで該当チャンネルを開く。
   `google-services.json` が無いビルドでは Firebase が初期化されず、登録は静かにスキップされる。
 - 未確認: 実際の Firebase プロジェクトでの受信 (infra/README.md の手順でユーザー側が設定する)。
+
+## 15. テスト通知 (「テスト通知を送る」、2026-10-04)
+
+利用者の要望「通知をテストで送信する機能が欲しい」: 自分の端末に通知が届くかを、設定の「通知」から確かめる。
+
+### サーバ: `POST /api/v1/users/me/test-notification`
+
+- 自分の端末 (`devices`) ごとに結果を返す。有効で push_token のある iOS / Android の端末には、**その場で** (リクエストの中で)
+  通常のプロバイダ (`app.state.push_providers`、§8) から送る。`push_deliveries` は作らない (再試行も無い。結果をすぐ返すため。
+  失敗はそのまま `failed` と理由で返す)。並列に送り、1 台の例外が他の結果を隠さない。
+- ペイロード (§5): `kind = test`、`title = "Taylis"`、`body = "テスト通知です。この端末に通知が届いています。"`、`channel_id` などは無し、
+  `collapse_key = "test"`、`badge` は §4.2 の今の数 (テストでアイコンの数字を変えない)、`expires_at` は §6 と同じ。
+- **無視するもの**: 会話のミュート、通知のレベル (全体の「なし」も)、おやすみモード / 通知を止める時間帯 (DND)。押した本人が
+  求めた通知なので送る。DND 中だったことは応答の `dnd_active` で知らせ、クライアントが「通知を一時停止中ですが、テスト通知は送りました」と出す。
+- **守るもの**: 端末が有効であること。ログアウトした端末 (`enabled = false`) と有効なセッションが無い端末 (§6 の `session_expired`) には送らない。
+- APNs の `invalid_token` は Sender と同じく `push_token = NULL` (`push_token_invalid_reason`)、結果は `failed`。
+- 応答 `TestNotificationOut`:
+
+  ```json
+  {
+    "apns_configured": true, "fcm_configured": false,   // PUSH_APNS_ENABLED / PUSH_FCM_ENABLED (LogPushProvider でないか)
+    "dnd_active": false, "sent_count": 1,
+    "devices": [
+      {"device_id": "…", "device_name": "Mac", "platform": "desktop", "push_provider": "none", "current": true,
+       "status": "in_app", "detail": null, "last_seen_at": "…"},
+      {"device_id": "…", "device_name": "iPhone", "platform": "ios", "push_provider": "apns", "current": false,
+       "status": "sent", "detail": null, "last_seen_at": "…"}
+    ]
+  }
+  ```
+
+  | status | 意味 |
+  | --- | --- |
+  | `sent` | プロバイダが受け付けた (端末に表示されたかまではわからない) |
+  | `failed` | プロバイダが拒否した / つながらなかった / 例外。`detail` に理由 (`Unregistered`、`UNREGISTERED`、`transport: …` など) |
+  | `no_token` | iOS / Android の端末でトークンが未登録 (OS の通知がオフ、またはアプリをまだ開き直していない) |
+  | `not_configured` | このサーバでその端末のプロバイダ (APNs / FCM) が無効。ログに出すだけで送っていない |
+  | `in_app` | Desktop / Web: プッシュは無い。開いていれば `notification.test` で OS の通知を出す |
+  | `disabled` | ログアウト済み (`detail` = `disabled_reason`: `logout` など) か有効なセッションが無い (`session_expired`) |
+
+  並びは押した端末 (`current`) → 有効な端末 (最終利用の新しい順) → 無効な端末。無効な端末は最終更新が 30 日以内のものだけ、全体で 20 台まで。
+- 同じトランザクションで outbox に `notification.test` (audience = 本人、`{title, body, device_id, sent_at}`、`device_id` は押した端末)。
+  WS で自分の開いているアプリ全部に届く (SYNC_PROTOCOL.md §6)。
+- 速度制限: 1 人 5 回まで続けて、その後は 2 分に 1 回 (トークンバケット、プロセス内)。超えると `429 test_notification_rate_limited`
+  (`details.retry_after_seconds`、`Retry-After`)。日本語は errors.json。
+- 記録: 監査表には書かず (自分の端末への通知で、ほかの人に影響しない)、`app.push` のログに 1 行 (`user_id`、端末ごとの status)。
+- CLI の `push-test` (§11) は管理者用にそのまま残す (任意のユーザー、本文を指定できる)。
+
+### クライアント
+
+- **Desktop / Web** (設定 → 通知 → 「この端末の通知」の下): 「テスト通知を送る」は、まずこの端末の OS の通知を `notify()` で
+  すぐ出し (一時停止中でも)、それからエンドポイントを呼んで端末ごとの結果を並べる。上に注意書き: 「このサーバはプッシュ通知が設定されていません」
+  / 「iOS のプッシュ (APNs) はこのサーバでは無効です」/「Android のプッシュ (FCM) はこのサーバでは無効です」/「プッシュ通知を受け取れる端末
+  (iPhone・Android のアプリ) はありません」/ DND の一文。OS の通知の許可が無ければ、場所の案内 (Web は「通知を許可」かサイト設定、
+  macOS は「システム設定」→「通知」→「Taylis」、Windows は「設定」→「システム」→「通知」)。`notification.test` を受けたら OS の通知を出す
+  (ほかの端末で押したとき)。自分で押してから 30 秒の間に届いたものはこだまなので出さない。
+- **iOS** (自分 → 通知 → 「テスト通知」): ボタンと結果の一覧 (同じ言葉)。通知の許可がオフなら一文で知らせる (上の「設定アプリで変更」)。
+  フォアグラウンドで届いた `kind = test` のプッシュは必ずバナーで出す (`Workspaces.shouldPresent`)。タップはアプリを開くだけ (会話を持たない)。
+  WS の `notification.test` は無視する (プッシュが届くため)。
+- **Android** (自分 → 通知 → 「テスト通知」): 同じ。`kind = test` の data メッセージは、フォアグラウンドで WS がつながっていても通知を出す
+  (ほかの kind は WS 側が知らせるので出さない)。通知のキーは `test` で、押すたびに前のものを消してから出す
+  (同じキーの更新は `setOnlyAlertOnce` で鳴らないため)。WS の `notification.test` は無視する。
+- 結果の言葉は 3 端末で同じ (`testDeviceStatus` / `TestNotificationText`)。
+
+### 試験
+
+サーバ `tests/test_test_notification.py` (トークンのある端末だけに送り他人の端末は触らない・Desktop / トークン無し / ログアウト済み、
+APNs が無効なサーバ、プロバイダの失敗と失効トークン、DND とミュートを無視、速度制限と本人ごと、未ログイン、セッションの無い端末、
+実サーバの WS で本人にだけ `notification.test`)。Desktop `tests/testNotification.test.tsx`、iOS `TestNotificationTests`、Android `TestNotificationTest`。
+実機での APNs / FCM の受信は未確認。

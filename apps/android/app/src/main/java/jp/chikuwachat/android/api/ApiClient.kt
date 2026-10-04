@@ -204,6 +204,9 @@ class ApiClient(
     /** M40: my signed-in sessions, this one marked `current`. */
     suspend fun sessions(): List<SessionOut> = request("GET", "/api/v1/auth/sessions")
 
+    /** 「テスト通知を送る」 (PUSH_NOTIFICATIONS.md §15): a push to every device of mine, with what happened on each. */
+    suspend fun sendTestNotification(): TestNotificationOut = request("POST", "/api/v1/users/me/test-notification")
+
     /** M40: signs another of my sessions out (its refresh token stops working; 204). */
     suspend fun revokeSession(id: String) {
         requestRaw("DELETE", "/api/v1/auth/sessions/$id", null, auth = true, retry401 = true)

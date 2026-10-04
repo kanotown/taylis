@@ -5,7 +5,7 @@ import time
 
 
 class RateLimiter:
-    def __init__(self, per_minute: int, *, burst: int | None = None) -> None:
+    def __init__(self, per_minute: float, *, burst: int | None = None) -> None:
         self.rate = per_minute / 60.0
         self.capacity = float(burst if burst is not None else per_minute)
         self._buckets: dict[str, tuple[float, float]] = {}

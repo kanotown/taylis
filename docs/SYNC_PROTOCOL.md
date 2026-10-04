@@ -256,6 +256,7 @@
 | `reminder.updated` | user | — | `{ reminder: ReminderOut }` (M12e)。作成 / 発火 (fired) / 完了 / 取消。fired の行は「リマインダー」一覧の先頭に出し、アプリ内でも通知する。`kind` は `personal` / `ack` (L4) / `collect` (L6: 回収の締切後の催促。本人にだけ届く) |
 | `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
 | `notification_preference.updated` | user | — | `{ channel_id, level, muted_until }` |
+| `notification.test` | user | — | `{ title, body, device_id, sent_at }` (PUSH_NOTIFICATIONS.md §15)。自分が「テスト通知を送る」を押した。Desktop / Web は OS の通知を出す (`device_id` の端末、つまり押した端末は自分で出し済み)。iOS / Android は無視する (プッシュが届く)。表示は変えない |
 | `channel.created` | channel (public は all)。参加・追加された本人には user 宛てにも送る | — | `{ channel, member_ids }`。`channel` は bootstrap と同じ形だが `membership` は null。受信者は `member_ids` に自分が含まれるかで所属を判定する (public は非メンバーにも届く) |
 | `channel.updated` | channel。公開 ↔ 非公開の変換 (M15b) だけは all (guest を除く) | — | `{ channel, member_ids }`。`channel.posting_policy` (M15a) を含む。メンバーでない受信者は、public ならブラウズ用に保持し、public でなくなった (非公開に変換された) 会話は手元から消す。非公開への変換ではメンバーに通常の event、メンバー以外には `topic` / `purpose` / `member_count` が null で `member_ids` が空の event が届く (消すのに要る `id` と `type` だけ。メンバーの一覧を非メンバーに配らない、M28a) |
 | `channel.archived` | channel | — | `{ channel_id }` |

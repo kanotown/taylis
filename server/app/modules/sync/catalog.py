@@ -125,6 +125,11 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
         "user",
         False,
     ),
+    notification_events.NOTIFICATION_TEST: (
+        notification_events.NotificationTestData,
+        "user",
+        False,
+    ),
     ai_events.AI_RUN_UPDATED: (ai_events.AiRunUpdatedData, "user (the requester)", False),
     workspace_events.WORKSPACE_SETTINGS_UPDATED: (
         workspace_events.WorkspaceSettingsUpdatedData,

@@ -159,6 +159,27 @@ struct SessionOut: Codable, Equatable, Identifiable {
     let expiresAt: String
 }
 
+/// POST /users/me/test-notification (PUSH_NOTIFICATIONS.md §15): what happened on one device of mine.
+struct TestNotificationDevice: Decodable, Equatable, Identifiable {
+    let deviceId: String
+    let deviceName: String?
+    let platform: String
+    let pushProvider: String
+    let current: Bool
+    /// sent / failed / no_token / not_configured / in_app / disabled.
+    let status: String
+    var detail: String? = nil
+    var id: String { deviceId }
+}
+
+struct TestNotificationOut: Decodable, Equatable {
+    let apnsConfigured: Bool
+    let fcmConfigured: Bool
+    let dndActive: Bool
+    let sentCount: Int
+    let devices: [TestNotificationDevice]
+}
+
 /// GET /auth/methods (M48): which sign-in buttons the login screen shows.
 struct AuthMethodsOut: Decodable, Equatable {
     struct Provider: Decodable, Equatable {

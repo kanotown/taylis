@@ -571,6 +571,8 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
         OutlinedButton(onClick = { controller.openNotificationSettings() }, modifier = Modifier.padding(top = 8.dp)) {
             Text(if (permitted) "端末の通知設定を開く" else "端末の設定で許可する")
         }
+        // PUSH_NOTIFICATIONS.md §15: does a notification reach this phone and my other devices?
+        TestNotificationSection(controller, permitted)
     }
 }
 

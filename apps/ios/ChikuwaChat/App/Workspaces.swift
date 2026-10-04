@@ -242,7 +242,8 @@ enum Workspaces {
     /// A calendar alarm and a task's notification (M56) always show: the open conversation says nothing of them.
     static func shouldPresent(_ payload: PushPayload, target: Workspace?, active: String?, openChannelId: String?) -> Bool {
         // A canvas mention (M73) is not the conversation's messages: shown even while that conversation is open.
-        if payload.kind == "calendar" || payload.kind == "task" || payload.kind == "canvas" { return true }
+        // A test notification (PUSH_NOTIFICATIONS.md §15) is pressed for with the app open: it must show.
+        if payload.kind == "calendar" || payload.kind == "task" || payload.kind == "canvas" || payload.kind == "test" { return true }
         guard let target, target.serverUrl == active, let channelId = payload.channelId, let openChannelId else { return true }
         return channelId != openChannelId
     }

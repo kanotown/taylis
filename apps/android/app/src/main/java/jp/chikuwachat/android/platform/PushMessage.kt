@@ -36,8 +36,11 @@ data class PushMessage(
     /** M73 (CANVAS.md §18.5): a canvas mentioned me; the tap opens it in its conversation's 「キャンバス」 tab. */
     val isCanvas: Boolean get() = kind == "canvas" && canvasId != null
 
-    /** Whether it becomes a notification: a conversation's, or a calendar alarm's / a task's (which may have no conversation). */
-    val shown: Boolean get() = !isSilent && notificationKey != null && (channelId != null || isCalendar || isTask)
+    /** §15: 「テスト通知を送る」: no conversation; the tap only opens the app. */
+    val isTest: Boolean get() = kind == "test"
+
+    /** Whether it becomes a notification: a conversation's, or a calendar alarm's / a task's / a test's (which have no conversation). */
+    val shown: Boolean get() = !isSilent && notificationKey != null && (channelId != null || isCalendar || isTask || isTest)
 
     /** M39: someone reacted to my message (PUSH_NOTIFICATIONS.md §4); the tap opens that message. */
     val isReaction: Boolean get() = kind == "reaction"
@@ -60,6 +63,8 @@ data class PushMessage(
         "task" -> collapseKey ?: taskId?.let { "task:$it" }
         // M73: one per canvas ("canvas:<canvas id>"): the next mention in it replaces it; a read of the conversation keeps it.
         "canvas" -> collapseKey ?: canvasId?.let { "canvas:$it" }
+        // §15: one test notification at a time (the server's collapse key is "test").
+        "test" -> collapseKey ?: "test"
         else -> channelId
     }
 

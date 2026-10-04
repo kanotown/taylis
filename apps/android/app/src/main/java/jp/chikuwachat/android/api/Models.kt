@@ -178,6 +178,28 @@ data class SessionOut(
     val expiresAt: String,
 )
 
+/** POST /users/me/test-notification (PUSH_NOTIFICATIONS.md §15): what happened on one device of mine. */
+@Serializable
+data class TestNotificationDevice(
+    val deviceId: String,
+    val deviceName: String? = null,
+    val platform: String,
+    val pushProvider: String,
+    val current: Boolean,
+    /** sent / failed / no_token / not_configured / in_app / disabled. */
+    val status: String,
+    val detail: String? = null,
+)
+
+@Serializable
+data class TestNotificationOut(
+    val apnsConfigured: Boolean,
+    val fcmConfigured: Boolean,
+    val dndActive: Boolean,
+    val sentCount: Int,
+    val devices: List<TestNotificationDevice>,
+)
+
 @Serializable
 data class TokenResponse(
     val accessToken: String,

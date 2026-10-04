@@ -28,6 +28,7 @@ import { isTauri, isWeb } from "../platform/env";
 import { openInBrowser } from "../platform/external";
 import { readerIdle } from "../platform/idle";
 import { clearNotifications, notify } from "../platform/notify";
+import type { TestNotificationOut } from "../api/types";
 import { secretStore } from "../platform/secrets";
 import { SqlitePersistence } from "../platform/sqlite";
 import { SyncEngine } from "../sync/engine";
@@ -1253,6 +1254,19 @@ export class AppController {
     }
   }
 
+  /**
+   * 「テスト通知を送る」 (PUSH_NOTIFICATIONS.md §15): shows this device's OS notification at once (even while paused: the
+   * reader asked for it), then asks the server to push to my phones. The notification.test that comes back over the WS
+   * is not shown again here. Throws; the settings say why inline.
+   */
+  async sendTestNotification(): Promise<TestNotificationOut> {
+    const session = this.active;
+    if (!session) throw new Error("ログインしていません");
+    session.testShownAt = Date.now();
+    void notify(this.notificationTitle(session, TEST_NOTIFICATION_TITLE), TEST_NOTIFICATION_BODY);
+    return session.api.sendTestNotification();
+  }
+
   /** M40 「ログイン中の端末」: GET /auth/sessions (throws; the account screen says why inline). */
   async listSessions(): Promise<SessionOut[]> {
     if (!this.api) throw new Error("ログインしていません");
@@ -1614,6 +1628,11 @@ export class AppController {
         void notify(this.notificationTitle(session, "キャンバス"), `${who} が「${mention.title}」であなたをメンションしました${where}`, () => {
           if (this.active === session) this.requestOpenCanvas(mention.channel_id, mention.canvas_id);
         });
+      },
+      // §15: a test notification asked for on another device of mine (this one showed its own when the button was pressed).
+      onTestNotification: (test) => {
+        if (session.testShownAt !== undefined && Date.now() - session.testShownAt < TEST_ECHO_MS) return;
+        void notify(this.notificationTitle(session, test.title), test.body);
       },
       onNotify: (message, channel) => {
         if (this.quiet(session)) return; // M12c: paused / quiet hours
@@ -2553,7 +2572,14 @@ interface Session {
   leaving: boolean;
   /** The sign-out being handled (erasing the store and the credential). */
   ending?: Promise<void>;
+  /** When 「テスト通知を送る」 was last pressed here (its notification.test echo is not shown twice). */
+  testShownAt?: number;
 }
+
+/** The test notification's words (the server's push says the same, PUSH_NOTIFICATIONS.md §15). */
+export const TEST_NOTIFICATION_TITLE = "Taylis";
+export const TEST_NOTIFICATION_BODY = "テスト通知です。この端末に通知が届いています。";
+const TEST_ECHO_MS = 30_000;
 
 function describe(err: unknown): string {
   return describeError(err);

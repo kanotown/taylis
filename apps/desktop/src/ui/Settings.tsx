@@ -20,6 +20,7 @@ import { modKeyName, type SendKey } from "./prefs";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
 import { StatusForm } from "./StatusDialog";
 import { TemplatesSettings } from "./TemplatesSettings";
+import { TestNotificationCard } from "./TestNotification";
 import { displayTitle } from "./roster";
 import { THEME_OPTIONS, themeLabel, useTheme, writeTheme } from "./theme";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
@@ -499,6 +500,8 @@ function NotificationsSection({ controller }: { controller: AppController }) {
         {permission === "granted" && (
           <p className="text-xs text-muted">止めたいときは {isTauri() ? "OS の設定 (通知)" : "ブラウザのサイト設定"}で変えられます。一時的に止めるなら「通知を一時停止」を使ってください。</p>
         )}
+        {/* PUSH_NOTIFICATIONS.md §15: does a notification reach this device and my phones? */}
+        <TestNotificationCard controller={controller} permission={permission} />
       </section>
     </div>
   );
