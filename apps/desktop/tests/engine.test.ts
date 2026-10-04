@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { PoolOut } from "../src/api/types";
 import { ApiError, NetworkError } from "../src/api/errors";
 import { mentionsMe, type SyncApi, SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
@@ -302,6 +303,25 @@ describe("channel browsing", () => {
     await engine.idle();
     expect(store.getChannel(general.id)?.isMember).toBe(true);
     expect(store.getChannel(general.id)?.member_count).toBe(2); // member_added keeps the count current
+    engine.stop();
+  });
+});
+
+describe("reservation pools (M99)", () => {
+  it("loads a channel's pools when it opens and reads them again on reservation.updated", async () => {
+    const { server, channel, store, engine } = await setup();
+    const pool = { id: "p1", channel_id: channel.id, name: "シート", holders: [], waiting: [] } as unknown as PoolOut;
+    server.pools.set(channel.id, [pool]);
+    await engine.start();
+    await engine.idle();
+    expect(store.poolsOf(channel.id)).toEqual([]); // not part of bootstrap
+    await engine.openChannel(channel.id);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.poolsOf(channel.id).map((p) => p.name)).toEqual(["シート"]);
+    server.setPools(channel.id, [{ ...pool, name: "Claude Premium シート" }]);
+    await engine.idle();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.poolsOf(channel.id).map((p) => p.name)).toEqual(["Claude Premium シート"]);
     engine.stop();
   });
 });

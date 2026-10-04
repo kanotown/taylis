@@ -8,6 +8,7 @@ import { canEditLinks } from "./ChannelLinks";
 import { canMakePublic, notificationChoices, overallLevel } from "./channels";
 import { MemberList, useMembers } from "./Dialogs";
 import { FeedList } from "./ChannelFeeds";
+import { ReservationSettings } from "./Reservations";
 import { formatMuted } from "./format";
 import { channelTitle } from "./MainScreen";
 import { Badge, Button, cn, IconButton, Input } from "./primitives";
@@ -134,6 +135,12 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
           <section aria-label="フィード">
             <h3 className={cn(HEADING, "mb-2")}>フィード</h3>
             <FeedList controller={controller} channel={channel} />
+          </section>
+        )}
+        {isChannel && (
+          <section aria-label="共有枠の予約">
+            <h3 className={cn(HEADING, "mb-2")}>共有枠の予約</h3>
+            <ReservationSettings controller={controller} channel={channel} />
           </section>
         )}
         {isChannel && (

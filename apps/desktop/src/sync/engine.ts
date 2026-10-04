@@ -17,7 +17,7 @@ import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, Ca
 import type { NotificationTest } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
-import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
+import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
 import { caughtUp, countsAsUnread, covers, JUMP_MAX_PAGES, JUMP_PAGE_SIZE, readRangeReady as rangeReady } from "./readGate";
 
@@ -68,6 +68,8 @@ export interface SyncApi {
   setThreadFollow(messageId: string, following: boolean): Promise<ThreadState>;
   /** M15f: a conversation's link bar. Optional (older fakes). */
   channelLinks?(channelId: string): Promise<ChannelLinkOut[]>;
+  /** M99: a channel's reservation pools. Optional (older fakes). */
+  reservationPools?(channelId: string): Promise<PoolOut[]>;
   /** M43: canvases (CANVAS.md §4.5). Optional (older fakes). */
   listCanvases?(channelId: string, trashed?: boolean): Promise<CanvasMeta[]>;
   getCanvas?(canvasId: string, knownVersion: number | null): Promise<CanvasOut | null>;
@@ -755,6 +757,19 @@ export class SyncEngine {
     }
   }
 
+  /**
+   * M99 (docs/RESERVATIONS.md §6): the conversation's reservation pools; loaded when it opens, after reconnecting
+   * (openChannel again) and on reservation.updated (the event carries no card: it differs per person).
+   */
+  async loadReservationPools(channelId: string): Promise<void> {
+    if (!this.deps.api.reservationPools) return;
+    try {
+      this.deps.store.setReservationPools(channelId, await this.deps.api.reservationPools(channelId));
+    } catch (err) {
+      console.warn("could not load reservation pools", err);
+    }
+  }
+
   /** M12e: open reminders; refreshed after every bootstrap. */
   async loadReminders(): Promise<void> {
     try {
@@ -893,6 +908,13 @@ export class SyncEngine {
       case "channel.links_updated": {
         const data = frame.data as { channel_id: string; links: ChannelLinkOut[] };
         store.setChannelLinks(data.channel_id, data.links);
+        return;
+      }
+      case "reservation.updated": {
+        // M99: read the pools again where they are held (a conversation opened so far).
+        const data = frame.data as { channel_id: string; pool_id: string; deleted?: boolean };
+        if (data.deleted) store.dropReservationPool(data.channel_id, data.pool_id);
+        if (store.reservationPools.has(data.channel_id) || data.channel_id === this.currentChannelId) void this.loadReservationPools(data.channel_id);
         return;
       }
       case "draft.updated":
@@ -1277,6 +1299,7 @@ export class SyncEngine {
     this.closePreview(); // another conversation, or the previewed one just joined (§7.6.1)
     if (this.status !== "online") return Promise.resolve();
     void this.loadLinks(channelId);
+    void this.loadReservationPools(channelId);
     if (this.deps.store.getChannel(channelId)?.isMember) void this.canvases.loadList(channelId); // M43 (CANVAS.md §4.6)
     return this.enqueue(async () => {
       const channel = this.deps.store.getChannel(channelId);

@@ -1,5 +1,5 @@
 import type { AiAgentPublic, AiStatusOut } from "../api/ai";
-import type { AttachmentOut, ChannelLinkOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
@@ -113,6 +113,25 @@ export class Store {
   }
   linksOf(channelId: string): ChannelLinkOut[] {
     return this.channelLinks.get(channelId) ?? [];
+  }
+  /** M99: reservation pools of the conversations opened so far, as the server answered me (not persisted). */
+  readonly reservationPools = new Map<string, PoolOut[]>();
+  setReservationPools(channelId: string, pools: PoolOut[]): void {
+    this.reservationPools.set(channelId, pools);
+    this.emit();
+  }
+  /** One pool as an action answered it (replaced in place, or added at the end). */
+  putReservationPool(pool: PoolOut): void {
+    const list = this.reservationPools.get(pool.channel_id) ?? [];
+    const index = list.findIndex((p) => p.id === pool.id);
+    const next = index === -1 ? [...list, pool] : list.map((p) => (p.id === pool.id ? pool : p));
+    this.setReservationPools(pool.channel_id, next);
+  }
+  dropReservationPool(channelId: string, poolId: string): void {
+    this.setReservationPools(channelId, (this.reservationPools.get(channelId) ?? []).filter((p) => p.id !== poolId));
+  }
+  poolsOf(channelId: string): PoolOut[] {
+    return this.reservationPools.get(channelId) ?? [];
   }
   /**
    * M43 (CANVAS.md §4.6): the canvases of the conversations opened so far, without bodies, most recently updated first.
