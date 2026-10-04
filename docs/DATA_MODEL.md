@@ -98,6 +98,7 @@ CREATE TABLE users (
   quick_reactions       text[],                 -- M50 長押しの「リアクションの候補」1〜6 個 (重複なし・普通の絵文字だけ)。NULL = クライアントの規則 (最近使った順、足りなければ既定)
   avatar_key         text,                          -- プロフィール画像のオブジェクトキー (avatars/<user_id>/<uuid>、M14a)
   avatar_updated_at  timestamptz,                   -- 画像の版。UserPublic に載り、クライアントはこれでキャッシュする
+  bot_kind              varchar(16),            -- M98 bot の用途。'feed' = チャンネルのフィードのボット (UserPublic.bot_kind、リンクプレビューを自動で取る。SECURITY.md §14)。それ以外の bot と人は NULL
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
   deactivated_at        timestamptz                       -- 無効化 (ログイン不可、表示は残す)
@@ -538,8 +539,25 @@ CREATE INDEX channel_feeds_owner_idx ON channel_feeds (owner_id);
 
 - 見た記事は別の表にせず配列 1 つに持つ (今のフィードに載っている印を先頭に、古いものから捨てて 500 個まで)。1 回の取得で
   1 行を書き換えるだけで、載っている記事は必ず覚えている。
-- 削除は行ごと (投稿は残る)。チャンネルの最後のフィードを消すとボットは抜けて無効化。ボットの投稿は誰の既読位置も動かさない。
+- 削除は行ごと (投稿は残る)。チャンネルの最後のフィードを消すとボットは抜けて無効化 (M98: 管理者が既存のボットを選んだもの
+  (`adopted`) はそのまま)。ボットの投稿は誰の既読位置も動かさない。
 - 一覧の変更はイベントを出さない (開くたびに読む)。取得と投稿の規則は FEEDS.md §4。
+
+### channel_feed_bots (チャンネルのフィードのボット、M98、FEEDS.md §1)
+
+```sql
+CREATE TABLE channel_feed_bots (
+  channel_id   uuid PRIMARY KEY REFERENCES channels(id) ON DELETE CASCADE,
+  bot_user_id  uuid NOT NULL UNIQUE REFERENCES users(id),   -- role = bot、bot_kind = 'feed'
+  adopted      boolean NOT NULL DEFAULT false,              -- 管理者が既存のボット (Slack から移行した RSS のボットなど) を選んだ
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+```
+
+- チャンネルのフィードが投稿するボット。最後のフィードを消しても行は残り、次のフィードで同じボット (付けた名前のまま) が
+  有効に戻ってチャンネルに入る。`channel_feeds.bot_user_id` はこのボットと同じ (選び直すと全部書き換える)。
+- 移行 0077 で今あるフィードのボットから作り、それらの `users.bot_kind` を `'feed'` にした (`updated_at` も進める)。
 
 ### channel_favorites (お気に入りチャンネル、M12a)
 

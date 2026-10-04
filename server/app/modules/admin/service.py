@@ -101,15 +101,22 @@ async def create_user_in_tx(
 
 
 async def create_bot_in_tx(
-    db: AsyncSession, *, actor_id: uuid.UUID, username: str, display_name: str
+    db: AsyncSession,
+    *,
+    actor_id: uuid.UUID,
+    username: str,
+    display_name: str,
+    bot_kind: str | None = None,
 ) -> User:
-    """A `bot` account for an incoming webhook (M13a): it never logs in; the caller commits."""
+    """A `bot` account for an incoming webhook (M13a): it never logs in; the caller commits.
+    `bot_kind` (M98): "feed" for a channel's feed bot (users.bot_kind)."""
     await _ensure_unique(db, username, None)
     user = User(
         username=username,
         display_name=display_name,
         password_hash=await hash_password(generate_temporary_password(32)),
         role="bot",
+        bot_kind=bot_kind,
         must_change_password=False,
     )
     db.add(user)
@@ -133,6 +140,34 @@ async def deactivate_bot_in_tx(db: AsyncSession, user_id: uuid.UUID) -> None:
         user.updated_at = user.deactivated_at
         await db.flush()
         await emit_user_event(db, USER_DEACTIVATED, user)
+
+
+async def update_bot_in_tx(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    display_name: str | None = None,
+    bot_kind: str | None = None,
+    reactivate: bool = False,
+) -> User:
+    """M98: a `bot` account's name, kind or reactivation, from the module that owns the bot (the
+    channel feeds); one user.updated event when something changed. The caller commits."""
+    user = await _get_user(db, user_id)
+    changed = False
+    if display_name is not None and display_name != user.display_name:
+        user.display_name = display_name
+        changed = True
+    if bot_kind is not None and bot_kind != user.bot_kind:
+        user.bot_kind = bot_kind
+        changed = True
+    if reactivate and not user.is_active:
+        user.deactivated_at = None
+        changed = True
+    if changed:
+        user.updated_at = utcnow()
+        await db.flush()
+        await emit_user_event(db, USER_UPDATED, user)
+    return user
 
 
 async def create_user(

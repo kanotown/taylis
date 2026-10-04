@@ -803,7 +803,8 @@ final class AppController {
     /// Whether the message's row asks for its link's preview by itself (review v0.1.18 #5): not for an AI bot's or
     /// another bot's message (LinkPreviewRules), unless its preview was asked for by hand.
     func autoLoadsLinkPreview(_ message: MessageState) -> Bool {
-        LinkPreviewRules.autoLoads(senderId: message.senderId, senderRole: store.users[message.senderId]?.role,
+        let sender = store.users[message.senderId]
+        return LinkPreviewRules.autoLoads(senderId: message.senderId, senderRole: sender?.role, senderBotKind: sender?.botKind,
                                    aiBotIds: aiHub?.botUserIds ?? [])
     }
 

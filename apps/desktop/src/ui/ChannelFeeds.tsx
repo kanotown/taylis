@@ -3,12 +3,14 @@
  * channel's 「RSS」 bot posts. Everyone who reads the channel sees the list (title, URL, who added it, the last fetch or
  * its error); members add one by URL; the one who added it, the channel's owners and administrators pause, resume and
  * delete it. In the channel details page and, on a wide window, in a dialog from ⋯.
+ * M98: above the list, the bot that posts — its owners and administrators rename it, an administrator may make an
+ * existing bot of the channel (an imported Slack RSS bot) the feed bot.
  */
-import { Pause, Play, Plus, Rss, Trash2 } from "lucide-react";
+import { Bot, Pause, Pencil, Play, Plus, Rss, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { openExternalLink } from "../platform/external";
-import type { FeedOut } from "../api/types";
+import type { FeedBotOut, FeedOut } from "../api/types";
 import { describeError } from "../api/errors";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
@@ -17,6 +19,115 @@ import { Button, cn, Input, Modal } from "./primitives";
 import { shortDateTime } from "./recurring";
 
 const MAX_FEEDS = 20;
+const SELECT = "h-8 min-w-0 flex-1 rounded-lg border border-line bg-canvas px-2 text-sm";
+
+/**
+ * M98: the bot the channel's feeds post as. Nothing at all before the first feed for whoever cannot adopt one, or when
+ * the server does not know the call. `onChanged` reloads the list (an adoption changes its bot).
+ */
+export function FeedBotPanel({ controller, channel, reload, onChanged }: { controller: AppController; channel: ChannelState; reload: number; onChanged: () => void }) {
+  const [bot, setBot] = useState<FeedBotOut | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+  const [pick, setPick] = useState("");
+  const [confirmAdopt, setConfirmAdopt] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    const api = controller.api;
+    if (!api) return;
+    let current = true;
+    Promise.resolve().then(() => api.channelFeedBot(channel.id)).then(
+      (out) => { if (current) setBot(out); },
+      () => { if (current) setBot(null); },
+    );
+    return () => { current = false; };
+  }, [controller, channel.id, reload]);
+
+  const save = async (body: { display_name?: string; bot_user_id?: string }, done: string) => {
+    const api = controller.api;
+    if (!api || busy) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      setBot(await api.updateChannelFeedBot(channel.id, body));
+      setResult({ ok: true, text: done });
+      setEditing(false);
+      setConfirmAdopt(false);
+      setPick("");
+      if (body.bot_user_id) onChanged();
+    } catch (error) {
+      setResult({ ok: false, text: describeError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!bot || (!bot.bot_user_id && !bot.can_adopt)) return null;
+  const candidates = bot.candidates ?? [];
+  const chosen = candidates.find((c) => c.id === pick);
+  const trimmed = name.trim();
+  return (
+    <div className="space-y-1.5 rounded-lg border border-line px-3 py-2" data-feed-bot>
+      {editing ? (
+        <form
+          className="flex items-center gap-2"
+          aria-label="ボットの名前を変更"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (trimmed) void save({ display_name: trimmed }, `ボットの名前を「${trimmed}」にしました`);
+          }}
+        >
+          <Input aria-label="ボットの名前" className="h-8 min-w-0 flex-1 text-sm" maxLength={80} value={name} autoFocus onChange={(e) => setName(e.target.value)} />
+          <Button type="submit" size="sm" disabled={busy || !trimmed}>保存</Button>
+          <Button type="button" size="sm" variant="secondary" onClick={() => setEditing(false)}>キャンセル</Button>
+        </form>
+      ) : (
+        <div className="flex items-center gap-2 text-sm">
+          <Bot size={15} className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1 truncate">
+            投稿するボット: {bot.display_name ? <strong data-feed-bot-name>{bot.display_name}</strong> : <span className="text-muted">(最初のフィードを追加すると「RSS」ボットができます)</span>}
+            {bot.adopted && <span className="ml-1.5 text-xs text-muted">(既存のボットを使用)</span>}
+          </span>
+          {bot.can_rename && bot.display_name && (
+            <Button variant="ghost" size="sm" onClick={() => { setName(bot.display_name ?? ""); setEditing(true); setResult(null); }}>
+              <Pencil size={13} /> 名前を変更
+            </Button>
+          )}
+        </div>
+      )}
+      {bot.can_adopt && candidates.length > 0 && (
+        confirmAdopt && chosen ? (
+          <div className="space-y-1.5 rounded-lg bg-panel-2 px-2 py-1.5 text-xs">
+            <p>
+              「{chosen.display_name}」(@{chosen.username}) をこのチャンネルのフィードのボットにしますか？ これからの記事はこのボットが投稿し、
+              {bot.adopted || !bot.bot_user_id ? "" : `今の「${bot.display_name ?? ""}」ボットは無効になります (これまでの投稿は残ります)。`}
+              このボットはフィードを削除しても無効化されません。
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setConfirmAdopt(false)}>キャンセル</Button>
+              <Button size="sm" disabled={busy} onClick={() => void save({ bot_user_id: chosen.id }, `「${chosen.display_name}」をフィードのボットにしました`)}>
+                このボットにする
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <select aria-label="既存のボットを使う" className={SELECT} value={pick} onChange={(e) => { setPick(e.target.value); setResult(null); }}>
+              <option value="">既存のボットを使う (管理者)…</option>
+              {candidates.map((c) => (
+                <option key={c.id} value={c.id}>{c.display_name} (@{c.username}{c.active ? "" : "、無効"})</option>
+              ))}
+            </select>
+            <Button variant="secondary" size="sm" disabled={!chosen} onClick={() => setConfirmAdopt(true)}>選ぶ</Button>
+          </div>
+        )
+      )}
+      {result && <p role={result.ok ? "status" : "alert"} className={cn("text-xs", result.ok ? "text-muted" : "text-danger")}>{result.text}</p>}
+    </div>
+  );
+}
 
 export function FeedList({ controller, channel }: { controller: AppController; channel: ChannelState }) {
   const store = controller.store;
@@ -84,6 +195,7 @@ export function FeedList({ controller, channel }: { controller: AppController; c
   const full = Array.isArray(rows) && rows.length >= MAX_FEEDS;
   return (
     <div className="space-y-2" data-feed-list>
+      <FeedBotPanel controller={controller} channel={channel} reload={reload} onChanged={() => setReload((n) => n + 1)} />
       {rows === null ? (
         <p className="py-2 text-sm text-muted">読み込み中…</p>
       ) : rows === "failed" ? (

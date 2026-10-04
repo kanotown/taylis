@@ -1464,6 +1464,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/feed-bot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Feed Bot
+         * @description The channel's feed bot (null before the first feed), and for administrators the bots
+         *     that may be adopted as it (M98).
+         */
+        get: operations["get_feed_bot_api_v1_channels__channel_id__feed_bot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Feed Bot
+         * @description `display_name`: rename the feed bot (channel owners, administrators; 404
+         *     feed_bot_not_found before the first feed). `bot_user_id`: administrators make one of the
+         *     `candidates` the feed bot (409 feed_bot_unavailable otherwise); the feeds never deactivate
+         *     an adopted bot. Both may come together (adopted first, then renamed).
+         */
+        patch: operations["update_feed_bot_api_v1_channels__channel_id__feed_bot_patch"];
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}/feeds": {
         parameters: {
             query?: never;
@@ -5133,6 +5161,69 @@ export interface components {
             /** Favorite */
             favorite: boolean;
         };
+        /** FeedBotCandidate */
+        FeedBotCandidate: {
+            /** Active */
+            active: boolean;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Username */
+            username: string;
+        };
+        /**
+         * FeedBotOut
+         * @description M98: the channel's feed bot (docs/FEEDS.md §3).
+         */
+        FeedBotOut: {
+            /**
+             * Adopted
+             * @description An administrator chose an existing bot (e.g. an imported one) for it: the feeds never deactivate it or take it out of the channel
+             */
+            adopted: boolean;
+            /**
+             * Bot User Id
+             * @description The bot the channel's feeds post as; null before the first feed
+             */
+            bot_user_id: string | null;
+            /**
+             * Can Adopt
+             * @description The caller may choose another bot for it (admins)
+             */
+            can_adopt: boolean;
+            /**
+             * Can Rename
+             * @description The caller may rename it (channel owners, admins)
+             */
+            can_rename: boolean;
+            /**
+             * Candidates
+             * @description For administrators: the bots that may become the feed bot (members of the channel or bots that posted in it, used by no webhook, AI, scheduled post, system bot or other channel's feeds)
+             */
+            candidates?: components["schemas"]["FeedBotCandidate"][];
+            /**
+             * Display Name
+             * @description Its name (「RSS」 unless renamed)
+             */
+            display_name: string | null;
+        };
+        /** FeedBotUpdate */
+        FeedBotUpdate: {
+            /**
+             * Bot User Id
+             * @description Administrators: make this bot (one of `candidates`) the channel's feed bot
+             */
+            bot_user_id?: string | null;
+            /**
+             * Display Name
+             * @description A new name for the channel's feed bot (channel owners, administrators)
+             */
+            display_name?: string | null;
+        };
         /** FeedCreate */
         FeedCreate: {
             /**
@@ -7410,6 +7501,8 @@ export interface components {
         UserMe: {
             /** Avatar Updated At */
             avatar_updated_at?: string | null;
+            /** Bot Kind */
+            bot_kind?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -7486,6 +7579,8 @@ export interface components {
         UserPublic: {
             /** Avatar Updated At */
             avatar_updated_at?: string | null;
+            /** Bot Kind */
+            bot_kind?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -10846,6 +10941,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FavoriteStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_feed_bot_api_v1_channels__channel_id__feed_bot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedBotOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_feed_bot_api_v1_channels__channel_id__feed_bot_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedBotUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedBotOut"];
                 };
             };
             /** @description Validation Error */

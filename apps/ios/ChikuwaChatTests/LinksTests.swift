@@ -229,6 +229,21 @@ final class LinkPreviewSlotTests: XCTestCase {
         // A webhook or scheduled-post bot that is not an agent: no automatic preview either (the row's height does not
         // change when the status comes, and a disabled agent, gone from the status, stays covered).
         XCTAssertFalse(LinkPreviewRules.autoLoads(senderId: "hook", senderRole: "bot", aiBotIds: ai), "a webhook bot")
+        // M98: a channel's feed bot is the one bot whose links load by themselves; an AI agent never does.
+        XCTAssertTrue(LinkPreviewRules.autoLoads(senderId: "rss", senderRole: "bot", senderBotKind: "feed", aiBotIds: ai), "a feed bot")
+        XCTAssertTrue(LinkPreviewRules.autoLoads(senderId: "rss", senderRole: "bot", senderBotKind: "feed", aiBotIds: []), "a feed bot, AI status not loaded")
+        XCTAssertFalse(LinkPreviewRules.autoLoads(senderId: "hook", senderRole: "bot", senderBotKind: "other", aiBotIds: ai), "another kind of bot")
+        XCTAssertFalse(LinkPreviewRules.autoLoads(senderId: "ai1", senderRole: "bot", senderBotKind: "feed", aiBotIds: ai), "an AI agent, whatever its kind")
+    }
+
+    /// M98: the server's `bot_kind` reaches the user model (and a server without it decodes as before).
+    func testBotKindDecodes() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let json = #"{"id":"b","username":"feed-1","display_name":"RSS","role":"bot","deactivated_at":null,"created_at":"x","updated_at":"x","bot_kind":"feed"}"#
+        XCTAssertEqual(try decoder.decode(UserPublic.self, from: Data(json.utf8)).botKind, "feed")
+        let old = #"{"id":"b","username":"hook","display_name":"CI","role":"bot","deactivated_at":null,"created_at":"x","updated_at":"x"}"#
+        XCTAssertNil(try decoder.decode(UserPublic.self, from: Data(old.utf8)).botKind)
     }
 
     func testAKeptPreviewIsAskedForAgainAfterTheServersOwnCacheTime() {

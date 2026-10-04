@@ -117,6 +117,8 @@ export type CollectionOut = components["schemas"]["CollectionOut"];
 export type FeedOut = components["schemas"]["FeedOut"];
 export type FeedCreate = components["schemas"]["FeedCreate"];
 export type FeedUpdate = components["schemas"]["FeedUpdate"];
+export type FeedBotOut = components["schemas"]["FeedBotOut"];
+export type FeedBotUpdate = components["schemas"]["FeedBotUpdate"];
 
 /** Workflows: forms that post a message (M94, docs/WORKFLOWS.md). */
 export type WorkflowOut = components["schemas"]["WorkflowOut"];

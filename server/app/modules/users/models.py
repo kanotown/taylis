@@ -21,6 +21,9 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(Text)
     must_change_password: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     role: Mapped[str] = mapped_column(String(16), default="member", server_default="member")
+    # M98: what a `bot` is for, when that matters to clients: "feed" = a channel's feed bot (only
+    # the feeds post as it; its link previews load by themselves, SECURITY.md §14). NULL otherwise.
+    bot_kind: Mapped[str | None] = mapped_column(String(16))
     # Profile card (M11d): job title and a custom status that may expire.
     title: Mapped[str | None] = mapped_column(String(80))
     status_text: Mapped[str | None] = mapped_column(String(100))

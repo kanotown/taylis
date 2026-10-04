@@ -97,6 +97,10 @@ class UserPublic(BaseModel):
     quiet_hours: QuietHours | None = None
     # M14a: when the picture changed (clients cache by it); null = no picture.
     avatar_updated_at: datetime | None = None
+    # M98: for a bot, what it is for: "feed" = a channel's feed bot (clients load the link
+    # previews of its posts by themselves, SECURITY.md §14); null = any other bot, or a person.
+    # Clients compare with "feed" only (other values may come later).
+    bot_kind: str | None = None
 
 
 class UserMe(UserPublic):
@@ -207,6 +211,7 @@ def to_user_public(user: User, now: datetime | None = None) -> UserPublic:
         dnd_until=user.dnd_until if user.dnd_until and user.dnd_until > (now or utcnow()) else None,
         quiet_hours=quiet_hours_of(user),
         avatar_updated_at=user.avatar_updated_at,
+        bot_kind=user.bot_kind if user.role == "bot" else None,
     )
 
 

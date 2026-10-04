@@ -106,4 +106,17 @@ describe("link previews of AI bot posts (docs/AI.md §4)", () => {
     store.setAiStatus({ ...status, agents: [] });
     expect(autoLinkPreview(store, bot.id)).toBe(false);
   });
+
+  it("a channel's feed bot (bot_kind feed, M98) loads its cards by itself; no other bot does", () => {
+    const { store, bot, status } = world({ status: "loaded" });
+    const feedBot = { ...bot, id: "feed-bot", username: "feed-1", bot_kind: "feed" } as UserPublic;
+    const hook = { ...bot, id: "hook-bot", username: "hook", bot_kind: null } as UserPublic;
+    store.upsertUser(feedBot);
+    store.upsertUser(hook);
+    expect([autoLinkPreview(store, feedBot.id), autoLinkPreview(store, hook.id)]).toEqual([true, false]);
+    // An AI agent never does, whatever its user says.
+    store.upsertUser({ ...bot, bot_kind: "feed" } as UserPublic);
+    store.setAiStatus(status);
+    expect(autoLinkPreview(store, bot.id)).toBe(false);
+  });
 });

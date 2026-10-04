@@ -32,18 +32,22 @@ The shared steps (people, channels, seq, threads, read state, import_refs, --dry
   are left out. Custom emoji come from ``--emoji-dir`` (a folder or a ZIP); ``--emoji-rename``
   gives a Slack name that is no valid Taylis name (Japanese) a new one, for the image, the
   reactions and ``:name:`` in the text.
+- bot names (M98): a bot account is named after its posts' ``username``; one ``bot_id`` that
+  posted under several (the Slack RSS app: one per feed) is named after its ``bot_profile.name``,
+  else what the names share, and the report lists them. ``--bot-name BOT=NAME`` names it.
 """
 
 import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import unicodedata
 import uuid
 import zipfile
 from collections import Counter
-from collections.abc import AsyncIterator, Collection, Iterator
+from collections.abc import AsyncIterator, Collection, Iterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -156,6 +160,17 @@ def ts_to_us(ts: str | float | int | None) -> int:
 def slug(name: str) -> str:
     """A username from a Slack name or bot label ("My Bot" → "my-bot")."""
     return _SLUG_DROP.sub("-", name.strip().lower()).strip("-._")[:32]
+
+
+# Trailing separators dropped from a shared bot name: space, tab, hyphen, en / em dash, …
+_NAME_SEPARATORS = " \t-\u2013\u2014:|/\u30fb_.,"
+
+
+def shared_bot_name(names: Sequence[str]) -> str | None:
+    """M98: what a bot's several post names have in common ("週報 - 中村の週報", "週報 - 田中の週報"
+    → "週報"), without trailing separators; None when that is shorter than 2 characters."""
+    prefix = os.path.commonprefix([n.strip() for n in names]).rstrip(_NAME_SEPARATORS)
+    return prefix if len(prefix) >= 2 else None
 
 
 # ---- reading the export ------------------------------------------------------------------------
@@ -683,6 +698,9 @@ class Options:
     bot_as: dict[str, str] = field(default_factory=dict)
     # M92: a Slack custom emoji name → the Taylis custom emoji name it becomes.
     emoji_renames: dict[str, str] = field(default_factory=dict)
+    # M98: a bot (its bot_id, a post's username or bot_profile.name) → the display name of the
+    # bot account made for it.
+    bot_names: dict[str, str] = field(default_factory=dict)
 
 
 class SlackImport(core.ImportJob):
@@ -719,6 +737,11 @@ class SlackImport(core.ImportJob):
         self.bot_as_post_ids: dict[str, list[str]] = {}  # their post ids (an earlier run's sender)
         self.bot_as_labels: dict[str, str] = {}
         self.bot_targets: dict[str, BotTarget] = {}
+        # M98: per made-up bot record (key "bot:<bot_id>"), the distinct usernames its posts carry
+        # (in order), its bot_profile.name, and --bot-name (lower case, NFC → display name).
+        self.bot_post_names: dict[str, list[str]] = {}
+        self.bot_profile_names: dict[str, str] = {}
+        self.bot_names = {nfc(k.strip().lower()): v.strip() for k, v in options.bot_names.items()}
         # M92: Slack emoji name → Taylis name, and back (a name may be the target of several).
         self.emoji_renames = {
             nfc(k.strip().strip(":")): v.strip().strip(":").lower()
@@ -759,6 +782,7 @@ class SlackImport(core.ImportJob):
                 f"--bot-as {unused[0]}=…: no bot post with that name (username / "
                 "bot_profile.name) in the channels being imported"
             )
+        self._name_bots()
 
     # ---- users and channels from the export ----------------------------------------------
 
@@ -885,6 +909,53 @@ class SlackImport(core.ImportJob):
             if record["archived"]:
                 record["delete_at"] = last
 
+    def _name_bots(self) -> None:
+        """M98: a made-up bot account is named after its posts' username, as before, unless one
+        bot_id posted under several (the Slack RSS app names each post after its feed): then
+        after its bot_profile.name, else what the names share ("週報"), else "Slack bot", and
+        the report lists the names. ``--bot-name`` (bot_id, a username or the profile's name)
+        sets the name outright."""
+        used: set[str] = set()
+        for key, names in sorted(self.bot_post_names.items()):
+            record = self.users.get(key)
+            if record is None or not record.get("is_bot") or not names:
+                continue
+            bot_id = key.removeprefix("bot:") if not key.startswith("bot:name:") else ""
+            profile = self.bot_profile_names.get(key)
+            labels = [bot_id, *names, profile or ""]
+            chosen = next(
+                (
+                    (nfc(label.lower()), self.bot_names[nfc(label.lower())])
+                    for label in labels
+                    if label and nfc(label.lower()) in self.bot_names
+                ),
+                None,
+            )
+            if chosen is not None:
+                used.add(chosen[0])
+                name = chosen[1]
+            elif len(names) > 1:
+                name = profile or shared_bot_name(names) or "Slack bot"
+                shown = "」「".join(names[:5]) + ("」…" if len(names) > 5 else "」")
+                label = bot_id or names[0]
+                self.report.warn(
+                    f"bot {label}: {len(names)} 種類の名前で投稿 (「{shown})。"
+                    f"bot アカウントの名前は「{name}」(--bot-name {label}=<名前> で指定)"
+                )
+            else:
+                continue
+            record["first_name"] = name[:80]
+            record["last_name"] = record["nickname"] = ""
+            username = slug(name)
+            if USERNAME.match(username):
+                record["username"] = username
+        unused = sorted(set(self.bot_names) - used)
+        if unused:
+            raise ImportFailed(
+                f"--bot-name {unused[0]}=…: no bot post with that bot_id / username / "
+                "bot_profile.name in the channels being imported"
+            )
+
     def _is_bot_post(self, message: dict[str, Any]) -> bool:
         """Posted by a bot (an integration or a bridge), not by a person of users.json."""
         if message.get("subtype") == "bot_message":
@@ -940,6 +1011,11 @@ class SlackImport(core.ImportJob):
                 return self.bots_by_bot_id[bot_id]
             label = str(message.get("username") or profile.get("name") or bot_id or "bot")
             key = f"bot:{bot_id}" if bot_id else f"bot:name:{label.lower()}"[:64]
+            names = self.bot_post_names.setdefault(key, [])
+            if label.strip() and label.strip() not in names:
+                names.append(label.strip())
+            if isinstance(profile.get("name"), str) and profile["name"].strip():
+                self.bot_profile_names.setdefault(key, profile["name"].strip())
             if key not in self.users:
                 username = slug(label)
                 self.users[key] = {

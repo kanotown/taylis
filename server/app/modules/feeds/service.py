@@ -11,6 +11,10 @@ GET through the previews' SSRF-safe fetcher, posts at most FEED_MAX_POSTS_PER_FE
 once, in a DM from the bot. Nothing is fetched while the channel is archived or the owner is
 deactivated or not a member; what was published meanwhile is not posted afterwards.
 
+M98: the feed bot is kept per channel (channel_feed_bots, users.bot_kind = "feed"): its owners
+and administrators rename it, and an administrator may adopt an existing bot (an imported Slack
+RSS bot) for it, which the feeds then never deactivate.
+
 Network I/O never happens inside a database transaction: the rows are claimed (next_fetch_at moved
 on) and committed first, fetched, then locked again to record the result.
 """
@@ -32,7 +36,7 @@ from app.modules.audit import service as audit
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel
 from app.modules.feeds import repository as repo
-from app.modules.feeds.models import MAX_URL_LENGTH, ChannelFeed
+from app.modules.feeds.models import MAX_URL_LENGTH, ChannelFeed, ChannelFeedBot
 from app.modules.feeds.parser import (
     FeedEntry,
     FeedParseError,
@@ -41,7 +45,14 @@ from app.modules.feeds.parser import (
     looks_like_html,
     parse_feed,
 )
-from app.modules.feeds.schemas import FeedCreate, FeedOut, FeedUpdate
+from app.modules.feeds.schemas import (
+    FeedBotCandidate,
+    FeedBotOut,
+    FeedBotUpdate,
+    FeedCreate,
+    FeedOut,
+    FeedUpdate,
+)
 from app.modules.link_previews.fetcher import (
     FeedFetcher,
     FeedResponse,
@@ -63,6 +74,7 @@ MAX_PER_USER = 20
 # Seen entry hashes kept per feed (the current document's are always among them).
 MAX_SEEN = 500
 BOT_NAME = "RSS"
+BOT_KIND = "feed"  # users.bot_kind of a feed bot (M98)
 # A post's client_msg_id comes from the feed and the entry: a retried post finds its message.
 _POST_NAMESPACE = uuid.UUID("0b7f5b8e-3c1d-4f6a-9e2b-7d4c1a5e8f90")
 # Entries dated this much before the feed was registered are backlog (a site that changed its
@@ -196,19 +208,23 @@ async def list_for_channel(db: AsyncSession, actor: User, channel_id: uuid.UUID)
 
 
 async def _feed_bot(db: AsyncSession, actor: User, channel: Channel) -> uuid.UUID:
-    """The channel's feed bot: the one its feeds already use (back in the channel if someone
-    removed it), else a new 「RSS」 bot that joins the channel."""
-    existing = await repo.bot_of_channel(db, channel.id)
-    if existing is not None:
-        bot = await users.require_user(db, existing)
-        if bot.is_active:
-            if await channels.membership_of(db, bot.id, channel.id) is None:
-                await channels.add_member_in_tx(db, channel, bot.id)
-            return bot.id
+    """The channel's feed bot (channel_feed_bots), active and back in the channel if the last
+    feed's removal (or someone) took it out; else a new 「RSS」 bot that joins the channel."""
+    kept = await repo.feed_bot_row(db, channel.id, for_update=True)
+    if kept is not None:
+        bot = await admin.update_bot_in_tx(db, kept.bot_user_id, reactivate=True)
+        if await channels.membership_of(db, bot.id, channel.id) is None:
+            await channels.add_member_in_tx(db, channel, bot.id)
+        return bot.id
     bot = await admin.create_bot_in_tx(
-        db, actor_id=actor.id, username=f"feed-{secrets.token_hex(4)}", display_name=BOT_NAME
+        db,
+        actor_id=actor.id,
+        username=f"feed-{secrets.token_hex(4)}",
+        display_name=BOT_NAME,
+        bot_kind=BOT_KIND,
     )
     await channels.add_member_in_tx(db, channel, bot.id)
+    db.add(ChannelFeedBot(channel_id=channel.id, bot_user_id=bot.id, adopted=False))
     return bot.id
 
 
@@ -326,10 +342,13 @@ async def update(db: AsyncSession, actor: User, feed_id: uuid.UUID, data: FeedUp
 
 
 async def delete(db: AsyncSession, actor: User, feed_id: uuid.UUID) -> None:
-    """The posts stay. The last feed of a channel takes its bot out (deactivated)."""
+    """The posts stay. The last feed of a channel takes its bot out (deactivated; the next feed
+    brings it back, name and all), unless an administrator adopted that bot (M98): it stays."""
     row = await _managed_row(db, actor, feed_id)
     bot_id = row.bot_user_id
-    if not await repo.bot_in_use(db, bot_id, besides=row.id):
+    kept = await repo.feed_bot_row(db, row.channel_id)
+    adopted = kept is not None and kept.adopted and kept.bot_user_id == bot_id
+    if not adopted and not await repo.bot_in_use(db, bot_id, besides=row.id):
         channel = await channels.find_channel(db, row.channel_id)
         if channel is not None:
             await channels.remove_member_in_tx(db, channel, bot_id)
@@ -344,6 +363,125 @@ async def delete(db: AsyncSession, actor: User, feed_id: uuid.UUID) -> None:
     )
     await db.delete(row)
     await db.commit()
+
+
+# --- the feed bot (M98) ----------------------------------------------------------------------
+
+
+async def _can_rename_bot(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> bool:
+    if actor.is_admin:
+        return True
+    membership = await channels.membership_of(db, actor.id, channel_id)
+    return membership is not None and membership.role == "owner"
+
+
+async def _bot_out(db: AsyncSession, actor: User, channel: Channel) -> FeedBotOut:
+    kept = await repo.feed_bot_row(db, channel.id)
+    bot = await users.get_user(db, kept.bot_user_id) if kept is not None else None
+    candidates: list[FeedBotCandidate] = []
+    if actor.is_admin and not channel.is_dm:
+        candidates = [
+            FeedBotCandidate(
+                id=u.id, username=u.username, display_name=u.display_name, active=u.is_active
+            )
+            for u in await repo.bot_candidates(db, channel.id)
+        ]
+    return FeedBotOut(
+        bot_user_id=bot.id if bot is not None else None,
+        display_name=bot.display_name if bot is not None else None,
+        adopted=kept.adopted if kept is not None else False,
+        can_rename=bot is not None and await _can_rename_bot(db, actor, channel.id),
+        can_adopt=actor.is_admin and not channel.is_dm,
+        candidates=candidates,
+    )
+
+
+async def get_bot(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> FeedBotOut:
+    """Whoever reads the channel sees its feed bot; administrators also the bots to adopt."""
+    channel = await channels.require_readable(db, actor, channel_id)
+    return await _bot_out(db, actor, channel)
+
+
+async def _adopt(db: AsyncSession, actor: User, channel: Channel, bot_id: uuid.UUID) -> None:
+    """An existing bot (one of the candidates) becomes the channel's feed bot: the feeds post as
+    it from now on, and it is never deactivated by them. A bot the feeds made is retired
+    (deactivated, out of the channel); one adopted earlier just stops being used."""
+    if not actor.is_admin:
+        raise forbidden("admin_required", "Administrator role required")
+    if channel.is_dm:
+        raise bad_request("feed_channel_unsupported", "Feeds are for channels, not DMs")
+    channels.require_writable(channel)
+    kept = await repo.feed_bot_row(db, channel.id, for_update=True)
+    if kept is not None and kept.bot_user_id == bot_id:
+        return
+    if bot_id not in {u.id for u in await repo.bot_candidates(db, channel.id)}:
+        raise conflict(
+            "feed_bot_unavailable",
+            "Only a bot of this channel that nothing else posts as can become its feed bot",
+        )
+    previous = kept.bot_user_id if kept is not None else None
+    if kept is not None:
+        if not kept.adopted:
+            await channels.remove_member_in_tx(db, channel, kept.bot_user_id)
+            await admin.deactivate_bot_in_tx(db, kept.bot_user_id)
+        kept.bot_user_id = bot_id
+        kept.adopted = True
+        kept.updated_at = utcnow()
+    else:
+        db.add(ChannelFeedBot(channel_id=channel.id, bot_user_id=bot_id, adopted=True))
+    await db.flush()
+    bot = await admin.update_bot_in_tx(db, bot_id, bot_kind=BOT_KIND, reactivate=True)
+    if await channels.membership_of(db, bot.id, channel.id) is None:
+        await channels.add_member_in_tx(db, channel, bot.id)
+    await repo.set_feeds_bot(db, channel.id, bot.id)
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="feed.bot_adopted",
+        target_type="channel",
+        target_id=channel.id,
+        details={
+            "bot_user_id": str(bot.id),
+            "previous_bot_user_id": str(previous) if previous else None,
+        },
+    )
+
+
+async def update_bot(
+    db: AsyncSession, actor: User, channel_id: uuid.UUID, data: FeedBotUpdate
+) -> FeedBotOut:
+    """Adopt a bot (administrators) and / or rename the channel's feed bot (its owners and
+    administrators); the new name shows on every post of the bot (user.updated)."""
+    channel = await channels.require_readable(db, actor, channel_id)
+    if data.bot_user_id is not None:
+        await _adopt(db, actor, channel, data.bot_user_id)
+    if data.display_name is not None:
+        if not await _can_rename_bot(db, actor, channel.id):
+            raise forbidden(
+                "feed_bot_rename_restricted",
+                "Only the channel's owners and administrators can rename its feed bot",
+            )
+        kept = await repo.feed_bot_row(db, channel.id, for_update=True)
+        if kept is None:
+            raise not_found("feed_bot_not_found", "The channel has no feed bot yet")
+        bot = await users.require_user(db, kept.bot_user_id)
+        before = bot.display_name
+        if before != data.display_name:
+            await admin.update_bot_in_tx(db, bot.id, display_name=data.display_name)
+            await audit.record_in_tx(
+                db,
+                actor_id=actor.id,
+                action="feed.bot_renamed",
+                target_type="user",
+                target_id=bot.id,
+                details={
+                    "channel_id": str(channel.id),
+                    "from": before,
+                    "to": data.display_name,
+                },
+            )
+    await db.commit()
+    return await _bot_out(db, actor, channel)
 
 
 # --- polling ----------------------------------------------------------------------------------

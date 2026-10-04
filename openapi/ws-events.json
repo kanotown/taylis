@@ -6969,6 +6969,18 @@
                 "default": null,
                 "title": "Avatar Updated At"
               },
+              "bot_kind": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Bot Kind"
+              },
               "created_at": {
                 "format": "date-time",
                 "title": "Created At",
@@ -7167,6 +7179,18 @@
                 "default": null,
                 "title": "Avatar Updated At"
               },
+              "bot_kind": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Bot Kind"
+              },
               "created_at": {
                 "format": "date-time",
                 "title": "Created At",
@@ -7364,6 +7388,18 @@
                 ],
                 "default": null,
                 "title": "Avatar Updated At"
+              },
+              "bot_kind": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Bot Kind"
               },
               "created_at": {
                 "format": "date-time",

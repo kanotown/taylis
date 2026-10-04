@@ -68,10 +68,12 @@ struct StoredLinkPreview: Codable, Equatable {
 /// - any `role = bot` sender → no, whether or not the AI status is known yet. That covers an AI bot before the status
 ///   has come (and a disabled agent, which leaves the status), and also incoming webhooks and scheduled posts (their
 ///   cards are one tap away). Deciding by role alone keeps the row's height fixed when the status arrives later;
+/// - except (M98) a channel's feed bot (`botKind` "feed", not an AI agent): its links are the entries of feeds the
+///   channel's members registered (SECURITY.md §14), so they load as a person's do;
 /// - anyone else (an unknown sender too) → yes, as before.
 enum LinkPreviewRules {
-    static func autoLoads(senderId: String, senderRole: String?, aiBotIds: Set<String>) -> Bool {
-        !aiBotIds.contains(senderId) && senderRole != "bot"
+    static func autoLoads(senderId: String, senderRole: String?, senderBotKind: String? = nil, aiBotIds: Set<String>) -> Bool {
+        !aiBotIds.contains(senderId) && (senderRole != "bot" || senderBotKind == "feed")
     }
 }
 

@@ -69,3 +69,24 @@ class ChannelFeed(Base):
         Index("channel_feeds_due_idx", "next_fetch_at", postgresql_where=text("enabled")),
         Index("channel_feeds_owner_idx", "owner_id"),
     )
+
+
+class ChannelFeedBot(Base):
+    """M98 (docs/FEEDS.md §2): the bot a channel's feeds post as. Kept after the last feed goes,
+    so the bot (and the name its owners gave it) comes back with the next feed. `adopted`: an
+    administrator chose an existing bot (an imported one) for it; such a bot is never deactivated
+    or taken out of the channel by the feeds."""
+
+    __tablename__ = "channel_feed_bots"
+
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("channels.id", ondelete="CASCADE"), primary_key=True
+    )
+    bot_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), unique=True)
+    adopted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now()
+    )

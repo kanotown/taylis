@@ -46,5 +46,10 @@ class LinksTest {
     @Test fun anyBotWaitsWhileTheAiStatusIsNotRead() {
         assertFalse(LinkPreviewPolicy.autoLoads("ai-bot", "bot", null))
         assertFalse(LinkPreviewPolicy.autoLoads("hook", "bot", null))
+        // M98: a channel's feed bot loads its cards by itself; another kind of bot and an AI agent never do.
+        assertTrue(LinkPreviewPolicy.autoLoads("rss", "bot", null, "feed"))
+        assertTrue(LinkPreviewPolicy.autoLoads("rss", "bot", status, "feed"))
+        assertFalse(LinkPreviewPolicy.autoLoads("hook", "bot", status, "other"))
+        assertFalse(LinkPreviewPolicy.autoLoads("ai-bot", "bot", status, "feed"))
     }
 }

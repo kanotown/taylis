@@ -7,7 +7,7 @@ from app.core.errors import rate_limited
 from app.core.ratelimit import RateLimiter
 from app.modules.auth.deps import CurrentUser
 from app.modules.feeds import service
-from app.modules.feeds.schemas import FeedCreate, FeedOut, FeedUpdate
+from app.modules.feeds.schemas import FeedBotOut, FeedBotUpdate, FeedCreate, FeedOut, FeedUpdate
 
 router = APIRouter(tags=["feeds"])
 
@@ -40,6 +40,24 @@ async def create_feed(
         settings=request.app.state.settings,
         fetch=request.app.state.feed_fetcher,
     )
+
+
+@router.get("/channels/{channel_id}/feed-bot", response_model=FeedBotOut)
+async def get_feed_bot(channel_id: UUID, user: CurrentUser, db: Db) -> FeedBotOut:
+    """The channel's feed bot (null before the first feed), and for administrators the bots
+    that may be adopted as it (M98)."""
+    return await service.get_bot(db, user, channel_id)
+
+
+@router.patch("/channels/{channel_id}/feed-bot", response_model=FeedBotOut)
+async def update_feed_bot(
+    channel_id: UUID, body: FeedBotUpdate, user: CurrentUser, db: Db
+) -> FeedBotOut:
+    """`display_name`: rename the feed bot (channel owners, administrators; 404
+    feed_bot_not_found before the first feed). `bot_user_id`: administrators make one of the
+    `candidates` the feed bot (409 feed_bot_unavailable otherwise); the feeds never deactivate
+    an adopted bot. Both may come together (adopted first, then renamed)."""
+    return await service.update_bot(db, user, channel_id, body)
 
 
 @router.patch("/feeds/{feed_id}", response_model=FeedOut)
