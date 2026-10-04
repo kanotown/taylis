@@ -91,6 +91,15 @@ jobs:
     defaults:
       run:
         working-directory: apps/android
+    # The runner shares a 12 GB VPS with the taylis server: Gradle (3 GB heap) plus the Kotlin daemon and the test
+    # JVM grew to 4.4 GB resident and the OOM killer took the runner down with it (2026-10-05, twice). On CI: one
+    # Gradle JVM capped at 2 GB, Kotlin compiled inside it, no daemon left behind, two workers.
+    env:
+      GRADLE_OPTS: >-
+        -Dorg.gradle.jvmargs="-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8"
+        -Dorg.gradle.daemon=false
+        -Dorg.gradle.workers.max=2
+        -Dkotlin.compiler.execution.strategy=in-process
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
