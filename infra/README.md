@@ -120,6 +120,11 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
 3. **サービスアカウント鍵**: プロジェクトの設定 → サービス アカウント → 「新しい秘密鍵の生成」→ JSON を
    `infra/secrets/fcm_service_account.json` に置く (権限 `600`。`*service-account*.json` と `infra/secrets/*` は除外済み)。
    Cloud Messaging API (V1) が有効になっていることを確認する (既定で有効)。
+   本番に後から足すときの注意 (2026-10-04 に taylis で踏んだ): 鍵が無いまま `compose up` していたサーバでは、Docker が
+   bind mount の元として `secrets/fcm_service_account.json` という**空のディレクトリ**を作っている。`rmdir` してから
+   置く。コンテナは uid 10001 で動くので、置いた鍵の持ち主と権限は APNs の `.p8` にそろえる
+   (`chown --reference=secrets/<p8> …` / `chmod --reference=…`)。`exec -T app head -c 1 /run/secrets/fcm_service_account.json`
+   で読めることを確かめる。
 4. **`.env`**:
 
    ```
