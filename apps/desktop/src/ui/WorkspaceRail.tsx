@@ -220,7 +220,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
     <nav
       aria-label="ワークスペース"
       data-tauri-drag-region
-      className="flex w-[68px] shrink-0 flex-col items-center gap-3 overflow-y-auto border-r border-black/20 bg-[color-mix(in_srgb,var(--sidebar)_78%,black)] py-3"
+      className="flex w-[68px] shrink-0 flex-col items-center gap-3 overflow-y-auto border-r border-black/20 bg-sidebar-rail py-3"
       style={trafficLights ? { paddingTop: `calc(48px / var(--ui-zoom, 1))`, width: `max(68px, calc(${TRAFFIC_LIGHTS_INSET}px / var(--ui-zoom, 1)))` } : undefined}
       data-drop-gap={lifted ? drag.gap : undefined}
     >
@@ -259,7 +259,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
         title="ワークスペースを追加"
         aria-label="ワークスペースを追加"
         onClick={() => controller.beginAddWorkspace()}
-        className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-dashed border-white/30 text-white/70 transition-colors hover:border-white/60 hover:text-white", controller.addingWorkspace && "border-solid border-white bg-white/10 text-white")}
+        className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-dashed border-sidebar-strong/30 text-sidebar-strong/70 transition-colors hover:border-sidebar-strong/60 hover:text-sidebar-strong", controller.addingWorkspace && "border-solid border-sidebar-strong bg-sidebar-strong/10 text-sidebar-strong")}
       >
         <Plus size={18} />
       </button>
@@ -348,11 +348,11 @@ function WorkspaceTile({ controller, entry, index, count, tileRef, placeholder, 
             <span
               data-testid="workspace-drop-gap"
               aria-hidden
-              className="pointer-events-none absolute top-0 h-10 w-10 rounded-xl border-2 border-dashed border-white/35 bg-black/25"
+              className="pointer-events-none absolute top-0 h-10 w-10 rounded-xl border-2 border-dashed border-sidebar-strong/35 bg-sidebar-strong/15"
             />
           )}
           {/* Slack's marker: a bar on the left edge for the open workspace, a short one for unread. */}
-          <span className={cn("absolute left-0 top-1/2 w-1 -translate-y-1/2 rounded-r-full bg-white transition-all", active ? "h-8" : unread ? "h-2" : "h-0")} />
+          <span className={cn("absolute left-0 top-1/2 w-1 -translate-y-1/2 rounded-r-full bg-sidebar-strong transition-all", active ? "h-8" : unread ? "h-2" : "h-0")} />
           <button
             type="button"
             data-workspace-tile
@@ -372,7 +372,7 @@ function WorkspaceTile({ controller, entry, index, count, tileRef, placeholder, 
             }}
             className={cn(
               "relative flex h-10 w-10 touch-none select-none items-center justify-center rounded-xl text-[15px] font-bold text-white shadow-sm transition-all",
-              active ? "ring-2 ring-white ring-offset-2 ring-offset-[color-mix(in_srgb,var(--sidebar)_78%,black)]" : "opacity-85 hover:opacity-100",
+              active ? "ring-2 ring-sidebar-strong ring-offset-2 ring-offset-sidebar-rail" : "opacity-85 hover:opacity-100",
               !signedIn && !active && "opacity-45 grayscale",
               placeholder && "cursor-grabbing opacity-0 transition-none",
               landing && "transition-none",
@@ -380,7 +380,7 @@ function WorkspaceTile({ controller, entry, index, count, tileRef, placeholder, 
           >
             <WorkspaceIcon serverUrl={entry.serverUrl} version={entry.iconVersion} name={entry.name} colorKey={entry.workspaceId ?? entry.serverUrl} className="h-10 w-10 rounded-xl" />
             {badge > 0 ? (
-              <span className="absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-[color-mix(in_srgb,var(--sidebar)_78%,black)]">
+              <span className="absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-sidebar-rail">
                 {badge > 99 ? "99+" : badge}
               </span>
             ) : null}
@@ -420,7 +420,7 @@ export function WorkspaceMenu({ controller }: { controller: AppController }) {
   return (
     <Menu>
       <MenuTrigger asChild>
-        <button type="button" className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm font-semibold text-white hover:bg-white/10">
+        <button type="button" className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm font-semibold text-sidebar-strong hover:bg-sidebar-strong/10">
           {/* With the rail on screen (two or more workspaces) its tiles already show the icon. */}
           {!controller.showsRail && <WorkspaceIcon serverUrl={entry?.serverUrl} version={entry?.iconVersion} name={name} colorKey={entry?.workspaceId ?? entry?.serverUrl ?? name} className="h-6 w-6 rounded-md text-[11px]" />}
           <span className="truncate">{name}</span>

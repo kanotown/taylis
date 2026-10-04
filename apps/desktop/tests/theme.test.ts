@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { applyPalette, applyTheme, DEFAULT_PALETTE, PALETTES, paletteLabel, readPalette, readTheme, themeLabel, writePalette, writeTheme } from "../src/ui/theme";
+import { applyPalette, applySidebarTone, applyTheme, DEFAULT_PALETTE, PALETTES, paletteLabel, readPalette, readSidebarTone, readTheme, SIDEBAR_TONES, themeLabel, writePalette, writeSidebarTone, writeTheme } from "../src/ui/theme";
 
 const css = readFileSync(resolve(__dirname, "../src/styles.css"), "utf8");
 
@@ -11,6 +11,7 @@ afterEach(() => {
   localStorage.clear();
   delete document.documentElement.dataset["theme"];
   delete document.documentElement.dataset["palette"];
+  delete document.documentElement.dataset["sidebar"];
 });
 
 describe("「表示」 (M40)", () => {
@@ -112,6 +113,131 @@ describe("「テーマの色」", () => {
         expect(contrast(p("accent"), PANEL[mode]), `${at}: links on a panel`).toBeGreaterThanOrEqual(4.5);
         expect(contrast(p("accent"), p("accent-soft")), `${at}: accent text on its tint`).toBeGreaterThanOrEqual(4.5);
       }
+    }
+  });
+
+  it("the dark sidebar's text is bright (2026-10-04: about 11:1 and more) and its headers and unread rows stay apart", () => {
+    for (const palette of PALETTES) {
+      const v = paletteVars(palette.value);
+      for (const mode of ["light", "dark"] as const) {
+        const p = (name: string) => v[mode === "dark" ? `${name}-dark` : name]!;
+        const at = `${palette.value} ${mode}`;
+        const text = contrast(p("sidebar-fg"), p("sidebar"));
+        expect(text, `${at}: sidebar text`).toBeGreaterThanOrEqual(mode === "light" ? 11 : 12.5);
+        expect(text, `${at}: sidebar text`).toBeLessThan(13.5);
+        // Unread rows are white (and bold): clearly brighter than a read row.
+        expect(contrast("#ffffff", p("sidebar")) - text, `${at}: unread vs read`).toBeGreaterThanOrEqual(1.2);
+        // Section headers (--sidebar-muted, the text at 70 %): readable, and dimmer than a row.
+        const header = contrast(over(p("sidebar-fg"), 0.7, p("sidebar")), p("sidebar"));
+        expect(header, `${at}: section header`).toBeGreaterThanOrEqual(4.5);
+        expect(text - header, `${at}: header vs row`).toBeGreaterThanOrEqual(3);
+      }
+    }
+    expect(css).toContain("--sidebar-muted: color-mix(in srgb, var(--sidebar-fg) 70%, var(--sidebar));");
+  });
+});
+
+// --- 「サイドバー: 明るい色」 -------------------------------------------------------------------
+
+/** All declarations of the plain `:root {` blocks (the default palette and the tokens). */
+const rootDecls: Record<string, string> = Object.fromEntries(
+  [...css.matchAll(/^:root \{([^}]*)\}/gm)].flatMap((m) => [...m[1]!.matchAll(/(--[a-z0-9-]+): ([^;]+);/g)].map((d) => [d[1]!, d[2]!.trim()])),
+);
+
+interface Rgba { rgb: [number, number, number]; a: number }
+
+/** Evaluates the stylesheet's colour expressions: a hex, `transparent`, `var(--x)` and `color-mix(in srgb, A n%, B)`. */
+function evaluate(expr: string, vars: Record<string, string>): Rgba {
+  expr = expr.trim();
+  if (expr === "transparent") return { rgb: [0, 0, 0], a: 0 };
+  const hex = /^#([0-9a-f]{6})$/.exec(expr);
+  if (hex) return { rgb: [0, 1, 2].map((i) => parseInt(hex[1]!.slice(i * 2, i * 2 + 2), 16)) as [number, number, number], a: 1 };
+  const ref = /^var\((--[a-z0-9-]+)\)$/.exec(expr);
+  if (ref) {
+    const value = vars[ref[1]!];
+    expect(value, `${ref[1]} is defined`).toBeDefined();
+    return evaluate(value!, vars);
+  }
+  const mix = /^color-mix\(in srgb, (.+) (\d+)%, (.+)\)$/.exec(expr);
+  expect(mix, `can read ${expr}`).not.toBeNull();
+  const [first, second, p] = [evaluate(mix![1]!, vars), evaluate(mix![3]!, vars), Number(mix![2]) / 100];
+  const a = first.a * p + second.a * (1 - p);
+  const rgb = [0, 1, 2].map((i) => (a === 0 ? 0 : (first.rgb[i]! * first.a * p + second.rgb[i]! * second.a * (1 - p)) / a)) as [number, number, number];
+  return { rgb, a };
+}
+
+/** The colour as seen over an opaque `bottom`. */
+function flat(colour: Rgba, bottom = "#ffffff"): string {
+  const base = evaluate(bottom, {});
+  return `#${colour.rgb.map((c, i) => Math.round(c * colour.a + base.rgb[i]! * (1 - colour.a)).toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** The light sidebar's declarations (both of its blocks must say the same). */
+function lightSidebarBlock(): Record<string, string> {
+  const blocks = [
+    /:root\[data-sidebar="light"\]:not\(\[data-theme="dark"\]\) \{([^}]*)\}/.exec(css),
+    /:root\[data-sidebar="light"\]\[data-theme="light"\] \{([^}]*)\}/.exec(css),
+  ].map((m) => {
+    expect(m).not.toBeNull();
+    return Object.fromEntries([...m![1]!.matchAll(/(--[a-z0-9-]+): ([^;]+);/g)].map((d) => [d[1]!, d[2]!.trim()]));
+  });
+  expect(blocks[0]).toEqual(blocks[1]);
+  return blocks[0]!;
+}
+
+describe("「サイドバー: 明るい色」", () => {
+  it("defaults to the dark sidebar and keeps a choice on this device (<html data-sidebar>)", () => {
+    expect(readSidebarTone()).toBe("dark");
+    writeSidebarTone("light");
+    expect(readSidebarTone()).toBe("light");
+    expect(document.documentElement.dataset["sidebar"]).toBe("light");
+    expect(localStorage.getItem("chikuwa.prefs.sidebar")).toBe("light");
+    writeSidebarTone("dark");
+    expect(localStorage.getItem("chikuwa.prefs.sidebar")).toBeNull();
+    expect(document.documentElement.dataset["sidebar"]).toBeUndefined();
+    localStorage.setItem("chikuwa.prefs.sidebar", "neon");
+    expect(readSidebarTone()).toBe("dark");
+    applySidebarTone("light");
+    expect(document.documentElement.dataset["sidebar"]).toBe("light");
+    expect(SIDEBAR_TONES.map(([, label]) => label)).toEqual(["濃い色", "明るい色"]);
+  });
+
+  it("applies in light mode only: the OS's light unless pinned dark, or a pinned light; after the dark blocks", () => {
+    expect(css).toContain('@media (prefers-color-scheme: light) {\n  :root[data-sidebar="light"]:not([data-theme="dark"]) {');
+    const pinned = css.indexOf(':root[data-sidebar="light"][data-theme="light"] {');
+    expect(pinned).toBeGreaterThan(css.indexOf(':root[data-theme="dark"] {'));
+    expect(css.indexOf('@media (prefers-color-scheme: light)')).toBeGreaterThan(css.indexOf('@media (prefers-color-scheme: dark)'));
+    const block = lightSidebarBlock();
+    // Every sidebar token is replaced (none left white on a light background).
+    expect(Object.keys(block).sort()).toEqual([
+      "--sidebar", "--sidebar-active", "--sidebar-active-fg", "--sidebar-edge", "--sidebar-fg", "--sidebar-hover", "--sidebar-line", "--sidebar-muted", "--sidebar-rail", "--sidebar-strong",
+    ]);
+    expect(block["--sidebar-active"]).toBe("var(--accent-solid)");
+  });
+
+  it("every palette's light sidebar: dark text (7:1 and more), unread darker still, headers AA, the active row white on the accent", () => {
+    const block = lightSidebarBlock();
+    for (const palette of PALETTES) {
+      const v = paletteVars(palette.value);
+      const vars: Record<string, string> = { ...rootDecls, "--accent-solid": "var(--p-accent-solid)", ...Object.fromEntries(Object.entries(v).map(([k, value]) => [`--p-${k}`, value])) };
+      const token = (name: string, bottom?: string) => flat(evaluate(block[name]!, vars), bottom);
+      const bg = token("--sidebar");
+      const at = palette.value;
+      expect(contrast(bg, "#ffffff"), `${at}: near-white`).toBeLessThan(1.15);
+      const text = contrast(token("--sidebar-fg"), bg);
+      const strong = contrast(token("--sidebar-strong"), bg);
+      expect(text, `${at}: sidebar text`).toBeGreaterThanOrEqual(7);
+      expect(strong - text, `${at}: unread vs read`).toBeGreaterThanOrEqual(3);
+      expect(contrast(token("--sidebar-muted"), bg), `${at}: section header`).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(token("--sidebar-fg"), token("--sidebar-hover", bg)), `${at}: text on hover`).toBeGreaterThanOrEqual(7);
+      expect(contrast(token("--sidebar-active-fg"), token("--sidebar-active")), `${at}: the active row`).toBeGreaterThanOrEqual(4.5);
+      // The rail is a shade darker than the sidebar, and the workspace's indicator / ring (strong) shows on it.
+      const rail = token("--sidebar-rail");
+      expect(luminance(rail), `${at}: rail darker`).toBeLessThan(luminance(bg));
+      expect(contrast(token("--sidebar-strong"), rail), `${at}: on the rail`).toBeGreaterThanOrEqual(7);
+      // Separators and the edge against the canvas can be seen (non-text, 1.2:1 at least).
+      expect(contrast(token("--sidebar-line", bg), bg), `${at}: separators`).toBeGreaterThanOrEqual(1.2);
+      expect(contrast(token("--sidebar-edge", "#ffffff"), "#ffffff"), `${at}: edge`).toBeGreaterThanOrEqual(1.2);
     }
   });
 });

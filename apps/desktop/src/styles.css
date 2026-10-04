@@ -15,12 +15,12 @@
    every palette is checked by tests/theme.test.ts. */
 :root {
   --p-sidebar: #3b2b21;
-  --p-sidebar-fg: #e0d0c2;
+  --p-sidebar-fg: #efe7df;
   --p-accent: #8f5530;
   --p-accent-solid: #8f5530;
   --p-accent-soft: #f6ece3;
   --p-sidebar-dark: #1d1611;
-  --p-sidebar-fg-dark: #cdbcad;
+  --p-sidebar-fg-dark: #e1d7ce;
   --p-accent-dark: #dba67c;
   --p-accent-solid-dark: #8f5530;
   --p-accent-soft-dark: #3a2a1f;
@@ -28,60 +28,60 @@
 /* 藍: the colours before 「テーマの色」 (the accent a little darker for white text). */
 :root[data-palette="indigo"] {
   --p-sidebar: #2a2340;
-  --p-sidebar-fg: #c8c2d8;
+  --p-sidebar-fg: #e0dce9;
   --p-accent: #5050c8;
   --p-accent-solid: #5050c8;
   --p-accent-soft: #ecebff;
   --p-sidebar-dark: #14111c;
-  --p-sidebar-fg-dark: #b7b1c7;
+  --p-sidebar-fg-dark: #d5d2df;
   --p-accent-dark: #9a9af5;
   --p-accent-solid-dark: #5050c8;
   --p-accent-soft-dark: #2a2a4a;
 }
 :root[data-palette="green"] {
   --p-sidebar: #1e3a2f;
-  --p-sidebar-fg: #c4d9cd;
+  --p-sidebar-fg: #edf4f0;
   --p-accent: #2e7550;
   --p-accent-solid: #2e7550;
   --p-accent-soft: #e4f2ea;
   --p-sidebar-dark: #111c17;
-  --p-sidebar-fg-dark: #b2c9bc;
+  --p-sidebar-fg-dark: #cfded5;
   --p-accent-dark: #6fcf98;
   --p-accent-solid-dark: #2e7550;
   --p-accent-soft-dark: #1d3a2b;
 }
 :root[data-palette="purple"] {
   --p-sidebar: #3a2150;
-  --p-sidebar-fg: #d6c6e4;
+  --p-sidebar-fg: #eae2f1;
   --p-accent: #7c3fb0;
   --p-accent-solid: #7c3fb0;
   --p-accent-soft: #f3eafb;
   --p-sidebar-dark: #1a1124;
-  --p-sidebar-fg-dark: #c3b3d3;
+  --p-sidebar-fg-dark: #dcd2e5;
   --p-accent-dark: #c39af0;
   --p-accent-solid-dark: #7c3fb0;
   --p-accent-soft-dark: #35224a;
 }
 :root[data-palette="rose"] {
   --p-sidebar: #4a1e2c;
-  --p-sidebar-fg: #e6c9d1;
+  --p-sidebar-fg: #f1e1e6;
   --p-accent: #b02f50;
   --p-accent-solid: #b02f50;
   --p-accent-soft: #fbe9ee;
   --p-sidebar-dark: #1f1015;
-  --p-sidebar-fg-dark: #d3b5be;
+  --p-sidebar-fg-dark: #e4d1d7;
   --p-accent-dark: #f590a8;
   --p-accent-solid-dark: #b02f50;
   --p-accent-soft-dark: #4a1f2c;
 }
 :root[data-palette="gray"] {
   --p-sidebar: #2c2e33;
-  --p-sidebar-fg: #cfd2d8;
+  --p-sidebar-fg: #e6e8eb;
   --p-accent: #4f5b6b;
   --p-accent-solid: #4f5b6b;
   --p-accent-soft: #eceef2;
   --p-sidebar-dark: #141518;
-  --p-sidebar-fg-dark: #b9bcc3;
+  --p-sidebar-fg-dark: #d4d6da;
   --p-accent-dark: #a9b4c4;
   --p-accent-solid-dark: #556274;
   --p-accent-soft-dark: #2b2f36;
@@ -103,8 +103,26 @@
   --mark: #ffe58a;
   --sidebar: var(--p-sidebar);
   --sidebar-fg: var(--p-sidebar-fg);
+  /* The sidebar's other tokens. Dark (the default): white text for unread rows and hover, white veils for hover and
+     the active row. --sidebar-muted is section headers; --sidebar-rail the workspace rail; --sidebar-line separators
+     inside the sidebar; --sidebar-edge its outline against the canvas (none on a dark sidebar). */
+  --sidebar-strong: #ffffff;
+  --sidebar-muted: color-mix(in srgb, var(--sidebar-fg) 70%, var(--sidebar));
   --sidebar-hover: rgba(255, 255, 255, 0.08);
   --sidebar-active: rgba(255, 255, 255, 0.16);
+  --sidebar-active-fg: #ffffff;
+  --sidebar-rail: color-mix(in srgb, var(--sidebar) 78%, #000000);
+  --sidebar-line: rgba(255, 255, 255, 0.1);
+  --sidebar-edge: transparent;
+  /* 「サイドバー: 明るい色」 (ui/theme.ts): near-white tinted by the accent, ink from the palette's sidebar darkened,
+     the active row in the accent's fill under white. Used only in light mode (the blocks after the dark ones). */
+  --sl-sidebar: color-mix(in srgb, var(--p-accent) 5%, #ffffff);
+  --sl-strong: color-mix(in srgb, var(--p-sidebar) 75%, #000000);
+  --sl-fg: color-mix(in srgb, var(--sl-strong) 85%, #ffffff);
+  --sl-muted: color-mix(in srgb, var(--sl-strong) 70%, #ffffff);
+  --sl-hover: color-mix(in srgb, var(--p-sidebar) 7%, transparent);
+  --sl-rail: color-mix(in srgb, var(--p-sidebar) 8%, var(--sl-sidebar));
+  --sl-line: color-mix(in srgb, var(--p-sidebar) 14%, transparent);
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -139,6 +157,34 @@
   --sidebar: var(--p-sidebar-dark);
   --sidebar-fg: var(--p-sidebar-fg-dark);
 }
+/* 「サイドバー: 明るい色」 (<html data-sidebar="light">): light mode only, so after the dark blocks and only where they
+   do not apply; in dark mode the sidebar stays dark. */
+@media (prefers-color-scheme: light) {
+  :root[data-sidebar="light"]:not([data-theme="dark"]) {
+    --sidebar: var(--sl-sidebar);
+    --sidebar-fg: var(--sl-fg);
+    --sidebar-strong: var(--sl-strong);
+    --sidebar-muted: var(--sl-muted);
+    --sidebar-hover: var(--sl-hover);
+    --sidebar-active: var(--accent-solid);
+    --sidebar-active-fg: #ffffff;
+    --sidebar-rail: var(--sl-rail);
+    --sidebar-line: var(--sl-line);
+    --sidebar-edge: var(--sl-line);
+  }
+}
+:root[data-sidebar="light"][data-theme="light"] {
+  --sidebar: var(--sl-sidebar);
+  --sidebar-fg: var(--sl-fg);
+  --sidebar-strong: var(--sl-strong);
+  --sidebar-muted: var(--sl-muted);
+  --sidebar-hover: var(--sl-hover);
+  --sidebar-active: var(--accent-solid);
+  --sidebar-active-fg: #ffffff;
+  --sidebar-rail: var(--sl-rail);
+  --sidebar-line: var(--sl-line);
+  --sidebar-edge: var(--sl-line);
+}
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 
@@ -161,6 +207,12 @@
   --color-sidebar-fg: var(--sidebar-fg);
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-fg: var(--sidebar-active-fg);
+  --color-sidebar-strong: var(--sidebar-strong);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-rail: var(--sidebar-rail);
+  --color-sidebar-line: var(--sidebar-line);
+  --color-sidebar-edge: var(--sidebar-edge);
 }
 
 @layer base {

@@ -34,7 +34,7 @@ export type ControlsTone = "sidebar" | "canvas";
 
 const BUTTON = "inline-flex h-full w-[46px] items-center justify-center transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent";
 const TONES: Record<ControlsTone, string> = {
-  sidebar: "text-sidebar-fg hover:bg-white/10 hover:text-white active:bg-white/20",
+  sidebar: "text-sidebar-fg hover:bg-sidebar-strong/10 hover:text-sidebar-strong active:bg-sidebar-strong/20",
   canvas: "text-muted hover:bg-ink/10 hover:text-ink active:bg-ink/15",
 };
 /** Windows 11's close button: red on hover, white glyph. */

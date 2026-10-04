@@ -23,7 +23,7 @@ import { StatusForm } from "./StatusDialog";
 import { TemplatesSettings } from "./TemplatesSettings";
 import { TestNotificationCard } from "./TestNotification";
 import { displayTitle } from "./roster";
-import { PALETTES, THEME_OPTIONS, themeLabel, usePalette, useTheme, writePalette, writeTheme } from "./theme";
+import { PALETTES, SIDEBAR_TONES, THEME_OPTIONS, themeLabel, usePalette, useSidebarTone, useTheme, writePalette, writeSidebarTone, writeTheme } from "./theme";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { UsernameEditor } from "./UsernameEditor";
 import { StatusGlyph } from "./UserPopover";
@@ -509,12 +509,13 @@ function NotificationsSection({ controller }: { controller: AppController }) {
 }
 
 /**
- * 「表示」: 端末に合わせる / ライト / ダーク, 「テーマの色」, 「文字の大きさ」 (the desktop app; a browser zooms by itself) and
+ * 「表示」: 端末に合わせる / ライト / ダーク, 「テーマの色」, 「サイドバー」 (濃い色 / 明るい色), 「文字の大きさ」 (the desktop app; a browser zooms by itself) and
  * 「連続した投稿をまとめる」 (M47), on this device only.
  */
 function AppearanceSection({ controller, desktop = isTauri() }: { controller: AppController; desktop?: boolean }) {
   const theme = useTheme();
   const palette = usePalette();
+  const sidebarTone = useSidebarTone();
   const zoom = useZoom();
   return (
     <div className="space-y-6">
@@ -550,6 +551,32 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
           ))}
         </div>
         <p className="text-xs text-muted">サイドバーとアクセント (リンク・ボタン・選択中の行) の色です。ライト / ダークのどちらにも効きます。</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className={HEADING}>サイドバー</h3>
+        <div role="radiogroup" aria-label="サイドバー" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {SIDEBAR_TONES.map(([value, label]) => {
+            const swatch = PALETTES.find((p) => p.value === palette)?.swatch ?? PALETTES[0]!.swatch;
+            return (
+              <label
+                key={value}
+                className={cn(
+                  "flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl border px-2.5 py-2 text-sm hover:bg-panel has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/50",
+                  sidebarTone === value ? "border-accent bg-accent-soft/50" : "border-line",
+                )}
+              >
+                <input type="radio" name="sidebar-tone" className="sr-only" checked={sidebarTone === value} onChange={() => writeSidebarTone(value)} />
+                <span aria-hidden className="flex h-7 w-7 shrink-0 flex-col justify-center gap-1 overflow-hidden rounded-lg px-1.5 ring-1 ring-black/10" style={{ background: value === "light" ? `color-mix(in srgb, ${swatch.accent} 5%, #ffffff)` : swatch.sidebar }}>
+                  <span className="h-1 rounded-full" style={{ background: value === "light" ? swatch.sidebar : "#ffffff", opacity: 0.7 }} />
+                  <span className="h-1.5 rounded-sm" style={{ background: value === "light" ? swatch.accent : "rgba(255,255,255,0.35)" }} />
+                  <span className="h-1 rounded-full" style={{ background: value === "light" ? swatch.sidebar : "#ffffff", opacity: 0.7 }} />
+                </span>
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+              </label>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted">「明るい色」はライト表示のときだけ効きます。ダーク表示ではサイドバーは濃い色のままです。</p>
       </section>
       {desktop && (
         <section className="space-y-2">

@@ -86,7 +86,7 @@ export function IconButton({ label, children, className, tone, ...props }: Butto
           <button
             type="button"
             aria-label={label}
-            className={cn(BASE, SIZES.icon, tone === "sidebar" ? "text-sidebar-fg hover:bg-sidebar-hover hover:text-white" : VARIANTS.ghost, className)}
+            className={cn(BASE, SIZES.icon, tone === "sidebar" ? "text-sidebar-fg hover:bg-sidebar-hover hover:text-sidebar-strong" : VARIANTS.ghost, className)}
             {...props}
           >
             {children}
@@ -250,10 +250,32 @@ export const PopoverRoot = Popover.Root;
 export const PopoverTrigger = Popover.Trigger;
 export const PopoverAnchor = Popover.Anchor;
 
-export function PopoverContent({ className, children, ...props }: ComponentProps<typeof Popover.Content>) {
+/**
+ * A popover's own wheel and touch scrolling stop at it (2026-10-04: the emoji list of a section's icon did not scroll
+ * with the mouse wheel). A popover opened from a dialog is portalled outside it, and the dialog's scroll lock
+ * (react-remove-scroll, listening on the document) cancels every wheel turn and touch move outside the dialog, the
+ * popover's included. Radix's non-modal popover has no lock of its own to put on top, so the events are kept from
+ * reaching the document instead; nothing behind a popover needs them (the page under a dialog must not scroll anyway).
+ */
+function keepScrollInside(node: HTMLElement): () => void {
+  const stop = (event: Event) => event.stopPropagation();
+  node.addEventListener("wheel", stop, { passive: true });
+  node.addEventListener("touchmove", stop, { passive: true });
+  return () => {
+    node.removeEventListener("wheel", stop);
+    node.removeEventListener("touchmove", stop);
+  };
+}
+
+export function PopoverContent({ className, children, ref, ...props }: ComponentProps<typeof Popover.Content>) {
+  const own = useCallback((node: HTMLDivElement | null) => {
+    if (typeof ref === "function") ref(node);
+    else if (ref) ref.current = node;
+    return node ? keepScrollInside(node) : undefined;
+  }, [ref]);
   return (
     <Popover.Portal>
-      <Popover.Content sideOffset={6} collisionPadding={8} className={cn("rx-popover z-50 max-w-[calc(100vw-16px)] rounded-xl border border-line bg-canvas p-2 text-ink shadow-xl outline-none", className)} {...props}>
+      <Popover.Content ref={own} sideOffset={6} collisionPadding={8} className={cn("rx-popover z-50 max-w-[calc(100vw-16px)] rounded-xl border border-line bg-canvas p-2 text-ink shadow-xl outline-none", className)} {...props}>
         {children}
       </Popover.Content>
     </Popover.Portal>

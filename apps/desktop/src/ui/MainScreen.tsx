@@ -1661,7 +1661,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       >
         <WorkspaceMenu controller={controller} />
       </div>
-      <div data-tauri-drag-region className={cn("col-span-2 flex h-10 items-center gap-2 bg-sidebar pl-3", windowButtons ? "pr-0" : "pr-3")}>
+      <div data-tauri-drag-region className={cn("col-span-2 flex h-10 items-center gap-2 border-b border-sidebar-edge bg-sidebar pl-3", windowButtons ? "pr-0" : "pr-3")}>
         {/* M67: back / forward between places, beside the search box as in Slack. */}
         <nav aria-label="履歴" className="flex shrink-0 items-center gap-0.5">
           <IconButton tone="sidebar" label={historyLabels.back} disabled={!canGoBack} onClick={() => goHistory(-1)} className="h-7 w-7 disabled:opacity-40">
