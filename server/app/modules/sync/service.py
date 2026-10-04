@@ -80,6 +80,7 @@ async def bootstrap(
         bookmarks=await bookmarks.ids_for(db, actor.id),
         favorites=await favorites.ids_for(db, actor.id),
         custom_emoji=await emoji.list_all(db),
+        emoji_packs=await emoji.list_packs(db),
         templates=await templates.list_for(db, actor),
         groups=await groups.list_visible(db, visible),
         roster=await lab.roster(db, visible),

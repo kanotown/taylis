@@ -119,6 +119,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     scheduled_events.SCHEDULED_UPDATED: (scheduled_events.ScheduledUpdatedData, "user", False),
     reminder_events.REMINDER_UPDATED: (reminder_events.ReminderUpdatedData, "user", False),
     emoji_events.EMOJI_UPDATED: (emoji_events.EmojiUpdatedData, "all", False),
+    emoji_events.EMOJI_PACK_UPDATED: (emoji_events.EmojiPackUpdatedData, "all", False),
     template_events.TEMPLATE_UPDATED: (
         template_events.TemplateUpdatedData,
         "all (a personal template: user)",

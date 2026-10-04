@@ -1515,6 +1515,25 @@
             "title": "File",
             "type": "string"
           },
+          "keywords": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1525,6 +1544,33 @@
           "file"
         ],
         "title": "Body_add_emoji_api_v1_emoji_post",
+        "type": "object"
+      },
+      "Body_import_pack_api_v1_emoji_packs_import_post": {
+        "properties": {
+          "archive": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archive"
+          },
+          "files": {
+            "default": [],
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "title": "Body_import_pack_api_v1_emoji_packs_import_post",
         "type": "object"
       },
       "Body_upload_api_v1_attachments_post": {
@@ -1677,6 +1723,14 @@
               "$ref": "#/components/schemas/DraftOut"
             },
             "title": "Drafts",
+            "type": "array"
+          },
+          "emoji_packs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EmojiPackOut"
+            },
+            "title": "Emoji Packs",
             "type": "array"
           },
           "favorites": {
@@ -3898,6 +3952,27 @@
       },
       "CustomEmojiOut": {
         "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "gray",
+                  "red",
+                  "orange",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "purple",
+                  "pink"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
           "content_type": {
             "title": "Content Type",
             "type": "string"
@@ -3921,9 +3996,54 @@
             "title": "Id",
             "type": "string"
           },
+          "keywords": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "kind": {
+            "default": "image",
+            "enum": [
+              "image",
+              "text"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "pack_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pack Id"
+          },
+          "position": {
+            "default": 0,
+            "title": "Position",
+            "type": "integer"
           },
           "width": {
             "title": "Width",
@@ -3940,6 +4060,86 @@
           "created_at"
         ],
         "title": "CustomEmojiOut",
+        "type": "object"
+      },
+      "CustomEmojiUpdate": {
+        "description": "PATCH /emoji/{id} (M100): only the fields sent change. `pack_id` and `position` are for\nadministrators; the rest for the creator or an administrator.",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "gray",
+                  "red",
+                  "orange",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "purple",
+                  "pink"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "pack_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pack Id"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          }
+        },
+        "title": "CustomEmojiUpdate",
         "type": "object"
       },
       "DefaultChannelApplied": {
@@ -4414,6 +4614,136 @@
           "body"
         ],
         "title": "DraftPut",
+        "type": "object"
+      },
+      "EmojiPackCreate": {
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "EmojiPackCreate",
+        "type": "object"
+      },
+      "EmojiPackImportOut": {
+        "description": "POST /emoji/packs/import: the pack and what happened to each shortcode.",
+        "properties": {
+          "created": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Created",
+            "type": "array"
+          },
+          "pack": {
+            "$ref": "#/components/schemas/EmojiPackOut"
+          },
+          "unchanged": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unchanged",
+            "type": "array"
+          },
+          "updated": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Updated",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pack",
+          "created",
+          "updated",
+          "unchanged"
+        ],
+        "title": "EmojiPackImportOut",
+        "type": "object"
+      },
+      "EmojiPackOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "tab_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tab Version"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "position",
+          "tab_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EmojiPackOut",
+        "type": "object"
+      },
+      "EmojiPackUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          }
+        },
+        "title": "EmojiPackUpdate",
         "type": "object"
       },
       "FavoriteStateOut": {
@@ -10764,6 +11094,57 @@
           "devices"
         ],
         "title": "TestNotificationOut",
+        "type": "object"
+      },
+      "TextEmojiCreate": {
+        "description": "POST /emoji/text (M100): a label drawn as a pill instead of an image.",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "gray",
+                  "red",
+                  "orange",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "purple",
+                  "pink"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "keywords": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Keywords",
+            "type": "array"
+          },
+          "label": {
+            "maxLength": 64,
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 64,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label"
+        ],
+        "title": "TextEmojiCreate",
         "type": "object"
       },
       "ThreadFollowIn": {
@@ -19112,7 +19493,7 @@
         ]
       },
       "post": {
-        "description": "M12f: any member adds a `:name:` (2-32 chars of a-z 0-9 _ + -) with a small image.",
+        "description": "M12f: any member adds a `:name:` (2-32 chars of a-z 0-9 _ + -) with a small image.\nM100: an optional `label` (display name) and `keywords` (repeated field) for search.",
         "operationId": "add_emoji_api_v1_emoji_post",
         "requestBody": {
           "content": {
@@ -19157,6 +19538,320 @@
         ]
       }
     },
+    "/api/v1/emoji/packs": {
+      "get": {
+        "description": "Every emoji pack in tab order (also part of bootstrap).",
+        "operationId": "list_packs_api_v1_emoji_packs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EmojiPackOut"
+                  },
+                  "title": "Response List Packs Api V1 Emoji Packs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Packs",
+        "tags": [
+          "emoji"
+        ]
+      },
+      "post": {
+        "description": "An empty pack; emoji join it with PATCH /emoji/{id} `pack_id` (admin).",
+        "operationId": "create_pack_api_v1_emoji_packs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmojiPackCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmojiPackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Pack",
+        "tags": [
+          "emoji"
+        ]
+      }
+    },
+    "/api/v1/emoji/packs/import": {
+      "post": {
+        "description": "Create or update a pack from a folder's files (repeated `files`, pack.json among them)\nor a ZIP (`archive`) with a pack.json (docs/EMOJI.md §4). Idempotent by pack name and\nshortcode; all or nothing.",
+        "operationId": "import_pack_api_v1_emoji_packs_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_pack_api_v1_emoji_packs_import_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmojiPackImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Pack",
+        "tags": [
+          "emoji"
+        ]
+      }
+    },
+    "/api/v1/emoji/packs/{pack_id}": {
+      "delete": {
+        "description": "The pack goes; its emoji stay, ungrouped.",
+        "operationId": "delete_pack_api_v1_emoji_packs__pack_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Pack",
+        "tags": [
+          "emoji"
+        ]
+      },
+      "patch": {
+        "description": "Rename or reorder (lower `position` first).",
+        "operationId": "update_pack_api_v1_emoji_packs__pack_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmojiPackUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmojiPackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Pack",
+        "tags": [
+          "emoji"
+        ]
+      }
+    },
+    "/api/v1/emoji/packs/{pack_id}/tab": {
+      "get": {
+        "operationId": "pack_tab_api_v1_emoji_packs__pack_id__tab_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pack Tab",
+        "tags": [
+          "emoji"
+        ]
+      }
+    },
+    "/api/v1/emoji/text": {
+      "post": {
+        "description": "M100: a text emoji: `:name:` drawn as a pill with `label` (at most 12 characters, e.g.\n「確認しました」) in one of the palette's colours.",
+        "operationId": "add_text_emoji_api_v1_emoji_text_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TextEmojiCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomEmojiOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Text Emoji",
+        "tags": [
+          "emoji"
+        ]
+      }
+    },
     "/api/v1/emoji/{emoji_id}": {
       "delete": {
         "description": "The creator or an admin removes it; bodies keep the text `:name:`.",
@@ -19194,6 +19889,63 @@
           }
         ],
         "summary": "Delete Emoji",
+        "tags": [
+          "emoji"
+        ]
+      },
+      "patch": {
+        "description": "M100: label, colour (text emoji) and keywords by the creator or an admin; the pack and\nthe order inside it by an admin.",
+        "operationId": "update_emoji_api_v1_emoji__emoji_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "emoji_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Emoji Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomEmojiUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomEmojiOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Emoji",
         "tags": [
           "emoji"
         ]

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.modules.activity.schemas import ActivitySummaryOut
 from app.modules.channels.schemas import ChannelOut
 from app.modules.drafts.schemas import DraftOut
-from app.modules.emoji.schemas import CustomEmojiOut
+from app.modules.emoji.schemas import CustomEmojiOut, EmojiPackOut
 from app.modules.groups.schemas import GroupOut
 from app.modules.lab.schemas import LabProfileOut
 from app.modules.sidebar.schemas import SidebarSectionOut
@@ -44,6 +44,8 @@ class BootstrapOut(BaseModel):
     favorites: list[UUID] = []
     # Custom emoji (M12f): the whole table, by name; changes arrive as emoji.updated.
     custom_emoji: list[CustomEmojiOut] = []
+    # Emoji packs (M100) in tab order; changes arrive as emoji_pack.updated.
+    emoji_packs: list[EmojiPackOut] = []
     # Post templates (M30): the workspace's, then mine; changes arrive as template.updated.
     templates: list[TemplateOut] = []
     # User groups (M12k): every group with its members; changes arrive as group.updated.
