@@ -80,10 +80,16 @@ enum CustomEmoji {
 
     /// A copy scaled to `storedHeight` (keeps GIF's first frame; animation is out of scope).
     static func inlineImage(_ image: UIImage) -> UIImage {
-        let scale = storedHeight / max(image.size.height, 1)
-        let size = CGSize(width: max(image.size.width * scale, 1), height: storedHeight)
+        var scale = storedHeight / max(image.size.height, 1)
+        // M100: at most 3:1 (`size(of:height:)`); a wider one is fitted, centred, into that box.
+        let width = min(max(image.size.width * scale, 1), storedHeight * wideMax)
+        scale = min(scale, width / max(image.size.width, 1))
+        let drawn = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let size = CGSize(width: width, height: storedHeight)
         let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: CGPoint(x: (size.width - drawn.width) / 2, y: (size.height - drawn.height) / 2), size: drawn))
+        }
     }
 
     /// The still image, and for an animated GIF (or APNG / WebP) its frames too (at most 120; a frame with no delay
