@@ -29,12 +29,12 @@ targets:
       path: ChikuwaChat/Info.plist
       properties:
         CFBundleDisplayName: Taylis
-        CFBundleShortVersionString: "0.1.0"
+        CFBundleShortVersionString: "1.0.0"
         CFBundleVersion: "91"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         # The server URL is user-provided; self-hosted LAN deployments may use plain HTTP.
-        # Production is expected behind TLS (Caddy). The app is installed via Xcode or TestFlight, not the App Store.
+        # Production is expected behind TLS (Caddy). App Review may ask why (docs/STORE_RELEASE.md §2).
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoads: true

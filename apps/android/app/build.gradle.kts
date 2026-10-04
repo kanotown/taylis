@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -11,6 +13,37 @@ if (file("google-services.json").exists()) {
     apply(plugin = libs.plugins.google.services.get().pluginId)
 }
 
+// Release signing (docs/STORE_RELEASE.md): the Play upload key, kept outside the repository. Read from
+// ~/.config/taylis/android-release.properties (TAYLIS_ANDROID_SIGNING overrides the path) with the keys
+// storeFile / storePassword / keyAlias / keyPassword, or from the environment variables
+// TAYLIS_ANDROID_STORE_FILE / TAYLIS_ANDROID_STORE_PASSWORD / TAYLIS_ANDROID_KEY_ALIAS / TAYLIS_ANDROID_KEY_PASSWORD
+// (which win). Without them a release build is unsigned; debug builds never need them.
+val releaseSigning: Map<String, String>? = run {
+    val path = System.getenv("TAYLIS_ANDROID_SIGNING")
+        ?: "${System.getProperty("user.home")}/.config/taylis/android-release.properties"
+    val props = Properties()
+    val file = File(path)
+    if (file.isFile) file.inputStream().use { props.load(it) }
+    fun value(key: String, env: String): String? =
+        System.getenv(env)?.takeIf { it.isNotEmpty() } ?: props.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
+    val values = mapOf(
+        "storeFile" to value("storeFile", "TAYLIS_ANDROID_STORE_FILE"),
+        "storePassword" to value("storePassword", "TAYLIS_ANDROID_STORE_PASSWORD"),
+        "keyAlias" to value("keyAlias", "TAYLIS_ANDROID_KEY_ALIAS"),
+        "keyPassword" to value("keyPassword", "TAYLIS_ANDROID_KEY_PASSWORD"),
+    )
+    if (values.values.all { it != null }) {
+        values.mapValues { it.value!! }.toMutableMap().also {
+            it["storeFile"] = it.getValue("storeFile").replaceFirst(Regex("^~"), System.getProperty("user.home"))
+        }
+    } else {
+        if (values.values.any { it != null }) {
+            logger.warn("Release signing is incomplete (missing ${values.filterValues { it == null }.keys}): release builds are unsigned")
+        }
+        null
+    }
+}
+
 android {
     namespace = "jp.chikuwachat.android"
     compileSdk = 37
@@ -19,12 +52,28 @@ android {
         applicationId = "jp.chikuwachat.android"
         minSdk = 26
         targetSdk = 37
+        // versionName: what people see (X.Y.Z, raised for a store release). versionCode: an integer Play needs to
+        // grow with every upload (any track), raised by one per uploaded build (docs/STORE_RELEASE.md).
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
+    }
+
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = file(releaseSigning.getValue("storeFile"))
+                storePassword = releaseSigning.getValue("storePassword")
+                keyAlias = releaseSigning.getValue("keyAlias")
+                keyPassword = releaseSigning.getValue("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
+            if (releaseSigning != null) signingConfig = signingConfigs.getByName("release")
+            // R8 stays off: the app has never been tested minified (kotlinx.serialization, Room, OkHttp and Firebase
+            // ship their own keep rules, but a missed rule only shows at run time). The AAB is a few MB larger.
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
