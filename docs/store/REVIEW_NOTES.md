@@ -31,7 +31,7 @@ believe Sign in with Apple is not required (Guideline 4.8, education/enterprise 
 The review server uses a username and password.
 
 User-generated content safeguards (Guideline 1.2):
-- Report: long-press a message and choose "メッセージを報告" (Report message). Reports go to the
+- Report: long-press a message and choose "報告する" (Report). Reports go to the
   server administrators, who can delete messages and deactivate accounts.
 - Block: open a person's profile and choose "ブロック" (Block); their messages are hidden.
 - Users can edit and delete their own messages.
@@ -70,7 +70,7 @@ administrator (no public sign-up).
 1. Open the app. In "サーバ URL" enter: <https://review.example.ac.jp>
 2. Enter the username and password above and tap "ログイン".
 3. The demo workspace has fictional channels, a thread, a poll and direct messages.
-Report a message: long-press it > "メッセージを報告". Block a user: profile > "ブロック".
+Report a message: long-press it > "報告する". Block a user: profile > "ブロック".
 Delete account: 設定 > アカウント > アカウントを削除 (also explained at
 https://kano.ac/pages/apps/taylis-account-deletion/).
 No 2-step verification is required for this account.
