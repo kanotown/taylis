@@ -57,6 +57,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import jp.chikuwachat.android.api.CustomEmojiOut
+import jp.chikuwachat.android.api.EmojiPackOut
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.width
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
 
@@ -80,14 +83,38 @@ object EmojiPicker {
     fun frequent(recent: List<String>, customNames: Set<String>, max: Int = FREQUENT_MAX): List<String> =
         recent.filter { it.isNotEmpty() && (customName(it)?.let { name -> name in customNames } ?: true) }.distinct().take(max)
 
-    /** Browsing (no search words): 「よく使う」 first when there is any, then the categories, then 「カスタム」. */
-    fun sections(recent: List<String>, customNames: List<String>): List<EmojiSection> {
-        val frequent = frequent(recent, customNames.toSet())
+    /**
+     * Browsing (no search words): 「よく使う」 first when there is any, then the categories, then 「カスタム」 (M100: the
+     * ungrouped custom emoji), then a section per pack ([packSections]).
+     */
+    fun sections(recent: List<String>, customNames: List<String>, packs: List<EmojiSection> = emptyList()): List<EmojiSection> {
+        val frequent = frequent(recent, customNames.toSet() + packs.flatMap { p -> p.cells.mapNotNull { customName(it) } })
         return buildList {
             if (frequent.isNotEmpty()) add(EmojiSection(FREQUENT, "よく使う", frequent))
             EmojiData.categories.forEach { (key, label) -> add(EmojiSection(key, label, EmojiData.all.filter { it.category == key }.map { it.glyph })) }
             if (customNames.isNotEmpty()) add(EmojiSection(CUSTOM, "カスタム", customNames.map { ":$it:" }))
+            addAll(packs)
         }
+    }
+
+    const val PACK_PREFIX = "pack:"
+
+    /** M100: 「カスタム」's names (no pack, or a pack this device does not know) and a section per pack, in pack order. */
+    fun customAndPacks(custom: Collection<CustomEmojiOut>, packs: List<EmojiPackOut>): Pair<List<String>, List<EmojiSection>> {
+        val known = packs.map { it.id }.toSet()
+        val ungrouped = custom.filter { it.packId == null || it.packId !in known }.map { it.name }.sorted()
+        val sections = packs.map { pack ->
+            val cells = custom.filter { it.packId == pack.id }.sortedWith(compareBy({ it.position }, { it.name })).map { ":${it.name}:" }
+            EmojiSection(PACK_PREFIX + pack.id, pack.name, cells)
+        }.filter { it.cells.isNotEmpty() }
+        return ungrouped to sections
+    }
+
+    /** M100: search words find custom emoji by name, label and keywords first, then the standard ones. */
+    fun search(query: String, custom: Collection<CustomEmojiOut>): List<String> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        return CustomEmoji.candidates(q, custom, limit = 40).map { ":${it.name}:" } + Emoji.search(q.lowercase()).map { it.glyph }
     }
 
     /** Search words: matching custom emoji (by name) first, then the standard ones (shortcode, then keywords). */
@@ -125,6 +152,8 @@ fun EmojiPickerSheet(
      */
     store: Store,
     onNeedImage: ((CustomEmojiOut) -> Unit)? = null,
+    /** M100: a pack's tab icon is needed (AppController.loadPackTab). */
+    onNeedPackTab: ((EmojiPackOut) -> Unit)? = null,
     /** M50: standard emoji only (no 「カスタム」, none in 「よく使う」 or the results), for the quick reactions' slots. */
     plainOnly: Boolean = false,
 ) {
@@ -136,11 +165,15 @@ fun EmojiPickerSheet(
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     val customByName = remember(custom) { custom.associateBy { it.name } }
-    val customNames = remember(custom) { custom.map { it.name }.sorted() }
-    val sections = remember(recent, customNames) { EmojiPicker.sections(recent, customNames) }
+    // M100: a section (and tab) per pack after 「カスタム」, which keeps the ungrouped ones.
+    val packs = remember(version, plainOnly) { if (plainOnly) emptyList() else store.sortedEmojiPacks() }
+    val split = remember(custom, packs) { EmojiPicker.customAndPacks(custom, packs) }
+    val customNames = split.first
+    val sections = remember(recent, split) { EmojiPicker.sections(recent, customNames, split.second) }
+    val packById = remember(packs) { packs.associateBy { it.id } }
     val searching = query.isNotBlank()
-    val items: List<PickerItem> = remember(sections, query, customNames) {
-        if (query.isNotBlank()) EmojiPicker.search(query, customNames).distinct().map { PickerItem.Cell("search", it) }
+    val items: List<PickerItem> = remember(sections, query, custom) {
+        if (query.isNotBlank()) EmojiPicker.search(query, custom).distinct().map { PickerItem.Cell("search", it) }
         else sections.flatMap { section -> listOf(PickerItem.Header(section)) + section.cells.map { PickerItem.Cell(section.key, it) } }
     }
     val headerIndex = remember(items) { items.withIndex().filter { it.value is PickerItem.Header }.associate { (it.value as PickerItem.Header).section.key to it.index } }
@@ -163,7 +196,7 @@ fun EmojiPickerSheet(
         Column(Modifier.fillMaxWidth().fillMaxHeight().imePadding()) {
             OutlinedTextField(
                 query, { query = it }, singleLine = true,
-                placeholder = { Text("絵文字を検索 (例: tada、乾杯)") },
+                placeholder = { Text("絵文字を検索 (例: tada、乾杯、ありがとう)") },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                 trailingIcon = if (query.isEmpty()) null else ({ IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Close, contentDescription = "検索語を消す") } }),
                 shape = RoundedCornerShape(24.dp),
@@ -184,9 +217,23 @@ fun EmojiPickerSheet(
                                 .semantics { contentDescription = section.label; role = Role.Tab; this.selected = selected },
                             contentAlignment = Alignment.Center,
                         ) {
-                            when (section.key) {
-                                EmojiPicker.FREQUENT -> Icon(Icons.Outlined.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                EmojiPicker.CUSTOM -> Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val pack = if (section.key.startsWith(EmojiPicker.PACK_PREFIX)) packById[section.key.removePrefix(EmojiPicker.PACK_PREFIX)] else null
+                            when {
+                                section.key == EmojiPicker.FREQUENT -> Icon(Icons.Outlined.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                section.key == EmojiPicker.CUSTOM -> Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                pack != null -> {
+                                    // The pack's tab icon, else its first emoji (M100).
+                                    val tab = pack.tabVersion?.let { version.let { _ -> store.packTabImages["${pack.id}:$it"] } }
+                                    if (tab == null) onNeedPackTab?.invoke(pack)
+                                    val first = EmojiPicker.customName(section.cells.first())?.let { customByName[it] }
+                                    val firstImage = first?.let { version.let { _ -> images[it.id] } }
+                                    if (tab == null && first != null && firstImage == null) onNeedImage?.invoke(first)
+                                    when {
+                                        tab != null -> Image(tab, contentDescription = null, modifier = Modifier.size(30.dp))
+                                        firstImage != null -> Image(firstImage, contentDescription = null, modifier = Modifier.size(28.dp))
+                                        else -> Text(pack.name.take(2), style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
                                 else -> Text(EmojiPicker.tabGlyph(section.key) ?: "?", fontSize = 20.sp)
                             }
                         }
@@ -199,7 +246,21 @@ fun EmojiPickerSheet(
                 columns = GridCells.Fixed(8), state = grid,
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 8.dp),
             ) {
-                items(items, key = { it.key }, span = { item -> if (item is PickerItem.Header) GridItemSpan(maxLineSpan) else GridItemSpan(1) }) { item ->
+                items(items, key = { it.key }, span = { item ->
+                    when (item) {
+                        is PickerItem.Header -> GridItemSpan(maxLineSpan)
+                        is PickerItem.Cell -> {
+                            // M100: a pack's illustrations take two cells; a text emoji as many as its pill needs.
+                            val emoji = EmojiPicker.customName(item.glyph)?.let { customByName[it] }
+                            when {
+                                emoji == null -> GridItemSpan(1)
+                                emoji.isText -> GridItemSpan(kotlin.math.ceil((28 * CustomEmoji.aspect(emoji) + 12) / 44f).toInt().coerceIn(1, maxLineSpan))
+                                item.section.startsWith(EmojiPicker.PACK_PREFIX) -> GridItemSpan(2.coerceAtMost(maxLineSpan))
+                                else -> GridItemSpan(1)
+                            }
+                        }
+                    }
+                }) { item ->
                     when (item) {
                         is PickerItem.Header -> Text(
                             item.section.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -207,15 +268,21 @@ fun EmojiPickerSheet(
                         )
                         is PickerItem.Cell -> {
                             val emoji = EmojiPicker.customName(item.glyph)?.let { customByName[it] }
+                            val big = emoji != null && !emoji.isText && item.section.startsWith(EmojiPicker.PACK_PREFIX)
                             Box(
-                                Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = "選ぶ") { pick(item.glyph) }
-                                    .semantics { contentDescription = item.glyph },
+                                Modifier.height(if (big) 80.dp else 44.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = "選ぶ") { pick(item.glyph) }
+                                    .semantics { contentDescription = emoji?.label ?: item.glyph },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (emoji != null) {
                                     val image = version.let { images[emoji.id] }
                                     if (image == null) onNeedImage?.invoke(emoji)
-                                    if (image != null) EmojiImage(image, animations[emoji.id], contentDescription = null, modifier = Modifier.size(28.dp))
+                                    val box = when {
+                                        big -> Modifier.size(64.dp)
+                                        emoji.isText -> Modifier.height(28.dp).width((28 * CustomEmoji.aspect(emoji)).dp)
+                                        else -> Modifier.size(28.dp)
+                                    }
+                                    if (image != null) EmojiImage(image, animations[emoji.id], contentDescription = null, modifier = box)
                                     else Text(item.glyph, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                                 } else {
                                     Text(item.glyph, fontSize = 26.sp, textAlign = TextAlign.Center)

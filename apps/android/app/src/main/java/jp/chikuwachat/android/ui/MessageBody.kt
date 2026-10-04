@@ -143,7 +143,8 @@ fun bodyInline(
                     // wider, so the line re-wrapped and the row changed height when the image arrived, as on iOS.
                     val key = "emoji:" + emoji.id + if (image == null) ":loading" else ""
                     // In em: as large as the text around it, so a heading's emoji is a heading's size (testers, 2026-09-29).
-                    inlineContent[key] = InlineTextContent(Placeholder(1.25.em, 1.25.em, PlaceholderVerticalAlign.TextCenter)) {
+                    // M100: a wide one (at most 3:1) or a text emoji's pill is wider, as high; known before the image comes.
+                    inlineContent[key] = InlineTextContent(Placeholder((1.25f * CustomEmoji.aspect(emoji)).em, 1.25.em, PlaceholderVerticalAlign.TextCenter)) {
                         if (image != null) EmojiImage(image, emojiAnimations[emoji.id], contentDescription = ":${piece.name}:", modifier = Modifier.fillMaxSize())
                     }
                     appendInlineContent(key, ":${piece.name}:")

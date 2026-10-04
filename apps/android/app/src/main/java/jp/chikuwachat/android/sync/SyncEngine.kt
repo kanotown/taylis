@@ -618,6 +618,7 @@ class SyncEngine(
         store.replaceBookmarks(bootstrap.bookmarks)
         store.replaceFavorites(bootstrap.favorites)
         store.replaceCustomEmoji(bootstrap.customEmoji)
+        store.replaceEmojiPacks(bootstrap.emojiPacks)
         store.replaceRoster(bootstrap.roster)
         store.replaceGroups(bootstrap.groups)
         store.replaceTemplates(bootstrap.templates)
@@ -728,6 +729,10 @@ class SyncEngine(
             "bookmark.updated" -> {
                 val id = frame.data.str("message_id") ?: return
                 store.setBookmarked(id, frame.data.bool("bookmarked") ?: false)
+            }
+            "emoji_pack.updated" -> {  // M100
+                val row = Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.EmojiPackOut.serializer(), frame.data["pack"] ?: return)
+                store.applyEmojiPack(row, frame.data.bool("deleted") ?: false)
             }
             "emoji.updated" -> {
                 val row = Codec.snake.decodeFromJsonElement(CustomEmojiOut.serializer(), frame.data["emoji"] ?: return)

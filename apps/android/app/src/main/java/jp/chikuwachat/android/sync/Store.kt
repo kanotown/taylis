@@ -375,6 +375,9 @@ class Store(private val persistence: Persistence? = null) {
     /** Custom emoji by name (M12f); from bootstrap and emoji.updated. Images are cached by id once fetched. */
     val customEmoji = LinkedHashMap<String, CustomEmojiOut>()
     val emojiImages = HashMap<String, ImageBitmap>()
+    /** M100: emoji packs by id (picker tabs) and their tab icons by "id:version". */
+    val emojiPacks = LinkedHashMap<String, jp.chikuwachat.android.api.EmojiPackOut>()
+    val packTabImages = HashMap<String, ImageBitmap>()
     /** The frames of the animated ones (GIF), by id; their first frame is in [emojiImages]. */
     val emojiAnimations = HashMap<String, jp.chikuwachat.android.ui.EmojiAnimation>()
     /** User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server. */
@@ -1022,7 +1025,42 @@ class Store(private val persistence: Persistence? = null) {
     }
 
     fun applyCustomEmoji(row: CustomEmojiOut, deleted: Boolean) {
+        // A text emoji's pill is drawn from its label and colour: a changed one is drawn again.
+        val old = customEmoji[row.name]
+        if (old != null && old.isText && (deleted || old.label != row.label || old.color != row.color)) emojiImages.remove(old.id)
         if (deleted) customEmoji.remove(row.name) else customEmoji[row.name] = row
+        emit()
+    }
+
+    // --- emoji packs (M100) --------------------------------------------------------------------
+
+    fun replaceEmojiPacks(rows: List<jp.chikuwachat.android.api.EmojiPackOut>) {
+        emojiPacks.clear()
+        rows.forEach { emojiPacks[it.id] = it }
+        emit()
+    }
+
+    /** emoji_pack.updated: a deleted pack's emoji become ungrouped (their emoji.updated come too). */
+    fun applyEmojiPack(row: jp.chikuwachat.android.api.EmojiPackOut, deleted: Boolean) {
+        if (deleted) {
+            emojiPacks.remove(row.id)
+            for ((name, emoji) in customEmoji.entries.toList()) if (emoji.packId == row.id) customEmoji[name] = emoji.copy(packId = null)
+        } else emojiPacks[row.id] = row
+        emit()
+    }
+
+    /** The packs in tab order (position, then name). */
+    fun sortedEmojiPacks(): List<jp.chikuwachat.android.api.EmojiPackOut> =
+        emojiPacks.values.sortedWith(compareBy({ it.position }, { it.name }))
+
+    /** Drops the drawn text emoji pills (the app's light / dark look changed). */
+    fun dropTextEmojiImages() {
+        customEmoji.values.filter { it.isText }.forEach { emojiImages.remove(it.id) }
+        emit()
+    }
+
+    fun setPackTab(key: String, image: ImageBitmap) {
+        packTabImages[key] = image
         emit()
     }
 

@@ -1529,9 +1529,29 @@ class AppController(private val app: Application) {
 
     private val emojiLoads = HashSet<String>()
 
-    /** Fetches an emoji image once into the store's cache. */
+    /** M100: text emoji pills follow the app's light / dark look (MainActivity sets it); a change draws them again. */
+    var textEmojiDark = false
+        set(value) {
+            if (field == value) return
+            field = value
+            store.dropTextEmojiImages()
+        }
+
+    /**
+     * Fetches an emoji image once into the store's cache. M100: a text emoji's pill is drawn here instead (no request),
+     * so every place that shows a custom emoji's image shows the pill.
+     */
     fun loadEmojiImage(emoji: CustomEmojiOut) {
         if (store.emojiImages.containsKey(emoji.id) || !emojiLoads.add(emoji.id)) return
+        if (emoji.isText) {
+            val dark = textEmojiDark
+            // Not while composing (onNeed is called from a composable): the next turn of the main loop.
+            scope.launch {
+                try { store.setEmojiImage(emoji.id, jp.chikuwachat.android.ui.TextEmojiPill.draw(emoji, dark).asImageBitmap()) }
+                finally { emojiLoads.remove(emoji.id) }
+            }
+            return
+        }
         scope.launch {
             try {
                 val bytes = fetchBytes("/api/v1/emoji/${emoji.id}/image")
@@ -1542,6 +1562,22 @@ class AppController(private val app: Application) {
             } catch (_: Exception) {
                 // the text form stays; a later render retries
             } finally { emojiLoads.remove(emoji.id) }
+        }
+    }
+
+    /** M100: a pack's tab icon, once per version. */
+    fun loadPackTab(pack: jp.chikuwachat.android.api.EmojiPackOut) {
+        val version = pack.tabVersion ?: return
+        val key = "${pack.id}:$version"
+        if (store.packTabImages.containsKey(key) || !emojiLoads.add(key)) return
+        scope.launch {
+            try {
+                val bytes = fetchBytes("/api/v1/emoji/packs/${pack.id}/tab")
+                val bitmap = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+                if (bitmap != null) store.setPackTab(key, bitmap)
+            } catch (_: Exception) {
+                // the first emoji stands in
+            } finally { emojiLoads.remove(key) }
         }
     }
 

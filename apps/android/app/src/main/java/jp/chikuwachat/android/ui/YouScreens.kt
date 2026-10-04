@@ -383,7 +383,7 @@ private fun StatusScreen(controller: AppController, version: Int, onDone: () -> 
     val store = controller.store
     if (pickingEmoji) {
         EmojiPickerSheet(recent = QuickReactions.read(controller.prefs), store = store,
-            onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; emoji = it })
+            onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; emoji = it })
     }
     ScreenColumn {
         Row(verticalAlignment = Alignment.CenterVertically) {

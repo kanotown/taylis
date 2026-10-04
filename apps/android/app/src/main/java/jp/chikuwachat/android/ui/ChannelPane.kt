@@ -734,7 +734,7 @@ fun MessageRow(
     if (showingReactors) ReactorsDialog(message, store, version, onNeedEmojiImage = { controller.loadEmojiImage(it) }, onDismiss = { showingReactors = false })
     if (sharing) ShareDialog(controller, message, version, onDismiss = { sharing = false })
     if (showingRevisions) RevisionsDialog(controller, message, onDismiss = { showingRevisions = false })
-    if (pickingReaction) EmojiPickerSheet(recent = QuickReactions.read(controller.prefs), store = store, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
+    if (pickingReaction) EmojiPickerSheet(recent = QuickReactions.read(controller.prefs), store = store, onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
     if (showingProfile) ProfileDialog(controller, message.senderId, version, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
     // Codex audit C4: closed only once the edit is saved; a failure (offline) keeps the text and shows the error.
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users, store.groups), saving = savingEdit, onDismiss = { if (!savingEdit) editing = false }, onSave = { body ->
