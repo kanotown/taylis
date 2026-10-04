@@ -106,7 +106,9 @@ CREATE TABLE users (
 ```
 
 自由登録は無い。管理者が CLI または `POST /admin/users` で作成し、仮パスワードを本人に渡す。
-削除は無効化のみ。メッセージの `sender_id` 参照を保つ。
+削除は無効化のみ。メッセージの `sender_id` 参照を保つ。「削除」(本人の「アカウントを削除」M104、管理者の匿名化 M10) は
+行を消さずに匿名化する: `username = deleted-<id の先頭 12 桁>`、`display_name = 退会したユーザー`、個人情報の列を NULL、
+`deactivated_at` を付ける (docs/MODERATION.md §2)。
 
 **ユーザー名の変更 (M96)**: ユーザー名は作った後も変えられる (移行なし、`server/app/modules/users/username.py`)。
 
@@ -670,6 +672,49 @@ CREATE INDEX channel_favorites_user_idx ON channel_favorites (user_id, created_a
 - サイドバーの「お気に入り」節。個人データなので `seq` を消費せず、端末間は `favorite.updated` (audience=user)
   で揃え、bootstrap には id の一覧 (`favorites`) を入れる。星を付けられるのはメンバーだけ。
 - 退出しても行は残すが、bootstrap は現在のメンバーシップと結合して返すので表示からは消える (再参加で戻る)。
+
+### user_blocks (ブロック、M104、MODERATION.md §4)
+
+```sql
+CREATE TABLE user_blocks (
+  blocker_id  uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id  uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (blocker_id, blocked_id),
+  CHECK (blocker_id <> blocked_id)
+);
+CREATE INDEX user_blocks_blocked_idx ON user_blocks (blocked_id);  -- 「この送信者をブロックしたのは誰か」(プッシュ、DM の拒否)
+```
+
+- 本人だけのもの。`seq` を消費せず、端末間は `block.updated` (audience=user、ブロックした本人だけ) で揃え、bootstrap に
+  `blocked_user_ids` を入れる。ブロックされた人には何も配らない。
+- 読むのは `moderation/blocks.py` だけ (messages・channels の 1 対 1 の DM の拒否、notifications のプッシュの除外、
+  activity の一覧の除外)。本人のアカウントを削除 (匿名化) すると、本人がブロックした行は消える (された側の行は残す)。
+
+### message_reports (メッセージの報告、M104、MODERATION.md §3)
+
+```sql
+CREATE TABLE message_reports (
+  id                uuid PRIMARY KEY,                        -- UUIDv7
+  message_id        uuid NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  channel_id        uuid NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  reporter_id       uuid NOT NULL REFERENCES users(id),
+  reported_user_id  uuid NOT NULL REFERENCES users(id),      -- 報告した時のメッセージの送信者
+  reason            varchar(16) NOT NULL CHECK (reason IN ('spam', 'harassment', 'inappropriate', 'other')),
+  note              text,                                    -- 補足 (1,000 文字まで)
+  body_snapshot     text NOT NULL DEFAULT '',                -- 報告した時の本文 (4,000 文字まで)
+  status            varchar(16) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  resolved_at       timestamptz,
+  resolved_by       uuid REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT message_reports_once UNIQUE (message_id, reporter_id)
+);
+CREATE INDEX message_reports_status_idx ON message_reports (status, created_at);
+```
+
+- 同じ人が同じメッセージを報告できるのは 1 回 (2 回目は最初の行を返す)。読むのは管理者だけ (`GET /admin/reports`)。
+- 本文の写しは、投稿者が後で編集・削除しても何が報告されたかを確かめるため (メッセージ本体はソフト削除なので行は残る)。
+  イベントは無い (管理者にはモデレーションのボットの DM で知らせる)。
 
 ### invites (招待リンク、M12h)
 
