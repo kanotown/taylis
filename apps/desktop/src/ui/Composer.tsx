@@ -1,6 +1,6 @@
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
 import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X, Zap } from "lucide-react";
-import { Fragment, type KeyboardEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, type KeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut, Priority, TemplateOut, WorkflowOut } from "../api/types";
 import type { AppController } from "../state/app";
@@ -744,13 +744,11 @@ export function Composer({
               <CaseSensitive size={18} />
             </IconButton>
             <PopoverRoot open={emojiOpen} onOpenChange={setEmojiOpen}>
-              <PopoverAnchor virtualRef={emojiAnchor} />
-              <PopoverTrigger asChild>
-                <button ref={emojiButton} type="button" title="絵文字" aria-label="絵文字" className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[17rem]:flex">
-                  <Smile size={15} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" side="top" className="w-auto p-3">
+              <PopoverAnchor virtualRef={emojiAnchor.anchor} />
+              <button ref={emojiButton} type="button" title="絵文字" aria-label="絵文字" aria-haspopup="dialog" aria-expanded={emojiOpen} onClick={() => setEmojiOpen((open) => !open)} className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[17rem]:flex">
+                <Smile size={15} />
+              </button>
+              <PopoverContent align="start" side="top" className="w-auto p-3" onInteractOutside={emojiAnchor.keepOpenOnButton}>
                 <EmojiPicker recent={readRecentEmoji()} custom={[...store.customEmoji.values()]} controller={controller} onAddCustom={() => { setEmojiOpen(false); setAddEmojiOpen(true); }} onPick={insertEmoji} />
               </PopoverContent>
             </PopoverRoot>
@@ -759,13 +757,11 @@ export function Composer({
             </IconButton>
             {!parentId && (
               <PopoverRoot open={priorityOpen} onOpenChange={setPriorityOpen}>
-                <PopoverAnchor virtualRef={priorityAnchor} />
-                <PopoverTrigger asChild>
-                  <button ref={priorityButton} type="button" title="重要度" aria-label="重要度" className={cn("hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg hover:bg-ink/6 @[17rem]:inline-flex", priority || ackRequested ? "text-accent" : "text-muted hover:text-ink")}>
-                    <Flag size={15} />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="start" side="top" className="w-60 p-2">
+                <PopoverAnchor virtualRef={priorityAnchor.anchor} />
+                <button ref={priorityButton} type="button" title="重要度" aria-label="重要度" aria-haspopup="dialog" aria-expanded={priorityOpen} onClick={() => setPriorityOpen((open) => !open)} className={cn("hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg hover:bg-ink/6 @[17rem]:inline-flex", priority || ackRequested ? "text-accent" : "text-muted hover:text-ink")}>
+                  <Flag size={15} />
+                </button>
+                <PopoverContent align="start" side="top" className="w-60 p-2" onInteractOutside={priorityAnchor.keepOpenOnButton}>
                   <div className="px-1 pb-1 text-xs font-semibold text-muted">重要度</div>
                   {([[null, "通常"], ["important", "重要"], ["urgent", "緊急"]] as Array<[Priority | null, string]>).map(([value, label]) => (
                     <button key={label} type="button" className={cn("flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel", priority === value && "bg-accent-soft")} onClick={() => setPriority(value)}>
@@ -851,14 +847,27 @@ export function Composer({
 
 type SlashHit = { kind: "command"; command: SlashCommand } | { kind: "template"; template: TemplateOut } | { kind: "workflow"; workflow: WorkflowOut };
 
-/** A popover anchor at the first of these elements that is shown (the others folded away by the composer's width). */
-function useShownAnchor(...elements: Array<RefObject<HTMLElement | null>>): RefObject<{ getBoundingClientRect(): DOMRect }> {
-  return useRef({
+/**
+ * A popover opened by `button`, which folds into `more` (「…」) on a narrow composer: anchored at whichever of the two is
+ * shown. The button opens and closes it itself rather than through a PopoverTrigger (2026-10-04: the emoji list opened
+ * at the window's top-left). With a trigger next to a virtual PopoverAnchor, Radix takes the trigger for the anchor
+ * until the custom anchor has registered (an effect), then unwraps the trigger, which mounts its button anew. When the
+ * trigger's ref attaches after that effect, as under React's StrictMode (refs attached twice on mount: every
+ * development build, `tauri dev` included), the anchor stays the unmounted button, a rectangle of zeros at (0, 0).
+ * Without a trigger the virtual anchor is the only one. `keepOpenOnButton` goes to the content's `onInteractOutside`:
+ * a press on the button is left to its own click (which closes), as a trigger's would be.
+ */
+function useShownAnchor(button: RefObject<HTMLElement | null>, more: RefObject<HTMLElement | null>) {
+  const anchor = useRef({
     getBoundingClientRect: () => {
-      const shown = elements.map((ref) => ref.current).find((el) => el && el.getClientRects().length > 0);
+      const shown = [button.current, more.current].find((el) => el && el.getClientRects().length > 0);
       return shown ? shown.getBoundingClientRect() : new DOMRect();
     },
   });
+  const keepOpenOnButton = useCallback((event: { target: EventTarget | null; preventDefault(): void }) => {
+    if (event.target instanceof Node && button.current?.contains(event.target)) event.preventDefault();
+  }, [button]);
+  return { anchor, keepOpenOnButton };
 }
 
 /** Marks my own templates in the lists (the workspace's have none). */
