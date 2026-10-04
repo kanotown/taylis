@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: dragging the window by its top bar (macOS overlay title bar; on Windows our top bar is the whole title bar, with its own minimise / maximise / close buttons),local SQLite store, OS notifications, the unread badge, external links in the system browser, saving a download where the user picked in the save dialog, the credential-store commands, the `chikuwachat://` link that launched the app (Google sign-in), and in-app updates (check, download and install, then relaunch).",
+  "description": "Main window: dragging the window by its top bar (macOS overlay title bar; on Windows our top bar is the whole title bar, with its own minimise / maximise / close buttons),local SQLite store, OS notifications, the unread badge, external links in the system browser, the text size (webview zoom), saving a download where the user picked in the save dialog, the credential-store commands, the `chikuwachat://` link that launched the app (Google sign-in), and in-app updates (check, download and install, then relaunch).",
   "windows": [
     "main"
   ],
@@ -12,6 +12,7 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "core:window:allow-set-badge-count",
+    "core:webview:allow-set-webview-zoom",
     "sql:default",
     "sql:allow-load",
     "sql:allow-execute",

@@ -260,7 +260,7 @@ export function RecurringPostDialog({ controller, channel, post, onClose, onSave
                       aria-pressed={on}
                       aria-label={`${label}曜日`}
                       onClick={() => set({ weekdays: on ? draft.weekdays.filter((d) => d !== day) : [...draft.weekdays, day].sort((a, b) => a - b) })}
-                      className={cn("h-8 w-8 rounded-full border text-sm font-medium transition-colors", on ? "border-accent bg-accent text-white" : "border-line text-ink hover:bg-panel")}
+                      className={cn("h-8 w-8 rounded-full border text-sm font-medium transition-colors", on ? "border-accent bg-accent-solid text-white" : "border-line text-ink hover:bg-panel")}
                     >
                       {label}
                     </button>

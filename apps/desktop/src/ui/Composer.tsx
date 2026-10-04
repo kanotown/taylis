@@ -812,7 +812,7 @@ export function Composer({
               </Button>
               <PopoverRoot open={scheduleOpen} onOpenChange={setScheduleOpen}>
                 <PopoverTrigger asChild>
-                  <button type="button" aria-label="後で送信" title="後で送信" disabled={uploading > 0 || scheduling || (!text.trim() && pending.length === 0)} className="inline-flex h-7 w-6 items-center justify-center rounded-r-md border-l border-white/30 bg-accent text-white shadow-sm transition-colors hover:bg-accent/90 disabled:pointer-events-none disabled:opacity-50">
+                  <button type="button" aria-label="後で送信" title="後で送信" disabled={uploading > 0 || scheduling || (!text.trim() && pending.length === 0)} className="inline-flex h-7 w-6 items-center justify-center rounded-r-md border-l border-white/30 bg-accent-solid text-white shadow-sm transition-colors hover:bg-accent-solid/90 disabled:pointer-events-none disabled:opacity-50">
                     <ChevronDown size={14} />
                   </button>
                 </PopoverTrigger>

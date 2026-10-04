@@ -1111,7 +1111,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const centre = (
     <>
       {banner && (
-        <div className={cn("px-4 py-1 text-center text-xs font-medium text-white", banner === "connecting" ? "bg-accent" : "bg-warning")}>
+        <div className={cn("px-4 py-1 text-center text-xs font-medium text-white", banner === "connecting" ? "bg-accent-solid" : "bg-warning")}>
           {banner === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}
         </div>
       )}
@@ -1654,7 +1654,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       <div
         data-tauri-drag-region
         className="flex h-10 min-w-0 items-center bg-sidebar px-2"
-        style={trafficLights && !controller.showsRail ? { paddingLeft: TRAFFIC_LIGHTS_INSET } : undefined}
+        style={trafficLights && !controller.showsRail ? { paddingLeft: `calc(${TRAFFIC_LIGHTS_INSET}px / var(--ui-zoom, 1))` } : undefined}
       >
         <WorkspaceMenu controller={controller} />
       </div>

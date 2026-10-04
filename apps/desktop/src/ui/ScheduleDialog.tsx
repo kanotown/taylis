@@ -144,7 +144,7 @@ export function ScheduleDialog({ controller, channelId, parentId, onClose, initi
                     onClick={() => toggleDay(day)}
                     className={cn(
                       "h-8 rounded-md text-sm tabular-nums transition-colors",
-                      chosen ? "bg-accent font-semibold text-white" : "hover:bg-panel",
+                      chosen ? "bg-accent-solid font-semibold text-white" : "hover:bg-panel",
                       !inMonth && !chosen && "text-muted/60",
                       day === today && !chosen && "ring-1 ring-accent/50",
                       past && !chosen && "cursor-default opacity-40 hover:bg-transparent",

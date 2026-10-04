@@ -38,7 +38,7 @@ export function UserPicker({ users, selected, onToggle, empty }: { users: UserPu
               <span className="flex-1 truncate">
                 {u.display_name} <span className="text-muted">@{u.username}</span>
               </span>
-              <span className={cn("flex h-5 w-5 items-center justify-center rounded-full border", on ? "border-accent bg-accent text-white" : "border-line")}>{on && <Check size={12} />}</span>
+              <span className={cn("flex h-5 w-5 items-center justify-center rounded-full border", on ? "border-accent bg-accent-solid text-white" : "border-line")}>{on && <Check size={12} />}</span>
             </button>
           </li>
         );

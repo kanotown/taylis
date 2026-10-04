@@ -332,7 +332,7 @@ export function MonthGrid({ anchor, today, events, tasks = [], onOpen, onOpenTas
                       outside && "text-muted",
                       i === 0 && !outside && "text-rose-500",
                       i === 6 && !outside && "text-sky-600",
-                      day === today && "bg-accent font-bold text-white hover:bg-accent",
+                      day === today && "bg-accent-solid font-bold text-white hover:bg-accent-solid",
                     )}
                     title="この週を表示"
                   >
@@ -398,7 +398,7 @@ export function WeekGrid({ anchor, today, events, tasks = [], onOpen, onOpenTask
         <div />
         {days.map((day, i) => (
           <div key={day} className={cn("border-l border-line py-1 text-center text-[11px]", i === 0 && "text-rose-500", i === 6 && "text-sky-600")}>
-            <span className={cn("inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 font-semibold tabular-nums", day === today && "bg-accent text-white")}>
+            <span className={cn("inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 font-semibold tabular-nums", day === today && "bg-accent-solid text-white")}>
               {parseDay(day).getDate()}
             </span>
             <span className="ml-1 text-muted">{weekdayLabel(i)}</span>

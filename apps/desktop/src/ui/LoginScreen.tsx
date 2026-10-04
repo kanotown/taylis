@@ -88,7 +88,7 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
           {icon ? (
             <WorkspaceIcon serverUrl={icon.server} version={icon.version} name={entry?.name ?? ""} colorKey={entry?.workspaceId ?? icon.server} className="h-11 w-11 rounded-2xl text-lg shadow-md" />
           ) : (
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white shadow-md">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-solid text-white shadow-md">
               <MessageCircle size={24} />
             </span>
           )}

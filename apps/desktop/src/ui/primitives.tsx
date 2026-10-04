@@ -59,7 +59,7 @@ type Size = "sm" | "md" | "icon";
 const BASE =
   "inline-flex select-none items-center justify-center font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50";
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-accent text-white shadow-sm hover:bg-accent/90",
+  primary: "bg-accent-solid text-white shadow-sm hover:bg-accent-solid/90",
   secondary: "bg-panel-2 text-ink hover:bg-line",
   ghost: "text-ink hover:bg-ink/6",
   danger: "bg-danger text-white hover:bg-danger/90",

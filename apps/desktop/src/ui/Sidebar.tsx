@@ -202,7 +202,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           aria-pressed={unreadOnly}
           title={unreadOnly ? "すべて表示" : "未読のみ表示"}
           onClick={onToggleUnreadOnly}
-          className={cn("h-8 rounded-lg px-2.5 text-xs font-medium transition-colors", unreadOnly ? "bg-accent text-white" : "bg-white/8 hover:bg-white/14 hover:text-white")}
+          className={cn("h-8 rounded-lg px-2.5 text-xs font-medium transition-colors", unreadOnly ? "bg-accent-solid text-white" : "bg-white/8 hover:bg-white/14 hover:text-white")}
         >
           未読
         </button>
