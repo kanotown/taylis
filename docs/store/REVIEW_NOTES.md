@@ -7,6 +7,10 @@
 
 ## 1. Apple: App Review に関する情報
 
+`apps/ios/scripts/asc-metadata.py` が入れる (STORE_RELEASE.md §3.1)。メモは `docs/store/appstore.json` の `review.notes`
+(`{server_url}` と `{demo_user}` は実行時に埋める)。電話番号・審査用ユーザ・パスワード・サーバ URL はリポジトリに入れず
+`~/.config/taylis/asc-review.env` に置く。
+
 - サインイン情報: ユーザ名 `<reviewer>` / パスワード `<password>`
 - 連絡先: Toru Kano / kanotown@gmail.com / `<電話番号>`
 - メモ (英語で貼る):
@@ -18,8 +22,8 @@ sign-up and the app is not a general social network: people only talk with membe
 organization.
 
 How to sign in for review:
-1. On the first screen, enter the server URL: <https://review.example.ac.jp>
-2. Username: <reviewer>   Password: <password>
+1. On the first screen, enter the server URL: {server_url}
+2. Username: {demo_user}   Password: see the Sign-In Information above.
 3. Tap "ログイン" (Log in).
 The demo workspace contains fictional channels (#お知らせ, #研究ミーティング, ...), a thread, a poll
 and direct messages.

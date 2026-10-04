@@ -1,11 +1,12 @@
 # ストアの掲載情報 (日本語)
 
-App Store Connect と Google Play Console に貼る文面。文字数は各欄の上限以内 (数え方は末尾)。
+App Store Connect と Google Play Console に貼る文面。App Store Connect の分は `docs/store/appstore.json` にも同じものがあり、
+`apps/ios/scripts/asc-metadata.py` がそこから入れる (直すときは両方)。文字数は各欄の上限以内 (数え方は末尾)。
 URL は加納のサイト (kano.ac) のページ。
 
 | 欄 | 値 |
 |---|---|
-| アプリ名 (iOS ≤ 30 / Play ≤ 30) | Taylis |
+| アプリ名 (iOS ≤ 30 / Play ≤ 30) | iOS: Taylis - 研究室向けチャットツール (App Store Connect でアプリを作ったときの名前。appstore.json の `name` は null = そのまま) / Play: Taylis |
 | サブタイトル (iOS ≤ 30) | 研究室・チームのためのセルフホスト型チャット |
 | カテゴリ (iOS) | プライマリ: ビジネス / セカンダリ: 仕事効率化 |
 | カテゴリ (Play) | ビジネス (「コミュニケーション」も候補) |

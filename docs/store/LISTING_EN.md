@@ -1,10 +1,11 @@
 # Store listing (English, short)
 
 For an English localization in App Store Connect / Play Console. The Japanese listing (LISTING_JA.md) is the primary one.
+The App Store values are also in `docs/store/appstore.json` (`en-US`), which `apps/ios/scripts/asc-metadata.py` reads; change both.
 
 | Field | Value |
 |---|---|
-| Name | Taylis |
+| Name | iOS: Taylis - Team Chat for Labs (27) / Play: Taylis |
 | Subtitle (iOS ≤ 30) | Self-hosted chat for teams (26) |
 | Category | Business (secondary: Productivity) |
 | Privacy policy | https://kano.ac/pages/apps/taylis-privacy-policy/ |
