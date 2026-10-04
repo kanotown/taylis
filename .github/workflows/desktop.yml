@@ -59,3 +59,5 @@ jobs:
             apps/desktop/src-tauri/target/release/bundle/msi/*.msi
             apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: ignore
+          # Actions storage is 0.5 GB on this plan: release-desktop.sh downloads these within the release.
+          retention-days: 7
