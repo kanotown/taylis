@@ -72,6 +72,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -814,6 +815,8 @@ private fun AccountScreen(controller: AppController, onOpen: (SettingsPage) -> U
             .onFailure { sessionsError = controller.describe(it) }
     }
     var revoking by remember { mutableStateOf<SessionOut?>(null) }
+    var deletingAccount by remember { mutableStateOf(false) }
+    val storeVersion by controller.store.version.collectAsState()
     val list = sessions
     // Lazy: an account signed in from many places (a test account has hundreds) lists them all.
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)) {
@@ -860,7 +863,20 @@ private fun AccountScreen(controller: AppController, onOpen: (SettingsPage) -> U
                 HorizontalDivider()
             }
         }
+        // M104 (MODERATION.md §2, §4): the people I blocked, and deleting my account (App Store 5.1.1(v), Google Play).
+        item(key = "moderation") {
+            Column {
+                if (controller.store.blockedUsers.isNotEmpty()) {
+                    SectionTitle("ブロック中のユーザー")
+                    BlockedUsersList(controller, storeVersion)
+                }
+                SectionTitle("アカウントを削除")
+                Hint("すべての端末からログアウトし、プロフィールとログイン情報を消去します。投稿したメッセージは「退会したユーザー」として残ります。")
+                DeleteAccountRow(onClick = { deletingAccount = true })
+            }
+        }
     }
+    if (deletingAccount) DeleteAccountDialog(controller, onDismiss = { deletingAccount = false })
     revoking?.let { session ->
         AlertDialog(
             onDismissRequest = { revoking = null },

@@ -82,6 +82,15 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
                     }
                 }
                 if (user?.deactivatedAt != null) Text("無効化されたアカウント", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                // M104 (MODERATION.md §4): private; the person is not told.
+                if (!isMe && user != null) {
+                    val blocked = remember(version, userId) { store.isBlocked(userId) }
+                    if (blocked) Text("ブロック中 (メッセージは折りたたまれ、通知されません)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                    TextButton(
+                        onClick = { scope.launch { controller.setUserBlocked(userId, !blocked) } },
+                        modifier = Modifier.padding(top = 4.dp),
+                    ) { Text(if (blocked) "ブロックを解除" else "ブロック", color = if (blocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
+                }
             }
         },
         confirmButton = {

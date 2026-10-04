@@ -617,6 +617,7 @@ class SyncEngine(
         store.replacePresence(bootstrap.presence)
         store.replaceBookmarks(bootstrap.bookmarks)
         store.replaceFavorites(bootstrap.favorites)
+        store.replaceBlocked(bootstrap.blockedUserIds)
         store.replaceCustomEmoji(bootstrap.customEmoji)
         store.replaceEmojiPacks(bootstrap.emojiPacks)
         store.replaceRoster(bootstrap.roster)
@@ -791,6 +792,10 @@ class SyncEngine(
             "scheduled.updated" -> {
                 val row = Codec.snake.decodeFromJsonElement(ScheduledOut.serializer(), frame.data["scheduled"] ?: return)
                 store.applyScheduled(row)
+            }
+            "block.updated" -> {
+                val id = frame.data.str("user_id") ?: return
+                store.setBlocked(id, frame.data.bool("blocked") ?: false)
             }
             "favorite.updated" -> {
                 val id = frame.data.str("channel_id") ?: return
@@ -1014,7 +1019,7 @@ class SyncEngine(
     private fun maybeNotifyCanvasMention(data: JsonObject) {
         val mention = runCatching { Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.CanvasMentioned.serializer(), data) }.getOrNull() ?: return
         val me = store.me ?: return
-        if (mention.byUserId == me.id) return
+        if (mention.byUserId == me.id || store.isBlocked(mention.byUserId)) return  // M104: not from someone I blocked
         val channel = store.channel(mention.channelId) ?: return
         if (!channel.isMember) return
         if (!NotificationLevels.notifies(channel, me.notificationDefault, me.id, involved = true)) return
@@ -1028,6 +1033,7 @@ class SyncEngine(
     private fun maybeNotify(message: MessageOut, channel: ChannelState, thread: ParentThread? = null) {
         val me = store.me ?: return
         if (message.senderId == me.id) return
+        if (store.isBlocked(message.senderId)) return  // M104 (MODERATION.md §4): nothing from someone I blocked
         // M89: a join / leave line never notifies (facts.system; notify-rules.json system_messages).
         // The level resolved with my overall setting (M35), and a mute.
         val followingHeld = message.parentId?.let { store.threads[it]?.state?.following } == true

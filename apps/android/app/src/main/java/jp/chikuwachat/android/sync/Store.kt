@@ -368,6 +368,8 @@ class Store(private val persistence: Persistence? = null) {
     val bookmarks = HashSet<String>()
     /** My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted. */
     val favorites = HashSet<String>()
+    /** M104 (MODERATION.md §4): the people I blocked; from bootstrap and block.updated, not persisted. */
+    val blockedUsers = HashSet<String>()
     /** My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted. */
     val scheduled = LinkedHashMap<String, ScheduledOut>()
     /** My open reminders (M12e): fired ones wait for 完了, pending ones for their time. */
@@ -1125,6 +1127,21 @@ class Store(private val persistence: Persistence? = null) {
     fun replaceFavorites(ids: List<String>) {
         favorites.clear()
         favorites.addAll(ids)
+        emit()
+    }
+
+    // --- blocks (M104) ------------------------------------------------------------------------
+
+    fun isBlocked(userId: String): Boolean = userId in blockedUsers
+
+    fun setBlocked(userId: String, on: Boolean) {
+        val changed = if (on) blockedUsers.add(userId) else blockedUsers.remove(userId)
+        if (changed) emit()
+    }
+
+    fun replaceBlocked(ids: List<String>) {
+        blockedUsers.clear()
+        blockedUsers.addAll(ids)
         emit()
     }
 
