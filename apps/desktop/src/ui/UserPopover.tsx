@@ -131,7 +131,7 @@ export function EmojiText({ controller, text, size = "1.15em" }: { controller: A
       {splitCustomEmoji(text, custom).map((piece, index) => {
         if (typeof piece === "string") return <Fragment key={index}>{piece}</Fragment>;
         const emoji = custom.get(piece.name);
-        return emoji ? <CustomEmojiImage key={index} controller={controller} emoji={emoji} size={size} /> : <Fragment key={index}>:{piece.name}:</Fragment>;
+        return emoji ? <CustomEmojiImage key={index} controller={controller} emoji={emoji} size={size} inline /> : <Fragment key={index}>:{piece.name}:</Fragment>;
       })}
     </>
   );
