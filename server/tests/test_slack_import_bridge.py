@@ -9,13 +9,14 @@ from typing import Any
 
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cli import main, parse_bot_as, parse_emoji_renames, print_import_report
 from app.core.ids import uuid7
 from app.modules.emoji.models import CustomEmoji
 from app.modules.importer.core import ImportFailed, Report
+from app.modules.importer.models import ImportRef
 from app.modules.importer.slack_import import (
     BRIDGE_JOIN,
     EmojiImages,
@@ -344,3 +345,130 @@ def test_rename_and_bot_options(tmp_path: Path) -> None:
     base = ["import-slack", str(tmp_path / "x.zip"), "--actor", "admin"]
     assert main([*base, "--bot-as", "nothing"]) == 1
     assert main([*base, "--emoji-rename-file", str(tmp_path / "missing.txt")]) == 1
+
+
+# --- review v0.1.30 #2: the bridge bots' mappings are kept in import_refs -------------------------
+
+
+def _with_later_posts(tmp_path: Path, name: str) -> Path:
+    """The same export with one more post by each mapped bot (an incremental rerun)."""
+    data = bridge_export()
+    data["general/2024-05-01.json"] += [
+        _bot(20, "suzuki later", username="suzuki"),
+        _bot(21, "tana later", username="Tanaka"),
+        _bot(22, "sato later", profile="sato"),
+    ]
+    return write_zip(tmp_path / name, data)
+
+
+async def _senders(db: AsyncSession) -> dict[str, Any]:
+    return {m.body: m.sender_id for m in await _messages(db)}
+
+
+async def _rename(db: AsyncSession, old: str, new: str) -> None:
+    user = (await db.execute(select(User).where(User.username == old))).scalar_one()
+    user.username = new
+    await db.commit()
+
+
+async def _bot_refs(db: AsyncSession) -> dict[tuple[str, str], Any]:
+    rows = await db.execute(
+        select(ImportRef.kind, ImportRef.source_id, ImportRef.target_id).where(
+            ImportRef.source_id.like("bot-as:%")
+        )
+    )
+    return {(kind, source_id): target for kind, source_id, target in rows.all()}
+
+
+async def _count_messages(db: AsyncSession) -> int | None:
+    return await db.scalar(select(func.count()).select_from(Message))
+
+
+async def test_a_rename_and_a_reused_name_never_move_the_bridge_posts(
+    app: FastAPI, db: AsyncSession, tmp_path: Path
+) -> None:
+    """The review's case: @tana is renamed, someone else takes "tana", the same --bot-as is run
+    again. It stops before writing; given the renamed account, the new post is the same person's."""
+    await _setup(db)
+    await _run(app, db, write_zip(tmp_path / "lab.zip", bridge_export()), None)
+    users = await _users(db)
+    tana, suzu, sato = users["tana"].id, users["suzu"].id, users["sato"].id
+    refs = await _bot_refs(db)
+    assert refs == {
+        ("user", "bot-as:suzuki"): suzu,
+        ("bot_as_person", "bot-as:suzuki"): suzu,
+        ("user", "bot-as:tanaka"): tana,
+        ("bot_as_person", "bot-as:tanaka"): tana,
+        ("user", "bot-as:sato"): sato,  # new: no person marker
+    }
+
+    await _rename(db, "tana", "tana-old")
+    other = (await make_user(db, "tana")).id
+    later = _with_later_posts(tmp_path, "later.zip")
+    before = await _count_messages(db)
+    with pytest.raises(ImportFailed, match="earlier run imported its posts as @tana-old"):
+        await _run(app, db, later, None)
+    assert await _count_messages(db) == before
+
+    await _run(app, db, later, None, bot_as={**BOT_AS, "tanaka": "@tana-old"})
+    senders = await _senders(db)
+    assert senders["tana post"] == senders["tana later"] == tana != other
+    assert senders["suzuki later"] == suzu and senders["sato later"] == sato
+    assert await _bot_refs(db) == refs  # nothing re-stored
+
+
+@pytest.mark.parametrize(
+    ("bot", "changed", "message"),
+    [
+        ("suzuki", "@tana", "as @suzu, not @tana"),  # Slack user → existing account
+        ("suzuki", "new:Suzuki", r"as @suzu \(give that account instead"),  # Slack user → new:
+        ("tanaka", "suzu", "as @tana, not @suzu"),  # existing account → Slack user
+        ("tanaka", "new:T", r"as @tana \(give that account instead"),  # existing → new:
+        ("sato", "@tana", "as @sato, not @tana"),  # new: → existing account
+        ("sato", "suzu", "as @sato, not @suzu"),  # new: → Slack user
+    ],
+)
+async def test_a_changed_bot_target_stops_the_rerun(
+    app: FastAPI, db: AsyncSession, tmp_path: Path, bot: str, changed: str, message: str
+) -> None:
+    await _setup(db)
+    await _run(app, db, write_zip(tmp_path / "lab.zip", bridge_export()), None)
+    later = _with_later_posts(tmp_path, "later.zip")
+    before = await _count_messages(db)
+    with pytest.raises(ImportFailed, match=message):
+        await _run(app, db, later, None, bot_as={**BOT_AS, bot: changed})
+    assert await _count_messages(db) == before
+    # The new: account named by its @username is the same account: allowed.
+    await _run(app, db, later, None, bot_as={**BOT_AS, "sato": "@sato"})
+    senders = await _senders(db)
+    assert senders["sato later"] == senders["sato post"]
+
+
+async def test_a_run_from_before_the_mappings_were_kept_is_matched_by_its_posts(
+    app: FastAPI, db: AsyncSession, tmp_path: Path
+) -> None:
+    """Data imported before the fix has no bot-as refs for Slack / @ targets: the rerun takes the
+    earlier mapping from the senders of the posts it imported, refuses a different target and
+    then stores the mapping."""
+    await _setup(db)
+    await _run(app, db, write_zip(tmp_path / "lab.zip", bridge_export()), None)
+    users = await _users(db)
+    tana, suzu = users["tana"].id, users["suzu"].id
+    await db.execute(
+        delete(ImportRef).where(ImportRef.source_id.in_(["bot-as:suzuki", "bot-as:tanaka"]))
+    )
+    await db.commit()
+    await _rename(db, "tana", "tana-old")
+    await make_user(db, "tana")
+    later = _with_later_posts(tmp_path, "later.zip")
+    with pytest.raises(ImportFailed, match="earlier run imported its posts as @tana-old"):
+        await _run(app, db, later, None)
+    with pytest.raises(ImportFailed, match=r"as @suzu \(give that account instead"):
+        await _run(app, db, later, None, bot_as={**BOT_AS, "suzuki": "new:S"})
+
+    await _run(app, db, later, None, bot_as={**BOT_AS, "tanaka": "@tana-old"})
+    senders = await _senders(db)
+    assert senders["tana later"] == tana and senders["suzuki later"] == suzu
+    refs = await _bot_refs(db)
+    assert refs[("user", "bot-as:tanaka")] == tana
+    assert refs[("bot_as_person", "bot-as:suzuki")] == suzu

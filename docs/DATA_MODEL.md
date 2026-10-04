@@ -112,7 +112,8 @@ CREATE TABLE users (
 - 誰が: 本人は `PATCH /users/me {username}` (ゲストも。ほかの欄と同じトランザクションで、どれかが拒まれれば何も変わらない)、
   管理者は `PATCH /admin/users/{id} {username}` (人もボットも、自分も。AI のボットの名前もここで変える)。ボットはログイン
   しないので本人の変更は無い。
-- 検証: `^[a-z0-9._-]{3,32}$` (422)、大文字小文字を無視して一意 (citext、`409 username_taken`)、グループ名と同じ名前空間
+- 検証: `^[a-z0-9._-]{3,32}$` (422)、大文字小文字を無視して一意 (citext、`409 username_taken`。2 人が同じ空いた名前を同時に
+  取ると、後の方は一意制約で待ってから違反し、トランザクションごと戻して同じ `409 username_taken`: REVIEW-v0.1.30 #7)、グループ名と同じ名前空間
   (`409 username_taken`)、予約語 `here` / `channel` / `everyone` / `all` / `group` (groups の `RESERVED_NAMES`) と
   `deleted-` で始まる名前 (匿名化した人の形) は `409 username_reserved`。今と同じ名前は変更なし (数えない)。
 - 本人の変更は 24 時間に 3 回まで (`429 username_change_limited`、`Retry-After`・`details.retry_after_seconds` / `limit` /
@@ -122,7 +123,7 @@ CREATE TABLE users (
   `user.username_changed` (`from`・`to`・`by: self | admin`、actor)。管理者の変更は `admin.user_updated` にも残る。
 - times: 本人の times の名前が古い名前から作った形 (`times-{古い名前}`、または `-2` … `-20`) のままなら
   `times-{新しい名前}` (使われていれば `-2` …) に変え、`channel.updated` をメンバーへ。手で付けた名前は変えない。
-  空きが無ければ名前はそのまま。監査の `times_channel {from, to}`。
+  空きが無ければ名前はそのまま (確かめた後に同時に作られたチャンネルに取られたときも。改名そのものは成功する)。監査の `times_channel {from, to}`。
 - 変わらないもの: セッションと refresh token (トークンは user id)、保存されたメンション (`<@id>`、メッセージ・キャンバス・
   タスクの本文)、Google でログイン (アドレスで結び付け)、取り込み (import_refs)、名簿 (並べ替えに今の名前を使うだけ)。
 - **古い名前はすぐに解放する** (SECURITY.md §2.9 のなりすましの注意と監査)。古い名前が残る場所 (直さない): 本文に手で打った
@@ -1652,7 +1653,7 @@ CREATE TABLE workspace_settings (
 ```sql
 CREATE TABLE import_refs (
   source      varchar(32) NOT NULL,   -- 'mattermost' | 'slack'
-  kind        varchar(16) NOT NULL,   -- 'user' | 'channel' | 'post' | 'file' | 'emoji'
+  kind        varchar(16) NOT NULL,   -- 'user' | 'channel' | 'post' | 'file' | 'emoji' | 'bot_as_person'
   source_id   varchar(64) NOT NULL,   -- 移行元の id (Mattermost の 26 文字の id、Slack は下記)
   target_id   uuid NOT NULL,          -- 作った行 (users / channels / messages / attachments / custom_emoji) の id
   created_at  timestamptz NOT NULL DEFAULT now(),
@@ -1689,6 +1690,7 @@ Slack のメッセージには全体で一意の id が無いので、`source_id
 | kind | source_id |
 | --- | --- |
 | user | Slack のユーザー id (`U…` / `W…`)。users.json に無い bot は `bot:<bot_id>` (bot_id も無ければ `bot:name:<表示名>`) |
+| user / bot_as_person | `--bot-as` の bot: `bot-as:<名前>` → 投稿を受け持つ人。`user` はどの「先」でも (M92 は `new:` だけだった)、`bot_as_person` は既存の人・Slack の人のとき (`new:` で作った人と区別する)。再実行で「先」が別の人になると止まる (REVIEW-v0.1.30 #2、infra/README.md) |
 | channel | Slack のチャンネル id (`C…`、非公開 `G…`、DM `D…`) |
 | post | `<チャンネル id>:<ts>` (ts は `1714521600.000100` の形) |
 | file | `<post の source_id>:<ファイル id>` (同じファイルが複数のチャンネルに共有されても別の添付になる) |

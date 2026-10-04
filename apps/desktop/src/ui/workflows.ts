@@ -182,16 +182,59 @@ export function formatValue(field: WorkflowField, value: FieldValue | undefined)
   return escapeText(value);
 }
 
-/** The message body: lines whose placeholders are all empty are left out; replaced once (the server's render). */
+/**
+ * Review v0.1.30 #4: `trusted[i]` says whether `text[i]` came from the template or a user field. A `<` followed by `@`,
+ * `!` or `#` starts a token up to the next `>` (just those two characters when no `>` follows); when any of it was
+ * typed, the `<` becomes U+FF1C, so no mention is put together from a value and its surroundings (the server's
+ * `_neutralize`).
+ */
+function neutralize(text: string, trusted: readonly boolean[]): string {
+  const chars = text.split("");
+  for (let i = 0; i < chars.length - 1; i++) {
+    if (chars[i] !== "<" || !"@!#".includes(chars[i + 1]!)) continue;
+    const close = text.indexOf(">", i + 2);
+    const end = close === -1 ? i + 1 : close;
+    for (let k = i; k <= end; k++) {
+      if (!trusted[k]) {
+        chars[i] = "＜";
+        break;
+      }
+    }
+  }
+  return chars.join("");
+}
+
+/**
+ * The message body: lines whose placeholders are all empty are left out; replaced once (the server's render). Mentions
+ * only from the template and user fields.
+ */
 export function renderWorkflow(template: string, fields: readonly WorkflowField[], values: Values): string {
   const texts = new Map(fields.map((f) => [f.key, formatValue(f, values[f.key] ?? emptyValue(f))]));
-  const lines: string[] = [];
+  const userKeys = new Set(fields.filter((f) => f.type === "user").map((f) => f.key));
+  let out = "";
+  const trusted: boolean[] = [];
+  let started = false;
+  const emit = (piece: string, isTrusted: boolean) => {
+    out += piece;
+    for (let k = 0; k < piece.length; k++) trusted.push(isTrusted);
+  };
   for (const line of template.replace(/\r\n/g, "\n").split("\n")) {
     const keys = [...line.matchAll(PLACEHOLDER)].map((m) => m[1]!.normalize("NFC"));
     if (keys.length > 0 && keys.every((key) => (texts.has(key) ? texts.get(key) === "" : false))) continue;
-    lines.push(line.replace(PLACEHOLDER, (whole, key: string) => texts.get(key.normalize("NFC")) ?? whole));
+    if (started) emit("\n", true);
+    started = true;
+    let at = 0;
+    for (const match of line.matchAll(PLACEHOLDER)) {
+      emit(line.slice(at, match.index), true);
+      const key = match[1]!.normalize("NFC");
+      const text = texts.get(key);
+      if (text === undefined) emit(match[0], true);
+      else emit(text, userKeys.has(key));
+      at = match.index! + match[0].length;
+    }
+    emit(line.slice(at), true);
   }
-  return lines.join("\n").replace(/^\n+|\n+$/g, "");
+  return neutralize(out, trusted).replace(/^\n+|\n+$/g, "");
 }
 
 /** The preview while the form is being filled: each field that does not check out yet counts as empty. */

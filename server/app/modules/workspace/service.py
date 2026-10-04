@@ -97,6 +97,35 @@ async def usable_default_channels(
     return [by_id[i] for i in dict.fromkeys(ids) if usable_default(by_id.get(i))]
 
 
+async def lock_usable_default_channels(
+    db: AsyncSession, ids: Sequence[uuid.UUID] | None
+) -> list[Channel]:
+    """``usable_default_channels`` for a caller about to add members (review v0.1.30 #1): the
+    channel rows are locked (FOR NO KEY UPDATE, in id order so two such callers never deadlock)
+    and re-read under the lock, so a channel made private or archived by a transaction that
+    committed first is skipped, and one that commits later waits until these memberships are in
+    (they were then made while the channel was public). Making a channel private or archiving it
+    locks the channel row before the settings row, and nothing here locks the settings row, so
+    the two never wait on each other in a cycle. Held until the caller commits."""
+    if not ids:
+        return []
+    rows = (
+        (
+            await db.execute(
+                select(Channel)
+                .where(Channel.id.in_(list(ids)))
+                .order_by(Channel.id)
+                .with_for_update(key_share=True)
+                .execution_options(populate_existing=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_id = {c.id: c for c in rows}
+    return [by_id[i] for i in dict.fromkeys(ids) if usable_default(by_id.get(i))]
+
+
 async def admin_settings(
     db: AsyncSession, legacy_default_channels: Sequence[str] = ()
 ) -> AdminWorkspaceSettingsOut:

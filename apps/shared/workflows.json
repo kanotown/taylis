@@ -308,6 +308,142 @@
         "b": "x"
       },
       "expected": "/x"
+    },
+    {
+      "name": "review v0.1.30 #4, template → value: <{{link}}> with !channel makes no @channel",
+      "fields": [
+        {
+          "key": "link",
+          "label": "LINK",
+          "type": "text"
+        }
+      ],
+      "template": "URL: <{{link}}>",
+      "values": {
+        "link": "!channel"
+      },
+      "expected": "URL: ＜!channel>"
+    },
+    {
+      "name": "template → value: <@{{a}}> with a user id typed in makes no mention; a < with no > after it makes none either and stays",
+      "fields": [
+        {
+          "key": "a",
+          "label": "A",
+          "type": "text"
+        }
+      ],
+      "template": "担当 <@{{a}}> / <!{{a}}",
+      "values": {
+        "a": "0190a1b2-0000-7000-8000-000000000001"
+      },
+      "expected": "担当 ＜@0190a1b2-0000-7000-8000-000000000001> / <!0190a1b2-0000-7000-8000-000000000001"
+    },
+    {
+      "name": "value → template: a typed < before the template's !here> or @group:…>",
+      "fields": [
+        {
+          "key": "a",
+          "label": "A",
+          "type": "text"
+        }
+      ],
+      "template": "{{a}}!here> {{a}}@group:0190a1b2-0000-7000-8000-0000000000aa>",
+      "values": {
+        "a": "<"
+      },
+      "expected": "＜!here> ＜@group:0190a1b2-0000-7000-8000-0000000000aa>"
+    },
+    {
+      "name": "value → value: < in one field and !channel> / #C1> in the next",
+      "fields": [
+        {
+          "key": "a",
+          "label": "A",
+          "type": "text"
+        },
+        {
+          "key": "b",
+          "label": "B",
+          "type": "text"
+        },
+        {
+          "key": "c",
+          "label": "C",
+          "type": "textarea"
+        }
+      ],
+      "template": "{{a}}{{b}}\n{{a}}{{c}}",
+      "values": {
+        "a": "<",
+        "b": "!channel>",
+        "c": "#C1>"
+      },
+      "expected": "＜!channel>\n＜#C1>"
+    },
+    {
+      "name": "a channel token typed or built from the template loses its < too",
+      "fields": [
+        {
+          "key": "a",
+          "label": "A",
+          "type": "text"
+        },
+        {
+          "key": "b",
+          "label": "B",
+          "type": "text"
+        }
+      ],
+      "template": "<#{{a}}> {{b}}",
+      "values": {
+        "a": "C123",
+        "b": "<#C9> <!here>"
+      },
+      "expected": "＜#C123> ＜#C9> ＜!here>"
+    },
+    {
+      "name": "a select option is typed input too (only the template and user fields mention)",
+      "fields": [
+        {
+          "key": "s",
+          "label": "S",
+          "type": "select",
+          "options": [
+            "!here",
+            "x"
+          ]
+        }
+      ],
+      "template": "<{{s}}>",
+      "values": {
+        "s": "!here"
+      },
+      "expected": "＜!here>"
+    },
+    {
+      "name": "the intended mentions stay next to neutralized ones: template, user field, a typed <",
+      "fields": [
+        {
+          "key": "who",
+          "label": "WHO",
+          "type": "user",
+          "multiple": true
+        },
+        {
+          "key": "x",
+          "label": "X",
+          "type": "text"
+        }
+      ],
+      "template": "<!here> {{x}}{{who}} <{{x}}> <@{{who}}>",
+      "values": {
+        "who": [
+          "0190a1b2-0000-7000-8000-000000000001"
+        ],
+        "x": "<"
+      },
+      "expected": "<!here> <<@0190a1b2-0000-7000-8000-000000000001> <<> <@<@0190a1b2-0000-7000-8000-000000000001>>"
     }
   ],
   "value_fields": [

@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, conflict
@@ -29,6 +30,14 @@ SELF_RENAMES_PER_WINDOW = 3
 SELF_RENAME_WINDOW = timedelta(hours=24)
 # The anonymized accounts' prefix (admin.anonymize_user): nobody else may look like one.
 ANONYMIZED_PREFIX = "deleted-"
+
+
+USERNAME_CONSTRAINT = "uq_users_username"
+
+
+def is_username_conflict(exc: IntegrityError) -> bool:
+    """Whether the violation is the username's uniqueness (someone took the name meanwhile)."""
+    return USERNAME_CONSTRAINT in str(exc.orig)
 
 
 def is_reserved(username: str) -> bool:
@@ -73,9 +82,12 @@ async def rename_in_tx(db: AsyncSession, user: User, new_username: str, *, actor
 
     `user` should be locked (SELECT … FOR UPDATE) so that two renames of one person cannot both
     pass the limit. Writes the audit row and renames a times channel made from the old name; the
-    caller emits user.updated and commits (a concurrent taker surfaces as IntegrityError on
-    uq_users_username there). Refusals: 409 `username_reserved`, 409 `username_taken`, 429
-    `username_change_limited` (renaming yourself only, not as an administrator of others).
+    caller emits user.updated and commits. Refusals: 409 `username_reserved`, 409
+    `username_taken`, 429 `username_change_limited` (renaming yourself only, not as an
+    administrator of others). Two people taking the same free name at once both pass the check
+    above; the later one's flush below waits for the earlier commit and then violates
+    uq_users_username: the whole transaction is rolled back (nothing of it stays) and the answer
+    is the same 409 `username_taken` (review v0.1.30 #7).
     """
     old = user.username
     if new_username == old:
@@ -99,7 +111,13 @@ async def rename_in_tx(db: AsyncSession, user: User, new_username: str, *, actor
             raise _limited(max(1, int(wait.total_seconds()) + 1))
     user.username = new_username
     user.updated_at = utcnow()
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        if is_username_conflict(exc):
+            raise conflict("username_taken", "Username is already in use") from exc
+        raise
     details: dict[str, object] = {
         "from": old,
         "to": new_username,
