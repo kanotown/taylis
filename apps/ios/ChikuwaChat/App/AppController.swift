@@ -372,7 +372,8 @@ final class AppController {
         clients[serverUrl] = api
         pushTokens[serverUrl] = nil
         let entry = Workspace(serverUrl: serverUrl, workspaceId: info?.workspaceId ?? known?.workspaceId, name: info?.name ?? known?.name,
-                              username: username, userId: me.id)
+                              username: username, userId: me.id,
+                              iconVersion: info?.hasIconVersion == true ? info?.iconVersion : known?.iconVersion)
         if let index = workspaces.firstIndex(where: { $0.serverUrl == serverUrl }) { workspaces[index] = entry } else { workspaces.append(entry) }
         activeServerUrl = serverUrl
         activeBadge = 0
@@ -468,6 +469,11 @@ final class AppController {
             me = cached
         } else if let me { store.setMe(me) }
         if let me { followUsername(me.username, serverUrl: serverUrl) }  // M96
+        // M93 (WORKSPACES.md §3.4.1): an admin changed the workspace icon (bootstrap, workspace.settings_updated).
+        store.onWorkspaceIcon = { [weak self, weak store] version in
+            guard let self, let store, self.store === store else { return }
+            self.patch(serverUrl) { $0.iconVersion = version }
+        }
         AvatarCache.shared.fetcher = { [weak api] path in
             guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "") }
             return try await api.fetchData(path)
@@ -613,6 +619,7 @@ final class AppController {
             patch(workspace.serverUrl) { entry in
                 entry.name = info.name
                 entry.workspaceId = info.workspaceId
+                if info.hasIconVersion { entry.iconVersion = info.iconVersion } // M93; a server before it: keep
             }
         }
     }

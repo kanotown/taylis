@@ -544,6 +544,19 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// GET /server (no login): whether the address is a ChikuwaChat server, its workspace id and name.
     func serverInfo() async throws -> ServerInfoOut { try await request("GET", "/api/v1/server", auth: false, timeout: 15) }
 
+    /// GET /server/icon (M93, no login, WORKSPACES.md §3.4): the path of the workspace icon of `version` (GET /server's
+    /// `icon_version`); the version in the query keeps a new icon from being cached away.
+    nonisolated static func serverIconPath(version: String) -> String {
+        var query = CharacterSet.urlQueryAllowed
+        query.remove(charactersIn: "&=+#")
+        return "/api/v1/server/icon?v=" + (version.addingPercentEncoding(withAllowedCharacters: query) ?? version)
+    }
+
+    /// The workspace icon's PNG (no Authorization header: the picture is public; URLCache keeps it per version).
+    func serverIcon(version: String) async throws -> Data {
+        try await requestRaw("GET", Self.serverIconPath(version: version), body: nil, auth: false, retry401: false, timeout: 15).0
+    }
+
     /// GET /sync/summary: the badge of a workspace that is not open (WORKSPACES.md §6).
     func syncSummary() async throws -> UnreadSummaryOut { try await request("GET", "/api/v1/sync/summary") }
 
