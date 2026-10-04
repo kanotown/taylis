@@ -381,6 +381,8 @@ final class Store {
     var bookmarks: Set<String> = []
     /// My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted.
     var favorites: Set<String> = []
+    /// M104 (MODERATION.md §4): the people I blocked; from bootstrap and block.updated, not persisted.
+    var blockedUsers: Set<String> = []
     /// My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted.
     var scheduled: [String: ScheduledOut] = [:]
     /// My open reminders (M12e): fired ones wait for 完了, pending ones for their time.
@@ -1072,6 +1074,16 @@ final class Store {
     }
 
     func replaceFavorites(_ ids: [String]) { favorites = Set(ids) }
+
+    // MARK: blocks (M104)
+
+    func isBlocked(_ userId: String) -> Bool { blockedUsers.contains(userId) }
+
+    func setBlocked(_ userId: String, on: Bool) {
+        if on { blockedUsers.insert(userId) } else { blockedUsers.remove(userId) }
+    }
+
+    func replaceBlocked(_ ids: [String]) { blockedUsers = Set(ids) }
 
     // MARK: bookmarks (M11c)
 

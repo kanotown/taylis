@@ -856,6 +856,8 @@ struct BootstrapOut: Codable {
     var activity: ActivitySummary? = nil
     /// M88 (MEMBERSHIP.md §3): nil from a server before M88 (both switches on).
     var workspaceSettings: WorkspaceSettings? = nil
+    /// M104 (MODERATION.md §4): the people I blocked; changes arrive as block.updated. Nil from an older server.
+    var blockedUserIds: [String]? = nil
 }
 
 /// M39 (MOBILE_UI.md §6.4 / §7.2): one item of the activity, newest first. A mention of me, the reactions to one message
@@ -1123,6 +1125,20 @@ struct TemplateOut: Codable, Identifiable, Equatable, Hashable {
     let position: Int
     let createdAt: String
     let updatedAt: String
+}
+
+/// PUT / DELETE /users/{id}/block (M104, MODERATION.md §4).
+struct BlockStateOut: Codable, Equatable {
+    let userId: String
+    let blocked: Bool
+}
+
+/// POST /messages/{id}/report (M104, MODERATION.md §3): my own report only.
+struct ReportAck: Codable, Equatable {
+    let id: String
+    let messageId: String
+    let reason: String
+    let createdAt: String
 }
 
 /// PUT / DELETE /channels/{id}/favorite (M12a).

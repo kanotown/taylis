@@ -1027,6 +1027,9 @@ struct MessageRow: View {
         if message.isSystem {
             // M89 (MEMBERSHIP.md §5 3.): one muted line; no taps, long press or VoiceOver actions (nothing to open).
             SystemMessageRow(message: message, store: store, margin: margin, focused: controller.messageFocus?.messageId == message.id)
+        } else if Moderation.folds(message, blocked: store.blockedUsers, revealed: controller.revealedBlocked) {
+            // M104 (MODERATION.md §4): someone I blocked, folded until I ask to see it.
+            BlockedMessageRow(margin: margin) { controller.revealedBlocked.insert(message.id) }
         } else {
             personRow
         }

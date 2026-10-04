@@ -530,6 +530,7 @@ final class SyncEngine {
         store.replacePresence(bootstrap.presence ?? [])
         store.replaceBookmarks(bootstrap.bookmarks ?? [])
         store.replaceFavorites(bootstrap.favorites ?? [])
+        store.replaceBlocked(bootstrap.blockedUserIds ?? [])
         store.replaceCustomEmoji(bootstrap.customEmoji ?? [])
         store.replaceEmojiPacks(bootstrap.emojiPacks ?? [])
         store.replaceTemplates(bootstrap.templates ?? [])
@@ -708,6 +709,10 @@ final class SyncEngine {
         case "scheduled.updated":
             struct Payload: Decodable { let scheduled: ScheduledOut }
             store.applyScheduled(try frame.data.decode(Payload.self).scheduled)
+        case "block.updated":
+            if let id = frame.data["user_id"]?.stringValue, case .bool(let on)? = frame.data["blocked"] {
+                store.setBlocked(id, on: on)
+            }
         case "favorite.updated":
             if let id = frame.data["channel_id"]?.stringValue, case .bool(let on)? = frame.data["favorite"] {
                 store.setFavorite(id, on: on)
@@ -915,6 +920,7 @@ final class SyncEngine {
     /// DMs always notify; channels when I am mentioned or take part in the thread (PUSH_NOTIFICATIONS.md §4).
     private func maybeNotify(_ message: MessageOut, _ channel: ChannelState, _ thread: ParentThread? = nil) {
         guard let me = store.me, message.senderId != me.id else { return }
+        if store.isBlocked(message.senderId) { return } // M104: nothing from someone I blocked
         // Same rule as the server's PushPlanner: the channel's level (its own, else from my overall setting, M35);
         // "none", a mute until unmuted or a timed mute silences everything.
         let level = channel.pushLevel(overall: me.overallNotification, meId: me.id)
@@ -931,7 +937,8 @@ final class SyncEngine {
     /// M73 (CANVAS.md §18.1): a save newly mentions me. The push's rule: not by me, a conversation I am in whose level
     /// is not none and that is not muted (a mention notifies at level mentions too). DND is the controller's.
     private func maybeNotifyCanvasMention(_ mention: CanvasMentioned) {
-        guard let me = store.me, mention.byUserId != me.id, let channel = store.channel(mention.channelId), channel.isMember else { return }
+        guard let me = store.me, mention.byUserId != me.id, !store.isBlocked(mention.byUserId),
+              let channel = store.channel(mention.channelId), channel.isMember else { return }
         if channel.pushLevel(overall: me.overallNotification, meId: me.id) == "none" || channel.isMuted { return }
         onCanvasMention?(mention, channel)
     }

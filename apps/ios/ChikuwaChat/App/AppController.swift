@@ -806,6 +806,8 @@ final class AppController {
     private var previewLoads: [String: Task<Void, Never>] = [:]
     /// Messages whose 「プレビューを表示」 was tapped this session (LinkPreviewRules): their rows ask for the preview.
     var revealedPreviews: Set<String> = []
+    /// M104: the messages of blocked people shown on request (「表示」), for as long as the app runs.
+    var revealedBlocked: Set<String> = []
 
     /// Whether the message's row asks for its link's preview by itself (review v0.1.18 #5): not for an AI bot's or
     /// another bot's message (LinkPreviewRules), unless its preview was asked for by hand.
@@ -1015,6 +1017,49 @@ final class AppController {
             store.setFavorite(channelId, on: !on)
             self.error = describe(error)
         }
+    }
+
+    /// M104 「ブロック」/「ブロックを解除」 (MODERATION.md §4): the store flag moves at once, block.updated brings my other
+    /// devices along. The blocked person is not told.
+    func setUserBlocked(_ userId: String, on: Bool) async {
+        guard let api else { return }
+        let before = store.isBlocked(userId)
+        store.setBlocked(userId, on: on)
+        do {
+            if on { _ = try await api.blockUser(id: userId) } else { _ = try await api.unblockUser(id: userId) }
+            notice = on ? "ブロックしました" : "ブロックを解除しました"
+        } catch {
+            store.setBlocked(userId, on: before)
+            self.error = describe(error)
+        }
+    }
+
+    /// M104 「報告する」 (MODERATION.md §3): true when the server took it.
+    func reportMessage(_ messageId: String, reason: String, note: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+            _ = try await api.reportMessage(id: messageId, reason: reason, note: trimmed.isEmpty ? nil : trimmed)
+            notice = "報告しました。管理者が確認します"
+            return true
+        } catch {
+            self.error = describe(error)
+            return false
+        }
+    }
+
+    /// M104 「アカウントを削除」 (MODERATION.md §2): my password, or my username for an account without one. On success the
+    /// server has ended every session and this workspace is signed out here. Returns the error to show, or nil.
+    func deleteAccount(secret: String) async -> String? {
+        guard let api, let serverUrl = activeServerUrl else { return "ログインしていません" }
+        let hasPassword = (store.me ?? me)?.passwordSet ?? true
+        do {
+            try await api.deleteAccount(password: hasPassword ? secret : nil, confirmUsername: hasPassword ? nil : secret)
+        } catch {
+            return describe(error)
+        }
+        await signOutWorkspace(serverUrl)
+        return nil
     }
 
     /// M12a 「すべて既読にする」.
