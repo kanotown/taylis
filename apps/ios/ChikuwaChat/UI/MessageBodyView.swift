@@ -338,7 +338,7 @@ struct MessageBodyView: View {
         switch block {
         case .heading(let level, let tokens):
             // Larger than they were (testers, 2026-09-29), custom emoji with them.
-            inlineText(tokens, emojiHeight: level == 1 ? 32 : level == 2 ? 26 : 23)
+            inlineText(tokens, emojiHeight: CustomEmoji.headingHeights[min(max(level, 1), 3) - 1])
                 .font(level == 1 ? .title.bold() : level == 2 ? .title2.bold() : .title3.bold())
         case .paragraph(let lines):
             joined(lines)

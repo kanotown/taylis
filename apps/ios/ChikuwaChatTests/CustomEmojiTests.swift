@@ -53,4 +53,26 @@ final class CustomEmojiTests: XCTestCase {
         XCTAssertEqual(loading, loaded)
         XCTAssertGreaterThan(asked, 0) // the missing image is asked for
     }
+
+    /// 2026-10-04 (「高さが違う」): Text(Image) stands on the baseline, and an image taller than the text's ascent made its
+    /// line taller than a line without one (by 4 pt in body text). At the heights used, a line with one is as tall.
+    @MainActor
+    func testInlineImageDoesNotMakeTheLineTaller() {
+        let square = CustomEmojiOut(id: "e3", name: "sq", contentType: "image/png", width: 32, height: 32, createdBy: "u", createdAt: "")
+        let image = CustomEmoji.inlineImage(UIGraphicsImageRenderer(size: CGSize(width: 48, height: 48)).image { context in
+            UIColor.orange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 48, height: 48))
+        })
+        func height(_ text: String, font: Font, emojiHeight: CGFloat) -> CGFloat {
+            let view = CustomEmoji.text(text, custom: ["sq": square], images: ["e3": image], onNeed: nil, height: emojiHeight)
+                .font(font).frame(width: 300)
+            return UIHostingController(rootView: view).sizeThatFits(in: CGSize(width: 300, height: 2000)).height
+        }
+        let fonts: [(Font, CGFloat)] = [(.body, CustomEmoji.inlineHeight), (.title.bold(), CustomEmoji.headingHeights[0]),
+                                        (.title2.bold(), CustomEmoji.headingHeights[1]), (.title3.bold(), CustomEmoji.headingHeights[2])]
+        for (font, emojiHeight) in fonts {
+            XCTAssertEqual(height("あいう :sq: かき", font: font, emojiHeight: emojiHeight), height("あいう 😀 かき", font: font, emojiHeight: emojiHeight), accuracy: 0.5)
+            XCTAssertEqual(height("あいう :sq: かき", font: font, emojiHeight: emojiHeight), height("あいう かき", font: font, emojiHeight: emojiHeight), accuracy: 0.5)
+        }
+    }
 }
