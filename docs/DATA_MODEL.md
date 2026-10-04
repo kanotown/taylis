@@ -392,12 +392,31 @@ CREATE TABLE custom_emoji (
   id            uuid PRIMARY KEY,
   name          varchar(32) NOT NULL UNIQUE,   -- a-z 0-9 _ + - の 2〜32 文字、本文では :name:
   created_by    uuid NOT NULL REFERENCES users(id),
-  content_type  text NOT NULL,                 -- png / gif / jpeg / webp、512px 以下、256 KB 以下
+  kind          varchar(8) NOT NULL DEFAULT 'image' CHECK (kind IN ('image', 'text')),  -- M100
+  content_type  text NOT NULL,                 -- png / gif / jpeg / webp、512px 以下、256 KB 以下 (text は '')
   size_bytes    integer NOT NULL,
-  width         integer NOT NULL,
+  width         integer NOT NULL,              -- 縦横比はここから (M100、横長は 3:1 まで広く描く。text は 0)
   height        integer NOT NULL,
-  storage_key   text NOT NULL,                 -- versitygw の emoji/<id>
-  created_at    timestamptz NOT NULL DEFAULT now()
+  storage_key   text NOT NULL,                 -- versitygw の emoji/<id> (text は '')
+  label         varchar(32),                   -- M100: 表示名 (ピッカーの名前)、text ではピルの文字 (12 文字まで)
+  color         varchar(16),                   -- M100: text の色 (パレットのキー、NULL = gray)
+  keywords      text[] NOT NULL DEFAULT '{}',  -- M100: 検索語 (日本語も)、20 個・32 文字まで
+  pack_id       uuid REFERENCES emoji_packs(id) ON DELETE SET NULL,  -- M100: セット (NULL = なし)
+  position      integer NOT NULL DEFAULT 0,    -- M100: セットの中の順
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- M100: ピッカーのタブ 1 つになる絵文字のセット (docs/EMOJI.md §3)
+CREATE TABLE emoji_packs (
+  id                uuid PRIMARY KEY,
+  name              varchar(64) NOT NULL UNIQUE,
+  position          integer NOT NULL DEFAULT 0,      -- タブの順
+  tab_content_type  text,                            -- タブのアイコン (なければ最初の絵文字)
+  tab_storage_key   text,                            -- emoji-packs/<id>/tab-<uuid> (差し替えで変わる)
+  created_by        uuid NOT NULL REFERENCES users(id),
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now()
 );
 ```
 
@@ -405,6 +424,9 @@ CREATE TABLE custom_emoji (
 - 誰でも追加でき、作成者か admin が削除できる。削除しても本文の `:name:` は文字のまま残る (クライアントは
   未知の名前を文字で表示する)。一覧は bootstrap の `custom_emoji` と `emoji.updated` (audience=all) で揃える。
 - リアクションの `emoji` 列は `:name:` 形式も受け付ける (DATA_MODEL.md `message_reactions` の注記どおり)。
+- M100 (docs/EMOJI.md、移行 0079): 文字の絵文字 (`kind = 'text'`、`POST /emoji/text`)、表示名・キーワード・セット
+  (`PATCH /emoji/{id}`)、`emoji_packs` (管理者が作成・変更・削除・取り込み、監査ログ)。セットを消しても絵文字は
+  残る (`pack_id` が NULL になる)。一覧は bootstrap の `emoji_packs` と `emoji_pack.updated` (audience=all)。
 
 ### reminders (リマインダー、M12e)
 
