@@ -22,6 +22,12 @@ SsoErrorCode = Literal[
 
 class ProviderMethod(BaseModel):
     enabled: bool
+    # The Workspace domains the server accepts (SSO_GOOGLE_ALLOWED_DOMAINS); empty when disabled.
+    # The login button names the organisation from these (App Store guideline 4.8: an
+    # organisational-account login, not a consumer social login).
+    domains: list[str] = Field(default_factory=list)
+    # The administrator's name for the organisation (SSO_GOOGLE_LABEL), shown instead of the domain.
+    label: str | None = None
 
 
 class AuthMethodsOut(BaseModel):

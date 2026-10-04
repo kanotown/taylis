@@ -13,12 +13,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -42,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.app.GoogleButtonText
 import jp.chikuwachat.android.app.Workspaces
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -68,12 +74,13 @@ fun LoginScreen(controller: AppController) {
     fun submit() { if (canSubmit) scope.launch { controller.login(server, username, password, if (needsCode) totpCode else null) } }
     // M48: 「Google でログイン」 when this server offers it (GET /auth/methods); a server before M48 answers 404 (hidden).
     val context = LocalContext.current
-    var google by remember { mutableStateOf(false) }
+    // A server restricted to its Workspace domains gets 「<domain> のアカウントでログイン」 (guideline 4.8).
+    var google by remember { mutableStateOf<GoogleButtonText?>(null) }
     LaunchedEffect(server) {
-        google = false
+        google = null
         if (Workspaces.normalizeServerUrl(server) == null) return@LaunchedEffect
         delay(400) // typing: ask once the address stops changing
-        google = controller.googleSignInAvailable(server)
+        google = controller.googleSignInButton(server)
     }
     fun signInWithGoogle() {
         scope.launch {
@@ -116,13 +123,26 @@ fun LoginScreen(controller: AppController) {
         Spacer(Modifier.height(16.dp))
         controller.error?.let { Text(it, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(8.dp)) }
         if (controller.busy) CircularProgressIndicator() else Button(onClick = ::submit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) { Text(if (needsCode) "コードを確認してログイン" else "ログイン") }
-        if (google) {
+        google?.let { button ->
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 HorizontalDivider(Modifier.weight(1f))
                 Text("または", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp))
                 HorizontalDivider(Modifier.weight(1f))
             }
-            OutlinedButton(onClick = ::signInWithGoogle, enabled = !controller.busy, modifier = Modifier.fillMaxWidth()) { Text("Google でログイン") }
+            OutlinedButton(onClick = ::signInWithGoogle, enabled = !controller.busy, modifier = Modifier.fillMaxWidth()) {
+                val subtitle = button.subtitle
+                if (subtitle == null) {
+                    Text(button.title)
+                } else {
+                    // The organisation's own login: a neutral building mark, not Google's "G".
+                    Icon(Icons.Outlined.Business, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(button.title, textAlign = TextAlign.Center)
+                        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
         if (adding) {
             TextButton(onClick = { controller.cancelAddWorkspace() }) { Text("キャンセル") }

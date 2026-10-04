@@ -28,9 +28,13 @@ How to sign in for review:
 The demo workspace contains fictional channels (#お知らせ, #研究ミーティング, ...), a thread, a poll
 and direct messages.
 
-Sign in with Google: the "Google でログイン" button appears only when a server enables it, and it
-accepts only accounts of the organization's own Google Workspace domain configured on that server
-(an existing education/enterprise account). The app has no other third-party or social login, so we
+Organization sign-in: the button appears only when a server enables it, and it accepts only accounts
+of the organization's own Google Workspace domain configured on that server (an existing
+education/enterprise account). On such a server the button reads "<domain> のアカウントでログイン"
+("Log in with your <domain> account", e.g. "example.ac.jp のアカウントでログイン", or the
+organization's name when the administrator sets one) over the line "組織の Google Workspace アカウント"
+("your organization's Google Workspace account"), with a building icon rather than a social-login
+logo; Google's account chooser is limited to that domain. The app has no other third-party or social login, so we
 believe Sign in with Apple is not required (Guideline 4.8, education/enterprise account exception).
 The review server uses a username and password.
 

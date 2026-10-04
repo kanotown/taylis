@@ -69,15 +69,35 @@ object Sso {
     fun errorText(code: String): String = ErrorMessages.byCode[code] ?: ErrorMessages.byCode["provider_error"] ?: ErrorMessages.UNKNOWN
 
     /**
-     * Whether the login screen offers 「Google でログイン」: GET /auth/methods. A server before M48 answers 404, and an
-     * unreachable one fails; both hide the button (the password form stays).
+     * The login screen's Google button from GET /auth/methods, null when the server offers none. A server before M48
+     * answers 404, and an unreachable one fails; both hide the button (the password form stays).
      */
-    suspend fun googleEnabled(api: ApiClient): Boolean = try {
-        api.authMethods().google.enabled
+    suspend fun googleButton(api: ApiClient): GoogleButtonText? = try {
+        api.authMethods().google.takeIf { it.enabled }?.let { buttonText(it.domains, it.label) }
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {
-        false
+        null
+    }
+
+    /**
+     * The Google button's words (App Store guideline 4.8, docs/SSO.md §6). A server restricted to Workspace domains
+     * names the organisation (its label, else the first domain, 「など」 for several) over 「組織の Google Workspace
+     * アカウント」, so the button reads as the organisation's login. Unrestricted, or a server before the field:
+     * 「Google でログイン」.
+     */
+    fun buttonText(domains: List<String>, label: String?): GoogleButtonText {
+        val allowed = domains.filter { it.isNotBlank() }
+        val first = allowed.firstOrNull() ?: return GoogleButtonText.GOOGLE
+        val org = label?.trim()?.takeIf { it.isNotEmpty() } ?: if (allowed.size > 1) "$first など" else first
+        return GoogleButtonText("$org のアカウントでログイン", "組織の Google Workspace アカウント")
+    }
+}
+
+/** What the Google button says; `subtitle` is set when the button names the organisation. */
+data class GoogleButtonText(val title: String, val subtitle: String?) {
+    companion object {
+        val GOOGLE = GoogleButtonText("Google でログイン", null)
     }
 }
 

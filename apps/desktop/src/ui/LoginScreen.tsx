@@ -1,4 +1,4 @@
-import { Loader2, MessageCircle, ShieldCheck } from "lucide-react";
+import { Building2, Loader2, MessageCircle, ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { ApiClient } from "../api/client";
@@ -6,6 +6,7 @@ import { isWeb } from "../platform/env";
 import type { AppController } from "../state/app";
 import { isServerInfo, normalizeServerUrl } from "../state/workspaces";
 import { Button, Field, Input } from "./primitives";
+import { type GoogleButtonText, googleButtonText } from "./sso";
 import { WorkspaceIcon } from "./workspaceIcons";
 
 export function LoginScreen({ controller, onDone, onInvite }: { controller: AppController; onDone: () => void; onInvite?: () => void }) {
@@ -20,15 +21,16 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
   const entry = adding ? null : controller.activeEntry;
   // M48: 「Google でログイン」 when the server offers it (docs/SSO.md §6). The browser's server is the page's own
   // origin, asked once; the Tauri app asks again as the server URL is typed (and gets the ticket by a deep link).
-  const [google, setGoogle] = useState(false);
+  // A server restricted to its Workspace domains gets 「<domain> のアカウントでログイン」 (guideline 4.8).
+  const [google, setGoogle] = useState<GoogleButtonText | null>(null);
   const [leaving, setLeaving] = useState(false);
   const methodsKey = isWeb() ? "" : server.trim();
   useEffect(() => {
     let current = true;
-    setGoogle(false);
+    setGoogle(null);
     const timer = setTimeout(() => {
       void controller.authMethods(methodsKey).then((methods) => {
-        if (current) setGoogle(methods?.google.enabled === true);
+        if (current) setGoogle(methods?.google.enabled === true ? googleButtonText(methods.google) : null);
       });
     }, isWeb() || methodsKey === controller.serverUrl.trim() ? 0 : 400);
     return () => {
@@ -130,9 +132,24 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
               または
               <span className="h-px flex-1 bg-line" />
             </div>
-            <Button type="button" variant="secondary" className="w-full" disabled={leaving || busy} onClick={() => void signInWithGoogle()}>
-              {leaving ? <Loader2 size={16} className="animate-spin" /> : <GoogleMark />}
-              Google でログイン
+            <Button
+              type="button"
+              variant="secondary"
+              className={google.subtitle ? "h-auto min-h-9 w-full gap-2.5 whitespace-normal py-2" : "w-full"}
+              disabled={leaving || busy}
+              onClick={() => void signInWithGoogle()}
+              aria-label={google.title}
+            >
+              {/* The organisation's own login gets a neutral mark; Google's "G" stays with 「Google でログイン」. */}
+              {leaving ? <Loader2 size={16} className="animate-spin" /> : google.subtitle ? <Building2 size={18} className="shrink-0 text-muted" /> : <GoogleMark />}
+              {google.subtitle ? (
+                <span className="flex min-w-0 flex-col items-start text-left">
+                  <span className="break-all">{google.title}</span>
+                  <span className="text-xs font-normal text-muted">{google.subtitle}</span>
+                </span>
+              ) : (
+                google.title
+              )}
             </Button>
           </>
         )}

@@ -13,12 +13,12 @@ struct LoginView: View {
     var mode: Mode = .initial
     /// add: close the sheet (cancelled, or signed in).
     var onClose: () -> Void = {}
-    /// Tests: whether a server offers Google sign-in, without asking it (else GET /auth/methods).
-    var offersGoogle: ((String) async -> Bool)? = nil
+    /// Tests: a server's Google button (nil: none), without asking it (else GET /auth/methods).
+    var offersGoogle: ((String) async -> GoogleButtonText?)? = nil
 
     @State private var server = ""
-    /// M48: whether each server asked offers 「Google でログイン」 (GET /auth/methods).
-    @State private var googleByServer: [String: Bool] = [:]
+    /// M48: each server asked → its Google button (GET /auth/methods); a nil value: asked, and it offers none.
+    @State private var googleByServer: [String: GoogleButtonText?] = [:]
     @State private var googleBusy = false
     @State private var username = ""
     @State private var password = ""
@@ -99,8 +99,8 @@ struct LoginView: View {
                     .disabled(busy || googleBusy || (relogin == nil && server.trimmingCharacters(in: .whitespaces).isEmpty) || username.isEmpty || password.isEmpty
                               || (needsCode && totpCode.trimmingCharacters(in: .whitespaces).isEmpty))
                 }
-                if google {
-                    Section { googleSection }
+                if let google {
+                    Section { googleSection(google) }
                 }
                 if relogin == nil {
                     Section {
@@ -143,8 +143,9 @@ struct LoginView: View {
         }
     }
 
-    /// 「または」 and the Google button under the password form (M48, SSO.md §6).
-    private var googleSection: some View {
+    /// 「または」 and the Google button under the password form (M48, SSO.md §6). A server restricted to its Workspace
+    /// domains gets 「<domain> のアカウントでログイン」 with a neutral building mark (guideline 4.8: the organisation's login).
+    private func googleSection(_ text: GoogleButtonText) -> some View {
         VStack(spacing: 14) {
             HStack(spacing: 12) {
                 VStack { Divider() }
@@ -155,12 +156,23 @@ struct LoginView: View {
             Button {
                 Task { await signInWithGoogle() }
             } label: {
-                HStack(spacing: 8) {
-                    if googleBusy { ProgressView() }
-                    Text("Google でログイン")
+                HStack(spacing: 10) {
+                    if googleBusy {
+                        ProgressView()
+                    } else if text.subtitle != nil {
+                        Image(systemName: "building.2").accessibilityHidden(true)
+                    }
+                    VStack(spacing: 2) {
+                        Text(text.title).multilineTextAlignment(.center)
+                        if let subtitle = text.subtitle {
+                            Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity)
+                .padding(.vertical, text.subtitle == nil ? 0 : 2)
             }
+            .accessibilityElement(children: .combine)
             .buttonStyle(.bordered)
             .controlSize(.large)
             .disabled(busy || googleBusy || methodsServer.isEmpty)
@@ -172,7 +184,7 @@ struct LoginView: View {
     /// The server whose sign-in methods the form shows: the one signed back in to, else the one typed.
     private var methodsServer: String { relogin?.serverUrl ?? server.trimmingCharacters(in: .whitespaces) }
 
-    private var google: Bool { googleByServer[methodsServer] == true }
+    private var google: GoogleButtonText? { googleByServer[methodsServer] ?? nil }
 
     /// GET /auth/methods of the server in the form, again when the address changes (after a pause in typing). A server
     /// without the endpoint (before M48), or no answer, leaves the button out.
@@ -184,7 +196,7 @@ struct LoginView: View {
             if Task.isCancelled { return }
         }
         let offered = await (offersGoogle ?? controller.offersGoogle(server:))(target)
-        googleByServer[target] = offered
+        googleByServer.updateValue(offered, forKey: target) // a nil answer is kept too (asked, none offered)
     }
 
     private func signInWithGoogle() async {

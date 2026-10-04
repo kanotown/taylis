@@ -4,6 +4,7 @@ import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.ErrorMessages
 import jp.chikuwachat.android.api.UserMe
+import jp.chikuwachat.android.app.GoogleButtonText
 import jp.chikuwachat.android.app.PendingSsoStore
 import jp.chikuwachat.android.app.Sso
 import kotlinx.coroutines.runBlocking
@@ -157,16 +158,25 @@ class SsoTest {
             assertNull(request.header("Authorization"))
             200 to """{"password":true,"google":{"enabled":true}}"""
         })
-        assertTrue(Sso.googleEnabled(on))
-        val off = ApiClient("http://server", stubbed { 200 to """{"password":true,"google":{"enabled":false}}""" })
-        assertFalse(Sso.googleEnabled(off))
+        // A server before the `domains` field: 「Google でログイン」.
+        assertEquals(GoogleButtonText.GOOGLE, Sso.googleButton(on))
+        val off = ApiClient("http://server", stubbed { 200 to """{"password":true,"google":{"enabled":false,"domains":[],"label":null}}""" })
+        assertNull(Sso.googleButton(off))
+    }
+
+    @Test fun aRestrictedServerNamesTheOrganisation() = runBlocking {
+        val api = ApiClient("http://server", stubbed { 200 to """{"password":true,"google":{"enabled":true,"domains":["example.ac.jp"],"label":null}}""" })
+        assertEquals(GoogleButtonText("example.ac.jp のアカウントでログイン", "組織の Google Workspace アカウント"), Sso.googleButton(api))
+        assertEquals("example.ac.jp など のアカウントでログイン", Sso.buttonText(listOf("example.ac.jp", "lab.example.jp"), null).title)
+        assertEquals("例示大学 のアカウントでログイン", Sso.buttonText(listOf("example.ac.jp", "lab.example.jp"), " 例示大学 ").title)
+        assertEquals(GoogleButtonText.GOOGLE, Sso.buttonText(emptyList(), "例示大学"))
     }
 
     @Test fun anOlderServerHidesTheGoogleButton() = runBlocking {
         val old = ApiClient("http://server", stubbed { 404 to """{"detail":"Not Found"}""" })
-        assertFalse(Sso.googleEnabled(old))
+        assertNull(Sso.googleButton(old))
         val offline = ApiClient("http://server", OkHttpClient.Builder().addInterceptor(Interceptor { throw IOException("offline") }).build())
-        assertFalse(Sso.googleEnabled(offline))
+        assertNull(Sso.googleButton(offline))
     }
 
     @Test fun exchangeSendsTicketVerifierAndTheLoginDevice() = runBlocking {

@@ -34,6 +34,7 @@
 | `SSO_GOOGLE_CLIENT_ID` | Google Cloud の OAuth クライアント ID (種類は「ウェブ アプリケーション」) |
 | `SSO_GOOGLE_CLIENT_SECRET_FILE` | client secret を置いたファイルのパス (秘密はリポジトリにも環境変数の一覧にも書かない。`SSO_GOOGLE_CLIENT_SECRET` も可) |
 | `SSO_GOOGLE_ALLOWED_DOMAINS` | 受け付ける Workspace のドメイン (カンマ区切り、例 `example.ac.jp`)。**空なら SSO は無効** (誤ってすべての Google アカウントを受け付けないため) |
+| `SSO_GOOGLE_LABEL` | ログインのボタンに出す組織の名前 (例 `茨城大学`、40 文字まで)。空ならボタンは最初の許可ドメインを出す (§6)。M105 |
 | `SSO_AUTO_PROVISION` | `true` で案B (初回ログインで作成)。既定 `false`: 管理者が作った (メールアドレスが一致する) 人だけ |
 | `SSO_DEFAULT_CHANNELS` | **非推奨 (M90)**。案B で作った人が入る公開チャンネルの名前 (カンマ区切り、例 `general,お知らせ`)。無い名前・非公開・アーカイブ済みは飛ばす (ログに警告)。既定は空。管理者が「既定のチャンネル」(MEMBERSHIP.md §6) を一度も保存していない間だけ使い、保存した後 (空の一覧でも) は無視する。管理の「設定」タブにその間だけ値を出す |
 | `SSO_RATE_LIMIT_PER_IP` | 開始・callback・交換の IP ごとの回数 / 分 (既定 30。1 回のログインで 3 回) |
@@ -65,7 +66,9 @@ SSO が無効なら 3 つとも 404 `sso_disabled`。
 
 ### `GET /auth/methods`
 
-ログイン画面が出すボタンを決める。`{"password": true, "google": {"enabled": true}}`。
+ログイン画面が出すボタンを決める。`{"password": true, "google": {"enabled": true, "domains": ["example.ac.jp"], "label": null}}`。
+`domains` (M105) は受け付ける Workspace のドメイン (`SSO_GOOGLE_ALLOWED_DOMAINS`、小文字)、`label` は `SSO_GOOGLE_LABEL`
+(未設定なら null)。無効なら `{"enabled": false, "domains": [], "label": null}`。M105 より前のサーバは `enabled` だけを返す。
 
 ### `GET /auth/sso/google/start?platform=<web|desktop|ios|android>&challenge=<base64url>`
 
@@ -164,8 +167,21 @@ callback と交換のあいだに無効化された人は 401 `account_disabled`
 ## 6. クライアント
 
 共通: ログイン画面でサーバの URL を入れたあと (または選んだワークスペースで) `GET /auth/methods` を読み、
-Google が有効なら「Google でログイン」を出す。`verifier` を作り、開始 URL を開き、戻ってきたチケットを
+Google が有効ならボタンを出す。`verifier` を作り、開始 URL を開き、戻ってきたチケットを
 同じサーバで交換する。どのサーバで始めたかと `verifier` は、戻るまでメモリ (Web は sessionStorage) に持つ。
+
+**ボタンの文言 (M105、2026-10-05)**: App Store の審査ガイドライン 4.8 の例外 (§7) に当たることが画面から分かるよう、
+ボタンは一般の「ソーシャルログイン」ではなく組織のアカウントでのログインとして読めるようにする。
+
+- `domains` が空でない (ドメインを限ったサーバ。有効なサーバは必ずこれ): 「`<組織>` のアカウントでログイン」の下に小さく
+  「組織の Google Workspace アカウント」。`<組織>` は `label` があればそれ、無ければ最初のドメイン (2 つ以上なら
+  「example.ac.jp など」)。印は Google の「G」ではなく中立の建物 (Desktop / Web は lucide `Building2`、iOS は SF Symbols
+  `building.2`、Android は Material `Outlined.Business`)。Google のロゴは「Google でログイン」の文言とだけ使う
+  (Google のブランドの決まり)。
+- `domains` が空、または `domains` を返さない古いサーバ: 今までどおり「Google でログイン」(Desktop / Web は「G」付き)。
+- 文言を決める関数は各クライアントに 1 つ (`googleButtonText` / `GoogleButtonText(domains:label:)` / `Sso.buttonText`)。
+- 許可ドメインが 1 つなら、開始 URL は Google に `hd=<ドメイン>` を渡す (§3、M48 から)。Google のアカウント選択がその
+  ドメインに絞られる。判定は今までどおりサーバが ID トークンの `hd` とメールアドレスで行う。
 
 | 端末 | 開き方 | 戻り方 |
 |---|---|---|

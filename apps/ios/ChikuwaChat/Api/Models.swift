@@ -186,11 +186,47 @@ struct TestNotificationOut: Decodable, Equatable {
 struct AuthMethodsOut: Decodable, Equatable {
     struct Provider: Decodable, Equatable {
         let enabled: Bool
+        /// The Workspace domains the server accepts (missing before the field existed, empty when unrestricted).
+        var domains: [String]? = nil
+        /// The administrator's name for the organisation (SSO_GOOGLE_LABEL), shown instead of the domain.
+        var label: String? = nil
     }
 
     var password: Bool? = nil
     var google: Provider? = nil
     var googleEnabled: Bool { google?.enabled == true }
+    /// What the Google button says; nil when the server does not offer Google sign-in.
+    var googleButton: GoogleButtonText? {
+        guard let google, google.enabled else { return nil }
+        return GoogleButtonText(domains: google.domains ?? [], label: google.label)
+    }
+}
+
+/// The Google button's words (App Store guideline 4.8, SSO.md §6). A server restricted to Workspace domains names the
+/// organisation (its label, else the first domain, 「など」 for several) over 「組織の Google Workspace アカウント」, so the
+/// button reads as the organisation's login rather than a consumer one. Unrestricted, or an older server without
+/// `domains`: 「Google でログイン」.
+struct GoogleButtonText: Equatable {
+    let title: String
+    let subtitle: String?
+
+    static let google = GoogleButtonText(title: "Google でログイン", subtitle: nil)
+
+    init(title: String, subtitle: String?) {
+        self.title = title
+        self.subtitle = subtitle
+    }
+
+    init(domains: [String], label: String?) {
+        let domains = domains.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard let first = domains.first else {
+            self = .google
+            return
+        }
+        let label = label?.trimmingCharacters(in: .whitespaces) ?? ""
+        let org = !label.isEmpty ? label : (domains.count > 1 ? "\(first) など" : first)
+        self.init(title: "\(org) のアカウントでログイン", subtitle: "組織の Google Workspace アカウント")
+    }
 }
 
 struct TokenResponse: Codable, Equatable {

@@ -935,8 +935,12 @@ data class ServerInfoOut(
 @Serializable
 data class AuthMethodsOut(val password: Boolean = true, val google: ProviderMethod = ProviderMethod())
 
+/**
+ * `domains`: the Workspace domains the server accepts (missing before the field existed, empty when unrestricted);
+ * `label`: the administrator's name for the organisation (SSO_GOOGLE_LABEL), shown instead of the domain.
+ */
 @Serializable
-data class ProviderMethod(val enabled: Boolean = false)
+data class ProviderMethod(val enabled: Boolean = false, val domains: List<String> = emptyList(), val label: String? = null)
 
 /** GET /sync/summary (M16c): the unread marks of a workspace that is not open (WORKSPACES.md §3.2). */
 @Serializable

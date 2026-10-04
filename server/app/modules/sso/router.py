@@ -51,8 +51,15 @@ def _no_store(response: Response) -> None:
 
 @router.get("/auth/methods", response_model=AuthMethodsOut)
 async def auth_methods(request: Request) -> AuthMethodsOut:
-    """Which sign-in buttons the login screen shows."""
-    return AuthMethodsOut(google=ProviderMethod(enabled=request.app.state.sso_google is not None))
+    """Which sign-in buttons the login screen shows, and whose accounts the Google button takes."""
+    if request.app.state.sso_google is None:
+        return AuthMethodsOut(google=ProviderMethod(enabled=False))
+    settings = request.app.state.settings
+    return AuthMethodsOut(
+        google=ProviderMethod(
+            enabled=True, domains=settings.sso_allowed_domains, label=settings.sso_label
+        )
+    )
 
 
 @router.get(

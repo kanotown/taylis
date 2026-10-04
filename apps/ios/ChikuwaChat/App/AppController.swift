@@ -312,11 +312,11 @@ final class AppController {
         }
     }
 
-    /// GET /auth/methods of the server the form names: whether it offers Google sign-in (false on any failure).
-    func offersGoogle(server input: String) async -> Bool {
-        guard let normalized = Workspaces.normalize(input) else { return false }
+    /// GET /auth/methods of the server the form names: its Google button, nil when it offers none (or on any failure).
+    func offersGoogle(server input: String) async -> GoogleButtonText? {
+        guard let normalized = Workspaces.normalize(input) else { return nil }
         let serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
-        guard let url = URL(string: serverUrl) else { return false }
+        guard let url = URL(string: serverUrl) else { return nil }
         return await ApiClient(baseUrl: url).offersGoogle()
     }
 

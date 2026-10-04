@@ -175,7 +175,10 @@ async def actions(db: AsyncSession) -> list[str]:
 async def test_disabled_sso_is_404_and_methods_say_so(client: AsyncClient) -> None:
     methods = await client.get("/api/v1/auth/methods")
     assert methods.status_code == 200
-    assert methods.json() == {"password": True, "google": {"enabled": False}}
+    assert methods.json() == {
+        "password": True,
+        "google": {"enabled": False, "domains": [], "label": None},
+    }
     for response in (
         await client.get(START, params={"platform": "web", "challenge": s256(VERIFIER)}),
         await client.get(CALLBACK, params={"state": "x" * 43, "code": "c"}),
@@ -187,7 +190,27 @@ async def test_disabled_sso_is_404_and_methods_say_so(client: AsyncClient) -> No
 
 async def test_methods_report_google_when_enabled(client: AsyncClient, google: FakeOIDC) -> None:
     methods = await client.get("/api/v1/auth/methods")
-    assert methods.json() == {"password": True, "google": {"enabled": True}}
+    assert methods.json() == {
+        "password": True,
+        "google": {"enabled": True, "domains": ["example.ac.jp"], "label": None},
+    }
+    started, _, _ = await begin(client)
+    assert parse_qs(urlparse(started.headers["location"]).query)["hd"] == ["example.ac.jp"]
+
+
+async def test_methods_name_the_organisation(app: FastAPI, client: AsyncClient) -> None:
+    configure(
+        app,
+        sso_google_allowed_domains="example.ac.jp, Lab.Example.jp",
+        sso_google_label="  例示大学  ",
+    )
+    app.state.sso_google = FakeOIDC()
+    google = (await client.get("/api/v1/auth/methods")).json()["google"]
+    assert google == {
+        "enabled": True,
+        "domains": ["example.ac.jp", "lab.example.jp"],
+        "label": "例示大学",
+    }
 
 
 async def test_start_validates_the_challenge_and_platform(

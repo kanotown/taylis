@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     sso_google_client_secret: str = ""
     sso_google_client_secret_file: str = ""
     sso_google_allowed_domains: str = ""  # comma separated Workspace domains
+    # The organisation's name for the login button (「<label> のアカウントでログイン」); empty: the
+    # first allowed domain. Up to 40 characters are shown.
+    sso_google_label: str = ""
     # Option B: a verified address of an allowed domain without an account gets a member account.
     sso_auto_provision: bool = False
     # Public channels (names, comma separated) such an account joins; unknown names are skipped.
@@ -67,6 +70,10 @@ class Settings(BaseSettings):
     @property
     def sso_allowed_domains(self) -> list[str]:
         return [d.strip().lower() for d in self.sso_google_allowed_domains.split(",") if d.strip()]
+
+    @property
+    def sso_label(self) -> str | None:
+        return self.sso_google_label.strip()[:40] or None
 
     @property
     def sso_default_channel_names(self) -> list[str]:

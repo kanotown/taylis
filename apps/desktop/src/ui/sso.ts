@@ -99,3 +99,23 @@ export function takeSsoReturn(): SsoReturn | null {
 export function ssoErrorText(code: string): string {
   return ERROR_MESSAGES[code] ?? "Google でのログインに失敗しました。もう一度お試しください";
 }
+
+/** What the Google button says (App Store guideline 4.8, docs/SSO.md §6). */
+export interface GoogleButtonText {
+  title: string;
+  /** Set when the server takes only its organisation's accounts: the button names that organisation. */
+  subtitle: string | null;
+}
+
+/**
+ * A server restricted to Workspace domains names the organisation (its label, else the first domain, 「など」 for
+ * several): 「example.ac.jp のアカウントでログイン」 over 「組織の Google Workspace アカウント」. An unrestricted answer, or
+ * an older server without `domains`, keeps 「Google でログイン」.
+ */
+export function googleButtonText(method: { domains?: string[]; label?: string | null } | null | undefined): GoogleButtonText {
+  const domains = (method?.domains ?? []).filter((domain) => domain.trim());
+  if (domains.length === 0) return { title: "Google でログイン", subtitle: null };
+  const label = method?.label?.trim();
+  const org = label || (domains.length > 1 ? `${domains[0]} など` : domains[0]);
+  return { title: `${org} のアカウントでログイン`, subtitle: "組織の Google Workspace アカウント" };
+}

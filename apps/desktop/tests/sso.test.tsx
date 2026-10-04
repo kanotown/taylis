@@ -14,7 +14,7 @@ import { ERROR_MESSAGES } from "../src/api/errorMessages";
 import type { TokenResponse, UserMe } from "../src/api/types";
 import { AppController } from "../src/state/app";
 import { LoginScreen } from "../src/ui/LoginScreen";
-import { base64url, challengeFor, newVerifier, parseSsoDeepLink, parseSsoReturn, saveSsoPending, ssoErrorText, ssoStartUrl, takeSsoPending } from "../src/ui/sso";
+import { base64url, challengeFor, googleButtonText, newVerifier, parseSsoDeepLink, parseSsoReturn, saveSsoPending, ssoErrorText, ssoStartUrl, takeSsoPending } from "../src/ui/sso";
 
 // The Tauri app's side (tauri-plugin-deep-link, the credential-store commands), captured for the desktop tests.
 const tauri = vi.hoisted(() => ({
@@ -121,6 +121,29 @@ describe("login screen", () => {
     const pending = JSON.parse(sessionStorage.getItem("chikuwa.sso")!) as { serverUrl: string; verifier: string };
     expect(pending.serverUrl).toBe(location.origin);
     expect(url.searchParams.get("challenge")).toBe(s256(pending.verifier));
+  });
+
+  it("names the organisation when the server takes only its Workspace domains (guideline 4.8)", async () => {
+    const controller = new AppController();
+    vi.spyOn(controller, "authMethods").mockResolvedValue({ password: true, google: { enabled: true, domains: ["example.ac.jp"], label: null } });
+    const navigate = vi.fn();
+    controller.navigate = navigate;
+    render(<Login controller={controller} />);
+    await flush();
+    expect(screen.queryByRole("button", { name: "Google でログイン" })).toBeNull();
+    expect(screen.getByText("組織の Google Workspace アカウント")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "example.ac.jp のアカウントでログイン" }));
+    await flush();
+    expect(navigate).toHaveBeenCalledOnce();
+  });
+
+  it("words the Google button from the domains and the label", () => {
+    expect(googleButtonText({ domains: ["example.ac.jp"] })).toEqual({ title: "example.ac.jp のアカウントでログイン", subtitle: "組織の Google Workspace アカウント" });
+    expect(googleButtonText({ domains: ["example.ac.jp", "lab.example.jp"] }).title).toBe("example.ac.jp など のアカウントでログイン");
+    expect(googleButtonText({ domains: ["example.ac.jp", "lab.example.jp"], label: " 例示大学 " }).title).toBe("例示大学 のアカウントでログイン");
+    // Unrestricted, or an older server without the field.
+    expect(googleButtonText({ domains: [] })).toEqual({ title: "Google でログイン", subtitle: null });
+    expect(googleButtonText({})).toEqual({ title: "Google でログイン", subtitle: null });
   });
 
   it("shows no Google button when the server does not offer it (or cannot say)", async () => {
