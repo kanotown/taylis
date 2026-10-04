@@ -106,7 +106,7 @@ describe("the settings' 「テスト通知を送る」", () => {
     fireEvent.click(await screen.findByRole("button", { name: "テスト通知を送る" }));
     const list = await screen.findByRole("list", { name: "端末ごとの結果" });
     expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "Mac (この端末)プッシュなし (アプリを開いていれば表示されます)",
+      "Mac (この端末)この端末に表示しました",
       "iPhone送信しました",
       "Pixelこのサーバでは Android のプッシュが無効です",
     ]);

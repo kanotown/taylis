@@ -20,7 +20,7 @@ enum TestNotificationText {
         case "no_token": return ("プッシュ未登録 (端末の通知がオフか、アプリをまだ開き直していません)", .problem)
         case "not_configured":
             return (device.pushProvider == "fcm" ? "このサーバでは Android のプッシュが無効です" : "このサーバでは iOS のプッシュが無効です", .problem)
-        case "in_app": return ("プッシュなし (アプリを開いていれば表示されます)", .none)
+        case "in_app": return ("アプリの起動中に表示 (プッシュは使いません)", .none)
         case "disabled": return (device.detail == "session_expired" ? "ログインの期限切れ" : "ログアウト済み", .none)
         default: return (device.status, .none)
         }
