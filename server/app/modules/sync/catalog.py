@@ -21,6 +21,7 @@ from app.modules.messages import events as message_events
 from app.modules.notifications import events as notification_events
 from app.modules.reads import events as read_events
 from app.modules.reminders import events as reminder_events
+from app.modules.reservations import events as reservation_events
 from app.modules.scheduled import events as scheduled_events
 from app.modules.sidebar import events as sidebar_events
 from app.modules.tasks import events as task_events
@@ -110,6 +111,11 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     task_events.TASK_DUE: (task_events.TaskDueData, "user", False),
     task_events.TASK_REVIEW_DONE: (task_events.TaskReviewDoneData, "user", False),
     task_events.TASK_COLUMNS_UPDATED: (task_events.TaskColumnsUpdatedData, "channel", False),
+    reservation_events.RESERVATION_UPDATED: (
+        reservation_events.ReservationUpdatedData,
+        "channel",
+        False,
+    ),
     scheduled_events.SCHEDULED_UPDATED: (scheduled_events.ScheduledUpdatedData, "user", False),
     reminder_events.REMINDER_UPDATED: (reminder_events.ReminderUpdatedData, "user", False),
     emoji_events.EMOJI_UPDATED: (emoji_events.EmojiUpdatedData, "all", False),

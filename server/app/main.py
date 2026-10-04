@@ -62,6 +62,8 @@ from app.modules.recurring import service as recurring
 from app.modules.recurring.router import router as recurring_router
 from app.modules.reminders import service as reminders
 from app.modules.reminders.router import router as reminders_router
+from app.modules.reservations import service as reservations
+from app.modules.reservations.router import router as reservations_router
 from app.modules.scheduled import service as scheduled
 from app.modules.scheduled.router import router as scheduled_router
 from app.modules.search.router import router as search_router
@@ -203,7 +205,7 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
     """Posts scheduled messages (M12d) and fires reminders (M12e), calendar alarms (M51) and
     task due dates (M55) whose time has come; posts recurring posts and nudges those who have
     not submitted to a collection past its due time (L6, M59); posts deadlines' advance notices
-    (L5, M85)."""
+    (L5, M85); tells holders and operators what a reservation pool's queue needs (M99)."""
     settings: Settings = app.state.settings
     while not stop.is_set():
         try:
@@ -244,6 +246,11 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     await task_deadlines.fire_notices(session)
             except Exception:
                 log.exception("deadline notices failed")
+            try:
+                async with app.state.db.session_factory() as session:
+                    await reservations.tick(session)
+            except Exception:
+                log.exception("reservation notices failed")
 
 
 async def _feed_loop(app: FastAPI, stop: asyncio.Event) -> None:
@@ -347,6 +354,7 @@ def build_api_router() -> APIRouter:
     api.include_router(reminders_router)
     api.include_router(recurring_router)
     api.include_router(feeds_router)
+    api.include_router(reservations_router)
     api.include_router(workflows_router)
     api.include_router(emoji_router)
     api.include_router(templates_router)
