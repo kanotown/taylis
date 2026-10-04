@@ -70,6 +70,7 @@
   "presence": [ { "user_id": "...", "status": "online" } ],
   "bookmarks": [ "<message_id>", "..." ],
   "favorites": [ "<channel_id>", "..." ],
+  "blocked_user_ids": [ "<user_id>", "..." ],
   "custom_emoji": [ { "id": "...", "name": "party_parrot", "kind": "image", "content_type": "image/gif", "width": 64, "height": 64, "label": null, "color": null, "keywords": [], "pack_id": null, "position": 0, "created_by": "...", "created_at": "..." } ],
   "emoji_packs": [ { "id": "...", "name": "ドットはんぺん", "position": 0, "tab_version": "0192…", "created_at": "...", "updated_at": "..." } ],
   "templates": [ { "id": "...", "scope": "workspace", "owner_id": null, "name": "日報", "body": "**日報 {date}**\n…", "suggest_in": "times", "position": 0, "created_at": "...", "updated_at": "..." } ],
@@ -92,6 +93,8 @@
 - `activity` (M39) は `{ read_at, unread_count, mention_unread }`: アクティビティ (メンション、自分の投稿へのリアクション、フォロー中のスレッドへの他の人の返信) のうち `read_at` より新しいものの数 (99 まで)。一覧は `GET /activity?filter=all|mentions|reactions|threads&cursor=`、既読は `PUT /activity/read {read_at}` (進むだけ)。再接続のたびに bootstrap の値で直し、接続中は `reaction.added`・自分へのメンションや フォロー中のスレッドの `message.created`・`activity.read` で `GET /activity/summary` を取り直す。
 - `bookmarks` は自分が保存したメッセージの id (新しい順)。本文つきの一覧は `GET /bookmarks`。変化は `bookmark.updated` で届く。
 - `favorites` は自分がお気に入りにしたチャンネルの id (`channels` に含まれるものだけ、M12a)。変化は `favorite.updated` で届く。
+- `blocked_user_ids` (M104、docs/MODERATION.md §4) は自分がブロックした人の id (古い順)。その人のメッセージは折りたたんで
+  表示し、通知しない (未読の数え方は変えない)。M104 より前のサーバは送らない (空とみなす)。変化は `block.updated` で届く。
 - `workspace_settings` (M88) は `{ show_membership_messages, preview_before_join }` (docs/MEMBERSHIP.md §3)。M88 より前のサーバは送らない (両方 true とみなす)。変化は `workspace.settings_updated` で届く。
 
 ### 4.2 `GET /api/v1/channels/{id}/messages?before_seq=&limit=50`
@@ -233,6 +236,7 @@
 | `activity.updated` | user | — | `{ item_ids }` (Review v0.1.22)。持っているアクティビティの項目が書き換わった (今はキャンバスの版の本文の消去で抜粋が空になったとき、CANVAS.md §20.8)。一覧を表示・保持していれば読み直す。バッジは変わらない |
 | `reaction.added` | user (投稿者) | — | `{ channel_id, message_id, user_id, emoji, at }` (M39)。他の人が自分の投稿にリアクションした。アクティビティのバッジを取り直す (`GET /activity/summary`)。外したときは送らない (一覧は表から作るので消える) |
 | `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く |
+| `block.updated` | user | — | `{ user_id, blocked }` (M104、docs/MODERATION.md §4)。自分がブロック / 解除したとき自分の全端末に届く。ブロックされた人には届かない |
 | `scheduled.updated` | user | — | `{ scheduled: ScheduledOut }` (M12d)。予約送信の作成 / 送信済み / 失敗 / 取消。`status` で一覧の行を置き換える (sent と cancelled は一覧から外す。failed は `error` と一緒に残し、本文を下書きに戻すか `DELETE /scheduled/{id}` で消すまで表示する。`GET /scheduled` も pending と failed を返す) |
 | `emoji.updated` | all | — | `{ emoji: CustomEmojiOut, deleted }` (M12f)。カスタム絵文字の追加 / 削除。クライアントは名前の表を差し替える。M100: 表示名・キーワード・色・セットの変更でも出る (文字の絵文字のピルは描き直す) |
 | `emoji_pack.updated` | all | — | `{ pack: EmojiPackOut, deleted }` (M100、docs/EMOJI.md §3)。絵文字のセットの作成・名前・順番・タブのアイコン・削除。削除ではそのセットの絵文字を「セットなし」にする (それぞれの `emoji.updated` も来る) |
