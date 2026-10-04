@@ -24,7 +24,8 @@ struct ProfileSheet: View {
                             if user?.role == "guest" { Text("ゲスト (参加したチャンネルだけ見えます)").font(.caption).foregroundStyle(.secondary) }
                             if user?.role == "bot" { Text(controller.isAiBot(userId) ? "AI のボット" : "受信 Webhook の bot").font(.caption).foregroundStyle(.secondary) }
                             Text("@\(user?.username ?? "")").font(.footnote).foregroundStyle(.secondary)
-                            if let title = user?.title, !title.isEmpty { Text(title).font(.footnote).foregroundStyle(.secondary) }
+                            // The roster label is the title too (LAB.md 「肩書と名簿」): 「M2 · 研究室長」.
+                            if let title = Roster.displayTitle(user?.title, controller.store.roster[userId]) { Text(title).font(.footnote).foregroundStyle(.secondary) }
                             Text(presenceLabel(controller.store.presenceOf(userId))).font(.caption).foregroundStyle(.secondary)
                             if DND.isActive(user) {
                                 Text("🔕 通知を一時停止中" + (user?.quietHours.map { " · " + DND.label($0) } ?? "")).font(.caption).foregroundStyle(.secondary)
@@ -33,10 +34,13 @@ struct ProfileSheet: View {
                     }
                     .padding(.vertical, 4)
                 }
-                if let line = controller.store.roster[userId] {
+                // The label is in the title line above; the roster block keeps the supervisor and the topic.
+                if let line = controller.store.roster[userId], Roster.supervisorLabel(line, users: controller.store.users) != nil || !(line.researchTopic ?? "").isEmpty {
                     Section {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(Roster.summary(line, users: controller.store.users)).font(.subheadline).fontWeight(.medium)
+                            if let supervisor = Roster.supervisorLabel(line, users: controller.store.users) {
+                                Text(supervisor).font(.subheadline).fontWeight(.medium)
+                            }
                             if let topic = line.researchTopic, !topic.isEmpty {
                                 Text("研究テーマ: \(topic)").font(.footnote).foregroundStyle(.secondary)
                             }

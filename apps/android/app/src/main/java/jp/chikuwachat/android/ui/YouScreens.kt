@@ -194,7 +194,7 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
                 Avatar(me.id, me.displayName, size = 64.dp)
                 Column(Modifier.padding(start = 16.dp).weight(1f)) {
                     Text(me.displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(YouSettings.handle(me.username, me.title), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(YouSettings.handle(me.username, Roster.displayTitle(me.title, controller.store.roster[me.id])), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             // 「ステータスを更新」: the status as it is, or the invitation to set one.
@@ -746,7 +746,7 @@ private fun ProfileEditScreen(controller: AppController, version: Int) {
         }
         UsernameEditor(controller, current = controller.store.users[me.id]?.username ?: me.username, hasPassword = me.hasPassword != false, limited = me.role != "admin")
         OutlinedTextField(displayName, { displayName = it.take(80); saved = false }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
-        OutlinedTextField(title, { title = it.take(80); saved = false }, label = { Text("肩書 (任意)") }, placeholder = { Text("例: 教授 / 助教 / D1 / M2 / B4") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        OutlinedTextField(title, { title = it.take(80); saved = false }, label = { Text("肩書 (任意)") }, placeholder = { Text("例: 研究室長 / TA (学年・職位は自動)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
         if (line != null) {
             OutlinedTextField(
                 topic, { topic = it.take(200); saved = false }, label = { Text("研究テーマ (任意)") }, placeholder = { Text("例: 拡散モデルによる音声合成") },

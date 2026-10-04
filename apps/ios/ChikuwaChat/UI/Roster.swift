@@ -101,6 +101,34 @@ enum Roster {
         [label(profile), supervisorLabel(profile, users: users)].compactMap { $0 }.joined(separator: " · ")
     }
 
+    /// How two titles compare: after NFKC, trimming and lower-casing (「ｄ１」 is 「D1」).
+    private static func titleKey(_ text: String) -> String {
+        text.precomposedStringWithCompatibilityMapping.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// The title (肩書) beside the roster label (LAB.md 「肩書と名簿」, cases in apps/shared/title-display.json): the
+    /// roster's label (教授, M2 …) is shown wherever a title is; the title adds what the roster does not say (研究室長, TA).
+    /// `extra`: the title, unless it is empty or the label again.
+    static func titleParts(_ title: String?, _ profile: LabProfileOut?) -> (label: String?, extra: String?) {
+        let label = profile.flatMap { Roster.label($0) }.flatMap { $0.isEmpty ? nil : $0 }
+        let text = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !text.isEmpty else { return (label, nil) }
+        if let label, titleKey(label) == titleKey(text) { return (label, nil) }
+        return (label, text)
+    }
+
+    /// The title as shown: 「M2」, 「研究室長」, 「M2 · 研究室長」, or nil for nothing.
+    static func displayTitle(_ title: String?, _ profile: LabProfileOut?) -> String? {
+        let parts = titleParts(title, profile)
+        let line = [parts.label, parts.extra].compactMap { $0 }.joined(separator: " · ")
+        return line.isEmpty ? nil : line
+    }
+
+    /// What a list that shows the roster label as a badge adds after it: the title unless it is empty or the label again.
+    static func titleExtra(_ title: String?, _ profile: LabProfileOut?) -> String? {
+        titleParts(title, profile).extra
+    }
+
     /// A run of people under one heading in the member directory.
     struct ListSection: Identifiable, Equatable {
         /// The run's position: a heading may come back further down for a grade this version does not know.

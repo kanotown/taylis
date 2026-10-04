@@ -8,7 +8,7 @@ import type { ChannelState } from "../sync/types";
 import { Avatar, presenceLabel } from "./Avatar";
 import { myName, SELF_NOTES_HINT } from "./channels";
 import { StatusEmoji, UserPopover } from "./UserPopover";
-import { compareByRoster, rosterLabel } from "./roster";
+import { compareByRoster, rosterLabel, titleExtra } from "./roster";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
 
 // The settings (M40) are in Settings.tsx: the phone's 「自分」 list and the wide layout's dialog.
@@ -295,7 +295,8 @@ export function MemberList({ controller, channel, members, onChange, className }
                     <Avatar id={member.user_id} name={user?.display_name ?? "?"} size={28} presence={controller.store.presenceOf(member.user_id)} />
                     <span className="flex-1 truncate">
                       {user?.display_name ?? "?"} <span className="text-muted">@{user?.username ?? ""}</span>
-                      {user?.title && <span className="ml-1 text-xs text-muted">· {user.title}</span>}
+                      {/* The roster label is the badge below; the title adds the rest (LAB.md 「肩書と名簿」). */}
+                      {titleExtra(user?.title, roster.get(member.user_id)) && <span className="ml-1 text-xs text-muted">· {titleExtra(user?.title, roster.get(member.user_id))}</span>}
                     </span>
                   </UserPopover>
                   <StatusEmoji controller={controller} userId={member.user_id} />

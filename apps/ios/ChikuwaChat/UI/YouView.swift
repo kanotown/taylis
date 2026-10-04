@@ -73,7 +73,9 @@ struct YouView: View {
 
     private func header(_ me: UserMe) -> some View {
         let user = mePublic
-        let subtitle = "@\(user?.username ?? me.username)" + ((user?.title ?? me.title).flatMap { $0.isEmpty ? nil : " · \($0)" } ?? "")
+        // The roster label is the title too (LAB.md 「肩書と名簿」).
+        let title = Roster.displayTitle(user?.title ?? me.title, controller.store.roster[me.id])
+        let subtitle = "@\(user?.username ?? me.username)" + (title.map { " · \($0)" } ?? "")
         return HStack(spacing: 14) {
             AvatarView(id: me.id, name: me.displayName, size: 64, presence: controller.store.presenceOf(me.id))
             VStack(alignment: .leading, spacing: 3) {
@@ -572,7 +574,7 @@ struct ProfileEditView: View {
                             .onChange(of: displayName) { _, _ in saved = false }
                     }
                     LabeledContent("肩書") {
-                        TextField("例: 教授 / 助教 / D1 / M2 / B4", text: $title).multilineTextAlignment(.trailing)
+                        TextField("例: 研究室長 / TA (学年・職位は自動)", text: $title).multilineTextAlignment(.trailing)
                             .onChange(of: title) { _, _ in saved = false }
                     }
                     if rosterLine != nil {

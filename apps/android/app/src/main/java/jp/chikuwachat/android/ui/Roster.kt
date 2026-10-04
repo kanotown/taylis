@@ -107,6 +107,27 @@ object Roster {
     fun supervisorLabel(profile: LabProfileOut, users: Map<String, UserPublic>): String? =
         profile.supervisorId?.let { users[it]?.displayName }?.let { "指導教員: $it" }
 
+    /** How two titles compare: after NFKC, trimming and lower-casing (「ｄ１」 is 「D1」). */
+    private fun titleKey(text: String): String = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKC).trim().lowercase()
+
+    /**
+     * The title (肩書) beside the roster label (LAB.md 「肩書と名簿」, cases in apps/shared/title-display.json): the roster's
+     * label (教授, M2 …) is shown wherever a title is; the title adds what the roster does not say (研究室長, TA).
+     * The second value: the title, unless it is empty or the label again.
+     */
+    fun titleParts(title: String?, profile: LabProfileOut?): Pair<String?, String?> {
+        val label = profile?.let { label(it) }?.takeIf { it.isNotEmpty() }
+        val text = title?.trim()?.takeIf { it.isNotEmpty() } ?: return label to null
+        return label to (if (label != null && titleKey(label) == titleKey(text)) null else text)
+    }
+
+    /** The title as shown: 「M2」, 「研究室長」, 「M2 · 研究室長」, or null for nothing. */
+    fun displayTitle(title: String?, profile: LabProfileOut?): String? =
+        titleParts(title, profile).toList().filterNotNull().joinToString(" · ").ifEmpty { null }
+
+    /** What a list that shows the roster label as a badge adds after it: the title unless it is empty or the label again. */
+    fun titleExtra(title: String?, profile: LabProfileOut?): String? = titleParts(title, profile).second
+
     /** 「M1 · 指導教員: 加納」: the label and the supervisor, for the profile card (lists show the label as a badge). */
     fun summary(profile: LabProfileOut, users: Map<String, UserPublic>): String =
         listOf(label(profile), supervisorLabel(profile, users)).filter { !it.isNullOrEmpty() }.joinToString(" · ")
