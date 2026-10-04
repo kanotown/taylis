@@ -41,6 +41,7 @@ import android.net.Uri
 import androidx.core.net.toUri
 import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
+import jp.chikuwachat.android.api.PoolOut
 import jp.chikuwachat.android.api.ErrorMessages
 import jp.chikuwachat.android.api.InvitePreviewOut
 import jp.chikuwachat.android.ui.Invite
@@ -2294,6 +2295,25 @@ class AppController(private val app: Application) {
     suspend fun deleteChannelLink(channelId: String, linkId: String): Boolean = attempt {
         store.setChannelLinks(channelId, api!!.deleteChannelLink(channelId, linkId)); true
     }.getOrElse { error = describe(it); false }
+
+    // --- reservation pools (M99, docs/RESERVATIONS.md §6) ---------------------------------------------
+
+    /** Runs one call that answers with the pool and puts it in the store; an error goes to the banner. */
+    private suspend fun withPool(call: suspend (ApiClient) -> PoolOut): PoolOut? = attempt {
+        val pool = call(api!!)
+        store.putReservationPool(pool)
+        pool
+    }.getOrElse { error = describe(it); null }
+
+    /** 「予約する」. */
+    suspend fun reservePool(poolId: String): PoolOut? = withPool { it.reserve(poolId) }
+
+    /** cancel / return / assign / remove. */
+    suspend fun reservationAction(reservationId: String, action: String): PoolOut? = withPool { it.reservationAction(reservationId, action) }
+
+    /** 「入れ替えた」. */
+    suspend fun swapReservations(poolId: String, removeId: String, assignId: String): PoolOut? =
+        withPool { it.swapReservations(poolId, removeId, assignId) }
 
     // --- acknowledgements (M15e) ----------------------------------------------------------------
 

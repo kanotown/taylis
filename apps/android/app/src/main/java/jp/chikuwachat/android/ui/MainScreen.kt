@@ -752,6 +752,8 @@ fun MainScreen(controller: AppController) {
             // M29: the tab row sits directly under the app bar of a joined conversation's timeline.
             if (selectedChannel != null && ConversationNav.tabRowShown(true, selectedChannel.isMember, threadId != null, searching, detailsOpen)) {
                 // M86 (DEADLINES.md §8 2.): the channel's next deadline, a line of its own over the tabs.
+                // M99 (docs/RESERVATIONS.md §6): the channel's reservation pools, a row of chips.
+                ReservationChipRow(controller, selectedChannel, version)
                 DeadlineChipRow(controller, selectedChannel)
                 ConversationTabRow(controller, selectedChannel, version, conversationTab, onTab = ::selectTab, upcoming = upcomingEvents)
             }

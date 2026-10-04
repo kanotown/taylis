@@ -11,6 +11,7 @@ import jp.chikuwachat.android.sync.CanvasApi
 import jp.chikuwachat.android.sync.MyCanvasesApi
 import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
+import jp.chikuwachat.android.sync.ReservationsApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.sync.SyncApi
@@ -68,7 +69,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi {
+) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -642,6 +643,21 @@ class ApiClient(
         })
 
     suspend fun deleteChannelLink(channelId: String, linkId: String): List<ChannelLinkOut> = request("DELETE", "/api/v1/channels/$channelId/links/$linkId")
+
+    // --- reservation pools (M99, docs/RESERVATIONS.md §3) ---------------------------------------------------
+
+    override suspend fun reservationPools(channelId: String): List<PoolOut> = request("GET", "/api/v1/channels/$channelId/reservation-pools")
+
+    /** 「予約する」: join the queue (pressing again changes nothing). */
+    suspend fun reserve(poolId: String): PoolOut = request("POST", "/api/v1/reservation-pools/$poolId/reserve", buildJsonObject {})
+
+    /** cancel (取り消す) / return (返却する) / assign (割り当てた) / remove (外した). */
+    suspend fun reservationAction(reservationId: String, action: String): PoolOut =
+        request("POST", "/api/v1/reservations/$reservationId/$action", buildJsonObject {})
+
+    /** 「入れ替えた」 (operators): `removeId` out, `assignId` in. */
+    suspend fun swapReservations(poolId: String, removeId: String, assignId: String): PoolOut =
+        request("POST", "/api/v1/reservation-pools/$poolId/swap", buildJsonObject { put("remove_id", removeId); put("assign_id", assignId) })
 
     // --- workflows (M95, WORKFLOWS.md §4; phones only run them) ------------------------------------------
 
