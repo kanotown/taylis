@@ -405,11 +405,14 @@ final class Store {
     /// M88 (MEMBERSHIP.md §3): the workspace's switches, from bootstrap and workspace.settings_updated. Not persisted:
     /// the defaults (both on) until the first bootstrap.
     private(set) var workspaceSettings = WorkspaceSettings.defaults
+    /// M93: bootstrap's or workspace.settings_updated's `icon_version` (only when the server sends it): the saved entry follows.
+    @ObservationIgnored var onWorkspaceIcon: ((String?) -> Void)?
 
     /// bootstrap (nil from a server before M88: the defaults) or workspace.settings_updated.
     func setWorkspaceSettings(_ settings: WorkspaceSettings?) {
         let next = settings ?? .defaults
         if next != workspaceSettings { workspaceSettings = next } // every reconnect bootstraps: unchanged redraws nothing
+        if next.hasIconVersion { onWorkspaceIcon?(next.iconVersion) }
     }
     /// A conversation left the store (left, removed, made private); the engine forgets it as the open one.
     @ObservationIgnored var onChannelRemoved: ((String) -> Void)?

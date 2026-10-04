@@ -12,30 +12,83 @@ private func paletteColor(_ hex: UInt32) -> Color {
     return Color(red: red, green: green, blue: blue)
 }
 
-/// A workspace's tile (M16c): its initials on its colour, grey while signed out, a dot when something waits there.
+/// M93 (WORKSPACES.md §3.4.1): the workspace icons an admin set, fetched once per (server, version) without signing in
+/// and kept in memory (URLCache keeps the versioned answer on disk too). A failure leaves the letter tile until the
+/// next version or start.
+@MainActor
+@Observable
+final class WorkspaceIconCache {
+    static let shared = WorkspaceIconCache()
+
+    private var images: [String: UIImage] = [:]
+    @ObservationIgnored private var loading: Set<String> = []
+    @ObservationIgnored private var failed: Set<String> = []
+    /// Tests swap the fetch; the real one asks the workspace's server.
+    @ObservationIgnored var fetcher: (String, String) async throws -> Data = { serverUrl, version in
+        guard let url = URL(string: serverUrl) else { throw URLError(.badURL) }
+        return try await ApiClient(baseUrl: url).serverIcon(version: version)
+    }
+
+    static func key(serverUrl: String, version: String) -> String { serverUrl + "|" + version }
+
+    /// The picture of `workspace`'s current icon; nil (the letter tile) without one, while it loads, or when it failed.
+    func image(for workspace: Workspace) -> UIImage? {
+        guard let version = workspace.iconVersion, !version.isEmpty else { return nil }
+        let serverUrl = workspace.serverUrl
+        let key = Self.key(serverUrl: serverUrl, version: version)
+        if let image = images[key] { return image }
+        guard !loading.contains(key), !failed.contains(key) else { return nil }
+        loading.insert(key)
+        Task {
+            defer { loading.remove(key) }
+            if let data = try? await fetcher(serverUrl, version), let image = UIImage(data: data) {
+                // An older version of this server's icon is not shown again: let it go.
+                images = images.filter { !$0.key.hasPrefix(serverUrl + "|") }
+                images[key] = image
+            } else {
+                failed.insert(key)
+            }
+        }
+        return nil
+    }
+}
+
+/// A workspace's tile (M16c): its icon (M93) or its initials on its colour, grey while signed out, a dot when something
+/// waits there.
 struct WorkspaceTile: View {
     let workspace: Workspace
     var size: CGFloat = 36
     var dot = false
 
     var body: some View {
-        Text(workspace.initials)
-            .font(.system(size: size * 0.42, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(workspacePalette[Workspaces.paletteIndex(workspace.colorKey)], in: RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
-            .saturation(workspace.isSignedIn ? 1 : 0)
-            .opacity(workspace.isSignedIn ? 1 : 0.55)
-            .overlay(alignment: .topTrailing) {
-                if dot {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: max(8, size * 0.3), height: max(8, size * 0.3))
-                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1.5))
-                        .offset(x: size * 0.12, y: -size * 0.12)
-                }
+        let shape = RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+        Group {
+            if let icon = WorkspaceIconCache.shared.image(for: workspace) {
+                Image(uiImage: icon)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipShape(shape)
+            } else {
+                Text(workspace.initials)
+                    .font(.system(size: size * 0.42, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: size, height: size)
+                    .background(workspacePalette[Workspaces.paletteIndex(workspace.colorKey)], in: shape)
             }
-            .accessibilityHidden(true)
+        }
+        .saturation(workspace.isSignedIn ? 1 : 0)
+        .opacity(workspace.isSignedIn ? 1 : 0.55)
+        .overlay(alignment: .topTrailing) {
+            if dot {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: max(8, size * 0.3), height: max(8, size * 0.3))
+                    .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1.5))
+                    .offset(x: size * 0.12, y: -size * 0.12)
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 

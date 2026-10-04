@@ -22,6 +22,8 @@ struct Workspace: Codable, Equatable, Identifiable {
     /// The last known unread state while the workspace is not open (§6).
     var badge: Int?
     var hasUnread: Bool?
+    /// M93 (WORKSPACES.md §3.4): the admin's workspace icon (GET /server's `icon_version`); nil = the letter tile.
+    var iconVersion: String?
 
     var id: String { serverUrl }
     /// Names this account's Keychain item, local store and recent searches.
@@ -37,7 +39,7 @@ struct Workspace: Codable, Equatable, Identifiable {
     var hasNews: Bool { isSignedIn && ((badge ?? 0) > 0 || hasUnread == true) }
 
     init(serverUrl: String, workspaceId: String? = nil, name: String? = nil, username: String, loginName: String? = nil, userId: String? = nil,
-         signedOut: Bool? = nil, badge: Int? = nil, hasUnread: Bool? = nil) {
+         signedOut: Bool? = nil, badge: Int? = nil, hasUnread: Bool? = nil, iconVersion: String? = nil) {
         self.serverUrl = serverUrl
         self.workspaceId = workspaceId
         self.name = name ?? Workspaces.host(serverUrl)
@@ -47,9 +49,10 @@ struct Workspace: Codable, Equatable, Identifiable {
         self.signedOut = signedOut
         self.badge = badge
         self.hasUnread = hasUnread
+        self.iconVersion = iconVersion
     }
 
-    private enum CodingKeys: String, CodingKey { case serverUrl, workspaceId, name, username, loginName, userId, signedOut, badge, hasUnread }
+    private enum CodingKeys: String, CodingKey { case serverUrl, workspaceId, name, username, loginName, userId, signedOut, badge, hasUnread, iconVersion }
 
     /// A damaged field loses only itself; a row without its server or account is not a workspace.
     init(from decoder: Decoder) throws {
@@ -63,6 +66,7 @@ struct Workspace: Codable, Equatable, Identifiable {
         signedOut = try? c.decodeIfPresent(Bool.self, forKey: .signedOut)
         badge = try? c.decodeIfPresent(Int.self, forKey: .badge)
         hasUnread = try? c.decodeIfPresent(Bool.self, forKey: .hasUnread)
+        iconVersion = try? c.decodeIfPresent(String.self, forKey: .iconVersion)
     }
 }
 

@@ -765,21 +765,39 @@ struct SystemEvent: Codable, Equatable {
 struct WorkspaceSettings: Codable, Equatable {
     var showMembershipMessages = true
     var previewBeforeJoin = true
+    /// M93 (WORKSPACES.md §3.4): the workspace icon's version; nil = no icon (the letter tile).
+    var iconVersion: String?
+    /// The answer had `icon_version` (null or not); a server before M93 has none, and then the saved one stays.
+    var hasIconVersion = false
 
     static let defaults = WorkspaceSettings()
 
-    init(showMembershipMessages: Bool = true, previewBeforeJoin: Bool = true) {
+    /// `iconVersion`: .none = the field is missing (a server before M93), .some(nil) = no icon.
+    init(showMembershipMessages: Bool = true, previewBeforeJoin: Bool = true, iconVersion: String?? = .none) {
         self.showMembershipMessages = showMembershipMessages
         self.previewBeforeJoin = previewBeforeJoin
+        if case .some(let version) = iconVersion {
+            self.iconVersion = version
+            hasIconVersion = true
+        }
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         showMembershipMessages = try c.decodeIfPresent(Bool.self, forKey: .showMembershipMessages) ?? true
         previewBeforeJoin = try c.decodeIfPresent(Bool.self, forKey: .previewBeforeJoin) ?? true
+        hasIconVersion = c.contains(.iconVersion)
+        iconVersion = try? c.decodeIfPresent(String.self, forKey: .iconVersion)
     }
 
-    enum CodingKeys: String, CodingKey { case showMembershipMessages, previewBeforeJoin }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(showMembershipMessages, forKey: .showMembershipMessages)
+        try c.encode(previewBeforeJoin, forKey: .previewBeforeJoin)
+        if hasIconVersion { try c.encode(iconVersion, forKey: .iconVersion) }
+    }
+
+    enum CodingKeys: String, CodingKey { case showMembershipMessages, previewBeforeJoin, iconVersion }
 }
 
 /// M15e: one member's 「確認しました」.
@@ -1311,6 +1329,43 @@ struct ServerInfoOut: Codable, Equatable {
     let workspaceId: String
     let name: String
     var apiVersion: String? = nil
+    /// M93 (WORKSPACES.md §3.4): the workspace icon's version (GET /server/icon?v=…); nil = none.
+    var iconVersion: String? = nil
+    /// The answer had `icon_version` (null or not); a server before M93 has none, and then the saved one stays.
+    var hasIconVersion = false
+
+    /// `iconVersion`: .none = the field is missing (a server before M93), .some(nil) = no icon.
+    init(product: String? = nil, workspaceId: String, name: String, apiVersion: String? = nil, iconVersion: String?? = .none) {
+        self.product = product
+        self.workspaceId = workspaceId
+        self.name = name
+        self.apiVersion = apiVersion
+        if case .some(let version) = iconVersion {
+            self.iconVersion = version
+            hasIconVersion = true
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        product = try c.decodeIfPresent(String.self, forKey: .product)
+        workspaceId = try c.decode(String.self, forKey: .workspaceId)
+        name = try c.decode(String.self, forKey: .name)
+        apiVersion = try c.decodeIfPresent(String.self, forKey: .apiVersion)
+        hasIconVersion = c.contains(.iconVersion)
+        iconVersion = try? c.decodeIfPresent(String.self, forKey: .iconVersion)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(product, forKey: .product)
+        try c.encode(workspaceId, forKey: .workspaceId)
+        try c.encode(name, forKey: .name)
+        try c.encodeIfPresent(apiVersion, forKey: .apiVersion)
+        if hasIconVersion { try c.encode(iconVersion, forKey: .iconVersion) }
+    }
+
+    enum CodingKeys: String, CodingKey { case product, workspaceId, name, apiVersion, iconVersion }
 }
 
 /// GET /sync/summary (M16c): the badge and unread flag of a workspace that is not open.

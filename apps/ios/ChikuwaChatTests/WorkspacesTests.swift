@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import ChikuwaChat
 
@@ -152,5 +153,73 @@ final class WorkspacesTests: XCTestCase {
         XCTAssertEqual(Workspaces.appBadge(activeBadge: 3, active: "https://a", list: list), 5)
         XCTAssertEqual(Workspaces.appBadge(activeBadge: 0, active: "https://d", list: list), 11)
         XCTAssertEqual(list.map(\.hasNews), [true, true, false, false])
+    }
+
+    // MARK: M93 workspace icon (WORKSPACES.md §3.4.1)
+
+    func testServerInfoTellsAMissingIconVersionFromNone() throws {
+        let with = try JSON.snakeDecoder.decode(ServerInfoOut.self, from: Data(#"{"product":"chikuwachat","workspace_id":"w1","name":"加納研究室","icon_version":"0192abc"}"#.utf8))
+        XCTAssertEqual(with.iconVersion, "0192abc")
+        XCTAssertTrue(with.hasIconVersion)
+        let none = try JSON.snakeDecoder.decode(ServerInfoOut.self, from: Data(#"{"workspace_id":"w1","name":"A","icon_version":null}"#.utf8))
+        XCTAssertNil(none.iconVersion)
+        XCTAssertTrue(none.hasIconVersion)
+        let old = try JSON.snakeDecoder.decode(ServerInfoOut.self, from: Data(#"{"workspace_id":"w1","name":"A"}"#.utf8))
+        XCTAssertNil(old.iconVersion)
+        XCTAssertFalse(old.hasIconVersion) // a server before M93: the saved version stays
+        XCTAssertEqual(with, ServerInfoOut(product: "chikuwachat", workspaceId: "w1", name: "加納研究室", iconVersion: "0192abc"))
+    }
+
+    func testWorkspaceSettingsCarryTheIconVersion() throws {
+        let settings = try JSON.snakeDecoder.decode(WorkspaceSettings.self, from: Data(#"{"show_membership_messages":true,"preview_before_join":true,"icon_version":"v2"}"#.utf8))
+        XCTAssertEqual(settings, WorkspaceSettings(iconVersion: "v2"))
+        let removed = try JSON.snakeDecoder.decode(WorkspaceSettings.self, from: Data(#"{"icon_version":null}"#.utf8))
+        XCTAssertEqual(removed, WorkspaceSettings(iconVersion: .some(nil)))
+        XCTAssertFalse(try JSON.snakeDecoder.decode(WorkspaceSettings.self, from: Data("{}".utf8)).hasIconVersion)
+    }
+
+    @MainActor
+    func testStoreReportsTheIconOnlyWhenTheServerSendsIt() {
+        let store = Store()
+        var seen: [String?] = []
+        store.onWorkspaceIcon = { seen.append($0) }
+        store.setWorkspaceSettings(WorkspaceSettings(iconVersion: "v1"))   // bootstrap
+        store.setWorkspaceSettings(WorkspaceSettings(iconVersion: .some(nil))) // the admin removed it
+        store.setWorkspaceSettings(WorkspaceSettings())                       // a server before M93
+        store.setWorkspaceSettings(nil)                                       // a server before M88
+        XCTAssertEqual(seen, ["v1", nil])
+    }
+
+    func testTheIconVersionIsSavedWithTheWorkspace() throws {
+        let defaults = defaults()
+        let entry = Workspace(serverUrl: "https://a.example.com", workspaceId: "w1", name: "A", username: "alice", iconVersion: "v3")
+        Workspaces.save(Workspaces.Saved(list: [entry], active: entry.serverUrl), to: defaults)
+        XCTAssertEqual(Workspaces.load(defaults) { _ in true }.list.first?.iconVersion, "v3")
+    }
+
+    func testTheIconPathCarriesTheVersion() {
+        XCTAssertEqual(ApiClient.serverIconPath(version: "0192-abc"), "/api/v1/server/icon?v=0192-abc")
+        XCTAssertEqual(ApiClient.serverIconPath(version: "a&b=c"), "/api/v1/server/icon?v=a%26b%3Dc")
+    }
+
+    @MainActor
+    func testIconCacheFetchesOncePerVersionWithoutSigningIn() async throws {
+        let cache = WorkspaceIconCache()
+        var asked: [String] = []
+        let png = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).pngData { _ in }
+        cache.fetcher = { server, version in
+            asked.append(server + "|" + version)
+            return png
+        }
+        var workspace = Workspace(serverUrl: "https://a.example.com", name: "A", username: "alice")
+        XCTAssertNil(cache.image(for: workspace)) // no icon: the letter tile, nothing fetched
+        workspace.iconVersion = "v1"
+        XCTAssertNil(cache.image(for: workspace)) // loading
+        for _ in 0..<50 where cache.image(for: workspace) == nil { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertNotNil(cache.image(for: workspace))
+        workspace.iconVersion = "v2" // an admin changed it
+        for _ in 0..<50 where cache.image(for: workspace) == nil { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertNotNil(cache.image(for: workspace))
+        XCTAssertEqual(asked, ["https://a.example.com|v1", "https://a.example.com|v2"])
     }
 }
