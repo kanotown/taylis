@@ -138,15 +138,15 @@ fun bodyInline(
                 is CustomEmoji.Piece.Emoji -> {
                     val emoji = customEmoji[piece.name]!!
                     val image = images[emoji.id]
-                    if (image == null) { onNeedEmojiImage?.invoke(emoji); append(":${piece.name}:") }
-                    else {
-                        val key = "emoji:" + emoji.id
-                        // In em: as large as the text around it, so a heading's emoji is a heading's size (testers, 2026-09-29).
-                        inlineContent[key] = InlineTextContent(Placeholder(1.25.em, 1.25.em, PlaceholderVerticalAlign.TextCenter)) {
-                            EmojiImage(image, emojiAnimations[emoji.id], contentDescription = ":${piece.name}:", modifier = Modifier.fillMaxSize())
-                        }
-                        appendInlineContent(key, ":${piece.name}:")
+                    if (image == null) onNeedEmojiImage?.invoke(emoji)
+                    // Its square from the start, blank until the image comes (2026-10-04, 「ガタつく」): `:name:` there was
+                    // wider, so the line re-wrapped and the row changed height when the image arrived, as on iOS.
+                    val key = "emoji:" + emoji.id + if (image == null) ":loading" else ""
+                    // In em: as large as the text around it, so a heading's emoji is a heading's size (testers, 2026-09-29).
+                    inlineContent[key] = InlineTextContent(Placeholder(1.25.em, 1.25.em, PlaceholderVerticalAlign.TextCenter)) {
+                        if (image != null) EmojiImage(image, emojiAnimations[emoji.id], contentDescription = ":${piece.name}:", modifier = Modifier.fillMaxSize())
                     }
+                    appendInlineContent(key, ":${piece.name}:")
                 }
             }
         }

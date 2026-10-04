@@ -257,8 +257,11 @@ fun ReactionChips(
                     .background(background, shape)
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             ) {
-                if (image != null) {
-                    EmojiImage(image, custom?.let { store.emojiAnimations[it.id] }, contentDescription = reaction.emoji, modifier = Modifier.size(16.dp))
+                if (custom != null) {
+                    // The image's 16 dp from the start (2026-10-04): `:name:` until it came made the chip wider, and the
+                    // chips could re-wrap and the row change height when it arrived.
+                    if (image != null) EmojiImage(image, store.emojiAnimations[custom.id], contentDescription = reaction.emoji, modifier = Modifier.size(16.dp))
+                    else Spacer(Modifier.size(16.dp))
                     Text(" ${reaction.count}", style = MaterialTheme.typography.labelLarge)
                 } else {
                     Text("${reaction.emoji} ${reaction.count}", style = MaterialTheme.typography.labelLarge)
