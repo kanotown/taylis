@@ -46,7 +46,7 @@ extension ErrorMessages {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, MyCanvasesApi, CalendarApi, CalendarFeedApi, TaskApi, RecurringApi, AiApi, WorkflowApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, MyCanvasesApi, CalendarApi, CalendarFeedApi, TaskApi, RecurringApi, AiApi, WorkflowApi, ReservationsApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -358,6 +358,26 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     func deleteChannelLink(channelId: String, linkId: String) async throws -> [ChannelLinkOut] {
         try await request("DELETE", "/api/v1/channels/\(channelId)/links/\(linkId)")
+    }
+
+    // MARK: reservation pools (M99, docs/RESERVATIONS.md §3)
+
+    func reservationPools(channelId: String) async throws -> [PoolOut] {
+        try await request("GET", "/api/v1/channels/\(channelId)/reservation-pools")
+    }
+
+    /// 「予約する」: join the queue (pressing again changes nothing).
+    func reserve(poolId: String) async throws -> PoolOut { try await request("POST", "/api/v1/reservation-pools/\(poolId)/reserve") }
+
+    /// cancel (取り消す) / return (返却する) / assign (割り当てた) / remove (外した).
+    func reservationAction(reservationId: String, action: String) async throws -> PoolOut {
+        try await request("POST", "/api/v1/reservations/\(reservationId)/\(action)")
+    }
+
+    /// 「入れ替えた」 (operators): `removeId` out, `assignId` in.
+    func swapReservations(poolId: String, removeId: String, assignId: String) async throws -> PoolOut {
+        try await request("POST", "/api/v1/reservation-pools/\(poolId)/swap",
+                          body: .object(["remove_id": .string(removeId), "assign_id": .string(assignId)]))
     }
 
     // MARK: acknowledgements (M15e)

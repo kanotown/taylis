@@ -203,6 +203,13 @@ final class SyncEngine {
         if let links = try? await linksApi.channelLinks(channelId: channelId) { store.setChannelLinks(channelId, links) }
     }
 
+    /// M99 (docs/RESERVATIONS.md §6): the conversation's reservation pools; loaded when it opens, after reconnecting and
+    /// on reservation.updated (the event carries no card: it differs per person).
+    func loadReservationPools(_ channelId: String) async {
+        guard let poolsApi = api as? ReservationsApi else { return }
+        if let pools = try? await poolsApi.reservationPools(channelId: channelId) { store.setReservationPools(channelId, pools) }
+    }
+
     /// Save edited drafts now instead of after the typing pause (tests, sign-out).
     func flushDrafts() async { await drafts.flush() }
 
@@ -652,6 +659,13 @@ final class SyncEngine {
             struct Payload: Decodable { let channelId: String; let links: [ChannelLinkOut] }
             let payload = try frame.data.decode(Payload.self)
             store.setChannelLinks(payload.channelId, payload.links)
+        case "reservation.updated":  // M99: read the pools again where they are held
+            struct Payload: Decodable { let channelId: String; let poolId: String; var deleted: Bool? }
+            let payload = try frame.data.decode(Payload.self)
+            if payload.deleted == true { store.dropReservationPool(payload.channelId, payload.poolId) }
+            if store.reservationPools[payload.channelId] != nil || payload.channelId == currentChannelId {
+                Task { await loadReservationPools(payload.channelId) }
+            }
         case "draft.updated":
             drafts.applyEvent(try frame.data.decode(DraftUpdated.self))
         case "canvas.created", "canvas.updated", "canvas.deleted":  // M45 (CANVAS.md §4.6)
@@ -994,6 +1008,7 @@ final class SyncEngine {
         // A public channel I only browse has no timeline to catch up (its content needs membership).
         guard status == .online, store.channel(channelId)?.isMember == true else { return }
         Task { await loadLinks(channelId) }
+        Task { await loadReservationPools(channelId) } // M99
         Task { await canvases.loadList(channelId) } // M45 (CANVAS.md §4.6)
         if let type = store.channel(channelId)?.channel.type, type == "public" || type == "private" {
             Task { await calendar.loadUpcoming(channelId) } // M52: the 「予定」 tab's count (DMs have no shared calendar)

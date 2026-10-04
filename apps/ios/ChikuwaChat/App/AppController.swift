@@ -1090,6 +1090,35 @@ final class AppController {
         catch { self.error = describe(error); return false }
     }
 
+    // MARK: reservation pools (M99, docs/RESERVATIONS.md §6)
+
+    /// Runs one call that answers with the pool and puts it in the store; an error goes to the banner.
+    @discardableResult
+    func withPool(_ call: (ApiClient) async throws -> PoolOut) async -> PoolOut? {
+        guard let api else { return nil }
+        do {
+            let pool = try await call(api)
+            store.putReservationPool(pool)
+            return pool
+        } catch { self.error = describe(error); return nil }
+    }
+
+    /// 「予約する」.
+    @discardableResult
+    func reservePool(_ poolId: String) async -> PoolOut? { await withPool { try await $0.reserve(poolId: poolId) } }
+
+    /// cancel / return / assign / remove.
+    @discardableResult
+    func reservationAction(_ reservationId: String, _ action: String) async -> PoolOut? {
+        await withPool { try await $0.reservationAction(reservationId: reservationId, action: action) }
+    }
+
+    /// 「入れ替えた」.
+    @discardableResult
+    func swapReservations(_ poolId: String, removeId: String, assignId: String) async -> PoolOut? {
+        await withPool { try await $0.swapReservations(poolId: poolId, removeId: removeId, assignId: assignId) }
+    }
+
     /// M15e: 「確認しました」 on a message that asks for it, or take it back.
     func toggleAck(_ message: MessageState) async {
         guard let api, let me = store.me else { return }

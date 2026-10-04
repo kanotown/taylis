@@ -73,7 +73,7 @@ final class FakeServer {
     }
 
     @MainActor
-    final class Api: SyncApi, DraftApi, ChannelLinksApi, ActivityApi {
+    final class Api: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ReservationsApi {
         func activitySummary() async throws -> ActivitySummary {
             try maybeFail("activitySummary")
             guard let summary = server.activity[userId] else { throw ApiError.api(status: 404, code: "not_found", message: "Not Found") }
@@ -89,6 +89,11 @@ final class FakeServer {
             try maybeFail("channelLinks")
             guard server.channels[channelId]?.members.contains(userId) == true else { throw ApiError.api(status: 403, code: "not_a_member", message: "Not a member") }
             return server.links[channelId] ?? []
+        }
+
+        func reservationPools(channelId: String) async throws -> [PoolOut] {
+            try maybeFail("reservationPools")
+            return server.pools[channelId] ?? []
         }
 
         unowned let server: FakeServer
@@ -515,6 +520,18 @@ final class FakeServer {
         emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("channel.links_updated"), "ts": .string(now()),
                                       "channel_id": .string(channelId), "seq": .null,
                                       "data": .object(["channel_id": .string(channelId), "links": try! JSONValue.from(rows)])]))
+    }
+
+    /// M99: each channel's reservation pools; setPools announces a change like the server (no card in the event).
+    var pools: [String: [PoolOut]] = [:]
+
+    func setPools(_ channelId: String, _ rows: [PoolOut]) {
+        guard let record = channels[channelId] else { return }
+        pools[channelId] = rows
+        eventId += 1
+        emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("reservation.updated"), "ts": .string(now()),
+                                      "channel_id": .string(channelId), "seq": .null,
+                                      "data": .object(["channel_id": .string(channelId), "pool_id": .string(rows.first?.id ?? "p"), "deleted": .bool(false)])]))
     }
 
     /// M15d: "user:channel:parent" → the saved draft.
