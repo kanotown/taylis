@@ -50,6 +50,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
 import jp.chikuwachat.android.api.UserPublic
 
 /** Renders the light markdown subset (DATA_MODEL.md "本文の形式"); mentions resolve to display names. */
@@ -80,7 +82,16 @@ fun MessageBody(
     canvasCard: (@Composable (canvasId: String) -> Unit)? = null,
     /** M70: message links read as citations — 「[3]」 instead of 「💬 3」 (an AI answer's sources, AiTexts.linkCitations). */
     citations: Boolean = false,
+    /** M101 (docs/EMOJI.md §7): an emoji-only body is shown large (the timeline and threads only, not previews). */
+    jumbo: Boolean = false,
 ) {
+    if (jumbo) {
+        val only = remember(text, version, customEmoji) { EmojiOnly.parse(text, customEmoji) }
+        if (only != null) {
+            JumboEmoji(text, only, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, version, modifier)
+            return
+        }
+    }
     val inline = bodyInline(users, internalBase, onOpenMessage, onOpenCanvas, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, groups, version, citations)
     // The parse depends on the text alone (M28c: keyed on the version too, every keystroke in the composer parsed every
     // row on screen again).
@@ -95,6 +106,56 @@ fun MessageBody(
             } else BodyBlockView(block, inline)
         }
     }
+}
+
+/**
+ * M101 (docs/EMOJI.md §7): an emoji-only body, large: standard emoji at [EmojiOnly.Jumbo.FONT] sp, image emoji
+ * [EmojiOnly.Jumbo.IMAGE] high (a wide one wider, at most 3:1), text emoji as [EmojiOnly.Jumbo.PILL] pills, pack emoji
+ * [EmojiOnly.Jumbo.PACK] high; a single pack emoji as a stamp, [EmojiOnly.Jumbo.STAMP] dp. Every box has its size before
+ * the image comes (blank until then), so nothing moves when it does; a line grows to hold its tallest emoji.
+ */
+@Composable
+private fun JumboEmoji(
+    text: String,
+    only: EmojiOnly.Result,
+    customEmoji: Map<String, CustomEmojiOut>,
+    emojiImages: Map<String, ImageBitmap>,
+    emojiAnimations: Map<String, EmojiAnimation>,
+    onNeedEmojiImage: ((CustomEmojiOut) -> Unit)?,
+    version: Int,
+    modifier: Modifier,
+) {
+    val images = remember(version, emojiImages) { emojiImages }
+    val pieces = remember(text, version) { CustomEmoji.split(Emoji.replaceShortcodes(text.trim())) { customEmoji.containsKey(it) } }
+    if (only.stamp) {
+        val emoji = pieces.firstNotNullOfOrNull { (it as? CustomEmoji.Piece.Emoji)?.let { piece -> customEmoji[piece.name] } } ?: return
+        val image = images[emoji.id]
+        if (image == null) onNeedEmojiImage?.invoke(emoji)
+        Box(modifier.padding(vertical = 2.dp).width((EmojiOnly.Jumbo.STAMP * CustomEmoji.aspect(emoji)).dp).height(EmojiOnly.Jumbo.STAMP.dp)) {
+            if (image != null) EmojiImage(image, emojiAnimations[emoji.id], contentDescription = emoji.label ?: ":${emoji.name}:", modifier = Modifier.fillMaxSize())
+        }
+        return
+    }
+    val inlineContent = HashMap<String, InlineTextContent>()
+    val line = buildAnnotatedString {
+        for (piece in pieces) when (piece) {
+            is CustomEmoji.Piece.Text -> append(piece.text)
+            is CustomEmoji.Piece.Emoji -> {
+                val emoji = customEmoji.getValue(piece.name)
+                val image = images[emoji.id]
+                if (image == null) onNeedEmojiImage?.invoke(emoji)
+                val height = if (emoji.isText) EmojiOnly.Jumbo.PILL else if (emoji.packId != null) EmojiOnly.Jumbo.PACK else EmojiOnly.Jumbo.IMAGE
+                val key = "jumbo:" + emoji.id + if (image == null) ":loading" else ""
+                inlineContent[key] = InlineTextContent(Placeholder((height * CustomEmoji.aspect(emoji)).sp, height.sp, PlaceholderVerticalAlign.TextCenter)) {
+                    if (image != null) EmojiImage(image, emojiAnimations[emoji.id], contentDescription = ":${piece.name}:", modifier = Modifier.fillMaxSize())
+                }
+                appendInlineContent(key, ":${piece.name}:")
+            }
+        }
+    }
+    // A style of its own, not merged with the theme's: bodyLarge's fixed 24 sp line height would cut the larger
+    // emoji; unset, each line is as tall as its font and placeholders need.
+    Text(line, inlineContent = inlineContent, style = TextStyle(fontSize = EmojiOnly.Jumbo.FONT.sp), modifier = modifier.padding(vertical = 2.dp))
 }
 
 /**
