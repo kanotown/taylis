@@ -117,3 +117,55 @@ export function useTheme(): Theme {
     readTheme,
   );
 }
+
+/**
+ * 「サイドバー」: 濃い色 (the palette's dark sidebar, the default) or 明るい色 (near-white tinted by the palette's accent,
+ * dark text from its sidebar colour, the active row in the accent's fill), per device and combined with the palette.
+ * Light mode only: the stylesheet takes <html data-sidebar="light"> only where the light tokens are in force, so in
+ * dark mode the sidebar stays dark whatever the choice.
+ */
+export type SidebarTone = "dark" | "light";
+
+const SIDEBAR_KEY = "chikuwa.prefs.sidebar";
+
+export const SIDEBAR_TONES: Array<[SidebarTone, string]> = [
+  ["dark", "濃い色"],
+  ["light", "明るい色"],
+];
+
+export function readSidebarTone(): SidebarTone {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === "light" ? "light" : "dark";
+  } catch {
+    return "dark";
+  }
+}
+
+/** Puts the choice on screen (<html data-sidebar="light">; the default has none). */
+export function applySidebarTone(tone: SidebarTone, root: HTMLElement = document.documentElement): void {
+  if (tone === "light") root.dataset["sidebar"] = "light";
+  else delete root.dataset["sidebar"];
+}
+
+const sidebarListeners = new Set<() => void>();
+
+export function writeSidebarTone(tone: SidebarTone): void {
+  try {
+    if (tone === "light") localStorage.setItem(SIDEBAR_KEY, "light");
+    else localStorage.removeItem(SIDEBAR_KEY);
+  } catch {
+    /* per-device convenience only: it still applies to this window */
+  }
+  applySidebarTone(tone);
+  for (const listener of sidebarListeners) listener();
+}
+
+export function useSidebarTone(): SidebarTone {
+  return useSyncExternalStore(
+    (listener) => {
+      sidebarListeners.add(listener);
+      return () => sidebarListeners.delete(listener);
+    },
+    readSidebarTone,
+  );
+}

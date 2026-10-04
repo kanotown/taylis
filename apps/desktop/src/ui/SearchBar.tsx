@@ -83,11 +83,11 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
       <button
         type="button"
         onClick={() => onOpenChange(true)}
-        className="flex h-7 w-full items-center gap-2 rounded-md bg-white/12 px-2.5 text-left text-[13px] text-sidebar-fg transition-colors hover:bg-white/18"
+        className="flex h-7 w-full items-center gap-2 rounded-md bg-sidebar-strong/12 px-2.5 text-left text-[13px] text-sidebar-fg transition-colors hover:bg-sidebar-strong/18"
       >
         <Search size={14} className="shrink-0 opacity-80" />
-        <span className={cn("min-w-0 flex-1 truncate", label && "text-white")}>{label ?? placeholder}</span>
-        <Kbd className="border-white/20 bg-transparent text-[10px] text-sidebar-fg/80 max-md:hidden">{modKey()} F</Kbd>
+        <span className={cn("min-w-0 flex-1 truncate", label && "text-sidebar-strong")}>{label ?? placeholder}</span>
+        <Kbd className="border-sidebar-strong/20 bg-transparent text-[10px] text-sidebar-fg/80 max-md:hidden">{modKey()} F</Kbd>
       </button>
       {open && (
         <>
