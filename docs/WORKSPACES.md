@@ -80,7 +80,7 @@
     ログイン画面 (入力中のサーバー URL の `GET /server` を 0.4 秒待って読む)。管理 → 「設定」の先頭に「アイコン」の欄
     (画像を選ぶとすぐアップロード、「削除」)。M93 より前のサーバー (`icon_version` が無い) では欄を出さない。
 
-#### 3.4.1 スマホ (iOS / Android、後で別に作る)
+#### 3.4.1 スマホ (iOS / Android、2026-10-04 に実装)
 
 - ワークスペースの一覧の項目に `iconVersion` (iOS: UserDefaults の JSON、Android: SharedPreferences) を足す。値は
   `GET /server` を読んだ時 (起動時・ワークスペースを開いた時・追加した時) と、アクティブなワークスペースの bootstrap /
@@ -90,6 +90,9 @@
   読めないときは頭文字のタイル。キャッシュのキーは (サーバー URL, 版)。iOS は `URLCache` か小さなメモリキャッシュ、
   Android は既存のアバターの読み込みと同じ仕組み。新しい依存は足さない。
 - 管理の画面 (アップロード・削除) はスマホには作らない (Desktop / Web で行う)。
+- 実装: iOS は `WorkspaceIconCache` (UI/WorkspaceViews.swift、メモリ + URLSession の URLCache)、Android は
+  `platform/WorkspaceIconCache.kt` (メモリ)。読めなかった版はその起動中は読み直さない (次の版か次の起動で)。
+  `icon_version` の有無 (古いサーバー) と null (アイコンなし) は区別する (iOS `hasIconVersion`、Android `knowsIcon`)。
 
 ## 4. クライアントが保存するもの
 

@@ -394,7 +394,10 @@ class Store(private val persistence: Persistence? = null) {
     /** M88 (MEMBERSHIP.md §3): bootstrap's workspace_settings, replaced by workspace.settings_updated; not persisted. */
     var workspaceSettings = WorkspaceSettingsOut()
         private set
+    /** M93: bootstrap's or workspace.settings_updated's `icon_version` (only when the server sends it): the saved entry follows. */
+    var onWorkspaceIcon: ((String?) -> Unit)? = null
     fun setWorkspaceSettings(value: WorkspaceSettingsOut) {
+        if (value.knowsIcon) onWorkspaceIcon?.invoke(value.iconVersion)
         if (workspaceSettings == value) return
         workspaceSettings = value
         emit()

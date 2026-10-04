@@ -29,6 +29,8 @@ data class Workspace(
     /** Last known unread marks of a workspace that is not open (GET /sync/summary, pushes; §6). */
     val badge: Int = 0,
     val hasUnread: Boolean = false,
+    /** M93 (WORKSPACES.md §3.4.1): the admin's workspace icon (GET /server's `icon_version`); null = the letter tile. */
+    val iconVersion: String? = null,
 ) {
     /** M96: the name to show and to sign in with ([username] may be the old one). */
     val signInName: String get() = loginName ?: username

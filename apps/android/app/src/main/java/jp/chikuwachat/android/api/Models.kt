@@ -558,7 +558,23 @@ data class SystemEventOut(val kind: String, val actorId: String, val userIds: Li
  * offline start uses these defaults until the next bootstrap.
  */
 @Serializable
-data class WorkspaceSettingsOut(val showMembershipMessages: Boolean = true, val previewBeforeJoin: Boolean = true)
+data class WorkspaceSettingsOut(
+    val showMembershipMessages: Boolean = true,
+    val previewBeforeJoin: Boolean = true,
+    /** M93 (WORKSPACES.md §3.4): `icon_version` as it came; read it through [iconVersion] / [knowsIcon]. */
+    @SerialName("icon_version") val iconVersionJson: JsonElement = ICON_VERSION_ABSENT,
+) {
+    /** M93: the workspace icon's version; null = none (the letter tile). */
+    val iconVersion: String? get() = iconVersionOf(iconVersionJson)
+    /** M93: the server sent `icon_version` (null or a version); a server before M93 does not, and the saved one stays. */
+    val knowsIcon: Boolean get() = iconVersionJson != ICON_VERSION_ABSENT
+}
+
+/** [WorkspaceSettingsOut.iconVersionJson] / [ServerInfoOut.iconVersionJson] when the key was missing (a server before M93). */
+val ICON_VERSION_ABSENT: JsonElement = JsonObject(emptyMap())
+
+/** M93: `icon_version`'s string; null for null (no icon) or anything else. */
+fun iconVersionOf(json: JsonElement): String? = (json as? JsonPrimitive)?.takeIf { it.isString }?.content?.ifEmpty { null }
 
 /**
  * A post template (M30, DATA_MODEL.md message_templates): `scope` "workspace" (admins edit it) or "user" (mine, then
@@ -871,7 +887,19 @@ data class SearchFilters(
 
 /** GET /server (M16c, no sign-in): which ChikuwaChat deployment a URL is (WORKSPACES.md §3.1). */
 @Serializable
-data class ServerInfoOut(val product: String, val workspaceId: String, val name: String, val apiVersion: String = "")
+data class ServerInfoOut(
+    val product: String,
+    val workspaceId: String,
+    val name: String,
+    val apiVersion: String = "",
+    /** M93 (WORKSPACES.md §3.4): `icon_version` as it came; read it through [iconVersion] / [knowsIcon]. */
+    @SerialName("icon_version") val iconVersionJson: JsonElement = ICON_VERSION_ABSENT,
+) {
+    /** M93: the workspace icon's version (GET /server/icon?v=…); null = none. */
+    val iconVersion: String? get() = iconVersionOf(iconVersionJson)
+    /** M93: the server sent `icon_version`; a server before M93 does not, and the saved one stays. */
+    val knowsIcon: Boolean get() = iconVersionJson != ICON_VERSION_ABSENT
+}
 
 /** GET /auth/methods (M48, docs/SSO.md §3): which sign-in buttons the login screen shows. */
 @Serializable
