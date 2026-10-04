@@ -145,6 +145,8 @@ async def create_message(
         return _same_channel(existing, channel_id), False
     channel, membership = await channels.require_member(db, actor.id, channel_id)
     channels.require_writable(channel)
+    if channel.type == "dm":
+        await channels.require_dm_allowed(db, actor.id, channel)
     if (
         channel.posting_policy == "owners"  # M15a: an announcement channel
         and (data.parent_id is None or data.also_in_channel)  # M15c: that posts to the channel too

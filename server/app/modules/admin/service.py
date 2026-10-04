@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,7 @@ from app.modules.auth import repository as auth_repo
 from app.modules.auth import service as auth
 from app.modules.groups import service as groups
 from app.modules.lab import service as lab
+from app.modules.moderation.models import UserBlock
 from app.modules.sso import repository as sso_repo
 from app.modules.totp import service as totp
 from app.modules.users import username as usernames
@@ -32,6 +33,9 @@ from app.modules.users.models import User
 from app.modules.workspace import default_channels
 
 log = logging.getLogger("app.admin")
+
+# What an anonymized account is called (M10; M104 account deletion).
+ANONYMIZED_DISPLAY_NAME = "退会したユーザー"
 
 
 async def _get_user(db: AsyncSession, user_id: uuid.UUID) -> User:
@@ -272,21 +276,27 @@ async def revoke_sessions(db: AsyncSession, actor: User, user_id: uuid.UUID) -> 
     return count
 
 
-async def anonymize_user(
-    db: AsyncSession, actor: User | None, user_id: uuid.UUID, blobs: BlobStore | None = None
-) -> User:
-    """Erase the identity (name, e-mail, credentials, devices, profile, picture, second factor)
-    and end all sessions.
+async def anonymize_in_tx(
+    db: AsyncSession,
+    user: User,
+    *,
+    admin: User | None,
+    actor_id: uuid.UUID | None,
+    action: str,
+) -> str | None:
+    """Erase the identity (name, e-mail, credentials, devices, profile, picture, second factor,
+    private block list) and end all sessions, in the caller's transaction; returns the picture's
+    key for the caller to delete after the commit.
 
     Messages stay (the history of a channel is the team's), attributed to a generic name.
-    The audit row carries only the id, on purpose.
+    The audit row (`action`, by `actor_id`) carries only the id, on purpose. `admin` is the
+    administrator doing it (None for the person themselves or the CLI). Shared by the
+    administrator's action (M10) and the person's own account deletion (M104,
+    docs/MODERATION.md §2).
     """
-    user = await _get_user(db, user_id)
-    if actor is not None and user.id == actor.id:
-        raise conflict("cannot_modify_self", "Administrators cannot anonymize their own account")
     now = utcnow()
-    user.username = f"deleted-{user.id.hex[:12]}"
-    user.display_name = "退会したユーザー"
+    user.username = f"{usernames.ANONYMIZED_PREFIX}{user.id.hex[:12]}"
+    user.display_name = ANONYMIZED_DISPLAY_NAME
     user.email = None
     # Everything else that describes the person goes too (profile, status, private keywords).
     user.title = None
@@ -309,19 +319,34 @@ async def anonymize_user(
     await auth_repo.clear_push_tokens(db, user.id)
     await totp.remove_in_tx(db, user.id)
     await sso_repo.forget_user_in_tx(db, user.id)  # M48: Google no longer signs in as it
-    await lab.forget_in_tx(db, actor, user.id)  # the roster line, research topic included (M23)
+    await lab.forget_in_tx(db, admin, user.id)  # the roster line, research topic included (M23)
+    # M104: the person's own block list is theirs; blocks of them by others stay (harmless).
+    await db.execute(delete(UserBlock).where(UserBlock.blocker_id == user.id))
     await emit_user_event(db, USER_DEACTIVATED, user)
     await audit.record_in_tx(
-        db,
-        actor_id=actor.id if actor else None,
-        action="admin.user_anonymized",
-        target_type="user",
-        target_id=user.id,
+        db, actor_id=actor_id, action=action, target_type="user", target_id=user.id
     )
-    await db.commit()
+    return avatar_key
+
+
+async def delete_avatar_after_commit(blobs: BlobStore | None, avatar_key: str | None) -> None:
     if avatar_key and blobs is not None:
         try:
             await blobs.delete(avatar_key)
         except Exception:  # the row no longer points at it; a stray object is harmless
             log.warning("could not delete the avatar of an anonymized user")
+
+
+async def anonymize_user(
+    db: AsyncSession, actor: User | None, user_id: uuid.UUID, blobs: BlobStore | None = None
+) -> User:
+    """The administrator's 「削除 (匿名化)」 (M10): anonymize_in_tx for someone else."""
+    user = await _get_user(db, user_id)
+    if actor is not None and user.id == actor.id:
+        raise conflict("cannot_modify_self", "Administrators cannot anonymize their own account")
+    avatar_key = await anonymize_in_tx(
+        db, user, admin=actor, actor_id=actor.id if actor else None, action="admin.user_anonymized"
+    )
+    await db.commit()
+    await delete_avatar_after_commit(blobs, avatar_key)
     return user

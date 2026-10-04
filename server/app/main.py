@@ -54,6 +54,7 @@ from app.modules.link_previews.fetcher import build_feed_fetcher, build_fetcher
 from app.modules.link_previews.router import router as link_previews_router
 from app.modules.messages import service as messages_service
 from app.modules.messages.router import router as messages_router
+from app.modules.moderation.router import router as moderation_router
 from app.modules.notifications import repository as notifications_repo
 from app.modules.notifications.planner import PushPlanner
 from app.modules.notifications.providers import build_providers
@@ -344,6 +345,7 @@ def build_api_router() -> APIRouter:
     api.include_router(
         avatars_router
     )  # before users: /users/me/avatar must not read as /users/{id}
+    api.include_router(moderation_router)
     api.include_router(users_router)
     api.include_router(admin_router)
     api.include_router(invites_router)
@@ -438,6 +440,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "ws_connect": RateLimiter(settings.ws_connect_rate_limit_per_ip),
         # PUSH_NOTIFICATIONS.md §15: 5 test notifications in a burst, then 1 per 2 minutes.
         "test_notification": RateLimiter(0.5, burst=5),
+        # docs/MODERATION.md: reports per user (10 in a burst, then 1 a minute) and block changes.
+        "report": RateLimiter(1, burst=10),
+        "moderation": RateLimiter(30),
     }
     # M48: Google sign-in when fully configured (docs/SSO.md §2), else None (the log says why).
     app.state.sso_google = build_google(settings)

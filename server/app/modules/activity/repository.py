@@ -8,6 +8,7 @@ from app.modules.activity.models import CanvasMention
 from app.modules.canvases.models import Canvas
 from app.modules.channels.models import ChannelMember
 from app.modules.messages.models import Message, Reaction, mentions_of
+from app.modules.moderation.blocks import not_blocked_by
 from app.modules.threads.models import ThreadFollow
 
 # Unread items counted up to this many (the badge shows 99+).
@@ -26,6 +27,7 @@ def _mentions(user_id: uuid.UUID):  # type: ignore[no-untyped-def]
             mentions_of(Message, user_id),
             Message.deleted_at.is_(None),
             Message.sender_id != user_id,
+            not_blocked_by(user_id, Message.sender_id),  # M104
         )
     )
 
@@ -49,6 +51,7 @@ def _replies(user_id: uuid.UUID):  # type: ignore[no-untyped-def]
             Message.deleted_at.is_(None),
             Message.sender_id != user_id,
             not_(mentions_of(Message, user_id)),
+            not_blocked_by(user_id, Message.sender_id),  # M104
         )
     )
 
@@ -66,7 +69,10 @@ def _reactions(user_id: uuid.UUID):  # type: ignore[no-untyped-def]
         .join(Message, Message.id == Reaction.message_id)
         .join(ChannelMember, _member(user_id))
         .where(
-            Message.sender_id == user_id, Message.deleted_at.is_(None), Reaction.user_id != user_id
+            Message.sender_id == user_id,
+            Message.deleted_at.is_(None),
+            Reaction.user_id != user_id,
+            not_blocked_by(user_id, Reaction.user_id),  # M104
         )
         .group_by(Reaction.message_id)
     ), at

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import bad_request, conflict, forbidden, not_found
+from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.time import utcnow
 from app.events.envelope import Audience
 from app.events.models import OutboxEvent
@@ -25,6 +25,7 @@ from app.modules.channels.schemas import (
     MemberOut,
     MembershipOut,
 )
+from app.modules.moderation import blocks
 from app.modules.reads import service as reads
 from app.modules.reads.schemas import ReadMark, ReadStateOut
 from app.modules.users.models import User
@@ -1061,6 +1062,12 @@ async def get_or_create_dm(
 
     created = False
     channel = await repo.get_by_dm_key(db, dm_key)
+    if channel is None and dm_type == "dm":
+        # M104: a person who blocked the actor gets no new 1:1 DM from them (a group DM is only
+        # folded away on the blocker's side).
+        other = next(uid for uid in user_ids if uid != actor.id) if len(user_ids) == 2 else None
+        if other is not None and await blocks.is_blocked(db, other, actor.id):
+            raise dm_unavailable()
     if channel is None:
         try:
             async with db.begin_nested():
@@ -1084,6 +1091,18 @@ async def get_or_create_dm(
                 raise
     membership = await repo.get_membership(db, channel.id, actor.id)
     return to_channel_out(channel, membership, user_ids), created
+
+
+def dm_unavailable() -> AppError:
+    """M104: neutral on purpose, the blocked person is not told why (docs/MODERATION.md §4)."""
+    return forbidden("dm_unavailable", "You cannot send direct messages to this user")
+
+
+async def require_dm_allowed(db: AsyncSession, sender_id: uuid.UUID, channel: Channel) -> None:
+    """M104: no post into a 1:1 DM whose other member blocked the sender."""
+    others = [uid for uid in await member_ids_of(db, channel.id) if uid != sender_id]
+    if len(others) == 1 and await blocks.is_blocked(db, others[0], sender_id):
+        raise dm_unavailable()
 
 
 async def mark_all_read(

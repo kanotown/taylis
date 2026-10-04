@@ -62,6 +62,9 @@ class BootstrapOut(BaseModel):
     # M88: the workspace settings (docs/MEMBERSHIP.md §3); changes arrive as
     # workspace.settings_updated.
     workspace_settings: WorkspaceSettingsOut = WorkspaceSettingsOut()
+    # M104: the people I blocked (docs/MODERATION.md §4), oldest first; changes arrive as
+    # block.updated. Their messages fold away and they never notify me.
+    blocked_user_ids: list[UUID] = []
 
 
 class UnreadSummaryOut(BaseModel):
