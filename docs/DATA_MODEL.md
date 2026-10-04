@@ -98,7 +98,7 @@ CREATE TABLE users (
   quick_reactions       text[],                 -- M50 長押しの「リアクションの候補」1〜6 個 (重複なし・普通の絵文字だけ)。NULL = クライアントの規則 (最近使った順、足りなければ既定)
   avatar_key         text,                          -- プロフィール画像のオブジェクトキー (avatars/<user_id>/<uuid>、M14a)
   avatar_updated_at  timestamptz,                   -- 画像の版。UserPublic に載り、クライアントはこれでキャッシュする
-  bot_kind              varchar(16),            -- M98 bot の用途。'feed' = チャンネルのフィードのボット (UserPublic.bot_kind、リンクプレビューを自動で取る。SECURITY.md §14)。それ以外の bot と人は NULL
+  bot_kind              varchar(16),            -- M98 bot の用途。'feed' = チャンネルのフィードのボット (UserPublic.bot_kind、リンクプレビューを自動で取る。SECURITY.md §14)、'reservation' = チャンネルの予約のボット (M99、RESERVATIONS.md)。それ以外の bot と人は NULL
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
   deactivated_at        timestamptz                       -- 無効化 (ログイン不可、表示は残す)
@@ -558,6 +558,64 @@ CREATE TABLE channel_feed_bots (
 - チャンネルのフィードが投稿するボット。最後のフィードを消しても行は残り、次のフィードで同じボット (付けた名前のまま) が
   有効に戻ってチャンネルに入る。`channel_feeds.bot_user_id` はこのボットと同じ (選び直すと全部書き換える)。
 - 移行 0077 で今あるフィードのボットから作り、それらの `users.bot_kind` を `'feed'` にした (`updated_at` も進める)。
+
+### reservation_pools / reservation_bots / reservations (共有枠の予約、M99、RESERVATIONS.md)
+
+```sql
+CREATE TABLE reservation_pools (
+  id             uuid PRIMARY KEY,
+  channel_id     uuid NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  name           varchar(80) NOT NULL,                 -- 例「Claude Premium シート」
+  capacity       integer NOT NULL CHECK (capacity >= 1),  -- 枠の数 (1〜100)
+  min_hours      integer NOT NULL,                     -- 割り当てからの最低保証 (0〜720 時間、既定 6)
+  grace_minutes  integer NOT NULL,                     -- 保証を過ぎた人への猶予 (0〜1440 分、既定 15)
+  tz             varchar(64) NOT NULL,                 -- ボットの投稿と DM の時刻の書き方 (作った端末のゾーン)
+  operator_ids   uuid[] NOT NULL DEFAULT '{}',         -- 担当者 (チャンネルのメンバー、20 人まで)
+  enabled        boolean NOT NULL DEFAULT true,        -- false: 新しい予約を受け付けない (今の人はそのまま)
+  created_by     uuid NOT NULL REFERENCES users(id),
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX reservation_pools_channel_idx ON reservation_pools (channel_id);
+
+CREATE TABLE reservation_bots (
+  channel_id   uuid PRIMARY KEY REFERENCES channels(id) ON DELETE CASCADE,
+  bot_user_id  uuid NOT NULL UNIQUE REFERENCES users(id),   -- role = bot、bot_kind = 'reservation'、名前「予約」
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE reservations (
+  id                 uuid PRIMARY KEY,
+  pool_id            uuid NOT NULL REFERENCES reservation_pools(id) ON DELETE CASCADE,
+  channel_id         uuid NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  user_id            uuid NOT NULL REFERENCES users(id),
+  status             varchar(16) NOT NULL,   -- waiting / holding / returning / done / cancelled
+  requested_at       timestamptz NOT NULL,   -- 順番はこの順 (同じなら id)
+  assigned_at        timestamptz,            -- 「割り当てた」
+  assigned_by        uuid REFERENCES users(id),
+  guarantee_until    timestamptz,            -- assigned_at + その時の min_hours (固定)
+  returned_at        timestamptz,            -- 「返却する」
+  evict_notice_at    timestamptz,            -- 保証を過ぎ、待つ人のために「外す」と知らせた時刻
+  evict_at           timestamptz,            -- その猶予の終わり
+  ready_notified_at  timestamptz,            -- 担当者に「割り当てて / 入れ替えて / 外して」と知らせた (1 回)
+  ended_at           timestamptz,
+  ended_by           uuid REFERENCES users(id),
+  end_reason         varchar(16),            -- cancelled / returned / removed
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  CHECK (status IN ('waiting', 'holding', 'returning', 'done', 'cancelled'))
+);
+CREATE UNIQUE INDEX reservations_active_uniq ON reservations (pool_id, user_id)
+  WHERE status IN ('waiting', 'holding', 'returning');          -- 1 人 1 枠
+CREATE INDEX reservations_pool_active_idx ON reservations (pool_id, status)
+  WHERE status IN ('waiting', 'holding', 'returning');
+CREATE INDEX reservations_user_idx ON reservations (user_id);
+```
+
+- 枠は 1 チャンネルに 5 個まで。ボットはチャンネルに 1 つで、最初の枠と一緒に作り、枠を消しても残る。
+- 終わった行 (done / cancelled) は履歴として残す。枠を消すと行も消える (ボットの投稿は残る)。
+- 変更はすべて枠の行を `FOR UPDATE` でロックしてから行う (担当者の同時の操作、worker)。順番の決め方は RESERVATIONS.md §4。
+- 変更は `reservation.updated` (channel) で知らせ、端末は読み直す (カードは人ごとに違う)。
 
 ### channel_favorites (お気に入りチャンネル、M12a)
 
