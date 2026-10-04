@@ -107,7 +107,8 @@ struct SectionFormView: View {
             }
             .sheet(isPresented: $picking) {
                 EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, animations: store.emojiAnimations,
-                                onNeedImage: { controller.loadEmojiImage($0) }) { glyph in emoji = glyph }
+                                onNeedImage: { controller.loadEmojiImage($0) }, packs: store.sortedEmojiPacks,
+                                packTabs: store.packTabImages, onNeedPackTab: { controller.loadPackTab($0) }) { glyph in emoji = glyph }
             }
         }
         .interactiveDismissDisabled(busy)

@@ -390,6 +390,9 @@ final class Store {
     /// Post templates (M30): the workspace's and mine; from bootstrap and template.updated.
     var templates: [TemplateOut] = []
     var emojiImages: [String: UIImage] = [:]
+    /// M100: emoji packs by id (picker tabs) and their tab icons by "id:version".
+    var emojiPacks: [String: EmojiPackOut] = [:]
+    var packTabImages: [String: UIImage] = [:]
     /// The frames of the animated ones (GIF), by id; their first frame is in `emojiImages`.
     var emojiAnimations: [String: EmojiAnimation] = [:]
     /// User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server.
@@ -952,7 +955,36 @@ final class Store {
     }
 
     func applyCustomEmoji(_ row: CustomEmojiOut, deleted: Bool) {
+        // A text emoji's pill is drawn from its label and colour: a changed one is drawn again.
+        if let old = customEmoji[row.name], old.isText, deleted || old.label != row.label || old.color != row.color {
+            emojiImages.removeValue(forKey: old.id)
+        }
         if deleted { customEmoji.removeValue(forKey: row.name) } else { customEmoji[row.name] = row }
+    }
+
+    // MARK: emoji packs (M100)
+
+    func replaceEmojiPacks(_ rows: [EmojiPackOut]) {
+        emojiPacks = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+    }
+
+    /// emoji_pack.updated: a deleted pack's emoji become ungrouped (their emoji.updated come too).
+    func applyEmojiPack(_ row: EmojiPackOut, deleted: Bool) {
+        if deleted {
+            emojiPacks.removeValue(forKey: row.id)
+            for (name, emoji) in customEmoji where emoji.packId == row.id {
+                var ungrouped = emoji
+                ungrouped.packId = nil
+                customEmoji[name] = ungrouped
+            }
+        } else {
+            emojiPacks[row.id] = row
+        }
+    }
+
+    /// The packs in tab order (position, then name).
+    var sortedEmojiPacks: [EmojiPackOut] {
+        emojiPacks.values.sorted { ($0.position, $0.name) < ($1.position, $1.name) }
     }
 
     // MARK: post templates (M30)

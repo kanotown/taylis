@@ -8,6 +8,10 @@ struct EmojiPickerView: View {
     /// The animated ones' frames (GIF), shown moving.
     var animations: [String: EmojiAnimation] = [:]
     var onNeedImage: ((CustomEmojiOut) -> Void)? = nil
+    /// M100: a tab per pack (its tab icon by "id:version", else its first emoji) after 「カスタム」.
+    var packs: [EmojiPackOut] = []
+    var packTabs: [String: UIImage] = [:]
+    var onNeedPackTab: ((EmojiPackOut) -> Void)? = nil
     /// false where a pick is a choice rather than a use (M50's quick reaction slots): 「よく使う」 and the recents stay.
     var countsUse = true
     let onPick: (String) -> Void
@@ -20,20 +24,37 @@ struct EmojiPickerView: View {
 
     private var recent: [String] { recentRaw.split(separator: " ").map(String.init).filter { !$0.isEmpty } }
     private var shown: [EmojiEntry] {
-        if category == "custom" && query.trimmingCharacters(in: .whitespaces).isEmpty { return [] }
+        if (category == "custom" || pack != nil) && query.trimmingCharacters(in: .whitespaces).isEmpty { return [] }
         let hits = Emoji.search(query)
         return query.trimmingCharacters(in: .whitespaces).isEmpty ? hits.filter { $0.category == category } : hits
     }
+    /// The pack whose tab is open (M100).
+    private var pack: EmojiPackOut? {
+        guard category.hasPrefix("pack:") else { return nil }
+        return packs.first { "pack:\($0.id)" == category }
+    }
+    private func inOrder(_ rows: [CustomEmojiOut]) -> [CustomEmojiOut] {
+        rows.sorted { (($0.position ?? 0), $0.name) < (($1.position ?? 0), $1.name) }
+    }
+    /// Searching: every custom emoji by name, label and keywords (M100); 「カスタム」: the ungrouped ones; a pack's tab: its own.
     private var customShown: [CustomEmojiOut] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        if q.isEmpty { return category == "custom" ? custom : [] }
-        return custom.filter { $0.name.contains(q) }
+        let q = query.trimmingCharacters(in: .whitespaces)
+        if !q.isEmpty { return Emoji.customCandidates(q, custom: custom, limit: 40) }
+        if category == "custom" {
+            let packIds = Set(packs.map(\.id))
+            return inOrder(custom.filter { $0.packId.map { !packIds.contains($0) } ?? true })
+        }
+        if let pack { return inOrder(custom.filter { $0.packId == pack.id }) }
+        return []
     }
     private var categories: [(key: String, label: String)] {
         let base = EmojiData.categories.map { (key: $0.key, label: $0.label) }
         return custom.isEmpty ? base : base + [(key: "custom", label: "カスタム")]
     }
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 8)
+    /// A pack's emoji are illustrations: four to a row, twice the cell (M100).
+    private let bigColumns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 4)
+    private var big: Bool { pack != nil && browsing }
 
     private func pick(_ glyph: String) {
         if countsUse {
@@ -53,7 +74,7 @@ struct EmojiPickerView: View {
     }
 
     @ViewBuilder
-    private func customCell(_ emoji: CustomEmojiOut) -> some View {
+    private func customCell(_ emoji: CustomEmojiOut, side: CGFloat = 30) -> some View {
         Button { pick(":\(emoji.name):") } label: {
             Group {
                 if let image = images[emoji.id] {
@@ -62,12 +83,53 @@ struct EmojiPickerView: View {
                     ProgressView().controlSize(.mini)
                 }
             }
-            .frame(width: 30, height: 30)
-            .frame(maxWidth: .infinity, minHeight: 36)
+            .frame(width: side, height: side)
+            .frame(maxWidth: .infinity, minHeight: side + 6)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(":\(emoji.name):")
+        .accessibilityLabel(emoji.label.map { "\($0) :\(emoji.name):" } ?? ":\(emoji.name):")
         .onAppear { onNeedImage?(emoji) }
+    }
+
+    /// M100: a text emoji as its pill, as wide as its label.
+    @ViewBuilder
+    private func textCell(_ emoji: CustomEmojiOut) -> some View {
+        let size = CustomEmoji.size(of: emoji, height: 24)
+        Button { pick(":\(emoji.name):") } label: {
+            Group {
+                if let image = images[emoji.id] { Image(uiImage: image).resizable().scaledToFit() } else { Color.clear }
+            }
+            .frame(width: size.width, height: size.height)
+            .padding(4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(emoji.label ?? ":\(emoji.name):")
+        .onAppear { onNeedImage?(emoji) }
+    }
+
+    /// A pack's tab (M100): its icon, else its first emoji, else its name.
+    @ViewBuilder
+    private func packTab(_ pack: EmojiPackOut) -> some View {
+        let selected = category == "pack:\(pack.id)"
+        Button { category = "pack:\(pack.id)" } label: {
+            Group {
+                if let version = pack.tabVersion, let image = packTabs["\(pack.id):\(version)"] {
+                    Image(uiImage: image).resizable().scaledToFit().frame(height: 22)
+                } else if let first = inOrder(custom.filter { $0.packId == pack.id }).first, let image = images[first.id] {
+                    Image(uiImage: image).resizable().scaledToFit().frame(height: 22)
+                } else {
+                    Text(pack.name).font(.caption)
+                }
+            }
+            .frame(minWidth: 28)
+        }
+        .buttonStyle(.bordered).controlSize(.small)
+        .tint(selected ? Color.accentColor : Color.secondary)
+        .accessibilityLabel(pack.name)
+        .onAppear {
+            onNeedPackTab?(pack)
+            if pack.tabVersion == nil, let first = inOrder(custom.filter { $0.packId == pack.id }).first { onNeedImage?(first) }
+        }
     }
 
     @ViewBuilder
@@ -101,6 +163,7 @@ struct EmojiPickerView: View {
                                     .buttonStyle(.bordered).controlSize(.small)
                                     .tint(category == item.key ? Color.accentColor : Color.secondary)
                             }
+                            ForEach(packs) { packTab($0) }
                         }
                         .padding(.horizontal, 16)
                     }
@@ -116,8 +179,21 @@ struct EmojiPickerView: View {
                         .padding(.bottom, 8)
                         sectionTitle(categories.first { $0.key == category }?.label ?? "")
                     }
+                    let texts = customShown.filter(\.isText)
+                    if !texts.isEmpty {
+                        // M100: text emoji as pills in a wrapping row of their own.
+                        ChipsLayout(spacing: 4) { ForEach(texts) { textCell($0) } }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                    }
+                    if big {
+                        LazyVGrid(columns: bigColumns, spacing: 6) {
+                            ForEach(customShown.filter { !$0.isText }) { customCell($0, side: 64) }
+                        }
+                        .padding(.horizontal, 16)
+                    }
                     LazyVGrid(columns: columns, spacing: 4) {
-                        ForEach(customShown) { customCell($0) }
+                        if !big { ForEach(customShown.filter { !$0.isText }) { customCell($0) } }
                         ForEach(shown, id: \.shortcode) { entry in
                             Button(entry.glyph) { pick(entry.glyph) }
                                 .font(.title2)
@@ -130,7 +206,7 @@ struct EmojiPickerView: View {
                 }
             }
             .padding(.top, 8)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "検索 (例: tada、乾杯)")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "検索 (例: tada、乾杯、ありがとう)")
             .navigationTitle("絵文字")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }

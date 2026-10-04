@@ -857,8 +857,28 @@ final class AppController {
 
     private var emojiLoads: Set<String> = []
 
-    /// Fetches an emoji image once (scaled for inline text) into the store's cache.
+    /// M100: text emoji pills follow the app's light / dark look (RootView sets it); a change draws them again.
+    var textEmojiDark = false {
+        didSet {
+            guard textEmojiDark != oldValue else { return }
+            for emoji in store.customEmoji.values where emoji.isText { store.emojiImages.removeValue(forKey: emoji.id) }
+        }
+    }
+
+    /// Fetches an emoji image once (scaled for inline text) into the store's cache. M100: a text emoji's pill is drawn
+    /// here instead (no request), so every place that shows a custom emoji's image shows the pill.
     func loadEmojiImage(_ emoji: CustomEmojiOut) {
+        if emoji.isText {
+            guard store.emojiImages[emoji.id] == nil, !emojiLoads.contains(emoji.id) else { return }
+            emojiLoads.insert(emoji.id)
+            let dark = textEmojiDark
+            // Not while a view is being drawn (onNeed is called from body): the next turn of the main loop.
+            Task { @MainActor in
+                defer { emojiLoads.remove(emoji.id) }
+                store.emojiImages[emoji.id] = CustomEmoji.textPill(emoji, dark: dark)
+            }
+            return
+        }
         guard let api, store.emojiImages[emoji.id] == nil, !emojiLoads.contains(emoji.id) else { return }
         emojiLoads.insert(emoji.id)
         Task {
@@ -867,6 +887,20 @@ final class AppController {
                   let decoded = await Task.detached(operation: { CustomEmoji.decode(data) }).value else { return }
             if let animation = decoded.animation { store.emojiAnimations[emoji.id] = animation }
             store.emojiImages[emoji.id] = decoded.still
+        }
+    }
+
+    /// M100: a pack's tab icon, once per version.
+    func loadPackTab(_ pack: EmojiPackOut) {
+        guard let api, let version = pack.tabVersion else { return }
+        let key = "\(pack.id):\(version)"
+        guard store.packTabImages[key] == nil, !emojiLoads.contains(key) else { return }
+        emojiLoads.insert(key)
+        Task {
+            defer { emojiLoads.remove(key) }
+            guard let data = try? await api.fetchData("/api/v1/emoji/packs/\(pack.id)/tab"),
+                  let image = UIImage(data: data) else { return }
+            store.packTabImages[key] = image
         }
     }
 
