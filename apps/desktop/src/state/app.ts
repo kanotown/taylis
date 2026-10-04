@@ -18,7 +18,7 @@ import { scheduleLabel } from "../ui/schedule";
 import { orderTemplates, readSchedule, SCHEDULE_USAGE } from "../ui/templates";
 import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
-import { ApiError, describeError, NetworkError, UserMessageError } from "../api/errors";
+import { ApiError, describeError, describeFeatureError, NetworkError, UserMessageError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, signInName, type WorkspaceEntry } from "./workspaces";
 import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, CustomEmojiUpdate, EmojiPackImportOut, TextEmojiCreate, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
@@ -687,7 +687,7 @@ export class AppController {
       this.setNotice(`:${row.name}: を追加しました`);
       return true;
     } catch (error) {
-      this.setError(error);
+      this.setError(describeFeatureError(error, "文字の絵文字"));
       return false;
     }
   }
@@ -700,14 +700,14 @@ export class AppController {
       this.store.applyCustomEmoji(row, false);
       return true;
     } catch (error) {
-      this.setError(error);
+      this.setError(describeFeatureError(error, "絵文字の編集"));
       return false;
     }
   }
 
-  /** M100 (admin): import a pack from a folder's files or a ZIP; returns what happened, null on an error (shown). */
-  async importEmojiPack(source: { archive: File } | { files: File[] }): Promise<EmojiPackImportOut | null> {
-    if (!this.api) return null;
+  /** M100 (admin): import a pack from a folder's files or a ZIP; returns what happened, or why not (the dialog shows it). */
+  async importEmojiPack(source: { archive: File } | { files: File[] }): Promise<EmojiPackImportOut | string> {
+    if (!this.api) return "ログインしていません";
     try {
       const result = await this.api.importEmojiPack(source);
       this.store.applyEmojiPack(result.pack, false);
@@ -715,8 +715,7 @@ export class AppController {
       this.store.replaceCustomEmoji(await this.api.listEmoji());
       return result;
     } catch (error) {
-      this.setError(error);
-      return null;
+      return describeFeatureError(error, "セットの取り込み");
     }
   }
 
@@ -726,7 +725,7 @@ export class AppController {
       this.store.applyEmojiPack(await this.api.updateEmojiPack(packId, patch), false);
       return true;
     } catch (error) {
-      this.setError(error);
+      this.setError(describeFeatureError(error, "絵文字のセット"));
       return false;
     }
   }
@@ -739,7 +738,7 @@ export class AppController {
       const row = this.store.emojiPacks.get(packId);
       if (row) this.store.applyEmojiPack(row, true);
     } catch (error) {
-      this.setError(error);
+      this.setError(describeFeatureError(error, "絵文字のセット"));
     }
   }
 
