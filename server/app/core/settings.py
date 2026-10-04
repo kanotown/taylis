@@ -174,6 +174,9 @@ class Settings(BaseSettings):
     scheduled_send_interval_seconds: float = 15.0
     # M12f: custom emoji images (PNG / GIF / JPEG / WebP, at most 512px).
     emoji_max_bytes: int = 256 * 1024
+    # M102 (docs/EMOJI.md §8): a folder whose subfolders (each with a pack.json) are imported as
+    # emoji packs at startup and by `app.cli import-emoji-presets`. Empty = off.
+    emoji_presets_dir: str = ""
     # M14a: profile pictures (any common image; stored as a 256px PNG).
     avatar_max_bytes: int = 5 * 1024 * 1024
     # typing frames from one connection are relayed at most this often.

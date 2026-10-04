@@ -31,6 +31,13 @@ AI の API キー (docs/AI.md) は `infra/secrets/anthropic_api_key` (と `opena
 `docker compose up` すると、Docker がその場所に空のフォルダを作り、後からキーを置けなくなる (フォルダを `rmdir` で消せば直る)。
 本番では deploy.sh が空のファイル (権限 644。コンテナのアプリ uid 10001 が読むため。`secrets/` は 700) を作る。
 
+利用者の絵文字のセット (docs/EMOJI.md §6 / §8、M102) の絵はリポジトリの外 (手元の `/emoji/Chikuwa` などで、Git から
+除外) にあり、古い Mac からフォルダごとコピーする。開発サーバで起動時に取り込ませるには、`infra/.env` に
+`EMOJI_PRESETS_DIR_HOST=../emoji` (infra/ から見た場所) を書いて `docker compose -f infra/docker-compose.yml up -d app`
+(作り直し)。書かなければ `infra/emoji-presets` (空、Git から除外) がマウントされ、何も入らない。compose を使わず
+`uv run` でサーバを動かすときは `EMOJI_PRESETS_DIR=../emoji` を環境変数に置くか、一度だけ
+`cd server && uv run python -m app.cli import-emoji-presets --dir ../emoji` (管理者を作った後)。
+
 開発サーバのデータ (Docker のボリューム) は移さなくてよい。新しい Mac では空から始め、`server` の CLI で管理者を作る
 (`uv run python -m app.cli create-admin --password ...`。一般のユーザーは `create-user` で、仮のパスワードが表示される。決まったパスワードにするには、その人でログインして `PUT /users/me/password`)。
 

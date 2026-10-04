@@ -686,6 +686,40 @@ def cmd_import_slack(args: argparse.Namespace) -> int:
     return asyncio.run(_import_slack(args))
 
 
+async def _import_emoji_presets(directory: str, restore: Sequence[str]) -> int:
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.attachments.blobstore import build_blobstore
+    from app.modules.emoji import presets
+
+    settings = get_settings()
+    blobs = build_blobstore(settings)
+    db = Database(settings.database_url)
+    try:
+        async with db.session_factory() as session:
+            report = await presets.import_presets(
+                session, Path(directory), settings, blobs, restore=restore
+            )
+    finally:
+        await db.dispose()
+    for warning in report.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    print(report.summary())
+    if report.busy:
+        return 2
+    return 1 if report.failed or report.no_admin else 0
+
+
+def cmd_import_emoji_presets(args: argparse.Namespace) -> int:
+    """M102 (docs/EMOJI.md §8): what the app does at startup, now (e.g. after copying art)."""
+    from app.core.settings import get_settings
+
+    directory = args.dir or get_settings().emoji_presets_dir
+    if not directory:
+        raise SystemExit("error: set EMOJI_PRESETS_DIR or pass --dir")
+    return asyncio.run(_import_emoji_presets(directory, args.restore))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -824,6 +858,20 @@ def build_parser() -> argparse.ArgumentParser:
     sl.add_argument("--include-dms", action="store_true", help="also dms.json and mpims.json")
     sl.add_argument("--dry-run", action="store_true", help="check everything, write nothing")
     sl.set_defaults(func=cmd_import_slack)
+
+    presets = sub.add_parser(
+        "import-emoji-presets",
+        help="import the emoji pack folders under EMOJI_PRESETS_DIR (also done at startup)",
+    )
+    presets.add_argument("--dir", help="the folder of pack folders (default: EMOJI_PRESETS_DIR)")
+    presets.add_argument(
+        "--restore",
+        action="append",
+        default=[],
+        metavar="FOLDER",
+        help="bring back a preset pack (or its emoji) an administrator deleted (repeatable)",
+    )
+    presets.set_defaults(func=cmd_import_emoji_presets)
 
     export = sub.add_parser("export-openapi", help="write the OpenAPI document to openapi/")
     export.add_argument("--out", default=str(REPO_ROOT / "openapi" / "openapi.json"))

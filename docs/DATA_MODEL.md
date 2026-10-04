@@ -403,6 +403,8 @@ CREATE TABLE custom_emoji (
   keywords      text[] NOT NULL DEFAULT '{}',  -- M100: 検索語 (日本語も)、20 個・32 文字まで
   pack_id       uuid REFERENCES emoji_packs(id) ON DELETE SET NULL,  -- M100: セット (NULL = なし)
   position      integer NOT NULL DEFAULT 0,    -- M100: セットの中の順
+  preset_key    varchar(255),                  -- M102: 取り込んだプリセットのフォルダ名 (NULL = 手で追加)
+  preset_hash   varchar(64),                   -- M102: 最後に取り込んだ画像ファイルの SHA-256
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
@@ -414,9 +416,20 @@ CREATE TABLE emoji_packs (
   position          integer NOT NULL DEFAULT 0,      -- タブの順
   tab_content_type  text,                            -- タブのアイコン (なければ最初の絵文字)
   tab_storage_key   text,                            -- emoji-packs/<id>/tab-<uuid> (差し替えで変わる)
+  preset_key        varchar(255) UNIQUE,             -- M102: プリセットのフォルダ名 (NULL = 手で作った)
+  preset_tab_hash   varchar(64),                     -- M102: 最後に取り込んだタブのアイコンの SHA-256
   created_by        uuid NOT NULL REFERENCES users(id),
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now()
+);
+
+-- M102: 管理者が消したプリセット (docs/EMOJI.md §8)。次の起動で戻さない
+CREATE TABLE emoji_preset_removals (
+  preset_key  varchar(255) NOT NULL,
+  shortcode   varchar(32) NOT NULL DEFAULT '',   -- '' = セットごと、ほかは消した絵文字 1 つ
+  removed_by  uuid REFERENCES users(id) ON DELETE SET NULL,
+  removed_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (preset_key, shortcode)
 );
 ```
 
@@ -427,6 +440,9 @@ CREATE TABLE emoji_packs (
 - M100 (docs/EMOJI.md、移行 0079): 文字の絵文字 (`kind = 'text'`、`POST /emoji/text`)、表示名・キーワード・セット
   (`PATCH /emoji/{id}`)、`emoji_packs` (管理者が作成・変更・削除・取り込み、監査ログ)。セットを消しても絵文字は
   残る (`pack_id` が NULL になる)。一覧は bootstrap の `emoji_packs` と `emoji_pack.updated` (audience=all)。
+- M102 (docs/EMOJI.md §8、移行 0080): サーバのフォルダ (`EMOJI_PRESETS_DIR`) のセットを起動時に取り込む。
+  `preset_key` / `preset_hash` / `preset_tab_hash` は API には出さない。管理者がプリセットのセットや絵文字を消すと
+  `emoji_preset_removals` に残り、次の起動で戻らない (戻すのは CLI の `--restore`)。
 
 ### reminders (リマインダー、M12e)
 

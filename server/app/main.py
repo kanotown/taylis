@@ -41,6 +41,7 @@ from app.modules.channel_links.router import router as channel_links_router
 from app.modules.channels import service as channels_service
 from app.modules.channels.router import router as channels_router
 from app.modules.drafts.router import router as drafts_router
+from app.modules.emoji import presets as emoji_presets
 from app.modules.emoji.router import router as emoji_router
 from app.modules.favorites.router import router as favorites_router
 from app.modules.feeds import service as feeds_service
@@ -287,6 +288,13 @@ async def _ai_loop(app: FastAPI, stop: asyncio.Event) -> None:
             continue
 
 
+async def _import_emoji_presets(app: FastAPI) -> None:
+    """M102 (docs/EMOJI.md §8): the preset packs under EMOJI_PRESETS_DIR, once per start, in the
+    background so that a large first import never delays readiness."""
+    async with app.state.db.session_factory() as session:
+        await emoji_presets.run_at_startup(session, app.state.settings, app.state.blobs)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
@@ -306,6 +314,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await canvases.ensure_builtin_templates(session)
     except Exception:
         log.exception("could not check the built-in canvas templates at startup")
+    if settings.emoji_presets_dir:
+        tasks.append(asyncio.create_task(_import_emoji_presets(app), name="emoji-presets"))
     if settings.run_background_tasks:
         tasks.append(asyncio.create_task(app.state.relay.run(stop), name="outbox-relay"))
         tasks.append(asyncio.create_task(_purge_loop(app, stop), name="outbox-purge"))

@@ -40,6 +40,8 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-chikuwa}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_REGION: ${S3_REGION:-us-east-1}
+      # 絵文字のセットのフォルダ (M102、docs/EMOJI.md §8)。下のマウント先。空のフォルダなら何もしない
+      EMOJI_PRESETS_DIR: /presets
     depends_on:
       db:
         condition: service_healthy
@@ -60,6 +62,10 @@ services:
       - ${ANTHROPIC_API_KEY_FILE:-./secrets/anthropic_api_key}:/run/secrets/anthropic_api_key:ro
       # OpenAI API キー (docs/AI.md §12。infra/.env の OPENAI_API_KEY_FILE で指定)。無ければ OpenAI のモデルのボットが「使えない」になるだけ
       - ${OPENAI_API_KEY_FILE:-./secrets/openai_api_key}:/run/secrets/openai_api_key:ro
+      # 絵文字のセット (M102、docs/EMOJI.md §8): パックのフォルダ (pack.json と画像) を入れておくと起動のたびに取り込む。
+      # 絵はリポジトリに入れない。本番は deploy.sh が infra/emoji-presets を作る (無いと Docker が root の空フォルダを作る)。
+      # 開発で手元の /emoji を使うときは infra/.env に EMOJI_PRESETS_DIR_HOST=../emoji (docs/DEVELOPMENT.md)
+      - ${EMOJI_PRESETS_DIR_HOST:-./emoji-presets}:/presets:ro
     restart: unless-stopped
 
   caddy:

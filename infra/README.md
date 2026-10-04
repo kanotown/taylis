@@ -413,6 +413,45 @@ CHIKUWA_SERVER_IMAGE=$REGISTRY/chikuwachat-server:$(cat .release) CHIKUWA_WEB_IM
 upload / deploy、初回起動、更新 (バックアップあり)、起動しないリリースの自動ロールバック、
 復元 (`restore.sh`) が通ることを確認した。GitHub Actions 上での実行は、リポジトリを push した後の最初のタグで確かめる。
 
+### 絵文字のセット (プリセット、M102)
+
+利用者の絵文字のセット (docs/EMOJI.md §8) は、絵をリポジトリに入れず、サーバの `/srv/chikuwachat/infra/emoji-presets/`
+に一度だけ置く。アプリは起動のたびにそこを読み (コンテナの `/presets`、読み取り専用)、新しいもの・変わったものだけを
+取り込む。フォルダは deploy.sh (と vps-bootstrap.sh) が deploy の持ち物として作り、リリースは中身に触らない
+(upload が置き換えるのは compose・Caddyfile・スクリプトだけ)。管理者が画面で消したセットや絵文字は戻らない。
+
+```sh
+# 0. (このリリースより前のサーバーで、まだフォルダが無いときだけ)
+ssh -i <鍵> root@<サーバー> install -d -o deploy -g deploy -m 755 /srv/chikuwachat/infra/emoji-presets
+
+# 1. 手元の Mac (リポジトリの直下) から、フォルダごと送る
+scp -r -i <鍵> emoji/Chikuwa emoji/Hanpen emoji/Hanpen_dot root@<サーバー>:/srv/chikuwachat/infra/emoji-presets/
+
+# ここからサーバーで (root)
+cd /srv/chikuwachat/infra
+# 2. ほかの infra のファイルと同じく deploy の持ち物にし、コンテナのアプリ (uid 10001) が読めるようにする
+chown -R deploy:deploy emoji-presets
+chmod -R u=rwX,go=rX emoji-presets
+
+# 3. 今すぐ取り込む (待つなら次のリリースか再起動で入る)。deploy.sh と同じ compose の組み合わせで
+. ./deploy.conf
+export CHIKUWA_SERVER_IMAGE="$REGISTRY/chikuwachat-server:$(cat .release)"
+export CHIKUWA_WEB_IMAGE="$REGISTRY/chikuwachat-web:$(cat .release)"
+COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml)
+for f in ${EXTRA_COMPOSE_FILES:-}; do COMPOSE+=(-f "$f"); done
+COMPOSE+=(--profile proxy)
+"${COMPOSE[@]}" exec -T app python -m app.cli import-emoji-presets
+#   → emoji presets: Chikuwa: new pack, 40 added, 0 changed, tab icon; Hanpen: …
+#   (再起動で取り込ませるなら "${COMPOSE[@]}" restart app。結果はログの "emoji presets:" の行)
+```
+
+- 絵や `pack.json` を直したら、同じフォルダに置き直して 2. と 3. をもう一度。表示名・キーワード・順番・新しい項目が
+  入り、中身の変わった画像だけが差し替わる (同じなら何も起きない)。
+- 管理者が消したセットを戻すとき: 3. の最後を `import-emoji-presets --restore Hanpen` にする。
+- フォルダが 1 つ壊れていても (pack.json の誤りや足りない画像) そのフォルダが飛ばされるだけで、アプリは普通に起動する。
+  CLI は終了コード 1 と `SKIPPED (理由)` を出す。
+- release の配布先が複数あるとき (production 以外の環境) は、入れたいサーバーごとに同じ手順で置く。
+
 ## Mattermost からの移行 (M18)
 
 Mattermost のチーム 1 つを、会話ごとこのサーバへ読み込む。2 段に分かれる。
