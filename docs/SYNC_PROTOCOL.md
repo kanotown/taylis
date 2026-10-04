@@ -250,6 +250,7 @@
 | `task.deleted` | channel (自分用: user) | — | `{ id, channel_id }` (M55)。手元から消す |
 | `task.assigned` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id, kind }` (M55。`kind` は L9、M63)。ほかの人が自分を担当に加えた (自分で加えたときは出ない)。DM のタスクの `channel_name` は空文字。アプリ内でも通知する (プッシュは PushPlanner) |
 | `task.review_done` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id }` (L9、M63)。自分が出したレビュー依頼を依頼先が完了にした。アプリ内でも通知する (REVIEWS.md §4) |
+| `reservation.updated` | channel | — | `{ channel_id, pool_id, deleted }` (M99、RESERVATIONS.md §5)。チャンネルの予約の枠が変わった (設定・待ち・利用中、`deleted` なら枠が消えた)。カードは人ごとに違う (自分の状態、担当者だけのアドレス) のでイベントには載せない: その会話の枠を持っている (開いたことがある) か開いている端末は `GET /channels/{id}/reservation-pools` で読み直す。会話を開いたとき・再接続のあとも読む |
 | `task.due` | user | — | `{ task_id, channel_id, channel_name, title, due_on }` (M55)。担当 (自分用は自分) の未完了のタスクの期限の日の 8:00。1 回だけ。アプリ内でも通知する |
 | `draft.updated` | user | — | `{ channel_id, parent_id, body, updated_at, deleted }` (M15d)。自分の端末が下書きを保存 / 削除した (`deleted` なら `body` は空)。取り込み方は §8 |
 | `ai.run_updated` | user (頼んだ人) | — | `{ run: AiRunOut }` (M65、docs/AI.md §5)。要約の状態が変わるたび (running、done、failed)。メンションの run は出さない (返事はふつうのメッセージ)。取りこぼしうるので、開いている要約は再接続のあと `GET /ai/runs/{id}` で読み直す |
