@@ -84,6 +84,28 @@ describe("edits through the browser's editing, so ⌘Z undoes them (tester, 2026
     expect(w.draft()).toBe("a****b");
   });
 
+  it("a URL pasted over selected text links it with insertText (⌘Z takes it back); other pastes go as usual", () => {
+    const exec = browserEditing();
+    const w = world();
+    w.type("see the docs please");
+    w.box().focus();
+    w.box().setSelectionRange(8, 12);
+    const paste = (text: string) => fireEvent.paste(w.box(), { clipboardData: { files: [], types: ["text/plain"], getData: (type: string) => (type === "text/plain" ? text : "") } });
+    expect(paste(" https://example.com/a?b=1 ")).toBe(false); // default prevented
+    expect(exec).toHaveBeenCalledExactlyOnceWith("insertText", false, expect.stringContaining("[docs](https://example.com/a?b=1)"));
+    expect(w.draft()).toBe("see the [docs](https://example.com/a?b=1) please");
+    expect([w.box().selectionStart, w.box().selectionEnd]).toEqual([41, 41]);
+    // No selection, not a URL, or a URL selected: the browser pastes.
+    w.box().setSelectionRange(3, 3);
+    expect(paste("https://example.com")).toBe(true);
+    w.box().setSelectionRange(0, 3);
+    expect(paste("just text")).toBe(true);
+    w.type("https://old.example.com");
+    w.box().setSelectionRange(0, 23);
+    expect(paste("https://new.example.com")).toBe(true);
+    expect(exec).toHaveBeenCalledOnce();
+  });
+
   it("「@」 inserts an @ (after a space) and opens the member list", () => {
     const w = world();
     w.type("hi");

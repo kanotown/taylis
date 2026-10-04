@@ -8,7 +8,7 @@ import type { ChannelState, SendOptions } from "../sync/types";
 import { composerMaxHeight } from "../platform/viewport";
 import { PriorityLabel } from "./PriorityLabel";
 import { PendingAttachments } from "./Attachments";
-import { continueStructure, type EditState, indentListLine, insertLink, insideFence, replaceThroughBrowser, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
+import { continueStructure, type EditState, indentListLine, insertLink, insideFence, linkFromPaste, replaceThroughBrowser, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
 import { AiBadge } from "./ai";
 import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
@@ -653,7 +653,20 @@ export function Composer({
               syncCaret(e.target);
               if (e.target.value.trim()) controller.engine?.sendTyping(channel.id, parentId ?? null); // §5.2, throttled by the engine
             }}
-            onPaste={(event) => { if (event.clipboardData.files.length) { event.preventDefault(); void pickFiles(Array.from(event.clipboardData.files)); } }}
+            onPaste={(event) => {
+              if (event.clipboardData.files.length) {
+                event.preventDefault();
+                void pickFiles(Array.from(event.clipboardData.files));
+                return;
+              }
+              // A URL pasted over selected text links it (composerEdit.linkFromPaste).
+              const el = event.currentTarget;
+              const linked = linkFromPaste({ text: el.value, start: el.selectionStart, end: el.selectionEnd }, event.clipboardData.getData("text/plain"));
+              if (linked) {
+                event.preventDefault();
+                apply(linked);
+              }
+            }}
             aria-label={parentId ? "スレッドの返信" : "メッセージ"}
             onKeyDown={onKeyDown}
             onKeyUp={(e) => syncCaret(e.currentTarget)}

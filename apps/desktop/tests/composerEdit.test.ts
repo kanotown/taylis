@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { changedRange, clusterRange, continueStructure, indentListLine, insertLink, insideFence, toggleFence, toggleLinePrefix, toggleWrap } from "../src/ui/composerEdit";
+import { changedRange, clusterRange, continueStructure, indentListLine, insertLink, insideFence, linkFromPaste, toggleFence, toggleLinePrefix, toggleWrap } from "../src/ui/composerEdit";
 
 describe("composer markdown helpers", () => {
   it("wraps, unwraps and inserts empty marker pairs", () => {
@@ -81,5 +81,26 @@ describe("composer markdown helpers", () => {
     for (const [before, after] of pairs) {
       expect(apply(before, clusterRange(before, after))).toBe(after);
     }
+  });
+
+  it("links selected text when a single http(s) URL is pasted over it", () => {
+    expect(linkFromPaste({ text: "read this now", start: 5, end: 9 }, "https://example.com/x")).toEqual({ text: "read [this](https://example.com/x) now", start: 34, end: 34 });
+    // Spaces a double-click took stay outside the brackets; the clipboard's own spaces and newline go.
+    expect(linkFromPaste({ text: "read this now", start: 5, end: 10 }, " https://example.com\n")).toEqual({ text: "read [this](https://example.com) now", start: 32, end: 32 });
+    expect(linkFromPaste({ text: "日本語のリンク", start: 4, end: 7 }, "http://example.jp")?.text).toBe("日本語の[リンク](http://example.jp)");
+  });
+
+  it("leaves a paste alone when it should replace the selection as usual", () => {
+    const url = "https://example.com";
+    expect(linkFromPaste({ text: "abc", start: 1, end: 1 }, url)).toBeNull(); // no selection
+    expect(linkFromPaste({ text: "abc", start: 0, end: 3 }, "not a url")).toBeNull();
+    expect(linkFromPaste({ text: "abc", start: 0, end: 3 }, "mailto:a@example.com")).toBeNull();
+    expect(linkFromPaste({ text: "abc", start: 0, end: 3 }, "https://a.example https://b.example")).toBeNull();
+    expect(linkFromPaste({ text: "abc", start: 0, end: 3 }, "https://example.com/a_(b)")).toBeNull(); // the renderer stops at ")"
+    expect(linkFromPaste({ text: "https://old.example", start: 0, end: 19 }, url)).toBeNull(); // a URL selected
+    expect(linkFromPaste({ text: "a\nb", start: 0, end: 3 }, url)).toBeNull(); // over lines
+    expect(linkFromPaste({ text: "[x](https://y.example)", start: 0, end: 22 }, url)).toBeNull(); // a link already
+    expect(linkFromPaste({ text: "a [b] c", start: 0, end: 7 }, url)).toBeNull(); // brackets would break the label
+    expect(linkFromPaste({ text: "a   b", start: 1, end: 4 }, url)).toBeNull(); // only spaces
   });
 });
