@@ -25,6 +25,7 @@ import { TestNotificationCard } from "./TestNotification";
 import { displayTitle } from "./roster";
 import { PALETTES, SIDEBAR_TONES, THEME_OPTIONS, themeLabel, usePalette, useSidebarTone, useTheme, writePalette, writeSidebarTone, writeTheme } from "./theme";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
+import { DeleteAccountDialog } from "./ModerationDialogs";
 import { UsernameEditor } from "./UsernameEditor";
 import { StatusGlyph } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
@@ -848,6 +849,7 @@ function AccountSection({ controller }: { controller: AppController }) {
   const [totp, setTotp] = useState<TotpStatusOut | null>(null);
   const [totpDialog, setTotpDialog] = useState<"setup" | "disable" | null>(null);
   const [sessionsVersion, setSessionsVersion] = useState(0);
+  const [deleting, setDeleting] = useState(false);
   // M48: an account made by Google sign-in has no password (nothing to change, and 2FA is Google's).
   const hasPassword = (controller.store.me ?? controller.me)?.has_password !== false;
   useEffect(() => {
@@ -920,9 +922,38 @@ function AccountSection({ controller }: { controller: AppController }) {
         </>
       )}
       <SessionsList controller={controller} version={sessionsVersion} />
+      <BlockedUsersList controller={controller} />
+      {/* M104 (docs/MODERATION.md §2): deleting my account from inside the app (App Store 5.1.1(v), Google Play). */}
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">アカウントを削除</h3>
+        <p className="text-xs text-muted">すべての端末からログアウトし、プロフィールとログイン情報を消去します。投稿したメッセージは「退会したユーザー」として残ります。取り消せません。</p>
+        <Button size="sm" variant="danger" onClick={() => setDeleting(true)}>アカウントを削除…</Button>
+      </section>
+      {deleting && <DeleteAccountDialog controller={controller} onClose={() => setDeleting(false)} />}
       {totpDialog === "setup" && <TotpSetupDialog controller={controller} onClose={() => setTotpDialog(null)} onEnabled={() => { setTotpDialog(null); void controller.totpStatus().then(setTotp); }} />}
       {totpDialog === "disable" && <TotpDisableDialog controller={controller} onClose={() => setTotpDialog(null)} onDisabled={() => { setTotpDialog(null); void controller.totpStatus().then(setTotp); }} />}
     </div>
+  );
+}
+
+/** M104 (docs/MODERATION.md §4): the people I blocked, each with 「解除」. */
+function BlockedUsersList({ controller }: { controller: AppController }) {
+  useStoreUpdates(controller);
+  const store = controller.store;
+  const ids = [...store.blockedUsers];
+  if (ids.length === 0) return null;
+  return (
+    <section className="space-y-2">
+      <h3 className="text-sm font-semibold">ブロック中のユーザー</h3>
+      <ul className="space-y-1.5">
+        {ids.map((id) => (
+          <li key={id} className={CARD}>
+            <span className="min-w-0 flex-1 truncate text-sm">{store.users.get(id)?.display_name ?? "不明なユーザー"}</span>
+            <Button size="sm" variant="secondary" onClick={() => void controller.setUserBlocked(id, false)}>解除</Button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

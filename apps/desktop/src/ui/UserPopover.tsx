@@ -1,4 +1,4 @@
-import { MessageSquare, Pencil, UserRoundPen } from "lucide-react";
+import { Ban, MessageSquare, Pencil, UserRoundPen } from "lucide-react";
 import { Fragment, type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -30,6 +30,7 @@ export function UserPopover({ controller, userId, children, className }: { contr
   // The roster label is the title too (LAB.md 「肩書と名簿」): 「M2 · 研究室長」; the roster block keeps the supervisor and the topic.
   const title = displayTitle(user?.title, line);
   const supervisor = line ? supervisorLabel(line, store.users) : null;
+  const blocked = store.isBlocked(userId);
   const openDm = async () => {
     const id = await controller.openDmWith(userId);
     if (id) {
@@ -72,6 +73,7 @@ export function UserPopover({ controller, userId, children, className }: { contr
           </div>
         )}
         {user?.deactivated_at && <div className="border-b border-line px-4 py-2 text-xs text-muted">無効化されたアカウント</div>}
+        {blocked && <div className="border-b border-line px-4 py-2 text-xs text-muted">ブロック中 (メッセージは折りたたまれ、通知されません)</div>}
         {/* My own card has two actions: stacked full width (side by side they overflowed the 288 px card). */}
         <div className={cn("flex gap-2 p-3", me && "flex-col")}>
           {me ? (
@@ -84,9 +86,22 @@ export function UserPopover({ controller, userId, children, className }: { contr
               </Button>
             </>
           ) : (
-            <Button size="sm" className="flex-1" onClick={() => void openDm()} disabled={!!user?.deactivated_at}>
-              <MessageSquare size={14} /> メッセージを送る
-            </Button>
+            <>
+              <Button size="sm" className="flex-1" onClick={() => void openDm()} disabled={!!user?.deactivated_at}>
+                <MessageSquare size={14} /> メッセージを送る
+              </Button>
+              {/* M104 (docs/MODERATION.md §4): private; the person is not told. */}
+              {user && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  title={blocked ? "ブロックを解除" : "このユーザーのメッセージを隠し、通知と DM を受け取らない"}
+                  onClick={() => void controller.setUserBlocked(userId, !blocked)}
+                >
+                  <Ban size={14} /> {blocked ? "ブロックを解除" : "ブロック"}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </PopoverContent>

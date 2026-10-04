@@ -29,7 +29,7 @@ import { openInBrowser } from "../platform/external";
 import { resolveDeviceName } from "../platform/deviceName";
 import { readerIdle } from "../platform/idle";
 import { clearNotifications, notify } from "../platform/notify";
-import type { TestNotificationOut } from "../api/types";
+import type { ReportReason, TestNotificationOut } from "../api/types";
 import { secretStore } from "../platform/secrets";
 import { SqlitePersistence } from "../platform/sqlite";
 import { SyncEngine } from "../sync/engine";
@@ -945,6 +945,55 @@ export class AppController {
     }
   }
 
+  /**
+   * M104 「ブロック」/「ブロックを解除」 (docs/MODERATION.md §4): the store flag moves at once, block.updated brings my other
+   * devices along. The blocked person is not told.
+   */
+  async setUserBlocked(userId: string, on: boolean): Promise<boolean> {
+    if (!this.api) return false;
+    const before = this.store.isBlocked(userId);
+    this.store.setBlocked(userId, on);
+    try {
+      if (on) await this.api.blockUser(userId);
+      else await this.api.unblockUser(userId);
+      this.setNotice(on ? "ブロックしました" : "ブロックを解除しました");
+      return true;
+    } catch (error) {
+      this.store.setBlocked(userId, before);
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** M104 「報告する」: the administrators are told; the reporter learns nothing about other reports. */
+  async reportMessage(messageId: string, reason: ReportReason, note: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      await this.api.reportMessage(messageId, { reason, note: note.trim() || null });
+      this.setNotice("報告しました。管理者が確認します");
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /**
+   * M104 「アカウントを削除」 (docs/MODERATION.md §2): my password, or my username for an account without one. On success the
+   * server has ended every session; this workspace is signed out here. Returns the error to show in the dialog, or null.
+   */
+  async deleteAccount(secret: string): Promise<string | null> {
+    if (!this.api || !this.activeServer) return "ログインしていません";
+    const hasPassword = this.store.me?.has_password !== false;
+    try {
+      await this.api.deleteAccount(hasPassword ? { password: secret } : { confirm_username: secret });
+    } catch (error) {
+      return describe(error);
+    }
+    await this.signOutWorkspace(this.activeServer);
+    return null;
+  }
+
   /** M12a 「すべて既読にする」. */
   async markAllRead(scope?: ReadAllScope): Promise<void> {
     if (!this.engine) return;
@@ -1708,7 +1757,7 @@ export class AppController {
       // M72 (CANVAS.md §18.1): a canvas newly mentions me (the engine checks the conversation's level and mute), worded
       // like the server's push; a click opens the canvas.
       onCanvasMention: (mention, channel) => {
-        if (this.quiet(session)) return;
+        if (this.quiet(session) || store.isBlocked(mention.by_user_id)) return;
         const who = store.users.get(mention.by_user_id)?.display_name ?? "メンバー";
         const where = channel.type === "public" || channel.type === "private" ? ` (#${channel.name})` : "";
         void notify(this.notificationTitle(session, "キャンバス"), `${who} が「${mention.title}」であなたをメンションしました${where}`, () => {
@@ -1722,6 +1771,7 @@ export class AppController {
       },
       onNotify: (message, channel) => {
         if (this.quiet(session)) return; // M12c: paused / quiet hours
+        if (store.isBlocked(message.sender_id)) return; // M104: nothing from someone I blocked
         const sender = store.users.get(message.sender_id)?.display_name ?? "メンバー";
         const text = plainText(mentionsToNames(message.body, store.users, store.groups)) || attachmentText(message.attachments) || "新しいメッセージ";
         // A DM is titled by its sender; a channel or group DM by the conversation, with the sender before the text.
@@ -1731,7 +1781,7 @@ export class AppController {
       // M39: a reaction to my message, only when I asked for reaction banners (the engine checks that and the
       // conversation's level and mute; the activity lists it either way). Titled like the server's push.
       onReaction: (reaction, channel) => {
-        if (this.quiet(session)) return;
+        if (this.quiet(session) || store.isBlocked(reaction.user_id)) return;
         const actor = store.users.get(reaction.user_id)?.display_name ?? "メンバー";
         const message = store.getMessage(channel.id, reaction.message_id);
         const excerpt = message && !message.deleted ? plainText(mentionsToNames(message.body, store.users, store.groups), 80) : "";

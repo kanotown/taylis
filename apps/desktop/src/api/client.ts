@@ -3,6 +3,7 @@ import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut
 import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
 import type { TestNotificationOut } from "./types";
+import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, ReportAck, ReportCreate } from "./types";
 
 /**
  * M76 (CANVAS.md §20): the activity kinds this client shows beyond M39's (the server sends canvas_mention items, and
@@ -845,6 +846,41 @@ export class ApiClient {
 
   adminAnonymizeUser(userId: string): Promise<AdminUserOut> {
     return this.request("POST", `/api/v1/admin/users/${userId}/anonymize`);
+  }
+
+  // --- moderation (M104, docs/MODERATION.md) ------------------------------------------------
+
+  blockUser(userId: string): Promise<BlockStateOut> {
+    return this.request("PUT", `/api/v1/users/${userId}/block`);
+  }
+
+  unblockUser(userId: string): Promise<BlockStateOut> {
+    return this.request("DELETE", `/api/v1/users/${userId}/block`);
+  }
+
+  listBlocks(): Promise<BlockOut[]> {
+    return this.request("GET", "/api/v1/users/me/blocks");
+  }
+
+  reportMessage(messageId: string, body: ReportCreate): Promise<ReportAck> {
+    return this.request("POST", `/api/v1/messages/${messageId}/report`, body);
+  }
+
+  /** My password, or my username for an account without one (Google sign-in). 422 invalid_password / invalid_confirmation, 409 last_admin. */
+  deleteAccount(body: AccountDeletion): Promise<void> {
+    return this.request("POST", "/api/v1/users/me/delete-account", body);
+  }
+
+  adminListReports(status: "open" | "resolved" | "all" = "open"): Promise<AdminReportOut[]> {
+    return this.request("GET", `/api/v1/admin/reports?status=${status}`);
+  }
+
+  adminResolveReport(reportId: string): Promise<AdminReportOut> {
+    return this.request("POST", `/api/v1/admin/reports/${reportId}/resolve`);
+  }
+
+  adminReopenReport(reportId: string): Promise<AdminReportOut> {
+    return this.request("POST", `/api/v1/admin/reports/${reportId}/reopen`);
   }
 
   // --- two-factor authentication (M12i) ----------------------------------------------------
