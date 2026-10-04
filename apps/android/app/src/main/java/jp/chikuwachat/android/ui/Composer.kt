@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -217,16 +218,28 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         val candidates = if (query != null) Mentions.candidates(query, store.users.values, store.groups.values, aiBotIds = controller.aiBotIds) else emptyList()
         // `:tada` completes to an emoji (M11f) when no mention is being typed.
         val emojiHits = if (candidates.isEmpty()) Emoji.query(draft)?.let { q ->
-            val names = store.customEmoji.keys.filter { it.startsWith(q) || it.contains(q) }.take(4)
-            (names.map { EmojiEntry(shortcode = it, glyph = ":$it:", category = "custom", keywords = it) } + Emoji.candidates(q)).take(8)
+            // M100: also by label and keywords (":ありがとう" finds :hpd-bow:).
+            val found = CustomEmoji.candidates(q, store.customEmoji.values)
+            (found.map { EmojiEntry(shortcode = it.name, glyph = ":${it.name}:", category = "custom", keywords = it.label ?: "") } + Emoji.candidates(q)).take(8)
         } ?: emptyList() else emptyList()
         var pickingEmoji by rememberSaveable { mutableStateOf(false) }
-        if (pickingEmoji) EmojiPickerSheet(recent = QuickReactions.read(controller.prefs), store = store, onNeedImage = { controller.loadEmojiImage(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; QuickReactions.remember(controller.prefs, it); insertAtCursor(it) })
+        if (pickingEmoji) EmojiPickerSheet(recent = QuickReactions.read(controller.prefs), store = store, onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; QuickReactions.remember(controller.prefs, it); insertAtCursor(it) })
         if (emojiHits.isNotEmpty()) {
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(emojiHits, key = { it.shortcode }) { entry ->
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.clickable { QuickReactions.remember(controller.prefs, entry.glyph); setText(Emoji.complete(draft, entry.glyph)) }) {
-                        Text(entry.glyph + "  :" + entry.shortcode + ":", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                        val custom = if (entry.category == "custom") store.customEmoji[entry.shortcode] else null
+                        if (custom != null) {
+                            // The image (or text pill) and its label, not `:name:` twice.
+                            val image = store.emojiImages[custom.id]
+                            if (image == null) controller.loadEmojiImage(custom)
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                if (image != null) EmojiImage(image, store.emojiAnimations[custom.id], contentDescription = null, modifier = Modifier.height(20.dp).width((20 * CustomEmoji.aspect(custom)).dp))
+                                Text("  " + (custom.label ?: ":${custom.name}:"), style = MaterialTheme.typography.labelLarge)
+                            }
+                        } else {
+                            Text(entry.glyph + "  :" + entry.shortcode + ":", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                        }
                     }
                 }
             }

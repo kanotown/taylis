@@ -527,6 +527,8 @@ data class BootstrapOut(
     val favorites: List<String> = emptyList(),
     /** Custom emoji (M12f): the whole table; changes arrive as emoji.updated. */
     val customEmoji: List<CustomEmojiOut> = emptyList(),
+    /** M100: emoji packs in tab order; changes arrive as emoji_pack.updated. */
+    val emojiPacks: List<EmojiPackOut> = emptyList(),
     /** User groups (M12k): every group with its members; changes arrive as group.updated. */
     val groups: List<GroupOut> = emptyList(),
     /** The lab roster (M23), in roster order; changes arrive as roster.updated. Absent from servers before M23. */
@@ -633,7 +635,25 @@ data class LabProfileOut(
 
 /** A workspace emoji (M12f) used as `:name:` in text and reactions. */
 @Serializable
-data class CustomEmojiOut(val id: String, val name: String, val contentType: String, val width: Int, val height: Int, val createdBy: String, val createdAt: String)
+data class CustomEmojiOut(
+    val id: String, val name: String, val contentType: String, val width: Int, val height: Int, val createdBy: String, val createdAt: String,
+    /** M100 (docs/EMOJI.md): "image" (older servers: absent) or "text" (`label` drawn as a pill in `color`, no image). */
+    val kind: String = "image",
+    /** The display name (the picker's name, 「おじぎ」); the text of a text emoji. */
+    val label: String? = null,
+    val color: String? = null,
+    /** Search terms for the picker and `:` completion (Japanese included). */
+    val keywords: List<String> = emptyList(),
+    /** The pack (its own picker tab); null = 「カスタム」. */
+    val packId: String? = null,
+    val position: Int = 0,
+) {
+    val isText: Boolean get() = kind == "text"
+}
+
+/** M100: a set of custom emoji with its own picker tab; its tab icon at GET /emoji/packs/{id}/tab when `tabVersion` is set. */
+@Serializable
+data class EmojiPackOut(val id: String, val name: String, val position: Int = 0, val tabVersion: String? = null, val createdAt: String = "", val updatedAt: String = "")
 
 /** PUT / DELETE /channels/{id}/favorite (M12a). */
 @Serializable

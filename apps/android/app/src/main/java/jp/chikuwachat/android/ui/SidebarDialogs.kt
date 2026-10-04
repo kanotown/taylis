@@ -228,7 +228,7 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
     if (picking) {
         EmojiPickerSheet(
             recent = QuickReactions.read(controller.prefs),
-            store = store, onNeedImage = { controller.loadEmojiImage(it) },
+            store = store, onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) },
             onDismiss = { picking = false }, onPick = { emoji = it; picking = false },
         )
     }

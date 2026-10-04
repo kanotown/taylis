@@ -5,6 +5,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
 import jp.chikuwachat.android.platform.Notifier
 import jp.chikuwachat.android.ui.AppRoot
 import jp.chikuwachat.android.ui.ChikuwaTheme
@@ -22,7 +24,12 @@ class MainActivity : ComponentActivity() {
         // A restore after process death may carry the browser's return; a rotation finds its data cleared.
         if (!fromHistory) takeSsoReturn(intent)
         // The notification permission is asked once the main screen is up (MainScreen, M28c), not at every start.
-        setContent { ChikuwaTheme(controller.appearance) { AppRoot(controller) } }
+        setContent {
+            // M100: text emoji pills are drawn for the look in effect (the setting or the system's).
+            val dark = controller.appearance.isDark(isSystemInDarkTheme())
+            LaunchedEffect(dark) { controller.textEmojiDark = dark }
+            ChikuwaTheme(controller.appearance) { AppRoot(controller) }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

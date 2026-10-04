@@ -5,7 +5,8 @@ object Emoji {
     private val byShortcode: Map<String, EmojiEntry> = EmojiData.all.associateBy { it.shortcode }
     private val SHORTCODE = Regex(":([a-z0-9_+\\-]{1,30}):")
     /** ":ta" at the end of the text, at a word start; the query needs at least 2 characters. */
-    private val QUERY = Regex("(^|[\\s(（「])[:：]([a-z0-9_+\\-]{2,30})$")
+    /** M100: or a Japanese word (":ありがとう", "：了解"), one character enough: custom emoji by label / keyword. */
+    private val QUERY = Regex("(^|[\\s(（「])[:：]([a-z0-9_+\\-]{2,30}|[^\\s:：\\x00-\\x7f][^\\s:：]{0,19})$")
 
     fun byShortcode(shortcode: String): EmojiEntry? = byShortcode[shortcode]
 
@@ -23,7 +24,11 @@ object Emoji {
         val q = query.lowercase()
         if (q.isEmpty()) return emptyList()
         val prefix = EmojiData.all.filter { it.shortcode.startsWith(q) }
-        val rest = EmojiData.all.filter { !it.shortcode.startsWith(q) && (it.shortcode.contains(q) || it.keywords.lowercase().contains(q)) }
+        val folded = CustomEmoji.fold(q)
+        val rest = EmojiData.all.filter {
+            !it.shortcode.startsWith(q) && (it.shortcode.contains(q) || it.keywords.lowercase().contains(q) ||
+                (folded != q && CustomEmoji.fold(it.keywords).contains(folded)))
+        }
         return (prefix + rest).take(limit)
     }
 

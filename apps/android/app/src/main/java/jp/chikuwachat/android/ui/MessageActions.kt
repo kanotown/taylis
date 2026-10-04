@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -260,8 +261,10 @@ fun ReactionChips(
                 if (custom != null) {
                     // The image's 16 dp from the start (2026-10-04): `:name:` until it came made the chip wider, and the
                     // chips could re-wrap and the row change height when it arrived.
-                    if (image != null) EmojiImage(image, store.emojiAnimations[custom.id], contentDescription = reaction.emoji, modifier = Modifier.size(16.dp))
-                    else Spacer(Modifier.size(16.dp))
+                    // M100: a wide one (at most 3:1) or a text emoji's pill is wider, as high.
+                    val box = Modifier.height(16.dp).width((16 * CustomEmoji.aspect(custom)).dp)
+                    if (image != null) EmojiImage(image, store.emojiAnimations[custom.id], contentDescription = reaction.emoji, modifier = box)
+                    else Spacer(box)
                     Text(" ${reaction.count}", style = MaterialTheme.typography.labelLarge)
                 } else {
                     Text("${reaction.emoji} ${reaction.count}", style = MaterialTheme.typography.labelLarge)
