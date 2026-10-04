@@ -102,3 +102,52 @@ describe("sidebar sections (M26, Slack)", () => {
     expect(within(header).getByRole("button", { name: "設定" })).toBeTruthy();
   });
 });
+
+describe("the Times section folded", () => {
+  /** alice, with (or without) her own times beside bob's; general is open. */
+  function timesWorld(mine: boolean) {
+    const w = world();
+    const server = new FakeServer();
+    const bob = server.addUser("bob");
+    const add = (name: string, ownerId: string) => {
+      const channel = { ...server.createChannel(name, ownerId), times_owner_id: ownerId };
+      w.store.upsertChannel(channel, { isMember: true, syncedSeq: 0, oldestLoadedSeq: 0 });
+    };
+    if (mine) add("times-alice", w.controller.me.id);
+    add("times-bob", bob.id);
+    render(
+      <Sidebar controller={w.controller as unknown as AppController} channels={[...w.store.channels.values()]} currentId={w.general.id} unreadOnly={false}
+        onToggleUnreadOnly={() => {}} onOpen={() => {}} onNewDm={() => {}} onNewChannel={() => {}} onTimesFeed={() => {}} onCreateTimes={() => {}} />,
+    );
+  }
+  const row = (name: string) => screen.getByText(name).closest("li")!;
+  const folded = (name: string) => row(name).className.includes("folded");
+  const foldTimes = () => localStorage.setItem("chikuwa.sidebar.folded", JSON.stringify(["times"]));
+
+  it("keeps 「フィード」 and my own times, and folds the others away", () => {
+    foldTimes();
+    timesWorld(true);
+    expect(screen.getByRole("button", { name: "Times" }).getAttribute("aria-expanded")).toBe("false");
+    expect(folded("フィード")).toBe(false);
+    expect(folded("times-alice")).toBe(false);
+    expect(screen.getByRole("button", { name: /times-alice/ })).toBeTruthy();
+    expect(folded("times-bob")).toBe(true);
+    expect(row("times-bob").getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("shows nothing extra when I have no times", () => {
+    foldTimes();
+    timesWorld(false);
+    expect(folded("フィード")).toBe(true);
+    expect(folded("times-bob")).toBe(true);
+  });
+
+  it("shows every row when open, with or without my times", () => {
+    timesWorld(true);
+    expect(screen.getByRole("button", { name: "Times" }).getAttribute("aria-expanded")).toBe("true");
+    for (const name of ["フィード", "times-alice", "times-bob"]) expect(folded(name)).toBe(false);
+    cleanup();
+    timesWorld(false);
+    for (const name of ["フィード", "times-bob"]) expect(folded(name)).toBe(false);
+  });
+});

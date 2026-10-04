@@ -1,18 +1,24 @@
 import type { PresenceStatus } from "../api/types";
-import { useAvatarUrl } from "./avatars";
+import { useAvatar } from "./avatars";
 import { avatarHue, initials } from "./format";
 import { cn } from "./primitives";
 
-/** The profile picture when the user has one (M14a), else initials on a colour derived from the id. `presence` adds the status dot. */
+/**
+ * The profile picture when the user has one (M14a), else initials on a colour derived from the id. A picture never loaded
+ * before shows a neutral tile of the same shape while it loads (not the initials, which would flash). `presence` adds the
+ * status dot.
+ */
 export function Avatar({ id, name, size = 36, className, presence, presenceClassName }: { id: string; name: string; size?: number; className?: string; presence?: PresenceStatus; presenceClassName?: string }) {
   const hue = avatarHue(id);
   const dot = Math.max(8, Math.round(size * 0.3));
-  const picture = useAvatarUrl(id);
+  const picture = useAvatar(id);
   return (
     // A rounded square (Slack) unless the caller sets its own radius; the picture and initials inherit it.
     <span className={cn("relative inline-flex shrink-0 rounded-[22%]", className)} style={{ width: size, height: size }} aria-hidden="true">
-      {picture ? (
-        <img src={picture} alt="" className={cn("h-full w-full rounded-[inherit] object-cover", className)} style={{ width: size, height: size }} draggable={false} />
+      {picture.state === "ready" ? (
+        <img src={picture.url} alt="" className={cn("h-full w-full rounded-[inherit] object-cover", className)} style={{ width: size, height: size }} draggable={false} />
+      ) : picture.state === "loading" ? (
+        <span data-testid="avatar-loading" className={cn("h-full w-full rounded-[inherit]", className)} style={{ background: "rgb(128 128 128 / 0.22)", width: size, height: size }} />
       ) : (
         <span
           className={cn("inline-flex h-full w-full select-none items-center justify-center rounded-[inherit] font-bold text-white", className)}

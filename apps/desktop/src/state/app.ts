@@ -1448,7 +1448,7 @@ export class AppController {
     this.editing = null;
     this.openChannelRequest = null;
     this.totpRequired = false;
-    configureAvatars((path) => session.api.fetchBlob(path)); // M14a
+    configureAvatars((path) => session.api.fetchBlob(path), session.serverUrl); // M14a: another workspace starts an empty cache
     noteVersions(session.store.users.values());
     this.saveWorkspaces();
     setTitleBase(this.workspaceName);
