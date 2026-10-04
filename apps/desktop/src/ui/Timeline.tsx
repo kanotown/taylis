@@ -1012,7 +1012,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             <UserPopover controller={controller} userId={message.sender_id} className="hover:underline">
               <strong className="text-sm text-ink">{senderName}</strong>
             </UserPopover>
-            {sender?.role === "bot" && (store.aiAgentOf(message.sender_id) ? <AiBadge /> : <span className="rounded bg-panel-2 px-1 text-[10px] font-bold text-muted" title="ボット (受信 Webhook・定期投稿) の投稿">BOT</span>)}
+            {sender?.role === "bot" && (store.aiAgentOf(message.sender_id) ? <AiBadge /> : <span className="rounded bg-panel-2 px-1 text-[10px] font-bold text-muted" title="ボット (受信 Webhook・定期投稿・フィード) の投稿">BOT</span>)}
             <StatusEmoji controller={controller} userId={message.sender_id} />
             {feedChannel !== undefined && (
               <button type="button" data-feed-channel="" className="min-w-0 truncate font-medium text-muted hover:text-ink hover:underline" title={`${feedChannel} を開く`} onClick={() => onOpenChannel?.(message.channel_id)}>

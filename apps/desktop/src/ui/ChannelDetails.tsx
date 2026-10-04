@@ -7,6 +7,7 @@ import { AiChannelNotice } from "./ai";
 import { canEditLinks } from "./ChannelLinks";
 import { canMakePublic, notificationChoices, overallLevel } from "./channels";
 import { MemberList, useMembers } from "./Dialogs";
+import { FeedList } from "./ChannelFeeds";
 import { formatMuted } from "./format";
 import { channelTitle } from "./MainScreen";
 import { Badge, Button, cn, IconButton, Input } from "./primitives";
@@ -127,6 +128,12 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
           <section aria-label="定期投稿">
             <h3 className={cn(HEADING, "mb-2")}>定期投稿</h3>
             <RecurringPostList controller={controller} channel={channel} />
+          </section>
+        )}
+        {isChannel && (
+          <section aria-label="フィード">
+            <h3 className={cn(HEADING, "mb-2")}>フィード</h3>
+            <FeedList controller={controller} channel={channel} />
           </section>
         )}
         {isChannel && (

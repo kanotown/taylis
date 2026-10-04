@@ -1,10 +1,12 @@
 """SSRF-safe page fetch (SECURITY.md §14): public http(s) hosts only, every redirect re-checked,
-bounded time and size, HTML only."""
+bounded time and size, HTML only. The feed fetcher (docs/FEEDS.md, M97) shares the checks: any
+content type, a conditional GET (ETag / Last-Modified), and a body over the cap is an error."""
 
 import asyncio
 import ipaddress
 import socket
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 
 import httpx
@@ -37,8 +39,9 @@ def _is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     )
 
 
-async def validate_public_url(url: str) -> str:
-    """http(s), a host name that resolves only to public addresses (or a public literal)."""
+def check_url_shape(url: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """The checks that need no DNS: http(s), a host, no credentials, not a local name, and an IP
+    literal must be public. Returns the literal address, if the host is one."""
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise UrlNotAllowed("url_not_allowed", "Only public http(s) links can be previewed")
@@ -49,11 +52,23 @@ async def validate_public_url(url: str) -> str:
         literal: ipaddress.IPv4Address | ipaddress.IPv6Address | None = ipaddress.ip_address(host)
     except ValueError:
         literal = None
+    if literal is None and (
+        host in ("localhost",) or host.endswith(".localhost") or host.endswith(".local")
+    ):
+        raise UrlNotAllowed("url_not_allowed", "Local hosts cannot be previewed")
+    if literal is not None and not _is_public(literal):
+        raise UrlNotAllowed("url_not_allowed", "Private or local addresses cannot be previewed")
+    return literal
+
+
+async def validate_public_url(url: str) -> str:
+    """http(s), a host name that resolves only to public addresses (or a public literal)."""
+    literal = check_url_shape(url)
+    parts = urlsplit(url)
+    host = parts.hostname or ""
     if literal is not None:
         addresses = [literal]
     else:
-        if host in ("localhost",) or host.endswith(".localhost") or host.endswith(".local"):
-            raise UrlNotAllowed("url_not_allowed", "Local hosts cannot be previewed")
         try:
             infos = await asyncio.to_thread(
                 socket.getaddrinfo, host, parts.port or 80, 0, socket.SOCK_STREAM
@@ -99,6 +114,86 @@ def build_fetcher(*, timeout_seconds: float, max_bytes: int, user_agent: str) ->
                         if len(raw) >= max_bytes:
                             break  # the head has been read; the rest is not needed
                     return current, decode_html(bytes(raw), response.charset_encoding)
+        raise PreviewError("too_many_redirects", "Too many redirects")
+
+    return fetch
+
+
+@dataclass(frozen=True)
+class FeedResponse:
+    """What the feed fetcher returns: 304 (not modified, empty body) or 200 with the body."""
+
+    status: int
+    url: str
+    body: bytes = b""
+    etag: str | None = None
+    last_modified: str | None = None
+    content_type: str = ""
+
+
+# url, etag, last_modified -> response
+FeedFetcher = Callable[[str, str | None, str | None], Awaitable[FeedResponse]]
+
+
+def build_feed_fetcher(
+    *,
+    timeout_seconds: float,
+    max_bytes: int,
+    user_agent: str,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> FeedFetcher:
+    """RSS / Atom fetches (docs/FEEDS.md §4) with the same guard as the previews: every hop is
+    checked by validate_public_url, at most MAX_REDIRECTS, bounded time; a body larger than
+    max_bytes raises `too_large` (a cut XML document would not parse anyway)."""
+
+    async def fetch(url: str, etag: str | None, last_modified: str | None) -> FeedResponse:
+        current = await validate_public_url(url)
+        headers = {
+            "User-Agent": user_agent,
+            "Accept": (
+                "application/rss+xml, application/atom+xml, application/rdf+xml;q=0.9, "
+                "application/xml;q=0.8, text/xml;q=0.8, text/html;q=0.5, */*;q=0.1"
+            ),
+        }
+        if etag:
+            headers["If-None-Match"] = etag
+        if last_modified:
+            headers["If-Modified-Since"] = last_modified
+        async with httpx.AsyncClient(
+            follow_redirects=False,
+            timeout=httpx.Timeout(timeout_seconds),
+            headers=headers,
+            transport=transport,  # tests only
+        ) as client:
+            for _ in range(MAX_REDIRECTS + 1):
+                async with client.stream("GET", current) as response:
+                    if response.status_code in _REDIRECTS and response.headers.get("location"):
+                        current = await validate_public_url(
+                            urljoin(current, response.headers["location"])
+                        )
+                        continue
+                    if response.status_code == 304:
+                        return FeedResponse(
+                            status=304, url=current, etag=etag, last_modified=last_modified
+                        )
+                    if response.status_code >= 400:
+                        raise PreviewError("http_error", f"HTTP {response.status_code}")
+                    declared = response.headers.get("content-length", "")
+                    if declared.isdigit() and int(declared) > max_bytes:
+                        raise PreviewError("too_large", f"The feed is over {max_bytes} bytes")
+                    raw = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        raw.extend(chunk)
+                        if len(raw) > max_bytes:
+                            raise PreviewError("too_large", f"The feed is over {max_bytes} bytes")
+                    return FeedResponse(
+                        status=200,
+                        url=current,
+                        body=bytes(raw),
+                        etag=(response.headers.get("etag") or None),
+                        last_modified=(response.headers.get("last-modified") or None),
+                        content_type=response.headers.get("content-type", ""),
+                    )
         raise PreviewError("too_many_redirects", "Too many redirects")
 
     return fetch

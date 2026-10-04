@@ -1464,6 +1464,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/feeds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Feeds
+         * @description The channel's feeds, oldest first (paused ones too), with the last fetch's outcome.
+         */
+        get: operations["list_feeds_api_v1_channels__channel_id__feeds_get"];
+        put?: never;
+        /**
+         * Create Feed
+         * @description Fetches the URL once: it must be an RSS / Atom feed (or a page naming one), else 422
+         *     feed_invalid with `details.reason`. Its current entries are recorded and not posted. At most
+         *     20 per channel (409 too_many_channel_feeds) and 20 per person (409 too_many_feeds).
+         */
+        post: operations["create_feed_api_v1_channels__channel_id__feeds_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}/join": {
         parameters: {
             query?: never;
@@ -1899,6 +1925,30 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feeds/{feed_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Feed
+         * @description Stops it for good; the posts stay.
+         */
+        delete: operations["delete_feed_api_v1_feeds__feed_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Feed
+         * @description Pause (`enabled: false`) or resume; entries published while paused are not posted.
+         */
+        patch: operations["update_feed_api_v1_feeds__feed_id__patch"];
         trace?: never;
     };
     "/api/v1/files": {
@@ -5082,6 +5132,86 @@ export interface components {
             channel_id: string;
             /** Favorite */
             favorite: boolean;
+        };
+        /** FeedCreate */
+        FeedCreate: {
+            /**
+             * Url
+             * @description The feed's URL (RSS 2.0 / RSS 1.0 / Atom), or a page that names its feed with <link rel="alternate">
+             */
+            url: string;
+        };
+        /** FeedOut */
+        FeedOut: {
+            /**
+             * Bot User Id
+             * Format: uuid
+             * @description The channel's feed bot that posts the entries
+             */
+            bot_user_id: string;
+            /**
+             * Can Manage
+             * @description The caller may pause, resume and delete it (the owner, the channel's owners, administrators)
+             */
+            can_manage: boolean;
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Consecutive Failures */
+            consecutive_failures: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Error Code */
+            last_error_code: string | null;
+            /** Last Fetched At */
+            last_fetched_at: string | null;
+            /** Last Post At */
+            last_post_at: string | null;
+            /** Last Success At */
+            last_success_at: string | null;
+            /**
+             * Owner Active
+             * @description False while the owner is deactivated or not a member: nothing is fetched
+             */
+            owner_active: boolean;
+            /**
+             * Owner Id
+             * Format: uuid
+             * @description The member who registered it; posts name them
+             */
+            owner_id: string;
+            /** Post Count */
+            post_count: number;
+            /** Site Url */
+            site_url: string | null;
+            /** Title */
+            title: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Url */
+            url: string;
+        };
+        /** FeedUpdate */
+        FeedUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
         };
         /**
          * FieldDefault
@@ -10729,6 +10859,72 @@ export interface operations {
             };
         };
     };
+    list_feeds_api_v1_channels__channel_id__feeds_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_feed_api_v1_channels__channel_id__feeds_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     join_channel_api_v1_channels__channel_id__join_post: {
         parameters: {
             query?: never;
@@ -11708,6 +11904,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_feed_api_v1_feeds__feed_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_feed_api_v1_feeds__feed_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedOut"];
                 };
             };
             /** @description Validation Error */
