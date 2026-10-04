@@ -62,7 +62,8 @@ struct ChannelView: View {
     enum ChannelSheet: Identifiable {
         case addMember
         case link(ChannelLinkOut?)  // M15f: add (nil) or edit
-        var id: Int { switch self { case .addMember: 1; case .link: 3 } }
+        case reservation(String)  // M99: a reservation pool's card
+        var id: Int { switch self { case .addMember: 1; case .link: 3; case .reservation: 4 } }
     }
 
     private var channel: ChannelState? { controller.store.channel(channelId) }
@@ -383,6 +384,8 @@ struct ChannelView: View {
         VStack(spacing: 0) {
             if let channel {
                 if channel.isMember {
+                    // M99 (docs/RESERVATIONS.md §6): the channel's reservation pools, a row of chips above the rest.
+                    ReservationChipRow(controller: controller, channel: channel) { sheet = .reservation($0) }
                     if TaskRules.hasBoard(channel) {
                         // M86 (DEADLINES.md §8 2.): the next deadline, a row of its own (the navigation bar stays as it was).
                         DeadlineChipRow(controller: controller, channel: channel) { deadlineForm = .task($0) }
@@ -662,6 +665,7 @@ struct ChannelView: View {
             switch which {
             case .addMember: AddMemberView(controller: controller, channelId: channelId)
             case .link(let link): ChannelLinkEditor(controller: controller, channelId: channelId, link: link)
+            case .reservation(let poolId): ReservationSheet(controller: controller, channelId: channelId, poolId: poolId)
             }
         }
         .fullScreenCover(item: $deadlineForm, onDismiss: sheetClosed) { target in

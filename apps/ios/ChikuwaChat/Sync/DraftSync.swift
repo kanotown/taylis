@@ -6,6 +6,12 @@ protocol ChannelLinksApi: AnyObject {
     func channelLinks(channelId: String) async throws -> [ChannelLinkOut]
 }
 
+/// M99: a channel's reservation pools (ApiClient and the test fake).
+@MainActor
+protocol ReservationsApi: AnyObject {
+    func reservationPools(channelId: String) async throws -> [PoolOut]
+}
+
 /// M15d: the draft endpoints (ApiClient and the test fake).
 @MainActor
 protocol DraftApi: AnyObject {
