@@ -293,6 +293,8 @@ struct MessageBodyView: View {
     var preparsed: [BodyBlock]? = nil
     /// M71: a message link labelled with a number is an AI answer's citation, drawn as 「[n]」.
     var citations = false
+    /// M101 (docs/EMOJI.md §7): an emoji-only body is shown large (the timeline and threads only, not previews).
+    var jumbo = false
 
     /// The animated custom emoji in this text, by id.
     private var animatedHere: [String: EmojiAnimation] {
@@ -306,14 +308,66 @@ struct MessageBodyView: View {
 
     var body: some View {
         let animated = animatedHere
-        if animated.isEmpty {
-            blocks
+        let only = jumbo ? EmojiOnly.parse(text, custom: customEmoji) : nil
+        if let only, only.stamp {
+            stampView  // EmojiImage moves an animated one itself
+        } else if animated.isEmpty {
+            content(only)
         } else {
             TimelineView(.animation(minimumInterval: 0.04)) { context in
                 var moment = self
                 let _ = animated.forEach { id, animation in moment.emojiImages[id] = animation.frame(at: context.date.timeIntervalSinceReferenceDate) }
-                moment.blocks
+                moment.content(only)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ only: EmojiOnly.Result?) -> some View {
+        if only != nil { jumboText } else { blocks }
+    }
+
+    /// M101: an emoji-only body, large: standard emoji at `Jumbo.font`, image emoji `Jumbo.image` high (a wide one wider,
+    /// at most 3:1), text emoji as `Jumbo.pill` pills, pack emoji `Jumbo.pack` high. A blank of the same size holds an
+    /// image's place until it is cached (nothing moves when it comes); the line grows to hold the tallest.
+    private var jumboText: some View {
+        let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pieces = CustomEmoji.split(Emoji.replaceShortcodes(typed), known: { customEmoji[$0] != nil })
+        let line = pieces.reduce(Text("")) { acc, piece in
+            switch piece {
+            case .text(let run): return acc + Text(run).font(.system(size: EmojiOnly.Jumbo.font))
+            case .emoji(let name):
+                guard let emoji = customEmoji[name] else { return acc + Text(":\(name):") }
+                let height = emoji.isText ? EmojiOnly.Jumbo.pill : emoji.packId != nil ? EmojiOnly.Jumbo.pack : EmojiOnly.Jumbo.image
+                if let image = emojiImages[emoji.id] { return acc + Text(Image(uiImage: CustomEmoji.sized(image, height: height))) }
+                onNeedEmojiImage?(emoji)
+                return acc + Text(Image(uiImage: CustomEmoji.blank(size: CustomEmoji.size(of: emoji, height: height))))
+            }
+        }
+        return line
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+    }
+
+    /// M101: a single pack emoji as a stamp, `Jumbo.stamp` high (its ratio kept, at most 3:1); its box is held while
+    /// the image loads.
+    @ViewBuilder
+    private var stampView: some View {
+        if let name = CustomEmoji.split(text.trimmingCharacters(in: .whitespacesAndNewlines), known: { customEmoji[$0] != nil })
+            .compactMap({ if case .emoji(let name) = $0 { return name } else { return nil } }).first,
+           let emoji = customEmoji[name] {
+            let size = CustomEmoji.size(of: emoji, height: EmojiOnly.Jumbo.stamp)
+            Group {
+                if let still = emojiImages[emoji.id] {
+                    EmojiImage(still: still, animation: emojiAnimations[emoji.id])
+                } else {
+                    Color.clear.onAppear { onNeedEmojiImage?(emoji) }
+                }
+            }
+            .frame(width: size.width, height: size.height)
+            .accessibilityLabel(emoji.label ?? ":\(emoji.name):")
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

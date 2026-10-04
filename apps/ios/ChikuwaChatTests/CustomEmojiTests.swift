@@ -103,6 +103,64 @@ final class CustomEmojiTests: XCTestCase {
         XCTAssertFalse(old.isText)
     }
 
+    /// M101 (docs/EMOJI.md §7): the emoji-only rule's tables and cases shared with the web and Android.
+    func testEmojiOnlyFollowsTheSharedCases() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/emoji-only.json")
+        let shared = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+        XCTAssertEqual(shared["max_items"] as? Int, EmojiOnly.maxItems)
+        XCTAssertEqual((shared["whitespace"] as! [String]).map { UInt32($0, radix: 16)! }, EmojiOnly.whitespace)
+        let ranges = (shared["pictographic"] as! [String]).map { range -> ClosedRange<UInt32> in
+            let ends = range.split(separator: "-").map { UInt32($0, radix: 16)! }
+            return ends[0]...(ends.count > 1 ? ends[1] : ends[0])
+        }
+        XCTAssertEqual(ranges, EmojiOnly.pictographic)
+        let custom = shared["custom"] as! [String: [String: Any]]
+        func kind(_ name: String) -> EmojiOnly.Kind? {
+            guard let entry = custom[name] else { return nil }
+            return entry["kind"] as? String == "text" ? .text : entry["pack"] as? Bool == true ? .pack : .image
+        }
+        for c in shared["cases"] as! [[String: Any]] {
+            let body = c["body"] as! String
+            let result = EmojiOnly.parse(body, kind: kind)
+            XCTAssertEqual(result != nil, c["jumbo"] as? Bool, body)
+            XCTAssertEqual(result?.kinds.map(\.rawValue) ?? [], c["kinds"] as? [String], body)
+            XCTAssertEqual(result?.kinds.count ?? 0, c["count"] as? Int, body)
+            XCTAssertEqual(result?.stamp ?? false, c["stamp"] as? Bool, body)
+        }
+        // A real table: kind from the row (text, pack, image).
+        var bow = CustomEmojiOut(id: "b", name: "hpd-bow", contentType: "image/png", width: 180, height: 180, createdBy: "u", createdAt: "")
+        bow.packId = "p"
+        XCTAssertEqual(EmojiOnly.parse(" :hpd-bow: ", custom: ["hpd-bow": bow])?.stamp, true)
+        XCTAssertNil(EmojiOnly.parse(":hpd-bow: ok", custom: ["hpd-bow": bow]))
+    }
+
+    /// M101: a jumbo body takes the same size before its images come as after; a stamp is `Jumbo.stamp` high; a body
+    /// that is not emoji-only, or one drawn without `jumbo` (previews), stays body-sized.
+    @MainActor
+    func testJumboBodiesHoldTheirSizeAndOnlyWhereAsked() {
+        var bow = CustomEmojiOut(id: "b", name: "hpd-bow", contentType: "image/png", width: 180, height: 180, createdBy: "u", createdAt: "")
+        bow.packId = "p"
+        var wave = CustomEmojiOut(id: "w", name: "hpd-wave", contentType: "image/png", width: 180, height: 180, createdBy: "u", createdAt: "")
+        wave.packId = "p"
+        let custom = ["hpd-bow": bow, "hpd-wave": wave]
+        let picture = CustomEmoji.inlineImage(UIGraphicsImageRenderer(size: CGSize(width: 90, height: 90)).image { context in
+            UIColor.orange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 90, height: 90))
+        }, height: CustomEmoji.packStoredHeight)
+        func size(_ text: String, images: [String: UIImage], jumbo: Bool = true) -> CGSize {
+            let view = MessageBodyView(text: text, users: [:], customEmoji: custom, emojiImages: images, jumbo: jumbo).frame(width: 300)
+            return UIHostingController(rootView: view).sizeThatFits(in: CGSize(width: 300, height: 2000))
+        }
+        let loaded = ["b": picture, "w": picture]
+        XCTAssertEqual(size(":hpd-bow:", images: loaded).height, EmojiOnly.Jumbo.stamp, accuracy: 0.5)
+        XCTAssertEqual(size(":hpd-bow:", images: [:]).height, EmojiOnly.Jumbo.stamp, accuracy: 0.5)
+        XCTAssertEqual(size(":hpd-bow: :hpd-wave: 🎉", images: loaded), size(":hpd-bow: :hpd-wave: 🎉", images: [:]))
+        XCTAssertGreaterThanOrEqual(size(":hpd-bow: :hpd-wave:", images: loaded).height, EmojiOnly.Jumbo.pack)
+        XCTAssertGreaterThan(size("🎉", images: [:]).height, size("🎉", images: [:], jumbo: false).height + 10)
+        XCTAssertEqual(size("🎉 ok", images: [:]).height, size("🎉 ok", images: [:], jumbo: false).height, accuracy: 0.5)
+    }
+
     func testTextPaletteIsTheSharedOne() throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("shared/text-emoji.json")

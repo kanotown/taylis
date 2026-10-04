@@ -77,9 +77,12 @@ enum CustomEmoji {
     /// The height the cached copy is drawn at: large enough to stay sharp in a heading (testers, 2026-09-29: emoji
     /// in a heading stayed body-sized). `sized(_:height:)` shows it at any height without drawing again.
     static let storedHeight: CGFloat = 48
+    /// M101: a pack emoji (LINE-style 180 px pictures) is kept at 60 pt (180 px on a 3× screen): it may be shown as a
+    /// stamp (`Jumbo.stamp`, docs/EMOJI.md §7), where 48 pt was blurred.
+    static let packStoredHeight: CGFloat = 60
 
     /// A copy scaled to `storedHeight` (keeps GIF's first frame; animation is out of scope).
-    static func inlineImage(_ image: UIImage) -> UIImage {
+    static func inlineImage(_ image: UIImage, height storedHeight: CGFloat = storedHeight) -> UIImage {
         var scale = storedHeight / max(image.size.height, 1)
         // M100: at most 3:1 (`size(of:height:)`); a wider one is fitted, centred, into that box.
         let width = min(max(image.size.width * scale, 1), storedHeight * wideMax)
@@ -94,16 +97,16 @@ enum CustomEmoji {
 
     /// The still image, and for an animated GIF (or APNG / WebP) its frames too (at most 120; a frame with no delay
     /// shows for 0.1 s, as browsers do). Frames are drawn at `animatedHeight`, lighter than the still one.
-    static func decode(_ data: Data) -> (still: UIImage, animation: EmojiAnimation?)? {
+    static func decode(_ data: Data, pack: Bool = false) -> (still: UIImage, animation: EmojiAnimation?)? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0,
               let first = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
-        let still = inlineImage(UIImage(cgImage: first))
+        let still = inlineImage(UIImage(cgImage: first), height: pack ? packStoredHeight : storedHeight)
         let count = min(CGImageSourceGetCount(source), 120)
         guard count > 1 else { return (still, nil) }
         var frames: [UIImage] = [], ends: [TimeInterval] = [], elapsed: TimeInterval = 0
         for index in 0..<count {
             guard let image = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
-            frames.append(draw(UIImage(cgImage: image), height: animatedHeight))
+            frames.append(draw(UIImage(cgImage: image), height: pack ? packStoredHeight : animatedHeight))
             elapsed += delay(source, index)
             ends.append(elapsed)
         }
