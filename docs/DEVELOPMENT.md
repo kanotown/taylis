@@ -101,6 +101,9 @@ apps/desktop/scripts/release-desktop.sh v0.1.30 --notes notes.md    # 公開す�
 `APPLE_SIGNING_IDENTITY="Developer ID Application: … (TEAMID)"` で署名し、さらに `TAYLIS_NOTARY_PROFILE=<名前>`
 (`xcrun notarytool store-credentials <名前>` で作ったキーチェーンのプロファイル) があれば、アプリを公証してステープルし、
 更新用の tar.gz を作り直して署名し直し、.dmg も署名・公証・ステープルする。
+この 2 つは毎回打たずに `~/.config/taylis/release.env` (リポジトリの外、秘密ではない) に `APPLE_SIGNING_IDENTITY=<証明書の SHA-1>` と
+`TAYLIS_NOTARY_PROFILE=<名前>` を書いておけば、スクリプトが読む (環境変数が優先)。証明書を 2 回取り込むと名前があいまいになるので、
+名前より SHA-1 (`security find-identity -v -p codesigning`) を使う。
 
 手元で `npm run tauri build` すると、更新用のファイルの署名に秘密鍵を求めて最後に失敗する (アプリ自体はできている)。
 鍵なしで作るときは `npm run tauri:build` (`--config src-tauri/tauri.no-updater.conf.json`)。
