@@ -358,6 +358,7 @@ async def test_nonce_provider_failures_and_cancel(
     assert 'href="chikuwachat://sso?sso_error=cancelled"' in page
     assert 'location.replace("chikuwachat://sso?sso_error=cancelled")' in page
     assert "このタブは閉じてかまいません" in page
+    assert page.count("アプリが開かないときは") == 1
     assert await db.scalar(select(SsoTicket.ticket_hash)) is None
 
     # iOS and Android still get the redirect (their browser views close on the scheme).

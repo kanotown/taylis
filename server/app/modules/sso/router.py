@@ -184,7 +184,6 @@ padding:10px 18px;border-radius:10px}}
 <h1>ログインしました</h1>
 <p>Taylis に戻ります。このタブは閉じてかまいません。<br>
 アプリが開かないときは、下のボタンを押してください。</p>
-アプリが開かないときは、下のボタンを押してください。</p>
 <a href="{href}">Taylis を開く</a>
 </main>
 <script>location.replace({json.dumps(location)});</script>
