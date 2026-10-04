@@ -35,7 +35,10 @@ export function testDeviceStatus(device: TestNotificationDevice): { text: string
     case "not_configured":
       return { text: device.push_provider === "fcm" ? "このサーバでは Android のプッシュが無効です" : "このサーバでは iOS のプッシュが無効です", tone: "problem" };
     case "in_app":
-      return { text: "プッシュなし (アプリを開いていれば表示されます)", tone: "none" };
+      // A desktop / browser shows its own notification (no push): this one just did, the others do while running.
+      return device.current
+        ? { text: "この端末に表示しました", tone: "ok" }
+        : { text: "アプリの起動中に表示 (プッシュは使いません)", tone: "none" };
     case "disabled":
       return { text: device.detail === "session_expired" ? "ログインの期限切れ" : "ログアウト済み", tone: "none" };
     default:

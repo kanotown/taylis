@@ -51,7 +51,7 @@ object TestNotificationText {
         "failed" -> (device.detail?.let { "送れませんでした ($it)" } ?: "送れませんでした") to Tone.PROBLEM
         "no_token" -> "プッシュ未登録 (端末の通知がオフか、アプリをまだ開き直していません)" to Tone.PROBLEM
         "not_configured" -> (if (device.pushProvider == "fcm") "このサーバでは Android のプッシュが無効です" else "このサーバでは iOS のプッシュが無効です") to Tone.PROBLEM
-        "in_app" -> "プッシュなし (アプリを開いていれば表示されます)" to Tone.NONE
+        "in_app" -> "アプリの起動中に表示 (プッシュは使いません)" to Tone.NONE
         "disabled" -> (if (device.detail == "session_expired") "ログインの期限切れ" else "ログアウト済み") to Tone.NONE
         else -> device.status to Tone.NONE
     }
