@@ -215,6 +215,15 @@ class SyncEngine(
         runCatching { linksApi.channelLinks(channelId) }.onSuccess { store.setChannelLinks(channelId, it) }
     }
 
+    /**
+     * M99 (docs/RESERVATIONS.md §6): the conversation's reservation pools; loaded when it opens, after reconnecting and on
+     * reservation.updated (the event carries no card: it differs per person).
+     */
+    suspend fun loadReservationPools(channelId: String) {
+        val poolsApi = api as? ReservationsApi ?: return
+        runCatching { poolsApi.reservationPools(channelId) }.onSuccess { store.setReservationPools(channelId, it) }
+    }
+
     /** Save edited drafts now instead of after the typing pause (tests, sign-out). */
     suspend fun flushDrafts() = drafts.flush()
     var currentChannelId: String? = null
@@ -728,6 +737,13 @@ class SyncEngine(
                 val id = frame.data.str("channel_id") ?: return
                 store.setChannelLinks(id, Codec.snake.decodeFromJsonElement(ListSerializer(ChannelLinkOut.serializer()), frame.data["links"] ?: return))
             }
+            "reservation.updated" -> {
+                // M99: read the pools again where they are held (a conversation opened so far).
+                val id = frame.data.str("channel_id") ?: return
+                val poolId = frame.data.str("pool_id")
+                if (frame.data.bool("deleted") == true && poolId != null) store.dropReservationPool(id, poolId)
+                if (store.holdsPools(id) || id == currentChannelId) scope.launch { loadReservationPools(id) }
+            }
             "canvas.created", "canvas.updated", "canvas.deleted" -> canvases.applyEvent(frame.event, frame.data)
             "canvas.mentioned" -> {
                 // M77 (CANVAS.md §20.5): the save wrote (or moved) my canvas activity item: the badge and the list on
@@ -1083,6 +1099,7 @@ class SyncEngine(
             return
         }
         scope.launch { loadLinks(channelId) }
+        scope.launch { loadReservationPools(channelId) } // M99
         scope.launch { canvases.loadList(channelId) } // M46 (CANVAS.md §4.6)
         enqueue {
             val channel = store.channel(channelId) ?: return@enqueue

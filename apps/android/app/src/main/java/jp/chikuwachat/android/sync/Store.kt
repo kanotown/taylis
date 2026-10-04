@@ -23,6 +23,7 @@ import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.CanvasMeta
 import jp.chikuwachat.android.api.CanvasOut
 import jp.chikuwachat.android.api.ChannelLinkOut
+import jp.chikuwachat.android.api.PoolOut
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.HistoryOut
@@ -409,6 +410,22 @@ class Store(private val persistence: Persistence? = null) {
         emit()
     }
     fun linksOf(channelId: String): List<ChannelLinkOut> = channelLinks[channelId] ?: emptyList()
+    /** M99: reservation pools of the conversations opened so far, as the server answered me (not persisted). */
+    private val reservationPools = HashMap<String, List<PoolOut>>()
+    fun setReservationPools(channelId: String, pools: List<PoolOut>) {
+        reservationPools[channelId] = pools
+        emit()
+    }
+    /** One pool as an action answered it (replaced in place, or added at the end). */
+    fun putReservationPool(pool: PoolOut) {
+        val list = reservationPools[pool.channelId] ?: emptyList()
+        setReservationPools(pool.channelId, if (list.any { it.id == pool.id }) list.map { if (it.id == pool.id) pool else it } else list + pool)
+    }
+    fun dropReservationPool(channelId: String, poolId: String) {
+        setReservationPools(channelId, (reservationPools[channelId] ?: emptyList()).filter { it.id != poolId })
+    }
+    fun poolsOf(channelId: String): List<PoolOut> = reservationPools[channelId] ?: emptyList()
+    fun holdsPools(channelId: String): Boolean = reservationPools.containsKey(channelId)
 
     /**
      * M46 (CANVAS.md §4.6): the canvases of the conversations opened so far, without bodies, most recently updated first.

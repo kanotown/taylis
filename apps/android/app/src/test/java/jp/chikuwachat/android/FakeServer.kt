@@ -15,6 +15,7 @@ import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.DraftOut
 import jp.chikuwachat.android.api.DraftUpdated
 import jp.chikuwachat.android.api.ChannelLinkOut
+import jp.chikuwachat.android.api.PoolOut
 import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.LastMessageOut
 import jp.chikuwachat.android.sync.ActivityApi
@@ -29,6 +30,7 @@ import jp.chikuwachat.android.api.AiSummaryTargetOut
 import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.ui.previewExcerpt
 import jp.chikuwachat.android.sync.ChannelLinksApi
+import jp.chikuwachat.android.sync.ReservationsApi
 import jp.chikuwachat.android.sync.DraftApi
 import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.api.DeltaOut
@@ -135,7 +137,7 @@ class FakeServer {
         }
     }
 
-    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ActivityApi, ChannelApi, AiApi, CalendarFeedApi {
+    inner class Api(val userId: String) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, ActivityApi, ChannelApi, AiApi, CalendarFeedApi {
         // --- M69 iCal feeds (CALENDAR.md §10.3, §10.6): 5 per person, the URL only in the answer that makes one ---
 
         override suspend fun calendarFeeds(): List<CalendarFeedOut> {
@@ -263,6 +265,7 @@ class FakeServer {
             return activity[userId] ?: throw ApiException.Api(404, "not_found", "no activity before M39")
         }
 
+        override suspend fun reservationPools(channelId: String): List<PoolOut> { maybeFail(); return pools[channelId] ?: emptyList() }
         override suspend fun channelLinks(channelId: String): List<ChannelLinkOut> { maybeFail(); requireMember(channelId, userId); return links[channelId] ?: emptyList() }
         override suspend fun saveDraft(channelId: String, parentId: String?, body: String): DraftOut { maybeFail(); return this@FakeServer.saveDraft(userId, channelId, parentId, body) }
         override suspend fun deleteDraft(channelId: String, parentId: String?) { maybeFail(); this@FakeServer.deleteDraft(userId, channelId, parentId) }
@@ -573,6 +576,19 @@ class FakeServer {
         emit(record.members, event("channel.links_updated", channelId, null, buildJsonObject {
             put("channel_id", channelId)
             put("links", Codec.snake.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(ChannelLinkOut.serializer()), rows))
+        }))
+    }
+
+    /** M99: each channel's reservation pools; setPools announces a change like the server (no card in the event). */
+    val pools = HashMap<String, List<PoolOut>>()
+
+    fun setPools(channelId: String, rows: List<PoolOut>) {
+        val record = channels[channelId] ?: return
+        pools[channelId] = rows
+        emit(record.members, event("reservation.updated", channelId, null, buildJsonObject {
+            put("channel_id", channelId)
+            put("pool_id", rows.firstOrNull()?.id ?: "p")
+            put("deleted", false)
         }))
     }
 
