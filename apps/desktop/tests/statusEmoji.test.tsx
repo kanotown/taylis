@@ -8,7 +8,7 @@ import { EmojiText, StatusEmoji, StatusGlyph, statusCustomEmoji } from "../src/u
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-const hanpen: CustomEmojiOut = { id: "e-status-1", name: "hanpen", content_type: "image/png", width: 32, height: 32, created_by: "u", created_at: "" };
+const hanpen: CustomEmojiOut = { id: "e-status-1", name: "hanpen", kind: "image", content_type: "image/png", width: 32, height: 32, keywords: [], position: 0, created_by: "u", created_at: "" };
 
 function controllerWith(status: { emoji: string; text: string }): AppController {
   URL.createObjectURL = vi.fn(() => "blob:hanpen");

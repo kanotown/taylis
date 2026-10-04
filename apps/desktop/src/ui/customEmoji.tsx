@@ -1,6 +1,7 @@
 import { type CSSProperties, useEffect, useState } from "react";
 
-import type { CustomEmojiOut } from "../api/types";
+import type { CustomEmojiOut, EmojiPackImportOut, EmojiPackOut, TextEmojiColor } from "../api/types";
+import { TEXT_EMOJI_COLOR_NAMES, TEXT_EMOJI_COLORS, TEXT_EMOJI_LABEL_MAX, textEmojiColors } from "./textEmoji";
 import type { AppController } from "../state/app";
 import { Button, cn, Field, Input, Modal } from "./primitives";
 import { useRef } from "react";
@@ -40,99 +41,211 @@ const loading = new Map<string, Promise<string | null>>();
 /** Emoji whose image could not be fetched: they show as `:name:` (while loading they take their room, blank). */
 const failed = new Set<string>();
 
-/** Fetches the image once per emoji id (with the bearer token) and keeps the object URL for the session. */
-export function loadCustomEmojiUrl(controller: AppController, emoji: CustomEmojiOut): Promise<string | null> {
-  const hit = urls.get(emoji.id);
+/** Fetches `path` once per `key` (with the bearer token) and keeps the object URL for the session. */
+function loadBlobUrl(controller: AppController, key: string, path: string): Promise<string | null> {
+  const hit = urls.get(key);
   if (hit) return Promise.resolve(hit);
-  let pending = loading.get(emoji.id);
+  let pending = loading.get(key);
   if (!pending) {
     pending = (async () => {
       try {
-        const blob = await controller.api!.fetchBlob(`/api/v1/emoji/${emoji.id}/image`);
+        const blob = await controller.api!.fetchBlob(path);
         const url = URL.createObjectURL(blob);
-        urls.set(emoji.id, url);
+        urls.set(key, url);
         return url;
       } catch {
-        failed.add(emoji.id);
+        failed.add(key);
         return null;
       } finally {
-        loading.delete(emoji.id);
+        loading.delete(key);
       }
     })();
-    loading.set(emoji.id, pending);
+    loading.set(key, pending);
   }
   return pending;
 }
 
-/** The image of `emoji`: a component reused for another emoji never shows the previous one (state is keyed by id). */
-export function useCustomEmojiUrl(controller: AppController, emoji: CustomEmojiOut): string | null {
-  const [loaded, setLoaded] = useState<{ id: string; url: string | null } | null>(null);
-  const url = urls.get(emoji.id) ?? (loaded?.id === emoji.id ? loaded.url : null);
+/** Fetches the image once per emoji id (with the bearer token) and keeps the object URL for the session. */
+export function loadCustomEmojiUrl(controller: AppController, emoji: CustomEmojiOut): Promise<string | null> {
+  return loadBlobUrl(controller, emoji.id, `/api/v1/emoji/${emoji.id}/image`);
+}
+
+/** An object URL for `key` (fetched from `path` once): state is keyed, so a reused component never shows another's. */
+function useBlobUrl(controller: AppController, key: string | null, path: string): string | null {
+  const [loaded, setLoaded] = useState<{ key: string; url: string | null } | null>(null);
+  const url = key ? urls.get(key) ?? (loaded?.key === key ? loaded.url : null) : null;
   useEffect(() => {
-    if (urls.has(emoji.id) || !controller.api) return;
+    if (!key || urls.has(key) || !controller.api) return;
     let live = true;
-    void loadCustomEmojiUrl(controller, emoji).then((next) => { if (live) setLoaded({ id: emoji.id, url: next }); });
+    void loadBlobUrl(controller, key, path).then((next) => { if (live) setLoaded({ key, url: next }); });
     return () => { live = false; };
-  }, [emoji.id, controller.api]);
+  }, [key, controller.api]);
   return url;
 }
 
+/** The image of `emoji`: a component reused for another emoji never shows the previous one (state is keyed by id). */
+export function useCustomEmojiUrl(controller: AppController, emoji: CustomEmojiOut): string | null {
+  return useBlobUrl(controller, emoji.id, `/api/v1/emoji/${emoji.id}/image`);
+}
+
+/** M100: a pack's tab icon (GET /emoji/packs/{id}/tab), cached per `tab_version`. */
+export function usePackTabUrl(controller: AppController, pack: EmojiPackOut): string | null {
+  return useBlobUrl(controller, pack.tab_version ? `pack:${pack.id}:${pack.tab_version}` : null, `/api/v1/emoji/packs/${pack.id}/tab`);
+}
+
+/** M100 (docs/EMOJI.md §2): a wide image emoji is drawn wider at the same height, at most 3:1; never narrower than square. */
+export const WIDE_EMOJI_MAX = 3;
+
+export function customEmojiAspect(emoji: Pick<CustomEmojiOut, "width" | "height"> & { kind?: string }): number {
+  if (emoji.kind === "text" || !emoji.width || !emoji.height) return 1;
+  return Math.min(WIDE_EMOJI_MAX, Math.max(1, emoji.width / emoji.height));
+}
+
 /**
- * A custom emoji's image. `size` in pixels, or a CSS length such as "1.375em" to follow the text around it (a
- * heading's emoji is as large as the heading).
+ * A custom emoji: the image, or (kind "text", M100) its label as a pill. `size` in pixels, or a CSS length such as
+ * "1.375em" to follow the text around it (a heading's emoji is as large as the heading).
  *
- * Always a fixed square box (2026-10-04, 「高さが違う・ガタつく」): before, the image was `width: auto`, so it had no
+ * Always a fixed box (2026-10-04, 「高さが違う・ガタつく」): before, the image was `width: auto`, so it had no
  * width until decoded and another one than its loading placeholder; a message's lines could re-wrap and the timeline
- * jump when it loaded (a remount decodes again). Now the placeholder and the image take the same `size`×`size` box
- * and a wide image is fitted into it (`object-fit: contain`). Its middle is where a standard emoji glyph's middle is
- * (Apple Color Emoji: about 0.38em above the baseline).
+ * jump when it loaded (a remount decodes again). Now the placeholder and the image take the same box: `size` high and
+ * `size` × the stored aspect ratio wide (M100: a wide emoji keeps its shape, at most 3:1; the ratio is known before the
+ * image loads), the image fitted into it (`object-fit: contain`). Its middle is where a standard emoji glyph's middle
+ * is (Apple Color Emoji: about 0.38em above the baseline). `square` (picker cells) keeps the box square, a wide image
+ * fitted into it.
  *
  * `inline` (a run of text: a message, a status line): the box also counts as exactly 1em tall for the line (negative
  * margins), like a standard emoji glyph, so a larger image never makes its line taller than one without it.
  */
-export function CustomEmojiImage({ controller, emoji, size = 20, className, inline = false }: { controller: AppController; emoji: CustomEmojiOut; size?: number | string; className?: string; inline?: boolean }) {
+export function CustomEmojiImage(props: { controller: AppController; emoji: CustomEmojiOut; size?: number | string; className?: string; inline?: boolean; square?: boolean }) {
+  if (props.emoji.kind === "text") return <TextEmojiPill emoji={props.emoji} size={props.size} className={props.className} inline={props.inline} square={props.square} />;
+  return <CustomEmojiPicture {...props} />;
+}
+
+function CustomEmojiPicture({ controller, emoji, size = 20, className, inline = false, square = false }: { controller: AppController; emoji: CustomEmojiOut; size?: number | string; className?: string; inline?: boolean; square?: boolean }) {
   const url = useCustomEmojiUrl(controller, emoji);
   if (!url && failed.has(emoji.id)) return <span className={cn("text-muted", className)}>:{emoji.name}:</span>;
-  const style = customEmojiBoxStyle(size, inline);
+  const aspect = square ? 1 : customEmojiAspect(emoji);
+  const style = customEmojiBoxStyle(size, inline, aspect);
   // Loading: its room, blank (the name as text was wider than a picker's cell).
   if (!url) return <span aria-hidden data-custom-emoji={emoji.name} className={cn("inline-block shrink-0", className)} style={style} />;
   const px = typeof size === "number" ? size : undefined;
-  return <img src={url} alt={`:${emoji.name}:`} title={`:${emoji.name}:`} width={px} height={px} draggable={false} data-custom-emoji={emoji.name} className={cn("inline-block shrink-0", className)} style={{ ...style, objectFit: "contain" }} />;
+  const title = emoji.label ? `${emoji.label} :${emoji.name}:` : `:${emoji.name}:`;
+  return <img src={url} alt={`:${emoji.name}:`} title={title} width={px === undefined ? undefined : Math.round(px * aspect)} height={px} draggable={false} data-custom-emoji={emoji.name} className={cn("inline-block shrink-0", className)} style={{ ...style, objectFit: "contain" }} />;
 }
 
-/** The box of a custom emoji (also for the tests): see CustomEmojiImage. */
-export function customEmojiBoxStyle(size: number | string, inline: boolean): CSSProperties {
+/** The box of a custom emoji (also for the tests): see CustomEmojiImage. `aspect` = width / height (1 to 3). */
+export function customEmojiBoxStyle(size: number | string, inline: boolean, aspect = 1): CSSProperties {
   const length = typeof size === "number" ? `${size}px` : size;
-  const box: CSSProperties = { width: length, height: length, minWidth: length };
+  const width = aspect === 1 ? length : typeof size === "number" ? `${Math.round(size * aspect)}px` : `calc(${length} * ${Number(aspect.toFixed(3))})`;
+  const box: CSSProperties = { width, height: length, minWidth: width };
   if (!inline) return { ...box, verticalAlign: `calc(0.38em - ${length} / 2)` };
   // The margin box is 1em tall from 0.12em below the baseline: the image's middle at 0.38em, the line box unchanged.
   const margin = `calc((1em - ${length}) / 2)`;
   return { ...box, marginTop: margin, marginBottom: margin, verticalAlign: "-0.12em" };
 }
 
-/** Add a custom emoji (M12f): a name and a small image; any member may. */
+/**
+ * A text emoji (M100, docs/EMOJI.md §1): its label as a pill, as high as an image emoji of the same `size` (the same
+ * box rules, the width follows the text), in its palette colour (apps/shared/text-emoji.json; light and dark).
+ * Drawn at once (no image to load), so it never shifts the line. `square` (picker cells) caps the width at 3 × size.
+ */
+export function TextEmojiPill({ emoji, size = 20, className, inline = false, square = false }: { emoji: Pick<CustomEmojiOut, "name" | "label" | "color">; size?: number | string; className?: string; inline?: boolean; square?: boolean }) {
+  const length = typeof size === "number" ? `${size}px` : size;
+  const box = customEmojiBoxStyle(size, inline);
+  const colors = textEmojiColors(emoji.color);
+  const style = {
+    ...box,
+    width: "auto",
+    minWidth: length,
+    maxWidth: square ? `calc(${length} * 3)` : undefined,
+    fontSize: `calc(${length} * 0.68)`,
+    lineHeight: length,
+    padding: `0 calc(${length} * 0.28)`,
+    borderRadius: `calc(${length} * 0.3)`,
+    "--te-bg": colors.light.bg,
+    "--te-fg": colors.light.fg,
+    "--te-bg-dark": colors.dark.bg,
+    "--te-fg-dark": colors.dark.fg,
+  } as CSSProperties;
+  const label = emoji.label || emoji.name;
+  return (
+    <span role="img" aria-label={label} title={`${label} :${emoji.name}:`} data-custom-emoji={emoji.name} data-text-emoji="" className={cn("text-emoji inline-block shrink-0 overflow-hidden text-ellipsis whitespace-nowrap text-center font-semibold", className)} style={style}>
+      {label}
+    </span>
+  );
+}
+
+/** Keywords typed as one line: 、 , and spaces separate them. */
+export function splitKeywords(text: string): string[] {
+  return [...new Set(text.split(/[,、，\s]+/u).map((k) => k.trim()).filter(Boolean))];
+}
+
+const NAME_RE = /^[a-z0-9][a-z0-9_+-]{1,31}$/;
+
+/** Add a custom emoji (M12f): a name and a small image, or (M100) a text emoji (a short label as a pill); any member may. */
 export function AddEmojiDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
+  const [kind, setKind] = useState<"image" | "text">("image");
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [label, setLabel] = useState("");
+  const [color, setColor] = useState<TextEmojiColor>("gray");
+  const [keywords, setKeywords] = useState("");
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const valid = /^[a-z0-9][a-z0-9_+-]{1,31}$/.test(name) && !!file;
+  const labelLength = [...label.trim()].length;
+  const valid = NAME_RE.test(name) && (kind === "image" ? !!file : labelLength > 0 && labelLength <= TEXT_EMOJI_LABEL_MAX);
   const submit = async () => {
-    if (!valid || !file) return;
+    if (!valid) return;
     setBusy(true);
-    const ok = await controller.uploadEmoji(name, file);
+    const words = splitKeywords(keywords);
+    const ok = kind === "image"
+      ? await controller.uploadEmoji(name, file!, { label: label.trim() || null, keywords: words })
+      : await controller.createTextEmoji({ name, label: label.trim(), color, keywords: words });
     setBusy(false);
     if (ok) onClose();
   };
   return (
-    <Modal onClose={onClose} title="絵文字を追加" className="w-[420px]">
+    <Modal onClose={onClose} title="絵文字を追加" className="w-[440px]">
       <div className="mt-3 space-y-3">
+        <div className="flex gap-1" role="radiogroup" aria-label="種類">
+          {(["image", "text"] as const).map((k) => (
+            <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)} className={cn("rounded-md px-3 py-1 text-sm", kind === k ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel")}>
+              {k === "image" ? "画像" : "文字"}
+            </button>
+          ))}
+        </div>
         <Field label="名前 (a-z 0-9 _ + -、2〜32 文字)">
-          <Input value={name} autoFocus placeholder="例: party_parrot" onChange={(e) => setName(e.target.value.trim().toLowerCase())} />
+          <Input value={name} autoFocus placeholder={kind === "image" ? "例: party_parrot" : "例: kakunin"} onChange={(e) => setName(e.target.value.trim().toLowerCase())} />
           {name && <div className="mt-1 text-xs text-muted">本文では :{name}: と書きます</div>}
         </Field>
-        <Field label="画像 (PNG / GIF / JPEG / WebP、512px・256 KB まで)">
-          <input ref={input} type="file" accept="image/png,image/gif,image/jpeg,image/webp" className="text-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        {kind === "image" ? (
+          <Field label="画像 (PNG / GIF / JPEG / WebP、512px・256 KB まで)">
+            <input ref={input} type="file" accept="image/png,image/gif,image/jpeg,image/webp" className="text-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </Field>
+        ) : (
+          <>
+            <Field label={`表示する文字 (${TEXT_EMOJI_LABEL_MAX} 文字まで)`}>
+              <Input value={label} placeholder="例: 確認しました" onChange={(e) => setLabel(e.target.value)} />
+              {labelLength > TEXT_EMOJI_LABEL_MAX && <div className="mt-1 text-xs text-danger">{TEXT_EMOJI_LABEL_MAX} 文字までです</div>}
+            </Field>
+            <Field label="色">
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(TEXT_EMOJI_COLORS) as TextEmojiColor[]).map((key) => (
+                  <button key={key} type="button" aria-pressed={color === key} title={TEXT_EMOJI_COLOR_NAMES[key]} onClick={() => setColor(key)} className={cn("rounded-md p-0.5", color === key ? "ring-2 ring-accent" : "")}>
+                    <TextEmojiPill emoji={{ name: key, label: label.trim() || TEXT_EMOJI_COLOR_NAMES[key], color: key }} size={22} />
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </>
+        )}
+        {kind === "image" && (
+          <Field label="表示名 (任意、ピッカーで名前の代わりに出ます)">
+            <Input value={label} placeholder="例: おじぎ" onChange={(e) => setLabel(e.target.value)} />
+          </Field>
+        )}
+        <Field label="検索キーワード (任意、、や空白で区切る)">
+          <Input value={keywords} placeholder="例: ありがとう よろしく" onChange={(e) => setKeywords(e.target.value)} />
         </Field>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>キャンセル</Button>
@@ -143,29 +256,226 @@ export function AddEmojiDialog({ controller, onClose }: { controller: AppControl
   );
 }
 
-/** The admin dialog's 絵文字 tab (M12f): every custom emoji with its creator, and removal. */
+/** M100: change a custom emoji's label, colour (text) and keywords; an admin also its pack. */
+export function EditEmojiDialog({ controller, emoji, onClose }: { controller: AppController; emoji: CustomEmojiOut; onClose: () => void }) {
+  const [label, setLabel] = useState(emoji.label ?? "");
+  const [color, setColor] = useState<TextEmojiColor>((emoji.color ?? "gray") as TextEmojiColor);
+  const [keywords, setKeywords] = useState((emoji.keywords ?? []).join(" "));
+  const [packId, setPackId] = useState(emoji.pack_id ?? "");
+  const [busy, setBusy] = useState(false);
+  const admin = controller.store.me?.role === "admin";
+  const packs = controller.store.sortedEmojiPacks();
+  const text = emoji.kind === "text";
+  const labelLength = [...label.trim()].length;
+  const valid = !text || (labelLength > 0 && labelLength <= TEXT_EMOJI_LABEL_MAX);
+  const submit = async () => {
+    setBusy(true);
+    const ok = await controller.updateEmoji(emoji.id, {
+      label: label.trim() || null,
+      keywords: splitKeywords(keywords),
+      ...(text ? { color } : {}),
+      ...(admin && (packId || null) !== (emoji.pack_id ?? null) ? { pack_id: packId || null } : {}),
+    });
+    setBusy(false);
+    if (ok) onClose();
+  };
+  return (
+    <Modal onClose={onClose} title={`:${emoji.name}: を編集`} className="w-[440px]">
+      <div className="mt-3 space-y-3">
+        <Field label={text ? `表示する文字 (${TEXT_EMOJI_LABEL_MAX} 文字まで)` : "表示名 (任意)"}>
+          <Input value={label} autoFocus onChange={(e) => setLabel(e.target.value)} />
+        </Field>
+        {text && (
+          <Field label="色">
+            <div className="flex flex-wrap gap-1.5">
+              {(Object.keys(TEXT_EMOJI_COLORS) as TextEmojiColor[]).map((key) => (
+                <button key={key} type="button" aria-pressed={color === key} title={TEXT_EMOJI_COLOR_NAMES[key]} onClick={() => setColor(key)} className={cn("rounded-md p-0.5", color === key ? "ring-2 ring-accent" : "")}>
+                  <TextEmojiPill emoji={{ name: key, label: label.trim() || TEXT_EMOJI_COLOR_NAMES[key], color: key }} size={22} />
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
+        <Field label="検索キーワード (、や空白で区切る)">
+          <Input value={keywords} onChange={(e) => setKeywords(e.target.value)} />
+        </Field>
+        {admin && (
+          <Field label="セット">
+            <select value={packId} onChange={(e) => setPackId(e.target.value)} className="h-9 w-full rounded-lg border border-line bg-canvas px-2 text-sm">
+              <option value="">なし (「カスタム」のタブ)</option>
+              {packs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>キャンセル</Button>
+          <Button disabled={!valid || busy} onClick={() => void submit()}>保存</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+type PackManifestPreview = { name: string; items: number; missing: string[] };
+
+/** What a folder's pack.json says, before uploading (the server checks everything again). */
+export async function previewPackFolder(files: File[]): Promise<PackManifestPreview | string> {
+  const manifest = files.find((f) => f.name === "pack.json");
+  if (!manifest) return "フォルダに pack.json がありません";
+  let parsed: { name?: unknown; items?: Array<{ file?: unknown }>; tab?: unknown };
+  try {
+    parsed = JSON.parse(await manifest.text());
+  } catch {
+    return "pack.json を JSON として読めません";
+  }
+  const names = new Set(files.map((f) => f.name.normalize("NFC")));
+  const wanted = [...(Array.isArray(parsed.items) ? parsed.items.map((i) => String(i?.file ?? "")) : []), ...(typeof parsed.tab === "string" ? [parsed.tab] : [])];
+  return {
+    name: typeof parsed.name === "string" ? parsed.name : "(名前なし)",
+    items: Array.isArray(parsed.items) ? parsed.items.length : 0,
+    missing: wanted.filter((f) => !names.has(f.normalize("NFC"))),
+  };
+}
+
+/** Image and manifest files of a chosen folder (notes such as タグ案.md stay behind). */
+export function packFiles(files: File[]): File[] {
+  return files.filter((f) => f.name === "pack.json" || /\.(png|gif|jpe?g|webp)$/i.test(f.name));
+}
+
+/** M100 (admin): 「セットを追加」: a folder or a ZIP with pack.json; importing again updates labels and keywords. */
+export function ImportPackDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
+  const [source, setSource] = useState<{ archive: File } | { files: File[] } | null>(null);
+  const [preview, setPreview] = useState<PackManifestPreview | string | null>(null);
+  const [result, setResult] = useState<EmojiPackImportOut | null>(null);
+  const [busy, setBusy] = useState(false);
+  const chooseFolder = async (list: FileList | null) => {
+    const files = packFiles([...(list ?? [])]);
+    setResult(null);
+    setSource(files.length ? { files } : null);
+    setPreview(files.length ? await previewPackFolder(files) : "画像も pack.json も見つかりません");
+  };
+  const chooseZip = (file: File | null) => {
+    setResult(null);
+    setSource(file ? { archive: file } : null);
+    setPreview(null);
+  };
+  const submit = async () => {
+    if (!source) return;
+    setBusy(true);
+    const done = await controller.importEmojiPack(source);
+    setBusy(false);
+    if (done) setResult(done);
+  };
+  const blocked = typeof preview === "string" || (preview && preview.missing.length > 0);
+  return (
+    <Modal onClose={onClose} title="絵文字のセットを追加" className="w-[480px]">
+      <div className="mt-3 space-y-3 text-sm">
+        <p className="text-xs text-muted">
+          画像 (PNG など、512px・256 KB まで) と pack.json の入ったフォルダか ZIP を選びます。pack.json は
+          {" {\"name\": \"セット名\", \"tab\": \"tab.png\", \"items\": [{\"file\", \"shortcode\", \"label\", \"keywords\": []}]} "}
+          です。同じ名前のセットをもう一度取り込むと、表示名・キーワード・並び順を更新し、新しい絵文字を足します (画像は差し替えません)。
+        </p>
+        <Field label="フォルダ">
+          {/* webkitdirectory: the whole folder (WebView2, WKWebView, browsers). */}
+          <input type="file" multiple className="text-sm" {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={(e) => void chooseFolder(e.target.files)} />
+        </Field>
+        <Field label="または ZIP">
+          <input type="file" accept=".zip,application/zip" className="text-sm" onChange={(e) => chooseZip(e.target.files?.[0] ?? null)} />
+        </Field>
+        {typeof preview === "string" && <div className="text-xs text-danger">{preview}</div>}
+        {preview && typeof preview !== "string" && (
+          <div className="rounded-lg border border-line p-2 text-xs">
+            「{preview.name}」 · {preview.items} 個
+            {preview.missing.length > 0 && <div className="mt-1 text-danger">フォルダにないファイル: {preview.missing.join("、")}</div>}
+          </div>
+        )}
+        {result && (
+          <div className="rounded-lg border border-line bg-panel p-2 text-xs" role="status">
+            「{result.pack.name}」を取り込みました: 追加 {result.created.length} · 更新 {result.updated.length} · 変更なし {result.unchanged.length}
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>{result ? "閉じる" : "キャンセル"}</Button>
+          <Button disabled={!source || !!blocked || busy} onClick={() => void submit()}>{busy ? "取り込み中…" : "取り込む"}</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** The admin dialog's 絵文字 tab (M12f): every custom emoji with its creator, and removal; M100: packs and editing. */
 export function EmojiAdminTab({ controller }: { controller: AppController }) {
   const store = controller.store;
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [editing, setEditing] = useState<CustomEmojiOut | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const packs = store.sortedEmojiPacks();
   const rows = [...store.customEmoji.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const ungrouped = rows.filter((e) => !e.pack_id || !store.emojiPacks.has(e.pack_id));
+  const move = (index: number, delta: number) => {
+    const order = [...packs];
+    const [item] = order.splice(index, 1);
+    order.splice(index + delta, 0, item!);
+    void Promise.all(order.map((p, i) => (p.position === i ? null : controller.updateEmojiPack(p.id, { position: i }))));
+  };
+  const row = (emoji: CustomEmojiOut) => (
+    <li key={emoji.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+      <span className="flex w-16 shrink-0 justify-center"><CustomEmojiImage controller={controller} emoji={emoji} size={24} /></span>
+      <span className="font-mono text-[13px]">:{emoji.name}:</span>
+      <span className="flex-1 truncate text-xs text-muted">
+        {emoji.label && emoji.kind !== "text" ? `${emoji.label} · ` : ""}
+        {(emoji.keywords ?? []).length ? `${(emoji.keywords ?? []).join("、")} · ` : ""}
+        {store.users.get(emoji.created_by)?.display_name ?? "?"}{emoji.kind === "text" ? " · 文字" : ` · ${emoji.width}×${emoji.height}`}
+      </span>
+      <Button size="sm" variant="ghost" onClick={() => setEditing(emoji)}>編集</Button>
+      <Button size="sm" variant="ghost" onClick={() => void controller.deleteEmoji(emoji.id)}>削除</Button>
+    </li>
+  );
   return (
     <div className="mt-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs text-muted">{rows.length} 件 · 誰でも追加でき、作成者と管理者が削除できます</span>
-        <Button size="sm" onClick={() => setAdding(true)}>絵文字を追加</Button>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-xs text-muted">{rows.length} 件 · 誰でも追加でき、作成者と管理者が変更・削除できます</span>
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" onClick={() => setImporting(true)}>セットを追加</Button>
+          <Button size="sm" onClick={() => setAdding(true)}>絵文字を追加</Button>
+        </div>
       </div>
+      {packs.map((pack, index) => {
+        const members = rows.filter((e) => e.pack_id === pack.id).sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name));
+        return (
+          <section key={pack.id} className="mb-3" aria-label={`セット ${pack.name}`}>
+            <div className="mb-1 flex items-center gap-2">
+              {renaming?.id === pack.id ? (
+                <>
+                  <Input value={renaming.name} autoFocus className="h-7 w-48 text-sm" onChange={(e) => setRenaming({ id: pack.id, name: e.target.value })} />
+                  <Button size="sm" onClick={() => { void controller.updateEmojiPack(pack.id, { name: renaming.name }).then((ok) => { if (ok) setRenaming(null); }); }}>保存</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setRenaming(null)}>キャンセル</Button>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm font-semibold">{pack.name}</span>
+                  <span className="text-xs text-muted">{members.length} 個</span>
+                  <span className="flex-1" />
+                  <Button size="sm" variant="ghost" disabled={index === 0} onClick={() => move(index, -1)} aria-label="前へ">↑</Button>
+                  <Button size="sm" variant="ghost" disabled={index === packs.length - 1} onClick={() => move(index, 1)} aria-label="後ろへ">↓</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setRenaming({ id: pack.id, name: pack.name })}>名前を変更</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { if (window.confirm(`セット「${pack.name}」を削除しますか？ 絵文字は残り、「カスタム」に移ります。`)) void controller.deleteEmojiPack(pack.id); }}>セットを削除</Button>
+                </>
+              )}
+            </div>
+            <ul className="divide-y divide-line rounded-xl border border-line">{members.map(row)}</ul>
+          </section>
+        );
+      })}
+      {packs.length > 0 && <div className="mb-1 text-sm font-semibold">セットなし</div>}
       <ul className="divide-y divide-line rounded-xl border border-line">
-        {rows.map((emoji) => (
-          <li key={emoji.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-            <CustomEmojiImage controller={controller} emoji={emoji} size={24} />
-            <span className="font-mono text-[13px]">:{emoji.name}:</span>
-            <span className="flex-1 truncate text-xs text-muted">{store.users.get(emoji.created_by)?.display_name ?? "?"} · {emoji.width}×{emoji.height}</span>
-            <Button size="sm" variant="ghost" onClick={() => void controller.deleteEmoji(emoji.id)}>削除</Button>
-          </li>
-        ))}
+        {ungrouped.map(row)}
         {rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">カスタム絵文字はまだありません</li>}
       </ul>
       {adding && <AddEmojiDialog controller={controller} onClose={() => setAdding(false)} />}
+      {importing && <ImportPackDialog controller={controller} onClose={() => setImporting(false)} />}
+      {editing && <EditEmojiDialog controller={controller} emoji={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }

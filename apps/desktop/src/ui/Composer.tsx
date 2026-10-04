@@ -496,7 +496,8 @@ export function Composer({
               ) : (
                 <span className="text-lg leading-none">{entry.glyph}</span>
               )}{" "}
-              <span className="text-muted">:{entry.shortcode}:</span>
+              <span className="truncate text-muted">:{entry.shortcode}:</span>
+              {entry.category === "custom" && store.customEmoji.get(entry.shortcode)?.label && <span className="ml-auto shrink-0 truncate text-xs text-muted">{store.customEmoji.get(entry.shortcode)!.label}</span>}
             </li>
           ))}
         </ul>

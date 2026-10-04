@@ -188,6 +188,13 @@
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 
+/* Text emoji (M100, ui/customEmoji.tsx TextEmojiPill): the pill takes its palette colour's light or dark pair. */
+.text-emoji { background: var(--te-bg); color: var(--te-fg); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .text-emoji { background: var(--te-bg-dark); color: var(--te-fg-dark); }
+}
+:root[data-theme="dark"] .text-emoji { background: var(--te-bg-dark); color: var(--te-fg-dark); }
+
 @theme inline {
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
   --color-canvas: var(--canvas);

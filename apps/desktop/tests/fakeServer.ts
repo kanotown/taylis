@@ -914,7 +914,7 @@ export class FakeServer {
   readonly customEmoji = new Map<string, CustomEmojiOut>();
 
   addEmoji(name: string, userId: string): CustomEmojiOut {
-    const row: CustomEmojiOut = { id: `emoji-${++this.eventId}`, name, content_type: "image/png", width: 32, height: 32, created_by: userId, created_at: now() };
+    const row: CustomEmojiOut = { id: `emoji-${++this.eventId}`, name, kind: "image", content_type: "image/png", width: 32, height: 32, keywords: [], position: 0, created_by: userId, created_at: now() };
     this.customEmoji.set(name, row);
     return row;
   }
@@ -1502,6 +1502,7 @@ export class FakeServer {
           bookmarks: this.bookmarks.get(userId) ?? [],
           favorites: (this.favorites.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)),
           custom_emoji: [...this.customEmoji.values()],
+          emoji_packs: [],
           templates: [...this.templates.values()].filter((t) => t.scope === "workspace" || t.owner_id === userId),
           groups: [],
           roster: [...this.roster.values()],

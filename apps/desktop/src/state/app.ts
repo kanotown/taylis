@@ -19,7 +19,7 @@ import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, NetworkError, UserMessageError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, signInName, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
+import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, CustomEmojiUpdate, EmojiPackImportOut, TextEmojiCreate, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -664,16 +664,81 @@ export class AppController {
   }
 
   /** M12f: add a custom emoji; everyone gets emoji.updated, this device applies it at once. */
-  async uploadEmoji(name: string, file: File): Promise<boolean> {
+  async uploadEmoji(name: string, file: File, extra: { label?: string | null; keywords?: string[] } = {}): Promise<boolean> {
     if (!this.api) return false;
     try {
-      const row = await this.api.uploadEmoji(name, file, file.name);
+      const row = await this.api.uploadEmoji(name, file, file.name, extra);
       this.store.applyCustomEmoji(row, false);
       this.setNotice(`:${row.name}: を追加しました`);
       return true;
     } catch (error) {
       this.setError(error);
       return false;
+    }
+  }
+
+  /** M100: a text emoji (a label drawn as a pill). */
+  async createTextEmoji(body: TextEmojiCreate): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const row = await this.api.createTextEmoji(body);
+      this.store.applyCustomEmoji(row, false);
+      this.setNotice(`:${row.name}: を追加しました`);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** M100: label / colour / keywords (creator or admin), pack and order (admin). */
+  async updateEmoji(emojiId: string, patch: CustomEmojiUpdate): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      const row = await this.api.updateEmoji(emojiId, patch);
+      this.store.applyCustomEmoji(row, false);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** M100 (admin): import a pack from a folder's files or a ZIP; returns what happened, null on an error (shown). */
+  async importEmojiPack(source: { archive: File } | { files: File[] }): Promise<EmojiPackImportOut | null> {
+    if (!this.api) return null;
+    try {
+      const result = await this.api.importEmojiPack(source);
+      this.store.applyEmojiPack(result.pack, false);
+      // The emoji themselves arrive as emoji.updated; fetch them now too so this window shows them at once.
+      this.store.replaceCustomEmoji(await this.api.listEmoji());
+      return result;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  async updateEmojiPack(packId: string, patch: { name?: string; position?: number }): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.applyEmojiPack(await this.api.updateEmojiPack(packId, patch), false);
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /** The pack goes, its emoji stay (ungrouped). */
+  async deleteEmojiPack(packId: string): Promise<void> {
+    if (!this.api) return;
+    try {
+      await this.api.deleteEmojiPack(packId);
+      const row = this.store.emojiPacks.get(packId);
+      if (row) this.store.applyEmojiPack(row, true);
+    } catch (error) {
+      this.setError(error);
     }
   }
 

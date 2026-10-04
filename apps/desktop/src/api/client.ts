@@ -1,5 +1,5 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
-import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, DeltaOut, DraftOut, FavoriteStateOut, FeedBotOut, FeedBotUpdate, FeedCreate, FeedOut, FeedUpdate, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, PoolCreate, PoolOut, PoolUpdate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate, AdminWorkspaceSettingsOut, WorkspaceSettingsUpdate, DefaultChannelsApplyOut, WorkflowCreate, WorkflowOut, WorkflowSubmit, WorkflowTemplateOut, WorkflowUpdate } from "./types";
+import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, CustomEmojiUpdate, DeltaOut, EmojiPackImportOut, EmojiPackOut, TextEmojiCreate, DraftOut, FavoriteStateOut, FeedBotOut, FeedBotUpdate, FeedCreate, FeedOut, FeedUpdate, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, PoolCreate, PoolOut, PoolUpdate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate, AdminWorkspaceSettingsOut, WorkspaceSettingsUpdate, DefaultChannelsApplyOut, WorkflowCreate, WorkflowOut, WorkflowSubmit, WorkflowTemplateOut, WorkflowUpdate } from "./types";
 import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
 import type { TestNotificationOut } from "./types";
@@ -299,7 +299,6 @@ export class ApiClient {
     return this.request("GET", "/api/v1/emoji");
   }
 
-  /** POST /emoji (multipart): a name and a small image; any member may add one. */
   /** M14a: my profile picture (any common image; the server stores a 256px PNG). */
   async uploadAvatar(file: Blob, filename: string): Promise<UserMe> {
     if (!this.accessToken && this.refreshToken) await this.refresh();
@@ -324,13 +323,21 @@ export class ApiClient {
     return this.request("DELETE", "/api/v1/users/me/avatar");
   }
 
-  async uploadEmoji(name: string, file: Blob, filename: string): Promise<CustomEmojiOut> {
-    if (!this.accessToken && this.refreshToken) await this.refresh();
+  /** POST /emoji (multipart): a name and a small image; M100: an optional label and keywords. */
+  uploadEmoji(name: string, file: Blob, filename: string, extra: { label?: string | null; keywords?: string[] } = {}): Promise<CustomEmojiOut> {
     const form = new FormData();
     form.append("name", name);
     form.append("file", file, filename);
+    if (extra.label) form.append("label", extra.label);
+    for (const keyword of extra.keywords ?? []) form.append("keywords", keyword);
+    return this.postForm<CustomEmojiOut>("/api/v1/emoji", form);
+  }
+
+  /** A multipart POST with the bearer token (one retry after refreshing it). */
+  private async postForm<T>(path: string, form: FormData): Promise<T> {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
     const send = async (): Promise<Response> =>
-      this.rawFetch(`${this.baseUrl}/api/v1/emoji`, {
+      this.rawFetch(`${this.baseUrl}${path}`, {
         method: "POST",
         headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}`, Accept: "application/json" } : { Accept: "application/json" },
         body: form,
@@ -341,11 +348,42 @@ export class ApiClient {
       response = await send();
     }
     if (!response.ok) throw await this.errorFromResponse(response);
-    return readJson<CustomEmojiOut>(response);
+    return readJson<T>(response);
   }
 
   deleteEmoji(emojiId: string): Promise<void> {
     return this.request("DELETE", `/api/v1/emoji/${emojiId}`);
+  }
+
+  /** M100: a text emoji (`label` drawn as a pill). */
+  createTextEmoji(body: TextEmojiCreate): Promise<CustomEmojiOut> {
+    return this.request("POST", "/api/v1/emoji/text", body);
+  }
+
+  /** M100: label / colour / keywords (creator or admin), pack and order (admin). */
+  updateEmoji(emojiId: string, patch: CustomEmojiUpdate): Promise<CustomEmojiOut> {
+    return this.request("PATCH", `/api/v1/emoji/${emojiId}`, patch);
+  }
+
+  listEmojiPacks(): Promise<EmojiPackOut[]> {
+    return this.request("GET", "/api/v1/emoji/packs");
+  }
+
+  /** M100 (admin): a pack from a folder's files (pack.json among them) or a ZIP; idempotent by name and shortcode. */
+  importEmojiPack(source: { archive: File } | { files: File[] }): Promise<EmojiPackImportOut> {
+    const form = new FormData();
+    if ("archive" in source) form.append("archive", source.archive, source.archive.name);
+    else for (const file of source.files) form.append("files", file, file.name);
+    return this.postForm<EmojiPackImportOut>("/api/v1/emoji/packs/import", form);
+  }
+
+  updateEmojiPack(packId: string, patch: { name?: string; position?: number }): Promise<EmojiPackOut> {
+    return this.request("PATCH", `/api/v1/emoji/packs/${packId}`, patch);
+  }
+
+  /** The pack goes; its emoji stay, ungrouped. */
+  deleteEmojiPack(packId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/emoji/packs/${packId}`);
   }
 
   // --- reminders (M12e) ------------------------------------------------------------------
