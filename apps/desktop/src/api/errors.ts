@@ -58,3 +58,21 @@ export function describeError(err: unknown): string {
   if (err instanceof NetworkError || (err instanceof TypeError && /fetch|load failed|network/i.test(err.message))) return NETWORK_ERROR_MESSAGE;
   return UNKNOWN_ERROR_MESSAGE;
 }
+
+/**
+ * The server has no such route: one older than the feature. 404 with the generic `not_found` (an unknown path; a
+ * missing row has its own code such as `channel_not_found`), or 405 where the path exists with other methods.
+ */
+export function isMissingRoute(err: unknown): boolean {
+  return err instanceof ApiError && ((err.status === 404 && err.code === "not_found") || err.status === 405);
+}
+
+/** What to say when `feature` (e.g. 「セットの取り込み」) needs a newer server. */
+export function serverTooOldMessage(feature: string): string {
+  return `このサーバはまだ${feature}に対応していません。サーバを更新してからもう一度お試しください。`;
+}
+
+/** describeError, except that a missing route says the server is too old for `feature`. */
+export function describeFeatureError(err: unknown, feature: string): string {
+  return isMissingRoute(err) ? serverTooOldMessage(feature) : describeError(err);
+}

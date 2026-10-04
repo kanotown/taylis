@@ -92,7 +92,7 @@ describe("pack folder import (M100)", () => {
     const manifest = new File([JSON.stringify({ name: "はんぺん", tab: "tab.png", items: [{ file: "001_通常.png", shortcode: "a" }, { file: "002.png", shortcode: "b" }] })], "pack.json");
     const files = packFiles([manifest, new File(["x"], "001_通常.png"), new File(["x"], "tab.png"), new File(["#"], "タグ案.md")]);
     expect(files.map((f) => f.name)).toEqual(["pack.json", "001_通常.png", "tab.png"]);
-    expect(await previewPackFolder(files)).toEqual({ name: "はんぺん", items: 2, missing: ["002.png"] });
-    expect(await previewPackFolder([new File(["x"], "a.png")])).toBe("フォルダに pack.json がありません");
+    expect(await previewPackFolder(files)).toEqual({ name: "はんぺん", items: 2, missing: ["002.png"], thumbnails: ["001_通常.png"] });
+    expect(await previewPackFolder([new File(["x"], "a.png")])).toMatch(/^pack.json がありません/);
   });
 });

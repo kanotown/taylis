@@ -5,6 +5,7 @@ import { TEXT_EMOJI_COLOR_NAMES, TEXT_EMOJI_COLORS, TEXT_EMOJI_LABEL_MAX, textEm
 import type { AppController } from "../state/app";
 import { Button, cn, Field, Input, Modal } from "./primitives";
 import { useRef } from "react";
+import { packFromDrop, readZipPackFiles } from "./emojiPackSource";
 
 /** Custom emoji (M12f): `:name:` in text and reactions renders as the uploaded image. */
 
@@ -326,12 +327,14 @@ export function EditEmojiDialog({ controller, emoji, onClose }: { controller: Ap
   );
 }
 
-type PackManifestPreview = { name: string; items: number; missing: string[] };
+type PackManifestPreview = { name: string; items: number; missing: string[]; thumbnails: string[] };
+
+const THUMBNAILS = 6;
 
 /** What a folder's pack.json says, before uploading (the server checks everything again). */
 export async function previewPackFolder(files: File[]): Promise<PackManifestPreview | string> {
   const manifest = files.find((f) => f.name === "pack.json");
-  if (!manifest) return "フォルダに pack.json がありません";
+  if (!manifest) return "pack.json がありません。PNG 画像と pack.json の入ったフォルダか ZIP を選んでください";
   let parsed: { name?: unknown; items?: Array<{ file?: unknown }>; tab?: unknown };
   try {
     parsed = JSON.parse(await manifest.text());
@@ -339,11 +342,13 @@ export async function previewPackFolder(files: File[]): Promise<PackManifestPrev
     return "pack.json を JSON として読めません";
   }
   const names = new Set(files.map((f) => f.name.normalize("NFC")));
-  const wanted = [...(Array.isArray(parsed.items) ? parsed.items.map((i) => String(i?.file ?? "")) : []), ...(typeof parsed.tab === "string" ? [parsed.tab] : [])];
+  const items = Array.isArray(parsed.items) ? parsed.items.map((i) => String(i?.file ?? "")) : [];
+  const wanted = [...items, ...(typeof parsed.tab === "string" ? [parsed.tab] : [])];
   return {
     name: typeof parsed.name === "string" ? parsed.name : "(名前なし)",
-    items: Array.isArray(parsed.items) ? parsed.items.length : 0,
+    items: items.length,
     missing: wanted.filter((f) => !names.has(f.normalize("NFC"))),
+    thumbnails: items.filter((f) => names.has(f.normalize("NFC"))).slice(0, THUMBNAILS),
   };
 }
 
@@ -352,61 +357,137 @@ export function packFiles(files: File[]): File[] {
   return files.filter((f) => f.name === "pack.json" || /\.(png|gif|jpe?g|webp)$/i.test(f.name));
 }
 
+type PackSource = { archive: File } | { files: File[] };
+type Picked = {
+  source: PackSource;
+  /** The folder's or the ZIP's name, as the admin knows it. */
+  label: string;
+  /** null: a ZIP this app cannot look into (the server still reads it). */
+  preview: PackManifestPreview | string | null;
+  files: File[];
+};
+
+/** Read what was picked or dropped into the preview the dialog shows. */
+export async function pickPack(source: PackSource): Promise<Picked> {
+  if ("archive" in source) {
+    const inside = await readZipPackFiles(source.archive);
+    const files = inside ? packFiles(inside) : [];
+    return { source, label: source.archive.name, preview: inside ? await previewPackFolder(files) : null, files };
+  }
+  const files = packFiles(source.files);
+  const label = (source.files[0] as (File & { webkitRelativePath?: string }) | undefined)?.webkitRelativePath?.split("/")[0] || "フォルダ";
+  return {
+    source: { files },
+    label,
+    preview: files.length ? await previewPackFolder(files) : "PNG 画像も pack.json も見つかりません。PNG 画像と pack.json の入ったフォルダか ZIP を選んでください",
+    files,
+  };
+}
+
+function PackThumbnails({ files, names }: { files: File[]; names: string[] }) {
+  const [urls, setUrls] = useState<string[]>([]);
+  useEffect(() => {
+    const byName = new Map(files.map((f) => [f.name.normalize("NFC"), f]));
+    const made = names.flatMap((n) => { const f = byName.get(n.normalize("NFC")); return f ? [URL.createObjectURL(f)] : []; });
+    setUrls(made);
+    return () => made.forEach((u) => URL.revokeObjectURL(u));
+  }, [files, names]);
+  if (!urls.length) return null;
+  return (
+    <div className="mt-2 flex gap-1.5" aria-label="見本">
+      {urls.map((u) => <img key={u} src={u} alt="" className="h-10 w-10 rounded object-contain" />)}
+    </div>
+  );
+}
+
 /** M100 (admin): 「セットを追加」: a folder or a ZIP with pack.json; importing again updates labels and keywords. */
 export function ImportPackDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
-  const [source, setSource] = useState<{ archive: File } | { files: File[] } | null>(null);
-  const [preview, setPreview] = useState<PackManifestPreview | string | null>(null);
+  const [picked, setPicked] = useState<Picked | null>(null);
   const [result, setResult] = useState<EmojiPackImportOut | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const chooseFolder = async (list: FileList | null) => {
-    const files = packFiles([...(list ?? [])]);
+  const [dragging, setDragging] = useState(false);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const zipInput = useRef<HTMLInputElement>(null);
+  const choose = async (source: PackSource | null, hint?: string) => {
     setResult(null);
-    setSource(files.length ? { files } : null);
-    setPreview(files.length ? await previewPackFolder(files) : "画像も pack.json も見つかりません");
+    setError(source ? null : hint ?? null);
+    setPicked(source ? await pickPack(source) : null);
   };
-  const chooseZip = (file: File | null) => {
+  const reset = () => {
+    setPicked(null);
     setResult(null);
-    setSource(file ? { archive: file } : null);
-    setPreview(null);
+    setError(null);
+    if (folderInput.current) folderInput.current.value = "";
+    if (zipInput.current) zipInput.current.value = "";
   };
   const submit = async () => {
-    if (!source) return;
+    if (!picked) return;
     setBusy(true);
-    const done = await controller.importEmojiPack(source);
+    setError(null);
+    const done = await controller.importEmojiPack(picked.source);
     setBusy(false);
-    if (done) setResult(done);
+    if (typeof done === "string") setError(done);
+    else setResult(done);
   };
-  const blocked = typeof preview === "string" || (preview && preview.missing.length > 0);
+  const preview = picked?.preview;
+  const blocked = typeof preview === "string" || (!!preview && preview.missing.length > 0);
   return (
     <Modal onClose={onClose} title="絵文字のセットを追加" className="w-[480px]">
-      <div className="mt-3 space-y-3 text-sm">
-        <p className="text-xs text-muted">
-          画像 (PNG など、512px・256 KB まで) と pack.json の入ったフォルダか ZIP を選びます。pack.json は
-          {" {\"name\": \"セット名\", \"tab\": \"tab.png\", \"items\": [{\"file\", \"shortcode\", \"label\", \"keywords\": []}]} "}
-          です。同じ名前のセットをもう一度取り込むと、表示名・キーワード・並び順を更新し、新しい絵文字を足します (画像は差し替えません)。
-        </p>
-        <Field label="フォルダ">
-          {/* webkitdirectory: the whole folder (WebView2, WKWebView, browsers). */}
-          <input type="file" multiple className="text-sm" {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={(e) => void chooseFolder(e.target.files)} />
-        </Field>
-        <Field label="または ZIP">
-          <input type="file" accept=".zip,application/zip" className="text-sm" onChange={(e) => chooseZip(e.target.files?.[0] ?? null)} />
-        </Field>
-        {typeof preview === "string" && <div className="text-xs text-danger">{preview}</div>}
-        {preview && typeof preview !== "string" && (
-          <div className="rounded-lg border border-line p-2 text-xs">
-            「{preview.name}」 · {preview.items} 個
-            {preview.missing.length > 0 && <div className="mt-1 text-danger">フォルダにないファイル: {preview.missing.join("、")}</div>}
+      <div
+        className={cn("mt-3 space-y-3 rounded-lg text-sm", dragging && "ring-2 ring-accent")}
+        onDragOver={(e) => { if (e.dataTransfer?.types.includes("Files")) { e.preventDefault(); setDragging(true); } }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          if (busy) return;
+          void packFromDrop(e.dataTransfer).then((source) => choose(source, "フォルダか ZIP ファイルをドロップしてください"));
+        }}
+      >
+        {!picked ? (
+          <>
+            <p>PNG 画像と pack.json の入ったフォルダ (またはそれを ZIP にしたもの) を選んでください。ここにドロップしても選べます。</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" className="h-16" onClick={() => folderInput.current?.click()}>フォルダを選ぶ</Button>
+              <Button variant="secondary" className="h-16" onClick={() => zipInput.current?.click()}>ZIP ファイルを選ぶ</Button>
+            </div>
+            {/* webkitdirectory: the whole folder (WebView2, WKWebView, browsers). */}
+            <input ref={folderInput} type="file" multiple hidden data-testid="pack-folder" {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={(e) => void choose(e.target.files?.length ? { files: [...e.target.files] } : null)} />
+            <input ref={zipInput} type="file" hidden data-testid="pack-zip" accept=".zip,application/zip" onChange={(e) => { const f = e.target.files?.[0]; void choose(f ? { archive: f } : null); }} />
+            <details className="text-xs text-muted">
+              <summary className="cursor-pointer">pack.json の書き方</summary>
+              <p className="mt-1">
+                画像は 512px・256 KB まで。pack.json は
+                {" {\"name\": \"セット名\", \"tab\": \"tab.png\", \"items\": [{\"file\", \"shortcode\", \"label\", \"keywords\": []}]} "}
+                です。同じ名前のセットをもう一度取り込むと、表示名・キーワード・並び順を更新し、新しい絵文字を足します (画像は差し替えません)。
+              </p>
+            </details>
+          </>
+        ) : (
+          <div className="rounded-lg border border-line p-3" aria-label="取り込む内容">
+            <div className="truncate text-xs text-muted">{picked.label}</div>
+            {preview === null && <div className="mt-1">ZIP の中身はここでは確かめられません。取り込むときにサーバが確かめます。</div>}
+            {typeof preview === "string" && <div className="mt-1 text-danger">{preview}</div>}
+            {preview && typeof preview !== "string" && (
+              <>
+                <div className="mt-1 font-semibold">「{preview.name}」 · {preview.items} 個</div>
+                {preview.missing.length > 0 && <div className="mt-1 text-xs text-danger">見つからないファイル: {preview.missing.join("、")}</div>}
+                <PackThumbnails files={picked.files} names={preview.thumbnails} />
+              </>
+            )}
           </div>
         )}
+        {error && <div className="text-xs text-danger" role="alert">{error}</div>}
         {result && (
           <div className="rounded-lg border border-line bg-panel p-2 text-xs" role="status">
             「{result.pack.name}」を取り込みました: 追加 {result.created.length} · 更新 {result.updated.length} · 変更なし {result.unchanged.length}
           </div>
         )}
         <div className="flex justify-end gap-2">
+          {picked && !result && <Button variant="ghost" disabled={busy} onClick={reset}>選び直す</Button>}
           <Button variant="secondary" onClick={onClose}>{result ? "閉じる" : "キャンセル"}</Button>
-          <Button disabled={!source || !!blocked || busy} onClick={() => void submit()}>{busy ? "取り込み中…" : "取り込む"}</Button>
+          {!result && <Button disabled={!picked || blocked || busy} onClick={() => void submit()}>{busy ? "取り込み中…" : "取り込む"}</Button>}
         </div>
       </div>
     </Modal>
