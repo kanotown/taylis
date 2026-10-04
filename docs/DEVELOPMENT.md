@@ -61,6 +61,7 @@ AI の API キー (docs/AI.md) は `infra/secrets/anthropic_api_key` (と `opena
 | Android | `ANDROID_HOME=$HOME/Library/Android/sdk apps/android/gradlew -p apps/android :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`。正規表現のフラグなど、JVM の単体テストでは通るが Android で落ちるものがあるのでエミュレータでも確かめる |
 
 iOS のビルド番号は `apps/ios/ChikuwaChat/Info.plist` (CFBundleVersion) と `apps/ios/project.yml` の 2 か所を同じにする。
+TestFlight / App Store と Google Play への配信 (版の番号、署名、スクリプト) は docs/STORE_RELEASE.md。
 
 ## 5. 気をつけること (これまでにはまったところ)
 
