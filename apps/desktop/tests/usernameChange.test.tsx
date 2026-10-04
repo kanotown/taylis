@@ -71,11 +71,25 @@ async function setupAdmin(fail?: ApiError) {
 
 const rowOf = (username: string) => screen.getByText(new RegExp(`^@${username.replace(".", "\\.")}`)).closest("li")!;
 
+/** Opens the ⋯ menu of `username`'s row in 管理 →「ユーザー」 (2026-10-04: the row's actions live there). */
+function openUserMenu(username: string): HTMLElement {
+  fireEvent.keyDown(within(rowOf(username)).getByRole("button", { name: /の操作$/ }), { key: "Enter" });
+  return screen.getByRole("menu");
+}
+
+async function chooseFromUserMenu(username: string, item: RegExp): Promise<void> {
+  fireEvent.click(within(openUserMenu(username)).getByRole("menuitem", { name: item }));
+  await settle();
+}
+
 it("管理 →「ユーザー」: 「ユーザー名を変更」 on every row (me and bots too) renames with the same checks", async () => {
   const { updates } = await setupAdmin();
-  for (const name of ["admin", "bob", "ci-bot"]) expect(within(rowOf(name)).getByRole("button", { name: /ユーザー名を変更/ })).toBeTruthy();
-  fireEvent.click(within(rowOf("bob")).getByRole("button", { name: /ユーザー名を変更/ }));
-  await settle();
+  for (const name of ["admin", "bob", "ci-bot"]) {
+    expect(within(openUserMenu(name)).getByRole("menuitem", { name: /ユーザー名を変更/ })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await settle();
+  }
+  await chooseFromUserMenu("bob", /ユーザー名を変更/);
   const dialog = screen.getByRole("dialog");
   expect(dialog.textContent).toContain("Bob のユーザー名を変更");
   expect(within(dialog).getByText(/パスワードでのログインには新しいユーザー名を使います/)).toBeTruthy();
@@ -93,8 +107,7 @@ it("管理 →「ユーザー」: 「ユーザー名を変更」 on every row (m
 
 it("管理: a refusal from the server stays in the dialog under the field", async () => {
   await setupAdmin(new ApiError(409, "username_taken", "taken"));
-  fireEvent.click(within(rowOf("bob")).getByRole("button", { name: /ユーザー名を変更/ }));
-  await settle();
+  await chooseFromUserMenu("bob", /ユーザー名を変更/);
   const dialog = screen.getByRole("dialog");
   fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "admin2" } });
   fireEvent.click(within(dialog).getByRole("button", { name: "ユーザー名を変更" }));

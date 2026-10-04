@@ -68,11 +68,11 @@ describe("my profile from my avatar (sidebar header)", () => {
 });
 
 describe("the title hint", () => {
-  it("suggests the lab's titles in 「プロフィールを編集」", () => {
+  it("suggests titles beyond the roster in 「プロフィールを編集」 (the roster's grade and rank show by themselves)", () => {
     const { me, store } = signedIn();
     const controller = { store, me, isAdmin: false, workspaces: [], activeServer: null } as unknown as AppController;
     render(<SettingsSectionBody controller={controller} section="profile" />);
-    expect(screen.getByPlaceholderText("例: 教授 / 准教授 / 助教 / D1 / M2 / M1 / B4")).toBeTruthy();
+    expect(screen.getByPlaceholderText("例: 研究室長 / TA / 秘書 (名簿の学年・職位は自動で表示されます)")).toBeTruthy();
   });
 });
 

@@ -59,7 +59,8 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
     val sections = if (headed) Roster.sections(people, roster) else listOf(null to people)
     fun subtitle(user: UserPublic): String {
         val parts = listOfNotNull(
-            user.title?.takeIf { it.isNotEmpty() },
+            // The roster label is the badge; the title adds the rest (LAB.md 「肩書と名簿」).
+            Roster.titleExtra(user.title, roster[user.id]),
             roster[user.id]?.researchTopic?.takeIf { it.isNotEmpty() },
             activeStatus(user)?.let { (it.first + " " + it.second).trim() },
         )

@@ -1,0 +1,20 @@
+{
+  "_comment": "LAB.md §A 「肩書と名簿」 (2026-10-04): what a client shows where a person's title (肩書) is shown. roster: the person's lab roster line (null off the roster); its label is the roster's short label (教授 / 准教授 / 講師 / 助教 / 教員 for faculty without a rank, the grade or 学生 for a student, その他, 卒業生). title: users.title as the server sends it. display: the line a client shows (null: nothing): the title trimmed when there is no label; the label when the title is empty or the same as the label (compared after NFKC, trimming and lower-casing); otherwise 「<label> · <title>」. extra: what a list that already shows the label as a badge adds after it: the title when it is not empty and not the same as the label, else null. Hand-written; desktop (tests/titleDisplay.test.ts), iOS (TitleDisplayTests) and Android (TitleDisplayTest) read this file.",
+  "cases": [
+    { "name": "neither", "roster": null, "title": null, "display": null, "extra": null },
+    { "name": "empty title off the roster", "roster": null, "title": "  ", "display": null, "extra": null },
+    { "name": "title only", "roster": null, "title": " 秘書 ", "display": "秘書", "extra": "秘書" },
+    { "name": "grade only", "roster": { "affiliation": "student", "grade": "M2" }, "title": null, "display": "M2", "extra": null },
+    { "name": "grade, empty title", "roster": { "affiliation": "student", "grade": "B4" }, "title": "", "display": "B4", "extra": null },
+    { "name": "grade and a different title", "roster": { "affiliation": "student", "grade": "M2" }, "title": "研究室長", "display": "M2 · 研究室長", "extra": "研究室長" },
+    { "name": "grade typed again as the title", "roster": { "affiliation": "student", "grade": "M2" }, "title": "M2", "display": "M2", "extra": null },
+    { "name": "same up to width and case", "roster": { "affiliation": "student", "grade": "D1" }, "title": " ｄ１ ", "display": "D1", "extra": null },
+    { "name": "student without a grade", "roster": { "affiliation": "student", "grade": null }, "title": null, "display": "学生", "extra": null },
+    { "name": "rank and the same title", "roster": { "affiliation": "faculty", "rank": "professor" }, "title": "教授", "display": "教授", "extra": null },
+    { "name": "rank and a different title", "roster": { "affiliation": "faculty", "rank": "associate_professor" }, "title": "副センター長", "display": "准教授 · 副センター長", "extra": "副センター長" },
+    { "name": "faculty without a rank", "roster": { "affiliation": "faculty", "rank": null }, "title": null, "display": "教員", "extra": null },
+    { "name": "other and a title", "roster": { "affiliation": "other" }, "title": "秘書", "display": "その他 · 秘書", "extra": "秘書" },
+    { "name": "alumni", "roster": { "affiliation": "alumni" }, "title": null, "display": "卒業生", "extra": null },
+    { "name": "an affiliation this version does not know", "roster": { "affiliation": "visitor" }, "title": "客員", "display": "客員", "extra": "客員" }
+  ]
+}

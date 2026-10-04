@@ -5,7 +5,7 @@ import type { AppController } from "../state/app";
 import { Avatar, presenceLabel } from "./Avatar";
 import { CustomEmojiImage, customEmojiName, splitCustomEmoji } from "./customEmoji";
 import { useStoreUpdates } from "./hooks";
-import { rosterSummary } from "./roster";
+import { displayTitle, supervisorLabel } from "./roster";
 import { expiryLabel } from "./users";
 import { dndActive, quietHoursLabel } from "./dnd";
 import { activeStatus } from "./users";
@@ -27,6 +27,9 @@ export function UserPopover({ controller, userId, children, className }: { contr
   const presence = store.presenceOf(userId);
   const status = activeStatus(user);
   const line = store.roster.get(userId); // M23
+  // The roster label is the title too (LAB.md 「肩書と名簿」): 「M2 · 研究室長」; the roster block keeps the supervisor and the topic.
+  const title = displayTitle(user?.title, line);
+  const supervisor = line ? supervisorLabel(line, store.users) : null;
   const openDm = async () => {
     const id = await controller.openDmWith(userId);
     if (id) {
@@ -46,7 +49,7 @@ export function UserPopover({ controller, userId, children, className }: { contr
           <Avatar id={userId} name={user?.display_name ?? "?"} size={56} className="rounded-2xl text-xl" presence={presence} />
           <div className="min-w-0">
             <div className="truncate text-base font-semibold">{user?.display_name ?? "?"}</div>
-            <div className="truncate text-xs text-muted">@{user?.username ?? ""}{user?.title ? ` · ${user.title}` : ""}</div>
+            <div className="truncate text-xs text-muted">@{user?.username ?? ""}{title ? ` · ${title}` : ""}</div>
             {user?.role === "guest" && <div className="mt-0.5 text-xs text-muted">ゲスト (参加したチャンネルだけ見えます)</div>}
             {user?.role === "bot" && <div className="mt-0.5 text-xs text-muted">{controller.store.aiAgentOf(userId) ? "AI のボット (メンションすると返事をします)" : "受信 Webhook の bot"}</div>}
             <div className="mt-0.5 text-xs text-muted">{presenceLabel(presence)}</div>
@@ -55,9 +58,9 @@ export function UserPopover({ controller, userId, children, className }: { contr
             )}
           </div>
         </div>
-        {line && (
+        {line && (supervisor || line.research_topic) && (
           <div className="space-y-0.5 border-b border-line px-4 py-2.5 text-xs">
-            <div className="font-medium text-ink">{rosterSummary(line, store.users)}</div>
+            {supervisor && <div className="font-medium text-ink">{supervisor}</div>}
             {line.research_topic && <div className="text-muted">研究テーマ: {line.research_topic}</div>}
           </div>
         )}

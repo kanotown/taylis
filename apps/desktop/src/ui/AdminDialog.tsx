@@ -1,13 +1,10 @@
-import { Archive, ArchiveRestore, Copy, KeyRound, NotebookPen, Pencil, ShieldCheck, UserPlus, UserX } from "lucide-react";
+import { Archive, ArchiveRestore, NotebookPen, Pencil } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
-import { describeError } from "../api/errors";
-import type { AdminUserOut, Role } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { AiTab } from "./AiTab";
-import { Avatar } from "./Avatar";
-import { fullTimestamp } from "./format";
+import { UsersTab } from "./AdminUsersTab";
 import { CanvasTemplatesTab } from "./CanvasTemplatesTab";
 import { EmojiAdminTab } from "./customEmoji";
 import { GroupsTab } from "./GroupsTab";
@@ -17,8 +14,6 @@ import { WebhooksTab } from "./WebhooksTab";
 import { WorkflowManager } from "./WorkflowViews";
 import { WorkspaceSettingsTab } from "./WorkspaceSettingsTab";
 import { Badge, Button, cn, Field, Input, Modal, UNDERLINE_TAB, UNDERLINE_TAB_ROW } from "./primitives";
-import { USERNAME_HINT } from "./username";
-import { UsernameEditor } from "./UsernameEditor";
 
 type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates";
 
@@ -74,211 +69,6 @@ export function AdminBody({ controller, className }: { controller: AppController
       <div className="min-h-0 flex-1 overflow-y-auto">
         {shown === "ai" ? <AiTab controller={controller} /> : shown === "workspace" ? <WorkspaceSettingsTab controller={controller} /> : shown === "users" ? <UsersTab controller={controller} /> : shown === "roster" ? <RosterTab controller={controller} /> : shown === "groups" ? <GroupsTab controller={controller} /> : shown === "invites" ? <InvitesTab controller={controller} /> : shown === "webhooks" ? <WebhooksTab controller={controller} /> : shown === "workflows" ? <WorkflowManager controller={controller} /> :shown === "channels" ? <ChannelsTab controller={controller} /> : shown === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
       </div>
-    </div>
-  );
-}
-
-function UsersTab({ controller }: { controller: AppController }) {
-  const me = controller.store.me;
-  const [users, setUsers] = useState<AdminUserOut[] | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ username: "", display_name: "", email: "", role: "member" as Role });
-  const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
-  const [confirm, setConfirm] = useState<AdminUserOut | null>(null);
-  // M96: 「ユーザー名を変更」 (anyone, bots included; administrators are not limited).
-  const [renaming, setRenaming] = useState<AdminUserOut | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const load = async () => {
-    if (!controller.api) return;
-    try {
-      setUsers(await controller.api.adminListUsers());
-    } catch (error) {
-      controller.setError(error);
-    }
-  };
-  useEffect(() => {
-    void load();
-  }, [controller.api]);
-
-  const run = async (work: () => Promise<void>) => {
-    setBusy(true);
-    try {
-      await work();
-      await load();
-    } catch (error) {
-      controller.setError(error);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const create = (event: FormEvent) => {
-    event.preventDefault();
-    void run(async () => {
-      const created = await controller.api!.adminCreateUser({ username: form.username.trim(), display_name: form.display_name.trim(), email: form.email.trim() || null, role: form.role });
-      setIssued({ username: created.user.username, password: created.temporary_password });
-      setForm({ username: "", display_name: "", email: "", role: "member" });
-      setCreating(false);
-    });
-  };
-
-  return (
-    <div className="mt-4 space-y-4">
-      {issued && (
-        <div className="rounded-xl border border-accent/40 bg-accent-soft/50 p-3 text-sm">
-          <div className="font-medium">@{issued.username} の仮パスワード</div>
-          <div className="mt-1 flex items-center gap-2">
-            <code className="rounded bg-canvas px-2 py-1 font-mono text-base">{issued.password}</code>
-            <Button size="sm" variant="secondary" onClick={() => void navigator.clipboard?.writeText(issued.password)}>
-              <Copy size={14} /> コピー
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setIssued(null)}>閉じる</Button>
-          </div>
-          <div className="mt-1 text-xs text-muted">本人に安全な方法で渡してください。初回ログイン時に変更を求められます。この表示を閉じると再表示できません。</div>
-        </div>
-      )}
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted">{users ? `${users.length} 人` : "読み込み中…"}</span>
-        <Button size="sm" onClick={() => setCreating((open) => !open)}>
-          <UserPlus size={14} /> ユーザーを作成
-        </Button>
-      </div>
-      {creating && (
-        <form className="grid grid-cols-2 gap-3 rounded-xl border border-line p-3" onSubmit={create}>
-          <Field label="ユーザー名 (3〜32 文字、a-z 0-9 . _ -)" hint={USERNAME_HINT}>
-            <Input value={form.username} pattern="[a-z0-9._-]{3,32}" required autoFocus onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} />
-          </Field>
-          <Field label="表示名">
-            <Input value={form.display_name} maxLength={80} required onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
-          </Field>
-          <Field label="メール (任意)">
-            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          </Field>
-          <Field label="ロール">
-            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
-              <option value="member">メンバー</option>
-              <option value="admin">管理者</option>
-              <option value="guest">ゲスト (参加したチャンネルだけ)</option>
-            </select>
-          </Field>
-          <div className="col-span-2 flex justify-end gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => setCreating(false)}>キャンセル</Button>
-            <Button type="submit" size="sm" disabled={busy}>作成して仮パスワードを発行</Button>
-          </div>
-        </form>
-      )}
-      {users && (
-        <ul className="divide-y divide-line rounded-xl border border-line">
-          {users.map((user) => {
-            const self = user.id === me?.id;
-            const off = !!user.deactivated_at;
-            const renameButton = !user.username.startsWith("deleted-") && (
-              <Button size="sm" variant="ghost" title="ユーザー名を変更" disabled={busy} onClick={() => setRenaming(user)}>
-                <Pencil size={14} /> ユーザー名を変更
-              </Button>
-            );
-            return (
-              <li key={user.id} className={cn("flex flex-wrap items-center gap-3 px-3 py-2 text-sm max-md:gap-y-1.5", off && "opacity-60")}>
-                <Avatar id={user.id} name={user.display_name} size={30} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 max-md:flex-wrap max-md:gap-y-0.5">
-                    <span className="truncate font-medium">{user.display_name}</span>
-                    <span className="truncate text-xs text-muted">@{user.username}{user.email ? ` · ${user.email}` : ""}</span>
-                    {user.role === "admin" && <Badge tone="accent">管理者</Badge>}
-                    {user.role === "guest" && <Badge>ゲスト</Badge>}
-                    {user.role === "bot" && <Badge>{controller.store.aiAgentOf(user.id) ? "AI" : "BOT"}</Badge>}
-                    {off && <Badge>無効</Badge>}
-                    {user.must_change_password && !off && <Badge tone="danger">仮パスワード</Badge>}
-                    {user.totp_enabled && <Badge tone="accent">2FA</Badge>}
-                  </div>
-                  <div className="text-[11px] text-muted">作成 {fullTimestamp(user.created_at)}</div>
-                </div>
-                {/* On a phone the actions take a line of their own under the name. */}
-                {!self && !off && (
-                  <div className="flex items-center gap-1 max-md:w-full max-md:flex-wrap max-md:pl-[42px]">
-                    {user.role !== "bot" && (
-                      <label className="flex items-center gap-1 text-xs text-muted" title="ロール">
-                        <ShieldCheck size={14} />
-                        <select value={user.role} disabled={busy} onChange={(e) => void run(async () => { await controller.api!.adminUpdateUser(user.id, { role: e.target.value as Role }); })} className="h-7 rounded-md border border-line bg-canvas px-1.5 text-xs">
-                          <option value="member">メンバー</option>
-                          <option value="admin">管理者</option>
-                          <option value="guest">ゲスト</option>
-                        </select>
-                      </label>
-                    )}
-                    {renameButton}
-                    <Button size="sm" variant="ghost" title="仮パスワードを発行" disabled={busy} onClick={() => void run(async () => { const out = await controller.api!.adminResetPassword(user.id); setIssued({ username: user.username, password: out.temporary_password }); })}>
-                      <KeyRound size={14} /> 再設定
-                    </Button>
-                    <Button size="sm" variant="ghost" title="全端末からログアウトさせる" disabled={busy} onClick={() => void run(async () => { await controller.api!.adminRevokeSessions(user.id); })}>
-                      セッション失効
-                    </Button>
-                    {user.totp_enabled && (
-                      <Button size="sm" variant="ghost" title="認証アプリを失くしたとき: 2 要素認証を解除する" disabled={busy} onClick={() => void run(async () => { await controller.api!.adminResetTotp(user.id); })}>
-                        2FA を解除
-                      </Button>
-                    )}
-                    <Button size="sm" variant="ghost" className="text-danger" title="無効化 (ログイン不可、表示は残る)" disabled={busy} onClick={() => void run(async () => { await controller.api!.adminUpdateUser(user.id, { deactivated: true }); })}>
-                      <UserX size={14} /> 無効化
-                    </Button>
-                  </div>
-                )}
-                {!self && off && (
-                  <div className="flex items-center gap-1 max-md:w-full max-md:flex-wrap max-md:pl-[42px]">
-                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(async () => { await controller.api!.adminUpdateUser(user.id, { deactivated: false }); })}>
-                      再有効化
-                    </Button>
-                    {renameButton}
-                    {!user.username.startsWith("deleted-") && (
-                      <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setConfirm(user)}>
-                        匿名化
-                      </Button>
-                    )}
-                  </div>
-                )}
-                {self && (
-                  <div className="flex items-center gap-1 max-md:w-full max-md:pl-[42px]">
-                    {renameButton}
-                    <span className="text-xs text-muted">自分</span>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {renaming && (
-        <Modal onClose={() => setRenaming(null)} title={`${renaming.display_name} のユーザー名を変更`} className="w-[480px]">
-          <div className="mt-3">
-            <UsernameEditor
-              current={renaming.username}
-              hasPassword={renaming.role !== "bot"}
-              autoFocus
-              onSubmit={async (name) => {
-                try {
-                  await controller.api!.adminUpdateUser(renaming.id, { username: name });
-                  return null;
-                } catch (error) {
-                  return describeError(error);
-                }
-              }}
-              onDone={() => { setRenaming(null); void load(); }}
-            />
-          </div>
-        </Modal>
-      )}
-      {confirm && (
-        <Modal onClose={() => setConfirm(null)} title="ユーザーを匿名化しますか？" className="w-[440px]">
-          <p className="mt-3 text-sm text-muted">@{confirm.username} の名前・メールを消し、全セッションを終了します。メッセージは「削除されたユーザー」として残ります。元に戻せません。</p>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setConfirm(null)}>キャンセル</Button>
-            <Button variant="danger" disabled={busy} onClick={() => { const target = confirm; setConfirm(null); void run(async () => { await controller.api!.adminAnonymizeUser(target.id); }); }}>
-              匿名化する
-            </Button>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }

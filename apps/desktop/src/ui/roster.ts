@@ -83,7 +83,37 @@ export function rosterSummary(profile: LabProfileOut, users: ReadonlyMap<string,
   return [rosterLabel(profile), supervisorLabel(profile, users)].filter(Boolean).join(" · ");
 }
 
-type PresetLine = { affiliation: Affiliation; rank?: FacultyRank | null; grade?: Grade | null };
+type RosterLine = Pick<LabProfileOut, "affiliation"> & { rank?: FacultyRank | null; grade?: Grade | null };
+
+/** How two titles compare: after NFKC, trimming and lower-casing (「ｄ１」 is 「D1」). */
+function titleKey(text: string): string {
+  return text.normalize("NFKC").trim().toLowerCase();
+}
+
+/**
+ * The title (肩書) and the roster label side by side (LAB.md 「肩書と名簿」, cases in apps/shared/title-display.json): the
+ * roster's label (教授, M2 …) is shown wherever a title is; the title adds what the roster does not say (研究室長, TA).
+ * `label`: the roster label or null; `extra`: the title, unless it is empty or the label again.
+ */
+export function titleParts(title: string | null | undefined, line: RosterLine | null | undefined): { label: string | null; extra: string | null } {
+  const label = (line && rosterLabel(line as LabProfileOut)) || null;
+  const text = title?.trim() || null;
+  const extra = text && (!label || titleKey(text) !== titleKey(label)) ? text : null;
+  return { label, extra };
+}
+
+/** The title as shown: 「M2」, 「研究室長」, 「M2 · 研究室長」, or null for nothing. */
+export function displayTitle(title: string | null | undefined, line: RosterLine | null | undefined): string | null {
+  const { label, extra } = titleParts(title, line);
+  return [label, extra].filter(Boolean).join(" · ") || null;
+}
+
+/** What a list that shows the roster label as a badge adds after it: the title unless it is empty or the label again. */
+export function titleExtra(title: string | null | undefined, line: RosterLine | null | undefined): string | null {
+  return titleParts(title, line).extra;
+}
+
+type PresetLine ={ affiliation: Affiliation; rank?: FacultyRank | null; grade?: Grade | null };
 
 /** 「学生 B4」 (or 「学生 (B4)」 with `parenthesized`), 「教員 教授」, 「卒業生」: an invite preset's line (L7 / M32). */
 export function presetRole(line: PresetLine, parenthesized = false): string {

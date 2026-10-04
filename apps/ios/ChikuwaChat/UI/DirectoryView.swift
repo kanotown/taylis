@@ -33,7 +33,8 @@ struct DirectoryView: View {
 
     private func subtitle(_ user: UserPublic) -> String {
         var parts: [String] = []
-        if let title = user.title, !title.isEmpty { parts.append(title) }
+        // The roster label is the badge; the title adds the rest (LAB.md 「肩書と名簿」).
+        if let title = Roster.titleExtra(user.title, controller.store.roster[user.id]) { parts.append(title) }
         if let topic = controller.store.roster[user.id]?.researchTopic, !topic.isEmpty { parts.append(topic) }
         if let status = activeStatus(user) { parts.append("\(status.emoji) \(status.text)".trimmingCharacters(in: .whitespaces)) }
         if !parts.isEmpty { return parts.joined(separator: " · ") }

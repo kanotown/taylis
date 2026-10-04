@@ -245,7 +245,7 @@ struct ChannelInfoView: View {
                         Text(user?.displayName ?? "?")
                         StatusEmojiView(user: user, controller: controller)
                     }
-                    Text("@\(user?.username ?? "")" + ((user?.title).map { " · \($0)" } ?? "")).font(.footnote).foregroundStyle(.secondary)
+                    Text("@\(user?.username ?? "")" + (Roster.titleExtra(user?.title, store.roster[member.userId]).map { " · \($0)" } ?? "")).font(.footnote).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if presence != "offline" { Text(presenceLabel(presence)).font(.caption).foregroundStyle(.secondary) }

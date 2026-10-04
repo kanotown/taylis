@@ -20,6 +20,7 @@ import { modKeyName, type SendKey } from "./prefs";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
 import { StatusForm } from "./StatusDialog";
 import { TemplatesSettings } from "./TemplatesSettings";
+import { displayTitle } from "./roster";
 import { THEME_OPTIONS, themeLabel, useTheme, writeTheme } from "./theme";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { UsernameEditor } from "./UsernameEditor";
@@ -114,6 +115,8 @@ export function SettingsList({ controller, variant, selected = null, onSelect, o
   const me = meOf(controller);
   const status = activeStatus(me);
   const page = variant === "page";
+  // The roster label is the title too (LAB.md 「肩書と名簿」).
+  const myTitle = me ? displayTitle(me.title, controller.store.roster.get(me.id)) : null;
   const row = (section: SettingsSection, subtitle?: ReactNode) => {
     const value = sectionValue(controller, section, now, themeLabel(theme));
     return (
@@ -151,7 +154,7 @@ export function SettingsList({ controller, variant, selected = null, onSelect, o
           <Avatar id={me.id} name={me.display_name} size={page ? 64 : 40} className="rounded-2xl" />
           <div className="min-w-0 flex-1">
             <div className={cn("truncate font-semibold", page ? "text-lg" : "text-sm")}>{me.display_name}</div>
-            <div className={cn("truncate text-muted", page ? "text-sm" : "text-xs")}>@{me.username}{me.title ? ` · ${me.title}` : ""}</div>
+            <div className={cn("truncate text-muted", page ? "text-sm" : "text-xs")}>@{me.username}{myTitle ? ` · ${myTitle}` : ""}</div>
           </div>
         </div>
       )}
@@ -690,7 +693,7 @@ function ProfileSection({ controller }: { controller: AppController }) {
           <Input value={displayName} maxLength={80} onChange={edit(setDisplayName)} required />
         </Field>
         <Field label="肩書 (任意)">
-          <Input value={title} maxLength={80} placeholder="例: 教授 / 准教授 / 助教 / D1 / M2 / M1 / B4" onChange={edit(setTitle)} />
+          <Input value={title} maxLength={80} placeholder="例: 研究室長 / TA / 秘書 (名簿の学年・職位は自動で表示されます)" onChange={edit(setTitle)} />
         </Field>
         {line && (
           <>

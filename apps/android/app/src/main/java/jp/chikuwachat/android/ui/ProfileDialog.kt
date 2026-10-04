@@ -53,16 +53,19 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
                         Text(user?.displayName ?: "?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         if (user?.role == "guest") Text("ゲスト (参加したチャンネルだけ見えます)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (user?.role == "bot") Text("受信 Webhook の bot", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("@" + (user?.username ?: "") + (user?.title?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        // The roster label is the title too (LAB.md 「肩書と名簿」): 「M2 · 研究室長」.
+                        Text("@" + (user?.username ?: "") + (Roster.displayTitle(user?.title, line)?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (Dnd.isActive(user)) {
                             Text("🔕 通知を一時停止中" + (user?.quietHours?.let { " · " + Dnd.label(it) } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
-                if (line != null) {
+                // The label is in the line above; the roster block keeps the supervisor and the topic.
+                val supervisor = line?.let { Roster.supervisorLabel(it, store.users) }
+                if (line != null && (supervisor != null || !line.researchTopic.isNullOrBlank())) {
                     Column(Modifier.padding(top = 12.dp)) {
-                        Roster.summary(line, store.users).takeIf { it.isNotEmpty() }?.let {
+                        supervisor?.let {
                             Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         }
                         line.researchTopic?.takeIf { it.isNotBlank() }?.let {

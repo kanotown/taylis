@@ -315,7 +315,7 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                             StatusEmoji(user, controller, version, modifier = Modifier.padding(start = 6.dp))
                             store.roster[member.userId]?.let { RosterBadge(it, Modifier.padding(start = 6.dp)) }
                         }
-                        Text("@" + (user?.username ?: "") + (user?.title?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("@" + (user?.username ?: "") + (Roster.titleExtra(user?.title, store.roster[member.userId])?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (presence != "offline") Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
                     if (member.role == "owner") Text("オーナー", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
