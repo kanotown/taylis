@@ -21,6 +21,7 @@ import filetype
 from fastapi import UploadFile
 from PIL import Image
 from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -40,7 +41,7 @@ from app.modules.emoji.events import (
     EmojiPackUpdatedData,
     EmojiUpdatedData,
 )
-from app.modules.emoji.models import CustomEmoji, EmojiPack
+from app.modules.emoji.models import CustomEmoji, EmojiPack, EmojiPresetRemoval
 from app.modules.emoji.schemas import (
     CustomEmojiOut,
     CustomEmojiUpdate,
@@ -342,11 +343,25 @@ async def delete(db: AsyncSession, actor: User, emoji_id: uuid.UUID, blobs: Blob
     if row.created_by != actor.id and actor.role != "admin":
         raise forbidden("emoji_forbidden", "Only the creator or an admin can remove an emoji")
     await _emit(db, row, deleted=True)
+    if row.preset_key:
+        await remember_preset_removal(db, row.preset_key, row.name, actor.id)
     key = row.storage_key
     await db.delete(row)
     await db.commit()
     if key:
         await blobs.delete(key)
+
+
+async def remember_preset_removal(
+    db: AsyncSession, preset_key: str, shortcode: str, actor_id: uuid.UUID
+) -> None:
+    """An administrator deleted a preset pack (shortcode "") or one preset emoji: the startup
+    import leaves it out from now on (docs/EMOJI.md §8)."""
+    await db.execute(
+        pg_insert(EmojiPresetRemoval)
+        .values(preset_key=preset_key, shortcode=shortcode, removed_by=actor_id)
+        .on_conflict_do_nothing()
+    )
 
 
 # ---- packs (admin) ------------------------------------------------------------------------
@@ -453,6 +468,8 @@ async def delete_pack(db: AsyncSession, actor: User, pack_id: uuid.UUID, blobs: 
         details={"name": row.name, "emoji_kept": len(members)},
     )
     await _emit_pack(db, row, deleted=True)
+    if row.preset_key:
+        await remember_preset_removal(db, row.preset_key, "", actor.id)
     key = row.tab_storage_key
     await db.delete(row)
     await db.commit()

@@ -37,6 +37,10 @@ for optional in anthropic_api_key openai_api_key; do
   fi
 done
 
+# Preset emoji packs (docs/EMOJI.md §8): compose mounts this folder read-only into the app. Made here, owned by
+# deploy, so that Docker never creates it as an empty root-owned directory. Releases never touch what is inside.
+[ -d emoji-presets ] || install -d -m 755 emoji-presets
+
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml)
 # Files for this server only, e.g. docker-compose.behind-proxy.yml when nginx already owns ports 80 and 443.
 for extra in ${EXTRA_COMPOSE_FILES:-}; do

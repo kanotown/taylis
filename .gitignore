@@ -5,6 +5,9 @@
 *.p8
 *service-account*.json
 
+# preset emoji art (docs/EMOJI.md §8): copied to the server, never committed
+infra/emoji-presets/
+
 # python
 __pycache__/
 *.pyc

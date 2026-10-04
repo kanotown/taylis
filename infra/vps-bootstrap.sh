@@ -91,7 +91,7 @@ step "deploy user and directories"
 # No password: the account is reached only with the deploy key (and `su` / sudo from root).
 id deploy >/dev/null 2>&1 || useradd --create-home --shell /bin/bash deploy
 usermod -aG docker deploy
-install -d -o deploy -g deploy -m 755 "$APP" "$INFRA"
+install -d -o deploy -g deploy -m 755 "$APP" "$INFRA" "$INFRA/emoji-presets"
 install -d -o deploy -g deploy -m 700 "$INFRA/secrets"
 install -d -o deploy -g deploy -m 750 "$BACKUPS"
 

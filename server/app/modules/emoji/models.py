@@ -21,6 +21,10 @@ class EmojiPack(Base):
     # The tab icon in the object store (emoji-packs/<id>/tab-<uuid>); NULL = the first emoji.
     tab_content_type: Mapped[str | None] = mapped_column(Text)
     tab_storage_key: Mapped[str | None] = mapped_column(Text)
+    # M102 (docs/EMOJI.md §8): the folder under EMOJI_PRESETS_DIR it came from (NULL = made by
+    # hand) and the SHA-256 of the tab icon file last imported.
+    preset_key: Mapped[str | None] = mapped_column(String(255), unique=True)
+    preset_tab_hash: Mapped[str | None] = mapped_column(String(64))
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
@@ -55,9 +59,28 @@ class CustomEmoji(Base):
         ForeignKey("emoji_packs.id", ondelete="SET NULL")
     )
     position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # M102: the preset folder it came from and the SHA-256 of the image file last imported.
+    preset_key: Mapped[str | None] = mapped_column(String(255))
+    preset_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+
+class EmojiPresetRemoval(Base):
+    """A preset an administrator deleted (M102): the next startup leaves it out. `shortcode` ""
+    is the whole pack."""
+
+    __tablename__ = "emoji_preset_removals"
+
+    preset_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    shortcode: Mapped[str] = mapped_column(String(32), primary_key=True, server_default="")
+    removed_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    removed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
