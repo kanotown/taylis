@@ -970,6 +970,21 @@ class ApiClient(
     /** GET /server, no sign-in: which workspace this URL is (WORKSPACES.md §3.1). */
     suspend fun serverInfo(): ServerInfoOut = request("GET", "/api/v1/server", auth = false)
 
+    /** GET /server/icon (M93, no sign-in, WORKSPACES.md §3.4): the workspace icon's PNG of `version` (no Authorization header). */
+    suspend fun serverIcon(version: String): ByteArray {
+        val request = Request.Builder().url(baseUrl.trimEnd('/') + serverIconPath(version)).build()
+        return withContext(Dispatchers.IO) {
+            try {
+                http.newCall(request).execute().use { response ->
+                    if (response.code !in 200..299) throw ApiException.Api(response.code, "http_${response.code}", "Download failed")
+                    response.body.bytes()
+                }
+            } catch (e: IOException) {
+                throw ApiException.Network(e)
+            }
+        }
+    }
+
     /** GET /sync/summary: the switcher's marks for a workspace that is not open (WORKSPACES.md §3.2). */
     suspend fun syncSummary(): UnreadSummaryOut = request("GET", "/api/v1/sync/summary")
 
@@ -1030,7 +1045,10 @@ class ApiClient(
         throw error
     }
 
-    private companion object {
+    companion object {
+        /** M93: the workspace icon of `version`; the version in the query keeps a new icon from being cached away. */
+        fun serverIconPath(version: String): String = "/api/v1/server/icon?v=" + java.net.URLEncoder.encode(version, "UTF-8")
+
         /** Refresh retries stay this far inside the server's 30 s grace for the previous token. */
         const val REFRESH_GRACE_MS = 25_000L
         const val REFRESH_RETRY_FIRST_MS = 1_000L

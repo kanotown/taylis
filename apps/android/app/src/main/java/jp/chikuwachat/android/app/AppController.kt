@@ -74,6 +74,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.platform.SharedPrefsStore
+import jp.chikuwachat.android.platform.WorkspaceIconCache
 import jp.chikuwachat.android.ui.openDownloaded
 import jp.chikuwachat.android.ui.openCachedFile
 import jp.chikuwachat.android.ui.DownloadCache
@@ -373,6 +374,9 @@ class AppController(private val app: Application) {
     private var openChannelId: String? = null
 
     init {
+        // M93: workspace icons are public (no sign-in): any workspace's tile can load its own.
+        WorkspaceIconCache.fetcher = { server, version -> ApiClient(server, http).serverIcon(version) }
+        WorkspaceIconCache.scope = scope
         // SYNC_PROTOCOL.md §5.3: a network that comes back skips the reconnect backoff.
         app.getSystemService(ConnectivityManager::class.java)?.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
@@ -612,7 +616,9 @@ class AppController(private val app: Application) {
             return // offline, or an older server: the saved name stays
         }
         if (info.product != Workspaces.PRODUCT) return
-        updateWorkspace(serverUrl) { it.copy(name = info.name.ifBlank { it.name }, workspaceId = info.workspaceId) }
+        updateWorkspace(serverUrl) {
+            it.copy(name = info.name.ifBlank { it.name }, workspaceId = info.workspaceId, iconVersion = if (info.knowsIcon) info.iconVersion else it.iconVersion)
+        }
     }
 
     /** The marks of the workspaces that are not open (§6): when the app comes back and when the switcher opens. */
@@ -849,6 +855,7 @@ class AppController(private val app: Application) {
             name = info?.name?.ifBlank { null } ?: known?.name ?: Workspaces.hostLabel(serverUrl),
             username = username,
             userId = me.id,
+            iconVersion = if (info?.knowsIcon == true) info.iconVersion else known?.iconVersion,
         )
         workspaces = if (known != null) workspaces.map { if (it.serverUrl == serverUrl) entry else it } else workspaces + entry
         activeKey = serverUrl
@@ -955,6 +962,8 @@ class AppController(private val app: Application) {
         val workspaceUrl = api.baseUrl
         fun workspace() = workspaces.firstOrNull { it.serverUrl == workspaceUrl }
         me?.let { known -> updateWorkspace(workspaceUrl) { if (it.userId == null) it.copy(userId = known.id) else it } }
+        // M93 (WORKSPACES.md §3.4.1): an admin changed the workspace icon (bootstrap, workspace.settings_updated).
+        store.onWorkspaceIcon = { version -> scope.launch { if (this@AppController.store === store) updateWorkspace(workspaceUrl) { it.copy(iconVersion = version) } } }
         val engine = SyncEngine(
             api = api,
             connect = { url, _ -> OkHttpWsTransport.connect(http, url) },

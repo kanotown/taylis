@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -56,17 +58,27 @@ import androidx.compose.ui.unit.sp
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.app.Workspace
 import jp.chikuwachat.android.app.Workspaces
+import jp.chikuwachat.android.platform.WorkspaceIconCache
 import kotlinx.coroutines.launch
 
 // M16c: the workspace switcher (WORKSPACES.md §5): the active workspace over the channel list, a bottom sheet with
 // every registered workspace (unread marks, sign-out) and 「ワークスペースを追加」.
 
-/** A workspace's tile: its initials on a colour of its own (the desktop's rule), greyed when signed out. */
+/**
+ * A workspace's tile: the icon an admin set (M93, WORKSPACES.md §3.4.1), else its initials on a colour of its own (the
+ * desktop's rule), greyed when signed out.
+ */
 @Composable
 fun WorkspaceTile(entry: Workspace?, name: String, size: Dp, modifier: Modifier = Modifier, dimmed: Boolean = false) {
+    val shape = RoundedCornerShape(size / 4)
+    val icon = entry?.let { WorkspaceIconCache.image(it.serverUrl, it.iconVersion) }
+    if (icon != null) {
+        Image(icon, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier.size(size).alpha(if (dimmed) 0.45f else 1f).clip(shape))
+        return
+    }
     val color = Color(Workspaces.color(entry?.let(Workspaces::colorKey) ?: name))
     Box(
-        modifier.size(size).alpha(if (dimmed) 0.45f else 1f).background(color, RoundedCornerShape(size / 4)),
+        modifier.size(size).alpha(if (dimmed) 0.45f else 1f).background(color, shape),
         contentAlignment = Alignment.Center,
     ) {
         Text(Workspaces.initials(name), color = Color.White, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.42f).sp, maxLines = 1)
