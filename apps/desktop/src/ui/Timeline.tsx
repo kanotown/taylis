@@ -27,7 +27,7 @@ import { ReportDialog } from "./ModerationDialogs";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Input, Kbd, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 import { hoverMenuGroups, type MessageActionKey, messageActions, rowFitsQuickReactions } from "./messageActions";
-import { StatusEmoji, UserPopover } from "./UserPopover";
+import { EmojiText, StatusEmoji, UserPopover } from "./UserPopover";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { isSelfNotes, SELF_NOTES_INTRO } from "./channels";
 import { EmojiPicker, rememberEmoji, useRecentEmoji } from "./EmojiPicker";
@@ -1013,7 +1013,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           <button type="button" className="mb-0.5 flex max-w-full items-center gap-1 text-left text-[11px] text-muted hover:text-ink" onClick={() => onOpenThread?.(threadId)}>
             <MessageSquare size={11} className="shrink-0" />
             <span className="shrink-0">スレッドに返信:</span>
-            <span className="truncate">{threadParent ? plainText(mentionsToNames(threadParent.body, store.users, store.groups), 80) || attachmentText(threadParent.attachments) || "(添付ファイル)" : "元のメッセージ"}</span>
+            <span className="truncate">{threadParent ? <EmojiText controller={controller} text={plainText(mentionsToNames(threadParent.body, store.users, store.groups), 80) || attachmentText(threadParent.attachments) || "(添付ファイル)"} /> : "元のメッセージ"}</span>
           </button>
         )}
         {thread && message.parent_id && message.also_in_channel && (

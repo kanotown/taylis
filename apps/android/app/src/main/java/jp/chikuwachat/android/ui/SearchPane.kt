@@ -937,7 +937,12 @@ private fun ResultRow(
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(sender, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (text.isNotEmpty()) Text(highlighted(text, keywords), style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                if (text.isNotEmpty()) {
+                    EmojiLineText(
+                        text, store, { controller.loadEmojiImage(it) }, version, MaterialTheme.typography.bodyMedium, Color.Unspecified,
+                        maxLines = 3, keywords = keywords,
+                    )
+                }
                 message.attachments.take(3).forEach { attachment ->
                     Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Description, contentDescription = null, tint = muted, modifier = Modifier.size(14.dp))
@@ -1250,12 +1255,15 @@ private fun ConversationPicker(controller: AppController, version: Int, selected
 // --- keyword highlighting --------------------------------------------------------------------------------
 
 /** Case-insensitive keyword highlighting done on the client (the server only returns the keywords). */
+/** A keyword hit in a result (also EmojiLineText with keywords). */
+val SEARCH_HIT = SpanStyle(fontWeight = FontWeight.Bold, background = Color(0x55FFD54F))
+
 fun highlighted(text: String, keywords: List<String>) = buildAnnotatedString {
     val ranges = keywordRanges(text, keywords)
     var cursor = 0
     for ((start, end) in ranges) {
         if (start > cursor) append(text.substring(cursor, start))
-        withStyle(SpanStyle(fontWeight = FontWeight.Bold, background = Color(0x55FFD54F))) { append(text.substring(start, end)) }
+        withStyle(SEARCH_HIT) { append(text.substring(start, end)) }
         cursor = end
     }
     if (cursor < text.length) append(text.substring(cursor))

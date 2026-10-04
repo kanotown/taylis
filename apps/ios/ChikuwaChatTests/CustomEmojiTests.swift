@@ -189,4 +189,34 @@ final class CustomEmojiTests: XCTestCase {
         XCTAssertNil(Emoji.query("例：説明"))
         XCTAssertNil(Emoji.query("hello :t"))
     }
+
+    /// 2026-10-05: the activity showed a pack emoji reaction as `:ckw-yay:` (until its image came) and the excerpts kept
+    /// `:name:`. Outside the chips a reaction takes its box from the start (a wide one wider, a text emoji's pill), and an
+    /// excerpt draws the images in place, the same size loading or loaded.
+    @MainActor
+    func testCompactRowsDrawCustomEmojiInTheirBoxes() throws {
+        let controller = AppController()
+        let wide = CustomEmojiOut(id: "y", name: "ckw-yay", contentType: "image/png", width: 96, height: 32, createdBy: "u", createdAt: "")
+        let json = #"{"id":"t","name":"ok-text","kind":"text","label":"了解","color":"blue","content_type":"","width":0,"height":0,"created_by":"u","created_at":""}"#
+        let pill = try JSON.snakeDecoder.decode(CustomEmojiOut.self, from: Data(json.utf8))
+        controller.store.customEmoji = ["ckw-yay": wide, "ok-text": pill]
+        func size<V: View>(_ view: V) -> CGSize { UIHostingController(rootView: view).sizeThatFits(in: CGSize(width: 300, height: 2000)) }
+
+        let loading = size(ReactionGlyph(controller: controller, emoji: ":ckw-yay:", height: 16))
+        XCTAssertEqual(loading, CGSize(width: 48, height: 16))
+        let pillLoading = size(ReactionGlyph(controller: controller, emoji: ":ok-text:", height: 16))
+        XCTAssertEqual(pillLoading, CustomEmoji.size(of: pill, height: 16))
+
+        let line = String(repeating: "やった :ckw-yay: :ok-text: :+1: ", count: 5)
+        let excerptLoading = size(CustomEmoji.excerpt(line, controller: controller).font(.subheadline).frame(width: 300))
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 32)).image { context in
+            UIColor.orange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 96, height: 32))
+        }
+        controller.store.emojiImages = ["y": CustomEmoji.inlineImage(image), "t": CustomEmoji.textPill(pill, dark: false)]
+        XCTAssertEqual(size(ReactionGlyph(controller: controller, emoji: ":ckw-yay:", height: 16)), loading)
+        XCTAssertEqual(size(CustomEmoji.excerpt(line, controller: controller).font(.subheadline).frame(width: 300)), excerptLoading)
+        // The standard shortcode is its glyph, the custom names are not text.
+        XCTAssertEqual(Emoji.replaceShortcodes(":+1:"), "👍")
+    }
 }

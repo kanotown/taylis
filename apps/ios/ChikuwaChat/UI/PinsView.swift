@@ -50,7 +50,8 @@ struct MessageCardView: View {
                 Text(Timeline.timeLabel(message.createdAt)).foregroundStyle(.secondary)
             }
             .font(.caption)
-            Text(message.body.isEmpty ? message.attachments.map(\.filename).joined(separator: ", ") : Mentions.decode(message.body, users: store.users, groups: store.groups))
+            CustomEmoji.excerpt(message.body.isEmpty ? message.attachments.map(\.filename).joined(separator: ", ") : Mentions.decode(message.body, users: store.users, groups: store.groups),
+                                controller: controller, height: CustomEmoji.inlineHeight)
                 .lineLimit(4)
         }
         .padding(.vertical, 2)

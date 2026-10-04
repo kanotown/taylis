@@ -257,11 +257,11 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
                 // The preview is bold while unread (MOBILE_UI.md §6.3, as Slack); the status / presence line never is.
                 val loud = unread && preview.isNotEmpty()
-                Text(
-                    second ?: "", style = MaterialTheme.typography.bodySmall,
-                    fontWeight = if (loud) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (loud) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                // Custom emoji as their pictures, as in the message (2026-10-05: previews showed `:ckw-yay:`).
+                EmojiLineText(
+                    second ?: "", controller, version, MaterialTheme.typography.bodySmall,
+                    if (loud) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    Modifier.weight(1f), fontWeight = if (loud) FontWeight.SemiBold else FontWeight.Normal,
                 )
                 if (muted) Icon(Icons.Default.NotificationsOff, contentDescription = "通知オフ", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp).size(14.dp))
                 if (unread && badge > 0) {

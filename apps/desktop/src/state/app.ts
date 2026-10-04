@@ -3,6 +3,7 @@ import { ApiClient, type DeviceInfo } from "../api/client";
 import { dndActive } from "../ui/dnd";
 import { calendarAlarmText } from "../sync/calendar";
 import { taskNoticeText } from "../ui/tasks";
+import { reactionText } from "../ui/customEmoji";
 import { canvasLink, messagePermalink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { challengeFor, newVerifier, parseSsoDeepLink, saveSsoPending, type SsoPending, ssoErrorText, ssoStartUrl, takeSsoPending, takeSsoReturn } from "../ui/sso";
@@ -1786,7 +1787,7 @@ export class AppController {
         const message = store.getMessage(channel.id, reaction.message_id);
         const excerpt = message && !message.deleted ? plainText(mentionsToNames(message.body, store.users, store.groups), 80) : "";
         const where = channel.type === "dm" ? "" : ` · ${conversationTitle(channel, store.users, store.me?.id ?? null)}`;
-        void notify(this.notificationTitle(session, `${actor} がリアクションしました${where}`), excerpt ? `${reaction.emoji} 「${excerpt}」` : reaction.emoji);
+        void notify(this.notificationTitle(session, `${actor} がリアクションしました${where}`), excerpt ? `${reactionText(reaction.emoji, store.customEmoji)} 「${excerpt}」` : reactionText(reaction.emoji, store.customEmoji));
       },
       // A workspace in the background is not being looked at: its server may push to the phone (§6).
       // In use: the open workspace, its window focused, and touched within the last minutes (platform/idle.ts).

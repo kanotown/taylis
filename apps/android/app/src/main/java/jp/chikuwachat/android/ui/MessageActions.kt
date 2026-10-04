@@ -215,6 +215,33 @@ fun MessageMenu(
 }
 
 /**
+ * A reaction's emoji outside its chip (the activity's headline, who reacted): a custom one as its picture in a box of
+ * its own from the start (`height` high, its aspect wide: a wide one or a text emoji's pill wider), blank until the image
+ * comes, as on the chips (2026-10-05: the activity showed `:ckw-yay:` until then); a standard emoji, or a name this
+ * workspace does not have, as text in `textStyle`.
+ */
+@Composable
+fun ReactionEmoji(
+    emoji: String,
+    store: jp.chikuwachat.android.sync.Store,
+    onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit,
+    height: androidx.compose.ui.unit.Dp,
+    textStyle: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    val custom = CustomEmoji.name(emoji)?.let { store.customEmoji[it] }
+    if (custom == null) {
+        Text(emoji, style = textStyle, maxLines = 1, modifier = modifier)
+        return
+    }
+    val image = store.emojiImages[custom.id]
+    if (image == null) LaunchedEffect(custom.id) { onNeedEmojiImage(custom) }
+    val box = modifier.height(height).width(height * CustomEmoji.aspect(custom))
+    if (image != null) EmojiImage(image, store.emojiAnimations[custom.id], contentDescription = custom.label ?: emoji, modifier = box)
+    else Spacer(box)
+}
+
+/**
  * Reaction chips under a message; tapping toggles my reaction. M25: a 「＋」 chip after them adds another one without
  * the long press (as on the web, Timeline.tsx). M27: a long press on a chip shows who reacted ([ReactorsDialog]).
  */

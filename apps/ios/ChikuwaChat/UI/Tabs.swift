@@ -222,7 +222,7 @@ struct DMListView: View {
                 }
                 HStack(spacing: 6) {
                     // Bold while unread (Slack), the text itself, not the status or presence.
-                    Text(second)
+                    CustomEmoji.excerpt(second, controller: controller)
                         .font(.subheadline)
                         .fontWeight(!preview.isEmpty && unread ? .semibold : .regular)
                         .foregroundStyle(!preview.isEmpty && unread ? .primary : .secondary)

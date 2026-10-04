@@ -10,6 +10,7 @@ import { attachmentText, plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
 import { BackButton } from "./compact";
 import { Badge, Button, cn } from "./primitives";
+import { EmojiText } from "./UserPopover";
 
 /**
  * The centre column of the threads view (THREADS.md §5): the threads I follow, newest reply first.
@@ -125,7 +126,7 @@ function ThreadRow({ entry, controller, selected, onOpen }: { entry: ThreadEntry
           <div className={cn("mt-0.5 flex items-baseline gap-2 text-sm", unread ? "font-semibold" : "font-medium")}>
             <span className="truncate">{author?.display_name ?? "…"}</span>
           </div>
-          <p className={cn("mt-0.5 line-clamp-2 text-[13px] leading-5", unread ? "text-ink" : "text-muted")}>{excerpt}</p>
+          <p className={cn("mt-0.5 line-clamp-2 text-[13px] leading-5", unread ? "text-ink" : "text-muted")}><EmojiText controller={controller} text={excerpt} /></p>
           <div className="mt-1.5 flex items-center gap-2 text-xs">
             <span className="flex -space-x-1.5">
               {others.map((id) => (

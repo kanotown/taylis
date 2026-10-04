@@ -10,11 +10,13 @@ from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ids import uuid7
 from app.core.settings import build_settings
 from app.core.time import utcnow
 from app.events.models import OutboxEvent
+from app.modules.emoji.models import CustomEmoji
 from app.modules.notifications.models import PushDelivery
-from app.modules.notifications.planner import PushPlanner
+from app.modules.notifications.planner import PushPlanner, reaction_text
 from app.modules.users.models import User
 from tests.helpers import make_user
 from tests.test_push_planner import add_device
@@ -118,3 +120,55 @@ async def test_reaction_event_and_push_only_when_asked(
     deliveries = (await db.execute(count)).scalars().all()
     assert len(deliveries) == 1 and deliveries[0].payload["kind"] == "reaction"
     assert deliveries[0].payload["title"] == "Bob がリアクションしました"
+
+
+def test_reaction_text_names_a_workspace_emoji_by_its_label() -> None:
+    assert reaction_text(":ckw-yay:", "ちくわ わーい") == "【ちくわ わーい】"
+    assert reaction_text(":ckw-yay:", None) == ":ckw-yay:"
+    assert reaction_text(":ckw-yay:", "  ") == ":ckw-yay:"
+    assert reaction_text("👍", "label") == "👍"
+
+
+async def test_reaction_push_reads_a_custom_emoji_by_its_label(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """2026-10-05: a pack emoji reaction's banner read 「:ckw-yay: 「hello」」."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    for name, label in (("ckw-yay", "ちくわ わーい"), ("nolabel", None)):
+        db.add(
+            CustomEmoji(
+                id=uuid7(),
+                name=name,
+                created_by=alice.id,
+                content_type="image/png",
+                size_bytes=10,
+                width=48,
+                height=16,
+                storage_key=f"emoji/{name}",
+                label=label,
+            )
+        )
+    await db.execute(update(User).where(User.id == alice.id).values(notify_reactions=True))
+    await db.commit()
+    as_user(alice)
+    dm = (await client.post("/api/v1/dms", json={"user_ids": [str(bob.id)]})).json()
+    mine = await _post(client, dm["id"], "hello")
+    await add_device(db, alice, "t-alice")
+    as_user(bob)
+    for emoji in (":ckw-yay:", ":nolabel:"):
+        response = await client.put(f"/api/v1/messages/{mine['id']}/reactions/{emoji}")
+        assert response.status_code in (200, 201), response.text
+    events = (
+        (await db.execute(select(OutboxEvent).where(OutboxEvent.event_type == "reaction.added")))
+        .scalars()
+        .all()
+    )
+    planner = PushPlanner(build_settings(), is_active=lambda _uid: False)
+    bodies: list[str] = []
+    for event in events:
+        await planner.handle_reaction(db, event)
+        await db.commit()
+        rows = select(PushDelivery).where(PushDelivery.event_id == event.id)
+        bodies += [d.payload["body"] for d in (await db.execute(rows)).scalars().all()]
+    assert sorted(bodies) == [":nolabel: 「hello」", "【ちくわ わーい】 「hello」"]

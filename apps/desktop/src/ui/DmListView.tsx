@@ -152,7 +152,7 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
           </span>
           <span className="mt-0.5 flex items-center gap-2">
             <span data-dm-preview={preview ? "" : undefined} className={cn("min-w-0 flex-1 truncate text-[13px]", preview && unread ? "font-semibold text-ink" : "text-muted")}>
-              {preview ? second : <EmojiText controller={controller} text={second} />}
+              <EmojiText controller={controller} text={second} />
             </span>
             {muted && <BellOff size={13} className="shrink-0 text-muted" aria-label="ミュート中" />}
             {unread && badge > 0 && <Badge tone="danger">{badge}</Badge>}

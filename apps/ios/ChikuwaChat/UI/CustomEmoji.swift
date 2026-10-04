@@ -143,11 +143,11 @@ enum CustomEmoji {
     /// size (the server gives it): `:name:` there was wider, and the line re-wrapped and the row changed height when
     /// the image came, moving the conversation as a channel opened (2026-10-02).
     static func text(_ text: String, custom: [String: CustomEmojiOut], images: [String: UIImage], onNeed: ((CustomEmojiOut) -> Void)?,
-                     height: CGFloat = inlineHeight) -> Text {
-        guard !custom.isEmpty else { return Text(text) }
+                     height: CGFloat = inlineHeight, run makeRun: (String) -> Text = { Text($0) }) -> Text {
+        guard !custom.isEmpty else { return makeRun(text) }
         return split(text, known: { custom[$0] != nil }).reduce(Text("")) { acc, piece in
             switch piece {
-            case .text(let run): return acc + Text(run)
+            case .text(let run): return acc + makeRun(run)
             case .emoji(let name):
                 guard let emoji = custom[name] else { return acc + Text(":\(name):") }
                 if let image = images[emoji.id] { return acc + Text(Image(uiImage: sized(image, height: height))) }
@@ -225,5 +225,51 @@ enum CustomEmoji {
         let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in }
         blanks.setObject(image, forKey: key)
         return image
+    }
+}
+
+extension CustomEmoji {
+    /// The height of an inline image in a compact row's `.subheadline` (15 pt) text, no taller than its ascent (see
+    /// `inlineHeight`); `.caption` / `.caption2` lines take `captionHeight`.
+    static let subheadlineHeight: CGFloat = 14
+    static let captionHeight: CGFloat = 12
+
+    /// A one-line excerpt of a message in a compact row (the activity, pins, saved, mentions, search, thread lists, the DM
+    /// list, a reply's 「スレッドに返信」 line): custom emoji as their images, standard `:shortcode:`s as their glyphs, as
+    /// in the message (2026-10-05: the activity showed `:ckw-yay:`). Images not cached yet hold their room (`text`).
+    @MainActor static func excerpt(_ text: String, controller: AppController, height: CGFloat = subheadlineHeight,
+                                   run: (String) -> Text = { Text($0) }) -> Text {
+        CustomEmoji.text(Emoji.replaceShortcodes(text), custom: controller.store.customEmoji, images: controller.store.emojiImages,
+                         onNeed: { controller.loadEmojiImage($0) }, height: height, run: run)
+    }
+}
+
+/// A reaction's emoji outside its chip (the activity's headline, who reacted): a custom one as its image in a box of its
+/// own size (a wide one wider, a text emoji's pill as wide as its label), held blank until the image is here, as on the
+/// chips (2026-10-05: the activity showed `:ckw-yay:` until then); a standard emoji, or a name this workspace does not
+/// have, as text.
+struct ReactionGlyph: View {
+    let controller: AppController
+    let emoji: String
+    var height: CGFloat = 16
+
+    var body: some View {
+        let store = controller.store
+        if let name = CustomEmoji.name(of: emoji), let custom = store.customEmoji[name] {
+            let box = CustomEmoji.size(of: custom, height: height)
+            Group {
+                if let image = store.emojiImages[custom.id] {
+                    EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(width: box.width, height: height)
+                } else {
+                    Color.clear.frame(width: box.width, height: height)
+                        .onAppear { controller.loadEmojiImage(custom) }
+                }
+            }
+            .accessibilityLabel(custom.label ?? emoji)
+        } else if CustomEmoji.name(of: emoji) != nil {
+            Text(emoji).font(.caption).lineLimit(1)
+        } else {
+            Text(emoji).font(.system(size: height * 0.94)).fixedSize().frame(minWidth: height).frame(height: height)
+        }
     }
 }

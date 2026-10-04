@@ -48,17 +48,8 @@ struct ReactorsSheet: View {
         .presentationDetents([.medium, .large])
     }
 
-    /// A custom emoji is its picture, as on the chips.
-    @ViewBuilder
+    /// A custom emoji is its picture in its own box (held blank until it loads), as on the chips.
     private func emoji(_ glyph: String) -> some View {
-        if let name = CustomEmoji.name(of: glyph), let custom = store.customEmoji[name] {
-            if let image = store.emojiImages[custom.id] {
-                EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(height: 20)
-            } else {
-                Text(glyph).onAppear { controller.loadEmojiImage(custom) }
-            }
-        } else {
-            Text(glyph).font(.title3)
-        }
+        ReactionGlyph(controller: controller, emoji: glyph, height: 20)
     }
 }

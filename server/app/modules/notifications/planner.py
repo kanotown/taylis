@@ -1,6 +1,7 @@
 """PushPlanner: an outbox handler that turns message.created into push_deliveries (§4)."""
 
 import logging
+import re
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -20,6 +21,7 @@ from app.modules.canvases import repository as canvases_repo
 from app.modules.canvases.events import CANVAS_MENTIONED
 from app.modules.channels import service as channels
 from app.modules.channels.models import Channel
+from app.modules.emoji import repository as emoji_repo
 from app.modules.groups import service as groups
 from app.modules.messages import repository as messages_repo
 from app.modules.messages import service as messages
@@ -45,6 +47,17 @@ from app.modules.workspace import service as workspace
 REMINDER_TITLES = {"ack": "確認のお願い", "collect": "提出のお願い"}
 
 log = logging.getLogger("app.push")
+
+# A reaction that is a workspace emoji: exactly `:name:` (the clients' customEmojiName).
+CUSTOM_EMOJI_REACTION = re.compile(r"^:([a-z0-9][a-z0-9_+-]{1,31}):$")
+
+
+def reaction_text(emoji: str, label: str | None) -> str:
+    """How a reaction reads in a push (a banner cannot draw the image): a workspace emoji with a
+    label (a text emoji, or a pack emoji the manifest named) as 【label】 rather than its
+    `:name:` (2026-10-05: 「:ckw-yay:」); a standard one, or one without a label, as it is."""
+    label = (label or "").strip()
+    return f"【{label}】" if label and CUSTOM_EMOJI_REACTION.match(emoji) else emoji
 
 
 class PushPlanner:
@@ -438,6 +451,9 @@ class PushPlanner:
             return
         actor = await users.get_user(db, uuid.UUID(str(data["user_id"])))
         emoji = str(data.get("emoji") or "")
+        if custom := CUSTOM_EMOJI_REACTION.match(emoji):
+            row = await emoji_repo.get_by_name(db, custom.group(1))
+            emoji = reaction_text(emoji, row.label if row else None)
         excerpt = (
             notification_text(message.body or "", {}) if self.settings.push_include_content else ""
         )

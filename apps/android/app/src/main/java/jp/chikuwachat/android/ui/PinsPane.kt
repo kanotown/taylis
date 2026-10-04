@@ -43,7 +43,7 @@ fun PinsPane(controller: AppController, channelId: String, version: Int, onOpen:
                 }
             }
             else -> items(list, key = { it.id }) { message ->
-                MessageCard(message, store, onClick = { onOpen(message) })
+                MessageCard(message, store, version, { controller.loadEmojiImage(it) }, onClick = { onOpen(message) })
                 HorizontalDivider()
             }
         }
