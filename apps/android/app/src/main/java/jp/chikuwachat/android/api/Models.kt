@@ -546,6 +546,8 @@ data class BootstrapOut(
     val activity: ActivitySummaryOut? = null,
     /** M88 (MEMBERSHIP.md §3): the two workspace switches; both on from a server before M88. */
     val workspaceSettings: WorkspaceSettingsOut = WorkspaceSettingsOut(),
+    /** M104 (MODERATION.md §4): the people I blocked; changes arrive as block.updated. Empty from an older server. */
+    val blockedUserIds: List<String> = emptyList(),
 )
 
 /**
@@ -654,6 +656,14 @@ data class CustomEmojiOut(
 /** M100: a set of custom emoji with its own picker tab; its tab icon at GET /emoji/packs/{id}/tab when `tabVersion` is set. */
 @Serializable
 data class EmojiPackOut(val id: String, val name: String, val position: Int = 0, val tabVersion: String? = null, val createdAt: String = "", val updatedAt: String = "")
+
+/** PUT / DELETE /users/{id}/block (M104, MODERATION.md §4). */
+@Serializable
+data class BlockStateOut(val userId: String, val blocked: Boolean)
+
+/** POST /messages/{id}/report (M104, MODERATION.md §3): my own report only. */
+@Serializable
+data class ReportAck(val id: String, val messageId: String, val reason: String, val createdAt: String = "")
 
 /** PUT / DELETE /channels/{id}/favorite (M12a). */
 @Serializable

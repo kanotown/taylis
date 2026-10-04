@@ -515,6 +515,26 @@ class ApiClient(
     suspend fun cancelScheduled(id: String) { requestRaw("DELETE", "/api/v1/scheduled/$id", null, auth = true, retry401 = true) }
     suspend fun sendScheduledNow(id: String): MessageOut = request("POST", "/api/v1/scheduled/$id/send-now", buildJsonObject {})
 
+    // --- moderation (M104, MODERATION.md) --------------------------------------------------------
+
+    suspend fun blockUser(userId: String): BlockStateOut = request("PUT", "/api/v1/users/$userId/block")
+    suspend fun unblockUser(userId: String): BlockStateOut = request("DELETE", "/api/v1/users/$userId/block")
+
+    /** `reason`: spam / harassment / inappropriate / other; `note` optional. */
+    suspend fun reportMessage(messageId: String, reason: String, note: String?): ReportAck =
+        request("POST", "/api/v1/messages/$messageId/report", buildJsonObject {
+            put("reason", reason)
+            if (!note.isNullOrEmpty()) put("note", note)
+        })
+
+    /** My password, or my username for an account without one (Google sign-in). Every session ends on success. */
+    suspend fun deleteAccount(password: String?, confirmUsername: String?) {
+        requestRaw("POST", "/api/v1/users/me/delete-account", buildJsonObject {
+            if (password != null) put("password", password)
+            if (confirmUsername != null) put("confirm_username", confirmUsername)
+        }, auth = true, retry401 = true)
+    }
+
     // --- favorites and read-all (M12a) ----------------------------------------------------------
 
     suspend fun favoriteChannel(channelId: String): FavoriteStateOut = request("PUT", "/api/v1/channels/$channelId/favorite")

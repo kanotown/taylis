@@ -1916,6 +1916,59 @@ class AppController(private val app: Application) {
         }
     }
 
+    /**
+     * M104 「ブロック」/「ブロックを解除」 (MODERATION.md §4): the flag moves at once, block.updated brings my other devices
+     * along. The blocked person is not told.
+     */
+    suspend fun setUserBlocked(userId: String, on: Boolean) {
+        val api = api ?: return
+        val before = store.isBlocked(userId)
+        store.setBlocked(userId, on)
+        try {
+            if (on) api.blockUser(userId) else api.unblockUser(userId)
+            notice = if (on) "ブロックしました" else "ブロックを解除しました"
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            store.setBlocked(userId, before)
+            report(e)
+        }
+    }
+
+    /** M104 「報告する」 (MODERATION.md §3): true when the server took it. */
+    suspend fun reportMessage(messageId: String, reason: String, note: String): Boolean {
+        val api = api ?: return false
+        return try {
+            api.reportMessage(messageId, reason, note.trim().ifEmpty { null })
+            notice = "報告しました。管理者が確認します"
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            report(e)
+            false
+        }
+    }
+
+    /**
+     * M104 「アカウントを削除」 (MODERATION.md §2): my password, or my username for an account without one. On success the
+     * server has ended every session and this workspace is signed out here. Returns the error to show, or null.
+     */
+    suspend fun deleteAccount(secret: String): String? {
+        val api = api ?: return "ログインしていません"
+        val key = activeKey ?: return "ログインしていません"
+        val hasPassword = store.me?.hasPassword ?: true
+        try {
+            api.deleteAccount(password = if (hasPassword) secret else null, confirmUsername = if (hasPassword) null else secret)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return describe(e)
+        }
+        signOutWorkspace(key)
+        return null
+    }
+
     /** M12a 「すべて既読にする」; `scope` "times": the Times feed's 「すべて既読にする」 (L8, TIMES_FEED.md §4). */
     suspend fun markAllRead(scope: String? = null) {
         val engine = engine ?: return

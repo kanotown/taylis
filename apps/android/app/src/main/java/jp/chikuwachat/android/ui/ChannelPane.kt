@@ -561,6 +561,12 @@ fun MessageRow(
         SystemMessageRow(message, store, highlighted = controller.messageFocus?.messageId == message.id)
         return
     }
+    // M104 (MODERATION.md §4): someone I blocked, folded until I ask to see it.
+    var shownAnyway by remember(message.id) { mutableStateOf(false) }
+    if (Moderation.folds(message, store.blockedUsers, shownAnyway)) {
+        BlockedMessageRow(onShow = { shownAnyway = true })
+        return
+    }
     val sender = store.users[message.senderId]?.displayName ?: store.me?.takeIf { it.id == message.senderId }?.displayName ?: "unknown"
     var menuOpen by remember { mutableStateOf(false) }
     var showingReactors by remember { mutableStateOf(false) }
@@ -573,6 +579,7 @@ fun MessageRow(
     var pickingReaction by remember { mutableStateOf(false) }
     var sharing by rememberSaveable { mutableStateOf(false) }
     var showingRevisions by remember { mutableStateOf(false) }
+    var reporting by remember { mutableStateOf(false) }  // M104
     // M25: TalkBack names the long press (its actions menu, double-tap and hold) after the sheet it opens; a pending
     // row has no sheet, so no long press is offered. Links and buttons inside stay their own nodes.
     val rowClick = Modifier.combinedClickable(
@@ -726,6 +733,7 @@ fun MessageRow(
                 )?.let { controller.taskForm = TaskForm(null, it) }
             }) else null,
             onShare = { sharing = true },
+            onReport = if (Moderation.canReport(message, store.me?.id)) ({ reporting = true }) else null,
             quick = QuickReactions.row(store.me?.quickReactions, QuickReactions.read(controller.prefs)),  // M50
             onMoreReactions = { pickingReaction = true },
             onShowReactors = if (message.reactions.isEmpty()) null else ({ showingReactors = true }),
@@ -734,6 +742,7 @@ fun MessageRow(
     }
     if (showingReactors) ReactorsDialog(message, store, version, onNeedEmojiImage = { controller.loadEmojiImage(it) }, onDismiss = { showingReactors = false })
     if (sharing) ShareDialog(controller, message, version, onDismiss = { sharing = false })
+    if (reporting) ReportMessageDialog(controller, message, onDismiss = { reporting = false })
     if (showingRevisions) RevisionsDialog(controller, message, onDismiss = { showingRevisions = false })
     if (pickingReaction) EmojiPickerSheet(recent = QuickReactions.read(controller.prefs), store = store, onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
     if (showingProfile) ProfileDialog(controller, message.senderId, version, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })

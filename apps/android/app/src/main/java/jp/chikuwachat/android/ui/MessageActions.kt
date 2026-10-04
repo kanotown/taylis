@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MarkEmailUnread
 import androidx.compose.material.icons.outlined.People
@@ -145,6 +146,8 @@ fun MessageMenu(
     /** L9 (REVIEWS.md §2.3): 「レビューを依頼」, next to 「タスクにする」. */
     onRequestReview: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
+    /** M104 (MODERATION.md §3): 「報告する」 on someone else's stored message, before 「削除」. */
+    onReport: (() -> Unit)? = null,
     onCopyText: (() -> Unit)? = null,
     /** M27: 「リアクションした人」, offered when the message has reactions. */
     onShowReactors: (() -> Unit)? = null,
@@ -205,6 +208,7 @@ fun MessageMenu(
             if (onCopyLink != null) item("リンクをコピー", Icons.Outlined.Link, action = onCopyLink)
             if (onShare != null) item("別のチャンネルに共有…", Icons.Outlined.Share, action = onShare)
             if (onPin != null) item(if (pinned) "ピン留めを外す" else "チャンネルにピン留め", Icons.Outlined.PushPin, action = onPin)
+            if (onReport != null) item("報告する", Icons.Outlined.Flag, action = onReport)
             if (canDelete) item("削除", Icons.Outlined.Delete, danger = true, action = onDelete)
         }
     }
