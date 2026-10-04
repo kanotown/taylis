@@ -26,6 +26,7 @@ import { setTitleBase, setUnreadBadge } from "../platform/badge";
 import { listenForDeepLinks } from "../platform/deepLink";
 import { isTauri, isWeb } from "../platform/env";
 import { openInBrowser } from "../platform/external";
+import { resolveDeviceName } from "../platform/deviceName";
 import { readerIdle } from "../platform/idle";
 import { clearNotifications, notify } from "../platform/notify";
 import type { TestNotificationOut } from "../api/types";
@@ -146,6 +147,8 @@ export class AppController {
   private readonly secrets = secretStore();
   /** 「更新して再起動」 (desktop only): the update banner and the settings' 「アップデートを確認」; errors go to the toast. */
   readonly updates = new UpdateChecker(undefined, (err) => this.setError(err));
+  /** This device's name for the server (platform/deviceName.ts), read at boot; null until then. */
+  private deviceName: string | null = null;
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -248,6 +251,7 @@ export class AppController {
   async boot(): Promise<void> {
     if (isTauri()) void this.watchSsoLinks();
     await this.updates.readCurrentVersion(); // the device's app_version on sign-in (Tauri; null in a browser)
+    this.deviceName = await resolveDeviceName();
     try {
       // M48: back from Google sign-in (`/#sso_ticket=` / `#sso_error=`); the fragment is removed at once.
       const sso = isWeb() ? takeSsoReturn() : null;
@@ -288,7 +292,7 @@ export class AppController {
   private deviceInfo(): DeviceInfo {
     return {
       platform: isWeb() ? "web" : "desktop",
-      device_name: isWeb() ? "ブラウザ" : navigator.platform || "desktop",
+      device_name: this.deviceName ?? (isWeb() ? "ブラウザ" : "デスクトップ"),
       app_version: this.updates.currentVersion ?? FALLBACK_APP_VERSION,
     };
   }
@@ -1567,6 +1571,7 @@ export class AppController {
       if (opened.failure) this.setError("端末に保存したデータを開けませんでした。今回はオフラインでの表示ができません");
     }
     void engine.start();
+    this.reportDeviceOnce(session, engine);
     if (this.active === session && this.entryMessage) {
       // M12j: the browser has no local store; reveal once the first sync has brought the channels.
       const unsubscribe = engine.subscribe(() => {
@@ -1577,6 +1582,22 @@ export class AppController {
     }
     this.updateBadge();
     return true;
+  }
+
+  /**
+   * Once the engine is first online (a fresh access token): PUT /devices/current with this device's name and app version,
+   * so a device signed in earlier (named "MacIntel" before, or an older version) shows what it is now. Best effort.
+   */
+  private reportDeviceOnce(session: Session, engine: SyncEngine): void {
+    const unsubscribe = engine.subscribe(() => {
+      if (engine.status !== "online") return;
+      unsubscribe();
+      if (session.engine !== engine) return;
+      const { device_name, app_version } = this.deviceInfo();
+      void Promise.resolve()
+        .then(() => session.api.updateDevice({ device_name, app_version }))
+        .catch((err: unknown) => console.warn("could not update this device's name", err));
+    });
   }
 
   private makeEngine(session: Session): SyncEngine {

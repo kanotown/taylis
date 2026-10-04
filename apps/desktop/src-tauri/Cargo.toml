@@ -32,6 +32,14 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# macOS notifications go through UNUserNotificationCenter (src/mac_notify.rs): the notification plugin's
+# NSUserNotificationCenter never shows a banner while the app is frontmost. Same objc2 line as tauri / the plugin's.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-user-notifications = "0.3"
+block2 = "0.6"
+
 # Windows / Linux hand a deep link to a new process; this forwards it to the running app (its deep-link feature).
 # macOS delivers the URL to the running app itself. 2.4.x for tauri 2.11, as above.
 [target.'cfg(any(windows, target_os = "linux"))'.dependencies]
