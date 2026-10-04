@@ -48,3 +48,41 @@ class PushPayload(BaseModel):
     badge: int = 1
     collapse_key: str | None = None
     sent_at: datetime
+
+
+# POST /users/me/test-notification (PUSH_NOTIFICATIONS.md §15).
+TestNotificationStatus = Literal[
+    "sent",  # the provider accepted it (APNs / FCM)
+    "failed",  # the provider refused or could not be reached: see detail
+    "no_token",  # a phone that has not registered for push (OS permission off, or not yet)
+    "not_configured",  # this server's APNs / FCM is off: the push only went to the log
+    "in_app",  # desktop / web: no push; the open app shows it from notification.test
+    "disabled",  # logged out, or every session ran out
+]
+
+
+class TestNotificationDevice(BaseModel):
+    __test__ = False  # not a pytest class
+
+    device_id: UUID
+    device_name: str | None
+    platform: str
+    push_provider: str
+    # The device that pressed the button.
+    current: bool
+    status: TestNotificationStatus
+    # failed: the provider's reason; disabled: why (logout, session_expired, revoked...).
+    detail: str | None = None
+    last_seen_at: datetime | None = None
+
+
+class TestNotificationOut(BaseModel):
+    __test__ = False  # not a pytest class
+
+    # Whether this server sends to APNs / FCM at all (PUSH_APNS_ENABLED / PUSH_FCM_ENABLED).
+    apns_configured: bool
+    fcm_configured: bool
+    # Do not disturb / quiet hours were on: the test was sent anyway (it ignores DND).
+    dnd_active: bool
+    sent_count: int
+    devices: list[TestNotificationDevice]

@@ -284,6 +284,16 @@ export interface CanvasMentioned {
   title: string;
   by_user_id: string;
 }
+/** POST /users/me/test-notification (PUSH_NOTIFICATIONS.md §15): what happened on each device of mine. */
+export type TestNotificationOut = components["schemas"]["TestNotificationOut"];
+export type TestNotificationDevice = components["schemas"]["TestNotificationDevice"];
+/** notification.test (to me only): a test notification was asked for; `device_id` is the device that asked. */
+export interface NotificationTest {
+  title: string;
+  body: string;
+  device_id: string | null;
+  sent_at: string;
+}
 /** M72: the canvas (and checklist item) a task was made from. */
 export type TaskCanvasSource = components["schemas"]["TaskCanvasSourceOut"];
 

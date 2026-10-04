@@ -1121,13 +1121,16 @@ class AppController(private val app: Application) {
             // An entry that predates GET /server learns its id from the payload (routing, duplicate checks).
             if (target.workspaceId == null && message.workspaceId != null) updateWorkspace(target.serverUrl) { it.copy(workspaceId = message.workspaceId) }
             val key = message.notificationKey
+            // §15: each test alerts again (an update of the one still on screen would be silent: setOnlyAlertOnce).
+            if (message.isTest && key != null) notifier.clear(key)
             if (target.serverUrl == activeKey && api != null) {
                 // The conversation being read is never announced; while the socket is live everything else arrives
                 // over it (and alerts from there).
                 val live = appForeground && engineStatus == EngineStatus.ONLINE
                 val reading = appForeground && message.kind == "message" && message.channelId != null && message.channelId == openChannelId
                 // M52: a calendar alarm's push is shown the same way (while live, the socket's calendar.alarm.updated says it).
-                if (message.shown && !live && !reading && key != null) {
+                // §15: a test push is what the reader just asked for: shown even with the app open and the socket live.
+                if (message.shown && (message.isTest || (!live && !reading)) && key != null) {
                     notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId)
                 }
                 // M28c: the push's own conversation catches up too (the socket may be stale), not only the open one.
@@ -2484,6 +2487,12 @@ class AppController(private val app: Application) {
 
     /** M40: my signed-in devices (GET /auth/sessions); the failure is for the screen to show. */
     suspend fun sessions(): Result<List<jp.chikuwachat.android.api.SessionOut>> = attempt { api!!.sessions() }
+
+    /**
+     * 「テスト通知を送る」 (PUSH_NOTIFICATIONS.md §15): the server pushes to every device of mine (this one too; [handlePush]
+     * shows a test push even with the app open). The failure is for the screen to show.
+     */
+    suspend fun sendTestNotification(): Result<jp.chikuwachat.android.api.TestNotificationOut> = attempt { api!!.sendTestNotification() }
 
     /** M40: signs another device out (DELETE /auth/sessions/{id}); false with the error shown. */
     suspend fun revokeSession(id: String): Boolean = attempt { api!!.revokeSession(id); true }.getOrElse { error = describe(it); false }

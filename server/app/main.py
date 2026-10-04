@@ -398,6 +398,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "message": RateLimiter(settings.message_rate_limit_per_user),
         "canvas_save": RateLimiter(settings.canvas_save_rate_limit_per_user),
         "ws_connect": RateLimiter(settings.ws_connect_rate_limit_per_ip),
+        # PUSH_NOTIFICATIONS.md §15: 5 test notifications in a burst, then 1 per 2 minutes.
+        "test_notification": RateLimiter(0.5, burst=5),
     }
     # M48: Google sign-in when fully configured (docs/SSO.md §2), else None (the log says why).
     app.state.sso_google = build_google(settings)

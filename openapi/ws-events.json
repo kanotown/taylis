@@ -5365,6 +5365,45 @@
         "type": "object"
       }
     },
+    "notification.test": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "sent_at": {
+            "title": "Sent At",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "body",
+          "device_id",
+          "sent_at"
+        ],
+        "title": "NotificationTestData",
+        "type": "object"
+      }
+    },
     "notification_preference.updated": {
       "audience": "user",
       "consumes_seq": false,

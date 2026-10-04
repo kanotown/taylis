@@ -1344,6 +1344,13 @@ final class AppController {
         return SessionList.ordered(try await api.sessions())
     }
 
+    /// 「テスト通知を送る」 (PUSH_NOTIFICATIONS.md §15): the server pushes to every device of mine (this one too); the
+    /// banner shows even with the app open (Workspaces.shouldPresent). Throws; the settings say why inline.
+    func sendTestNotification() async throws -> TestNotificationOut {
+        guard let api else { throw ApiError.network(URLError(.notConnectedToInternet)) }
+        return try await api.sendTestNotification()
+    }
+
     /// M40: sign another device out; whether it went through (the reason is shown).
     func revokeSession(_ id: String) async -> Bool {
         guard let api else { return false }

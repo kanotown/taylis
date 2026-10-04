@@ -3269,6 +3269,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/me/test-notification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Test Notification
+         * @description A test push to every device of mine, plus `notification.test` to my open apps
+         *     (PUSH_NOTIFICATIONS.md §15). 5 in 10 minutes per user.
+         */
+        post: operations["send_test_notification_api_v1_users_me_test_notification_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{user_id}": {
         parameters: {
             query?: never;
@@ -7072,6 +7093,44 @@ export interface components {
         TemporaryPasswordOut: {
             /** Temporary Password */
             temporary_password: string;
+        };
+        /** TestNotificationDevice */
+        TestNotificationDevice: {
+            /** Current */
+            current: boolean;
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Device Name */
+            device_name: string | null;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Platform */
+            platform: string;
+            /** Push Provider */
+            push_provider: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "sent" | "failed" | "no_token" | "not_configured" | "in_app" | "disabled";
+        };
+        /** TestNotificationOut */
+        TestNotificationOut: {
+            /** Apns Configured */
+            apns_configured: boolean;
+            /** Devices */
+            devices: components["schemas"]["TestNotificationDevice"][];
+            /** Dnd Active */
+            dnd_active: boolean;
+            /** Fcm Configured */
+            fcm_configured: boolean;
+            /** Sent Count */
+            sent_count: number;
         };
         /** ThreadFollowIn */
         ThreadFollowIn: {
@@ -14359,6 +14418,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_test_notification_api_v1_users_me_test_notification_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestNotificationOut"];
                 };
             };
         };

@@ -165,6 +165,7 @@ enum ErrorMessages {
         "template_name_reserved": "この名前はコマンドとして使われています。別の名前にしてください",
         "template_name_taken": "この名前のテンプレートはすでにあります",
         "template_not_found": "テンプレートが見つかりません",
+        "test_notification_rate_limited": "テスト通知は 10 分に 5 回までです。少し待ってからお試しください",
         "thumbnail_not_found": "サムネイルがありません",
         "times_exists": "この人の times はすでにあります",
         "token_expired": "ログインし直してください",

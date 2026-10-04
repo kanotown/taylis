@@ -9845,6 +9845,119 @@
         "title": "TemporaryPasswordOut",
         "type": "object"
       },
+      "TestNotificationDevice": {
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "device_id": {
+            "format": "uuid",
+            "title": "Device Id",
+            "type": "string"
+          },
+          "device_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "push_provider": {
+            "title": "Push Provider",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "sent",
+              "failed",
+              "no_token",
+              "not_configured",
+              "in_app",
+              "disabled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id",
+          "device_name",
+          "platform",
+          "push_provider",
+          "current",
+          "status"
+        ],
+        "title": "TestNotificationDevice",
+        "type": "object"
+      },
+      "TestNotificationOut": {
+        "properties": {
+          "apns_configured": {
+            "title": "Apns Configured",
+            "type": "boolean"
+          },
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/TestNotificationDevice"
+            },
+            "title": "Devices",
+            "type": "array"
+          },
+          "dnd_active": {
+            "title": "Dnd Active",
+            "type": "boolean"
+          },
+          "fcm_configured": {
+            "title": "Fcm Configured",
+            "type": "boolean"
+          },
+          "sent_count": {
+            "title": "Sent Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "apns_configured",
+          "fcm_configured",
+          "dnd_active",
+          "sent_count",
+          "devices"
+        ],
+        "title": "TestNotificationOut",
+        "type": "object"
+      },
       "ThreadFollowIn": {
         "properties": {
           "following": {
@@ -22580,6 +22693,33 @@
         "summary": "Auth:Password",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/users/me/test-notification": {
+      "post": {
+        "description": "A test push to every device of mine, plus `notification.test` to my open apps\n(PUSH_NOTIFICATIONS.md §15). 5 in 10 minutes per user.",
+        "operationId": "send_test_notification_api_v1_users_me_test_notification_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestNotificationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Send Test Notification",
+        "tags": [
+          "notifications"
         ]
       }
     },

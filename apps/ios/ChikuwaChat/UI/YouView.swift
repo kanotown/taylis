@@ -383,6 +383,8 @@ struct NotificationSettingsView: View {
                     Text("この端末では通知がオフになっています。届くようにするには、設定アプリで通知を許可してください。")
                 }
             }
+            // PUSH_NOTIFICATIONS.md §15: does a notification reach this phone and my other devices?
+            TestNotificationSection(controller: controller, permissionDenied: permission == .denied)
         }
         .navigationTitle("通知")
         .navigationBarTitleDisplayMode(.inline)

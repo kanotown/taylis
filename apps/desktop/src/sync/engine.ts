@@ -14,6 +14,7 @@ import { type AiApi, AiHub } from "./ai";
 import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
 import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
+import type { NotificationTest } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut } from "./types";
@@ -173,6 +174,8 @@ export interface EngineDeps {
    * server pushes to phones; the app shows it while open).
    */
   onCanvasMention?: (mention: CanvasMentioned, channel: ChannelState) => void;
+  /** PUSH_NOTIFICATIONS.md §15: notification.test, a test notification I asked for (here or on another device). */
+  onTestNotification?: (test: NotificationTest) => void;
   /** A channel became fully read (here or on another device). */
   onRead?: (channelId: string) => void;
   isActive?: () => boolean;
@@ -982,6 +985,9 @@ export class SyncEngine {
         // M76: an activity item too (the badge comes from the server, like a message's mention).
         this.scheduleActivityRefresh();
         this.maybeNotifyCanvasMention(frame.data as unknown as CanvasMentioned);
+        return;
+      case "notification.test":
+        this.deps.onTestNotification?.(frame.data as unknown as NotificationTest);
         return;
       case "ai.run_updated":
         this.ai.applyEvent(frame.data as unknown as AiRunUpdated);

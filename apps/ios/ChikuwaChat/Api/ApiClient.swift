@@ -201,6 +201,9 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// M40: my signed-in devices; ending one signs that device out (its pushes stop).
     func sessions() async throws -> [SessionOut] { try await request("GET", "/api/v1/auth/sessions") }
 
+    /// 「テスト通知を送る」 (PUSH_NOTIFICATIONS.md §15): a push to every device of mine, with what happened on each.
+    func sendTestNotification() async throws -> TestNotificationOut { try await request("POST", "/api/v1/users/me/test-notification") }
+
     func revokeSession(id: String) async throws {
         _ = try await requestRaw("DELETE", "/api/v1/auth/sessions/\(id)", body: nil, auth: true, retry401: true)
     }
