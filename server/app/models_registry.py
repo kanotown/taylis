@@ -17,6 +17,7 @@ from app.modules.invites import models as _invite_models
 from app.modules.messages import models as _message_models
 from app.modules.notifications import models as _notification_models
 from app.modules.recurring import models as _recurring_models
+from app.modules.reservations import models as _reservation_models
 from app.modules.sidebar import models as _sidebar_models
 from app.modules.sso import models as _sso_models
 from app.modules.tasks import models as _task_models
@@ -44,6 +45,7 @@ __all__ = [
     "_message_models",
     "_notification_models",
     "_recurring_models",
+    "_reservation_models",
     "_sidebar_models",
     "_sso_models",
     "_task_models",

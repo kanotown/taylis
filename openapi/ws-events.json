@@ -5652,6 +5652,36 @@
         "type": "object"
       }
     },
+    "reservation.updated": {
+      "audience": "channel",
+      "consumes_seq": false,
+      "data": {
+        "description": "`reservation.updated` (channel): a pool of the channel changed (its settings, its queue or\nits holders, or it was deleted). Clients that show the channel's pools load them again\n(GET /channels/{id}/reservation-pools): what the card shows differs per person.",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "deleted": {
+            "default": false,
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "pool_id": {
+            "format": "uuid",
+            "title": "Pool Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "pool_id"
+        ],
+        "title": "ReservationUpdatedData",
+        "type": "object"
+      }
+    },
     "roster.updated": {
       "audience": "all",
       "consumes_seq": false,

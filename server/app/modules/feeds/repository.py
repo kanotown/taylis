@@ -9,6 +9,7 @@ from app.modules.channels.models import ChannelMember
 from app.modules.feeds.models import ChannelFeed, ChannelFeedBot
 from app.modules.messages.models import Message
 from app.modules.recurring.models import RecurringPost
+from app.modules.reservations.models import ReservationBot
 from app.modules.tasks.models import SystemBot
 from app.modules.users.models import User
 from app.modules.webhooks.models import Webhook
@@ -70,7 +71,7 @@ async def set_feeds_bot(db: AsyncSession, channel_id: uuid.UUID, bot_user_id: uu
 async def bot_candidates(db: AsyncSession, channel_id: uuid.UUID) -> list[User]:
     """M98: the bots an administrator may make the channel's feed bot: members of the channel or
     bots that posted in it (an import's bots are not members), that nothing else posts as (no
-    webhook, AI agent, scheduled post, system bot or channel's feeds)."""
+    webhook, AI agent, scheduled post, system bot, channel's feeds or reservation pools)."""
     in_channel = exists().where(
         ChannelMember.channel_id == channel_id, ChannelMember.user_id == User.id
     )
@@ -81,6 +82,7 @@ async def bot_candidates(db: AsyncSession, channel_id: uuid.UUID) -> list[User]:
         RecurringPost.bot_user_id,
         SystemBot.user_id,
         ChannelFeedBot.bot_user_id,
+        ReservationBot.bot_user_id,
     ]
     stmt = select(User).where(User.role == "bot", in_channel | posted)
     for column in used:  # (no NULLs in the lists: NOT IN would then match nothing)

@@ -7132,6 +7132,312 @@
         "title": "PollOut",
         "type": "object"
       },
+      "PoolCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "capacity": {
+            "description": "Seats in the pool",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "grace_minutes": {
+            "default": 15,
+            "description": "Notice a holder past the guarantee gets before the operators may take the seat for a waiting member",
+            "maximum": 1440.0,
+            "minimum": 0.0,
+            "title": "Grace Minutes",
+            "type": "integer"
+          },
+          "min_hours": {
+            "default": 6,
+            "description": "A holder keeps the seat at least this long from assignment",
+            "maximum": 720.0,
+            "minimum": 0.0,
+            "title": "Min Hours",
+            "type": "integer"
+          },
+          "name": {
+            "examples": [
+              "Claude Premium シート"
+            ],
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "operator_ids": {
+            "description": "Members who hand the seats out (notified, see the requesters' email)",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Operator Ids",
+            "type": "array"
+          },
+          "tz": {
+            "default": "Asia/Tokyo",
+            "description": "The zone the bot's posts write times in",
+            "maxLength": 64,
+            "title": "Tz",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "capacity"
+        ],
+        "title": "PoolCreate",
+        "type": "object"
+      },
+      "PoolOut": {
+        "properties": {
+          "bot_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bot User Id"
+          },
+          "can_manage": {
+            "description": "May change the settings (channel owners, admins)",
+            "title": "Can Manage",
+            "type": "boolean"
+          },
+          "can_operate": {
+            "description": "May assign / remove / swap / cancel others (operators, channel owners, admins)",
+            "title": "Can Operate",
+            "type": "boolean"
+          },
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "grace_minutes": {
+            "title": "Grace Minutes",
+            "type": "integer"
+          },
+          "holders": {
+            "description": "Holding and returning, earliest first",
+            "items": {
+              "$ref": "#/components/schemas/ReservationOut"
+            },
+            "title": "Holders",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "min_hours": {
+            "title": "Min Hours",
+            "type": "integer"
+          },
+          "my_reservation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The caller's active reservation",
+            "title": "My Reservation Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_evict_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The holder whose seat goes next while someone waits (「次に外す」)",
+            "title": "Next Evict Id"
+          },
+          "operator_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Operator Ids",
+            "type": "array"
+          },
+          "tz": {
+            "title": "Tz",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "waiting": {
+            "description": "The queue, in order",
+            "items": {
+              "$ref": "#/components/schemas/ReservationOut"
+            },
+            "title": "Waiting",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id",
+          "name",
+          "capacity",
+          "min_hours",
+          "grace_minutes",
+          "tz",
+          "enabled",
+          "operator_ids",
+          "bot_user_id",
+          "holders",
+          "waiting",
+          "next_evict_id",
+          "my_reservation_id",
+          "can_manage",
+          "can_operate",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PoolOut",
+        "type": "object"
+      },
+      "PoolUpdate": {
+        "additionalProperties": false,
+        "description": "Changes apply from now on: a changed min_hours counts for the next assignments.",
+        "properties": {
+          "capacity": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "grace_minutes": {
+            "anyOf": [
+              {
+                "maximum": 1440.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grace Minutes"
+          },
+          "min_hours": {
+            "anyOf": [
+              {
+                "maximum": 720.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Hours"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "operator_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Ids"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          }
+        },
+        "title": "PoolUpdate",
+        "type": "object"
+      },
       "PresenceEntry": {
         "properties": {
           "status": {
@@ -7717,6 +8023,160 @@
           "created_at"
         ],
         "title": "ReminderOut",
+        "type": "object"
+      },
+      "ReservationOut": {
+        "properties": {
+          "assigned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned At"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The member's address, only for those who can operate the pool (to find the account in the resource's own console)",
+            "title": "Email"
+          },
+          "evict_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A holder past the guarantee whom a waiting member needs: when the grace period ends (it was told)",
+            "title": "Evict At"
+          },
+          "guarantee_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "assigned_at + the pool's min_hours (fixed at assignment)",
+            "title": "Guarantee Until"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "pair_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reservation on the other side of a swap (a waiter's holder, a holder's waiter)",
+            "title": "Pair Id"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A waiting member's place in the queue, from 1",
+            "title": "Position"
+          },
+          "ready": {
+            "description": "An operator can act now: a waiter's seat is free (or its holder is ready); a holder is returning or past the grace period",
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "returned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returned At"
+          },
+          "status": {
+            "enum": [
+              "waiting",
+              "holding",
+              "returning"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "enum": [
+                  "assign",
+                  "swap",
+                  "wait"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A waiting member: assign = a seat is free; swap = takes pair_id's seat; wait = no seat in sight yet",
+            "title": "Step"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "status",
+          "requested_at",
+          "assigned_at",
+          "guarantee_until",
+          "returned_at",
+          "evict_at",
+          "email",
+          "position",
+          "step",
+          "pair_id",
+          "ready"
+        ],
+        "title": "ReservationOut",
         "type": "object"
       },
       "RevisionMeta": {
@@ -9107,6 +9567,29 @@
           }
         },
         "title": "SubtaskUpdate",
+        "type": "object"
+      },
+      "SwapIn": {
+        "additionalProperties": false,
+        "properties": {
+          "assign_id": {
+            "description": "The waiting reservation that gets the seat",
+            "format": "uuid",
+            "title": "Assign Id",
+            "type": "string"
+          },
+          "remove_id": {
+            "description": "The holding (or returning) reservation taken out",
+            "format": "uuid",
+            "title": "Remove Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "remove_id",
+          "assign_id"
+        ],
+        "title": "SwapIn",
         "type": "object"
       },
       "SystemEventOut": {
@@ -18031,6 +18514,116 @@
         ]
       }
     },
+    "/api/v1/channels/{channel_id}/reservation-pools": {
+      "get": {
+        "description": "The channel's pools, oldest first, with their holders and queue.",
+        "operationId": "list_pools_api_v1_channels__channel_id__reservation_pools_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PoolOut"
+                  },
+                  "title": "Response List Pools Api V1 Channels  Channel Id  Reservation Pools Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Pools",
+        "tags": [
+          "reservations"
+        ]
+      },
+      "post": {
+        "description": "A new pool (channel owners and administrators who are members; at most 5 per channel,\n409 too_many_reservation_pools). The channel's reservation bot joins with the first one.",
+        "operationId": "create_pool_api_v1_channels__channel_id__reservation_pools_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Pool",
+        "tags": [
+          "reservations"
+        ]
+      }
+    },
     "/api/v1/channels/{channel_id}/scheduled": {
       "post": {
         "description": "M12d 「後で送信」: the server posts this at send_at (at least a minute ahead).",
@@ -21075,6 +21668,408 @@
         "summary": "Close Reminder",
         "tags": [
           "reminders"
+        ]
+      }
+    },
+    "/api/v1/reservation-pools/{pool_id}": {
+      "delete": {
+        "description": "The pool and its queue go; the bot's posts stay. Seats handed out in the resource's\nconsole are not touched there.",
+        "operationId": "delete_pool_api_v1_reservation_pools__pool_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Pool",
+        "tags": [
+          "reservations"
+        ]
+      },
+      "patch": {
+        "operationId": "update_pool_api_v1_reservation_pools__pool_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Pool",
+        "tags": [
+          "reservations"
+        ]
+      }
+    },
+    "/api/v1/reservation-pools/{pool_id}/reserve": {
+      "post": {
+        "description": "「予約する」: join the queue (members, not guests). Already in it or holding a seat: no\nchange. 409 reservation_pool_disabled while the pool is paused.",
+        "operationId": "reserve_api_v1_reservation_pools__pool_id__reserve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reserve",
+        "tags": [
+          "reservations"
+        ]
+      }
+    },
+    "/api/v1/reservation-pools/{pool_id}/swap": {
+      "post": {
+        "description": "「入れ替えた」 (operators): `remove_id` out and `assign_id` in, together.",
+        "operationId": "swap_api_v1_reservation_pools__pool_id__swap_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwapIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Swap",
+        "tags": [
+          "reservations"
+        ]
+      }
+    },
+    "/api/v1/reservations/{reservation_id}/assign": {
+      "post": {
+        "description": "「割り当てた」 (operators): the member got a seat; their guarantee starts now. 409\nreservation_pool_full when every seat is taken.",
+        "operationId": "assign_api_v1_reservations__reservation_id__assign_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reservation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Reservation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assign",
+        "tags": [
+          "reservations"
+        ]
+      }
+    },
+    "/api/v1/reservations/{reservation_id}/cancel": {
+      "post": {
+        "description": "「取り消す」: a waiting request (its member, or an operator).",
+        "operationId": "cancel_api_v1_reservations__reservation_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reservation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Reservation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel",
+        "tags": [
+          "reservations"
+        ]
+      }
+    },
+    "/api/v1/reservations/{reservation_id}/remove": {
+      "post": {
+        "description": "「外した」 (operators): the seat was taken back (a return, or a removal).",
+        "operationId": "remove_api_v1_reservations__reservation_id__remove_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reservation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Reservation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove",
+        "tags": [
+          "reservations"
+        ]
+      }
+    },
+    "/api/v1/reservations/{reservation_id}/return": {
+      "post": {
+        "description": "「返却する」 (the holder): the operators are told to take the seat out (「外した」).",
+        "operationId": "give_back_api_v1_reservations__reservation_id__return_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reservation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Reservation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Give Back",
+        "tags": [
+          "reservations"
         ]
       }
     },
