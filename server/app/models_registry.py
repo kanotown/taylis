@@ -16,6 +16,7 @@ from app.modules.groups import models as _group_models
 from app.modules.importer import models as _import_models
 from app.modules.invites import models as _invite_models
 from app.modules.messages import models as _message_models
+from app.modules.moderation import models as _moderation_models
 from app.modules.notifications import models as _notification_models
 from app.modules.recurring import models as _recurring_models
 from app.modules.reservations import models as _reservation_models
@@ -45,6 +46,7 @@ __all__ = [
     "_import_models",
     "_invite_models",
     "_message_models",
+    "_moderation_models",
     "_notification_models",
     "_recurring_models",
     "_reservation_models",

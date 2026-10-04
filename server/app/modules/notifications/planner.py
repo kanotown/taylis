@@ -25,6 +25,7 @@ from app.modules.messages import repository as messages_repo
 from app.modules.messages import service as messages
 from app.modules.messages.events import MESSAGE_CREATED
 from app.modules.messages.mentions import attachment_text, extract_group_mentions, notification_text
+from app.modules.moderation import blocks
 from app.modules.notifications import repository as repo
 from app.modules.notifications.schemas import PushPayload
 from app.modules.notifications.service import is_muted, push_level
@@ -78,6 +79,9 @@ class PushPlanner:
             return  # M88: a join / leave line is never pushed (docs/MEMBERSHIP.md §1)
         sender_id = uuid.UUID(str(message["sender_id"]))
         recipients = [uid for uid in audience.ids if uid != sender_id]
+        # M104 (docs/MODERATION.md §4): nothing from someone the recipient blocked.
+        blockers = await blocks.blockers_among(db, sender_id, recipients)
+        recipients = [uid for uid in recipients if uid not in blockers]
         if not recipients:
             return
         channel = await channels.require_channel(db, event.channel_id)
@@ -342,6 +346,9 @@ class PushPlanner:
             return
         if self.is_active(user_id):
             return
+        by_user = data.get("by_user_id")
+        if by_user and await blocks.is_blocked(db, user_id, uuid.UUID(str(by_user))):
+            return  # M104: a mention by someone I blocked
         canvas_id = uuid.UUID(str(data["canvas_id"]))
         canvas = await canvases_repo.get(db, canvas_id)
         if canvas is None or canvas.is_deleted:
@@ -407,6 +414,8 @@ class PushPlanner:
             return
         if self.is_active(user_id):
             return
+        if await blocks.is_blocked(db, user_id, uuid.UUID(str(data["user_id"]))):
+            return  # M104: a reaction by someone I blocked
         channel_id = uuid.UUID(str(data["channel_id"]))
         message_id = uuid.UUID(str(data["message_id"]))
         channel = await channels.require_channel(db, channel_id)

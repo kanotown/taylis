@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Taylis のアカウント削除</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+body { font-family: system-ui, sans-serif; margin: 0; background: #f6f7fb; color: #1f2333; }
+main { width: min(40rem, calc(100vw - 2rem)); margin: 2rem auto; padding: 1.5rem 2rem; background: #fff;
+       border-radius: 1rem; box-shadow: 0 10px 30px rgba(31, 35, 51, .08); box-sizing: border-box; }
+h1 { font-size: 1.3rem; margin: 0 0 .75rem; }
+h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; }
+p, li { color: #3b4152; font-size: .95rem; line-height: 1.6; }
+ol, ul { padding-left: 1.4rem; }
+a.button { display: inline-block; margin-top: .5rem; padding: .6rem 1rem; border-radius: .6rem;
+           background: #4f46e5; color: #fff; text-decoration: none; font-weight: 600; }
+.en { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e3e5ee; }
+@media (prefers-color-scheme: dark) {
+  body { background: #15171f; color: #e7e9f0; }
+  main { background: #1f2230; box-shadow: none; }
+  p, li { color: #c5c9d6; }
+  .en { border-color: #343849; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Taylis のアカウントを削除するには</h1>
+<p>アカウントはアプリの中から、本人がいつでも削除できます。削除はすぐに行われ、取り消せません。</p>
+
+<h2>削除の手順</h2>
+<ol>
+<li>Taylis のアプリ (iPhone / Android / デスクトップ) か、このサーバーの Web 版を開いてログインします。</li>
+<li>「設定」→「アカウント」→「アカウントを削除」を選びます。</li>
+<li>確認のためパスワードを入力します (Google でログインしているアカウントはユーザー名を入力します)。</li>
+</ol>
+<p><a class="button" href="/">Web 版を開いてログインする</a></p>
+<p>ログインできない場合は、ワークスペースの管理者に削除を依頼してください。管理者も同じ削除 (匿名化) を行えます。</p>
+
+<h2>削除されるもの</h2>
+<ul>
+<li>表示名・ユーザー名・メールアドレス・肩書き・ステータス・プロフィール画像</li>
+<li>パスワード・2 要素認証・Google ログインの連携・すべてのログイン中の端末とプッシュ通知の登録</li>
+<li>通知キーワードなどの個人設定と、ブロックしたユーザーの一覧</li>
+</ul>
+
+<h2>残るもの</h2>
+<p>チャンネルや DM に投稿したメッセージと添付ファイルは、ほかの参加者と共有している会話の記録なので残り、
+投稿者は「退会したユーザー」と表示されます。内容の削除が必要なメッセージは、削除の前にご自身で削除するか、
+管理者に依頼してください。管理操作の記録 (監査ログ) には、名前を含まない識別子だけが残ります。</p>
+
+<div class="en">
+<h2>Deleting your Taylis account</h2>
+<p>Sign in to the Taylis app or this server's web client, then open Settings → Account → Delete account and confirm
+with your password (or your username for an account that signs in with Google). The deletion is immediate and
+cannot be undone: your profile, sign-in details, devices and push registrations are erased. Messages you posted in
+shared conversations stay, shown as "退会したユーザー" (deleted user). If you cannot sign in, ask your workspace
+administrator to delete the account.</p>
+</div>
+</main>
+</body>
+</html>

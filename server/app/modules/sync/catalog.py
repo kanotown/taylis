@@ -18,6 +18,7 @@ from app.modules.favorites import events as favorite_events
 from app.modules.groups import events as group_events
 from app.modules.lab import events as lab_events
 from app.modules.messages import events as message_events
+from app.modules.moderation import events as moderation_events
 from app.modules.notifications import events as notification_events
 from app.modules.reads import events as read_events
 from app.modules.reminders import events as reminder_events
@@ -71,6 +72,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     activity_events.ACTIVITY_UPDATED: (activity_events.ActivityUpdatedData, "user", False),
     activity_events.REACTION_ADDED: (activity_events.ReactionAddedData, "user", False),
     favorite_events.FAVORITE_UPDATED: (favorite_events.FavoriteUpdatedData, "user", False),
+    moderation_events.BLOCK_UPDATED: (moderation_events.BlockUpdatedData, "user", False),
     sidebar_events.SIDEBAR_UPDATED: (sidebar_events.SidebarUpdatedData, "user", False),
     draft_events.DRAFT_UPDATED: (draft_events.DraftUpdatedData, "user", False),
     channel_link_events.CHANNEL_LINKS_UPDATED: (

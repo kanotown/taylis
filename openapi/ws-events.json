@@ -304,6 +304,30 @@
         "type": "object"
       }
     },
+    "block.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "description": "block.updated (audience: the blocker only): my other devices follow.",
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "blocked"
+        ],
+        "title": "BlockUpdatedData",
+        "type": "object"
+      }
+    },
     "bookmark.updated": {
       "audience": "user",
       "consumes_seq": false,

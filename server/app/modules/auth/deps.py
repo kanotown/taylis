@@ -22,6 +22,7 @@ _PASSWORD_CHANGE_ALLOWED = {
     "auth:logout",
     "auth:sessions",
     "auth:revoke_session",
+    "users:delete_account",  # M104: deleting the account needs no new password first
 }
 
 

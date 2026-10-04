@@ -89,3 +89,16 @@ async def invite_page(token: str) -> HTMLResponse:
     return HTMLResponse(
         _INVITE_PAGE, headers={"X-Robots-Tag": "noindex", "Cache-Control": "no-store"}
     )
+
+
+_ACCOUNT_DELETION_PAGE = (Path(__file__).parent / "templates" / "account_deletion.html").read_text(
+    encoding="utf-8"
+)
+
+
+@router.get("/account-deletion", response_class=HTMLResponse, include_in_schema=False)
+async def account_deletion_page() -> HTMLResponse:
+    """M104 (docs/MODERATION.md §2): the public page store listings link to as the "delete account
+    URL". Static: it tells how to delete an account from the apps or the web client and what is
+    kept; the deletion itself needs a sign-in (POST /api/v1/users/me/delete-account)."""
+    return HTMLResponse(_ACCOUNT_DELETION_PAGE, headers={"Cache-Control": "no-cache"})

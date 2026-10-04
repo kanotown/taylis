@@ -19,6 +19,7 @@ from app.modules.groups import service as groups
 from app.modules.lab import service as lab
 from app.modules.messages import service as messages
 from app.modules.messages.schemas import MAX_BODY_LENGTH
+from app.modules.moderation import blocks
 from app.modules.notifications import service as notifications
 from app.modules.reads import rules as unread_rules
 from app.modules.reads import service as reads
@@ -88,6 +89,7 @@ async def bootstrap(
         drafts=await drafts.list_for(db, actor.id),
         activity=await activity.summary(db, actor, activity_include),
         workspace_settings=await workspace.settings(db),
+        blocked_user_ids=await blocks.blocked_ids_of(db, actor.id),
         presence=[
             PresenceEntry(user_id=user_id, status=status)  # type: ignore[arg-type]
             for user_id, status in presence
