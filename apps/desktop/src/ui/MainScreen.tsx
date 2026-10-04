@@ -39,9 +39,10 @@ import { useConnectionBanner } from "./hooks";
 import { SavedView } from "./SavedView";
 import { describeSearch, SearchBar } from "./SearchBar";
 import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
+import { WindowControls } from "./WindowControls";
 import { WorkspaceMenu } from "./WorkspaceRail";
 import { startSummary, SummaryDialog, SummaryMenuItems, summaryAvailable } from "./ai";
-import { isWeb, TRAFFIC_LIGHTS_INSET } from "../platform/env";
+import { customTitleBar, isWeb, TRAFFIC_LIGHTS_INSET } from "../platform/env";
 import { useReservesTrafficLights } from "../platform/windowState";
 import { EMPTY_SEARCH, pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
 import { HomeView } from "./HomeView";
@@ -138,6 +139,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const store = controller.store;
   // macOS: room for the window buttons, except in full screen where macOS hides them (M93).
   const trafficLights = useReservesTrafficLights();
+  const windowButtons = customTitleBar();
   const [currentId, setCurrentId] = useState<string | null>(() => engine?.currentChannelId ?? engine?.preview?.channelId ?? [...store.channels.values()].find((channel) => channel.isMember)?.id ?? null);
   const [dialog, setDialog] = useState<Dialog>(null);
   // M93: the section the settings open on (「プロフィールを編集」 from my profile card opens 「プロフィール」).
@@ -1646,7 +1648,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       style={{ "--sidebar-w": `${columns.sidebarWidth}px` } as React.CSSProperties}
     >
       {/* The workspace over the sidebar (M16c) and the search box across the rest (M16b), as in Slack. On macOS this
-          row is the title bar: it moves the window, and leaves room for the window buttons when no rail does. */}
+          row is the title bar: it moves the window, and leaves room for the window buttons when no rail does. On Windows
+          it is the whole title bar (no system one): it moves the window, and ends with our own window buttons. Only the
+          row's own empty space drags; the buttons and the search box inside it don't. */}
       <div
         data-tauri-drag-region
         className="flex h-10 min-w-0 items-center bg-sidebar px-2"
@@ -1654,7 +1658,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       >
         <WorkspaceMenu controller={controller} />
       </div>
-      <div data-tauri-drag-region className="col-span-2 flex h-10 items-center gap-2 bg-sidebar px-3">
+      <div data-tauri-drag-region className={cn("col-span-2 flex h-10 items-center gap-2 bg-sidebar pl-3", windowButtons ? "pr-0" : "pr-3")}>
         {/* M67: back / forward between places, beside the search box as in Slack. */}
         <nav aria-label="履歴" className="flex shrink-0 items-center gap-0.5">
           <IconButton tone="sidebar" label={historyLabels.back} disabled={!canGoBack} onClick={() => goHistory(-1)} className="h-7 w-7 disabled:opacity-40">
@@ -1665,6 +1669,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           </IconButton>
         </nav>
         {searchBar}
+        {windowButtons && <WindowControls />}
       </div>
       {sidebar}
       {/* min-h-0: a grid item's default min-height is its content height, which would grow the row past the window. */}

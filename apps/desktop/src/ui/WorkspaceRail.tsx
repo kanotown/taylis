@@ -58,6 +58,9 @@ export function dragOffset(drag: Pick<Drag, "from" | "gap" | "tops">, index: num
   return 0;
 }
 
+/** The rail's width outside macOS (its class says w-[68px]); the Windows title strip starts after it. */
+export const RAIL_WIDTH = 68;
+
 /**
  * M16c: the workspaces down the left edge (Slack): number / dot for unread, ⌘1 … ⌘9, + to add (WORKSPACES.md §5).
  * M93: drag a tile (or Alt+↑/↓ on a focused one, or its menu) to reorder; the order is saved on this device. Tiles show

@@ -2,7 +2,7 @@
  * M93: whether the macOS window buttons (traffic lights) are on screen, so the rail and the header reserve their space
  * only then. In full screen (the green button) macOS hides them, and the reserved 84 px were empty. Zoom (double-click
  * on the title bar, Option-click on the green button) keeps them, and `isFullscreen()` stays false there, so the inset
- * stays. Windows and Linux keep their own title bar (tauri.conf.json's "Overlay" style is macOS only): no inset at all.
+ * stays. Windows (our own title bar, WindowControls) and Linux (the system one) have no traffic lights: no inset at all.
  */
 import { useEffect, useState } from "react";
 
