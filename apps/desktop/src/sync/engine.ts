@@ -736,6 +736,7 @@ export class SyncEngine {
     store.replacePresence(bootstrap.presence ?? []);
     store.replaceBookmarks(bootstrap.bookmarks ?? []);
     store.replaceFavorites(bootstrap.favorites ?? []);
+    store.replaceBlocked(bootstrap.blocked_user_ids ?? []);
     store.replaceCustomEmoji(bootstrap.custom_emoji ?? []);
     store.replaceEmojiPacks(bootstrap.emoji_packs ?? []);
     store.replaceRoster(bootstrap.roster ?? []);
@@ -969,6 +970,11 @@ export class SyncEngine {
       case "scheduled.updated": {
         const data = frame.data as { scheduled: ScheduledOut };
         store.applyScheduled(data.scheduled);
+        return;
+      }
+      case "block.updated": {
+        const data = frame.data as { user_id: string; blocked: boolean };
+        store.setBlocked(data.user_id, data.blocked);
         return;
       }
       case "favorite.updated": {

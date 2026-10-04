@@ -23,6 +23,7 @@ import { WorkflowLabel } from "./WorkflowViews";
 import { CollectionChip } from "./RecurringPosts";
 import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
+import { ReportDialog } from "./ModerationDialogs";
 import { isSendKey, sendKeyLabel } from "./prefs";
 import { Button, cn, IconButton, Input, Kbd, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 import { hoverMenuGroups, type MessageActionKey, messageActions, rowFitsQuickReactions } from "./messageActions";
@@ -680,8 +681,13 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
   // The quick reactions are the emoji I used last (M25): a pick in any row changes them in every row, so they come in
   // as a prop (the memoized row would otherwise keep reading the old three until something else re-rendered it).
   const recentEmoji = useRecentEmoji();
+  const [shown, setShown] = useState(false); // M104: a blocked person's message, shown on request
   // M88: a join / leave line is one muted line, never grouped, without actions (docs/MEMBERSHIP.md §1).
   if (isSystemMessage(message)) return <SystemMessageRow message={message} store={store} rowsVersion={store.rowsVersion} thread={thread} />;
+  // M104 (docs/MODERATION.md §4): a message of someone I blocked is folded away until I ask to see it.
+  if (store.isBlocked(message.sender_id) && !message.deleted && !shown) {
+    return <BlockedMessageRow message={message} thread={thread} onShow={() => setShown(true)} />;
+  }
   return (
     <MessageRowView
       controller={controller}
@@ -708,6 +714,27 @@ export function MessageRow({ controller, message, compact = false, onOpenThread,
       onOpenChannel={feed?.onOpenChannel}
       onActivate={feed?.onActivate}
     />
+  );
+}
+
+/**
+ * M104 (docs/MODERATION.md §4): the folded row of a blocked person's message, 「ブロック中のユーザーのメッセージ」 with
+ * 「表示」. Still an `article` with its seq, so the list's anchoring and read marks treat it like any row.
+ */
+function BlockedMessageRow({ message, thread, onShow }: { message: MessageState; thread: boolean; onShow: () => void }) {
+  return (
+    <article
+      key={rowKey(message)}
+      id={`${thread ? "thread" : "timeline"}-${message.id}`}
+      data-seq={message.seq ?? undefined}
+      data-blocked=""
+      tabIndex={0}
+      onKeyDown={(event) => messageRowKey(event, undefined)}
+      className="message -mx-2 my-1 flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+    >
+      <span className="min-w-0 italic">ブロック中のユーザーのメッセージ</span>
+      <button type="button" className="shrink-0 text-accent hover:underline" onClick={onShow}>表示</button>
+    </article>
   );
 }
 
@@ -823,6 +850,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   };
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false); // M104
   const [revisionsOpen, setRevisionsOpen] = useState(false);
   const [chipPicker, setChipPicker] = useState(false);
   // M27 「リアクションした人」: from the long-press sheet on a phone, from the hover bar with a mouse.
@@ -892,6 +920,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
     copyLink: () => void controller.copyPermalink(message.id),
     share: afterClose(() => setShareOpen(true)),
     pin: () => void controller.togglePin(message),
+    report: afterClose(() => setReportOpen(true)),
     delete: afterClose(() => setConfirmDelete(true)),
   };
   return (
@@ -1210,6 +1239,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         </div>
       )}
       {shareOpen && <ShareDialog controller={controller} message={message} onClose={() => setShareOpen(false)} />}
+      {reportOpen && <ReportDialog controller={controller} message={message} onClose={() => setReportOpen(false)} />}
       {revisionsOpen && <RevisionsDialog controller={controller} message={message} onClose={() => setRevisionsOpen(false)} />}
       {reactionsOpen && <ReactionsDialog controller={controller} message={message} onClose={() => setReactionsOpen(false)} />}
       {taskOpen && (
@@ -1236,6 +1266,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           onClose={() => setSheet(null)}
           onOpenThread={onOpenThread}
           onShare={() => setShareOpen(true)}
+          onReport={() => setReportOpen(true)}
           onShowReactions={() => setReactionsOpen(true)}
           onMakeTask={canMakeTask ? () => setTaskOpen(true) : undefined}
           onRequestReview={canRequestReview ? () => setReviewOpen(true) : undefined}

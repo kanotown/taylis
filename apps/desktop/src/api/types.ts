@@ -95,6 +95,15 @@ export type FileListOut = components["schemas"]["FileListOut"];
 export type FavoriteStateOut = components["schemas"]["FavoriteStateOut"];
 export type ChannelReadStateOut = components["schemas"]["ChannelReadStateOut"];
 
+/** Moderation (M104, docs/MODERATION.md): blocks, message reports, account deletion. */
+export type BlockStateOut = components["schemas"]["BlockStateOut"];
+export type BlockOut = components["schemas"]["BlockOut"];
+export type ReportCreate = components["schemas"]["ReportCreate"];
+export type ReportReason = ReportCreate["reason"];
+export type ReportAck = components["schemas"]["ReportAck"];
+export type AdminReportOut = components["schemas"]["AdminReportOut"];
+export type AccountDeletion = components["schemas"]["AccountDeletion"];
+
 /** PATCH /users/me body (M11d, M12c). */
 export type UserUpdate = components["schemas"]["UserUpdate"];
 

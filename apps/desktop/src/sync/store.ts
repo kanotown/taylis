@@ -93,6 +93,8 @@ export class Store {
   readonly bookmarks = new Set<string>();
   /** My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted. */
   readonly favorites = new Set<string>();
+  /** M104: the people I blocked (docs/MODERATION.md §4); from bootstrap and block.updated, not persisted. */
+  readonly blockedUsers = new Set<string>();
   /** My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted. */
   readonly scheduled = new Map<string, ScheduledOut>();
   /** My open reminders (M12e): fired ones wait for 完了, pending ones for their time. */
@@ -913,6 +915,25 @@ export class Store {
   replaceFavorites(ids: string[]): void {
     this.favorites.clear();
     for (const id of ids) this.favorites.add(id);
+    this.emit();
+  }
+
+  // --- blocks (M104) ------------------------------------------------------------------------
+
+  isBlocked(userId: string): boolean {
+    return this.blockedUsers.has(userId);
+  }
+
+  setBlocked(userId: string, on: boolean): void {
+    if (on ? this.blockedUsers.has(userId) : !this.blockedUsers.has(userId)) return;
+    if (on) this.blockedUsers.add(userId);
+    else this.blockedUsers.delete(userId);
+    this.emit();
+  }
+
+  replaceBlocked(ids: string[]): void {
+    this.blockedUsers.clear();
+    for (const id of ids) this.blockedUsers.add(id);
     this.emit();
   }
 

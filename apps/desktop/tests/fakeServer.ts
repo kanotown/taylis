@@ -1501,6 +1501,7 @@ export class FakeServer {
           presence: [...new Set([...this.sockets].filter((s) => s.authed).map((s) => s.userId))].map((id) => ({ user_id: id, status: this.presenceOf(id) })),
           bookmarks: this.bookmarks.get(userId) ?? [],
           favorites: (this.favorites.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)),
+          blocked_user_ids: [],
           custom_emoji: [...this.customEmoji.values()],
           emoji_packs: [],
           templates: [...this.templates.values()].filter((t) => t.scope === "workspace" || t.owner_id === userId),

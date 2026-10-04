@@ -194,7 +194,7 @@ export function UsersTab({ controller }: { controller: AppController }) {
                   onResetTotp={() => void run(async () => { await controller.api!.adminResetTotp(user.id); })}
                   onDeactivate={() => void run(async () => { await controller.api!.adminUpdateUser(user.id, { deactivated: true }); })}
                   onReactivate={() => void run(async () => { await controller.api!.adminUpdateUser(user.id, { deactivated: false }); })}
-                  onAnonymize={anonymized ? null : () => setConfirm(user)}
+                  onAnonymize={anonymized || self || user.role === "bot" ? null : () => setConfirm(user)}
                 />
               </li>
             );
@@ -223,12 +223,12 @@ export function UsersTab({ controller }: { controller: AppController }) {
         </Modal>
       )}
       {confirm && (
-        <Modal onClose={() => setConfirm(null)} title="ユーザーを匿名化しますか？" className="w-[440px]">
-          <p className="mt-3 text-sm text-muted">@{confirm.username} の名前・メールを消し、全セッションを終了します。メッセージは「削除されたユーザー」として残ります。元に戻せません。</p>
+        <Modal onClose={() => setConfirm(null)} title="ユーザーを削除 (匿名化) しますか？" className="w-[440px]">
+          <p className="mt-3 text-sm text-muted">@{confirm.username} の名前・メール・プロフィール・ログイン情報を消し、全セッションを終了します。メッセージは「退会したユーザー」として残ります。元に戻せません (本人の「アカウントを削除」と同じ処理です)。</p>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setConfirm(null)}>キャンセル</Button>
             <Button variant="danger" disabled={busy} onClick={() => { const target = confirm; setConfirm(null); void run(async () => { await controller.api!.adminAnonymizeUser(target.id); }); }}>
-              匿名化する
+              削除 (匿名化) する
             </Button>
           </div>
         </Modal>
@@ -308,6 +308,12 @@ function UserActions({ user, self, busy, onRole, onRename, onResetPassword, onRe
             <MenuItem disabled={busy} className="text-danger" title="無効化 (ログイン不可、表示は残る)" onSelect={onDeactivate}>
               <UserX size={14} /> 無効化 (ログイン不可、表示は残る)
             </MenuItem>
+            {/* M104: the same deletion as the person's own 「アカウントを削除」 (docs/MODERATION.md §2). */}
+            {onAnonymize && (
+              <MenuItem disabled={busy} className="text-danger" onSelect={onAnonymize}>
+                <UserX size={14} /> 削除 (匿名化)…
+              </MenuItem>
+            )}
           </>
         ) : (
           <>
@@ -319,7 +325,7 @@ function UserActions({ user, self, busy, onRole, onRename, onResetPassword, onRe
               <>
                 <MenuSeparator />
                 <MenuItem disabled={busy} className="text-danger" onSelect={onAnonymize}>
-                  <UserX size={14} /> 匿名化…
+                  <UserX size={14} /> 削除 (匿名化)…
                 </MenuItem>
               </>
             )}

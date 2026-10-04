@@ -33,7 +33,7 @@ export const LONG_PRESS_MS = 450;
  * The long-press sheet on a phone (M25, MUI-1): quick reactions, then the actions in the order iOS (MessageActions.swift)
  * and Android (MessageActions.kt) show them. Each action closes the sheet; the delete asks once more in place.
  */
-export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onShowReactions, onMakeTask, onRequestReview, unreadOffered, saved, isAdmin, canEdit }: {
+export function MessageActionsSheet({ controller, message, initialView = "actions", onClose, onOpenThread, onShare, onReport, onShowReactions, onMakeTask, onRequestReview, unreadOffered, saved, isAdmin, canEdit }: {
   controller: AppController;
   message: MessageState;
   /** "emoji": straight to the picker (the 「＋」 after the reactions). */
@@ -41,6 +41,8 @@ export function MessageActionsSheet({ controller, message, initialView = "action
   onClose: () => void;
   onOpenThread?: (id: string) => void;
   onShare: () => void;
+  /** M104 「報告する」: the report dialog. */
+  onReport?: () => void;
   /** M27 「リアクションした人」: offered while the message has reactions (a phone has no hover names). */
   onShowReactions?: () => void;
   /** M55 「タスクにする」 (offered when the server has tasks). */
@@ -93,6 +95,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
     copyLink: then(() => void controller.copyPermalink(message.id)),
     share: then(onShare),
     pin: then(() => void controller.togglePin(message)),
+    report: then(() => onReport?.()),
     delete: () => { if (settled()) setView("delete"); },
   };
 

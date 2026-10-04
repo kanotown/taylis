@@ -5,6 +5,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { AiTab } from "./AiTab";
 import { UsersTab } from "./AdminUsersTab";
+import { ReportsTab } from "./AdminReportsTab";
 import { CanvasTemplatesTab } from "./CanvasTemplatesTab";
 import { EmojiAdminTab } from "./customEmoji";
 import { GroupsTab } from "./GroupsTab";
@@ -15,7 +16,7 @@ import { WorkflowManager } from "./WorkflowViews";
 import { WorkspaceSettingsTab } from "./WorkspaceSettingsTab";
 import { Badge, Button, cn, Field, Input, Modal, UNDERLINE_TAB, UnderlineTabRow } from "./primitives";
 
-type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates";
+type Tab = "users" | "reports" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates";
 
 /** Administration (M11e): users (create, role, deactivate, reset password, sessions, anonymize) and channels (rename, archive). */
 export function AdminDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
@@ -42,6 +43,7 @@ export function AdminBody({ controller, className }: { controller: AppController
         {(
           [
             ["users", "ユーザー"],
+            ["reports", "報告"],
             ["roster", "名簿"],
             ["groups", "グループ"],
             ["invites", "招待"],
@@ -67,7 +69,7 @@ export function AdminBody({ controller, className }: { controller: AppController
         ))}
       </UnderlineTabRow>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {shown === "ai" ? <AiTab controller={controller} /> : shown === "workspace" ? <WorkspaceSettingsTab controller={controller} /> : shown === "users" ? <UsersTab controller={controller} /> : shown === "roster" ? <RosterTab controller={controller} /> : shown === "groups" ? <GroupsTab controller={controller} /> : shown === "invites" ? <InvitesTab controller={controller} /> : shown === "webhooks" ? <WebhooksTab controller={controller} /> : shown === "workflows" ? <WorkflowManager controller={controller} /> :shown === "channels" ? <ChannelsTab controller={controller} /> : shown === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
+        {shown === "ai" ? <AiTab controller={controller} /> : shown === "workspace" ? <WorkspaceSettingsTab controller={controller} /> : shown === "users" ? <UsersTab controller={controller} /> : shown === "reports" ? <ReportsTab controller={controller} /> : shown === "roster" ? <RosterTab controller={controller} /> : shown === "groups" ? <GroupsTab controller={controller} /> : shown === "invites" ? <InvitesTab controller={controller} /> : shown === "webhooks" ? <WebhooksTab controller={controller} /> : shown === "workflows" ? <WorkflowManager controller={controller} /> :shown === "channels" ? <ChannelsTab controller={controller} /> : shown === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
       </div>
     </div>
   );

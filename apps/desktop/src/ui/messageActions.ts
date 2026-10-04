@@ -1,4 +1,4 @@
-import { AlarmClock, Bookmark, BookmarkCheck, ClipboardCheck, Copy, Forward, Link, ListTodo, type LucideIcon, Mail, MessageSquare, Pencil, Pin, PinOff, Trash2, Users } from "lucide-react";
+import { AlarmClock, Bookmark, BookmarkCheck, ClipboardCheck, Copy, Flag, Forward, Link, ListTodo, type LucideIcon, Mail, MessageSquare, Pencil, Pin, PinOff, Trash2, Users } from "lucide-react";
 
 import type { MessageState } from "../sync/types";
 
@@ -7,7 +7,7 @@ import type { MessageState } from "../sync/types";
  * (MessageActionsSheet.tsx), so both offer the same things under the same conditions. Each surface runs them itself.
  */
 export type MessageActionKey =
-  | "reactions" | "thread" | "edit" | "copyText" | "save" | "remind" | "task" | "review" | "unread" | "copyLink" | "share" | "pin" | "delete";
+  | "reactions" | "thread" | "edit" | "copyText" | "save" | "remind" | "task" | "review" | "unread" | "copyLink" | "share" | "pin" | "report" | "delete";
 
 export interface MessageActionContext {
   message: MessageState;
@@ -49,6 +49,8 @@ export function messageActions(ctx: MessageActionContext): MessageAction[] {
     { key: "copyLink", label: "リンクをコピー", icon: Link },
     { key: "share", label: "別のチャンネルに共有…", icon: Forward },
     { key: "pin", label: message.pinned_at ? "ピン留めを外す" : "チャンネルにピン留め", icon: message.pinned_at ? PinOff : Pin },
+    // M104 (docs/MODERATION.md §3): someone else's message, once it is stored.
+    !ctx.mine && !message.pending && !message.deleted && message.seq !== null && { key: "report", label: "報告する", icon: Flag },
     (ctx.mine || ctx.isAdmin) && { key: "delete", label: "削除", icon: Trash2, danger: true },
   ];
   return all.filter((action): action is MessageAction => !!action);
@@ -62,7 +64,7 @@ export const HOVER_MENU_GROUPS: readonly (readonly MessageActionKey[])[] = [
   ["copyLink", "share", "remind"],
   ["task", "review"],
   ["reactions", "pin", "unread"],
-  ["delete"],
+  ["report", "delete"],
 ];
 
 /** The hover menu's groups, each holding only what the message offers; empty groups left out. */

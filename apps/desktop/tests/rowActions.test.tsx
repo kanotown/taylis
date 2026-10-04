@@ -130,11 +130,11 @@ describe("the ⋯ menu", () => {
 
   it("someone else's: no 削除 (an admin has it); 「リアクションした人」 once there are reactions", () => {
     const w = world();
-    expect(rowMenuLabels(w.theirs())).toEqual(["リンクをコピー", "別のチャンネルに共有…", "リマインド…", "チャンネルにピン留め", "ここから未読にする"]);
+    expect(rowMenuLabels(w.theirs())).toEqual(["リンクをコピー", "別のチャンネルに共有…", "リマインド…", "チャンネルにピン留め", "ここから未読にする", "報告する"]);
     cleanup();
     const admin = world({ isAdmin: true });
     act(() => admin.store.upsertMessage({ ...admin.theirMessage, updated_seq: admin.theirMessage.updated_seq + 1, reactions: [{ emoji: "🎉", count: 1, user_ids: [admin.theirMessage.sender_id] }] }));
-    expect(rowMenuLabels(admin.theirs())).toEqual(["リンクをコピー", "別のチャンネルに共有…", "リマインド…", "リアクションした人", "チャンネルにピン留め", "ここから未読にする", "削除"]);
+    expect(rowMenuLabels(admin.theirs())).toEqual(["リンクをコピー", "別のチャンネルに共有…", "リマインド…", "リアクションした人", "チャンネルにピン留め", "ここから未読にする", "報告する", "削除"]);
   });
 
   it("the shared list: tasks and reviews in their own group; the sheet's order unchanged", () => {
