@@ -2227,6 +2227,28 @@
         "$defs": {
           "CustomEmojiOut": {
             "properties": {
+              "color": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "gray",
+                      "red",
+                      "orange",
+                      "yellow",
+                      "green",
+                      "blue",
+                      "purple",
+                      "pink"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Color"
+              },
               "content_type": {
                 "title": "Content Type",
                 "type": "string"
@@ -2250,9 +2272,56 @@
                 "title": "Id",
                 "type": "string"
               },
+              "keywords": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Keywords",
+                "type": "array"
+              },
+              "kind": {
+                "default": "image",
+                "enum": [
+                  "image",
+                  "text"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "label": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Label"
+              },
               "name": {
                 "title": "Name",
                 "type": "string"
+              },
+              "pack_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Pack Id"
+              },
+              "position": {
+                "default": 0,
+                "title": "Position",
+                "type": "integer"
               },
               "width": {
                 "title": "Width",
@@ -2286,6 +2355,77 @@
           "deleted"
         ],
         "title": "EmojiUpdatedData",
+        "type": "object"
+      }
+    },
+    "emoji_pack.updated": {
+      "audience": "all",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "EmojiPackOut": {
+            "properties": {
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "name": {
+                "title": "Name",
+                "type": "string"
+              },
+              "position": {
+                "title": "Position",
+                "type": "integer"
+              },
+              "tab_version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Tab Version"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "position",
+              "tab_version",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "EmojiPackOut",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "pack": {
+            "$ref": "#/$defs/EmojiPackOut"
+          }
+        },
+        "required": [
+          "pack",
+          "deleted"
+        ],
+        "title": "EmojiPackUpdatedData",
         "type": "object"
       }
     },
