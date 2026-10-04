@@ -10,9 +10,33 @@ import { CanvasLinkCard } from "./CanvasLinkCard";
 import { parseCanvasLink, parsePermalink } from "./permalink";
 import { openExternalLink } from "../platform/external";
 import { cn } from "./primitives";
+import { type EmojiOnly, emojiOnly, JUMBO } from "./emojiOnly";
+
+const NO_CUSTOM: ReadonlyMap<string, CustomEmojiOut> = new Map();
+
+/**
+ * M101 (docs/EMOJI.md §7): an emoji-only body, large. Standard emoji at JUMBO.font, image emoji JUMBO.image high (wide
+ * ones wider, at most 3:1), text emoji as JUMBO.pill pills, pack emoji JUMBO.pack high, a single one as a stamp
+ * (JUMBO.stamp). Every box has its size before the image loads (customEmoji.tsx), so nothing moves when it comes; the
+ * boxes are not `inline` here: the line grows to hold them. Line breaks are kept, runs of spaces collapse.
+ */
+function JumboEmoji({ body, only, customEmoji, controller, className }: { body: string; only: EmojiOnly; customEmoji: ReadonlyMap<string, CustomEmojiOut>; controller?: AppController; className?: string }) {
+  const pieces = splitCustomEmoji(replaceShortcodes(body.trim()), customEmoji);
+  return (
+    <div data-jumbo={only.stamp ? "stamp" : ""} className={cn("body whitespace-pre-line py-0.5", className)} style={{ fontSize: JUMBO.font, lineHeight: `${JUMBO.lineHeight}px` }}>
+      {pieces.map((piece, index) => {
+        if (typeof piece === "string") return <span key={index}>{piece}</span>;
+        const emoji = customEmoji.get(piece.name)!;
+        if (!controller) return <span key={index}>:{piece.name}:</span>;
+        const size = emoji.kind === "text" ? JUMBO.pill : emoji.pack_id ? (only.stamp ? JUMBO.stamp : JUMBO.pack) : JUMBO.image;
+        return <CustomEmojiImage key={index} controller={controller} emoji={emoji} size={size} />;
+      })}
+    </div>
+  );
+}
 
 /** Renders the light markdown subset (DATA_MODEL.md "本文の形式"); mentions resolve to display names. */
-export function MessageBody({ body, users, className, internalBase, onOpenMessage, customEmoji, controller, keywords, groups }: {
+export function MessageBody({ body, users, className, internalBase, onOpenMessage, customEmoji, controller, keywords, groups, jumbo = false }: {
   body: string;
   users: Map<string, UserPublic>;
   className?: string;
@@ -25,7 +49,11 @@ export function MessageBody({ body, users, className, internalBase, onOpenMessag
   keywords?: readonly string[];
   /** M12k: user groups by id, for `<@group:id>`. */
   groups?: ReadonlyMap<string, GroupOut>;
+  /** M101 (docs/EMOJI.md §7): an emoji-only body is shown large (the timeline and threads only, not previews). */
+  jumbo?: boolean;
 }) {
+  const only = jumbo ? emojiOnly(body, customEmoji ?? NO_CUSTOM) : null;
+  if (only) return <JumboEmoji body={body} only={only} customEmoji={customEmoji ?? NO_CUSTOM} controller={controller} className={className} />;
   const options: InlineOptions = { internalBase, onOpenMessage, customEmoji, controller, keywords, groups };
   return (
     <div className={cn("body text-[14.5px] leading-6", className)}>
