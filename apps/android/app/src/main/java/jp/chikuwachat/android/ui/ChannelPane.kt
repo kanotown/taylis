@@ -670,6 +670,7 @@ fun MessageRow(
                         onOpenCanvas = { id -> controller.scope.launch { controller.openCanvasLink(id) } },
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
                         canvasCard = { canvasId -> CanvasLinkCard(controller, canvasId, version) },  // M58
+                        jumbo = true,  // M101
                     )
                 }
                 message.poll?.let { PollCard(it, message, controller, version, readOnly) }  // M14b
