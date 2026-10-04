@@ -14,7 +14,7 @@ import { channelTitle } from "./MainScreen";
 import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
 import { BackButton, BackToList } from "./compact";
-import { Badge, Button, cn, IconButton, Input, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger, UNDERLINE_TAB, UNDERLINE_TAB_ROW } from "./primitives";
+import { Badge, Button, cn, IconButton, Input, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger, UNDERLINE_TAB, UnderlineTabRow } from "./primitives";
 import { DATE_PRESETS, dateLabel, EMPTY_SEARCH, HAS_FLAGS, HAS_LABELS, hasFilters, isEmptySearch, type SearchParams, type SearchSort, toQuery, totalLabel } from "./search";
 
 export type SearchTab = "messages" | "files" | "canvases";
@@ -163,11 +163,11 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
           </IconButton>
         )}
       </header>
-      <div role="tablist" aria-label="検索の対象" className={cn(UNDERLINE_TAB_ROW, "items-center gap-4 px-4")}>
+      <UnderlineTabRow role="tablist" aria-label="検索の対象" className="items-center gap-4 px-4">
         <TabButton active={tab === "messages"} onClick={() => onTabChange("messages")}>メッセージ</TabButton>
         <TabButton active={tab === "files"} onClick={() => onTabChange("files")}>ファイル</TabButton>
         {onOpenCanvas && <TabButton active={tab === "canvases"} onClick={() => onTabChange("canvases")}>キャンバス</TabButton>}
-      </div>
+      </UnderlineTabRow>
       <FilterBar controller={controller} params={params} onChange={onChange} mode={tab} />
       {tab === "files" ? (
         <FileResults controller={controller} params={params} onOpen={onOpen} />

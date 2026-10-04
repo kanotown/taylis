@@ -7,7 +7,7 @@
  * their lines; Backspace / Delete beside one take the visible character, a copy leaves them out, a cut keeps them for a
  * paste back into a canvas editor (the line moved keeps its task).
  */
-import { readPickedFiles } from "../platform/pickedFiles";
+import { ATTACHMENT_MAX_BYTES, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
 import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, Table as TableIcon, TextQuote } from "lucide-react";
 import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
@@ -120,21 +120,32 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   textRef.current = text;
   const [uploading, setUploading] = useState(0);
   const picker = useRef<HTMLInputElement>(null);
-  const insertImages = async (list: readonly File[]) => {
+  /** Pasted, dropped or picked images (`picked`: from the picker, copied one at a time before each upload and the
+   *  input cleared after the last; the count and sizes are checked before any byte is read, review v0.1.30 #5). */
+  const insertImages = async (list: readonly File[], picked?: { release: () => void }) => {
+    const release = picked?.release ?? (() => {});
     const images = list.filter((file) => file.type.startsWith("image/"));
     if (images.length === 0) {
+      release();
       if (list.length > 0) controller.setError("キャンバスに入れられるのは画像だけです");
       return;
     }
     if (attachmentRefs(saver.text).size + images.length > MAX_CANVAS_IMAGES) {
+      release();
       controller.setError(new ApiError(400, "too_many_canvas_images", "Too many images"));
       return;
     }
+    const refusal = refusePicked(images, { maxFiles: MAX_CANVAS_IMAGES, maxBytes: ATTACHMENT_MAX_BYTES });
+    if (refusal) {
+      release();
+      controller.setError(refusal);
+      return;
+    }
     setUploading((n) => n + images.length);
-    for (const file of images) {
+    const insert = async (file: File) => {
       const uploaded = await controller.uploadCanvasImage(file);
       setUploading((n) => n - 1);
-      if (!uploaded) continue;
+      if (!uploaded) return;
       const el = area.current;
       const current = textRef.current;
       const focused = !!el && document.activeElement === el;
@@ -149,7 +160,15 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
         if (typeof requestAnimationFrame === "function") requestAnimationFrame(restore);
         else setTimeout(restore, 0);
       }
+    };
+    if (!picked) {
+      for (const file of images) await insert(file);
+      return;
     }
+    await forEachPicked(images, insert, release, (error) => {
+      setUploading((n) => n - 1);
+      controller.setError(error);
+    });
   };
   /** Where the caret was when the text area lost the focus (a toolbar's file picker takes it). */
   const lastCaret = useRef<number | null>(null);
@@ -285,7 +304,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     }) },
     { icon: <Minus size={16} />, label: "区切り線", run: () => edit(insertRule) },
     { icon: <TableIcon size={16} />, label: "表", run: openTable },
-    { icon: <ImagePlus size={16} />, label: "画像 (貼り付け・ドロップでも入れられます)", run: () => picker.current?.click() },
+    { icon: <ImagePlus size={16} />, label: "画像 (貼り付け・ドロップでも入れられます)", run: () => { if (isPickBusy(picker.current)) controller.setError("前に選んだ画像を読み込み中です"); else picker.current?.click(); } },
   ];
 
   /** M80: a copy or a cut without the stand-ins; a cut also keeps the stored form (markers) for a paste back. */
@@ -450,9 +469,8 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
         hidden
         aria-label="キャンバスに入れる画像"
         onChange={(event) => {
-          const picked = readPickedFiles(event.target.files);
-          event.target.value = "";
-          void picked.then(insertImages);
+          const picked = takePicked(event.target);
+          void insertImages(picked.files, picked);
         }}
       />
       {uploading > 0 && (

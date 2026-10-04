@@ -32,14 +32,34 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
     const name = customEmojiName(glyph);
     return !name || (!!controller && customByName.has(name));
   });
+  const recentRow = !searching && recentShown.length > 0 && (
+    // Pinned above the categories (2026-10-04): what I used last is there without scrolling, whatever the category.
+    <div className="mt-2 shrink-0" role="group" aria-label="最近使った絵文字">
+      <div className="text-[10px] tracking-wide text-muted">最近使った絵文字</div>
+      <div className="flex max-h-16 flex-wrap overflow-hidden">
+        {recentShown.map((glyph) => {
+          const emoji = customByName.get(customEmojiName(glyph) ?? "");
+          return (
+            <button key={glyph} type="button" title={emoji ? glyph : undefined} className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md text-xl hover:bg-panel-2" onClick={() => onPick({ shortcode: emoji?.name ?? "", glyph, category: emoji ? "custom" : "", keywords: "" })}>
+              {emoji && controller ? <CustomEmojiImage controller={controller} emoji={emoji} size={22} /> : glyph}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
   return (
-    <div className="w-80 max-w-full" onKeyDown={(event) => event.stopPropagation()}>
-      <div className="relative">
+    // As tall as the popover may be (Radix's available height, less its padding and what a host adds below, such as
+    // 「アイコンを外す」): only the grid scrolls; the search, the recent row and the categories stay (2026-10-04: the
+    // picker was cut off by the window when opened low or high, e.g. a sidebar section's icon).
+    <div className="flex w-80 max-w-full flex-col" style={{ maxHeight: "calc(var(--radix-popover-content-available-height, 100dvh) - 72px)" }} onKeyDown={(event) => event.stopPropagation()}>
+      <div className="relative shrink-0">
         <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
         <Input value={query} autoFocus placeholder="検索 (例: tada、乾杯)" className="h-8 pl-8 text-sm" onChange={(e) => setQuery(e.target.value)} />
       </div>
+      {recentRow}
       {!searching && (
-        <div className="mt-2 flex flex-wrap gap-1">
+        <div className="mt-2 flex shrink-0 flex-wrap gap-1">
           {categories.map(([key, label]) => (
             <button
               key={key}
@@ -52,22 +72,7 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
           ))}
         </div>
       )}
-      {!searching && recentShown.length > 0 && (
-        <div className="mt-2">
-          <div className="text-[10px] uppercase tracking-wide text-muted">最近</div>
-          <div className="flex flex-wrap">
-            {recentShown.map((glyph) => {
-              const emoji = customByName.get(customEmojiName(glyph) ?? "");
-              return (
-                <button key={glyph} type="button" title={emoji ? glyph : undefined} className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md text-xl hover:bg-panel-2" onClick={() => onPick({ shortcode: emoji?.name ?? "", glyph, category: emoji ? "custom" : "", keywords: "" })}>
-                  {emoji && controller ? <CustomEmojiImage controller={controller} emoji={emoji} size={22} /> : glyph}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      <div className="mt-2 grid max-h-56 grid-cols-8 overflow-y-auto">
+      <div className="mt-2 grid max-h-56 min-h-16 grid-cols-8 overflow-y-auto">
         {controller && customHits.map((entry) => {
           const emoji = customByName.get(entry.shortcode);
           return emoji ? (
@@ -84,7 +89,7 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
         {shown.length === 0 && customHits.length === 0 && <div className="col-span-8 py-6 text-center text-xs text-muted">{category === "custom" && !searching ? "カスタム絵文字はまだありません" : "見つかりません"}</div>}
       </div>
       {onAddCustom && (!searching && category === "custom") && (
-        <button type="button" className="mt-2 w-full rounded-lg border border-dashed border-line px-2 py-1.5 text-xs text-muted hover:bg-panel hover:text-ink" onClick={onAddCustom}>＋ 絵文字を追加…</button>
+        <button type="button" className="mt-2 w-full shrink-0 rounded-lg border border-dashed border-line px-2 py-1.5 text-xs text-muted hover:bg-panel hover:text-ink" onClick={onAddCustom}>＋ 絵文字を追加…</button>
       )}
     </div>
   );

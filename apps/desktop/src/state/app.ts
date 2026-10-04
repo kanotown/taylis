@@ -17,7 +17,7 @@ import { scheduleLabel } from "../ui/schedule";
 import { orderTemplates, readSchedule, SCHEDULE_USAGE } from "../ui/templates";
 import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
-import { ApiError, describeError, NetworkError } from "../api/errors";
+import { ApiError, describeError, NetworkError, UserMessageError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, signInName, type WorkspaceEntry } from "./workspaces";
 import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
@@ -52,6 +52,18 @@ export type CanvasLinkState =
 const USERNAME_KEY = "chikuwa.username";
 /** The web build's version, and the desktop app's until Tauri says (tauri.conf.json, set from the release tag). */
 const FALLBACK_APP_VERSION = "0.1.0";
+
+/** Waits for `work` at most `ms`; past that `onTimeout` decides (it may throw). A rejection of `work` is passed on. */
+async function withDeadline(work: Promise<unknown>, ms: number, onTimeout: () => void): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = Symbol("late");
+  const deadline = new Promise<typeof late>((resolve) => { timer = setTimeout(() => resolve(late), ms); });
+  try {
+    if ((await Promise.race([work, deadline])) === late) onTimeout();
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export class AppController {
   screen: Screen = "boot";
@@ -2418,26 +2430,33 @@ export class AppController {
   /**
    * Before 「更新して再起動」 installs and relaunches: every workspace's drafts and canvases typed in the last seconds go
    * to the server, waiting messages are sent while online (what stays queued is kept in the local store and goes out
-   * after the restart), and the local store's writes finish. Bounded: a slow server does not hold up the update.
+   * after the restart), and the local store's writes finish.
+   *
+   * Review v0.1.30 #3: the two waits are apart. The server gets at most `networkMs` (a slow server does not hold up
+   * the update: what it did not take is in the local store). The local writes of every workspace, the ones not on
+   * screen too, are always waited for, after the network part (which may queue more of them); when one failed or
+   * they do not finish within `localMs`, this rejects and the update stops with the error. What is typed after this
+   * resolves (while the installer runs) goes through the same local queue; on Windows the installer quits the app
+   * at once, so the last seconds' typing there may not be kept.
    */
-  async prepareForRestart(timeoutMs = 8000): Promise<void> {
+  async prepareForRestart(networkMs = 8000, localMs = 30_000): Promise<void> {
     const sessions = new Set<Session>(this.sessions.values());
     if (this.active) sessions.add(this.active);
-    const flush = Promise.all([...sessions].map(async (session) => {
+    const network = Promise.all([...sessions].map((session) => {
       const engine = session.engine;
-      await Promise.allSettled([
+      return Promise.allSettled([
         engine?.flushDrafts(),
         engine?.canvases.flushAll(),
         engine?.flushOutbox(),
       ]);
-      await session.store.flushPersistence();
     }));
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const deadline = new Promise<void>((resolve) => { timer = setTimeout(() => { console.warn("restart: pending saves took too long"); resolve(); }, timeoutMs); });
+    await withDeadline(network, networkMs, () => { console.warn("restart: the server took too long; what it did not take stays on this device"); });
+    const local = Promise.all([...sessions].map((session) => session.store.flushPersistence()));
     try {
-      await Promise.race([flush, deadline]);
-    } finally {
-      clearTimeout(timer);
+      await withDeadline(local, localMs, () => { throw new Error("timeout"); });
+    } catch (error) {
+      console.error("restart: the local store could not save", error);
+      throw new UserMessageError("下書きや送信待ちのメッセージをこの端末に保存できなかったため、更新を中止しました。", { cause: error });
     }
   }
 

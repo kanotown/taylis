@@ -1,4 +1,4 @@
-import { readPickedFiles } from "../platform/pickedFiles";
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
 import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X, Zap } from "lucide-react";
 import { Fragment, type KeyboardEvent, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
@@ -215,34 +215,42 @@ export function Composer({
     setPending((items) => items.filter((a) => !ids.includes(a.id)));
   };
 
-  /** Uploads picked, dropped or pasted files. A picker's files arrive as a promise (read into memory before the input
-   *  is cleared, platform/pickedFiles.ts) with their count, so the upload counter (which holds back sending) rises at
-   *  once, not after the read. */
-  const pickFiles = async (files: FileList | File[] | Promise<File[]> | null, count?: number) => {
+  /** Uploads picked, dropped or pasted files. The count and each size are checked before any byte is read (review
+   *  v0.1.30 #5); a picker's files (`picked`) are then copied into memory one at a time, each uploaded before the
+   *  next is read, and the input is cleared after the last (platform/pickedFiles.ts). The upload counter (which holds
+   *  back sending) rises at once. */
+  const pickFiles = async (files: File[], picked?: { release: () => void }) => {
     const api = controller.api;
-    if (!files || !api) return;
-    const expected = files instanceof Promise ? (count ?? 0) : Array.from(files).length;
-    if (pending.length + uploading + expected > 10) { controller.setError("添付は10件までです"); return; }
-    store.trackUpload(channel.id, parentId, expected);
-    let batch: File[];
-    try {
-      batch = files instanceof Promise ? await files : Array.from(files);
-    } catch (error) {
-      store.trackUpload(channel.id, parentId, -expected);
-      controller.setError(error);
-      return;
-    }
-    if (batch.length !== expected) store.trackUpload(channel.id, parentId, batch.length - expected);
-    for (const file of batch) {
+    const release = picked?.release ?? (() => {});
+    if (!api || files.length === 0) { release(); return; }
+    const refusal = refusePicked(files, { maxFiles: ATTACHMENT_MAX_COUNT - pending.length - uploading, maxBytes: ATTACHMENT_MAX_BYTES });
+    if (refusal) { release(); controller.setError(refusal); return; }
+    const channelId = channel.id;
+    store.trackUpload(channelId, parentId, files.length);
+    const upload = async (file: File) => {
       try {
         const uploaded = await api.uploadAttachment(file, file.name);
         setPending((items) => [...items, uploaded]);
       } catch (error) {
         controller.setError(error);
       } finally {
-        store.trackUpload(channel.id, parentId, -1);
+        store.trackUpload(channelId, parentId, -1);
       }
+    };
+    if (!picked) {
+      for (const file of files) await upload(file);
+      return;
     }
+    await forEachPicked(files, upload, release, (error) => {
+      controller.setError(error);
+      store.trackUpload(channelId, parentId, -1);
+    });
+  };
+
+  /** Opens a file picker, unless the files picked on it last are still being read (a new pick would replace them). */
+  const openPicker = (input: HTMLInputElement | null) => {
+    if (isPickBusy(input)) { controller.setError("前に選んだファイルを読み込み中です"); return; }
+    input?.click();
   };
 
   const pick = (candidate: MentionCandidate) => {
@@ -412,7 +420,7 @@ export function Composer({
       else if (key === "c" && event.shiftKey) handled = edit((s) => toggleWrap(s, "`"));
       else if (key === "u" && event.shiftKey) handled = edit((s) => insertLink(s));
       else if (key === "u") {
-        fileInput.current?.click();
+        openPicker(fileInput.current);
         handled = true;
       }
       if (handled) {
@@ -464,7 +472,7 @@ export function Composer({
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault();
-        void pickFiles(event.dataTransfer.files);
+        void pickFiles(Array.from(event.dataTransfer.files));
       }}
     >
       {addEmojiOpen && <AddEmojiDialog controller={controller} onClose={() => setAddEmojiOpen(false)} />}
@@ -611,10 +619,8 @@ export function Composer({
           multiple
           hidden
           onChange={(e) => {
-            const count = e.target.files?.length ?? 0;
-            const picked = readPickedFiles(e.target.files);
-            e.target.value = "";
-            void pickFiles(picked, count);
+            const picked = takePicked(e.target);
+            void pickFiles(picked.files, picked);
           }}
         />
         <input
@@ -625,16 +631,14 @@ export function Composer({
           hidden
           aria-label="写真・動画を選択"
           onChange={(e) => {
-            const count = e.target.files?.length ?? 0;
-            const picked = readPickedFiles(e.target.files);
-            e.target.value = "";
-            void pickFiles(picked, count);
+            const picked = takePicked(e.target);
+            void pickFiles(picked.files, picked);
           }}
         />
         <div className="relative">
           {/* As tall as the text area at most: a long preview pushed the send button off the window (tester, 2026-09-30). */}
           {preview && (
-            <div className="max-h-[280px] min-h-14 overflow-y-auto pb-1 pl-3 pr-16 pt-3" aria-label="プレビュー">
+            <div className="max-h-[280px] min-h-14 overflow-y-auto pb-1 pl-3 pr-10 pt-3" aria-label="プレビュー">
               {text.trim() ? <MessageBody body={text} users={store.users} /> : <span className="text-sm text-muted">プレビューする本文がありません</span>}
             </div>
           )}
@@ -643,13 +647,13 @@ export function Composer({
             value={text}
             maxLength={MAX_LENGTH}
             placeholder={placeholder}
-            className={cn("block max-h-[280px] w-full resize-none overflow-y-auto bg-transparent pb-1 pl-3 pr-16 pt-3 text-[14.5px] leading-6 text-ink outline-none placeholder:text-muted", preview && "hidden")}
+            className={cn("block max-h-[280px] w-full resize-none overflow-y-auto bg-transparent pb-1 pl-3 pr-10 pt-3 text-[14.5px] leading-6 text-ink outline-none placeholder:text-muted", preview && "hidden")}
             onChange={(e) => {
               setText(e.target.value);
               syncCaret(e.target);
               if (e.target.value.trim()) controller.engine?.sendTyping(channel.id, parentId ?? null); // §5.2, throttled by the engine
             }}
-            onPaste={(event) => { if (event.clipboardData.files.length) { event.preventDefault(); void pickFiles(event.clipboardData.files); } }}
+            onPaste={(event) => { if (event.clipboardData.files.length) { event.preventDefault(); void pickFiles(Array.from(event.clipboardData.files)); } }}
             aria-label={parentId ? "スレッドの返信" : "メッセージ"}
             onKeyDown={onKeyDown}
             onKeyUp={(e) => syncCaret(e.currentTarget)}
@@ -663,13 +667,10 @@ export function Composer({
             }}
             rows={2}
           />
-          {/* On the text's top right, as in Mattermost (tester, 2026-09-30), not on a row of their own. */}
-          <div className="absolute right-1.5 top-1.5 flex items-center gap-0.5">
-            <IconButton label={preview ? "編集に戻る" : "プレビュー"} aria-pressed={preview} className={cn("h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
-              {preview ? <EyeOff size={15} /> : <Eye size={15} />}
-            </IconButton>
-            <MarkdownHelp />
-          </div>
+          {/* The preview toggle in the text's top-right corner (2026-10-04); 「書式の書き方」 is by the send button. */}
+          <IconButton label={preview ? "編集に戻る" : "プレビュー"} aria-pressed={preview} className={cn("absolute right-1 top-1 h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
+            {preview ? <EyeOff size={15} /> : <Eye size={15} />}
+          </IconButton>
         </div>
         <div className="flex flex-nowrap items-center gap-2 px-2 pb-2" data-composer-actions>
           <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5">
@@ -684,10 +685,10 @@ export function Composer({
                   </MenuTrigger>
                 </PopoverAnchor>
                 <MenuContent align="start" side="top" onCloseAutoFocus={runAfterMenu}>
-                  <MenuItem disabled={uploading > 0} onSelect={() => mediaInput.current?.click()}>
+                  <MenuItem disabled={uploading > 0} onSelect={() => openPicker(mediaInput.current)}>
                     <Image size={14} className="text-muted" /> 写真・動画
                   </MenuItem>
-                  <MenuItem disabled={uploading > 0} onSelect={() => fileInput.current?.click()}>
+                  <MenuItem disabled={uploading > 0} onSelect={() => openPicker(fileInput.current)}>
                     <Paperclip size={14} className="text-muted" /> ファイル <Kbd className="ml-auto">{modKey()}+U</Kbd>
                   </MenuItem>
                   <MenuItem onSelect={() => { afterMenu.current = () => setPollForm({}); }}>
@@ -787,7 +788,8 @@ export function Composer({
             </Menu>
           </div>
           <div className="flex shrink-0 items-center gap-3">
-            <span className="hidden items-center gap-1 whitespace-nowrap text-[11px] text-muted @3xl:flex">
+            <MarkdownHelp />
+            <span className="-ml-2 hidden items-center gap-1 whitespace-nowrap text-[11px] text-muted @3xl:flex">
               <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> 送信 <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").newline}</Kbd> 改行
             </span>
             {/* 「送信」 and its ▾ with 「後で送信」, as Slack's schedule dropdown. */}
@@ -864,23 +866,31 @@ const SYNTAX: Array<[string, string]> = [
   ["@名前", "メンション (候補から選ぶ)"],
 ];
 
-/** "?" popover with the supported syntax. */
-function MarkdownHelp() {
+/**
+ * 「書式の書き方」: the supported syntax, by the send button. Kept inside the window (2026-10-04: cut off at times):
+ * above the button when there is room, as tall as the room there is, scrolling inside. An example of several lines
+ * (the table) is a code block with its line breaks.
+ */
+export function MarkdownHelp() {
   return (
     <PopoverRoot>
       <PopoverTrigger asChild>
-        <button type="button" aria-label="書式の書き方" title="書式の書き方" className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-ink/6 hover:text-ink">
+        <button type="button" aria-label="書式の書き方" title="書式の書き方" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-ink/6 hover:text-ink">
           <Info size={15} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[420px] p-3">
+      <PopoverContent align="end" side="top" className="max-h-[var(--radix-popover-content-available-height)] w-[420px] overflow-y-auto p-3">
         <div className="mb-2 text-xs font-semibold">書式 (軽量 Markdown)</div>
         <table className="w-full text-xs">
           <tbody className="divide-y divide-line">
             {SYNTAX.map(([syntax, meaning]) => (
               <tr key={syntax}>
-                <td className="whitespace-nowrap py-1 pr-3 align-top">
-                  <code className="rounded bg-panel-2 px-1.5 py-0.5">{syntax}</code>
+                <td className="py-1 pr-3 align-top">
+                  {syntax.includes("\n") ? (
+                    <pre className="whitespace-pre rounded bg-panel-2 px-1.5 py-1 font-mono leading-5">{syntax}</pre>
+                  ) : (
+                    <code className="whitespace-nowrap rounded bg-panel-2 px-1.5 py-0.5">{syntax}</code>
+                  )}
                 </td>
                 <td className="py-1 text-muted">{meaning}</td>
               </tr>

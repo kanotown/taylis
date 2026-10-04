@@ -2,7 +2,7 @@ import type { ChannelLinkOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { canEditLinks, ChannelLinkChips } from "./ChannelLinks";
-import { cn } from "./primitives";
+import { cn, useSidewaysWheel } from "./primitives";
 
 /**
  * M29: what a conversation shows on a phone, switched by the tab row under its header. M43: 「キャンバス」 (CANVAS.md
@@ -40,8 +40,9 @@ export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, o
   onEditLink: (link: ChannelLinkOut) => void;
 }) {
   const hasLinks = controller.store.linksOf(channel.id).length > 0 || canEditLinks(channel, controller);
+  const wheel = useSidewaysWheel<HTMLDivElement>();
   return (
-    <div className="flex shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-2 [scrollbar-width:none]">
+    <div ref={wheel} className="flex shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-2 [scrollbar-width:none]">
       <div role="tablist" aria-label="会話の表示" className="flex shrink-0 items-center">
         {TABS.filter(([value]) => (value !== "events" && value !== "tasks") || channel.type === "public" || channel.type === "private").map(([value, label]) => (
           <button

@@ -128,8 +128,19 @@ describe("the composer's rows (tester, 2026-09-30)", () => {
     expect(left!.className).toContain("min-w-0");
     expect(right!.className).toContain("shrink-0");
     expect(w.view.container.querySelector(".flex-wrap")).toBeNull();
-    // Preview and the syntax help sit on the text's top right, not in the row.
+    // Preview sits in the text's top-right corner, not in the row; the syntax help is by the send button (2026-10-04).
     expect(row.contains(screen.getByRole("button", { name: "プレビュー" }))).toBe(false);
-    expect(row.contains(screen.getByRole("button", { name: "書式の書き方" }))).toBe(false);
+    expect(right!.contains(screen.getByRole("button", { name: "書式の書き方" }))).toBe(true);
+  });
+
+  it("the syntax help shows the table example on its own lines and scrolls inside the window", async () => {
+    world();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "書式の書き方" })); });
+    const table = screen.getByText((_, el) => el?.tagName === "PRE" && el.textContent!.startsWith("| 項目 | 担当 |"));
+    expect(table.textContent).toBe("| 項目 | 担当 |\n| --- | --- |\n| API | 田中 |");
+    expect(table.className).toContain("whitespace-pre");
+    const popover = table.closest(".rx-popover") as HTMLElement;
+    expect(popover.className).toContain("overflow-y-auto");
+    expect(popover.className).toContain("--radix-popover-content-available-height");
   });
 });

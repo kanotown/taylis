@@ -89,6 +89,19 @@ apps/desktop/scripts/release-desktop.sh v0.1.30 --notes notes.md    # 公開す�
 4. `gh release create` で kanotown/taylis-releases にリリースを作り、全部を添付する。リリースが既にあれば
    `--clobber` で上書きする (やり直してよい)。最後にリリースの URL を表示する。
 
+**更新の前の保存** (review v0.1.30 #3): 「更新して再起動」はダウンロードの後、全ワークスペース (表示していないものも) の
+下書き・キャンバス・送信待ちをサーバへ送り (最大 8 秒。届かなかった分は端末に残り、再起動後に送る)、続けて端末の保存
+(SQLite) の完了を必ず待つ (最大 30 秒)。端末の保存が失敗するか終わらなければ、インストールせずにエラーを出す。
+インストール中は確認の応答が遅れて届いても表示を戻さず、2 回目の更新を始めない (#6)。
+
+**.dmg の画面**: 開くと「Taylis を Applications にドラッグしてください」の背景 (矢印つき) に、アプリと Applications が
+並ぶ。tauri.conf.json の `bundle.macOS.dmg` (背景 `src-tauri/dmg-background.tiff`、窓 660×400、アプリ (180, 170)、
+Applications (480, 170)) を tauri が使う。背景は `uv run --with pillow python apps/shared/brand/gen_dmg_background.py`
+で作り直す (`apps/shared/brand/dmg-background{,@2x}.png` と、両方を入れた TIFF。位置を変えるときはスクリプトと
+tauri.conf.json を揃える)。公証する場合はステープルしたアプリで .dmg を作り直すので、スクリプトは tauri が残す
+`bundle/dmg/bundle_dmg.sh` (create-dmg) に同じ配置を渡す (Finder を AppleScript で動かすので、ログインした Mac の
+ターミナルで実行し、Finder の操作の許可を求められたら許可する)。
+
 アプリの版はタグに従う: tauri.conf.json / Cargo.toml は 0.1.0 のままで、ビルドの時に `--config '{"version":"X.Y.Z"}'`
 を渡す (スクリプトと、`v*` で走ったときの `desktop` ワークフロー)。
 

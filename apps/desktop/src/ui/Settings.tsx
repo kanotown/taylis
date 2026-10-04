@@ -979,7 +979,7 @@ function WorkspacesSection({ controller }: { controller: AppController }) {
 function AboutSection({ controller }: { controller: AppController }) {
   const updates = useUpdates(controller.updates);
   const [checked, setChecked] = useState(false);
-  const busy = updates.status === "downloading" || updates.status === "installing";
+  const busy = updates.installInProgress || updates.status === "downloading" || updates.status === "installing";
   const check = async () => {
     setChecked(false);
     await updates.check(true);

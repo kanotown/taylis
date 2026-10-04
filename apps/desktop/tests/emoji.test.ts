@@ -30,4 +30,15 @@ describe("emoji shortcodes (M11f)", () => {
     expect(completeEmoji("hi :tad", 3, 7, "🎉")).toEqual({ text: "hi 🎉 ", caret: 3 + "🎉".length + 1 });
     expect(completeEmoji(":sm rest", 0, 3, "😄")).toEqual({ text: "😄  rest", caret: "😄".length + 1 });
   });
+
+  it("has the full standard set (2026-10-04: no 🎓): found in Japanese and English; the old shortcodes stay", () => {
+    expect(searchEmoji("").length).toBeGreaterThan(1800);
+    for (const word of ["卒業", "graduation", "academic", "帽子", "mortar_board"]) expect(searchEmoji(word).map((e) => e.glyph)).toContain("🎓");
+    expect(emojiByShortcode("mortar_board")?.glyph).toBe("🎓");
+    expect(searchEmoji("日本").map((e) => e.glyph)).toContain("🇯🇵");
+    // Shortcodes of the hand-made list (in old messages as `:name:`) still show.
+    expect(replaceShortcodes(":smile: :heart: :bento: :+1:")).toBe("😄 ❤️ 🍱 👍");
+    // No skin-tone variants as separate cells (as before).
+    expect(searchEmoji("").some((e) => /[\u{1F3FB}-\u{1F3FF}]/u.test(e.glyph))).toBe(false);
+  });
 });

@@ -296,7 +296,19 @@ export class Store {
       try { this.canvasPending.set(key.slice("canvas:".length), JSON.parse(value) as CanvasPendingState); } catch { /* Ignore a corrupt row. */ }
     }
   }
-  flushPersistence(): Promise<void> { return this.writeQueue; }
+  /**
+   * Waits for the local writes queued so far. Rejects when one of them failed since the last call (review v0.1.30 #3:
+   * 「更新して再起動」 stops then instead of relaunching over input the device did not keep); the error is reported once.
+   */
+  async flushPersistence(): Promise<void> {
+    await this.writeQueue;
+    const failed = this.persistError;
+    if (failed === undefined) return;
+    this.persistError = undefined;
+    throw failed;
+  }
+  /** The first local write that failed since flushPersistence last reported one (undefined: none). */
+  private persistError: unknown = undefined;
   private readonly messagesByChannel = new Map<string, Map<string, MessageState>>();
   /** The sorted timeline of each channel, rebuilt only after its rows or its range change. */
   private readonly timelines = new Map<string, MessageState[]>();
@@ -411,7 +423,10 @@ export class Store {
 
   private persist(work: (p: Persistence) => Promise<void>): void {
     const persistence = this.persistence;
-    if (persistence && !this.closed) this.writeQueue = this.writeQueue.then(() => work(persistence)).catch((err: unknown) => console.error("persist failed", err));
+    if (persistence && !this.closed) this.writeQueue = this.writeQueue.then(() => work(persistence)).catch((err: unknown) => {
+      console.error("persist failed", err);
+      if (this.persistError === undefined) this.persistError = err ?? new Error("persist failed");
+    });
   }
 
   // --- me / users -------------------------------------------------------------------------

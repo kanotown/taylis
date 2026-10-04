@@ -2,7 +2,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { X } from "lucide-react";
 import { Dialog, DropdownMenu, Popover, Tooltip } from "radix-ui";
-import { type ButtonHTMLAttributes, type ComponentProps, forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { type ButtonHTMLAttributes, type ComponentProps, forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes, useCallback, useRef } from "react";
 import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]): string {
@@ -16,6 +16,41 @@ export function cn(...inputs: ClassValue[]): string {
  * the tabs' own 2 px underline (`UNDERLINE_TAB`) covers from inside the row.
  */
 export const UNDERLINE_TAB_ROW = "flex shrink-0 overflow-x-auto overflow-y-hidden overscroll-x-contain shadow-[inset_0_-1px_0_var(--line)]";
+/**
+ * A mouse wheel's vertical turn scrolls a sideways row (2026-10-04: the 管理 tabs could only be scrolled with a trackpad
+ * or a horizontal wheel). Only while the row overflows and the turn is mostly vertical; at either end the page keeps
+ * the wheel. Returns whether the row moved (the event is then the row's).
+ */
+export function wheelScrollsSideways(row: HTMLElement, event: Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode">): boolean {
+  if (row.scrollWidth <= row.clientWidth || event.deltaY === 0 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return false;
+  const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? row.clientWidth : 1);
+  const before = row.scrollLeft;
+  row.scrollLeft = Math.max(0, Math.min(row.scrollWidth - row.clientWidth, before + delta));
+  return row.scrollLeft !== before;
+}
+
+/**
+ * A callback ref that makes the wheel scroll the element sideways (wheelScrollsSideways). Not React's onWheel: it
+ * listens passively, and the page would scroll as well.
+ */
+export function useSidewaysWheel<T extends HTMLElement>(): (node: T | null) => void {
+  const detach = useRef<(() => void) | null>(null);
+  return useCallback((node: T | null) => {
+    detach.current?.();
+    detach.current = null;
+    if (!node) return;
+    const onWheel = (event: WheelEvent) => { if (wheelScrollsSideways(node, event)) event.preventDefault(); };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    detach.current = () => node.removeEventListener("wheel", onWheel);
+  }, []);
+}
+
+/** The row of `UNDERLINE_TAB_ROW` as an element, with the wheel scrolling it sideways (管理, 検索). */
+export function UnderlineTabRow({ className, ...props }: ComponentProps<"div">) {
+  const wheel = useSidewaysWheel<HTMLDivElement>();
+  return <div ref={wheel} className={cn(UNDERLINE_TAB_ROW, className)} {...props} />;
+}
+
 export const UNDERLINE_TAB = "shrink-0 whitespace-nowrap rounded-t-md border-b-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "link";
