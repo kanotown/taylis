@@ -143,6 +143,12 @@ export type ReminderCreate = components["schemas"]["ReminderCreate"];
 
 /** Custom emoji (M12f). */
 export type CustomEmojiOut = components["schemas"]["CustomEmojiOut"];
+/** M100 (docs/EMOJI.md): packs with their own picker tab, text emoji, the pack import. */
+export type EmojiPackOut = components["schemas"]["EmojiPackOut"];
+export type EmojiPackImportOut = components["schemas"]["EmojiPackImportOut"];
+export type TextEmojiCreate = components["schemas"]["TextEmojiCreate"];
+export type CustomEmojiUpdate = components["schemas"]["CustomEmojiUpdate"];
+export type TextEmojiColor = NonNullable<CustomEmojiOut["color"]>;
 
 /** Invite links (M12h). */
 export type InviteOut = components["schemas"]["InviteOut"];

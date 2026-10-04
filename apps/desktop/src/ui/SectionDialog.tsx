@@ -13,7 +13,7 @@ export function SectionIcon({ controller, emoji, size = 14 }: { controller: AppC
   if (!emoji) return null;
   const name = customEmojiName(emoji);
   const custom = name ? controller.store.customEmoji.get(name) : undefined;
-  if (custom) return <CustomEmojiImage controller={controller} emoji={custom} size={size} className="shrink-0" />;
+  if (custom) return <CustomEmojiImage controller={controller} emoji={custom} size={size} className="shrink-0" square />;
   return <span className="shrink-0 leading-none" style={{ fontSize: size }} aria-hidden>{emoji}</span>;
 }
 

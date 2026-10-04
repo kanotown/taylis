@@ -1935,8 +1935,117 @@ export interface paths {
         /**
          * Add Emoji
          * @description M12f: any member adds a `:name:` (2-32 chars of a-z 0-9 _ + -) with a small image.
+         *     M100: an optional `label` (display name) and `keywords` (repeated field) for search.
          */
         post: operations["add_emoji_api_v1_emoji_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/emoji/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Packs
+         * @description Every emoji pack in tab order (also part of bootstrap).
+         */
+        get: operations["list_packs_api_v1_emoji_packs_get"];
+        put?: never;
+        /**
+         * Create Pack
+         * @description An empty pack; emoji join it with PATCH /emoji/{id} `pack_id` (admin).
+         */
+        post: operations["create_pack_api_v1_emoji_packs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/emoji/packs/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Pack
+         * @description Create or update a pack from a folder's files (repeated `files`, pack.json among them)
+         *     or a ZIP (`archive`) with a pack.json (docs/EMOJI.md §4). Idempotent by pack name and
+         *     shortcode; all or nothing.
+         */
+        post: operations["import_pack_api_v1_emoji_packs_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/emoji/packs/{pack_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Pack
+         * @description The pack goes; its emoji stay, ungrouped.
+         */
+        delete: operations["delete_pack_api_v1_emoji_packs__pack_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Pack
+         * @description Rename or reorder (lower `position` first).
+         */
+        patch: operations["update_pack_api_v1_emoji_packs__pack_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/emoji/packs/{pack_id}/tab": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pack Tab */
+        get: operations["pack_tab_api_v1_emoji_packs__pack_id__tab_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/emoji/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Text Emoji
+         * @description M100: a text emoji: `:name:` drawn as a pill with `label` (at most 12 characters, e.g.
+         *     「確認しました」) in one of the palette's colours.
+         */
+        post: operations["add_text_emoji_api_v1_emoji_text_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1960,7 +2069,12 @@ export interface paths {
         delete: operations["delete_emoji_api_v1_emoji__emoji_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Emoji
+         * @description M100: label, colour (text emoji) and keywords by the creator or an admin; the pack and
+         *     the order inside it by an admin.
+         */
+        patch: operations["update_emoji_api_v1_emoji__emoji_id__patch"];
         trace?: never;
     };
     "/api/v1/emoji/{emoji_id}/image": {
@@ -4298,8 +4412,25 @@ export interface components {
         Body_add_emoji_api_v1_emoji_post: {
             /** File */
             file: string;
+            /**
+             * Keywords
+             * @default []
+             */
+            keywords: string[];
+            /** Label */
+            label?: string | null;
             /** Name */
             name: string;
+        };
+        /** Body_import_pack_api_v1_emoji_packs_import_post */
+        Body_import_pack_api_v1_emoji_packs_import_post: {
+            /** Archive */
+            archive?: string | null;
+            /**
+             * Files
+             * @default []
+             */
+            files: string[];
         };
         /** Body_upload_api_v1_attachments_post */
         Body_upload_api_v1_attachments_post: {
@@ -4362,6 +4493,11 @@ export interface components {
              * @default []
              */
             drafts: components["schemas"]["DraftOut"][];
+            /**
+             * Emoji Packs
+             * @default []
+             */
+            emoji_packs: components["schemas"]["EmojiPackOut"][];
             /**
              * Favorites
              * @default []
@@ -5139,6 +5275,8 @@ export interface components {
         };
         /** CustomEmojiOut */
         CustomEmojiOut: {
+            /** Color */
+            color?: ("gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink") | null;
             /** Content Type */
             content_type: string;
             /**
@@ -5158,10 +5296,47 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Keywords
+             * @default []
+             */
+            keywords: string[];
+            /**
+             * Kind
+             * @default image
+             * @enum {string}
+             */
+            kind: "image" | "text";
+            /** Label */
+            label?: string | null;
             /** Name */
             name: string;
+            /** Pack Id */
+            pack_id?: string | null;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
             /** Width */
             width: number;
+        };
+        /**
+         * CustomEmojiUpdate
+         * @description PATCH /emoji/{id} (M100): only the fields sent change. `pack_id` and `position` are for
+         *     administrators; the rest for the creator or an administrator.
+         */
+        CustomEmojiUpdate: {
+            /** Color */
+            color?: ("gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink") | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /** Label */
+            label?: string | null;
+            /** Pack Id */
+            pack_id?: string | null;
+            /** Position */
+            position?: number | null;
         };
         /** DefaultChannelApplied */
         DefaultChannelApplied: {
@@ -5319,6 +5494,55 @@ export interface components {
             channel_id: string;
             /** Parent Id */
             parent_id?: string | null;
+        };
+        /** EmojiPackCreate */
+        EmojiPackCreate: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * EmojiPackImportOut
+         * @description POST /emoji/packs/import: the pack and what happened to each shortcode.
+         */
+        EmojiPackImportOut: {
+            /** Created */
+            created: string[];
+            pack: components["schemas"]["EmojiPackOut"];
+            /** Unchanged */
+            unchanged: string[];
+            /** Updated */
+            updated: string[];
+        };
+        /** EmojiPackOut */
+        EmojiPackOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+            /** Tab Version */
+            tab_version: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** EmojiPackUpdate */
+        EmojiPackUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Position */
+            position?: number | null;
         };
         /** FavoriteStateOut */
         FavoriteStateOut: {
@@ -7728,6 +7952,23 @@ export interface components {
             fcm_configured: boolean;
             /** Sent Count */
             sent_count: number;
+        };
+        /**
+         * TextEmojiCreate
+         * @description POST /emoji/text (M100): a label drawn as a pill instead of an image.
+         */
+        TextEmojiCreate: {
+            /** Color */
+            color?: ("gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink") | null;
+            /**
+             * Keywords
+             * @default []
+             */
+            keywords: string[];
+            /** Label */
+            label: string;
+            /** Name */
+            name: string;
         };
         /** ThreadFollowIn */
         ThreadFollowIn: {
@@ -12460,6 +12701,220 @@ export interface operations {
             };
         };
     };
+    list_packs_api_v1_emoji_packs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmojiPackOut"][];
+                };
+            };
+        };
+    };
+    create_pack_api_v1_emoji_packs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmojiPackCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmojiPackOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_pack_api_v1_emoji_packs_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_pack_api_v1_emoji_packs_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmojiPackImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_pack_api_v1_emoji_packs__pack_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_pack_api_v1_emoji_packs__pack_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmojiPackUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmojiPackOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pack_tab_api_v1_emoji_packs__pack_id__tab_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_text_emoji_api_v1_emoji_text_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TextEmojiCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomEmojiOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_emoji_api_v1_emoji__emoji_id__delete: {
         parameters: {
             query?: never;
@@ -12477,6 +12932,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_emoji_api_v1_emoji__emoji_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                emoji_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomEmojiUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomEmojiOut"];
+                };
             };
             /** @description Validation Error */
             422: {

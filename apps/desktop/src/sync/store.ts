@@ -1,5 +1,5 @@
 import type { AiAgentPublic, AiStatusOut } from "../api/ai";
-import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, EmojiPackOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
@@ -99,6 +99,8 @@ export class Store {
   readonly reminders = new Map<string, ReminderOut>();
   /** Custom emoji by name (M12f); from bootstrap and emoji.updated, not persisted. */
   readonly customEmoji = new Map<string, CustomEmojiOut>();
+  /** Emoji packs by id (M100), each a picker tab; from bootstrap and emoji_pack.updated. */
+  readonly emojiPacks = new Map<string, EmojiPackOut>();
   /** User groups by id (M12k); from bootstrap and group.updated. `@name` expands on the server. */
   readonly groups = new Map<string, GroupOut>();
   /** Post templates by id (M30): the workspace's and mine; from bootstrap and template.updated. */
@@ -760,6 +762,26 @@ export class Store {
     this.customEmoji.clear();
     for (const row of rows) this.customEmoji.set(row.name, row);
     this.emitRows();
+  }
+
+  replaceEmojiPacks(rows: EmojiPackOut[]): void {
+    this.emojiPacks.clear();
+    for (const row of rows) this.emojiPacks.set(row.id, row);
+    this.emitRows();
+  }
+
+  /** emoji_pack.updated: a deleted pack's emoji become ungrouped (their emoji.updated follow too). */
+  applyEmojiPack(row: EmojiPackOut, deleted: boolean): void {
+    if (deleted) {
+      this.emojiPacks.delete(row.id);
+      for (const emoji of this.customEmoji.values()) if (emoji.pack_id === row.id) this.customEmoji.set(emoji.name, { ...emoji, pack_id: null });
+    } else this.emojiPacks.set(row.id, row);
+    this.emitRows();
+  }
+
+  /** The packs in tab order (position, then name). */
+  sortedEmojiPacks(): EmojiPackOut[] {
+    return [...this.emojiPacks.values()].sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
   }
 
   applyCustomEmoji(row: CustomEmojiOut, deleted: boolean): void {

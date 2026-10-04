@@ -13,7 +13,7 @@ import { TimesFeedHub } from "./timesFeed";
 import { type AiApi, AiHub } from "./ai";
 import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
-import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
+import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, EmojiPackOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
 import type { NotificationTest } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
@@ -737,6 +737,7 @@ export class SyncEngine {
     store.replaceBookmarks(bootstrap.bookmarks ?? []);
     store.replaceFavorites(bootstrap.favorites ?? []);
     store.replaceCustomEmoji(bootstrap.custom_emoji ?? []);
+    store.replaceEmojiPacks(bootstrap.emoji_packs ?? []);
     store.replaceRoster(bootstrap.roster ?? []);
     store.replaceGroups(bootstrap.groups ?? []);
     store.replaceTemplates(bootstrap.templates ?? []);
@@ -898,6 +899,11 @@ export class SyncEngine {
       case "roster.updated": {
         const data = frame.data as { user_id: string; profile: LabProfileOut | null };
         store.applyRoster(data.user_id, data.profile);
+        return;
+      }
+      case "emoji_pack.updated": {
+        const data = frame.data as { pack: EmojiPackOut; deleted: boolean };
+        store.applyEmojiPack(data.pack, data.deleted);
         return;
       }
       case "emoji.updated": {
