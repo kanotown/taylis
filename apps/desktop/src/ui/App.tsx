@@ -7,6 +7,7 @@ import { inviteLink } from "./invite";
 import { InviteScreen } from "./InviteScreen";
 import { LoginScreen } from "./LoginScreen";
 import { MainScreen } from "./MainScreen";
+import { UpdateBanner } from "./UpdateBanner";
 import { WorkspaceRail } from "./WorkspaceRail";
 import { overlayTitleBar } from "../platform/env";
 
@@ -47,6 +48,7 @@ export function App({ controller }: { controller: AppController }) {
       <>
         {dragStrip}
         {screen}
+        <UpdateBanner controller={controller} />
       </>
     );
   }
@@ -55,6 +57,7 @@ export function App({ controller }: { controller: AppController }) {
       {dragStrip}
       <WorkspaceRail controller={controller} />
       <div className="min-w-0 flex-1">{screen}</div>
+      <UpdateBanner controller={controller} />
     </div>
   );
 }

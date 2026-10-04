@@ -2,6 +2,8 @@
 //! (tauri-plugin-opener), the OS credential store, and the `chikuwachat://` deep link that Google sign-in returns
 //! through (tauri-plugin-deep-link, docs/SSO.md §6; the page reads the URL, this side only brings the window up).
 //! Refresh tokens never touch the file system: they live in Keychain / Credential Manager.
+//! In-app updates: tauri-plugin-updater (kanotown/taylis-releases' latest.json, tauri.conf.json plugins.updater) and
+//! tauri-plugin-process (relaunch after installing); the page drives both (src/state/updates.ts).
 
 use keyring::{Entry, Error as KeyringError};
 use tauri::{AppHandle, Manager};
@@ -61,6 +63,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // Installers register the scheme (tauri.conf.json plugins.deep-link); a development build registers
             // itself so the link can be tried without installing (Windows / Linux; macOS needs the app bundle).

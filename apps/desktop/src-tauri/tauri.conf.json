@@ -32,6 +32,11 @@
       "desktop": {
         "schemes": ["chikuwachat"]
       }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEwQUIzNzgxNzI3Mjk5NUUKUldSZW1YSnlnVGVyRUUxc1F1UmdDeUZHZVh0NVRyaWdwTFV4cERwdEdNUUpNS2VxbW5EMmw2WXgK",
+      "endpoints": ["https://github.com/kanotown/taylis-releases/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
     }
   },
   "bundle": {
@@ -46,6 +51,7 @@
     ],
     "macOS": {
       "signingIdentity": "-"
-    }
+    },
+    "createUpdaterArtifacts": true
   }
 }

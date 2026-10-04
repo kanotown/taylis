@@ -2,7 +2,8 @@ name: desktop
 
 # Desktop installers (unsigned, macOS and Windows), kept as workflow artifacts. On demand only: Actions → desktop →
 # Run workflow, choosing the release tag under "Use workflow from". The macOS runner's minutes count ten times and
-# Windows' twice on a private repository, so they no longer run with every release.
+# Windows' twice on a private repository, so they no longer run with every release. The desktop release script
+# (apps/desktop/scripts/release-desktop.sh) dispatches it for Windows on the tag and publishes the result.
 on:
   workflow_dispatch:
     inputs:
@@ -37,7 +38,18 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
       - run: npm ci
-      - run: npx tauri build
+      # On a release tag (vX.Y.Z) the app's version is the tag's (tauri.conf.json says 0.1.0). The updater bundles are
+      # not made here: the Mac that publishes the release signs the installer with the updater key, which never
+      # reaches GitHub (apps/desktop/scripts/release-desktop.sh, docs/DEVELOPMENT.md 「デスクトップ版のリリース」).
+      - name: tauri build
+        shell: bash
+        run: |
+          echo "{}" > src-tauri/release.conf.json
+          if [[ "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?)$ ]]; then
+            echo "{\"version\":\"${BASH_REMATCH[1]}\"}" > src-tauri/release.conf.json
+          fi
+          cat src-tauri/release.conf.json
+          npx tauri build --config src-tauri/tauri.no-updater.conf.json --config src-tauri/release.conf.json
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ github.ref_name }}-${{ matrix.os }}

@@ -18,7 +18,11 @@ createRoot(document.getElementById("root")!).render(
     <App controller={controller} />
   </React.StrictMode>,
 );
-void controller.boot();
+// 「更新して再起動」 (desktop only): look for an update after starting, then every 6 hours. Not from `tauri dev` (the
+// development build is not an installed app; the settings button still asks).
+void controller.boot().finally(() => {
+  if (!import.meta.env.DEV) controller.updates.start();
+});
 followVisualViewport();
 guardFileDrops();
 

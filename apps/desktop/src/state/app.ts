@@ -33,6 +33,7 @@ import { SqlitePersistence } from "../platform/sqlite";
 import { SyncEngine } from "../sync/engine";
 import { Store } from "../sync/store";
 import { browserConnector } from "../sync/ws";
+import { UpdateChecker } from "./updates";
 import { attachmentText, plainText } from "../ui/markdown";
 import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
@@ -49,7 +50,8 @@ export type CanvasLinkState =
 
 /** The browser build before workspaces (M16c) remembered only the user name. */
 const USERNAME_KEY = "chikuwa.username";
-const APP_VERSION = "0.1.0";
+/** The web build's version, and the desktop app's until Tauri says (tauri.conf.json, set from the release tag). */
+const FALLBACK_APP_VERSION = "0.1.0";
 
 export class AppController {
   screen: Screen = "boot";
@@ -129,6 +131,8 @@ export class AppController {
   }
   private readonly listeners = new Set<() => void>();
   private readonly secrets = secretStore();
+  /** 「更新して再起動」 (desktop only): the update banner and the settings' 「アップデートを確認」; errors go to the toast. */
+  readonly updates = new UpdateChecker(undefined, (err) => this.setError(err));
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -230,6 +234,7 @@ export class AppController {
    */
   async boot(): Promise<void> {
     if (isTauri()) void this.watchSsoLinks();
+    await this.updates.readCurrentVersion(); // the device's app_version on sign-in (Tauri; null in a browser)
     try {
       // M48: back from Google sign-in (`/#sso_ticket=` / `#sso_error=`); the fragment is removed at once.
       const sso = isWeb() ? takeSsoReturn() : null;
@@ -271,7 +276,7 @@ export class AppController {
     return {
       platform: isWeb() ? "web" : "desktop",
       device_name: isWeb() ? "ブラウザ" : navigator.platform || "desktop",
-      app_version: APP_VERSION,
+      app_version: this.updates.currentVersion ?? FALLBACK_APP_VERSION,
     };
   }
 
@@ -2408,6 +2413,32 @@ export class AppController {
       }
     }
     return false;
+  }
+
+  /**
+   * Before 「更新して再起動」 installs and relaunches: every workspace's drafts and canvases typed in the last seconds go
+   * to the server, waiting messages are sent while online (what stays queued is kept in the local store and goes out
+   * after the restart), and the local store's writes finish. Bounded: a slow server does not hold up the update.
+   */
+  async prepareForRestart(timeoutMs = 8000): Promise<void> {
+    const sessions = new Set<Session>(this.sessions.values());
+    if (this.active) sessions.add(this.active);
+    const flush = Promise.all([...sessions].map(async (session) => {
+      const engine = session.engine;
+      await Promise.allSettled([
+        engine?.flushDrafts(),
+        engine?.canvases.flushAll(),
+        engine?.flushOutbox(),
+      ]);
+      await session.store.flushPersistence();
+    }));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<void>((resolve) => { timer = setTimeout(() => { console.warn("restart: pending saves took too long"); resolve(); }, timeoutMs); });
+    try {
+      await Promise.race([flush, deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Sign out of the workspace on screen; it leaves the list and the next one opens (WORKSPACES.md §5.3). */

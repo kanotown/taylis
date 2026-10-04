@@ -11,8 +11,12 @@ npm run typecheck      # tsc --noEmit
 npm test               # vitest: エンジン、API クライアント、本文トークナイザ、共有の契約フィクスチャ
 npm run dev            # ブラウザで UI だけ動かす (資格情報は localStorage、通知は Notification API)
 npm run tauri dev      # Tauri で起動 (Keychain / SQLite / OS 通知が本物になる)
-npm run tauri build    # バンドル作成 (macOS: .app / .dmg、Windows: .msi / .exe)
+npm run tauri:build    # バンドル作成 (macOS: .app / .dmg、Windows: .msi / .exe)。更新用のファイルは作らない
 ```
+
+`npm run tauri build` は更新用のファイル (`.app.tar.gz` と `.sig`) も作り、その署名に更新の秘密鍵
+(`TAURI_SIGNING_PRIVATE_KEY`) を求める。リリース (kanotown/taylis-releases、アプリ内の「更新して再起動」) は
+`scripts/release-desktop.sh vX.Y.Z` で作る: docs/DEVELOPMENT.md §6「デスクトップ版のリリース」。
 
 同じ Mac で 2 人分のクライアントを動かすには、2 つ目をビルド済みアプリ
 (`open -n src-tauri/target/release/bundle/macos/Taylis.app`) で起動するか、ポート 1421 で
@@ -30,7 +34,7 @@ src/
   platform/   secrets.ts (Keychain / Credential Manager)、sqlite.ts (tauri-plugin-sql)、notify.ts (OS 通知)、deepLink.ts (`chikuwachat://`、Google でログインの戻り)
   state/      app.ts (起動時のセッション復元、ログイン、強制パスワード変更、エンジンのライフサイクル)
   ui/         LoginScreen、ChangePasswordScreen、MainScreen (左: チャンネル / DM、中央: タイムラインと入力欄、右: スレッド用の余白)
-src-tauri/    Rust 側: secret_get / secret_set / secret_delete (keyring)、SQL と通知プラグイン、deep link (+ Windows は single-instance)
+src-tauri/    Rust 側: secret_get / secret_set / secret_delete (keyring)、SQL と通知プラグイン、deep link (+ Windows は single-instance)、アプリ内の更新 (updater / process、画面側は state/updates.ts)
 tests/        fakeServer.ts (プロトコルの模擬サーバ)、engine / apiClient / markdown のテスト、contract.test.ts (server/tests/contract/*.json)、live.test.ts
 ```
 
