@@ -737,11 +737,11 @@ class AppController(private val app: Application) {
 
     // --- Google sign-in (M48, docs/SSO.md §6) -----------------------------------------------------
 
-    /** Whether the login form offers 「Google でログイン」 for this address (false for a server before M48 or offline). */
-    suspend fun googleSignInAvailable(server: String): Boolean {
-        val normalized = Workspaces.normalizeServerUrl(server) ?: return false
+    /** The login form's Google button for this address (null: none, also for a server before M48 or offline). */
+    suspend fun googleSignInButton(server: String): GoogleButtonText? {
+        val normalized = Workspaces.normalizeServerUrl(server) ?: return null
         val key = workspaces.firstOrNull { Workspaces.sameServer(it.serverUrl, normalized) }?.serverUrl ?: normalized
-        return Sso.googleEnabled(ApiClient(key, http))
+        return Sso.googleButton(ApiClient(key, http))
     }
 
     /**

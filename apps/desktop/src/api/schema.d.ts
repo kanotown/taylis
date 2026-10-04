@@ -804,7 +804,7 @@ export interface paths {
         };
         /**
          * Auth Methods
-         * @description Which sign-in buttons the login screen shows.
+         * @description Which sign-in buttons the login screen shows, and whose accounts the Google button takes.
          */
         get: operations["auth_methods_api_v1_auth_methods_get"];
         put?: never;
@@ -6969,8 +6969,12 @@ export interface components {
         };
         /** ProviderMethod */
         ProviderMethod: {
+            /** Domains */
+            domains?: string[];
             /** Enabled */
             enabled: boolean;
+            /** Label */
+            label?: string | null;
         };
         /**
          * QuietHours

@@ -8003,9 +8003,27 @@
       },
       "ProviderMethod": {
         "properties": {
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Domains",
+            "type": "array"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           }
         },
         "required": [
@@ -15457,7 +15475,7 @@
     },
     "/api/v1/auth/methods": {
       "get": {
-        "description": "Which sign-in buttons the login screen shows.",
+        "description": "Which sign-in buttons the login screen shows, and whose accounts the Google button takes.",
         "operationId": "auth_methods_api_v1_auth_methods_get",
         "responses": {
           "200": {

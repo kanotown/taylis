@@ -96,10 +96,10 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// GET /auth/methods (M48, no login).
     func authMethods() async throws -> AuthMethodsOut { try await request("GET", "/api/v1/auth/methods", auth: false, timeout: 15) }
 
-    /// Whether the login screen offers 「Google でログイン」: only when the server says so. Any failure (a server before
+    /// The login screen's Google button, only when the server offers it (nil otherwise). Any failure (a server before
     /// M48 answers 404, no answer, another product) just leaves the button out.
-    func offersGoogle() async -> Bool {
-        (try? await authMethods())?.googleEnabled == true
+    func offersGoogle() async -> GoogleButtonText? {
+        (try? await authMethods())?.googleButton
     }
 
     /// POST /auth/sso/exchange (M48): the ticket from the sign-in sheet and the verifier this app made for it → the same

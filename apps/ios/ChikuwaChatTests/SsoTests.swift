@@ -164,21 +164,25 @@ final class SsoTests: XCTestCase {
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
             return (200, Data(#"{"password":true,"google":{"enabled":true}}"#.utf8))
         }
+        // A server before the `domains` field: 「Google でログイン」.
         let enabled = await client.offersGoogle()
-        XCTAssertTrue(enabled)
-        StubProtocol.handler = { _ in (200, Data(#"{"password":true,"google":{"enabled":false}}"#.utf8)) }
+        XCTAssertEqual(enabled, .google)
+        StubProtocol.handler = { _ in (200, Data(#"{"password":true,"google":{"enabled":true,"domains":["example.ac.jp"],"label":null}}"#.utf8)) }
+        let restricted = await client.offersGoogle()
+        XCTAssertEqual(restricted, GoogleButtonText(title: "example.ac.jp のアカウントでログイン", subtitle: "組織の Google Workspace アカウント"))
+        StubProtocol.handler = { _ in (200, Data(#"{"password":true,"google":{"enabled":false,"domains":[],"label":null}}"#.utf8)) }
         let disabled = await client.offersGoogle()
-        XCTAssertFalse(disabled)
+        XCTAssertNil(disabled)
         // A server before M48: no such endpoint.
         StubProtocol.handler = { _ in (404, Data(#"{"detail":"Not Found"}"#.utf8)) }
         let old = await client.offersGoogle()
-        XCTAssertFalse(old)
+        XCTAssertNil(old)
         StubProtocol.handler = { _ in (200, Data("<html>".utf8)) }
         let notJson = await client.offersGoogle()
-        XCTAssertFalse(notJson)
+        XCTAssertNil(notJson)
         StubProtocol.handler = { _ in (-1, Data()) }
         let offline = await client.offersGoogle()
-        XCTAssertFalse(offline)
+        XCTAssertNil(offline)
         // Tolerant decoding: `password` may be missing.
         XCTAssertEqual(try JSON.snakeDecoder.decode(AuthMethodsOut.self, from: Data(#"{"google":{"enabled":true}}"#.utf8)).googleEnabled, true)
     }
@@ -263,9 +267,21 @@ final class SsoTests: XCTestCase {
     func testLoginScreenOffersGoogleWhenTheServerDoes() throws {
         let controller = AppController(defaults: UserDefaults(suiteName: "sso-snapshot-\(UUID().uuidString)")!)
         var asked: [String] = []
-        _ = try render(LoginView(controller: controller, offersGoogle: { asked.append($0); return true }),
+        _ = try render(LoginView(controller: controller, offersGoogle: { asked.append($0); return .google }),
                        size: CGSize(width: 393, height: 852), name: "M48-login-google-ios.png")
         XCTAssertEqual(asked, ["http://127.0.0.1:8000"])
+    }
+
+    func testLoginScreenNamesTheOrganisation() throws {
+        let controller = AppController(defaults: UserDefaults(suiteName: "sso-snapshot-\(UUID().uuidString)")!)
+        _ = try render(LoginView(controller: controller, offersGoogle: { _ in GoogleButtonText(domains: ["example.ac.jp"], label: nil) }),
+                       size: CGSize(width: 393, height: 852), name: "M48-login-org-ios.png")
+    }
+
+    func testGoogleButtonWords() {
+        XCTAssertEqual(GoogleButtonText(domains: ["example.ac.jp", "lab.example.jp"], label: nil).title, "example.ac.jp など のアカウントでログイン")
+        XCTAssertEqual(GoogleButtonText(domains: ["example.ac.jp", "lab.example.jp"], label: " 例示大学 ").title, "例示大学 のアカウントでログイン")
+        XCTAssertEqual(GoogleButtonText(domains: [], label: "例示大学"), .google)
     }
 
     func testAccountSettingsWithoutPasswordHideTheChangeAnd2FA() throws {
