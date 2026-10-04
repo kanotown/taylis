@@ -235,7 +235,7 @@ async def test_import_from_folder_is_idempotent(
     assert (await client.get(f"/api/v1/emoji/{listed['hp-bow']['id']}/image")).status_code == 200
 
     # Again with one label changed and one item added: nothing doubles.
-    items = [
+    items: list[dict[str, Any]] = [
         {"file": "001_通常.png", "shortcode": "hp-plain", "label": "通常", "keywords": ["真顔"]},
         {"file": "032_おじぎ.png", "shortcode": "hp-bow", "label": "ぺこり", "keywords": []},
         {"file": "040_悪魔.png", "shortcode": "hp-devil", "label": "悪魔"},
