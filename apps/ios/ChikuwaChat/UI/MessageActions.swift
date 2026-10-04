@@ -3,7 +3,7 @@ import UIKit
 
 /// What a message's action sheet asks for once the sheet is gone: another sheet or a dialog can only come after it.
 enum MessageFollowUp {
-    case thread, edit, moreReactions, reactors, share, delete, customReminder, task, review
+    case thread, edit, moreReactions, reactors, share, delete, customReminder, task, review, report
 }
 
 /// A sheet a message row asks for. The conversation presents it (`messageSheets`), not the row: LazyVStack takes rows
@@ -11,7 +11,7 @@ enum MessageFollowUp {
 /// or going away as a long press starts), and a sheet presented from a row closed and opened again with it (testers,
 /// 2026-09-29: the editor kept closing and reopening, the actions came twice on iOS 18).
 struct MessageSheet: Identifiable, Equatable {
-    enum Kind: String { case actions, reactions, reactors, share, revisions, profile, edit, file, reminder, acks, collection, task }
+    enum Kind: String { case actions, reactions, reactors, share, revisions, profile, edit, file, reminder, acks, collection, task, report }
     let kind: Kind
     let message: MessageState
     /// `.file`: the downloaded attachment, shown with Quick Look (a video plays there; its share button saves it).
@@ -58,6 +58,7 @@ private struct MessageSheets: ViewModifier {
         case (.reactors, let message)?: sheet = MessageSheet(kind: .reactors, message: message)
         case (.customReminder, let message)?: sheet = MessageSheet(kind: .reminder, message: message)
         case (.share, let message)?: sheet = MessageSheet(kind: .share, message: message)
+        case (.report, let message)?: sheet = MessageSheet(kind: .report, message: message)  // M104
         case (.delete, let message)?: deleting = message
         case (.task, let message)?:
             // M56 (TASKS.md §6): the message's line as the title, the message as the source, its channel's board (or
@@ -99,6 +100,8 @@ private struct MessageSheets: ViewModifier {
                     ReminderFormView(controller: controller, message: message)
                 case .share:
                     ShareMessageSheet(controller: controller, message: message)
+                case .report:
+                    ReportMessageSheet(controller: controller, message: message)  // M104 (MODERATION.md §3)
                 case .revisions:
                     RevisionsView(controller: controller, message: message)
                 case .profile:
@@ -260,6 +263,10 @@ struct MessageActionsSheet: View {
                 row("別のチャンネルに共有…", "arrowshape.turn.up.right") { then(.share) }
                 row(message.pinnedAt != nil ? "ピン留めを外す" : "チャンネルにピン留め", message.pinnedAt != nil ? "pin.slash" : "pin") {
                     run { await controller.togglePin(message) }
+                }
+                // M104 (MODERATION.md §3): someone else's stored message.
+                if Moderation.canReport(message, meId: store.me?.id) {
+                    row("報告する", "flag") { then(.report) }
                 }
                 if isMine || controller.isAdmin {
                     row("削除", "trash", role: .destructive) { then(.delete) }

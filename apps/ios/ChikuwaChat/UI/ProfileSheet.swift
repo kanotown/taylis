@@ -9,8 +9,10 @@ struct ProfileSheet: View {
     var onOpenDm: ((String) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var editingStatus = false
+    @State private var confirmingBlock = false
 
     private var user: UserPublic? { controller.store.users[userId] }
+    private var blocked: Bool { controller.store.isBlocked(userId) }
     private var isMe: Bool { controller.store.me?.id == userId }
 
     var body: some View {
@@ -69,11 +71,27 @@ struct ProfileSheet: View {
                         }
                     }
                 }
+                // M104 (MODERATION.md §4): private; the person is not told.
+                if !isMe, user != nil {
+                    Section {
+                        if blocked {
+                            Button("ブロックを解除", systemImage: "hand.raised.slash") { Task { await controller.setUserBlocked(userId, on: false) } }
+                        } else {
+                            Button("ブロック", systemImage: "hand.raised", role: .destructive) { confirmingBlock = true }
+                        }
+                    } footer: {
+                        Text(blocked ? "ブロック中: メッセージは折りたたまれ、通知されません。" : "ブロックすると、この人のメッセージは折りたたまれ、通知も届かず、この人から 1 対 1 の DM を受け取りません。相手には知らされません。")
+                    }
+                }
             }
             .navigationTitle("プロフィール")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
             .sheet(isPresented: $editingStatus) { StatusEditorView(controller: controller) }
+            .confirmationDialog("\(user?.displayName ?? "") をブロックしますか？", isPresented: $confirmingBlock, titleVisibility: .visible) {
+                Button("ブロック", role: .destructive) { Task { await controller.setUserBlocked(userId, on: true) } }
+                Button("キャンセル", role: .cancel) {}
+            }
         }
     }
 }

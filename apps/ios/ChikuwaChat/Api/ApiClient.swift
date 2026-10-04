@@ -461,6 +461,24 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     // MARK: favorites and read-all (M12a)
 
+    // MARK: moderation (M104, MODERATION.md)
+
+    func blockUser(id: String) async throws -> BlockStateOut { try await request("PUT", "/api/v1/users/\(id)/block") }
+    func unblockUser(id: String) async throws -> BlockStateOut { try await request("DELETE", "/api/v1/users/\(id)/block") }
+    /// `reason`: spam / harassment / inappropriate / other; `note` optional.
+    func reportMessage(id: String, reason: String, note: String?) async throws -> ReportAck {
+        var body: [String: JSONValue] = ["reason": .string(reason)]
+        if let note, !note.isEmpty { body["note"] = .string(note) }
+        return try await request("POST", "/api/v1/messages/\(id)/report", body: .object(body))
+    }
+    /// My password, or my username for an account without one (Google sign-in). Every session ends on success.
+    func deleteAccount(password: String?, confirmUsername: String?) async throws {
+        var body: [String: JSONValue] = [:]
+        if let password { body["password"] = .string(password) }
+        if let confirmUsername { body["confirm_username"] = .string(confirmUsername) }
+        _ = try await requestRaw("POST", "/api/v1/users/me/delete-account", body: .object(body), auth: true, retry401: true)
+    }
+
     func favoriteChannel(id: String) async throws -> FavoriteStateOut { try await request("PUT", "/api/v1/channels/\(id)/favorite") }
     func unfavoriteChannel(id: String) async throws -> FavoriteStateOut { try await request("DELETE", "/api/v1/channels/\(id)/favorite") }
     func readAll() async throws -> [ChannelReadStateOut] { try await request("POST", "/api/v1/channels/read-all", body: .object([:])) }

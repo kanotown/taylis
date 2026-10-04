@@ -739,6 +739,7 @@ struct AccountView: View {
     @State private var sessions: [SessionOut]?
     @State private var sessionsError: String?
     @State private var ending: SessionOut?
+    @State private var deletingAccount = false
 
     /// M48: an account made by Google sign-in has no password, so neither its change nor 2FA (SSO.md §4).
     private var hasPassword: Bool { controller.me?.passwordSet ?? true }
@@ -747,7 +748,15 @@ struct AccountView: View {
         Form {
             if hasPassword { passwordSections }
             sessionsSection
+            BlockedUsersSection(controller: controller)  // M104
+            // M104 (MODERATION.md §2): deleting my account from inside the app (App Store 5.1.1(v), Google Play).
+            Section {
+                Button("アカウントを削除", systemImage: "person.crop.circle.badge.xmark", role: .destructive) { deletingAccount = true }
+            } footer: {
+                Text("すべての端末からログアウトし、プロフィールとログイン情報を消去します。投稿したメッセージは「退会したユーザー」として残ります。")
+            }
         }
+        .sheet(isPresented: $deletingAccount) { DeleteAccountView(controller: controller) }
         .navigationTitle("アカウント")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $totpSheet) { sheet in
