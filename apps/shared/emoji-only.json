@@ -1,0 +1,607 @@
+{
+  "_comment": "Emoji-only messages shown large (docs/EMOJI.md §7, M101). The rule every client applies (desktop ui/emojiOnly.ts, iOS UI/EmojiOnly.swift, Android ui/EmojiOnly.kt; each keeps a copy of `max_items`, `whitespace` and `pictographic`, and its test compares them with this file and runs `cases`). 1) Standard shortcodes are replaced first (`:tada:` -> the glyph, apps/shared/emoji.json, as the body is rendered). 2) Walk the text by code point: whitespace (`whitespace`) separates items; `:name:` (name ^[a-z0-9][a-z0-9_+-]{1,31}$) that is a known custom emoji is one item (kind `text` for a text emoji, `pack` for an image emoji with a pack_id, else `image`); a keycap ([0-9#*] FE0F? 20E3), a flag (two regional indicators 1F1E6-1F1FF) or an emoji sequence is one `unicode` item. An emoji sequence is element (200D element)*; an element is a `pictographic` code point, then FE0F?, then a skin tone (1F3FB-1F3FF)?, and after 1F3F4 tag characters (E0020-E007E)* E007F. Anything else (text, markdown, a mention, an unknown :x:, a lone modifier or joiner) -> not emoji-only. 3) Emoji-only = 1 to `max_items` items. `stamp` = exactly one item and it is `pack`. `pictographic` = the Unicode Emoji property (Unicode 17) without ASCII, regional indicators, skin tones and the joiner / VS16 / keycap / tag characters, plus all of 1F000-1FAFF (emoji not yet assigned there count too). `custom` is the custom emoji table the cases are checked with; `why` is only for people.",
+  "max_items": 23,
+  "whitespace": [
+    "0020",
+    "0009",
+    "000A",
+    "000D",
+    "00A0",
+    "3000"
+  ],
+  "pictographic": [
+    "00A9",
+    "00AE",
+    "203C",
+    "2049",
+    "2122",
+    "2139",
+    "2194-2199",
+    "21A9-21AA",
+    "231A-231B",
+    "2328",
+    "23CF",
+    "23E9-23F3",
+    "23F8-23FA",
+    "24C2",
+    "25AA-25AB",
+    "25B6",
+    "25C0",
+    "25FB-25FE",
+    "2600-2604",
+    "260E",
+    "2611",
+    "2614-2615",
+    "2618",
+    "261D",
+    "2620",
+    "2622-2623",
+    "2626",
+    "262A",
+    "262E-262F",
+    "2638-263A",
+    "2640",
+    "2642",
+    "2648-2653",
+    "265F-2660",
+    "2663",
+    "2665-2666",
+    "2668",
+    "267B",
+    "267E-267F",
+    "2692-2697",
+    "2699",
+    "269B-269C",
+    "26A0-26A1",
+    "26A7",
+    "26AA-26AB",
+    "26B0-26B1",
+    "26BD-26BE",
+    "26C4-26C5",
+    "26C8",
+    "26CE-26CF",
+    "26D1",
+    "26D3-26D4",
+    "26E9-26EA",
+    "26F0-26F5",
+    "26F7-26FA",
+    "26FD",
+    "2702",
+    "2705",
+    "2708-270D",
+    "270F",
+    "2712",
+    "2714",
+    "2716",
+    "271D",
+    "2721",
+    "2728",
+    "2733-2734",
+    "2744",
+    "2747",
+    "274C",
+    "274E",
+    "2753-2755",
+    "2757",
+    "2763-2764",
+    "2795-2797",
+    "27A1",
+    "27B0",
+    "27BF",
+    "2934-2935",
+    "2B05-2B07",
+    "2B1B-2B1C",
+    "2B50",
+    "2B55",
+    "3030",
+    "303D",
+    "3297",
+    "3299",
+    "1F000-1F1E5",
+    "1F200-1F3FA",
+    "1F400-1FAFF"
+  ],
+  "custom": {
+    "party": {
+      "kind": "image",
+      "pack": false
+    },
+    "wide": {
+      "kind": "image",
+      "pack": false
+    },
+    "kakunin": {
+      "kind": "text",
+      "pack": false
+    },
+    "hpd-bow": {
+      "kind": "image",
+      "pack": true
+    },
+    "hpd-wave": {
+      "kind": "image",
+      "pack": true
+    }
+  },
+  "cases": [
+    {
+      "body": "😀",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "  😀🎉  ",
+      "jumbo": true,
+      "count": 2,
+      "kinds": [
+        "unicode",
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "😀 😀 😀",
+      "jumbo": true,
+      "count": 3,
+      "kinds": [
+        "unicode",
+        "unicode",
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "😀\n🎉",
+      "jumbo": true,
+      "count": 2,
+      "kinds": [
+        "unicode",
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "😀　🎉",
+      "jumbo": true,
+      "count": 2,
+      "kinds": [
+        "unicode",
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "👍🏽",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "👩‍👩‍👧‍👦",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "👩🏽‍💻",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "❤️‍🔥",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "🏳️‍🌈",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "🇯🇵🇺🇸",
+      "jumbo": true,
+      "count": 2,
+      "kinds": [
+        "unicode",
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "1️⃣",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "#⃣",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "❤️",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "❤",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "✅",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "🫠",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": ":tada:",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": ":+1: :tada:",
+      "jumbo": true,
+      "count": 2,
+      "kinds": [
+        "unicode",
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": ":party:",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "image"
+      ],
+      "stamp": false
+    },
+    {
+      "body": ":wide:",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "image"
+      ],
+      "stamp": false
+    },
+    {
+      "body": ":kakunin:",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "text"
+      ],
+      "stamp": false
+    },
+    {
+      "body": ":kakunin: :party:",
+      "jumbo": true,
+      "count": 2,
+      "kinds": [
+        "text",
+        "image"
+      ],
+      "stamp": false
+    },
+    {
+      "body": ":hpd-bow:",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "pack"
+      ],
+      "stamp": true
+    },
+    {
+      "body": "  :hpd-bow:\n",
+      "jumbo": true,
+      "count": 1,
+      "kinds": [
+        "pack"
+      ],
+      "stamp": true
+    },
+    {
+      "body": ":hpd-bow::hpd-wave:",
+      "jumbo": true,
+      "count": 2,
+      "kinds": [
+        "pack",
+        "pack"
+      ],
+      "stamp": false
+    },
+    {
+      "body": ":hpd-bow: 🎉",
+      "jumbo": true,
+      "count": 2,
+      "kinds": [
+        "pack",
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": ":tada::party:",
+      "jumbo": true,
+      "count": 2,
+      "kinds": [
+        "unicode",
+        "image"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "jumbo": true,
+      "count": 23,
+      "kinds": [
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode",
+        "unicode"
+      ],
+      "stamp": false
+    },
+    {
+      "body": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "more than 23"
+    },
+    {
+      "body": "",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "empty"
+    },
+    {
+      "body": "   \n ",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "only whitespace"
+    },
+    {
+      "body": "ok",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "text"
+    },
+    {
+      "body": "😀 ok",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "text after"
+    },
+    {
+      "body": "ありがとう🙏",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "text before"
+    },
+    {
+      "body": ":unknown:",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "not a known shortcode or custom emoji"
+    },
+    {
+      "body": ":party: text",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "text after a custom emoji"
+    },
+    {
+      "body": "😀:",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "a stray colon"
+    },
+    {
+      "body": "**😀**",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "markdown"
+    },
+    {
+      "body": "> 😀",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "a quote"
+    },
+    {
+      "body": "`😀`",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "code"
+    },
+    {
+      "body": "- 😀",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "a list"
+    },
+    {
+      "body": "<@00000000-0000-0000-0000-000000000001>",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "a mention"
+    },
+    {
+      "body": "1",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "a digit alone"
+    },
+    {
+      "body": "#",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "a hash alone"
+    },
+    {
+      "body": "★",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "not Emoji (U+2605)"
+    },
+    {
+      "body": "♪",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "not Emoji (U+266A)"
+    },
+    {
+      "body": "🏽",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "a skin tone alone"
+    },
+    {
+      "body": "🇯",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "one regional indicator"
+    },
+    {
+      "body": "😀‍",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "a trailing zero width joiner"
+    },
+    {
+      "body": "️",
+      "jumbo": false,
+      "count": 0,
+      "kinds": [],
+      "stamp": false,
+      "why": "a variation selector alone"
+    }
+  ]
+}
