@@ -36,7 +36,12 @@ struct EmojiImage: View {
 
 /// Custom emoji (M12f): `:name:` in text and reactions renders as the uploaded image.
 enum CustomEmoji {
-    static let inlineHeight: CGFloat = 20
+    /// The height of an image in body text: no taller than the text's ascent, as a standard emoji is (2026-10-04,
+    /// 「高さが違う」). Text(Image) stands on the baseline, and everything above the ascent (20 pt was 4 more) made its
+    /// line taller than the others; lowering it (`baselineOffset`) only adds the same to the line below.
+    static let inlineHeight: CGFloat = 16
+    /// The same for the headings (.title, .title2, .title3 bold).
+    static let headingHeights: [CGFloat] = [26, 20, 18]
     private static let exact = try! NSRegularExpression(pattern: "^:([a-z0-9][a-z0-9_+-]{1,31}):$")
     private static let inline = try! NSRegularExpression(pattern: ":([a-z0-9][a-z0-9_+-]{1,31}):")
 

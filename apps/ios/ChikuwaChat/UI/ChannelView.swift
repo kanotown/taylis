@@ -1136,20 +1136,24 @@ struct MessageRow: View {
                         ForEach(message.reactions, id: \.emoji) { reaction in
                             let mine = store.me.map { reaction.userIds.contains($0.id) } ?? false
                             Button { Task { await controller.toggleReaction(message, emoji: reaction.emoji) } } label: {
-                                if let name = CustomEmoji.name(of: reaction.emoji), let custom = store.customEmoji[name] {
-                                    HStack(spacing: 3) {
+                                // One 16 pt box for the emoji of either kind (2026-10-04: a standard emoji was 12 pt
+                                // caption text beside a 16 pt image, and the chips differed in height).
+                                HStack(spacing: 3) {
+                                    if let name = CustomEmoji.name(of: reaction.emoji), let custom = store.customEmoji[name] {
                                         if let image = store.emojiImages[custom.id] {
-                                            EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(height: 16)
+                                            EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(width: 16, height: 16)
                                         } else {
-                                            // The image's own size until it comes: `:name:` there made the chip wider and
-                                            // the chips re-wrapped, changing the row's height (CustomEmoji.text).
-                                            Color.clear.frame(width: CustomEmoji.size(of: custom, height: 16).width, height: 16)
+                                            // Its room until the image comes: `:name:` there made the chip wider and the
+                                            // chips re-wrapped, changing the row's height (CustomEmoji.text).
+                                            Color.clear.frame(width: 16, height: 16)
                                                 .onAppear { controller.loadEmojiImage(custom) }
                                         }
-                                        Text("\(reaction.count)").font(.caption)
+                                    } else if CustomEmoji.name(of: reaction.emoji) != nil {
+                                        Text(reaction.emoji).font(.caption)  // a name this workspace does not have
+                                    } else {
+                                        Text(reaction.emoji).font(.system(size: 15)).fixedSize().frame(minWidth: 16).frame(height: 16)
                                     }
-                                } else {
-                                    Text("\(reaction.emoji) \(reaction.count)").font(.caption)
+                                    Text("\(reaction.count)").font(.caption)
                                 }
                             }
                             .buttonStyle(.bordered)
