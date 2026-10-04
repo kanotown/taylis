@@ -31,6 +31,14 @@ export class NetworkError extends Error {
   }
 }
 
+/** A failure of the app's own whose message is written for the reader (Japanese), shown as it is. */
+export class UserMessageError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "UserMessageError";
+  }
+}
+
 export function isRetryable(err: unknown): boolean {
   return err instanceof NetworkError || (err instanceof ApiError && err.isRetryable);
 }
@@ -42,6 +50,7 @@ export function isRetryable(err: unknown): boolean {
  */
 export function describeError(err: unknown): string {
   if (typeof err === "string") return err;
+  if (err instanceof UserMessageError) return err.message;
   if (err instanceof ApiError) {
     return ERROR_MESSAGES[err.code] ?? STATUS_MESSAGES[String(err.status)] ?? (err.status >= 500 ? STATUS_MESSAGES["5xx"] : undefined) ?? UNKNOWN_ERROR_MESSAGE;
   }

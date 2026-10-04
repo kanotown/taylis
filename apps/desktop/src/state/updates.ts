@@ -83,6 +83,17 @@ export class UpdateChecker {
   private readonly listeners = new Set<() => void>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private running: Promise<AvailableUpdate | null> | null = null;
+  /**
+   * Review v0.1.30 #6: the install under way (download → prepare → install → relaunch), held apart from the shown
+   * `status`. While it runs no second install starts, and a check that was already on its way when it began changes
+   * neither the status nor the update (its answer is dropped).
+   */
+  private installing: Promise<boolean> | null = null;
+
+  /** An install is under way (the buttons stay disabled whatever a late check says). */
+  get installInProgress(): boolean {
+    return this.installing !== null;
+  }
 
   constructor(
     private readonly deps: UpdaterDeps = tauriUpdaterDeps,
@@ -141,13 +152,14 @@ export class UpdateChecker {
    */
   async check(manual: boolean): Promise<AvailableUpdate | null> {
     if (!this.enabled) return null;
-    if (this.status === "downloading" || this.status === "installing") return this.available;
+    if (this.installing) return this.available;
     if (this.running) return this.running;
     this.status = "checking";
     this.emit();
     const run = (async () => {
       try {
         const found = await this.deps.check();
+        if (this.installing) return found; // 「更新して再起動」 was pressed meanwhile: the install keeps the screen
         // A newer version than the one put off brings the banner back.
         if (found && this.available && found.version !== this.available.version) this.dismissed = false;
         if (manual && found) this.dismissed = false;
@@ -156,6 +168,10 @@ export class UpdateChecker {
         this.status = found ? "available" : "idle";
         return found;
       } catch (err) {
+        if (this.installing) {
+          console.warn("update check failed", err);
+          return null;
+        }
         this.status = this.available ? "available" : "idle";
         this.lastCheckFailed = true;
         if (manual) this.onError(err);
@@ -180,9 +196,15 @@ export class UpdateChecker {
    * 「更新して再起動」: download (with progress), save what is pending (`prepare`: drafts, the send queue, canvases),
    * install and relaunch. A failure shows the error toast and leaves the banner for another try.
    */
-  async install(prepare: () => Promise<void>): Promise<boolean> {
+  install(prepare: () => Promise<void>): Promise<boolean> {
     const update = this.available;
-    if (!update || this.status === "downloading" || this.status === "installing") return false;
+    if (!update || this.installing) return Promise.resolve(false);
+    const run = this.runInstall(update, prepare);
+    this.installing = run;
+    return run;
+  }
+
+  private async runInstall(update: AvailableUpdate, prepare: () => Promise<void>): Promise<boolean> {
     this.status = "downloading";
     this.progress = { downloaded: 0, total: null };
     this.emit();
@@ -200,7 +222,8 @@ export class UpdateChecker {
       await this.deps.relaunch();
       return true;
     } catch (err) {
-      this.status = "available";
+      this.installing = null;
+      this.status = this.available ? "available" : "idle";
       this.progress = null;
       this.emit();
       this.onError(err);

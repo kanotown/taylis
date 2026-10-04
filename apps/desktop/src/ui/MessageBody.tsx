@@ -59,8 +59,19 @@ export function BlockView({ block, users, options }: { block: Block; users: Map<
       return <div className="my-1 text-muted">[画像{block.alt ? `: ${block.alt}` : ""}]</div>;
     case "hr":
       return <hr className="my-3 border-line" />;
-    case "paragraph":
-      return <p className="m-0">{lines(block.lines, users, options)}</p>;
+    case "paragraph": {
+      // Blank lines at a paragraph's ends separate it from the block before / after (a heading, a list …): a gap
+      // there, the same in the timeline and the composer's preview. A trailing blank line drew nothing before (a <br>
+      // at a block's end shows no line) while a leading one drew a whole empty line, so "text\n\n# 見出し\n\ntext" put
+      // the heading straight under the text and a full line under it (2026-10-04). Blank lines inside stay lines.
+      const rows = block.lines;
+      let start = 0;
+      let end = rows.length;
+      while (start < end && blankRow(rows[start]!)) start++;
+      while (end > start && blankRow(rows[end - 1]!)) end--;
+      if (start === end) return <div aria-hidden className="h-2.5" />;
+      return <p className={cn("m-0", start > 0 && "mt-2.5", end < rows.length && "mb-2.5")}>{lines(rows.slice(start, end), users, options)}</p>;
+    }
     case "quote":
       return <blockquote className="my-1 border-l-[3px] border-line pl-3 text-muted">{lines(block.lines, users, options)}</blockquote>;
     case "list":
@@ -119,6 +130,10 @@ export interface InlineOptions {
   /** M12g: my notification keywords, highlighted where they occur. */
   keywords?: readonly string[];
   groups?: ReadonlyMap<string, GroupOut>;
+}
+
+function blankRow(tokens: Token[]): boolean {
+  return tokens.every((token) => token.kind === "text" && token.text.trim() === "");
 }
 
 function lines(rows: Token[][], users: Map<string, UserPublic>, options: InlineOptions = {}) {

@@ -171,8 +171,9 @@ else
   echo "{\"version\":\"$VERSION\"}" > "$CONFIG"
 fi
 echo "  config: $(cat "$CONFIG")"
+# The .dmg too when notarising: the one shipped is made again after the app is stapled (below), with the create-dmg
+# script tauri's dmg step leaves next to its .dmg, so that it has the same window (background, arrow, positions).
 MAC_BUNDLES="app,dmg"
-[[ -n "$NOTARY_PROFILE" ]] && MAC_BUNDLES="app" # the .dmg is made after notarising the app
 export CARGO_TARGET_DIR="$CACHE/target"
 BUNDLE_DIR="$CARGO_TARGET_DIR/universal-apple-darwin/release/bundle"
 if ((DRY_RUN)); then
@@ -190,6 +191,36 @@ APP="$BUNDLE_DIR/macos/Taylis.app"
 TARBALL="$BUNDLE_DIR/macos/Taylis.app.tar.gz"
 DMG="$ASSETS/Taylis_${VERSION}_universal.dmg"
 
+# The .dmg of an app, laid out as tauri.conf.json `bundle.macOS.dmg` says (the window tauri's own .dmg has: the
+# background with 「Taylis を Applications にドラッグしてください」, the window size, the app and Applications positions),
+# with tauri's create-dmg script (bundle/dmg/bundle_dmg.sh; it lays the window out with Finder through AppleScript).
+# A tag without that config gets the plain .dmg as before.
+make_dmg() {
+  local app="$1" out="$2" script="$BUNDLE_DIR/dmg/bundle_dmg.sh" conf="$DESKTOP/src-tauri/tauri.conf.json" layout
+  ((DRY_RUN)) && [[ ! -f "$conf" ]] && conf="$REPO_ROOT/apps/desktop/src-tauri/tauri.conf.json" # no worktree in a dry run
+  layout="$(node -e '
+    const d = require(process.argv[1]).bundle?.macOS?.dmg;
+    if (d?.background && d.windowSize && d.appPosition && d.applicationFolderPosition)
+      console.log([d.windowSize.width, d.windowSize.height, d.appPosition.x, d.appPosition.y,
+        d.applicationFolderPosition.x, d.applicationFolderPosition.y, d.background].join(" "));
+  ' "$conf")"
+  run rm -rf "$WORK/dmg" "$out"
+  run mkdir -p "$WORK/dmg"
+  run ditto "$app" "$WORK/dmg/Taylis.app"
+  if [[ -z "$layout" ]]; then
+    run ln -s /Applications "$WORK/dmg/Applications"
+    run hdiutil create -volname Taylis -srcfolder "$WORK/dmg" -ov -format UDZO "$out"
+    return
+  fi
+  ((DRY_RUN)) || [[ -x "$script" ]] || fail "tauri's dmg script is missing: $script"
+  local w h ax ay fx fy background
+  read -r w h ax ay fx fy background <<<"$layout"
+  run "$script" --volname Taylis --volicon "$DESKTOP/src-tauri/icons/icon.icns" \
+    --background "$DESKTOP/src-tauri/$background" --window-size "$w" "$h" \
+    --icon Taylis.app "$ax" "$ay" --hide-extension Taylis.app --app-drop-link "$fx" "$fy" \
+    "$out" "$WORK/dmg"
+}
+
 # Signs a file with the updater key (the signature binds the version, as tauri build does).
 updater_sign() {
   run env TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" bash -c 'cd "$1" && npx tauri signer sign -f "$2" --app-version "$3" "$4" >/dev/null' _ \
@@ -205,10 +236,7 @@ if [[ -n "$NOTARY_PROFILE" ]]; then
   run rm -f "$TARBALL" "$TARBALL.sig"
   run env COPYFILE_DISABLE=1 tar -C "$(dirname "$APP")" -czf "$TARBALL" "$(basename "$APP")"
   updater_sign "$TARBALL"
-  run mkdir -p "$WORK/dmg"
-  run ditto "$APP" "$WORK/dmg/Taylis.app"
-  run ln -s /Applications "$WORK/dmg/Applications"
-  run hdiutil create -volname Taylis -srcfolder "$WORK/dmg" -ov -format UDZO "$DMG"
+  make_dmg "$APP" "$DMG"
   run codesign --force --sign "$SIGNING_IDENTITY" "$DMG"
   run xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
   run xcrun stapler staple "$DMG"

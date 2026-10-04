@@ -1,4 +1,4 @@
-import { readPickedFiles } from "../platform/pickedFiles";
+import { forEachPicked, refusePicked, takePicked } from "../platform/pickedFiles";
 import { ArrowDown, ArrowUp, Eye, Hash, ImageUp, Trash2, UsersRound, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -105,6 +105,8 @@ export function WorkspaceSettingsTab({ controller }: { controller: AppController
 
 /** M93: the picture types the server takes for the icon (it crops the middle square and makes a 256 px PNG). */
 export const ICON_ACCEPT = "image/png,image/jpeg,image/webp";
+/** The server's default `avatar_max_bytes`, which the workspace icon uses too (server/app/core/settings.py). */
+export const ICON_MAX_BYTES = 5 * 1024 * 1024;
 
 /**
  * M93 (WORKSPACES.md §3.4) 「アイコン」: the workspace's logo on everyone's rail, switcher and login screen (public, before
@@ -159,9 +161,11 @@ export function WorkspaceIconSection({ controller, settings, onSaved }: {
         aria-label="アイコンの画像を選ぶ"
         className="hidden"
         onChange={(event) => {
-          const picked = readPickedFiles(event.target.files);
-          event.target.value = "";
-          void picked.then(([file]) => { if (file) upload(file); }, (error) => controller.setError(error));
+          // Checked before any byte is read; the input is cleared once the copy is made (platform/pickedFiles.ts).
+          const picked = takePicked(event.target);
+          const refusal = refusePicked(picked.files, { maxFiles: 1, maxBytes: ICON_MAX_BYTES, tooMany: "画像は1つ選んでください" });
+          if (refusal) { picked.release(); controller.setError(refusal); return; }
+          void forEachPicked(picked.files, async (file) => upload(file), picked.release, (error) => controller.setError(error));
         }}
       />
       <div className="flex shrink-0 flex-col gap-1.5 sm:flex-row">

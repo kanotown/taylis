@@ -13,7 +13,7 @@ import { RosterTab } from "./RosterTab";
 import { WebhooksTab } from "./WebhooksTab";
 import { WorkflowManager } from "./WorkflowViews";
 import { WorkspaceSettingsTab } from "./WorkspaceSettingsTab";
-import { Badge, Button, cn, Field, Input, Modal, UNDERLINE_TAB, UNDERLINE_TAB_ROW } from "./primitives";
+import { Badge, Button, cn, Field, Input, Modal, UNDERLINE_TAB, UnderlineTabRow } from "./primitives";
 
 type Tab = "users" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates";
 
@@ -38,7 +38,7 @@ export function AdminBody({ controller, className }: { controller: AppController
   const shown: Tab = tab === "ai" && !ai ? "users" : tab;
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
-      <div role="tablist" aria-label="管理" className={cn(UNDERLINE_TAB_ROW, "gap-1")}>
+      <UnderlineTabRow role="tablist" aria-label="管理" className="gap-1">
         {(
           [
             ["users", "ユーザー"],
@@ -65,7 +65,7 @@ export function AdminBody({ controller, className }: { controller: AppController
             {label}
           </button>
         ))}
-      </div>
+      </UnderlineTabRow>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {shown === "ai" ? <AiTab controller={controller} /> : shown === "workspace" ? <WorkspaceSettingsTab controller={controller} /> : shown === "users" ? <UsersTab controller={controller} /> : shown === "roster" ? <RosterTab controller={controller} /> : shown === "groups" ? <GroupsTab controller={controller} /> : shown === "invites" ? <InvitesTab controller={controller} /> : shown === "webhooks" ? <WebhooksTab controller={controller} /> : shown === "workflows" ? <WorkflowManager controller={controller} /> :shown === "channels" ? <ChannelsTab controller={controller} /> : shown === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
       </div>

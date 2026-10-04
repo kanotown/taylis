@@ -175,6 +175,6 @@ class PolishCTest {
         assertTrue("🎉" in hits)
         assertTrue(":hanpen:" !in hits)
         assertEquals(emptyList<String>(), EmojiPicker.search("  ", listOf("hanpen")))
-        assertEquals("😄", EmojiPicker.tabGlyph("smileys"))
+        assertEquals("😀", EmojiPicker.tabGlyph("smileys")) // Unicode's order (gen_emoji.py --update)
     }
 }

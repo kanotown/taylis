@@ -32,7 +32,7 @@ export function UpdateBanner({ controller }: { controller: AppController }) {
   const updates = useUpdates(controller.updates);
   const update = updates.available;
   if (!updates.enabled || !update || !updates.bannerVisible) return null;
-  const busy = updates.status === "downloading" || updates.status === "installing";
+  const busy = updates.installInProgress || updates.status === "downloading" || updates.status === "installing";
   const note = notesFirstLine(update.body);
   const percent = progressPercent(updates.progress);
   return (
