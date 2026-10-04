@@ -50,6 +50,21 @@ if [[ ! "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?)$ ]]; then
 fi
 VERSION="${BASH_REMATCH[1]}"
 
+# This Mac's signing settings, kept outside the repository (no secrets: a certificate's SHA-1 and a notarytool
+# keychain profile name), e.g.
+#   APPLE_SIGNING_IDENTITY=<SHA-1 of the Developer ID Application certificate>
+#   TAYLIS_NOTARY_PROFILE=taylis-notary
+# Variables already set in the environment win. A SHA-1 is safer than the certificate's name: an identity imported
+# twice makes the name ambiguous for codesign.
+RELEASE_ENV="${TAYLIS_RELEASE_ENV:-$HOME/.config/taylis/release.env}"
+if [ -f "$RELEASE_ENV" ]; then
+  while IFS='=' read -r name value; do
+    case "$name" in
+      APPLE_SIGNING_IDENTITY|TAYLIS_NOTARY_PROFILE) [ -n "${!name:-}" ] || export "$name=$value" ;;
+    esac
+  done < <(grep -E '^(APPLE_SIGNING_IDENTITY|TAYLIS_NOTARY_PROFILE)=' "$RELEASE_ENV")
+fi
+
 KEY="${TAYLIS_UPDATER_KEY:-$HOME/.tauri/taylis-updater.key}"
 RELEASES_REPO="${TAYLIS_RELEASES_REPO:-kanotown/taylis-releases}"
 SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:-}"
