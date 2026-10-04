@@ -4435,6 +4435,206 @@
         "title": "FavoriteStateOut",
         "type": "object"
       },
+      "FeedCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "description": "The feed's URL (RSS 2.0 / RSS 1.0 / Atom), or a page that names its feed with <link rel=\"alternate\">",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "FeedCreate",
+        "type": "object"
+      },
+      "FeedOut": {
+        "properties": {
+          "bot_user_id": {
+            "description": "The channel's feed bot that posts the entries",
+            "format": "uuid",
+            "title": "Bot User Id",
+            "type": "string"
+          },
+          "can_manage": {
+            "description": "The caller may pause, resume and delete it (the owner, the channel's owners, administrators)",
+            "title": "Can Manage",
+            "type": "boolean"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "consecutive_failures": {
+            "title": "Consecutive Failures",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          },
+          "last_fetched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Fetched At"
+          },
+          "last_post_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Post At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "owner_active": {
+            "description": "False while the owner is deactivated or not a member: nothing is fetched",
+            "title": "Owner Active",
+            "type": "boolean"
+          },
+          "owner_id": {
+            "description": "The member who registered it; posts name them",
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "post_count": {
+            "title": "Post Count",
+            "type": "integer"
+          },
+          "site_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Url"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id",
+          "owner_id",
+          "bot_user_id",
+          "url",
+          "title",
+          "site_url",
+          "enabled",
+          "owner_active",
+          "can_manage",
+          "last_fetched_at",
+          "last_success_at",
+          "last_error_code",
+          "last_error",
+          "consecutive_failures",
+          "post_count",
+          "last_post_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FeedOut",
+        "type": "object"
+      },
+      "FeedUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          }
+        },
+        "title": "FeedUpdate",
+        "type": "object"
+      },
       "FieldDefault": {
         "additionalProperties": false,
         "description": "What the form starts with, filled in by the device that opens it (WORKFLOWS.md §3.1):\na literal value, today, me, or the first `weekday` (0 = Monday) from today on. `time` goes\nwith today / next_weekday on a datetime field (09:00 when left out).",
@@ -16419,6 +16619,116 @@
         ]
       }
     },
+    "/api/v1/channels/{channel_id}/feeds": {
+      "get": {
+        "description": "The channel's feeds, oldest first (paused ones too), with the last fetch's outcome.",
+        "operationId": "list_feeds_api_v1_channels__channel_id__feeds_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FeedOut"
+                  },
+                  "title": "Response List Feeds Api V1 Channels  Channel Id  Feeds Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Feeds",
+        "tags": [
+          "feeds"
+        ]
+      },
+      "post": {
+        "description": "Fetches the URL once: it must be an RSS / Atom feed (or a page naming one), else 422\nfeed_invalid with `details.reason`. Its current entries are recorded and not posted. At most\n20 per channel (409 too_many_channel_feeds) and 20 per person (409 too_many_feeds).",
+        "operationId": "create_feed_api_v1_channels__channel_id__feeds_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Feed",
+        "tags": [
+          "feeds"
+        ]
+      }
+    },
     "/api/v1/channels/{channel_id}/join": {
       "post": {
         "operationId": "join_channel_api_v1_channels__channel_id__join_post",
@@ -18086,6 +18396,105 @@
         "summary": "Emoji Image",
         "tags": [
           "emoji"
+        ]
+      }
+    },
+    "/api/v1/feeds/{feed_id}": {
+      "delete": {
+        "description": "Stops it for good; the posts stay.",
+        "operationId": "delete_feed_api_v1_feeds__feed_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "feed_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Feed Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Feed",
+        "tags": [
+          "feeds"
+        ]
+      },
+      "patch": {
+        "description": "Pause (`enabled: false`) or resume; entries published while paused are not posted.",
+        "operationId": "update_feed_api_v1_feeds__feed_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "feed_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Feed Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Feed",
+        "tags": [
+          "feeds"
         ]
       }
     },

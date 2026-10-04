@@ -43,11 +43,13 @@ from app.modules.channels.router import router as channels_router
 from app.modules.drafts.router import router as drafts_router
 from app.modules.emoji.router import router as emoji_router
 from app.modules.favorites.router import router as favorites_router
+from app.modules.feeds import service as feeds_service
+from app.modules.feeds.router import router as feeds_router
 from app.modules.groups.router import router as groups_router
 from app.modules.invites.router import router as invites_router
 from app.modules.lab import service as lab_service
 from app.modules.lab.router import router as lab_router
-from app.modules.link_previews.fetcher import build_fetcher
+from app.modules.link_previews.fetcher import build_feed_fetcher, build_fetcher
 from app.modules.link_previews.router import router as link_previews_router
 from app.modules.messages import service as messages_service
 from app.modules.messages.router import router as messages_router
@@ -244,6 +246,22 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
                 log.exception("deadline notices failed")
 
 
+async def _feed_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """Channel feeds (docs/FEEDS.md §4, M97): fetches the feeds whose time has come. Its own loop:
+    slow sites must not hold up reminders and scheduled posts."""
+    settings: Settings = app.state.settings
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=settings.feed_check_interval_seconds)
+        except TimeoutError:
+            try:
+                await feeds_service.poll_due(
+                    app.state.db.session_factory, settings=settings, fetch=app.state.feed_fetcher
+                )
+            except Exception:
+                log.exception("feed polling failed")
+
+
 async def _ai_loop(app: FastAPI, stop: asyncio.Event) -> None:
     """AI runs (docs/AI.md §2.2-§2.3, M65): at most two at a time, again at once while there
     are more."""
@@ -289,6 +307,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(_presence_sweep_loop(app, stop), name="presence-sweep"))
         tasks.append(asyncio.create_task(_scheduled_send_loop(app, stop), name="scheduled-send"))
         tasks.append(asyncio.create_task(_ai_loop(app, stop), name="ai-worker"))
+        tasks.append(asyncio.create_task(_feed_loop(app, stop), name="feeds"))
     try:
         yield
     finally:
@@ -327,6 +346,7 @@ def build_api_router() -> APIRouter:
     api.include_router(scheduled_router)
     api.include_router(reminders_router)
     api.include_router(recurring_router)
+    api.include_router(feeds_router)
     api.include_router(workflows_router)
     api.include_router(emoji_router)
     api.include_router(templates_router)
@@ -408,6 +428,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         timeout_seconds=settings.link_preview_timeout_seconds,
         max_bytes=settings.link_preview_max_bytes,
         user_agent=settings.link_preview_user_agent,
+    )
+    app.state.feed_fetcher = build_feed_fetcher(
+        timeout_seconds=settings.feed_timeout_seconds,
+        max_bytes=settings.feed_max_bytes,
+        user_agent=settings.feed_user_agent,
     )
     app.state.bus = InMemoryEventBus()
     app.state.hub = RealtimeHub(

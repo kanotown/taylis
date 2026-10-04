@@ -113,6 +113,11 @@ export type RecurringSchedule = WeeklySchedule | MonthlySchedule;
 export type CollectSpec = components["schemas"]["CollectSpec"];
 export type CollectionOut = components["schemas"]["CollectionOut"];
 
+/** Channel feeds: RSS / Atom posted into a channel by its 「RSS」 bot (M97, docs/FEEDS.md). */
+export type FeedOut = components["schemas"]["FeedOut"];
+export type FeedCreate = components["schemas"]["FeedCreate"];
+export type FeedUpdate = components["schemas"]["FeedUpdate"];
+
 /** Workflows: forms that post a message (M94, docs/WORKFLOWS.md). */
 export type WorkflowOut = components["schemas"]["WorkflowOut"];
 export type WorkflowCreate = components["schemas"]["WorkflowCreate"];

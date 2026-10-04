@@ -503,6 +503,44 @@ CREATE INDEX collections_due_idx ON collections (due_at) WHERE reminded_at IS NU
   作らずに `reminded_at` だけ入れる。定期投稿を消しても、それまでの投稿の回収と催促は続く。
 - チャンネルの seq は投稿 (と上の親の更新) でだけ使う。定期投稿の一覧の変更はイベントを出さない (開くたびに読む)。
 
+### channel_feeds (チャンネルのフィード、RSS / Atom、M97、FEEDS.md)
+
+```sql
+CREATE TABLE channel_feeds (
+  id                    uuid PRIMARY KEY,                       -- UUIDv7
+  channel_id            uuid NOT NULL REFERENCES channels(id),  -- 公開・非公開チャンネル (DM は不可)
+  owner_id              uuid NOT NULL REFERENCES users(id),     -- 追加したメンバー (投稿の本文に名前が出る)
+  bot_user_id           uuid NOT NULL REFERENCES users(id),     -- role = bot。チャンネルに 1 つ「RSS」、そのチャンネルのフィードが共有
+  url                   varchar(2048) NOT NULL,
+  title                 varchar(200),                           -- フィードの題名 (取るたびに更新)
+  site_url              varchar(2048),
+  enabled               boolean NOT NULL DEFAULT true,
+  needs_baseline        boolean NOT NULL DEFAULT false,         -- 次の取得は記録だけ (再開・アーカイブや登録者不在の後)
+  etag                  varchar(512),                           -- 条件付き GET
+  last_modified         varchar(128),
+  seen_keys             varchar(32)[] NOT NULL DEFAULT '{}',    -- 見た記事の印 (guid / id / link の SHA-256 の先頭 32 桁)、最大 500
+  next_fetch_at         timestamptz NOT NULL,
+  last_fetched_at       timestamptz,
+  last_success_at       timestamptz,
+  last_error_code       varchar(32),                            -- not_a_feed / unsafe_xml / http_error / timeout / …
+  last_error            varchar(300),
+  consecutive_failures  integer NOT NULL DEFAULT 0,
+  failure_notified_at   timestamptz,                            -- 続けて失敗した DM を送った時 (成功で NULL に戻る)
+  post_count            integer NOT NULL DEFAULT 0,
+  last_post_at          timestamptz,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT channel_feeds_channel_url_uniq UNIQUE (channel_id, url)
+);
+CREATE INDEX channel_feeds_due_idx   ON channel_feeds (next_fetch_at) WHERE enabled;
+CREATE INDEX channel_feeds_owner_idx ON channel_feeds (owner_id);
+```
+
+- 見た記事は別の表にせず配列 1 つに持つ (今のフィードに載っている印を先頭に、古いものから捨てて 500 個まで)。1 回の取得で
+  1 行を書き換えるだけで、載っている記事は必ず覚えている。
+- 削除は行ごと (投稿は残る)。チャンネルの最後のフィードを消すとボットは抜けて無効化。ボットの投稿は誰の既読位置も動かさない。
+- 一覧の変更はイベントを出さない (開くたびに読む)。取得と投稿の規則は FEEDS.md §4。
+
 ### channel_favorites (お気に入りチャンネル、M12a)
 
 ```sql

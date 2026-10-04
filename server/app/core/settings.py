@@ -137,6 +137,14 @@ class Settings(BaseSettings):
     link_preview_ttl_hours: int = 168
     link_preview_negative_ttl_hours: int = 24
     link_preview_user_agent: str = "ChikuwaChat-LinkPreview/1.0 (+https://github.com/chikuwachat)"
+    # Channel feeds (docs/FEEDS.md, M97): RSS / Atom fetched with the previews' SSRF guard.
+    feed_poll_interval_minutes: int = 30
+    feed_check_interval_seconds: float = 60.0
+    feed_timeout_seconds: float = 10.0
+    feed_max_bytes: int = 2 * 1024 * 1024
+    feed_max_posts_per_fetch: int = 5
+    feed_failure_notify_after: int = 6
+    feed_user_agent: str = "Taylis-Feeds/1.0 (+https://github.com/chikuwachat)"
     session_retention_days: int = 30
     device_retention_days: int = 90
 
