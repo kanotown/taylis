@@ -91,7 +91,13 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   const { creating: creatingSelf, open: openSelfNotes } = useOpenSelfNotes(controller, me?.id ?? null, onOpen);
   // A folded section still shows what is unread and the open conversation (Slack). The others stay in the list, folded
   // away (.fold-row), so they slide shut and open rather than jump (testers, 2026-09-29).
-  const shown = (rows: ChannelState[], collapsed: boolean) => rows.map((c) => item(c, collapsed && c.id !== currentId && !hasUnread(c, me?.id ?? null)));
+  // `keep` names more rows a folded section still shows (Times: my own times).
+  const shown = (rows: ChannelState[], collapsed: boolean, keep?: (c: ChannelState) => boolean) =>
+    rows.map((c) => item(c, collapsed && c.id !== currentId && !hasUnread(c, me?.id ?? null) && !keep?.(c)));
+  // Times folded: 「フィード」 and my own times stay within reach (the others fold away); nothing extra without my times.
+  const isMyTimes = (c: ChannelState) => !!me && c.times_owner_id === me.id;
+  const timesFolded = folded.has("times");
+  const feedFolded = timesFolded && !timesFeedActive && !hasMyTimes;
   // Dropped on a default section: out of my own section (the conversation goes back where it belongs by kind).
   const backToDefault = (channelId: string) => {
     if (store.sidebarSections.some((section) => section.channel_ids.includes(channelId))) void controller.moveToSection(channelId, null);
@@ -465,8 +471,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         >
           <ul className="space-y-px">
             {onTimesFeed && (
-              // L8: the posts of every times I am in, newest first (TIMES_FEED.md §7); folded away with the section.
-              <li className={cn("fold-row", folded.has("times") && !timesFeedActive && "folded")} aria-hidden={(folded.has("times") && !timesFeedActive) || undefined} inert={folded.has("times") && !timesFeedActive}>
+              // L8: the posts of every times I am in, newest first (TIMES_FEED.md §7); folded away with the section unless I have a times.
+              <li className={cn("fold-row", feedFolded && "folded")} aria-hidden={feedFolded || undefined} inert={feedFolded}>
                 <div className="fold-inner">
                   <button
                     type="button"
@@ -484,7 +490,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                 </div>
               </li>
             )}
-            {shown(sections.times, folded.has("times"))}
+            {shown(sections.times, timesFolded, isMyTimes)}
           </ul>
           {sections.times.length === 0 && <Hint>+ で自分の times を作成</Hint>}
         </Section>
