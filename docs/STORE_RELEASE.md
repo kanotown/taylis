@@ -74,7 +74,47 @@ apps/ios/scripts/release-ios.sh
 
 - アーカイブは `~/Library/Caches/taylis-release/ios/<版>-<ビルド>/` (`TAYLIS_IOS_BUILD_DIR` で変えられる)。
 - アップロードの後、App Store Connect の処理に数分〜数十分。TestFlight のビルドに出たら、テストの内容を書いてグループに付ける。
-- App Store に出すときは「配信用に提出」でそのビルドを選び、スクリーンショット (6.9 インチ / 6.5 インチ) と説明を入れて審査に出す。
+- App Store に出すときは §3.1 のスクリプトで掲載情報・スクリーンショット・ビルドを入れ、App のプライバシーなど残りを手で埋めて審査に出す。
+
+### 3.1 App Store の掲載情報を入れる (`asc-metadata.py`)
+
+App Store Connect の版のページ (説明・キーワード・スクリーンショット・審査の情報など) は、`docs/store/appstore.json`
+から App Store Connect API で入れる。手で貼らない。
+
+```sh
+# 何が変わるかを見るだけ (GET だけ。何も書き込まない)
+uv run --with pyjwt --with cryptography --with httpx python apps/ios/scripts/asc-metadata.py --dry-run
+# 書き込む
+uv run --with pyjwt --with cryptography --with httpx python apps/ios/scripts/asc-metadata.py
+#   (server/.venv/bin/python でも動く。pyjwt・cryptography・httpx が入っている)
+```
+
+- 入れるもの: 版 (編集できる版を探し、無ければ作る。版の文字列は JSON の `version` = ビルドの
+  `CFBundleShortVersionString` に合わせる)、著作権、リリース方法 (手動)、ビルド (その版の VALID で期限切れでない
+  一番大きいビルド番号。`--build N` で指定、`--no-build` で触らない)、ja / en-US の説明・キーワード・プロモーション
+  テキスト・サポート URL・マーケティング URL (新機能は最初の版なので入れない)、名前 (JSON が null ならそのまま)・
+  サブタイトル・プライバシーポリシー URL、カテゴリ (ビジネス / 仕事効率化)、年齢区分の質問の回答、App Review の情報、
+  スクリーンショット (iPhone 6.9 インチ = `APP_IPHONE_67`、1320 × 2868。ファイルの一覧と順番は JSON の
+  `screenshots.files`、置き場所は `screenshots.dir`)。
+- 何度走らせてもよい: 今の値と比べて違うところだけ書く。スクリーンショットは MD5 で比べ、同じものは残し、一覧に無いものは
+  消し、足りないものを上げて、JSON の順に並べる。途中で失敗しても直してもう一度走らせればよい。
+- 一部だけ: `--only screenshots` / `--skip age,review` (手順: version, build, texts, appinfo, categories, age, review,
+  screenshots)。
+- 秘密はリポジトリに入れない。API キーは `release.env` (上の表)。審査の連絡先と審査用アカウントは
+  `~/.config/taylis/asc-review.env` (`chmod 600`。環境変数が優先):
+  ```
+  ASC_REVIEW_FIRST=Toru
+  ASC_REVIEW_LAST=Kano
+  ASC_REVIEW_EMAIL=…
+  ASC_REVIEW_PHONE=+81…
+  ASC_REVIEW_DEMO_USER=…
+  ASC_REVIEW_DEMO_PASSWORD=…
+  ASC_REVIEW_SERVER_URL=https://…   # 審査メモの {server_url}
+  ```
+  欠けている値はその欄を書かずに警告する (サーバ URL が無いと審査メモ全体を書かない)。
+- 文面を直すときは `docs/store/LISTING_*.md` などの md (人が読む版) と `appstore.json` の両方を直す。
+- API で入れられないもの (最後に表示される): **App のプライバシー** (栄養ラベル。`docs/store/PRIVACY_AND_RATINGS.md` §1
+  のとおりに手で答える)、価格と配信地域 (無料)、コンテンツの権利の質問、年齢区分の結果の確認、「審査に追加」→ 提出。
 
 ### APNs の production について
 

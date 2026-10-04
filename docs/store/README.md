@@ -6,6 +6,7 @@
 | [LISTING_EN.md](LISTING_EN.md) | 同じものの短い英語版 |
 | [PRIVACY_AND_RATINGS.md](PRIVACY_AND_RATINGS.md) | Apple の App のプライバシー、Play のデータ セーフティ、年齢区分の回答 |
 | [REVIEW_NOTES.md](REVIEW_NOTES.md) | Apple の審査メモと Play の「アプリのアクセス権」の雛形 |
+| [appstore.json](appstore.json) | App Store Connect に入れる値 (上の 4 つから抜き出したもの)。`apps/ios/scripts/asc-metadata.py` が読む (STORE_RELEASE.md §3.1)。文面を直すときは md と両方を直す |
 
 公開ページ (加納のサイト):
 

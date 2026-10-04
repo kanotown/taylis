@@ -1,0 +1,87 @@
+{
+  "_comment": [
+    "App Store Connect record of the iOS app, read by apps/ios/scripts/asc-metadata.py (docs/STORE_RELEASE.md §3.1).",
+    "The human-readable versions are LISTING_JA.md / LISTING_EN.md / PRIVACY_AND_RATINGS.md / REVIEW_NOTES.md: change both.",
+    "A null value means: leave what App Store Connect has. Secrets (review phone, demo password) never go here:",
+    "they come from ~/.config/taylis/asc-review.env or the environment."
+  ],
+  "bundleId": "jp.chikuwachat.ios",
+  "platform": "IOS",
+  "version": "1.0.0",
+  "copyright": "2026 Toru Kano",
+  "releaseType": "MANUAL",
+  "primaryCategory": "BUSINESS",
+  "secondaryCategory": "PRODUCTIVITY",
+  "localizations": {
+    "ja": {
+      "name": null,
+      "subtitle": "研究室・チームのためのセルフホスト型チャット",
+      "privacyPolicyUrl": "https://kano.ac/pages/apps/taylis-privacy-policy/",
+      "supportUrl": "https://kano.ac/pages/apps/taylis-support/",
+      "marketingUrl": "https://kano.ac/pages/app/",
+      "promotionalText": "研究室やチームが自分たちのサーバーで運用するチャット。チャンネルとスレッド、日本語と英語の全文検索、投票・予定・タスク、確実なプッシュ通知で、毎日の連絡をひとつにまとめます。",
+      "keywords": "チャット,チーム,研究室,ゼミ,セルフホスト,社内チャット,メッセージ,スレッド,グループ,連絡,通知,検索,投票,予定,タスク,スタンプ",
+      "description": "Taylis (テイリス) は、研究室・ゼミ・小さなチームが自分たちのサーバーで運用する、チャンネル型のチャットアプリです。メッセージは組織が管理するサーバーにだけ保存され、開発者や広告事業者に送られることはありません。\n\n※ 本アプリを使うには、所属する組織が運用する Taylis サーバーと、その管理者が発行したアカウントが必要です。アプリからの新規登録はできません。\n\n■ 会話を整理する\n・公開/非公開のチャンネル、1 対 1 とグループの DM\n・返信をスレッドにまとめ、フォロー中のスレッドを一覧で確認\n・メンション、重要・緊急の印、確認のお願い\n・未読と既読の位置はスマートフォン・パソコン・Web で同期\n\n■ 気持ちを手軽に伝える\n・絵文字のリアクション、「確認しました」「承知しました」などの文字のリアクション\n・組織で追加できるスタンプとカスタム絵文字\n\n■ 研究室・チームの毎日に\n・投票と日程調整\n・チャンネルの予定とタスク、締め切りのお知らせ\n・共有の機材やアカウントの順番待ちを管理する「予約」\n・作業ログをゆるく共有できる「times」\n\n■ あとから探せる\n・日本語と英語のメッセージを全文検索\n・送信者・チャンネル・期間で絞り込み、ファイルも検索\n\n■ 通知を確実に\n・メンションや DM をプッシュ通知でお知らせ\n・チャンネルごとの通知設定、通知しない時間帯、通知キーワード\n・通知を取りこぼしても、アプリを開けばサーバーから最新の状態に同期\n\n■ ファイルを共有\n・写真・動画・資料をメッセージに添付\n\n■ 安心して使うために\n・不適切なメッセージの報告とユーザーのブロック\n・自分のメッセージの編集と削除\n・アプリからいつでもアカウントを削除\n・パスワードに加えて 2 要素認証に対応。組織が許可した場合は組織の Google アカウントでログイン\n・ログイン情報はキーチェーン (Android は Keystore) に暗号化して保存\n\n■ 複数のサーバー\n・所属する複数の組織のサーバーを切り替えて使えます\n\n組織のサーバー管理者が有効にした場合に限り、AI のボットや会話の要約などの AI 機能も使えます (会話の内容は管理者が選んだ AI 事業者に送られます)。\n\nプライバシーポリシー: https://kano.ac/pages/apps/taylis-privacy-policy/\nサポート: https://kano.ac/pages/apps/taylis-support/"
+    },
+    "en-US": {
+      "name": "Taylis - Team Chat for Labs",
+      "subtitle": "Self-hosted chat for teams",
+      "privacyPolicyUrl": "https://kano.ac/pages/apps/taylis-privacy-policy/",
+      "supportUrl": "https://kano.ac/pages/apps/taylis-support/",
+      "marketingUrl": "https://kano.ac/pages/app/",
+      "promotionalText": "Team chat that your lab or organization runs on its own server: channels, threads, Japanese and English search, polls, events and reliable push notifications.",
+      "keywords": "chat,team,lab,self-hosted,messaging,threads,channels,group,notifications,search,polls,tasks",
+      "description": "Taylis is a channel-based chat app for labs, seminars and small teams that run their own Taylis server. Messages are stored only on the server your organization operates; nothing is sent to the developer or to advertisers.\n\nNote: you need an account on a Taylis server run by your organization. Accounts are created by the server administrator; there is no public sign-up.\n\n- Public and private channels, direct and group messages\n- Threads, mentions, reactions (emoji, text reactions and your organization's stickers)\n- Polls, scheduling, channel events and tasks, and a queue for shared equipment\n- Full-text search in Japanese and English, filtered by person, channel and date\n- Push notifications with per-channel settings and quiet hours; the app always resyncs with the server\n- Photo, video and file attachments\n- Report messages, block users, delete your own messages and delete your account in the app\n- Two-factor authentication, and sign-in with your organization's Google account when the server allows it\n- Switch between several servers\n\nOptional AI features (a bot and summaries) are available only when your server administrator enables them; conversation content is then sent to the AI provider the administrator chose."
+    }
+  },
+  "ageRating": {
+    "advertising": false,
+    "alcoholTobaccoOrDrugUseOrReferences": "NONE",
+    "contests": "NONE",
+    "gambling": false,
+    "gamblingSimulated": "NONE",
+    "gunsOrOtherWeapons": "NONE",
+    "healthOrWellnessTopics": false,
+    "lootBox": false,
+    "medicalOrTreatmentInformation": "NONE",
+    "messagingAndChat": true,
+    "parentalControls": false,
+    "profanityOrCrudeHumor": "NONE",
+    "ageAssurance": false,
+    "sexualContentGraphicAndNudity": "NONE",
+    "sexualContentOrNudity": "NONE",
+    "socialMedia": false,
+    "socialMediaAgeRestricted": false,
+    "horrorOrFearThemes": "NONE",
+    "matureOrSuggestiveThemes": "NONE",
+    "unrestrictedWebAccess": false,
+    "userGeneratedContent": true,
+    "violenceCartoonOrFantasy": "NONE",
+    "violenceRealisticProlongedGraphicOrSadistic": "NONE",
+    "violenceRealistic": "NONE"
+  },
+  "review": {
+    "contactFirstName": "Toru",
+    "contactLastName": "Kano",
+    "contactEmail": "kanotown@gmail.com",
+    "demoAccountRequired": true,
+    "notes": "Taylis is a chat client for self-hosted Taylis servers. Each organization (for example a university\nresearch lab) runs its own server and its administrator creates the accounts. There is no public\nsign-up and the app is not a general social network: people only talk with members of their own\norganization.\n\nHow to sign in for review:\n1. On the first screen, enter the server URL: {server_url}\n2. Username: {demo_user}   Password: see the Sign-In Information above.\n3. Tap \"ログイン\" (Log in).\nThe demo workspace contains fictional channels (#お知らせ, #研究ミーティング, ...), a thread, a poll\nand direct messages.\n\nSign in with Google: the \"Google でログイン\" button appears only when a server enables it, and it\naccepts only accounts of the organization's own Google Workspace domain configured on that server\n(an existing education/enterprise account). The app has no other third-party or social login, so we\nbelieve Sign in with Apple is not required (Guideline 4.8, education/enterprise account exception).\nThe review server uses a username and password.\n\nUser-generated content safeguards (Guideline 1.2):\n- Report: long-press a message and choose \"報告する\" (Report). Reports go to the\n  server administrators, who can delete messages and deactivate accounts.\n- Block: open a person's profile and choose \"ブロック\" (Block); their messages are hidden.\n- Users can edit and delete their own messages.\n- Only members created or invited by the organization's administrator can post.\n- Contact: kanotown@gmail.com\n\nAccount deletion (Guideline 5.1.1(v)): 設定 (Settings) > アカウント (Account) > アカウントを削除\n(Delete account). The profile and sign-in data are erased and the user's messages remain as\n\"退会したユーザー\" (deleted user).\n\nPush notifications: the app asks for permission after sign-in. To check delivery, open Settings\nand tap \"テスト通知を送る\" (Send test notification).\n\nNetworking: NSAllowsArbitraryLoads is set because each organization enters its own server URL, and\nservers on a local network may not have TLS. Production servers use HTTPS.\n\nOptional AI features (summaries, a bot) are server-side and only appear when the server\nadministrator enables them; they are disabled on the review server."
+  },
+  "screenshots": {
+    "displayType": "APP_IPHONE_67",
+    "dir": "~/Downloads/Taylis-store-screens/ios",
+    "files": [
+      "01-home.png",
+      "02-conversation.png",
+      "03-thread.png",
+      "04-poll.png",
+      "06-search.png",
+      "07-reservation.png",
+      "08-message-actions.png"
+    ],
+    "locales": [
+      "ja",
+      "en-US"
+    ]
+  }
+}
