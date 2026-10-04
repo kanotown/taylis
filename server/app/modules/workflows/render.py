@@ -4,7 +4,10 @@ apps/shared/workflows.json hold both to them.
 
 A value typed by a person never makes a mention: `<` before `@` or `!` becomes the full-width
 less-than sign U+FF1C (WORKFLOWS.md D3). Mentions come from user fields (`<@id>`) and from what
-the workflow's managers wrote in the template.
+the workflow's managers wrote in the template. Review v0.1.30 #4: nor across the boundary between
+a value and the template or another value (`<{{link}}>` with `!channel`, or `<` and `!channel>`
+in two fields): every `<@`, `<!` or `<#` up to its `>` must be written wholly by the template or
+a user field, else its `<` becomes U+FF1C too (`_neutralize`).
 """
 
 import re
@@ -26,6 +29,9 @@ DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 DATETIME_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2})T(([01]\d|2[0-3]):([0-5]\d))$")
 _MENTION_START = re.compile(r"<(?=[@!])")
+# What starts a mention or channel token (`<@id>`, `<@group:id>`, `<!here>`, `<#…>`).
+_TOKEN_SIGILS = "@!#"
+FULLWIDTH_LT = "\uff1c"
 
 
 class ValuesError(Exception):
@@ -180,7 +186,23 @@ def clean_values(fields: list[dict[str, Any]], values: dict[str, Any]) -> dict[s
 
 def escape_text(value: str) -> str:
     """A typed value cannot call anyone: `<@…` and `<!…` lose their `<`."""
-    return _MENTION_START.sub("\uff1c", value)
+    return _MENTION_START.sub(FULLWIDTH_LT, value)
+
+
+def _neutralize(text: str, trusted: list[bool]) -> str:
+    """`trusted[i]`: whether `text[i]` came from the template or a user field. A `<` followed by
+    `@`, `!` or `#` starts a token that runs to the next `>` (or is just those two characters
+    when no `>` follows); when any character of it came from a typed value, the `<` becomes
+    U+FF1C, so no mention can be put together from a value and its surroundings."""
+    chars = list(text)
+    for i, ch in enumerate(chars):
+        if ch != "<" or i + 1 >= len(chars) or chars[i + 1] not in _TOKEN_SIGILS:
+            continue
+        close = text.find(">", i + 2)
+        end = close if close != -1 else i + 1
+        if not all(trusted[i : end + 1]):
+            chars[i] = FULLWIDTH_LT
+    return "".join(chars)
 
 
 def date_label(day: date) -> str:
@@ -210,20 +232,34 @@ def format_value(field: dict[str, Any], value: Any) -> str:
 def render(template: str, fields: list[dict[str, Any]], values: dict[str, Any]) -> str:
     """The message body. A line whose placeholders are all empty is left out; a placeholder
     that names no field stays as it is (saving refuses those). Replaced once: a value holding
-    `{{…}}` is not read again."""
+    `{{…}}` is not read again. Mentions only from the template and user fields (`_neutralize`)."""
     by_key = {field["key"]: field for field in fields}
     texts = {
         key: format_value(field, values.get(key, _empty(field))) for key, field in by_key.items()
     }
+    trusted_keys = {key for key, field in by_key.items() if field["type"] == "user"}
 
-    def replace(match: re.Match[str]) -> str:
-        key = unicodedata.normalize("NFC", match.group(1))
-        return texts[key] if key in texts else match.group(0)
+    out: list[str] = []
+    trusted: list[bool] = []
 
-    lines: list[str] = []
+    def emit(piece: str, is_trusted: bool) -> None:
+        out.append(piece)
+        trusted.extend([is_trusted] * len(piece))
+
     for line in template.replace("\r\n", "\n").split("\n"):
         keys = [unicodedata.normalize("NFC", k) for k in PLACEHOLDER.findall(line)]
         if keys and all(texts.get(key, "x") == "" for key in keys):
             continue
-        lines.append(PLACEHOLDER.sub(replace, line))
-    return "\n".join(lines).strip("\n")
+        if out:
+            emit("\n", True)
+        at = 0
+        for match in PLACEHOLDER.finditer(line):
+            emit(line[at : match.start()], True)
+            key = unicodedata.normalize("NFC", match.group(1))
+            if key in texts:
+                emit(texts[key], key in trusted_keys)
+            else:
+                emit(match.group(0), True)  # names no field: the template's own text
+            at = match.end()
+        emit(line[at:], True)
+    return _neutralize("".join(out), trusted).strip("\n")

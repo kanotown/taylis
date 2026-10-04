@@ -198,7 +198,9 @@ async def update_user(
         await db.commit()
     except IntegrityError as exc:  # M96: the new username was taken meanwhile
         await db.rollback()
-        raise conflict("username_taken", "Username is already in use") from exc
+        if usernames.is_username_conflict(exc):
+            raise conflict("username_taken", "Username is already in use") from exc
+        raise
     return user
 
 

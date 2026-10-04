@@ -288,6 +288,13 @@ times (L8) もオフなら対象外 (`channels.list_public_times_not_member` が
 - 監査ログ `workspace.default_channels_applied` (`{users, memberships, channels: {id: added}}`、入れた人がいたときだけ)。
 - 実装: `workspace.default_channels.apply_to_everyone` → `channels.add_members_in_tx` (1 チャンネルずつ、同時の追加は
   入れ子のトランザクションで飛ばす)。数十人の規模なので 1 トランザクションで全部。
+- **非公開化・アーカイブとの競合 (REVIEW-v0.1.30 #1)**: 一括参加 (`dry_run` 以外) と §6.2 の `join_in_tx` は、人を
+  入れる前に一覧のチャンネルの行を id 順に `FOR NO KEY UPDATE` でロックし、ロックの下で読み直して公開・未アーカイブの
+  ものだけに入れる (`workspace.lock_usable_default_channels`、コミットまで保持)。先にコミットした非公開化・アーカイブは
+  読み直しで見えて飛ばす。後から来た非公開化・アーカイブはチャンネルの行で待ち、メンバーシップ (公開の間に入った人) の
+  コミットの後に進む。ロックの順: 非公開化・アーカイブはチャンネルの行 → 設定の行 (一覧から外す)。参加の側はチャンネルの
+  行だけを取り、設定の行はロックしない (一覧は読むだけ。一覧から外れても、ロックの下でまだ公開なら公開のうちに入れたのと
+  同じ) ので、循環して待つことは無い。複数のチャンネルは id 順なので、参加の操作同士も循環しない。
 
 ### 6.4 Desktop / Web
 

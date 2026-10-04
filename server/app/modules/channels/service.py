@@ -650,8 +650,9 @@ async def rename_times_for_username_in_tx(
 ) -> tuple[str, str] | None:
     """M96 (DATA_MODEL.md users「ユーザー名の変更」): the owner's times follows a new username when
     its name still is the one made from the old (`times_name_follows`). Returns (from, to), or None
-    when there is no such times or every candidate name is taken (the name then stays). The
-    caller commits."""
+    when there is no such times or every candidate name is taken (the name then stays, also when
+    a channel took the chosen name concurrently: review v0.1.30 #7, so that the rename never
+    fails on the times' name). The caller commits."""
     channel = await repo.get_times_of(db, owner_id)
     if channel is None or not times_name_follows(channel.name, old_username):
         return None
@@ -665,9 +666,13 @@ async def rename_times_for_username_in_tx(
     else:
         return None
     previous = channel.name or ""
-    channel.name = candidate
-    channel.updated_at = utcnow()
-    await db.flush()
+    try:
+        async with db.begin_nested():
+            channel.name = candidate
+            channel.updated_at = utcnow()
+            await db.flush()
+    except IntegrityError:
+        return None  # created meanwhile: the times keeps its name (the savepoint is undone)
     await _emit_channel(db, events.CHANNEL_UPDATED, channel, audience_type="channel")
     return previous, candidate
 

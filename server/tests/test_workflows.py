@@ -467,6 +467,47 @@ async def test_template_channel_mention_and_several_people(
     assert message["mentioned_user_ids"] == [str(bob.id), str(carol.id)]
 
 
+async def test_no_mention_from_a_value_and_its_surroundings(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """Review v0.1.30 #4: the owner's `URL: <{{link}}>` with `!channel` typed by a member, a `<`
+    and `!here>` in two fields, `<@{{who_id}}>` with an id typed in: no mention, no @channel. The
+    owner's own mention and the user field still mention."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    carol = await make_user(db, "carol")
+    as_user(alice)
+    cid = await _channel(client, "links", [bob, carol])
+    fields = [
+        {"key": "link", "label": "URL", "type": "text"},
+        {"key": "a", "label": "A", "type": "text"},
+        {"key": "b", "label": "B", "type": "text"},
+        {"key": "who_id", "label": "ID", "type": "text"},
+        {"key": "who", "label": "誰", "type": "user"},
+    ]
+    template = "URL: <{{link}}>\n{{a}}{{b}}\n担当 <@{{who_id}}>\n<@{{who}}> {{who}}"
+    wid = (await _create(client, cid, name="リンク", fields=fields, template=template)).json()["id"]
+    as_user(bob)
+    posted = await _submit(
+        client,
+        wid,
+        {
+            "link": "!channel",
+            "a": "<",
+            "b": "!here>",
+            "who_id": str(carol.id),
+            "who": [str(bob.id)],
+        },
+    )
+    assert posted.status_code == 201, posted.text
+    message = posted.json()
+    assert message["body"] == (
+        f"URL: \uff1c!channel>\n\uff1c!here>\n担当 \uff1c@{carol.id}>\n<@<@{bob.id}>> <@{bob.id}>"
+    )
+    assert message["mention_all"] is False
+    assert message["mentioned_user_ids"] == [str(bob.id)]
+
+
 async def test_values_are_checked_on_the_server(
     client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
 ) -> None:

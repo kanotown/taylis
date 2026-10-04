@@ -192,16 +192,53 @@ object Workflows {
         }
     }
 
-    /** The message body: lines whose placeholders are all empty are left out; replaced once (the server's render). */
+    /**
+     * Review v0.1.30 #4: `trusted[i]` says whether `text[i]` came from the template or a user field. A `<` followed by
+     * `@`, `!` or `#` starts a token up to the next `>` (just those two characters when no `>` follows); when any of it
+     * was typed, the `<` becomes U+FF1C, so no mention is put together from a value and its surroundings (the server's
+     * `_neutralize`).
+     */
+    private fun neutralize(text: String, trusted: List<Boolean>): String {
+        val out = StringBuilder(text)
+        for (i in 0 until text.length - 1) {
+            if (text[i] != '<' || text[i + 1] !in "@!#") continue
+            val close = text.indexOf('>', i + 2)
+            val end = if (close == -1) i + 1 else close
+            if ((i..end).any { !trusted[it] }) out.setCharAt(i, '＜')
+        }
+        return out.toString()
+    }
+
+    /**
+     * The message body: lines whose placeholders are all empty are left out; replaced once (the server's render).
+     * Mentions only from the template and user fields.
+     */
     fun render(template: String, fields: List<WorkflowField>, values: Map<String, FieldValue>): String {
         val texts = fields.associate { it.key to formatValue(it, values[it.key] ?: emptyValue(it)) }
-        val lines = ArrayList<String>()
+        val userKeys = fields.filter { it.type == "user" }.map { it.key }.toSet()
+        val out = StringBuilder()
+        val trusted = ArrayList<Boolean>()
+        fun emit(piece: String, isTrusted: Boolean) {
+            out.append(piece)
+            repeat(piece.length) { trusted += isTrusted }
+        }
+        var started = false
         for (line in template.replace("\r\n", "\n").split("\n")) {
             val keys = PLACEHOLDER.findAll(line).map { nfc(it.groupValues[1]) }.toList()
             if (keys.isNotEmpty() && keys.all { key -> texts[key]?.isEmpty() ?: false }) continue
-            lines += PLACEHOLDER.replace(line) { match -> texts[nfc(match.groupValues[1])] ?: match.value }
+            if (started) emit("\n", true)
+            started = true
+            var at = 0
+            for (match in PLACEHOLDER.findAll(line)) {
+                emit(line.substring(at, match.range.first), true)
+                val key = nfc(match.groupValues[1])
+                val text = texts[key]
+                if (text == null) emit(match.value, true) else emit(text, key in userKeys)
+                at = match.range.last + 1
+            }
+            emit(line.substring(at), true)
         }
-        return lines.joinToString("\n").trim('\n')
+        return neutralize(out.toString(), trusted).trim('\n')
     }
 
     /** The preview while the form is being filled: each field that does not check out yet counts as empty. */

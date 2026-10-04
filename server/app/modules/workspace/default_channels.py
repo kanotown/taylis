@@ -44,11 +44,12 @@ async def channels_for_new_account(
 ) -> list[Channel]:
     """The administrator's list when it was ever saved; otherwise ``legacy_names``
     (SSO_DEFAULT_CHANNELS, passed only by Google sign-in's auto-provision). Channels archived,
-    deleted or made private since are skipped."""
+    deleted or made private since are skipped. The returned channels stay locked until the caller
+    commits (review v0.1.30 #1: a channel made private meanwhile is never joined)."""
     ids = await workspace.default_channel_ids(db)
     if ids is None:
-        return await _legacy_channels(db, legacy_names)
-    return await workspace.usable_default_channels(db, ids)
+        ids = [c.id for c in await _legacy_channels(db, legacy_names)]
+    return await workspace.lock_usable_default_channels(db, ids)
 
 
 async def join_in_tx(
@@ -83,7 +84,14 @@ async def apply_to_everyone(
         .scalars()
         .all()
     )
-    usable = await workspace.usable_default_channels(db, await workspace.default_channel_ids(db))
+    ids = await workspace.default_channel_ids(db)
+    # Review v0.1.30 #1: a real run locks the channels and re-reads them, so one made private or
+    # archived after the list was read is skipped (and one being changed waits for this commit).
+    usable = await (
+        workspace.usable_default_channels(db, ids)
+        if dry_run
+        else workspace.lock_usable_default_channels(db, ids)
+    )
     results: list[DefaultChannelApplied] = []
     people: set[uuid.UUID] = set()
     memberships = 0

@@ -109,7 +109,9 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         await db.rollback()
         if "uq_users_username" in str(exc.orig):  # M96: taken meanwhile by someone else
             raise conflict("username_taken", "Username is already in use") from exc
-        raise conflict("email_taken", "Email is already in use") from exc
+        if "uq_users_email" in str(exc.orig):
+            raise conflict("email_taken", "Email is already in use") from exc
+        raise
     return user
 
 

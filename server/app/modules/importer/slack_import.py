@@ -81,7 +81,9 @@ from app.modules.importer.core import (
     active_admin,
     standard_glyph,
 )
+from app.modules.importer.models import ImportRef
 from app.modules.importer.slack_mrkdwn import Resolver, to_markdown, unescape, with_skin_tone
+from app.modules.messages.models import Message
 from app.modules.messages.schemas import MAX_BODY_LENGTH
 from app.modules.users.models import User
 
@@ -136,6 +138,10 @@ EMOJI_EXTENSIONS = (".png", ".gif", ".jpg", ".jpeg", ".webp")
 _JOINER = r"(?:<@[A-Za-z0-9]+(?:\|[^>\n]*)?>|@?[^\s<>@][^\n<>]{0,63}?)"
 BRIDGE_JOIN = re.compile(rf"^\s*{_JOINER}\s*(?:さん\s*)?がチャンネルに参加しました[。.]?\s*$")
 BOT_AS_PREFIX = "bot-as:"
+# Review v0.1.30 #2: an import_refs kind marking a ``--bot-as`` bot whose posts went to an existing
+# person (a Slack user or @username) rather than to a ``new:`` account; its ``user`` ref says who.
+BOT_AS_PERSON = "bot_as_person"
+POST_REF_CHUNK = 5000
 PLACEHOLDER = "📎 {name} (Slack から取得できませんでした)"
 
 
@@ -710,6 +716,7 @@ class SlackImport(core.ImportJob):
         # the label as the export wrote it, and the targets (checked by _people).
         self.bot_as = {nfc(k.strip().lower()): v for k, v in options.bot_as.items()}
         self.bot_as_posts: Counter[str] = Counter()
+        self.bot_as_post_ids: dict[str, list[str]] = {}  # their post ids (an earlier run's sender)
         self.bot_as_labels: dict[str, str] = {}
         self.bot_targets: dict[str, BotTarget] = {}
         # M92: Slack emoji name → Taylis name, and back (a name may be the target of several).
@@ -871,6 +878,9 @@ class SlackImport(core.ImportJob):
                 name = self._bot_as_name(message)
                 if name is not None and self._importable(message):
                     self.bot_as_posts[name] += 1
+                    self.bot_as_post_ids.setdefault(name, []).append(
+                        f"{record['id']}:{message['ts']}"
+                    )
                 self._sender(message)
             if record["archived"]:
                 record["delete_at"] = last
@@ -1085,26 +1095,90 @@ class SlackImport(core.ImportJob):
         self._resolve_bot_targets()
         await super()._people()
         refs = await self._refs("user")
+        persons = await self._refs(BOT_AS_PERSON)
         for key, target in sorted(self.bot_targets.items()):
-            await self._bot_person(key, target, refs)
+            await self._bot_person(key, target, refs, persons)
 
-    async def _bot_person(self, key: str, target: BotTarget, refs: dict[str, uuid.UUID]) -> None:
+    async def _earlier_senders(self, name: str) -> set[uuid.UUID]:
+        """Who the bot's posts that an earlier run imported were sent as (their messages'
+        sender): the mapping of a run that did not store it yet (review v0.1.30 #2)."""
+        ids = self.bot_as_post_ids.get(name, [])
+        senders: set[uuid.UUID] = set()
+        for start in range(0, len(ids), POST_REF_CHUNK):
+            rows = await self.db.execute(
+                select(Message.sender_id)
+                .join(ImportRef, ImportRef.target_id == Message.id)
+                .where(
+                    ImportRef.source == self.source,
+                    ImportRef.kind == "post",
+                    ImportRef.source_id.in_(ids[start : start + POST_REF_CHUNK]),
+                )
+                .distinct()
+            )
+            senders.update(s for s in rows.scalars().all() if s is not None)
+        return senders
+
+    async def _username_of(self, user_id: uuid.UUID) -> str:
+        user = await self.db.get(User, user_id)
+        return f"@{user.username}" if user is not None else str(user_id)
+
+    async def _bot_person(
+        self,
+        key: str,
+        target: BotTarget,
+        refs: dict[str, uuid.UUID],
+        persons: dict[str, uuid.UUID],
+    ) -> None:
+        """A bridge bot's account. Review v0.1.30 #2: every mapping is kept in import_refs
+        (``user``, plus ``bot_as_person`` when it is an existing person's), and a rerun whose
+        target resolves to another account stops before anything is written, as ``--user``
+        does: a name taken over by someone else after a rename never gets the newer posts. A run
+        from before the mapping was stored is matched by the senders of the posts it imported."""
         name = key[len(BOT_AS_PREFIX) :]
         label = self.bot_as_labels.get(name, name)
+        earlier = refs.get(key)
+        stored = earlier is not None
+        was_person = key in persons
+        if earlier is None:
+            senders = await self._earlier_senders(name)
+            if len(senders) > 1:
+                shown = ", ".join(sorted([await self._username_of(s) for s in senders]))
+                raise ImportFailed(
+                    f"--bot-as {name}: an earlier run imported its posts as several accounts "
+                    f"({shown}); fix them by hand first"
+                )
+            if senders:
+                earlier, was_person = next(iter(senders)), True
         user: User | None
-        if target.kind == "slack":
-            person = self.people.get(target.value)
-            if person is None:  # needed_user_ids asked for them
-                raise ImportFailed(f"--bot-as {name}: the Slack user {target.value} got no account")
-            user = await self.db.get(User, person.id)
-            how = f"--bot-as, Slack {target.value}"
-        elif target.kind == "user":
-            user = await self._user_by_name(target.value)
-            if user is None:
-                raise ImportFailed(f"--bot-as {name}=@{target.value}: no such Taylis user")
-            how = "--bot-as"
+        if target.kind in ("slack", "user"):
+            if target.kind == "slack":
+                person = self.people.get(target.value)
+                if person is None:  # needed_user_ids asked for them
+                    raise ImportFailed(
+                        f"--bot-as {name}: the Slack user {target.value} got no account"
+                    )
+                user = await self.db.get(User, person.id)
+                how = f"--bot-as, Slack {target.value}"
+            else:
+                user = await self._user_by_name(target.value)
+                if user is None:
+                    raise ImportFailed(f"--bot-as {name}=@{target.value}: no such Taylis user")
+                how = "--bot-as"
+            assert user is not None
+            if earlier is not None and earlier != user.id:
+                raise ImportFailed(
+                    f"--bot-as {name}={self.bot_as[name]}: an earlier run imported its posts as "
+                    f"{await self._username_of(earlier)}, not @{user.username} (give that account, "
+                    "e.g. after a rename)"
+                )
+            if not stored and key not in persons:
+                self._ref(BOT_AS_PERSON, key, user.id)
         else:
-            earlier = refs.get(key)
+            if earlier is not None and was_person:
+                raise ImportFailed(
+                    f"--bot-as {name}=new:…: an earlier run imported its posts as "
+                    f"{await self._username_of(earlier)} (give that account instead)"
+                )
             user = await self.db.get(User, earlier) if earlier is not None else None
             if earlier is not None and user is None:
                 raise ImportFailed(f"--bot-as {name}: imported before, now gone")
@@ -1124,9 +1198,10 @@ class SlackImport(core.ImportJob):
                 user = await self._new_account(
                     record, ACTION_GUEST if target.guest else ACTION_DEACTIVATED
                 )
-                self._ref("user", key, user.id)
                 self.report.counts["users_created"] += 1
                 how = "--bot-as, new" + (" guest" if target.guest else "")
+        if not stored:
+            self._ref("user", key, user.id)
         assert user is not None
         self.people[key] = Person(
             user.id, user.username, user.is_active and user.role != "bot", user.is_guest

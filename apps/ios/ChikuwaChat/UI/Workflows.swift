@@ -203,27 +203,59 @@ enum Workflows {
         }
     }
 
+    /// Review v0.1.30 #4: `trusted[i]` says whether UTF-16 unit `i` came from the template or a user field. A `<`
+    /// followed by `@`, `!` or `#` starts a token up to the next `>` (just those two units when no `>` follows); when
+    /// any of it was typed, the `<` becomes U+FF1C, so no mention is put together from a value and its surroundings
+    /// (the server's `_neutralize`).
+    static func neutralize(_ units: [UInt16], trusted: [Bool]) -> String {
+        let lt: UInt16 = 0x3C, gt: UInt16 = 0x3E, sigils: Set<UInt16> = [0x40, 0x21, 0x23]
+        var out = units
+        var i = 0
+        while i + 1 < units.count {
+            if units[i] == lt && sigils.contains(units[i + 1]) {
+                var end = i + 1
+                if let close = units[(i + 2)...].firstIndex(of: gt) { end = close }
+                if trusted[i...end].contains(false) { out[i] = 0xFF1C }
+            }
+            i += 1
+        }
+        return String(decoding: out, as: UTF16.self)
+    }
+
     /// The message body: lines whose placeholders are all empty are left out; replaced once (the server's render).
+    /// Mentions only from the template and user fields.
     static func render(_ template: String, fields: [WorkflowField], values: [String: Value]) -> String {
         var texts: [String: String] = [:]
         for field in fields { texts[nfc(field.key)] = format(field, values[field.key] ?? emptyValue(field)) }
-        var lines: [String] = []
+        let userKeys = Set(fields.filter { $0.type == "user" }.map { nfc($0.key) })
+        var units: [UInt16] = []
+        var trusted: [Bool] = []
+        func emit(_ piece: String, _ isTrusted: Bool) {
+            let added = Array(piece.utf16)
+            units += added
+            trusted += Array(repeating: isTrusted, count: added.count)
+        }
+        var started = false
         for line in template.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n") {
             let ns = line as NSString
             let matches = placeholder.matches(in: line, range: NSRange(location: 0, length: ns.length))
             let keys = matches.map { nfc(ns.substring(with: $0.range(at: 1))) }
             if !keys.isEmpty && keys.allSatisfy({ texts[$0] == "" }) { continue }
-            var result = ""
+            if started { emit("\n", true) }
+            started = true
             var last = 0
             for (match, key) in zip(matches, keys) {
-                result += ns.substring(with: NSRange(location: last, length: match.range.location - last))
-                result += texts[key] ?? ns.substring(with: match.range)
+                emit(ns.substring(with: NSRange(location: last, length: match.range.location - last)), true)
+                if let text = texts[key] {
+                    emit(text, userKeys.contains(key))
+                } else {
+                    emit(ns.substring(with: match.range), true)
+                }
                 last = match.range.location + match.range.length
             }
-            result += ns.substring(from: last)
-            lines.append(result)
+            emit(ns.substring(from: last), true)
         }
-        return lines.joined(separator: "\n").trimmingCharacters(in: CharacterSet(charactersIn: "\n"))
+        return neutralize(units, trusted: trusted).trimmingCharacters(in: CharacterSet(charactersIn: "\n"))
     }
 
     /// The preview while the form is being filled: each field that does not check out yet counts as empty.
