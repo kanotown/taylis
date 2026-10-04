@@ -120,6 +120,12 @@ export type FeedUpdate = components["schemas"]["FeedUpdate"];
 export type FeedBotOut = components["schemas"]["FeedBotOut"];
 export type FeedBotUpdate = components["schemas"]["FeedBotUpdate"];
 
+/** Reservation pools: a channel's shared seats with a queue (M99, docs/RESERVATIONS.md). */
+export type PoolOut = components["schemas"]["PoolOut"];
+export type PoolCreate = components["schemas"]["PoolCreate"];
+export type PoolUpdate = components["schemas"]["PoolUpdate"];
+export type ReservationOut = components["schemas"]["ReservationOut"];
+
 /** Workflows: forms that post a message (M94, docs/WORKFLOWS.md). */
 export type WorkflowOut = components["schemas"]["WorkflowOut"];
 export type WorkflowCreate = components["schemas"]["WorkflowCreate"];

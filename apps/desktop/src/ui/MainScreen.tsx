@@ -16,6 +16,7 @@ import { QuickSwitcher } from "./QuickSwitcher";
 import { ChannelPins, PinsPane } from "./PinsPane";
 import { ChannelDetails } from "./ChannelDetails";
 import { FeedsDialog } from "./ChannelFeeds";
+import { ReservationBar, ReservationSettingsDialog } from "./Reservations";
 import { RecurringPostsDialog } from "./RecurringPosts";
 import { ChannelWorkflowsDialog } from "./WorkflowViews";
 import { CanvasPane } from "./CanvasPane";
@@ -123,7 +124,7 @@ function liveKey(place: Place<Focus>): string {
 
 const isRootNav = (nav: Nav) => nav.pane === "list";
 
-type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | "recurring" | "feeds" | "workflows" | null;
+type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | "recurring" | "feeds" | "reservations" | "workflows" | null;
 
 const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
 
@@ -1053,6 +1054,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       <MenuItem onSelect={() => setDialog("members")}>メンバー</MenuItem>
       {(current.type === "public" || current.type === "private") && current.isMember && <MenuItem onSelect={() => setDialog("recurring")}>定期投稿…</MenuItem>}
       {(current.type === "public" || current.type === "private") && <MenuItem onSelect={() => setDialog("feeds")}>フィード…</MenuItem>}
+      {(current.type === "public" || current.type === "private") && <MenuItem onSelect={() => setDialog("reservations")}>共有枠の予約…</MenuItem>}
       {(current.type === "public" || current.type === "private") && <MenuItem onSelect={() => setDialog("workflows")}>ワークフロー…</MenuItem>}
       {(current.type === "public" || current.type === "private") && current.isMember && canEditBoard(current, controller.isAdmin) && !!controller.engine?.tasks?.available && (
         <MenuItem onSelect={() => setDeadlineInit(newDeadlineInit(controller, current.id))}>締切を追加…</MenuItem>
@@ -1391,6 +1393,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
               )}
             </div>
           </header>
+          {/* M99: the channel's reservation pools, on every layout (a phone too), above the tabs / links. */}
+          {(current.type === "public" || current.type === "private") && <ReservationBar controller={controller} channel={current} />}
           {tabbed ? (
             <ConversationTabs controller={controller} channel={current} tab={tab} onTab={setTab} onAddLink={addLink} onEditLink={editLink} upcoming={upcomingCount} />
           ) : (
@@ -1535,6 +1539,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
       {dialog === "recurring" && current && <RecurringPostsDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {dialog === "feeds" && current && <FeedsDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
+      {dialog === "reservations" && current && <ReservationSettingsDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {dialog === "workflows" && current && <ChannelWorkflowsDialog controller={controller} channel={current} manage onClose={() => setDialog(null)} />}
       {taskDialog && <TaskDialog controller={controller} task={controller.engine?.tasks?.find(taskDialog.id) ?? taskDialog} onClose={() => setTaskDialog(null)} onOpenMessage={openTaskMessage} />}
       {deadlineInit && <TaskDialog controller={controller} task={null} init={deadlineInit} onClose={() => setDeadlineInit(null)} onOpenMessage={openTaskMessage} />}

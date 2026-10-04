@@ -4,7 +4,7 @@
  * engine tests and the shared contract fixtures run without a backend.
  */
 import { ApiError } from "../src/api/errors";
-import type { ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
+import type { PoolOut, ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
 import type { LastMessageOut, WorkspaceSettingsOut } from "../src/api/types";
 import { aiProviderOf, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiAskCreate, type AiAskTargetOut, type AiProviderOut, type AiRunOut, type AiStatusOut, type AiSummaryCreate, type AiSummaryTargetOut, type AiUsageOut } from "../src/api/ai";
 import type { components } from "../src/api/schema";
@@ -986,6 +986,15 @@ export class FakeServer {
     this.emit(record.members, { type: "event", id: ++this.eventId, event: "channel.links_updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, links } });
   }
 
+  /** M99: each channel's reservation pools; setPools announces a change like the server (no card in the event). */
+  readonly pools = new Map<string, PoolOut[]>();
+
+  setPools(channelId: string, pools: PoolOut[], changed: string = pools[0]?.id ?? "p"): void {
+    const record = this.record(channelId);
+    this.pools.set(channelId, pools);
+    this.emit(record.members, { type: "event", id: ++this.eventId, event: "reservation.updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, pool_id: changed, deleted: false } });
+  }
+
   // --- canvases (M43, CANVAS.md §4.4–§4.7) -------------------------------------------------------
 
   /**
@@ -1642,6 +1651,10 @@ export class FakeServer {
         if (index < 0) throw new ApiError(404, "template_not_found", "Template not found");
         if (this.canvasTemplates[index]!.builtin) throw new ApiError(409, "template_builtin", "builtin");
         this.canvasTemplates.splice(index, 1);
+      },
+      reservationPools: async (channelId) => {
+        maybeFail();
+        return this.pools.get(channelId) ?? [];
       },
       channelLinks: async (channelId) => {
         maybeFail();

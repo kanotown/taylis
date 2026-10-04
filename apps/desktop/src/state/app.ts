@@ -19,7 +19,7 @@ import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, NetworkError, UserMessageError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, signInName, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
+import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -1770,6 +1770,56 @@ export class AppController {
     if (!this.api) return false;
     try {
       this.store.setChannelLinks(channelId, await this.api.deleteChannelLink(channelId, linkId));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  // --- reservation pools (M99, docs/RESERVATIONS.md) ------------------------------------------
+
+  /** Runs one call that answers with the pool, and puts the answer in the store; errors go to the banner. */
+  private async withPool(call: (api: ApiClient) => Promise<PoolOut>): Promise<PoolOut | null> {
+    if (!this.api) return null;
+    try {
+      const pool = await call(this.api);
+      this.store.putReservationPool(pool);
+      return pool;
+    } catch (error) {
+      this.setError(error);
+      return null;
+    }
+  }
+
+  /** 「予約する」. */
+  reservePool(poolId: string): Promise<PoolOut | null> {
+    return this.withPool((api) => api.reserve(poolId));
+  }
+
+  /** 取り消す / 返却する / 割り当てた / 外した. */
+  reservationAction(reservationId: string, action: "cancel" | "return" | "assign" | "remove"): Promise<PoolOut | null> {
+    return this.withPool((api) => api.reservationAction(reservationId, action));
+  }
+
+  /** 「入れ替えた」. */
+  swapReservations(poolId: string, removeId: string, assignId: string): Promise<PoolOut | null> {
+    return this.withPool((api) => api.swapReservations(poolId, removeId, assignId));
+  }
+
+  createReservationPool(channelId: string, body: PoolCreate): Promise<PoolOut | null> {
+    return this.withPool((api) => api.createReservationPool(channelId, body));
+  }
+
+  updateReservationPool(poolId: string, body: PoolUpdate): Promise<PoolOut | null> {
+    return this.withPool((api) => api.updateReservationPool(poolId, body));
+  }
+
+  async deleteReservationPool(channelId: string, poolId: string): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      await this.api.deleteReservationPool(poolId);
+      this.store.dropReservationPool(channelId, poolId);
       return true;
     } catch (error) {
       this.setError(error);
