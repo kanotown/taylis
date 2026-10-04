@@ -82,7 +82,8 @@ def main(scratch: Path) -> None:
     half = max(xs.max() - xs.min(), ys.max() - ys.min()) / 2 * 1.08
     mx, my = (xs.max() + xs.min()) / 2, (ys.max() + ys.min()) / 2
     tight = src.crop((round(mx - half), round(my - half), round(mx + half), round(my + half)))
-    small = {n: tight.resize((n, n), LANCZOS) for n in (16, 32, 48)}
+    # Rounded tiles (2026-10-04: a hard square read as a block in browser tabs); drawn at 8x, then reduced.
+    small = {n: rounded_tile(tight, n) for n in (16, 32, 48)}
     small[48].save(
         public / "favicon.ico",
         sizes=[(16, 16), (32, 32), (48, 48)],
@@ -90,13 +91,17 @@ def main(scratch: Path) -> None:
     )
     small[16].save(public / "favicon-16.png", optimize=True)
     small[32].save(public / "favicon-32.png", optimize=True)
-    src.resize((192, 192), LANCZOS).save(public / "icon-192.png", optimize=True)
+    rounded_tile(src, 192).save(public / "icon-192.png", optimize=True)
     src.resize((180, 180), LANCZOS).save(public / "apple-touch-icon.png", optimize=True)
 
     # For gen_icons.sh: the square source for `tauri icon`, and the macOS icon (824 px rounded
     # square on a 1024 px transparent canvas, as in Apple's template).
     scratch.mkdir(parents=True, exist_ok=True)
-    src.convert("RGBA").resize((1024, 1024), LANCZOS).save(scratch / "square-1024.png")
+    # Windows (.ico and the PNGs `tauri icon` makes): a rounded square with a small margin, like the
+    # other apps on Windows 11, instead of a hard-edged block.
+    win = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+    win.alpha_composite(rounded_tile(src, 984), (20, 20))
+    win.save(scratch / "square-1024.png")
     mac = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
     body = src.convert("RGBA").resize((824, 824), LANCZOS)
     body.putalpha(rounded_mask(824, 185))
@@ -168,6 +173,14 @@ def enclosing_circle(xs: np.ndarray, ys: np.ndarray) -> tuple[int, int, float]:
 def layer(img: Image.Image, box: tuple[float, float, float, float], out: int) -> Image.Image:
     """Crop `box` (past the edges the crop is transparent) and scale it to out x out."""
     return img.crop(tuple(round(v) for v in box)).resize((out, out), LANCZOS)
+
+
+def rounded_tile(img: Image.Image, size: int, corner: float = 0.22) -> Image.Image:
+    """The image as a size x size tile with rounded corners (radius = corner x size), transparent
+    outside, drawn at 8x and reduced so small favicons keep smooth corners."""
+    big = img.convert("RGBA").resize((size * 8, size * 8), LANCZOS)
+    big.putalpha(rounded_mask(size * 8, round(size * 8 * corner)))
+    return big.resize((size, size), LANCZOS)
 
 
 def rounded_mask(size: int, radius: int) -> Image.Image:
