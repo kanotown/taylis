@@ -116,7 +116,3 @@ jobs:
         run: ./gradlew :app:lintDebug --console=plain
       - name: Debug APK
         run: ./gradlew :app:assembleDebug --console=plain
-      - uses: actions/upload-artifact@v7
-        with:
-          name: android-debug-apk
-          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
