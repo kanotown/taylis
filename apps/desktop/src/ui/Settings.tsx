@@ -1,4 +1,4 @@
-import { Bell, BellOff, Building2, ChevronRight, EyeOff, ImagePlus, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
+import { Bell, BellOff, Building2, ChevronRight, EyeOff, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { SessionOut, TotpStatusOut } from "../api/types";
@@ -26,13 +26,15 @@ import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { UsernameEditor } from "./UsernameEditor";
 import { StatusGlyph } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
+import { useUpdates } from "./UpdateBanner";
+import { versionLabel } from "../state/updates";
 
 /**
  * M40 (MOBILE_UI.md §6.5): the settings as a list of screens. The phone's 「自分」 tab shows the list and pushes a
  * section's screen (YouView); the wide layout's settings dialog keeps the same list on the left and the chosen section
  * on the right. Same items, same order, everywhere.
  */
-export type SettingsSection = "status" | "pause" | "quiet" | "notifications" | "appearance" | "input" | "profile" | "account" | "workspaces" | "admin";
+export type SettingsSection = "status" | "pause" | "quiet" | "notifications" | "appearance" | "input" | "profile" | "account" | "workspaces" | "about" | "admin";
 
 export const SECTION_TITLES: Record<SettingsSection, string> = {
   status: "ステータスを更新",
@@ -44,12 +46,13 @@ export const SECTION_TITLES: Record<SettingsSection, string> = {
   profile: "プロフィールを編集",
   account: "アカウント",
   workspaces: "ワークスペース",
+  about: "このアプリについて",
   admin: "管理",
 };
 
-/** The pushed screens after the two quick ones, in the list's order (管理 only for admins). */
-export function menuSections(isAdmin: boolean): SettingsSection[] {
-  return ["notifications", "appearance", "input", "profile", "account", "workspaces", ...(isAdmin ? (["admin"] as const) : [])];
+/** The pushed screens after the two quick ones, in the list's order (このアプリについて in the desktop app, 管理 only for admins). */
+export function menuSections(isAdmin: boolean, desktop: boolean = isTauri()): SettingsSection[] {
+  return ["notifications", "appearance", "input", "profile", "account", "workspaces", ...(desktop ? (["about"] as const) : []), ...(isAdmin ? (["admin"] as const) : [])];
 }
 
 const SECTION_ICONS: Record<SettingsSection, ReactNode> = {
@@ -62,6 +65,7 @@ const SECTION_ICONS: Record<SettingsSection, ReactNode> = {
   profile: <UserRound size={18} />,
   account: <Lock size={18} />,
   workspaces: <Building2 size={18} />,
+  about: <Info size={18} />,
   admin: <ShieldCheck size={18} />,
 };
 
@@ -91,6 +95,8 @@ function sectionValue(controller: AppController, section: SettingsSection, now: 
       return theme;
     case "workspaces":
       return controller.workspaces.length > 1 ? `${controller.workspaces.length} 件` : null;
+    case "about":
+      return controller.updates.currentVersion ? versionLabel(controller.updates.currentVersion) : null;
     default:
       return null;
   }
@@ -206,6 +212,8 @@ function sectionSubtitle(section: SettingsSection): string | undefined {
       return "写真・表示名・肩書";
     case "account":
       return "パスワード・2 要素認証・ログイン中の端末";
+    case "about":
+      return "バージョン・アップデートを確認";
     default:
       return undefined;
   }
@@ -256,6 +264,8 @@ export function SettingsSectionBody({ controller, section, onDone }: { controlle
       return <AccountSection controller={controller} />;
     case "workspaces":
       return <WorkspacesSection controller={controller} />;
+    case "about":
+      return <AboutSection controller={controller} />;
     case "admin":
       return <AdminBody controller={controller} />;
   }
@@ -957,6 +967,44 @@ function WorkspacesSection({ controller }: { controller: AppController }) {
             </Button>
           </div>
         </Modal>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 「このアプリについて」 (desktop app): the version and 「アップデートを確認」. A new version found here can be installed at
+ * once, even after 「あとで」 hid the banner.
+ */
+function AboutSection({ controller }: { controller: AppController }) {
+  const updates = useUpdates(controller.updates);
+  const [checked, setChecked] = useState(false);
+  const busy = updates.status === "downloading" || updates.status === "installing";
+  const check = async () => {
+    setChecked(false);
+    await updates.check(true);
+    setChecked(true);
+  };
+  return (
+    <div className="space-y-4">
+      <div className={CARD}>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium">Taylis</div>
+          <div className="text-xs text-muted">バージョン {updates.currentVersion ? versionLabel(updates.currentVersion) : "—"}</div>
+        </div>
+        <Button size="sm" variant="secondary" disabled={updates.status === "checking" || busy} onClick={() => void check()}>
+          {updates.status === "checking" ? "確認中…" : "アップデートを確認"}
+        </Button>
+      </div>
+      {updates.available ? (
+        <div className={CARD}>
+          <div className="min-w-0 flex-1 text-sm">新しい版 ({versionLabel(updates.available.version)}) があります</div>
+          <Button size="sm" disabled={busy} onClick={() => void updates.install(() => controller.prepareForRestart())}>
+            {busy ? "更新中…" : "更新して再起動"}
+          </Button>
+        </div>
+      ) : (
+        checked && updates.status === "idle" && !updates.lastCheckFailed && <p className="text-xs text-muted" role="status">最新の版です。</p>
       )}
     </div>
   );
