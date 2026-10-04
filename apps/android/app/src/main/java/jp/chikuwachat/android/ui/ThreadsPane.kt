@@ -95,7 +95,7 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
             }
         } else {
             items(rows, key = { it.id }) { entry ->
-                ThreadRow(entry, store, onClick = { onOpen(entry) })
+                ThreadRow(entry, store, version, { controller.loadEmojiImage(it) }, onClick = { onOpen(entry) })
                 HorizontalDivider()
             }
             if (store.threadsHasMore) {
@@ -106,7 +106,7 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
 }
 
 @Composable
-private fun ThreadRow(entry: ThreadEntry, store: Store, onClick: () -> Unit) {
+private fun ThreadRow(entry: ThreadEntry, store: Store, version: Int, onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit, onClick: () -> Unit) {
     val parent = entry.parent
     val state = entry.state
     val unread = state.unreadCount > 0
@@ -134,12 +134,10 @@ private fun ThreadRow(entry: ThreadEntry, store: Store, onClick: () -> Unit) {
                 Text(Timeline.timeLabel(last), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(author, style = MaterialTheme.typography.titleSmall, fontWeight = if (unread) FontWeight.Bold else FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                excerpt,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (unread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            EmojiLineText(
+                excerpt, store, onNeedEmojiImage, version, MaterialTheme.typography.bodyMedium,
+                if (unread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(

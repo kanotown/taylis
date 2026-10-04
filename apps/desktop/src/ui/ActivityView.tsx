@@ -15,6 +15,7 @@ import { MentionsView } from "./MentionsView";
 import { dmTimeLabel } from "./mobileTabs";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuTrigger } from "./primitives";
 import { ThreadsView } from "./ThreadsView";
+import { EmojiText } from "./UserPopover";
 
 export type ActivitySegment = "mentions" | "threads";
 
@@ -283,7 +284,7 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
           <time dateTime={item.at} title={fullTimestamp(item.at)} className="shrink-0 text-xs text-muted">{dmTimeLabel(item.at)}</time>
         </span>
         {where && <span className="block truncate text-xs text-muted">{item.kind === "thread_reply" ? `${where} のスレッド` : item.kind === "canvas_mention" ? `${where} のキャンバス` : where}</span>}
-        {excerpt && <span className="mt-0.5 line-clamp-2 text-[13.5px] leading-snug text-ink/80">{item.kind === "reaction" ? `「${excerpt}」` : excerpt}</span>}
+        {excerpt && <span className="mt-0.5 line-clamp-2 text-[13.5px] leading-snug text-ink/80"><EmojiText controller={controller} text={item.kind === "reaction" ? `「${excerpt}」` : excerpt} /></span>}
       </span>
     </button>
   );

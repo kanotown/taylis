@@ -413,7 +413,11 @@ private fun ActivityRow(
                 Text(where, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (excerpt.isNotEmpty()) {
-                Text(excerpt, style = MaterialTheme.typography.bodyMedium, maxLines = if (canvas != null) 2 else 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                // Custom emoji as their pictures and `:shortcode:`s as glyphs, as in the message (2026-10-05: `:ckw-yay:`).
+                EmojiLineText(
+                    excerpt, store, onNeedEmojiImage, version, MaterialTheme.typography.bodyMedium, androidx.compose.ui.graphics.Color.Unspecified,
+                    Modifier.padding(top = 2.dp), maxLines = if (canvas != null) 2 else 3,
+                )
             }
         }
     }
@@ -441,14 +445,7 @@ private fun ActorFaces(ids: List<String>, name: (String) -> String?) {
 /** A reaction's emoji in the headline: a custom one as its picture (loaded on demand), else the character. */
 @Composable
 private fun ReactionGlyph(emoji: String, store: Store, onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit) {
-    val custom = CustomEmoji.name(emoji)?.let { store.customEmoji[it] }
-    val image = custom?.let { store.emojiImages[it.id] }
-    if (custom != null && image == null) LaunchedEffect(custom.id) { onNeedEmojiImage(custom) }
-    if (custom != null && image != null) {
-        EmojiImage(image, store.emojiAnimations[custom.id], contentDescription = emoji, modifier = Modifier.padding(start = 4.dp).size(18.dp))
-    } else {
-        Text(emoji, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.padding(start = 4.dp))
-    }
+    ReactionEmoji(emoji, store, onNeedEmojiImage, 18.dp, MaterialTheme.typography.titleSmall, Modifier.padding(start = 4.dp))
 }
 
 /** M34, stage A (a server before M39): [メンション | スレッド] over the existing lists. */

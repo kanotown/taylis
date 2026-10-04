@@ -17,6 +17,16 @@ export function customEmojiName(text: string): string | null {
   return match ? match[1]! : null;
 }
 
+/**
+ * A reaction as plain text (a notification banner cannot draw the image): a workspace emoji with a label as 【label】,
+ * like the server's reaction push (planner.reaction_text); a standard one, or one without a label, as it is.
+ */
+export function reactionText(emoji: string, custom: ReadonlyMap<string, Pick<CustomEmojiOut, "label">>): string {
+  const name = customEmojiName(emoji);
+  const label = name ? custom.get(name)?.label?.trim() : "";
+  return label ? `【${label}】` : emoji;
+}
+
 export type EmojiPiece = string | { name: string };
 
 /** Split text into plain runs and known custom emoji names; unknown `:x:` stay text. */

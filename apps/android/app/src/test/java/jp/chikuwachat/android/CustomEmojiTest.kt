@@ -31,6 +31,23 @@ class CustomEmojiTest {
         assertEquals(listOf(CustomEmoji.Piece.Text("no colons")), CustomEmoji.split("no colons") { it in known })
     }
 
+    /**
+     * 2026-10-05: the activity (and the other compact rows) showed a pack emoji as `:ckw-yay:`. Their excerpts now go
+     * through EmojiLineText: standard shortcodes become glyphs, known custom names pieces of their own drawn in a box
+     * whose width is known before the image (a wide one 3:1, a text emoji's pill wider than square).
+     */
+    @Test fun compactRowsDrawCustomEmojiInTheirBoxes() {
+        val wide = Codec.snake.decodeFromString(CustomEmojiOut.serializer(), """{"id":"y","name":"ckw-yay","content_type":"image/png","width":96,"height":32,"pack_id":"p1","label":"ちくわ わーい","created_by":"u","created_at":""}""")
+        val pill = Codec.snake.decodeFromString(CustomEmojiOut.serializer(), """{"id":"t","name":"ok-text","kind":"text","label":"了解","color":"blue","content_type":"","width":0,"height":0,"created_by":"u","created_at":""}""")
+        val custom = mapOf(wide.name to wide, pill.name to pill)
+        assertEquals(
+            listOf(CustomEmoji.Piece.Text("「やった "), CustomEmoji.Piece.Emoji("ckw-yay"), CustomEmoji.Piece.Text(" "), CustomEmoji.Piece.Emoji("ok-text"), CustomEmoji.Piece.Text(" 👍 :gone:」")),
+            CustomEmoji.split(Emoji.replaceShortcodes("「やった :ckw-yay: :ok-text: :+1: :gone:」")) { it in custom },
+        )
+        assertEquals(3f, CustomEmoji.aspect(wide))
+        assertTrue(CustomEmoji.aspect(pill) > 1f)
+    }
+
     /** 2026-10-02: a custom emoji in a status showed as its `:name:`; the status views draw the one that exists as its image. */
     @Test fun aStatusEmojiFindsItsCustomEmoji() {
         val custom = mapOf("party_parrot" to "image-1")

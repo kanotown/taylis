@@ -10,6 +10,7 @@ import { channelTitle } from "./MainScreen";
 import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
 import { IconButton } from "./primitives";
+import { EmojiText } from "./UserPopover";
 
 /** Messages pinned in this channel (M11c), most recently pinned first; null while loading. */
 export function usePins(controller: AppController, channel: ChannelState): MessageOut[] | null {
@@ -81,7 +82,7 @@ export function MessageCard({ message, controller, onOpen, onRemove, removeLabel
           <span className="truncate">{channel ? channelTitle(channel, controller) : "?"}</span>
           <time className="ml-auto shrink-0">{fullTimestamp(message.created_at)}</time>
         </div>
-        <div className="mt-1 line-clamp-4 text-sm text-ink">{text}</div>
+        <div className="mt-1 line-clamp-4 text-sm text-ink"><EmojiText controller={controller} text={text} /></div>
       </button>
       {onRemove && (
         <IconButton label={removeLabel ?? "外す"} className="absolute right-2 top-2 h-7 w-7 text-muted opacity-0 hover:text-ink group-hover:opacity-100" onClick={onRemove}>

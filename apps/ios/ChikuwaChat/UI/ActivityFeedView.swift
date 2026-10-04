@@ -203,7 +203,7 @@ struct ActivityRowView: View {
                         (Text(who).fontWeight(.semibold) + Text(what))
                             .lineLimit(item.kind == "canvas_mention" ? 2 : 1) // the title in it
                         if item.kind == "reaction" {
-                            ForEach(item.emojis, id: \.self) { SectionIcon(controller: controller, emoji: $0, size: 16) }
+                            ForEach(item.emojis, id: \.self) { ReactionGlyph(controller: controller, emoji: $0, height: 16) }
                         }
                     }
                     .font(.subheadline)
@@ -215,7 +215,7 @@ struct ActivityRowView: View {
                 }
                 // An empty excerpt (a canvas version's body erased, CANVAS.md §20.8) shows no line.
                 if !excerpt.isEmpty {
-                    Text(excerpt)
+                    CustomEmoji.excerpt(excerpt, controller: controller)
                         .font(.subheadline)
                         .foregroundStyle(unread ? .primary : .secondary)
                         .lineLimit(2)

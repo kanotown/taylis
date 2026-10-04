@@ -505,16 +505,15 @@ private fun UnreadSeparator() {
 
 /** M15c: in the channel a shared reply names its thread (tap opens it); in the thread it says it was shared. */
 @Composable
-private fun ReplyLine(message: MessageState, store: Store, version: Int, onOpenThread: (() -> Unit)?) {
+private fun ReplyLine(message: MessageState, store: Store, version: Int, onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit, onOpenThread: (() -> Unit)?) {
     val style = MaterialTheme.typography.labelSmall
     val color = MaterialTheme.colorScheme.onSurfaceVariant
     if (onOpenThread != null) {
         val parent = remember(version, message.parentId) { message.parentId?.let { store.message(message.channelId, it) } }
         val excerpt = parent?.let { p -> messageLine(p.body, p.attachments, store, 80) }
         // M28c: a 48 dp touch target around the one-line link.
-        Text(
-            "スレッドに返信: " + (excerpt ?: "元のメッセージ"), style = style, color = color, maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        EmojiLineText(
+            "スレッドに返信: " + (excerpt ?: "元のメッセージ"), store, onNeedEmojiImage, version, style, color,
             modifier = Modifier.touchTarget { source -> Modifier.clickable(interactionSource = source, indication = null, onClickLabel = "スレッドを開く") { onOpenThread() } },
         )
     } else if (message.alsoInChannel) {
@@ -612,7 +611,7 @@ fun MessageRow(
             } else Avatar(message.senderId, sender, size = 36.dp, onClick = if (message.pending) null else ({ showingProfile = true }))
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                if (message.isReply) ReplyLine(message, store, version, onOpenThread)  // M15c
+                if (message.isReply) ReplyLine(message, store, version, { controller.loadEmojiImage(it) }, onOpenThread)  // M15c
                 // M95 (WORKFLOWS.md §8 1.): 「⚡ name」 above a message a workflow posted; a tap opens its form.
                 message.workflow?.takeIf { !message.deleted && !message.pending }?.let { workflow ->
                     WorkflowLabel(workflow) { controller.scope.launch { controller.openWorkflowById(workflow.id, message.channelId) } }

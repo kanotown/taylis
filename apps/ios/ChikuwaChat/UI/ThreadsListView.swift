@@ -81,7 +81,7 @@ struct ThreadRowView: View {
                     Text(Timeline.timeLabel(last)).font(.caption).foregroundStyle(.secondary)
                 }
                 Text(author).font(.subheadline).fontWeight(unread ? .semibold : .medium).lineLimit(1)
-                Text(excerpt(parent)).font(.subheadline).foregroundStyle(unread ? .primary : .secondary).lineLimit(2)
+                CustomEmoji.excerpt(excerpt(parent), controller: controller).font(.subheadline).foregroundStyle(unread ? .primary : .secondary).lineLimit(2)
                 HStack(spacing: 6) {
                     Text("\(state.replyCount) 件の返信").font(.caption).fontWeight(unread ? .semibold : .regular)
                         .foregroundStyle(unread ? Color.accentColor : .secondary)

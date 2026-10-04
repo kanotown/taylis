@@ -159,14 +159,39 @@ fun EmojiLineText(
     color: Color,
     modifier: Modifier = Modifier,
     maxLines: Int = 1,
+    fontWeight: FontWeight? = null,
+) = EmojiLineText(text, controller.store, { controller.loadEmojiImage(it) }, version, style, color, modifier, maxLines, fontWeight)
+
+/**
+ * The same for a row that has the Store rather than the controller: also a message's excerpt in a compact row (the
+ * activity, pins, saved, mentions, threads, the DM list, a reply's 「スレッドに返信」 line; 2026-10-05: the activity
+ * showed `:ckw-yay:`). Each custom emoji holds its box (its aspect, 1.25 em high) blank until its image comes.
+ */
+@Composable
+fun EmojiLineText(
+    text: String,
+    store: jp.chikuwachat.android.sync.Store,
+    onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit,
+    version: Int,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 1,
+    fontWeight: FontWeight? = null,
+    /** Search results: these words marked as in `highlighted`. */
+    keywords: List<String> = emptyList(),
 ) {
-    val store = controller.store
     val inline = bodyInline(
         store.users, customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations,
-        onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
+        onNeedEmojiImage = onNeedEmojiImage, version = version,
     )
+    val built = inline.build(listOf(BodyToken.Text(text)))
+    val line = if (keywords.isEmpty()) built else androidx.compose.ui.text.buildAnnotatedString {
+        append(built)
+        for ((start, end) in keywordRanges(built.text, keywords)) addStyle(SEARCH_HIT, start, end)
+    }
     Text(
-        inline.build(listOf(BodyToken.Text(text))), inlineContent = inline.inlineContent, style = style, color = color,
-        maxLines = maxLines, overflow = TextOverflow.Ellipsis, modifier = modifier,
+        line, inlineContent = inline.inlineContent, style = style, color = color,
+        fontWeight = fontWeight, maxLines = maxLines, overflow = TextOverflow.Ellipsis, modifier = modifier,
     )
 }

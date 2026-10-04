@@ -13,6 +13,7 @@ import { highlightPieces } from "./highlight";
 import { channelTitle } from "./MainScreen";
 import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
+import { EmojiText } from "./UserPopover";
 import { BackButton, BackToList } from "./compact";
 import { Badge, Button, cn, IconButton, Input, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger, UNDERLINE_TAB, UnderlineTabRow } from "./primitives";
 import { DATE_PRESETS, dateLabel, EMPTY_SEARCH, HAS_FLAGS, HAS_LABELS, hasFilters, isEmptySearch, type SearchParams, type SearchSort, toQuery, totalLabel } from "./search";
@@ -521,7 +522,7 @@ function ResultRow({ controller, message, keywords, other, onOpen }: { controlle
           <div className="text-sm font-semibold text-ink">{sender}</div>
           {text && (
             <div className="line-clamp-3 whitespace-pre-wrap break-words text-sm text-ink">
-              {highlightPieces(text, keywords).map((piece, i) => (piece.hit ? <mark key={i} className="rounded bg-warning/35 px-0.5 text-ink">{piece.text}</mark> : <span key={i}>{piece.text}</span>))}
+              {highlightPieces(text, keywords).map((piece, i) => (piece.hit ? <mark key={i} className="rounded bg-warning/35 px-0.5 text-ink">{piece.text}</mark> : <span key={i}><EmojiText controller={controller} text={piece.text} /></span>))}
             </div>
           )}
           {files.length > 0 && (

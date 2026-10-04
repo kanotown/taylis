@@ -60,7 +60,7 @@ fun SavedPane(controller: AppController, version: Int, onOpen: (MessageOut) -> U
             }
             else -> {
                 items(list, key = { it.message.id }) { item ->
-                    MessageCard(item.message, store, onClick = { onOpen(item.message) })
+                    MessageCard(item.message, store, version, { controller.loadEmojiImage(it) }, onClick = { onOpen(item.message) })
                     HorizontalDivider()
                 }
                 if (hasMore) item { TextButton(onClick = { controller.scope.launch { load(more = true) } }, modifier = Modifier.fillMaxWidth()) { Text("さらに読み込む") } }
@@ -71,7 +71,7 @@ fun SavedPane(controller: AppController, version: Int, onOpen: (MessageOut) -> U
 
 /** A compact message card shared by the pins pane and the saved pane. */
 @Composable
-fun MessageCard(message: MessageOut, store: Store, onClick: () -> Unit) {
+fun MessageCard(message: MessageOut, store: Store, version: Int, onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit, onClick: () -> Unit) {
     val sender = store.users[message.senderId]?.displayName ?: "?"
     val channel = store.channel(message.channelId)
     val text = messageLine(message.body, message.attachments, store)
@@ -86,7 +86,10 @@ fun MessageCard(message: MessageOut, store: Store, onClick: () -> Unit) {
                 Spacer(Modifier.weight(1f))
                 Text(Timeline.timeLabel(message.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(text, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            EmojiLineText(
+                text, store, onNeedEmojiImage, version, MaterialTheme.typography.bodyMedium, androidx.compose.ui.graphics.Color.Unspecified,
+                Modifier.padding(top = 2.dp), maxLines = 4,
+            )
         }
     }
 }

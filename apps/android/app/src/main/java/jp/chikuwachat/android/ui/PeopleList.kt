@@ -91,14 +91,7 @@ fun ReactorsDialog(message: MessageState, store: Store, version: Int, onNeedEmoj
                 groups.forEachIndexed { index, (reaction, people) ->
                     if (index > 0) HorizontalDivider(Modifier.padding(vertical = 10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        val custom = CustomEmoji.name(reaction.emoji)?.let { store.customEmoji[it] }
-                        val image = custom?.let { store.emojiImages[it.id] }
-                        if (custom != null && image == null) onNeedEmojiImage(custom)
-                        if (image != null) {
-                            EmojiImage(image, store.emojiAnimations[custom.id], contentDescription = reaction.emoji, modifier = Modifier.size(24.dp))
-                        } else {
-                            Text(reaction.emoji, style = MaterialTheme.typography.titleLarge)
-                        }
+                        ReactionEmoji(reaction.emoji, store, onNeedEmojiImage, 24.dp, MaterialTheme.typography.titleLarge)
                         Spacer(Modifier.width(8.dp))
                         Text("${reaction.count} 人", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }

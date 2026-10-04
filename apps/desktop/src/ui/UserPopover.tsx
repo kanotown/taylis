@@ -4,6 +4,7 @@ import { Fragment, type ReactNode, useState } from "react";
 import type { AppController } from "../state/app";
 import { Avatar, presenceLabel } from "./Avatar";
 import { CustomEmojiImage, customEmojiName, splitCustomEmoji } from "./customEmoji";
+import { replaceShortcodes } from "./emoji";
 import { useStoreUpdates } from "./hooks";
 import { displayTitle, supervisorLabel } from "./roster";
 import { expiryLabel } from "./users";
@@ -138,12 +139,16 @@ export function StatusGlyph({ controller, emoji, size = 14 }: { controller: AppC
   return custom ? <CustomEmojiImage controller={controller} emoji={custom} size={size} /> : <>{emoji}</>;
 }
 
-/** A line with a status in it (a DM's subtitle, the directory): custom emoji as their images, as in a message. */
+/**
+ * A line with a status or a message excerpt in it (a DM's subtitle, the directory, the activity, pins, search …): custom
+ * emoji as their images and standard `:shortcode:`s as their glyphs, as in a message (2026-10-05: an excerpt showed
+ * `:ckw-yay:`). The images are inline fixed boxes (customEmoji.tsx), so the row never jumps when they load.
+ */
 export function EmojiText({ controller, text, size = "1.15em" }: { controller: AppController; text: string; size?: number | string }) {
   const custom = controller.store.customEmoji;
   return (
     <>
-      {splitCustomEmoji(text, custom).map((piece, index) => {
+      {splitCustomEmoji(replaceShortcodes(text), custom).map((piece, index) => {
         if (typeof piece === "string") return <Fragment key={index}>{piece}</Fragment>;
         const emoji = custom.get(piece.name);
         return emoji ? <CustomEmojiImage key={index} controller={controller} emoji={emoji} size={size} inline /> : <Fragment key={index}>:{piece.name}:</Fragment>;

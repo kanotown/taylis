@@ -932,7 +932,8 @@ struct SearchResultRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(sender).font(.subheadline.weight(.semibold)).lineLimit(1)
                     if !text.isEmpty {
-                        Text(SearchHighlighter.attributed(text, keywords: keywords)).font(.subheadline).lineLimit(3)
+                        CustomEmoji.excerpt(text, controller: controller, run: { Text(SearchHighlighter.attributed($0, keywords: keywords)) })
+                            .font(.subheadline).lineLimit(3)
                     }
                     ForEach(message.attachments.prefix(3)) { attachment in
                         HStack(spacing: 4) {

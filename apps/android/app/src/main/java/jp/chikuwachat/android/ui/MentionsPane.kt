@@ -53,7 +53,7 @@ fun MentionsPane(controller: AppController, version: Int, onOpen: (MessageOut) -
             }
             else -> {
                 items(list, key = { it.id }) { message ->
-                    MessageCard(message, store, onClick = { onOpen(message) })
+                    MessageCard(message, store, version, { controller.loadEmojiImage(it) }, onClick = { onOpen(message) })
                     HorizontalDivider()
                 }
                 if (hasMore) item { TextButton(onClick = { controller.scope.launch { load(more = true) } }, modifier = Modifier.fillMaxWidth()) { Text("さらに読み込む") } }
