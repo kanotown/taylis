@@ -1140,12 +1140,14 @@ struct MessageRow: View {
                                 // caption text beside a 16 pt image, and the chips differed in height).
                                 HStack(spacing: 3) {
                                     if let name = CustomEmoji.name(of: reaction.emoji), let custom = store.customEmoji[name] {
+                                        // M100: a wide one (at most 3:1) or a text emoji's pill is wider, as high.
+                                        let box = CustomEmoji.size(of: custom, height: 16)
                                         if let image = store.emojiImages[custom.id] {
-                                            EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(width: 16, height: 16)
+                                            EmojiImage(still: image, animation: store.emojiAnimations[custom.id]).frame(width: box.width, height: 16)
                                         } else {
                                             // Its room until the image comes: `:name:` there made the chip wider and the
                                             // chips re-wrapped, changing the row's height (CustomEmoji.text).
-                                            Color.clear.frame(width: 16, height: 16)
+                                            Color.clear.frame(width: box.width, height: 16)
                                                 .onAppear { controller.loadEmojiImage(custom) }
                                         }
                                     } else if CustomEmoji.name(of: reaction.emoji) != nil {
@@ -1449,8 +1451,9 @@ struct ComposerView: View {
     /// `:tada` completes to an emoji (M11f) when no mention is being typed.
     private var emojiCandidates: [EmojiEntry] {
         guard candidates.isEmpty, let query = Emoji.query(text) else { return [] }
-        let names = (controller?.store.customEmoji.keys.sorted() ?? []).filter { $0.hasPrefix(query) || $0.contains(query) }
-        let custom = names.prefix(4).map { EmojiEntry(shortcode: $0, glyph: ":\($0):", category: "custom", keywords: $0) }
+        // M100: also by label and keywords (":ありがとう" finds :hpd-bow:).
+        let found = Emoji.customCandidates(query, custom: controller.map { Array($0.store.customEmoji.values) } ?? [])
+        let custom = found.map { EmojiEntry(shortcode: $0.name, glyph: ":\($0.name):", category: "custom", keywords: $0.label ?? "") }
         return Array((custom + Emoji.candidates(query)).prefix(8))
     }
 
@@ -1745,7 +1748,14 @@ struct ComposerView: View {
                     HStack(spacing: 6) {
                         ForEach(emojiCandidates, id: \.shortcode) { entry in
                             Button { textBinding.wrappedValue = Emoji.complete(text, glyph: entry.glyph) } label: {
-                                Text(entry.glyph) + Text("  :\(entry.shortcode):").foregroundStyle(.secondary)
+                                if entry.category == "custom", let controller {
+                                    // The image (or text pill) and its label, not `:name:` twice.
+                                    CustomEmoji.text(entry.glyph, custom: controller.store.customEmoji, images: controller.store.emojiImages,
+                                                     onNeed: { controller.loadEmojiImage($0) })
+                                        + Text("  \(entry.keywords.isEmpty ? ":\(entry.shortcode):" : entry.keywords)").foregroundStyle(.secondary)
+                                } else {
+                                    Text(entry.glyph) + Text("  :\(entry.shortcode):").foregroundStyle(.secondary)
+                                }
                             }
                             .font(.footnote)
                             .buttonStyle(.bordered)
@@ -1877,7 +1887,9 @@ struct ComposerView: View {
         .sheet(isPresented: $showEmojiPicker) {
             EmojiPickerView(custom: controller.map { Array($0.store.customEmoji.values) } ?? [], images: controller?.store.emojiImages ?? [:],
                             animations: controller?.store.emojiAnimations ?? [:],
-                            onNeedImage: { emoji in controller?.loadEmojiImage(emoji) }) { glyph in insert(glyph) }
+                            onNeedImage: { emoji in controller?.loadEmojiImage(emoji) },
+                            packs: controller?.store.sortedEmojiPacks ?? [], packTabs: controller?.store.packTabImages ?? [:],
+                            onNeedPackTab: { controller?.loadPackTab($0) }) { glyph in insert(glyph) }
         }
         // M95: the channel's workflows when `/` starts the input (kept a minute by the controller).
         .task(id: offersWorkflows && text.hasPrefix("/") ? channelId : nil) {

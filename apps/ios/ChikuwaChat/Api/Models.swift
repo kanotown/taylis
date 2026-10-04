@@ -840,6 +840,8 @@ struct BootstrapOut: Codable {
     var favorites: [String]? = nil
     /// Custom emoji (M12f): the whole table; changes arrive as emoji.updated.
     var customEmoji: [CustomEmojiOut]? = nil
+    /// M100: emoji packs in tab order; changes arrive as emoji_pack.updated.
+    var emojiPacks: [EmojiPackOut]? = nil
     /// Post templates (M30): the workspace's, then mine; changes arrive as template.updated.
     var templates: [TemplateOut]? = nil
     /// User groups (M12k): every group with its members; changes arrive as group.updated.
@@ -1086,6 +1088,28 @@ struct CustomEmojiOut: Codable, Identifiable, Equatable, Hashable {
     let height: Int
     let createdBy: String
     let createdAt: String
+    /// M100 (docs/EMOJI.md): "image" (older servers: none) or "text" (`label` drawn as a pill in `color`, no image).
+    var kind: String? = nil
+    /// The display name (the picker's name, 「おじぎ」); the text of a text emoji.
+    var label: String? = nil
+    var color: String? = nil
+    /// Search terms for the picker and `:` completion (Japanese included).
+    var keywords: [String]? = nil
+    /// The pack (its own picker tab); nil = 「カスタム」.
+    var packId: String? = nil
+    var position: Int? = nil
+
+    var isText: Bool { kind == "text" }
+}
+
+/// M100: a set of custom emoji with its own picker tab; its tab icon at GET /emoji/packs/{id}/tab when `tabVersion` is set.
+struct EmojiPackOut: Codable, Identifiable, Equatable, Hashable {
+    let id: String
+    let name: String
+    let position: Int
+    var tabVersion: String? = nil
+    let createdAt: String
+    let updatedAt: String
 }
 
 /// A post template (M30, DATA_MODEL.md message_templates): the workspace's (scope "workspace") or my own ("user").

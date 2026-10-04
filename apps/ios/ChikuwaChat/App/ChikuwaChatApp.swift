@@ -24,9 +24,12 @@ struct RootView: View {
     @Bindable var controller: AppController
     /// M40: 端末に合わせる / ライト / ダーク (自分 → 表示), for every screen of the app on this device.
     @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .system
+    /// The look in effect (the setting or the device's): text emoji pills are drawn for it (M100).
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         screen.preferredColorScheme(theme.colorScheme)
+            .onChange(of: colorScheme, initial: true) { _, scheme in controller.textEmojiDark = scheme == .dark }
     }
 
     @ViewBuilder

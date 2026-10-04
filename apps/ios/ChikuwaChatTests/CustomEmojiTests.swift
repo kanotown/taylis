@@ -75,4 +75,60 @@ final class CustomEmojiTests: XCTestCase {
             XCTAssertEqual(height("あいう :sq: かき", font: font, emojiHeight: emojiHeight), height("あいう かき", font: font, emojiHeight: emojiHeight), accuracy: 0.5)
         }
     }
+
+    // MARK: M100 (docs/EMOJI.md)
+
+    func testWideEmojiKeepTheirShapeUpToThreeToOne() {
+        func emoji(_ w: Int, _ h: Int) -> CustomEmojiOut {
+            CustomEmojiOut(id: "w\(w)", name: "w", contentType: "image/png", width: w, height: h, createdBy: "u", createdAt: "")
+        }
+        XCTAssertEqual(CustomEmoji.size(of: emoji(96, 64), height: 16), CGSize(width: 24, height: 16))
+        XCTAssertEqual(CustomEmoji.size(of: emoji(400, 50), height: 16), CGSize(width: 48, height: 16)) // 8:1 capped
+    }
+
+    @MainActor
+    func testTextEmojiIsAPillAsHighAsAnImageAndAsWideAsItsLabel() throws {
+        let json = #"{"id":"t1","name":"kakunin","kind":"text","label":"確認しました","color":"green","content_type":"","width":0,"height":0,"keywords":["了解"],"pack_id":null,"position":0,"created_by":"u","created_at":""}"#
+        let text = try JSON.snakeDecoder.decode(CustomEmojiOut.self, from: Data(json.utf8))
+        XCTAssertTrue(text.isText)
+        XCTAssertEqual(text.keywords, ["了解"])
+        let size = CustomEmoji.size(of: text, height: 16)
+        XCTAssertEqual(size.height, 16)
+        XCTAssertGreaterThan(size.width, 16 * 4) // six characters
+        let pill = CustomEmoji.textPill(text, dark: false)
+        XCTAssertEqual(pill.size.height, CustomEmoji.storedHeight)
+        XCTAssertEqual(pill.size.width / pill.size.height, size.width / size.height, accuracy: 0.1)
+        // An older server's row (no kind) is an image.
+        let old = try JSON.snakeDecoder.decode(CustomEmojiOut.self, from: Data(#"{"id":"e","name":"e","content_type":"image/png","width":1,"height":1,"created_by":"u","created_at":""}"#.utf8))
+        XCTAssertFalse(old.isText)
+    }
+
+    func testTextPaletteIsTheSharedOne() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/text-emoji.json")
+        let shared = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+        let colors = shared["colors"] as! [String: [String: [String: String]]]
+        XCTAssertEqual(Set(colors.keys), Set(CustomEmoji.textPalette.keys))
+        func hex(_ value: UInt32) -> String { String(format: "#%06X", value) }
+        for (key, pair) in CustomEmoji.textPalette {
+            XCTAssertEqual(colors[key]?["light"]?["bg"], hex(pair.light.bg), key)
+            XCTAssertEqual(colors[key]?["light"]?["fg"], hex(pair.light.fg), key)
+            XCTAssertEqual(colors[key]?["dark"]?["bg"], hex(pair.dark.bg), key)
+            XCTAssertEqual(colors[key]?["dark"]?["fg"], hex(pair.dark.fg), key)
+        }
+    }
+
+    func testCustomEmojiAreFoundByLabelAndKeywords() {
+        var bow = CustomEmojiOut(id: "b", name: "hpd-bow", contentType: "image/png", width: 1, height: 1, createdBy: "u", createdAt: "")
+        bow.label = "おじぎ"
+        bow.keywords = ["ありがとう", "ぺこり"]
+        let parrot = CustomEmojiOut(id: "p", name: "parrot", contentType: "image/png", width: 1, height: 1, createdBy: "u", createdAt: "")
+        XCTAssertEqual(Emoji.customCandidates("ありがとう", custom: [parrot, bow]).map(\.name), ["hpd-bow"])
+        XCTAssertEqual(Emoji.customCandidates("アリガトウ", custom: [parrot, bow]).map(\.name), ["hpd-bow"])
+        XCTAssertEqual(Emoji.customCandidates("par", custom: [parrot, bow]).map(\.name), ["parrot"])
+        XCTAssertEqual(Emoji.query("どうも :ありがとう"), "ありがとう")
+        XCTAssertEqual(Emoji.query("：了解"), "了解")
+        XCTAssertNil(Emoji.query("例：説明"))
+        XCTAssertNil(Emoji.query("hello :t"))
+    }
 }

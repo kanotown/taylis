@@ -200,7 +200,8 @@ struct StatusEditorView: View {
         .sheet(isPresented: $pickingEmoji) {
             let store = controller.store
             EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, animations: store.emojiAnimations,
-                            onNeedImage: { controller.loadEmojiImage($0) }) { glyph in emoji = glyph }
+                            onNeedImage: { controller.loadEmojiImage($0) }, packs: store.sortedEmojiPacks,
+                            packTabs: store.packTabImages, onNeedPackTab: { controller.loadPackTab($0) }) { glyph in emoji = glyph }
         }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {

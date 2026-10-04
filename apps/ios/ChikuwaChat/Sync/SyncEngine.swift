@@ -531,6 +531,7 @@ final class SyncEngine {
         store.replaceBookmarks(bootstrap.bookmarks ?? [])
         store.replaceFavorites(bootstrap.favorites ?? [])
         store.replaceCustomEmoji(bootstrap.customEmoji ?? [])
+        store.replaceEmojiPacks(bootstrap.emojiPacks ?? [])
         store.replaceTemplates(bootstrap.templates ?? [])
         store.replaceGroups(bootstrap.groups ?? [])
         store.replaceRoster(bootstrap.roster ?? [])
@@ -647,6 +648,10 @@ final class SyncEngine {
             if let id = frame.data["message_id"]?.stringValue, case .bool(let on)? = frame.data["bookmarked"] {
                 store.setBookmarked(id, on: on)
             }
+        case "emoji_pack.updated":  // M100
+            struct PackPayload: Decodable { let pack: EmojiPackOut; let deleted: Bool }
+            let payload = try frame.data.decode(PackPayload.self)
+            store.applyEmojiPack(payload.pack, deleted: payload.deleted)
         case "emoji.updated":
             struct Payload: Decodable { let emoji: CustomEmojiOut; let deleted: Bool }
             let payload = try frame.data.decode(Payload.self)

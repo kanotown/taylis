@@ -148,10 +148,60 @@ enum CustomEmoji {
         }
     }
 
-    /// The size an emoji's image is drawn at for `height` (its aspect kept, as `inlineImage` keeps it).
+    /// M100 (docs/EMOJI.md §2): a wide image emoji is drawn wider at the same height, at most 3:1.
+    static let wideMax: CGFloat = 3
+
+    /// The size an emoji's image is drawn at for `height` (its aspect kept, as `inlineImage` keeps it, at most 3:1);
+    /// a text emoji's pill as wide as its label.
     static func size(of emoji: CustomEmojiOut, height: CGFloat) -> CGSize {
+        if emoji.isText { return textPillSize(emoji.label ?? emoji.name, height: height) }
         let aspect = emoji.width > 0 && emoji.height > 0 ? CGFloat(emoji.width) / CGFloat(emoji.height) : 1
-        return CGSize(width: (height * min(max(aspect, 0.25), 4)).rounded(), height: height)
+        return CGSize(width: (height * min(max(aspect, 0.25), wideMax)).rounded(), height: height)
+    }
+
+    // MARK: text emoji (M100)
+
+    /// apps/shared/text-emoji.json (CustomEmojiTests compares them): light and dark background / text per colour.
+    static let textPalette: [String: (light: (bg: UInt32, fg: UInt32), dark: (bg: UInt32, fg: UInt32))] = [
+        "gray": ((0xE8E8EC, 0x3A3A44), (0x3A3A44, 0xE8E8EC)),
+        "red": ((0xFDE2E1, 0xB3261E), (0x5C1D1A, 0xFFB4AB)),
+        "orange": ((0xFFE6CC, 0xA04A00), (0x5A3000, 0xFFC58A)),
+        "yellow": ((0xFFF3BF, 0x7A5C00), (0x4D3D00, 0xFFE08A)),
+        "green": ((0xDDF4E4, 0x1E6B3A), (0x163D24, 0x9FE0B4)),
+        "blue": ((0xDCEBFF, 0x1D4FA0), (0x18325C, 0xA8C8FF)),
+        "purple": ((0xECE2FC, 0x5B2DA6), (0x36225A, 0xD2BCFA)),
+        "pink": ((0xFCE1EF, 0xA3215F), (0x5A1A3A, 0xFFB0D5)),
+    ]
+
+    private static func color(_ rgb: UInt32) -> UIColor {
+        UIColor(red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255,
+                blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+    }
+
+    private static func pillFont(height: CGFloat) -> UIFont { .systemFont(ofSize: height * 0.68, weight: .semibold) }
+
+    /// A pill `height` high around `label` (the same proportions as the web's TextEmojiPill).
+    static func textPillSize(_ label: String, height: CGFloat) -> CGSize {
+        let textWidth = (label as NSString).size(withAttributes: [.font: pillFont(height: height)]).width
+        return CGSize(width: max(height, (textWidth + height * 0.56).rounded(.up)), height: height)
+    }
+
+    /// The pill drawn at `storedHeight`, so `sized(_:height:)` shows it sharp at any height like an image emoji.
+    static func textPill(_ emoji: CustomEmojiOut, dark: Bool) -> UIImage {
+        let label = emoji.label ?? emoji.name
+        let height = storedHeight
+        let size = textPillSize(label, height: height)
+        let colors = textPalette[emoji.color ?? "gray"] ?? textPalette["gray"]!
+        let pair = dark ? colors.dark : colors.light
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            color(pair.bg).setFill()
+            UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: height * 0.3).fill()
+            let attributes: [NSAttributedString.Key: Any] = [.font: pillFont(height: height), .foregroundColor: color(pair.fg)]
+            let text = (label as NSString).size(withAttributes: attributes)
+            (label as NSString).draw(at: CGPoint(x: (size.width - text.width) / 2, y: (height - text.height) / 2), withAttributes: attributes)
+        }
     }
 
     private static let blanks = NSCache<NSString, UIImage>()

@@ -4,8 +4,9 @@ import Foundation
 enum Emoji {
     private static let byShortcode: [String: EmojiEntry] = Dictionary(EmojiData.all.map { ($0.shortcode, $0) }, uniquingKeysWith: { a, _ in a })
     private static let shortcodePattern = try! NSRegularExpression(pattern: #":([a-z0-9_+\-]{1,30}):"#)
-    /// ":ta" at the end of the text, at a word start; the query needs at least 2 characters.
-    private static let queryPattern = try! NSRegularExpression(pattern: #"(^|[\s(（「])[:：]([a-z0-9_+\-]{2,30})$"#)
+    /// ":ta" at the end of the text, at a word start; the query needs at least 2 characters. M100: or a Japanese word
+    /// (":ありがとう", "：了解"), one character enough: custom emoji by label / keyword, standard ones by keyword.
+    private static let queryPattern = try! NSRegularExpression(pattern: #"(^|[\s(（「])[:：]([a-z0-9_+\-]{2,30}|[^\s:：\x00-\x7f][^\s:：]{0,19})$"#)
 
     static func byShortcode(_ shortcode: String) -> EmojiEntry? { byShortcode[shortcode] }
 
@@ -38,8 +39,38 @@ enum Emoji {
         let q = query.lowercased()
         if q.isEmpty { return [] }
         let prefix = EmojiData.all.filter { $0.shortcode.hasPrefix(q) }
-        let rest = EmojiData.all.filter { !$0.shortcode.hasPrefix(q) && ($0.shortcode.contains(q) || $0.keywords.lowercased().contains(q)) }
+        let folded = fold(q)
+        let rest = EmojiData.all.filter {
+            !$0.shortcode.hasPrefix(q) && ($0.shortcode.contains(q) || $0.keywords.lowercased().contains(q)
+                || (folded != q && fold($0.keywords).contains(folded)))
+        }
         return Array((prefix + rest).prefix(limit))
+    }
+
+    /// M100: lower case, full-width as half-width (NFKC), katakana as hiragana (「アリガトウ」 finds 「ありがとう」).
+    static func fold(_ text: String) -> String {
+        let normalized = text.precomposedStringWithCompatibilityMapping.lowercased()
+        return String(String.UnicodeScalarView(normalized.unicodeScalars.map { scalar in
+            (0x30A1...0x30F6).contains(scalar.value) ? Unicode.Scalar(scalar.value - 0x60) ?? scalar : scalar
+        }))
+    }
+
+    /// Custom emoji for a query (M12f; M100 also by label and keywords): names starting with it, names containing it,
+    /// then labels / keywords starting with it, then containing it; by name within each.
+    static func customCandidates(_ query: String, custom: [CustomEmojiOut], limit: Int = 4) -> [CustomEmojiOut] {
+        let q = fold(query.trimmingCharacters(in: .whitespaces))
+        guard !q.isEmpty else { return [] }
+        func rank(_ emoji: CustomEmojiOut) -> Int? {
+            if emoji.name.hasPrefix(q) { return 0 }
+            if emoji.name.contains(q) { return 1 }
+            let words = ([emoji.label ?? ""] + (emoji.keywords ?? [])).filter { !$0.isEmpty }.map(fold)
+            if words.contains(where: { $0.hasPrefix(q) }) { return 2 }
+            if words.contains(where: { $0.contains(q) }) { return 3 }
+            return nil
+        }
+        let ranked = custom.compactMap { emoji in rank(emoji).map { ($0, emoji) } }
+            .sorted { ($0.0, $0.1.name) < ($1.0, $1.1.name) }
+        return Array(ranked.prefix(limit).map(\.1))
     }
 
     /// Free-text search for the picker: an empty query lists everything.

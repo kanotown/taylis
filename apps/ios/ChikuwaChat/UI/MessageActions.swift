@@ -83,7 +83,8 @@ private struct MessageSheets: ViewModifier {
                                         onMarkUnread: { unread?() }, followUp: { next = ($0, message) })
                 case .reactions:
                     EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, animations: store.emojiAnimations,
-                                    onNeedImage: { controller.loadEmojiImage($0) }) { glyph in
+                                    onNeedImage: { controller.loadEmojiImage($0) }, packs: store.sortedEmojiPacks,
+                                    packTabs: store.packTabImages, onNeedPackTab: { controller.loadPackTab($0) }) { glyph in
                         Task { await controller.toggleReaction(current(message), emoji: glyph) }
                     }
                 case .reactors:
