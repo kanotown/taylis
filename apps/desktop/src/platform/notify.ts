@@ -3,12 +3,65 @@ import { isTauri } from "./env";
 /** Browser notifications still on screen, closed at sign-out (§11). */
 const shown = new Set<Notification>();
 
+/** What the Rust side says about native notifications; "unavailable" = use tauri-plugin-notification. */
+type NativeState = "granted" | "denied" | "default" | "unavailable";
+
+async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const core = await import("@tauri-apps/api/core");
+  return core.invoke<T>(command, args);
+}
+
+/** Read again each time: the reader may change it in System Settings while the app runs. A failure: the plugin. */
+async function nativePermission(): Promise<NativeState> {
+  try {
+    return await invoke<NativeState>("native_notification_permission");
+  } catch (err) {
+    console.warn("native notifications unavailable", err);
+    return "unavailable";
+  }
+}
+
+function nativeRequest(): Promise<NativeState> {
+  return invoke<NativeState>("native_notification_request");
+}
+
+/** Click actions of native notifications by their id, the newest kept (a click on an old one only raises the window). */
+const clickActions = new Map<string, () => void>();
+const MAX_CLICK_ACTIONS = 100;
+let clickListener: Promise<unknown> | null = null;
+let nextId = 0;
+
+async function sendNative(title: string, body: string, onClick?: () => void): Promise<void> {
+  const id = `taylis-${Date.now()}-${nextId++}`;
+  if (onClick) {
+    clickListener ??= import("@tauri-apps/api/event").then(({ listen }) =>
+      listen<string>("notification-clicked", (event) => {
+        const action = clickActions.get(event.payload);
+        clickActions.delete(event.payload);
+        action?.();
+      }),
+    );
+    await clickListener;
+    clickActions.set(id, onClick);
+    if (clickActions.size > MAX_CLICK_ACTIONS) clickActions.delete(clickActions.keys().next().value as string);
+  }
+  await invoke<void>("native_notification_send", { id, title, body });
+}
+
 /**
- * OS notification (tauri-plugin-notification; the Notification API in browser dev). `onClick` (M55: open the task) runs
- * when a browser's notification is clicked; the desktop plugin reports no clicks there (its actions are mobile only).
+ * OS notification: in the macOS app, our own UNUserNotificationCenter commands (src-tauri/src/mac_notify.rs: shown as a
+ * banner while Taylis is frontmost too, and clicks come back); tauri-plugin-notification elsewhere on the desktop (its
+ * NSUserNotificationCenter path on macOS files them silently while the app is in front); the Notification API in browser
+ * dev. `onClick` (M55: open the task) runs when the notification is clicked, where clicks are reported (macOS app, browser).
  */
 export async function notify(title: string, body: string, onClick?: () => void): Promise<void> {
   if (isTauri()) {
+    const native = await nativePermission();
+    if (native !== "unavailable") {
+      const granted = native === "granted" || (native === "default" && (await nativeRequest()) === "granted");
+      if (granted) await sendNative(title, body, onClick).catch((err: unknown) => console.warn("could not show the notification", err));
+      return;
+    }
     const plugin = await import("@tauri-apps/plugin-notification");
     let granted = await plugin.isPermissionGranted();
     if (!granted) granted = (await plugin.requestPermission()) === "granted";
@@ -35,6 +88,8 @@ export type NotificationPermissionState = "granted" | "denied" | "default" | "un
 
 export async function notificationPermission(): Promise<NotificationPermissionState> {
   if (isTauri()) {
+    const native = await nativePermission();
+    if (native !== "unavailable") return native;
     const plugin = await import("@tauri-apps/plugin-notification");
     return (await plugin.isPermissionGranted()) ? "granted" : "default";
   }
@@ -45,6 +100,12 @@ export async function notificationPermission(): Promise<NotificationPermissionSt
 /** 「通知を許可」 in the settings: ask now, from the click, and say what was decided. */
 export async function requestNotificationPermission(): Promise<NotificationPermissionState> {
   if (isTauri()) {
+    const native = await nativePermission();
+    if (native === "default") {
+      const decided = await nativeRequest();
+      return decided === "unavailable" ? "default" : decided;
+    }
+    if (native !== "unavailable") return native;
     const plugin = await import("@tauri-apps/plugin-notification");
     if (await plugin.isPermissionGranted()) return "granted";
     return (await plugin.requestPermission()) === "granted" ? "granted" : "denied";
@@ -55,10 +116,14 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 }
 
 /**
- * Sign-out (§11): take our notifications off the screen. Only possible in a browser: the desktop
- * notification plugin cannot remove delivered notifications (its removeAllActive is mobile only).
+ * Sign-out (§11): take our notifications off the screen. Possible in a browser and in the macOS app (native); the
+ * desktop notification plugin cannot remove delivered notifications (its removeAllActive is mobile only).
  */
 export function clearNotifications(): void {
+  if (isTauri()) {
+    clickActions.clear();
+    void invoke<void>("native_notification_clear").catch((err: unknown) => console.warn("could not clear notifications", err));
+  }
   for (const notification of shown) notification.close();
   shown.clear();
 }

@@ -69,6 +69,24 @@ describe("app controller", () => {
     expect(controller.isSignedIn("http://one")).toBe(false);
   });
 
+  it("sends this device's name and version once the session is online, so an old \"MacIntel\" is renamed", async () => {
+    const server = new FakeServer();
+    const bob = server.addUser("bob");
+    const store = new Store();
+    const engine = new SyncEngine({ api: server.apiFor(bob.id), connect: server.connectorFor(bob.id), store, getAccessToken: () => "t", sleep: async () => {} });
+    const controller = new AppController();
+    (controller as unknown as { deviceName: string }).deviceName = "Mac (Bob's MacBook Air)";
+    const updateDevice = vi.fn(async () => ({}));
+    addSession(controller, "http://one", { api: { baseUrl: "http://one", updateDevice }, store, engine });
+    const internals = controller as unknown as { sessions: Map<string, unknown>; reportDeviceOnce: (session: unknown, engine: SyncEngine) => void };
+    internals.reportDeviceOnce(internals.sessions.get("http://one"), engine);
+    await engine.start();
+    await engine.idle();
+    await vi.waitFor(() => expect(updateDevice).toHaveBeenCalledOnce());
+    expect(updateDevice).toHaveBeenCalledWith(expect.objectContaining({ device_name: "Mac (Bob's MacBook Air)" }));
+    engine.stop();
+  });
+
   it("lights the workspace dot for unread replies in followed threads too (WORKSPACES.md §3.2)", () => {
     const controller = new AppController();
     const store = new Store();

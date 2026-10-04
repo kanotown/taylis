@@ -840,6 +840,14 @@ export class ApiClient {
     return this.request("GET", "/api/v1/auth/sessions");
   }
 
+  /**
+   * PUT /devices/current: this device's name and app version, sent again each time a session starts so that an update or
+   * a better name (not "MacIntel") reaches 「ログイン中の端末」 without signing in again. The push token stays as it is.
+   */
+  updateDevice(device: Pick<DeviceInfo, "device_name" | "app_version">): Promise<unknown> {
+    return this.request("PUT", "/api/v1/devices/current", device);
+  }
+
   /** PUSH_NOTIFICATIONS.md §15: a test push to every device of mine (and notification.test to my open apps). */
   sendTestNotification(): Promise<TestNotificationOut> {
     return this.request("POST", "/api/v1/users/me/test-notification");

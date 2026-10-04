@@ -393,8 +393,14 @@ function NotificationsSection({ controller }: { controller: AppController }) {
   const [permission, setPermission] = useState<NotificationPermissionState | null>(null);
   useEffect(() => {
     let current = true;
-    void notificationPermission().then((state) => { if (current) setPermission(state); });
-    return () => { current = false; };
+    const read = () => void notificationPermission().then((state) => { if (current) setPermission(state); });
+    read();
+    // Back from System Settings (the reader turned Taylis' notifications on or off there): read it again.
+    window.addEventListener("focus", read);
+    return () => {
+      current = false;
+      window.removeEventListener("focus", read);
+    };
   }, []);
   const saveKeywords = async (event: FormEvent) => {
     event.preventDefault();

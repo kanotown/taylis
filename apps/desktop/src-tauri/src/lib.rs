@@ -4,10 +4,15 @@
 //! Refresh tokens never touch the file system: they live in Keychain / Credential Manager.
 //! In-app updates: tauri-plugin-updater (kanotown/taylis-releases' latest.json, tauri.conf.json plugins.updater) and
 //! tauri-plugin-process (relaunch after installing); the page drives both (src/state/updates.ts).
+//! Notifications: tauri-plugin-notification, except in the macOS app bundle, where `native_notification_*` show them
+//! through UNUserNotificationCenter so that they appear while Taylis is frontmost too (mac_notify.rs).
 
 use keyring::{Entry, Error as KeyringError};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
+
+#[cfg(target_os = "macos")]
+mod mac_notify;
 
 const SERVICE: &str = "jp.chikuwachat.desktop";
 
@@ -37,8 +42,70 @@ fn secret_delete(account: String) -> Result<(), String> {
     }
 }
 
+/// "granted" / "denied" / "default" from the OS, or "unavailable" where the page uses tauri-plugin-notification
+/// (Windows, Linux, and `tauri dev` on macOS, which runs outside an app bundle).
+#[tauri::command]
+async fn native_notification_permission() -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    if mac_notify::available() {
+        return mac_notify::permission().await;
+    }
+    Ok("unavailable".to_owned())
+}
+
+/// Ask the OS (its prompt the first time) and say what was decided; "unavailable" as above.
+#[tauri::command]
+async fn native_notification_request() -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    if mac_notify::available() {
+        return mac_notify::request_permission().await;
+    }
+    Ok("unavailable".to_owned())
+}
+
+/// Show a notification (only called after the permission said it is not "unavailable").
+#[tauri::command]
+fn native_notification_send(id: String, title: String, body: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    if mac_notify::available() {
+        mac_notify::send(&id, &title, &body);
+        return Ok(());
+    }
+    let _ = (id, title, body);
+    Err("native notifications are not available here".to_owned())
+}
+
+/// Sign-out: remove our delivered notifications (nothing to do where they are not native).
+#[tauri::command]
+fn native_notification_clear() {
+    #[cfg(target_os = "macos")]
+    if mac_notify::available() {
+        mac_notify::clear();
+    }
+}
+
+/// The computer's own name for the device list (「ログイン中の端末」, the test notification's list): macOS's Computer
+/// Name (System Settings → General → About), Windows' COMPUTERNAME, Linux's hostname. None when it cannot be read;
+/// the page then says just "Mac" / "Windows" (src/platform/deviceName.ts). The WebView's navigator.platform says
+/// "MacIntel" on every Mac, Apple silicon too.
+#[tauri::command]
+async fn computer_name() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    let name = std::process::Command::new("/usr/sbin/scutil")
+        .args(["--get", "ComputerName"])
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| String::from_utf8(out.stdout).ok());
+    #[cfg(windows)]
+    let name = std::env::var("COMPUTERNAME").ok();
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let name = std::fs::read_to_string("/etc/hostname").ok();
+    name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty())
+}
+
 /// The browser handed a link back (or the app was launched again): the main window comes to the front.
-fn show_main_window(app: &AppHandle) {
+pub(crate) fn show_main_window(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
@@ -70,11 +137,22 @@ pub fn run() {
             // itself so the link can be tried without installing (Windows / Linux; macOS needs the app bundle).
             #[cfg(all(debug_assertions, any(windows, target_os = "linux")))]
             app.deep_link().register_all()?;
+            #[cfg(target_os = "macos")]
+            mac_notify::init(app.handle());
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |_event| show_main_window(&handle));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![secret_get, secret_set, secret_delete])
+        .invoke_handler(tauri::generate_handler![
+            secret_get,
+            secret_set,
+            secret_delete,
+            native_notification_permission,
+            native_notification_request,
+            native_notification_send,
+            native_notification_clear,
+            computer_name
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

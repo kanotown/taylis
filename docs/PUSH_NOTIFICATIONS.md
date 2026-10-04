@@ -68,6 +68,11 @@ PUT /api/v1/devices/current
 - プロバイダから「無効なトークン」が返ったら `push_token = NULL`、`push_token_invalid_reason` を記録する。
   端末行自体は有効のまま。再登録で復活する。
 - 1 ユーザーが複数端末・複数トークンを持つ前提。
+- Desktop / Web はトークンを持たないが、セッションが最初にオンラインになるたびに `device_name` と `app_version` だけを
+  `PUT /devices/current` で送り直す (更新後の版と端末名がログインし直さなくても「ログイン中の端末」に出る。2026-10-04)。
+  端末名は `navigator.platform` (どの Mac でも "MacIntel") ではなく、デスクトップ版は「Mac (コンピュータ名)」/
+  「Windows (COMPUTERNAME)」(Rust の `computer_name`: macOS は `scutil --get ComputerName`)、ブラウザは
+  「Mac (Safari)」「Windows (Edge)」のように user agent から (`apps/desktop/src/platform/deviceName.ts`)。
 
 ### iOS の配布形態と APNs 環境
 
@@ -265,6 +270,28 @@ Provider の選択は起動時に設定から決め、`notifications` モジュ�
 外したスレッドは何も出さない (端末は「メンション・キーワードに当たったのに participant_ids にいない」ことから手動の解除と
 判断する。メンションされた人は自動でフォローされるため。`@channel` だけのときは区別できず通知する)。共通のケースは
 `apps/shared/notify-rules.json` (サーバの `tests/test_notify_rules.py` と 3 端末のテストが読む。2026-10-02)。
+
+### 9.1 Desktop の OS 通知の出し方 (2026-10-04)
+
+`apps/desktop/src/platform/notify.ts` の `notify()` / `notificationPermission()` / `requestNotificationPermission()` /
+`clearNotifications()` をすべての呼び出し (新着・リマインダー・予定・タスク (M55 のクリックで開く)・キャンバス・リアクション・
+テスト通知) と設定の「この端末の通知」が通る。
+
+- **macOS のアプリ (Taylis.app)**: Rust の `native_notification_*` (`src-tauri/src/mac_notify.rs`) で
+  **UNUserNotificationCenter** を使う。tauri-plugin-notification は macOS で notify-rust → mac-notification-sys の
+  非推奨の NSUserNotificationCenter を使い、その delegate に `shouldPresentNotification:` が無いため、Taylis が前面の
+  間はバナーを出さず通知センターに入れるだけだった (v0.1.33 で「テスト通知が 1 度だけ出て、その後出ない」)。また許可の
+  確認・要求はデスクトップでは常に「許可」を返していた。いまは delegate の `willPresentNotification:` がバナー + 一覧 +
+  音を返し、許可は UN の `authorizationStatus` (未決定 → `default`、拒否 → `denied`、それ以外 → `granted`) をそのまま
+  設定に出し、「通知を許可」は `requestAuthorization` (初回は macOS の確認)。設定はウィンドウが前面に戻るたびに読み直す
+  (システム設定で変えた後)。通知のクリックはウィンドウを前に出し、`notification-clicked` (通知の id) で画面の
+  `onClick` を実行する (タスクを開く。古い id は窓を出すだけ)。ログアウトで配信済みの通知を消す
+  (`removeAllDeliveredNotifications`)。
+- **それ以外** (Windows、Linux、アプリのバンドル外で動く macOS の `tauri dev`、macOS 10.13): UN はバンドルが無いと
+  例外になるので使わず (`available()` が偽 → `"unavailable"`)、これまでどおり tauri-plugin-notification。
+  コマンドが失敗したときもプラグインに戻る。
+- UN は署名の無い / ad-hoc 署名のビルドでは許可を拒まれることがある (その場合は「ブロック中」と出るだけで落ちない)。
+  配布する Developer ID 署名のビルドでは問題ない。
 
 ## 10. 設定
 

@@ -529,7 +529,11 @@ checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 name = "chikuwachat-desktop"
 version = "0.1.0"
 dependencies = [
+ "block2",
  "keyring",
+ "objc2",
+ "objc2-foundation",
+ "objc2-user-notifications",
  "serde",
  "serde_json",
  "tauri",
@@ -2841,7 +2845,10 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9df9128cbbfef73cda168416ccf7f837b62737d748333bfe9ab71c245d76613e"
 dependencies = [
+ "bitflags 2.13.2",
+ "block2",
  "objc2",
+ "objc2-core-location",
  "objc2-foundation",
 ]
 
