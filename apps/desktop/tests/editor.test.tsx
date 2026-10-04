@@ -34,6 +34,11 @@ describe("the inline editor (Codex audit C4)", () => {
     }
     render(<View />);
     const editor = screen.getByLabelText("メッセージを編集") as HTMLTextAreaElement;
+    // A URL pasted over selected text links it (jsdom has no execCommand: the draft is set).
+    editor.setSelectionRange(0, 6);
+    const pasted = fireEvent.paste(editor, { clipboardData: { files: [], getData: () => "https://example.com" } });
+    expect(pasted).toBe(false);
+    expect(editor.value).toBe("[before](https://example.com)");
     fireEvent.change(editor, { target: { value: "after" } });
 
     await act(async () => { fireEvent.click(screen.getByText("保存")); });

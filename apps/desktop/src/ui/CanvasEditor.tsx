@@ -18,7 +18,7 @@ import { anchorLine, findTable, insertTable, lineOf, lineStart, NEW_TABLE, parse
 import { CanvasTableDialog } from "./CanvasTableDialog";
 import { CANVAS_PRESENCE_REFRESH_MS } from "../sync/canvasPresence";
 import { attachmentRefs, insertImageLine, insertRule, MAX_CANVAS_IMAGES, preserveCaret, sectionAt, setHeading, toggleTasks } from "./canvasText";
-import { continueStructure, type EditState, indentListLine, insertLink, replaceThroughBrowser, toggleLinePrefix, toggleWrap } from "./composerEdit";
+import { continueStructure, type EditState, indentListLine, insertLink, linkFromPaste, replaceThroughBrowser, toggleLinePrefix, toggleWrap } from "./composerEdit";
 import { deleteBesideStandIns, stripStandIns, TaskMarkerTable } from "./canvasMarkers";
 import { decodeMentions, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { cn, IconButton, modKey } from "./primitives";
@@ -449,6 +449,15 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
             const end = el.selectionEnd ?? start;
             const inserted = table.hide(raw);
             put({ text: el.value.slice(0, start) + inserted + el.value.slice(end), start: start + inserted.length, end: start + inserted.length });
+            return;
+          }
+          // A URL pasted over selected text links it, as in the composer; not over a task marker's invisible stand-in.
+          const el = event.currentTarget;
+          const selected = el.value.slice(el.selectionStart, el.selectionEnd);
+          const linked = stripStandIns(selected) === selected ? linkFromPaste({ text: el.value, start: el.selectionStart, end: el.selectionEnd }, plain) : null;
+          if (linked) {
+            event.preventDefault();
+            put(linked);
           }
         }}
         onDragOver={(event) => {

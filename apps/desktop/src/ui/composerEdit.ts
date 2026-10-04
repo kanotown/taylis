@@ -60,6 +60,33 @@ export function insertLink(state: EditState, url = "https://"): EditState {
   return { text: text.slice(0, start) + inserted + text.slice(end), start: urlStart, end: urlStart + url.length };
 }
 
+/** A clipboard text that is one http(s) URL the renderer's `[label](url)` takes whole (no spaces, no parentheses). */
+const PASTED_URL = /^https?:\/\/[^\s()<>[\]]+$/;
+/** Text already linked or a URL itself: pasting over it replaces it as usual. */
+const HAS_LINK = /https?:\/\/|\]\(|[[\]]/;
+
+/**
+ * Pasting a URL over selected text links it (Slack, GitHub): `[selected](url)`, the caret after it. The spaces around
+ * the selection (a double-click on Windows takes the one after the word) stay outside the brackets. Null when the paste
+ * should go as usual: no selection, the clipboard is not a single URL, or the selection spans lines, is a URL or
+ * holds a link already (or brackets that would break the label).
+ */
+export function linkFromPaste(state: EditState, pasted: string): EditState | null {
+  const { text, start, end } = state;
+  if (start >= end) return null;
+  const url = pasted.trim();
+  if (!PASTED_URL.test(url)) return null;
+  const selected = text.slice(start, end);
+  if (selected.includes("\n") || HAS_LINK.test(selected)) return null;
+  const label = selected.trim();
+  if (!label) return null;
+  const lead = selected.length - selected.trimStart().length;
+  const trail = selected.length - selected.trimEnd().length;
+  const linked = `${selected.slice(0, lead)}[${label}](${url})${trail ? selected.slice(selected.length - trail) : ""}`;
+  const caret = start + linked.length - trail;
+  return { text: text.slice(0, start) + linked + text.slice(end), start: caret, end: caret };
+}
+
 /** True when the caret is inside an open ``` fence (an odd number of fence markers before it). */
 export function insideFence(text: string, caret: number): boolean {
   const before = text.slice(0, caret);

@@ -11,6 +11,7 @@ import { keyboardUp, tapClosesKeyboard } from "../platform/viewport";
 import { AttachmentList } from "./Attachments";
 import { messageRowKey } from "./messageKeyboard";
 import { Avatar } from "./Avatar";
+import { linkFromPaste, replaceThroughBrowser } from "./composerEdit";
 import { ackLine, bannerText, buildTimeline, compactNames, dateLabel, fullTimestamp, lastReplyLabel, rowKey, timeLabel } from "./format";
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
 import { attachmentText, plainText } from "./markdown";
@@ -1275,6 +1276,15 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
         aria-label="メッセージを編集"
         onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
         onChange={(e) => setDraft(e.target.value)}
+        onPaste={(e) => {
+          // A URL pasted over selected text links it, as in the composer (composerEdit.linkFromPaste).
+          const el = e.currentTarget;
+          const linked = linkFromPaste({ text: el.value, start: el.selectionStart, end: el.selectionEnd }, e.clipboardData.getData("text/plain"));
+          if (!linked) return;
+          e.preventDefault();
+          if (replaceThroughBrowser(el, linked.text)) el.setSelectionRange(linked.start, linked.end);
+          else setDraft(linked.text);
+        }}
         onCompositionStart={() => {
           composing.current = true;
         }}
