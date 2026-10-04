@@ -60,12 +60,14 @@ object Links {
  * shown (so stored and re-synced messages behave the same). An AI bot's reply never does: a prompt injection could put
  * the conversation into a link, and the server's fetch would send it out without anyone tapping. The AI bots are the
  * status's agents; until the status is read, any bot (role "bot") is held back too, to be safe.
+ * M98: a channel's feed bot (`botKind` "feed", not an AI agent) is the exception: its links are the entries of feeds the
+ * channel's members registered (SECURITY.md §14).
  */
 object LinkPreviewPolicy {
     // Review v0.1.18 #5, the same rule on the three clients: no bot's link is fetched by itself (an AI reply could
     // carry a prompt-injected URL; a disabled AI bot drops out of the status). A webhook's card is one tap away.
-    fun autoLoads(senderId: String, senderRole: String?, ai: AiStatusOut?): Boolean =
-        senderRole != "bot" && (ai?.agents?.none { it.botUserId == senderId } ?: true)
+    fun autoLoads(senderId: String, senderRole: String?, ai: AiStatusOut?, senderBotKind: String? = null): Boolean =
+        (senderRole != "bot" || senderBotKind == "feed") && (ai?.agents?.none { it.botUserId == senderId } ?: true)
 }
 
 /**

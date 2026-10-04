@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.feeds.models import MAX_URL_LENGTH
 
@@ -48,3 +48,56 @@ class FeedOut(BaseModel):
     last_post_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class FeedBotCandidate(BaseModel):
+    id: UUID
+    username: str
+    display_name: str
+    active: bool
+
+
+class FeedBotOut(BaseModel):
+    """M98: the channel's feed bot (docs/FEEDS.md §3)."""
+
+    bot_user_id: UUID | None = Field(
+        description="The bot the channel's feeds post as; null before the first feed"
+    )
+    display_name: str | None = Field(description="Its name (「RSS」 unless renamed)")
+    adopted: bool = Field(
+        description="An administrator chose an existing bot (e.g. an imported one) for it: the "
+        "feeds never deactivate it or take it out of the channel"
+    )
+    can_rename: bool = Field(description="The caller may rename it (channel owners, admins)")
+    can_adopt: bool = Field(description="The caller may choose another bot for it (admins)")
+    candidates: list[FeedBotCandidate] = Field(
+        default_factory=list,
+        description="For administrators: the bots that may become the feed bot (members of the "
+        "channel or bots that posted in it, used by no webhook, AI, scheduled post, system "
+        "bot or other channel's feeds)",
+    )
+
+
+class FeedBotUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=80,
+        description="A new name for the channel's feed bot (channel owners, administrators)",
+    )
+    bot_user_id: UUID | None = Field(
+        default=None,
+        description="Administrators: make this bot (one of `candidates`) the channel's feed bot",
+    )
+
+    @field_validator("display_name")
+    @classmethod
+    def name_not_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("The name cannot be blank")
+        return cleaned

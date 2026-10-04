@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../src/api/errors";
-import type { ChannelOut, FeedOut, UserMe, UserPublic } from "../src/api/types";
+import type { ChannelOut, FeedBotOut, FeedOut, UserMe, UserPublic } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import type { ChannelState } from "../src/sync/types";
@@ -52,7 +52,7 @@ const FEED: FeedOut = {
   updated_at: "2026-10-01T00:00:00Z",
 };
 
-function setup({ rows = [FEED], archived = false, guest = false, member = true }: { rows?: FeedOut[]; archived?: boolean; guest?: boolean; member?: boolean } = {}) {
+function setup({ rows = [FEED], archived = false, guest = false, member = true, bot }: { rows?: FeedOut[]; archived?: boolean; guest?: boolean; member?: boolean; bot?: FeedBotOut } = {}) {
   const store = new Store();
   store.setMe({ ...people[0]! } as unknown as UserMe);
   for (const user of people) store.upsertUser(user);
@@ -73,6 +73,19 @@ function setup({ rows = [FEED], archived = false, guest = false, member = true }
       return list.find((f) => f.id === id);
     }),
     deleteFeed: vi.fn(async (id: string) => { list = list.filter((f) => f.id !== id); }),
+    channelFeedBot: vi.fn(async () => {
+      if (!bot) throw new Error("no such call");
+      return bot;
+    }),
+    updateChannelFeedBot: vi.fn(async (_c: string, body: { display_name?: string; bot_user_id?: string }) => {
+      const picked = bot!.candidates?.find((c) => c.id === body.bot_user_id);
+      bot = {
+        ...bot!,
+        ...(picked ? { bot_user_id: picked.id, display_name: picked.display_name, adopted: true, candidates: [] } : {}),
+        ...(body.display_name ? { display_name: body.display_name } : {}),
+      };
+      return bot;
+    }),
   };
   const controller = {
     store, api, isAdmin: false, isGuest: guest, version: 0, subscribe: () => () => {}, setError: vi.fn(), setNotice: vi.fn(),
@@ -194,5 +207,56 @@ describe("helpers", () => {
     expect(feedErrorText(new ApiError(422, "feed_invalid", "x", { reason: "weird" }))).toBe("フィードを読み込めませんでした。RSS または Atom の URL か確かめてください");
     const dm = { type: "dm", isMember: true, archived: false } as unknown as ChannelState;
     expect(canAddFeed(dm, false)).toBe(false);
+  });
+});
+
+const BOT_OUT: FeedBotOut = { bot_user_id: BOT, display_name: "RSS", adopted: false, can_rename: false, can_adopt: false, candidates: [] };
+const IMPORTED = { id: "55555555-5555-4555-8555-555555555555", username: "slack-bot", display_name: "週報 - 中村の週報", active: true };
+
+describe("the feed bot (M98)", () => {
+  it("shows the bot's name; nothing to change for a member", async () => {
+    setup({ bot: BOT_OUT });
+    await flush();
+    expect(screen.getByText("RSS").closest("[data-feed-bot]")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /名前を変更/ })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "既存のボットを使う" })).toBeNull();
+  });
+
+  it("an owner renames it", async () => {
+    const { api } = setup({ bot: { ...BOT_OUT, can_rename: true } });
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /名前を変更/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "ボットの名前" }), { target: { value: " 週報RSS " } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await flush();
+    expect(api.updateChannelFeedBot).toHaveBeenCalledWith("c-lab", { display_name: "週報RSS" });
+    expect(screen.getByRole("status").textContent).toBe("ボットの名前を「週報RSS」にしました");
+    expect(screen.getByText("週報RSS")).toBeTruthy();
+  });
+
+  it("an administrator adopts an imported bot after confirming, then the list reloads", async () => {
+    const { api } = setup({ bot: { ...BOT_OUT, can_rename: true, can_adopt: true, candidates: [IMPORTED] } });
+    await flush();
+    const loads = api.channelFeeds.mock.calls.length;
+    fireEvent.change(screen.getByRole("combobox", { name: "既存のボットを使う" }), { target: { value: IMPORTED.id } });
+    fireEvent.click(screen.getByRole("button", { name: "選ぶ" }));
+    expect(screen.getByText(/今の「RSS」ボットは無効になります/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "このボットにする" }));
+    await flush();
+    expect(api.updateChannelFeedBot).toHaveBeenCalledWith("c-lab", { bot_user_id: IMPORTED.id });
+    expect(screen.getByText("週報 - 中村の週報")).toBeTruthy();
+    expect(screen.getByText("(既存のボットを使用)")).toBeTruthy();
+    expect(api.channelFeeds.mock.calls.length).toBeGreaterThan(loads);
+  });
+
+  it("before the first feed only an administrator sees the panel", async () => {
+    setup({ rows: [], bot: { ...BOT_OUT, bot_user_id: null, display_name: null } });
+    await flush();
+    expect(document.querySelector("[data-feed-bot]")).toBeNull();
+    cleanup();
+    setup({ rows: [], bot: { ...BOT_OUT, bot_user_id: null, display_name: null, can_adopt: true, candidates: [IMPORTED] } });
+    await flush();
+    expect(screen.getByText(/最初のフィードを追加すると/)).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "既存のボットを使う" })).toBeTruthy();
   });
 });

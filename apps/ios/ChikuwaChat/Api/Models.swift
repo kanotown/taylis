@@ -20,6 +20,8 @@ struct UserPublic: Codable, Identifiable, Equatable, Hashable {
     var quietHours: QuietHours? = nil
     /// M14a: when the profile picture changed (nil = no picture); the cache key.
     var avatarUpdatedAt: String? = nil
+    /// M98: what a bot is for; "feed" = a channel's feed bot (its link previews load by themselves, LinkPreviewRules).
+    var botKind: String? = nil
 }
 
 /// A daily window (in the user's zone) during which pushes are held back (M12c).

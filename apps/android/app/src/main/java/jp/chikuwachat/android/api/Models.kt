@@ -36,6 +36,8 @@ data class UserPublic(
     val dndUntil: String? = null,
     val quietHours: QuietHours? = null,
     val avatarUpdatedAt: String? = null,
+    /** M98: what a bot is for; "feed" = a channel's feed bot (its link previews load by themselves, LinkPreviewPolicy). */
+    val botKind: String? = null,
 )
 
 /** A daily window (in the user's zone) during which pushes are held back (M12c). */

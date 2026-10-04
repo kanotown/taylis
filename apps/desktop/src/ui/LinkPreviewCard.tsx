@@ -12,8 +12,11 @@ import type { Store } from "../sync/store";
 export function autoLinkPreview(store: Pick<Store, "aiStatus" | "aiAgentOf" | "users">, senderId: string): boolean {
   // Review v0.1.18 #5, the same rule on the three clients: no bot's link is fetched by itself (an AI reply could
   // carry a prompt-injected URL; a disabled AI bot drops out of the status; the row's height must not change when
-  // the status arrives). A webhook's card is one click away.
-  return store.users.get(senderId)?.role !== "bot" && store.aiAgentOf(senderId) === undefined;
+  // the status arrives). A webhook's card is one click away. M98: a channel's feed bot (`bot_kind` "feed") is the
+  // exception: its links are the entries of feeds the channel's members registered (SECURITY.md §14).
+  if (store.aiAgentOf(senderId) !== undefined) return false;
+  const sender = store.users.get(senderId);
+  return sender?.role !== "bot" || sender.bot_kind === "feed";
 }
 
 /**

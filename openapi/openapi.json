@@ -4435,6 +4435,131 @@
         "title": "FavoriteStateOut",
         "type": "object"
       },
+      "FeedBotCandidate": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "active"
+        ],
+        "title": "FeedBotCandidate",
+        "type": "object"
+      },
+      "FeedBotOut": {
+        "description": "M98: the channel's feed bot (docs/FEEDS.md §3).",
+        "properties": {
+          "adopted": {
+            "description": "An administrator chose an existing bot (e.g. an imported one) for it: the feeds never deactivate it or take it out of the channel",
+            "title": "Adopted",
+            "type": "boolean"
+          },
+          "bot_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The bot the channel's feeds post as; null before the first feed",
+            "title": "Bot User Id"
+          },
+          "can_adopt": {
+            "description": "The caller may choose another bot for it (admins)",
+            "title": "Can Adopt",
+            "type": "boolean"
+          },
+          "can_rename": {
+            "description": "The caller may rename it (channel owners, admins)",
+            "title": "Can Rename",
+            "type": "boolean"
+          },
+          "candidates": {
+            "description": "For administrators: the bots that may become the feed bot (members of the channel or bots that posted in it, used by no webhook, AI, scheduled post, system bot or other channel's feeds)",
+            "items": {
+              "$ref": "#/components/schemas/FeedBotCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its name (「RSS」 unless renamed)",
+            "title": "Display Name"
+          }
+        },
+        "required": [
+          "bot_user_id",
+          "display_name",
+          "adopted",
+          "can_rename",
+          "can_adopt"
+        ],
+        "title": "FeedBotOut",
+        "type": "object"
+      },
+      "FeedBotUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "bot_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Administrators: make this bot (one of `candidates`) the channel's feed bot",
+            "title": "Bot User Id"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A new name for the channel's feed bot (channel owners, administrators)",
+            "title": "Display Name"
+          }
+        },
+        "title": "FeedBotUpdate",
+        "type": "object"
+      },
       "FeedCreate": {
         "additionalProperties": false,
         "properties": {
@@ -10528,6 +10653,17 @@
             ],
             "title": "Avatar Updated At"
           },
+          "bot_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bot Kind"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -10729,6 +10865,17 @@
               }
             ],
             "title": "Avatar Updated At"
+          },
+          "bot_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bot Kind"
           },
           "created_at": {
             "format": "date-time",
@@ -16616,6 +16763,112 @@
         "summary": "Add Favorite",
         "tags": [
           "favorites"
+        ]
+      }
+    },
+    "/api/v1/channels/{channel_id}/feed-bot": {
+      "get": {
+        "description": "The channel's feed bot (null before the first feed), and for administrators the bots\nthat may be adopted as it (M98).",
+        "operationId": "get_feed_bot_api_v1_channels__channel_id__feed_bot_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedBotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Feed Bot",
+        "tags": [
+          "feeds"
+        ]
+      },
+      "patch": {
+        "description": "`display_name`: rename the feed bot (channel owners, administrators; 404\nfeed_bot_not_found before the first feed). `bot_user_id`: administrators make one of the\n`candidates` the feed bot (409 feed_bot_unavailable otherwise); the feeds never deactivate\nan adopted bot. Both may come together (adopted first, then renamed).",
+        "operationId": "update_feed_bot_api_v1_channels__channel_id__feed_bot_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedBotUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedBotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Feed Bot",
+        "tags": [
+          "feeds"
         ]
       }
     },

@@ -401,6 +401,22 @@ def parse_bot_as(pairs: Sequence[str]) -> dict[str, str]:
     return mapping
 
 
+def parse_bot_names(pairs: Sequence[str]) -> dict[str, str]:
+    """``--bot-name BOT=NAME`` (M98), repeatable: BOT is a bot_id, a post's username or the
+    bot_profile.name (any case); NAME the display name of the bot account made for it."""
+    mapping: dict[str, str] = {}
+    for pair in pairs:
+        bot, sep, name = pair.partition("=")
+        bot, name = bot.strip(), name.strip()
+        if not sep or not bot or not name or len(name) > 80:
+            raise ValueError(f"--bot-name {pair}: use BOT=NAME (a display name of 1-80 characters)")
+        key = unicodedata.normalize("NFC", bot.lower())
+        if mapping.get(key, name) != name:
+            raise ValueError(f"--bot-name: {bot} is named twice")
+        mapping[key] = name
+    return mapping
+
+
 def parse_emoji_renames(pairs: Sequence[str], files: Sequence[str] = ()) -> dict[str, str]:
     """``--emoji-rename FROM=TO`` and the lines of ``--emoji-rename-file`` (``FROM=TO``, blank
     lines and ``#`` comments skipped) (M92). TO must be a custom emoji name."""
@@ -608,6 +624,7 @@ async def _import_slack(args: argparse.Namespace) -> int:
         domain_map = parse_domain_map(args.email_domain_map or [])
         activate = [parse_domain(d) for d in args.activate_domain or []]
         bot_as = parse_bot_as(args.bot_as or [])
+        bot_names = parse_bot_names(args.bot_name or [])
         renames = parse_emoji_renames(args.emoji_rename or [], args.emoji_rename_file or [])
     except (OSError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -625,6 +642,7 @@ async def _import_slack(args: argparse.Namespace) -> int:
         include_dms=args.include_dms,
         emoji_dir=Path(args.emoji_dir) if args.emoji_dir else None,
         bot_as=bot_as,
+        bot_names=bot_names,
         emoji_renames=renames,
     )
     settings = get_settings()
@@ -778,6 +796,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="import a bot's posts (bot_message username / bot_profile.name, any case) as a "
         "person's: a Slack user (id, username, display name, e-mail), @taylis-username, or "
         "new:<display name>[:guest] for a new deactivated account (repeatable)",
+    )
+    sl.add_argument(
+        "--bot-name",
+        action="append",
+        metavar="BOT=NAME",
+        help="the display name of the bot account made for BOT (its bot_id, a post's username "
+        "or bot_profile.name, any case), e.g. a bot that posted under many names (repeatable)",
     )
     sl.add_argument(
         "--emoji-dir", help="custom emoji images named <name>.png / .gif / …: a folder or a ZIP"
