@@ -1067,7 +1067,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               );
               const content = (
                 <>
-                  <span>{(() => { const name = customEmojiName(reaction.emoji); const custom = name ? store.customEmoji.get(name) : undefined; return custom ? <CustomEmojiImage controller={controller} emoji={custom} size={16} /> : reaction.emoji; })()}</span>
+                  {/* One 16px box for both kinds (2026-10-04): a standard emoji was 12px text next to a 16px image. */}
+                  <span data-reaction-emoji className="inline-flex h-4 min-w-4 items-center justify-center text-base leading-none">{(() => { const name = customEmojiName(reaction.emoji); const custom = name ? store.customEmoji.get(name) : undefined; return custom ? <CustomEmojiImage controller={controller} emoji={custom} size={16} /> : name ? <span className="text-xs">{reaction.emoji}</span> : reaction.emoji; })()}</span>
                   <span className="font-medium">{reaction.count}</span>
                 </>
               );

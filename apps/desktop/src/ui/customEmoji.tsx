@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 import type { CustomEmojiOut } from "../api/types";
 import type { AppController } from "../state/app";
@@ -80,14 +80,34 @@ export function useCustomEmojiUrl(controller: AppController, emoji: CustomEmojiO
 /**
  * A custom emoji's image. `size` in pixels, or a CSS length such as "1.375em" to follow the text around it (a
  * heading's emoji is as large as the heading).
+ *
+ * Always a fixed square box (2026-10-04, 「高さが違う・ガタつく」): before, the image was `width: auto`, so it had no
+ * width until decoded and another one than its loading placeholder; a message's lines could re-wrap and the timeline
+ * jump when it loaded (a remount decodes again). Now the placeholder and the image take the same `size`×`size` box
+ * and a wide image is fitted into it (`object-fit: contain`). Its middle is where a standard emoji glyph's middle is
+ * (Apple Color Emoji: about 0.38em above the baseline).
+ *
+ * `inline` (a run of text: a message, a status line): the box also counts as exactly 1em tall for the line (negative
+ * margins), like a standard emoji glyph, so a larger image never makes its line taller than one without it.
  */
-export function CustomEmojiImage({ controller, emoji, size = 20, className }: { controller: AppController; emoji: CustomEmojiOut; size?: number | string; className?: string }) {
+export function CustomEmojiImage({ controller, emoji, size = 20, className, inline = false }: { controller: AppController; emoji: CustomEmojiOut; size?: number | string; className?: string; inline?: boolean }) {
   const url = useCustomEmojiUrl(controller, emoji);
   if (!url && failed.has(emoji.id)) return <span className={cn("text-muted", className)}>:{emoji.name}:</span>;
+  const style = customEmojiBoxStyle(size, inline);
   // Loading: its room, blank (the name as text was wider than a picker's cell).
-  if (!url) return <span aria-hidden className={cn("inline-block align-text-bottom", className)} style={{ height: size, width: size }} />;
-  const maxWidth = typeof size === "number" ? size * 2 : `calc(${size} * 2)`;
-  return <img src={url} alt={`:${emoji.name}:`} title={`:${emoji.name}:`} className={cn("inline-block align-text-bottom", className)} style={{ height: size, width: "auto", maxWidth }} />;
+  if (!url) return <span aria-hidden data-custom-emoji={emoji.name} className={cn("inline-block shrink-0", className)} style={style} />;
+  const px = typeof size === "number" ? size : undefined;
+  return <img src={url} alt={`:${emoji.name}:`} title={`:${emoji.name}:`} width={px} height={px} draggable={false} data-custom-emoji={emoji.name} className={cn("inline-block shrink-0", className)} style={{ ...style, objectFit: "contain" }} />;
+}
+
+/** The box of a custom emoji (also for the tests): see CustomEmojiImage. */
+export function customEmojiBoxStyle(size: number | string, inline: boolean): CSSProperties {
+  const length = typeof size === "number" ? `${size}px` : size;
+  const box: CSSProperties = { width: length, height: length, minWidth: length };
+  if (!inline) return { ...box, verticalAlign: `calc(0.38em - ${length} / 2)` };
+  // The margin box is 1em tall from 0.12em below the baseline: the image's middle at 0.38em, the line box unchanged.
+  const margin = `calc((1em - ${length}) / 2)`;
+  return { ...box, marginTop: margin, marginBottom: margin, verticalAlign: "-0.12em" };
 }
 
 /** Add a custom emoji (M12f): a name and a small image; any member may. */

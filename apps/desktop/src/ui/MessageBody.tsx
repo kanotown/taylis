@@ -161,7 +161,7 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
     const pieces = splitCustomEmoji(replaced, customEmoji);
     if (pieces.length === 1 && typeof pieces[0] === "string") return keywordNodes(replaced, "k");
     return pieces.map((piece, index) =>
-      typeof piece === "string" ? <span key={index}>{keywordNodes(piece, `k${index}-`)}</span> : <CustomEmojiImage key={index} controller={controller} emoji={customEmoji.get(piece.name)!} size="1.375em" />,
+      typeof piece === "string" ? <span key={index}>{keywordNodes(piece, `k${index}-`)}</span> : <CustomEmojiImage key={index} controller={controller} emoji={customEmoji.get(piece.name)!} size="1.375em" inline />,
     );
   };
   return tokens.map((token, i) => {
