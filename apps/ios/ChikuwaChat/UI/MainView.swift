@@ -3,12 +3,16 @@ import SwiftUI
 struct MainView: View {
     @Bindable var controller: AppController
     /// M34 (MOBILE_UI.md §5): four tabs, each with its own stack of screens, at a compact width; the iPad's sidebar and
-    /// conversation at a regular one (§12). One state for both, carried across a change of size class.
+    /// conversation at a regular one (§13). One state for both, carried across a change of size class.
     @State private var nav = MainNavigation()
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
     /// The split's sidebar, shown or hidden (the conversation full width).
     @State private var columns: NavigationSplitViewVisibility = .all
+    /// The split's width, and whether the sidebar was put away for the thread pane (a narrow window: an iPad in
+    /// portrait), to bring it back when the pane closes.
+    @State private var splitWidth: CGFloat = 0
+    @State private var sidebarAutoHidden = false
     /// M40: the 自分 tab's screens (settings), apart from the conversation routes.
     @State private var youPath: [YouRoute] = []
     /// The home list's tap (ChannelListView's selection), turned into a screen on the home stack.
@@ -378,7 +382,7 @@ struct MainView: View {
         })
     }
 
-    // MARK: the iPad's split (MOBILE_UI.md §12)
+    // MARK: the iPad's split (MOBILE_UI.md §13)
 
     private var splitView: some View {
         NavigationSplitView(columnVisibility: $columns) {
@@ -405,9 +409,28 @@ struct MainView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in splitWidth = width }
+        // Sidebar, conversation and thread need about 1180 pt; narrower (portrait) the sidebar steps aside while the
+        // pane is open and comes back with its close — unless it was changed by hand meanwhile.
+        .onChange(of: PaneRoom(thread: paneThread != nil, width: splitWidth)) { _, room in
+            if room.thread && MainNavigation.sidebarStepsAside(width: room.width) {
+                if columns != .detailOnly {
+                    columns = .detailOnly
+                    sidebarAutoHidden = true
+                }
+            } else if sidebarAutoHidden {
+                sidebarAutoHidden = false
+                if columns == .detailOnly { columns = .all }
+            }
+        }
         .sheet(isPresented: $nav.youSheet) {
             YouView(controller: controller, path: $youPath) { nav.youSheet = false }
         }
+    }
+
+    private struct PaneRoom: Equatable {
+        let thread: Bool
+        let width: CGFloat
     }
 
     /// The thread the split's pane shows: the one open in the conversation in front, while that conversation is there.
@@ -417,7 +440,7 @@ struct MainView: View {
         return open
     }
 
-    /// The split's thread pane (MOBILE_UI.md §12). The inspector shares the detail column's bar (the thread's follow
+    /// The split's thread pane (MOBILE_UI.md §13). The inspector shares the detail column's bar (the thread's follow
     /// and ⋯ go to its end, over the pane), so the pane says what it is and closes from a header row of its own.
     @ViewBuilder
     private var threadPane: some View {

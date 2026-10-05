@@ -17,7 +17,7 @@ struct ChikuwaChatApp: App {
                     if phase == .background { controller.didEnterBackground() }
                 }
         }
-        // A hardware keyboard's shortcuts (MOBILE_UI.md §12): held ⌘ lists them on an iPad; MainView acts on them.
+        // A hardware keyboard's shortcuts (MOBILE_UI.md §13): held ⌘ lists them on an iPad; MainView acts on them.
         .commands {
             CommandMenu("移動") {
                 Button("移動・検索") { KeyCommand.jump.post() }.keyboardShortcut("k", modifiers: .command)

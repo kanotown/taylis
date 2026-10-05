@@ -7,7 +7,7 @@ struct ChannelListView: View {
     /// M37: 「移動・検索」 and 「すべての DM」 (the DM tab), which MainView shows.
     var onJump: () -> Void = {}
     var onAllDms: () -> Void = {}
-    /// The iPad's sidebar (MOBILE_UI.md §12): the row of what the detail column shows, highlighted.
+    /// The iPad's sidebar (MOBILE_UI.md §13): the row of what the detail column shows, highlighted.
     var current: String? = nil
     /// The iPad's sidebar: 「アクティビティ」 as a row (the phone has its tab).
     var activity: SidebarActivity? = nil
