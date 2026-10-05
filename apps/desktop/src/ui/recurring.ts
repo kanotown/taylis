@@ -4,6 +4,7 @@
  */
 import type { CollectionOut, CollectSpec, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringSchedule } from "../api/types";
 import type { ChannelState } from "../sync/types";
+import { t, weekdayName } from "../i18n";
 
 /** 0 = Monday (the server's weekday numbers). */
 export const WEEKDAY_LABELS = ["月", "火", "水", "木", "金", "土", "日"] as const;
@@ -24,33 +25,37 @@ export function scheduleSummary(schedule: RecurringSchedule, tz?: string, localT
   let text: string;
   if (schedule.kind === "weekly") {
     const days = [...schedule.weekdays].sort((a, b) => a - b);
-    text = days.length === 7 ? `毎日 ${clockLabel(schedule.time)}` : `毎週 ${days.map((d) => WEEKDAY_LABELS[d]).join("・")} ${clockLabel(schedule.time)}`;
+    text = days.length === 7 ? t("recurring.daily", { time: clockLabel(schedule.time) }) : t("recurring.weekly", { days: days.map((d) => weekdayName(d)).join(t("recurring.daySeparator")), time: clockLabel(schedule.time) });
   } else {
-    const day = schedule.day === 31 ? "末日" : schedule.day >= 29 ? `${schedule.day} 日 (ない月は末日)` : `${schedule.day} 日`;
-    text = `毎月 ${day} ${clockLabel(schedule.time)}`;
+    text = t("recurring.monthly", { day: monthDayLabel(schedule.day), time: clockLabel(schedule.time) });
   }
   return tz && localTz && tz !== localTz ? `${text} (${tz})` : text;
 }
 
 /** 「当日 18:00 締切」 / 「3 日後 18:00 締切」. */
 export function dueSummary(due: CollectSpec["due"]): string {
-  return `${due.after_days === 0 ? "当日" : `${due.after_days} 日後`} ${clockLabel(due.time)} 締切`;
+  return t("recurring.due", { day: due.after_days === 0 ? t("recurring.sameDay") : t("recurring.daysAfter", { count: due.after_days }), time: clockLabel(due.time) });
+}
+
+/** 「1 日」 「末日」 「29 日 (ない月は末日)」 (the monthly choice). */
+export function monthDayLabel(day: number): string {
+  return day === 31 ? t("recurring.lastDay") : day >= 29 ? t("recurring.dayOrLast", { day }) : t("recurring.dayOfMonth", { day });
 }
 
 /** 「10/9 (金) 18:00」 on this device's calendar. */
 export function shortDateTime(iso: string): string {
   const date = new Date(iso);
-  return `${date.getMonth() + 1}/${date.getDate()} (${JS_WEEKDAYS[date.getDay()]}) ${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return `${t("common.monthDayWeekday", { month: date.getMonth() + 1, day: date.getDate(), weekday: weekdayName((date.getDay() + 6) % 7) })} ${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 /** Whom it collects from, as one line (names from the caller's maps). */
 export function targetsSummary(spec: CollectSpec, groupName: (id: string) => string | undefined, userName: (id: string) => string | undefined): string {
-  if (spec.targets.all_members) return "チャンネルの全員";
+  if (spec.targets.all_members) return t("recurring.allMembers");
   const names = [
-    ...(spec.targets.group_ids ?? []).map((id) => `@${groupName(id) ?? "グループ"}`),
+    ...(spec.targets.group_ids ?? []).map((id) => `@${groupName(id) ?? t("composer.group")}`),
     ...(spec.targets.user_ids ?? []).map((id) => userName(id) ?? "?"),
   ];
-  return names.length > 4 ? `${names.slice(0, 4).join("、")} ほか ${names.length - 4}` : names.join("、");
+  return names.length > 4 ? t("recurring.namesAndMore", { names: names.slice(0, 4).join(t("common.listSeparator")), count: names.length - 4 }) : names.join(t("common.listSeparator"));
 }
 
 /** Owners and the administrators among the members of a channel (not a DM) manage its recurring posts. */
@@ -118,17 +123,17 @@ export function draftFromPost(post: RecurringPostOut): RecurringDraft {
 /** What keeps the draft from being saved, in words; null when it can be. The server checks the same. */
 export function recurringDraftProblem(draft: RecurringDraft): string | null {
   const name = draft.name.trim().split(/\s+/).join(" ");
-  if (!name) return "名前を入力してください";
-  if ([...name].length > MAX_RECURRING_NAME) return `名前は ${MAX_RECURRING_NAME} 文字までです`;
-  if (!draft.body.trim()) return "本文を入力してください";
-  if (draft.body.length > MAX_RECURRING_BODY) return `本文は ${MAX_RECURRING_BODY} 文字までです`;
-  if (draft.kind === "weekly" && draft.weekdays.length === 0) return "曜日を 1 つ以上選んでください";
-  if (draft.kind === "monthly" && !(Number.isInteger(draft.day) && draft.day >= 1 && draft.day <= 31)) return "日は 1〜31 で選んでください";
-  if (!TIME.test(draft.time)) return "時刻を選んでください";
+  if (!name) return t("reservations.check.name");
+  if ([...name].length > MAX_RECURRING_NAME) return t("workflow.check.nameTooLong", { max: MAX_RECURRING_NAME });
+  if (!draft.body.trim()) return t("recurring.check.body");
+  if (draft.body.length > MAX_RECURRING_BODY) return t("recurring.check.bodyTooLong", { max: MAX_RECURRING_BODY });
+  if (draft.kind === "weekly" && draft.weekdays.length === 0) return t("recurring.check.weekdays");
+  if (draft.kind === "monthly" && !(Number.isInteger(draft.day) && draft.day >= 1 && draft.day <= 31)) return t("recurring.check.day");
+  if (!TIME.test(draft.time)) return t("recurring.check.time");
   if (draft.collect) {
-    if (!draft.allMembers && draft.groupIds.length === 0 && draft.userIds.length === 0) return "提出する人を選んでください";
-    if (!(Number.isInteger(draft.afterDays) && draft.afterDays >= 0 && draft.afterDays <= MAX_AFTER_DAYS)) return `締切は 0〜${MAX_AFTER_DAYS} 日後で選んでください`;
-    if (!TIME.test(draft.dueTime)) return "締切の時刻を選んでください";
+    if (!draft.allMembers && draft.groupIds.length === 0 && draft.userIds.length === 0) return t("recurring.check.targets");
+    if (!(Number.isInteger(draft.afterDays) && draft.afterDays >= 0 && draft.afterDays <= MAX_AFTER_DAYS)) return t("recurring.check.afterDays", { max: MAX_AFTER_DAYS });
+    if (!TIME.test(draft.dueTime)) return t("recurring.check.dueTime");
   }
   return null;
 }
@@ -163,7 +168,7 @@ export function placeholderHint(today: Date = new Date()): string {
   const m = String(today.getMonth() + 1).padStart(2, "0");
   const d = String(today.getDate()).padStart(2, "0");
   const weekday = JS_WEEKDAYS[today.getDay()];
-  return `{date} → ${y}/${m}/${d} (${weekday})、{weekday} → ${weekday}、{week} → 週番号 (例 ${isoWeek(today)})。投稿した日に置き換わります`;
+  return t("recurring.placeholderHint", { example: `${y}/${m}/${d} (${weekday})`, weekdayValue: weekday, weekValue: isoWeek(today) });
 }
 
 function isoWeek(today: Date): string {
@@ -190,7 +195,7 @@ export function collectionChip(collection: CollectionOut, meId: string | null | 
   const submitted = collection.submitted_user_ids.length;
   const isTarget = !!meId && collection.target_user_ids.includes(meId);
   return {
-    label: `提出 ${submitted}/${collection.target_count} · 締切 ${shortDateTime(collection.due_at)}`,
+    label: t("recurring.chip", { submitted, total: collection.target_count, due: shortDateTime(collection.due_at) }),
     mine: isTarget ? (collection.submitted_user_ids.includes(meId!) ? "submitted" : "pending") : null,
     overdue: Date.parse(collection.due_at) <= now.getTime(),
     complete: collection.target_count > 0 && submitted >= collection.target_count,
