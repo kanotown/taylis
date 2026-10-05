@@ -18,7 +18,7 @@ import { zhHans } from "./zhHans";
 export type UiLocale = "ja" | "en" | "zh-Hans";
 export const UI_LOCALES: readonly UiLocale[] = ["ja", "en", "zh-Hans"];
 export type MessageKey = keyof typeof ja;
-export type Params = Readonly<Record<string, string | number>>;
+export type Params = Readonly<Record<string, string | number | null | undefined>>;
 
 const DICTIONARIES: Readonly<Record<UiLocale, Readonly<Record<MessageKey, string>>>> = { ja, en, "zh-Hans": zhHans };
 const STORAGE_KEY = "taylis.locale";
@@ -172,8 +172,8 @@ function matchingBrace(text: string, open: number): number {
 function placeholder(inner: string, params: Params, locale: UiLocale): string {
   const pluralMatch = /^\s*(\w+)\s*,\s*plural\s*,(.*)$/s.exec(inner);
   if (!pluralMatch) {
-    const value = params[inner.trim()];
-    return value === undefined ? `{${inner}}` : String(value);
+    const name = inner.trim();
+    return name in params ? String(params[name] ?? "") : `{${inner}}`;
   }
   const name = pluralMatch[1]!;
   const n = Number(params[name] ?? 0);
