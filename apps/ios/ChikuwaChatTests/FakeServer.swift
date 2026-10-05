@@ -94,7 +94,10 @@ final class FakeServer {
         func reservationPools() async throws -> [PoolOut] {
             try maybeFail("reservationPools")
             server.poolReads += 1
-            return server.pools
+            let pools = server.pools
+            // Review v0.1.37 #6: the answer as the server was when asked, held until the test lets it go.
+            if let hold = server.poolsHold { server.poolsHold = nil; await hold() }
+            return pools
         }
 
         unowned let server: FakeServer
@@ -527,6 +530,8 @@ final class FakeServer {
     var pools: [PoolOut] = []
     /// How many times GET /reservation-pools was read.
     var poolReads = 0
+    /// When set, the next GET /reservation-pools awaits it before answering (the answer is taken when asked).
+    var poolsHold: (() async -> Void)?
 
     func setPools(_ rows: [PoolOut]) {
         pools = rows
