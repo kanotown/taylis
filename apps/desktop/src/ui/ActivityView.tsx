@@ -16,6 +16,7 @@ import { dmTimeLabel } from "./mobileTabs";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuTrigger } from "./primitives";
 import { ThreadsView } from "./ThreadsView";
 import { EmojiText } from "./UserPopover";
+import { t } from "../i18n";
 
 export type ActivitySegment = "mentions" | "threads";
 
@@ -147,23 +148,23 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
 
   const items = list?.items ?? [];
   return (
-    <section aria-label="アクティビティ" className="flex min-h-0 flex-1 flex-col bg-canvas">
+    <section aria-label={t("nav.activity")} className="flex min-h-0 flex-1 flex-col bg-canvas">
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4 max-md:pr-2">
         <span className="text-muted max-md:hidden"><Bell size={18} /></span>
-        <strong className="min-w-0 flex-1 truncate text-[17px] md:text-[15px]">アクティビティ</strong>
+        <strong className="min-w-0 flex-1 truncate text-[17px] md:text-[15px]">{t("nav.activity")}</strong>
         <Menu>
           <MenuTrigger asChild>
-            <button type="button" aria-label="アクティビティのメニュー" title="アクティビティのメニュー" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
+            <button type="button" aria-label={t("activity.menu")} title={t("activity.menu")} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
               <MoreHorizontal size={18} />
             </button>
           </MenuTrigger>
           <MenuContent align="end">
-            <MenuItem onSelect={() => void markAllRead()}>すべて既読</MenuItem>
+            <MenuItem onSelect={() => void markAllRead()}>{t("activity.markAllRead")}</MenuItem>
           </MenuContent>
         </Menu>
       </header>
       <div className="shrink-0 px-3 py-2">
-        <div className="mx-auto flex max-w-3xl rounded-xl bg-panel p-1 text-[13px] font-medium md:text-sm" role="radiogroup" aria-label="表示する項目">
+        <div className="mx-auto flex max-w-3xl rounded-xl bg-panel p-1 text-[13px] font-medium md:text-sm" role="radiogroup" aria-label={t("activity.show")}>
           {ACTIVITY_FILTERS.map((value) => (
             <button
               key={value}
@@ -180,18 +181,18 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
       </div>
       <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto pb-3">
         {list === undefined || (list.loading && items.length === 0 && !failed) ? (
-          <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
+          <div className="py-8 text-center text-sm text-muted">{t("common.loading")}</div>
         ) : items.length === 0 ? (
           failed ? (
             <div className="flex flex-col items-center gap-3 py-16 text-sm text-muted">
-              読み込めませんでした
-              <Button variant="secondary" size="sm" onClick={() => void load(filter)}>再読み込み</Button>
+              {t("common.loadFailed")}
+              <Button variant="secondary" size="sm" onClick={() => void load(filter)}>{t("common.reload")}</Button>
             </div>
           ) : (
             <div className="py-16 text-center text-sm text-muted">{activityEmptyText(filter)}</div>
           )
         ) : (
-          <ul className="mx-auto max-w-3xl" aria-label={`${ACTIVITY_FILTER_LABELS[filter]}のアクティビティ`}>
+          <ul className="mx-auto max-w-3xl" aria-label={t("activity.listLabel", { filter: ACTIVITY_FILTER_LABELS[filter] })}>
             {items.map((item) => (
               <li key={activityKey(item)} data-row-key={activityKey(item)}>
                 <ActivityRow controller={controller} item={item} unread={isActivityUnread(item, seenFrom)} onOpen={() => onOpen(item)} />
@@ -199,7 +200,7 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
             ))}
             {list.cursor && (
               <li className="py-2 text-center">
-                <Button variant="secondary" size="sm" disabled={list.loading} onClick={() => void load(filter, true)}>さらに読み込む</Button>
+                <Button variant="secondary" size="sm" disabled={list.loading} onClick={() => void load(filter, true)}>{t("canvasHistory.loadMore")}</Button>
               </li>
             )}
           </ul>
@@ -223,13 +224,13 @@ function activityExcerpt(item: ActivityItem, controller: AppController): string 
   const message = item.message;
   if (!message) return "";
   const store = controller.store;
-  return message.deleted ? "(削除されたメッセージ)" : plainText(mentionsToNames(message.body, store.users, store.groups), 200) || message.attachments.map((a) => a.filename).join(", ");
+  return message.deleted ? t("activity.deletedMessage") : plainText(mentionsToNames(message.body, store.users, store.groups), 200) || message.attachments.map((a) => a.filename).join(", ");
 }
 
 /** One item: who (their pictures) did what, where and when, and the message's opening words. */
 function ActivityRow({ controller, item, unread, onOpen }: { controller: AppController; item: ActivityItem; unread: boolean; onOpen: () => void }) {
   const store = controller.store;
-  const nameOf = (id: string) => store.users.get(id)?.display_name ?? "メンバー";
+  const nameOf = (id: string) => store.users.get(id)?.display_name ?? t("common.member");
   const { who, what } = activityHeadline(item, nameOf);
   const channelId = item.message?.channel_id ?? item.canvas?.channel_id ?? "";
   const channel = store.getChannel(channelId);
@@ -248,7 +249,7 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
         data-activity={item.kind}
         data-unread={unread || undefined}
         data-done={done || undefined}
-        aria-label={`${unread ? "未読 " : ""}${activityHeadlineText(item, nameOf)}${done ? " · 対応済み" : ""}`}
+        aria-label={`${unread ? `${t("sidebar.unread")} ` : ""}${activityHeadlineText(item, nameOf)}${done ? ` · ${t("activity.done")}` : ""}`}
         className={cn("flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-panel active:bg-panel md:rounded-xl", done && "opacity-60")}
       >
         <span className="flex w-2.5 shrink-0 justify-center pt-4" aria-hidden="true">
@@ -258,7 +259,7 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
         <span className="min-w-0 flex-1 pl-1">
           <span className="flex items-baseline gap-2">
             <span className="min-w-0 flex-1 truncate text-[14px] text-ink"><strong className="font-semibold">{who}</strong>{what}</span>
-            {done && <span className="shrink-0 text-xs text-muted">対応済み</span>}
+            {done && <span className="shrink-0 text-xs text-muted">{t("activity.done")}</span>}
             <time dateTime={item.at} title={fullTimestamp(item.at)} className="shrink-0 text-xs text-muted">{dmTimeLabel(item.at)}</time>
           </span>
           <span className={cn("mt-0.5 line-clamp-3 text-[13.5px] leading-snug text-ink/80", done && "line-through decoration-ink/30")}>{excerpt}</span>
@@ -272,7 +273,7 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
       onClick={onOpen}
       data-activity={item.kind}
       data-unread={unread || undefined}
-      aria-label={`${unread ? "未読 " : ""}${activityHeadlineText(item, nameOf)}${where ? ` · ${where}` : ""}`}
+      aria-label={`${unread ? `${t("sidebar.unread")} ` : ""}${activityHeadlineText(item, nameOf)}${where ? ` · ${where}` : ""}`}
       className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-panel active:bg-panel md:rounded-xl"
     >
       <span className="flex w-2.5 shrink-0 justify-center pt-4" aria-hidden="true">
@@ -312,8 +313,8 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
           </span>
           <time dateTime={item.at} title={fullTimestamp(item.at)} className="shrink-0 text-xs text-muted">{dmTimeLabel(item.at)}</time>
         </span>
-        {where && <span className="block truncate text-xs text-muted">{item.kind === "thread_reply" ? `${where} のスレッド` : item.kind === "canvas_mention" ? `${where} のキャンバス` : where}</span>}
-        {excerpt && <span className="mt-0.5 line-clamp-2 text-[13.5px] leading-snug text-ink/80"><EmojiText controller={controller} text={item.kind === "reaction" ? `「${excerpt}」` : excerpt} /></span>}
+        {where && <span className="block truncate text-xs text-muted">{item.kind === "thread_reply" ? t("activity.threadIn", { where }) : item.kind === "canvas_mention" ? t("activity.canvasIn", { where }) : where}</span>}
+        {excerpt && <span className="mt-0.5 line-clamp-2 text-[13.5px] leading-snug text-ink/80"><EmojiText controller={controller} text={item.kind === "reaction" ? t("common.quoted", { text: excerpt }) : excerpt} /></span>}
       </span>
     </button>
   );
@@ -333,12 +334,12 @@ function ActivityStageA({ controller, onOpenMessage, onOpenThread }: {
   const [threadsShown, setThreadsShown] = useState(false);
   const summary = controller.store.threadSummary;
   return (
-    <section aria-label="アクティビティ" className="flex min-h-0 flex-1 flex-col bg-canvas">
+    <section aria-label={t("nav.activity")} className="flex min-h-0 flex-1 flex-col bg-canvas">
       <header className="flex h-[52px] shrink-0 items-center border-b border-line px-4">
-        <strong className="truncate text-[17px]">アクティビティ</strong>
+        <strong className="truncate text-[17px]">{t("nav.activity")}</strong>
       </header>
       <div className="shrink-0 px-3 py-2">
-        <div className="flex rounded-xl bg-panel p-1 text-sm font-medium" role="radiogroup" aria-label="表示する項目">
+        <div className="flex rounded-xl bg-panel p-1 text-sm font-medium" role="radiogroup" aria-label={t("activity.show")}>
           {(["mentions", "threads"] as const).map((value) => (
             <button
               key={value}
@@ -351,7 +352,7 @@ function ActivityStageA({ controller, onOpenMessage, onOpenThread }: {
               }}
               className={cn("flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg transition-colors", segment === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
             >
-              {value === "mentions" ? "メンション" : "スレッド"}
+              {value === "mentions" ? t("nav.mentions") : t("nav.threads")}
               {value === "threads" && summary.unread_count > 0 && (
                 <span className={cn("rounded-full px-1.5 text-[11px] font-bold leading-4 text-white", summary.mention_count > 0 ? "bg-rose-500" : "bg-muted")}>{summary.unread_count}</span>
               )}

@@ -8,7 +8,7 @@ import type { UserMe } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { type SyncApi, SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
-import { ARCHIVED_PREVIEW_NOTE, PreviewJoinBar, PreviewThreadPane, PreviewTimeline, previewCanJoin } from "../src/ui/ChannelPreview";
+import { archivedPreviewNote, PreviewJoinBar, PreviewThreadPane, PreviewTimeline, previewCanJoin } from "../src/ui/ChannelPreview";
 import { LONG_PRESS_MS } from "../src/ui/MessageActionsSheet";
 import { ThreadPane } from "../src/ui/ThreadPane";
 import { FakeServer, MemoryPersistence } from "./fakeServer";
@@ -220,7 +220,7 @@ describe("the preview on screen", () => {
     const onJoin = vi.fn(async () => true);
     const controller = { engine: w.engine } as unknown as AppController;
     render(<PreviewJoinBar controller={controller} channel={channel} onJoin={onJoin} />);
-    expect(screen.getByText(ARCHIVED_PREVIEW_NOTE)).toBeTruthy();
+    expect(screen.getByText(archivedPreviewNote())).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByText(/に参加する/)).toBeNull();
   });
