@@ -120,6 +120,14 @@ refresh(token):
 - APNs / FCM のトークンは秘密ではないが、他人のトークンを登録されても、通知はそのトークンの
   登録ユーザーの内容しか届かないため実害はない。無効なトークンは NULL に戻す。
 - プッシュ本文にメッセージ内容を含めるかは `PUSH_INCLUDE_CONTENT` で切り替えられる。
+- **署名つきのアイコンの URL** (2026-10-06、PUSH_NOTIFICATIONS.md §16): iOS の Notification Service Extension は資格情報を
+  持たないので、メッセージのプッシュに送った人のアイコンの URL `GET /users/{id}/avatar/signed?v&exp&sig` を入れる。
+  `HMAC-SHA256(SECRET_KEY, "avatar-push\n" + id + "\n" + 版 + "\n" + 期限)` (用途の接頭辞で他の SECRET_KEY の使い道と分ける)、
+  期限は 24 時間、その人の**その版のアイコンだけ** (変えた / 消したら古い URL は 404)。署名の比較は定数時間、失敗はどれも
+  同じ 404 で理由を出さない。受け取るのはその会話のメンバーの端末だけ。URL は Apple を通り、持っている人は期限まで
+  その 1 枚を取れるので、`PUSH_INCLUDE_CONTENT=false` では入れない。`SECRET_KEY` を変えると発行済みの URL は無効になる
+  (アイコンが出ないだけ)。URL の前半は端末の `devices.base_url` (その端末が `PUT /devices/current` に使ったアドレス。
+  他の端末には使わない)。Android は URL を使わず、アプリのセッションで取る。
 - 複数のワークスペース (WORKSPACES.md) では、サーバーごとに別の端末行・セッション・refresh token を持つ。
   資格情報ストアのアカウント名は `サーバー URL|ユーザー名` で、ワークスペース間で混ざらない。
   認証不要の `GET /api/v1/server` が返すのはワークスペース名、`workspace_id`、API バージョンだけ。

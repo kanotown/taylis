@@ -153,6 +153,7 @@ CREATE TABLE devices (
   push_token               text,                              -- 無効になったら NULL に戻す
   push_environment         text,                              -- apns: 'sandbox' | 'production'
   push_token_invalid_reason text,                             -- 'unregistered' | 'invalid_token' (再登録で消す)
+  base_url                 text,                              -- 2026-10-06 (0088) この端末がサーバに届くアドレス (PUT /devices/current の PUBLIC_BASE_URL か要求の URL)。iOS のプッシュの署名つきアイコン URL の前半 (PUSH_NOTIFICATIONS.md §16)
   device_name              text,
   app_version              text,
   locale                   text,                              -- M115 アプリの言語 (ログイン・更新・SSO・PUT /devices/current の Accept-Language)。users.locale が NULL の時のプッシュの言語 (I18N.md §1)
