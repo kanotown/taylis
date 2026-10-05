@@ -16,6 +16,9 @@ USERNAME_PATTERN = r"^[a-z0-9._-]{3,32}$"
 TIME_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"
 
 MAX_QUICK_REACTIONS = 6
+# M111: at most this many sidebar items / home tiles (the catalogue has a dozen; room for more).
+MAX_NAV_ITEMS = 64
+NAV_ITEM_KEY_PATTERN = r"^[a-z][a-z0-9-]{0,31}$"
 
 
 def is_plain_emoji(value: str) -> bool:
@@ -79,6 +82,15 @@ def _hhmm(minutes: int) -> str:
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
+class NavItem(BaseModel):
+    """M111: one sidebar item / home tile (apps/shared/nav-items.json) and whether it shows."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(pattern=NAV_ITEM_KEY_PATTERN)
+    visible: bool
+
+
 class UserPublic(BaseModel):
     id: UUID
     username: str
@@ -122,6 +134,9 @@ class UserMe(UserPublic):
     # M50: my quick reactions in order (1-6 plain emoji); null = not chosen, the clients' rule
     # (the ones I used last, then the defaults).
     quick_reactions: list[str] | None = None
+    # M111: my sidebar items (desktop / Web) and home tiles (phones) in order; null = default,
+    # the clients' defaults. Keys a client does not implement are ignored there, kept when it saves.
+    nav_items: list[NavItem] | None = None
 
 
 class UserUpdate(BaseModel):
@@ -154,6 +169,16 @@ class UserUpdate(BaseModel):
     quick_reactions: list[str] | None = Field(
         default=None, min_length=1, max_length=MAX_QUICK_REACTIONS
     )
+
+    # M111: up to 64 distinct keys in order (unknown keys are kept); null resets to the defaults.
+    nav_items: list[NavItem] | None = Field(default=None, max_length=MAX_NAV_ITEMS)
+
+    @field_validator("nav_items")
+    @classmethod
+    def nav_item_keys_are_distinct(cls, value: list[NavItem] | None) -> list[NavItem] | None:
+        if value is not None and len({item.key for item in value}) != len(value):
+            raise ValueError("Navigation item keys must be distinct")
+        return value
 
     @field_validator("quick_reactions")
     @classmethod
@@ -238,4 +263,15 @@ def to_user_me(user: User) -> UserMe:
         notify_tasks=user.notify_tasks,
         has_password=user.password_hash is not None,
         quick_reactions=list(user.quick_reactions) if user.quick_reactions else None,
+        nav_items=nav_items_of(user),
     )
+
+
+def nav_items_of(user: User) -> list[NavItem] | None:
+    """The stored list as sent; a row that does not validate (never written so) reads as unset."""
+    if user.nav_items is None:
+        return None
+    try:
+        return [NavItem.model_validate(item) for item in user.nav_items]
+    except ValueError:
+        return None

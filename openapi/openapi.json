@@ -7230,6 +7230,27 @@
         "title": "MyLabProfileUpdate",
         "type": "object"
       },
+      "NavItem": {
+        "additionalProperties": false,
+        "description": "M111: one sidebar item / home tile (apps/shared/nav-items.json) and whether it shows.",
+        "properties": {
+          "key": {
+            "pattern": "^[a-z][a-z0-9-]{0,31}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "visible": {
+            "title": "Visible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "visible"
+        ],
+        "title": "NavItem",
+        "type": "object"
+      },
       "NotificationPreferenceIn": {
         "properties": {
           "level": {
@@ -11948,6 +11969,20 @@
             "title": "Must Change Password",
             "type": "boolean"
           },
+          "nav_items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NavItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nav Items"
+          },
           "notification_default": {
             "default": "all",
             "enum": [
@@ -12262,6 +12297,21 @@
               }
             ],
             "title": "Email"
+          },
+          "nav_items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NavItem"
+                },
+                "maxItems": 64,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nav Items"
           },
           "notification_default": {
             "anyOf": [
