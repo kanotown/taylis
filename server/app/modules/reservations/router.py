@@ -58,7 +58,8 @@ async def delete_pool(pool_id: UUID, user: CurrentUser, db: Db) -> Response:
 @router.post("/reservation-pools/{pool_id}/reserve", response_model=PoolOut)
 async def reserve(pool_id: UUID, user: CurrentUser, db: Db) -> PoolOut:
     """「今すぐ (順番待ち)」: join the walk-in queue (members, not guests). Already in it or on a
-    seat: no change. 409 reservation_pool_disabled while the pool is paused."""
+    seat: no change. 409 reservation_already_active with a booking in the pool (one reservation
+    per person and pool), reservation_pool_disabled while the pool is paused."""
     return await service.reserve(db, user, pool_id)
 
 
@@ -66,8 +67,9 @@ async def reserve(pool_id: UUID, user: CurrentUser, db: Db) -> PoolOut:
 async def book(pool_id: UUID, body: BookingIn, user: CurrentUser, db: Db) -> PoolOut:
     """A booking: on the hour, 1 h to max_hours, from the current hour to 14 days ahead.
     400 reservation_booking_invalid (details.reason grid / past / horizon / duration), 409
-    reservation_slot_full (details.at: the first full hour), too_many_bookings (two at a time),
-    reservation_overlap (one of mine at that time). The same slot again: no change."""
+    reservation_slot_full (details.at: the first full hour), reservation_already_active (one
+    reservation per person and pool: a booking, a walk-in request or a seat already;
+    details.reservation_id / kind / status). The same slot again: no change."""
     return await service.book(db, user, pool_id, body)
 
 

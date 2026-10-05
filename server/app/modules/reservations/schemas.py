@@ -230,6 +230,12 @@ class PoolOut(BaseModel):
         description="The walk-in whose seat goes next while someone waits (「次に外す」)"
     )
     my_reservation_id: UUID | None = Field(description="The caller's active walk-in request")
+    my_active_id: UUID | None = Field(
+        default=None,
+        description="The caller's one active reservation in the pool (waiting, booked, on a "
+        "seat or returned but not yet removed); while it is set, 「今すぐ」 and 「予約する」 "
+        "answer 409 reservation_already_active",
+    )
     can_manage: bool = Field(description="May change the settings (its creator, administrators)")
     can_operate: bool = Field(
         description="May assign / remove / swap / cancel others (operators, its creator, "
