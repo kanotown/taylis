@@ -407,7 +407,10 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
   シェルなし、stdin なし、環境変数は `PATH` と `LC_ALL` だけ、出力は JSON 1 行 (4 KB まで)。描画は幅 800 px、
   高さは幅の 2 倍まで、出力は Pillow が作り直した WebP (メタデータを持ち越さない)。読めない PDF (壊れている、
   パスワード付き、時間切れ) は `failed`。
-- **生成物**: キーは `attachments/{id}.preview.pdf` / `.preview.webp` で利用者が決められる部分は無い。
+- **生成物**: キーは `attachments/{id}.preview.{n}.pdf` / `.preview.{n}.webp`（n は claim 番号）で利用者が決められる
+  部分は無い。結果を書けるのは行の claim 番号がまだ自分のものである試行だけで、古い試行は新しい試行の結果も
+  オブジェクトも変えられない。途中まで保存したオブジェクトは失敗・停止のときに消し、残った分は GC が番号から
+  消す（レビュー v0.1.37 #4・#9、PREVIEWS.md §3）。
 - **再試行**: 一時的な失敗は 3 回まで (1 分・10 分・1 時間の間隔)、恒久的な失敗はその場で `failed`。処理中に
   止まった行はリースが切れてから取り直し、試行回数が上限ならもう変換しない (同じ文書でサーバを落とし続けない)。
 - **配信**: `GET /attachments/{id}/preview/thumbnail` (`image/webp`) と `/preview/pdf` (`application/pdf`)。権限は元の
@@ -477,7 +480,9 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 (`message_rate_limit_per_user` / `ws_max_connections_per_user` / `ws_connect_rate_limit_per_ip`)。
 
 本文サイズは Caddy で制限する (アップロード以外は 1 MB。プロフィール画像は 6 MB、`AVATAR_MAX_BYTES` 5 MB に合わせる。
-クライアントは選んだ範囲を 512px の JPEG にしてから送るので、通常は 100 KB 前後)。
+クライアントは選んだ範囲を 512px の JPEG にしてから送るので、通常は 100 KB 前後)。絵文字セットの取り込み
+（`/api/v1/emoji/packs/import`、管理者のみ）は 70 MB：アプリは ZIP もフォルダーのファイルの合計も 64 MiB
+（`PACK_UPLOAD_MAX_BYTES`）までで、multipart の分を足した値（レビュー v0.1.37 #8。それまでは 1 MB で 413 になっていた）。
 
 ## 6. トランスポートとデプロイ
 
@@ -580,7 +585,10 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
   multicast / reserved、IPv4-mapped IPv6 を含む) を要求する。IP リテラルも同じ判定。`localhost` / `*.localhost` /
   `*.local` は解決せずに拒否。クラウドのメタデータ (169.254.169.254) もこれで弾く。
 - リダイレクトは 3 回まで、**各ホップで同じ判定**をやり直す (公開ホストから内部へ飛ばす攻撃への対策)。
-- タイムアウト 5 秒、本文は先頭 512 KB まで (`<head>` があれば十分)、Content-Type が HTML 以外は捨てる。
+- タイムアウトは接続・読み取りごとに 5 秒、それとは別に取得全体（DNS 解決・リダイレクト・本文）を 10 秒
+  （`LINK_PREVIEW_DEADLINE_SECONDS`。フィードは `FEED_DEADLINE_SECONDS` 30 秒）で打ち切る。少しずつ送り続けるサーバーが
+  読み取りのタイムアウトをすり抜けて取得を長く止めないため（レビュー v0.1.37 #3）。本文は先頭 512 KB まで (`<head>` が
+  あれば十分)、Content-Type が HTML 以外は捨てる。
   HTML は標準ライブラリの `HTMLParser` で `<head>` だけ読む。
 - 結果 (失敗も) は `link_previews` にキャッシュし (成功 7 日、失敗 1 日)、ユーザーごとに 1 分 60 回に制限する。
   拒否 (400 `url_not_allowed`) はキャッシュしない。

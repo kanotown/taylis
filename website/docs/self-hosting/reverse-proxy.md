@@ -46,7 +46,9 @@ certbot --nginx -d chat.example.com --redirect
   プライベートアドレスからの転送ヘッダを信用します）。
 - WebSocket のために `Upgrade` と `Connection` を通す。
 - 読み取りのタイムアウトを長く（1 時間）する。WebSocket の接続を切らないためです。
-- アップロードの上限（`client_max_body_size`）を、添付ファイルの上限（既定 100 MB）より大きくする。
+- アップロードの上限（`client_max_body_size`）を、添付ファイルの上限（既定 100 MB）より大きくする。絵文字セットの
+  取り込み（ZIP かフォルダーで合計 64 MB まで）もこの上限の内側に入ります。パスごとの正確な上限（添付 110 MB、
+  絵文字セット 70 MB、プロフィール画像 6 MB、それ以外の API は 1 MB）は、後ろの Caddy が受け持ちます。
 
 ## TLS について
 

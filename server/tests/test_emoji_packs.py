@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, get_args
 
+import pytest
 from httpx import AsyncClient
 from PIL import Image
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.events.models import OutboxEvent
 from app.modules.audit.models import AuditLog
+from app.modules.emoji import router as emoji_router
 from app.modules.emoji.schemas import TextEmojiColor
 from app.modules.users.models import User
 from tests.helpers import make_user
@@ -325,3 +327,22 @@ async def test_import_from_zip_and_failures(
     assert conflict.json()["error"]["details"]["shortcodes"] == ["hp-bow", "hp-plain"]
     assert len((await client.get("/api/v1/emoji/packs")).json()) == 1
     assert len((await client.get("/api/v1/emoji")).json()) == 2
+
+
+async def test_a_folder_over_the_upload_cap_is_refused(
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review v0.1.37 #8: the folder's files together have the ZIP's cap (64 MB, the proxy lets
+    a little more through on this path)."""
+    admin = await make_user(db, "root", role="admin")
+    as_user(admin)
+    folder = _folder(_manifest())
+    size = sum(len(part[1][1]) for part in folder if not part[1][0].endswith(".md"))
+    monkeypatch.setattr(emoji_router, "PACK_UPLOAD_MAX_BYTES", size - 1)
+    refused = await client.post("/api/v1/emoji/packs/import", files=folder)
+    assert refused.status_code == 413 and refused.json()["error"]["code"] == "emoji_too_large"
+    monkeypatch.setattr(emoji_router, "PACK_UPLOAD_MAX_BYTES", size)
+    assert (await client.post("/api/v1/emoji/packs/import", files=folder)).status_code == 200
