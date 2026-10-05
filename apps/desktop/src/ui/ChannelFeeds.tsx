@@ -88,7 +88,7 @@ export function FeedBotPanel({ controller, channel, reload, onChanged }: { contr
         <div className="flex items-center gap-2 text-sm">
           <Bot size={15} className="shrink-0 text-muted" />
           <span className="min-w-0 flex-1 truncate">
-            {t("feeds.postingBot")} {bot.display_name ? <strong data-feed-bot-name>{bot.display_name}</strong> : <span className="text-muted">{t("feeds.botCreatedOnFirst")}</span>}
+            {t("feeds.postingBot")}{bot.display_name ? <strong data-feed-bot-name>{bot.display_name}</strong> : <span className="text-muted">{t("feeds.botCreatedOnFirst")}</span>}
             {bot.adopted && <span className="ml-1.5 text-xs text-muted">{t("feeds.adopted")}</span>}
           </span>
           {bot.can_rename && bot.display_name && (

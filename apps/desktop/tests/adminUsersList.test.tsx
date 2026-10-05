@@ -135,7 +135,7 @@ describe("管理 →「ユーザー」", () => {
     expect(chip("ボット").textContent).toBe("ボット1");
     fireEvent.click(chip("無効"));
     expect(shownNames()).toEqual(["eve"]);
-    expect(screen.getByText("1 人 (全 7 人)")).toBeTruthy();
+    expect(screen.getByText("1 人（全 7 人）")).toBeTruthy();
     expect(chip("無効").getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(chip("仮パスワード"));
     expect(shownNames()).toEqual(["dave"]);
@@ -171,7 +171,7 @@ describe("管理 →「ユーザー」", () => {
   it("the ⋯ menu of an active person: role, rename, password, sessions, 2FA, deactivate — the same API as before", async () => {
     const { calls } = await setup();
     const labels = itemLabels(openMenu("bob"));
-    expect(labels).toEqual(["メンバー", "管理者", "ゲスト", "ユーザー名を変更", "パスワード再設定 (仮パスワードを発行)", "セッション失効 (全端末からログアウト)", "2FA を解除", "無効化 (ログイン不可、表示は残る)", "削除 (匿名化)…"]);
+    expect(labels).toEqual(["メンバー", "管理者", "ゲスト", "ユーザー名を変更", "パスワード再設定（仮パスワードを発行）", "セッション失効（全端末からログアウト）", "2FA を解除", "無効化（ログイン不可、表示は残る）", "削除（匿名化）…"]);
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await settle();
     await choose("bob", "管理者", "menuitemradio");
@@ -192,14 +192,14 @@ describe("管理 →「ユーザー」", () => {
 
   it("a deactivated person: 再有効化, rename, 匿名化 after its confirmation; bots have no role; me only a rename", async () => {
     const { calls } = await setup();
-    expect(within(openMenu("eve")).getAllByRole("menuitem").map((item) => item.textContent?.trim())).toEqual(["再有効化", "ユーザー名を変更", "削除 (匿名化)…"]);
+    expect(within(openMenu("eve")).getAllByRole("menuitem").map((item) => item.textContent?.trim())).toEqual(["再有効化", "ユーザー名を変更", "削除（匿名化）…"]);
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await settle();
     await choose("eve", "再有効化");
     await choose("eve", /匿名化/);
-    const dialog = screen.getByRole("dialog", { name: "ユーザーを削除 (匿名化) しますか？" });
+    const dialog = screen.getByRole("dialog", { name: "ユーザーを削除（匿名化）しますか？" });
     expect(dialog.textContent).toContain("@eve の名前・メール・プロフィール・ログイン情報を消し、全セッションを終了します。メッセージは「退会したユーザー」として残ります。");
-    fireEvent.click(within(dialog).getByRole("button", { name: "削除 (匿名化) する" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "削除（匿名化）する" }));
     await settle();
     expect(calls).toEqual([["adminUpdateUser", "u-eve", { deactivated: false }], ["adminAnonymizeUser", "u-eve"]]);
     expect(within(openMenu("ci-bot")).queryAllByRole("menuitemradio")).toHaveLength(0);

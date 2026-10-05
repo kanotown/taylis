@@ -153,7 +153,7 @@ describe("the engine (§7.8)", () => {
 
     const mine = server.post(dmId, bob.id, "よろしく").message; // another device of mine
     await engine.idle();
-    expect(shown()).toBe("あなた: よろしく");
+    expect(shown()).toBe("あなた：よろしく");
     server.delete(dmId, bob.id, mine.id);
     await engine.idle();
     await vi.waitFor(() => expect(shown()).toBe("はじめまして"));
@@ -164,7 +164,7 @@ describe("the engine (§7.8)", () => {
     await engine.idle();
     const again = server.post(dmId, bob.id, "もう一度").message;
     await engine.idle();
-    expect(shown()).toBe("あなた: もう一度");
+    expect(shown()).toBe("あなた：もう一度");
     server.delete(dmId, bob.id, again.id);
     await engine.idle();
     expect(shown()).toBe("はじめまして");

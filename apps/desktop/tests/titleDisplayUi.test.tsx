@@ -27,8 +27,8 @@ it("the profile card: 「@ebi · M2 · 研究室長」, and the roster block kee
   render(<UserPopover controller={controller()} userId="u-ebi">海老</UserPopover>);
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "海老 のプロフィール" })); });
   expect(screen.getByText("@ebi · M2 · 研究室長")).toBeTruthy();
-  expect(screen.getByText("指導教員: 加納")).toBeTruthy();
-  expect(screen.getByText("研究テーマ: 音声合成")).toBeTruthy();
+  expect(screen.getByText("指導教員：加納")).toBeTruthy();
+  expect(screen.getByText("研究テーマ：音声合成")).toBeTruthy();
   expect(screen.queryByText(/M2 · 指導教員/)).toBeNull();
 });
 

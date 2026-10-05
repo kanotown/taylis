@@ -231,7 +231,7 @@ describe("an alarm for an occurrence of a series", () => {
       const [event, channelId] = onAlarm.mock.calls[0]!;
       expect(event).toBeNull();
       expect(channelId).toBe("c1");
-      expect(calendarAlarmText(event, "lab")).toBe("予定の通知があります (#lab)");
+      expect(calendarAlarmText(event, "lab")).toBe("予定の通知があります（#lab）");
     });
 
     it("another month loaded: none of its occurrences stands in", async () => {

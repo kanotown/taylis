@@ -97,7 +97,7 @@ it("history: the versions, what changed (words of a touched-up line), a name, an
   await openCanvasTab();
   fireEvent.click(screen.getByRole("button", { name: "履歴" }));
   await settle(20);
-  const dialog = screen.getByRole("dialog", { name: "履歴: 議事録" });
+  const dialog = screen.getByRole("dialog", { name: "履歴：議事録" });
   const rows = within(dialog).getAllByRole("button").filter((b) => b.hasAttribute("data-revision"));
   expect(rows).toHaveLength(2);
   expect(rows[0]!.textContent).toContain("現在の版");
@@ -138,7 +138,7 @@ it("history: the versions, what changed (words of a touched-up line), a name, an
   expect(record.history.map((r) => r.kind)).toEqual(["create", "save", "restore"]);
   expect(server.revisionRestores).toHaveLength(1);
   // The list reads again: the restored version is now the current one.
-  const after = within(screen.getByRole("dialog", { name: "履歴: 議事録" })).getAllByRole("button").filter((b) => b.hasAttribute("data-revision"));
+  const after = within(screen.getByRole("dialog", { name: "履歴：議事録" })).getAllByRole("button").filter((b) => b.hasAttribute("data-revision"));
   expect(after).toHaveLength(3);
   expect(after[0]!.textContent).toContain("復元");
   expect(after[0]!.textContent).toContain("現在の版");
@@ -155,7 +155,7 @@ it("history: an owner erases an older version's body (asked first); the current 
   await openCanvasTab();
   fireEvent.click(screen.getByRole("button", { name: "履歴" }));
   await settle(20);
-  const dialog = screen.getByRole("dialog", { name: "履歴: メモ" });
+  const dialog = screen.getByRole("dialog", { name: "履歴：メモ" });
   expect(within(dialog).queryByRole("button", { name: /本文を消去/ })).toBeNull(); // the current version is selected
   const rows = within(dialog).getAllByRole("button").filter((b) => b.hasAttribute("data-revision"));
   fireEvent.click(rows[1]!);
@@ -314,7 +314,7 @@ it("the web tab closing: typed text goes out on a keepalive request (pagehide), 
   expect(server.canvasSaveRequests.map((r) => r.client_save_id)).toEqual([body.client_save_id]);
 });
 
-it("管理 → キャンバス: templates hidden (built-in ones are not deleted), added and deleted", async () => {
+it("管理 → キャンバス：templates hidden (built-in ones are not deleted), added and deleted", async () => {
   const server = new FakeServer();
   const admin = server.addUser("admin", "admin");
   const setError = vi.fn();
@@ -335,7 +335,7 @@ it("管理 → キャンバス: templates hidden (built-in ones are not deleted)
   const dialog = screen.getByRole("dialog", { name: "テンプレートを追加" });
   fireEvent.change(within(dialog).getByLabelText("名前"), { target: { value: "ゼミ発表" } });
   fireEvent.change(within(dialog).getByLabelText("キャンバスの題名"), { target: { value: "ゼミ発表 {{date}}" } });
-  fireEvent.change(within(dialog).getByRole("textbox", { name: "本文 (Markdown)" }), { target: { value: "# 発表者\n" } });
+  fireEvent.change(within(dialog).getByRole("textbox", { name: "本文（Markdown）" }), { target: { value: "# 発表者\n" } });
   fireEvent.click(within(dialog).getByRole("button", { name: "追加" }));
   await settle(10);
   const added = server.canvasTemplates.find((t) => t.name === "ゼミ発表")!;

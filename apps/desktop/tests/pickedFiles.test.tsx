@@ -79,7 +79,7 @@ describe("pickedFiles helpers", () => {
   it("refusePicked reads only the count and the sizes", () => {
     const { log, file } = readLog();
     expect(refusePicked([file("a"), file("b")], { maxFiles: 1, maxBytes: 10 })).toBe("添付は10件までです");
-    expect(refusePicked([file("big.mov", ATTACHMENT_MAX_BYTES + 1)], { maxFiles: 10, maxBytes: ATTACHMENT_MAX_BYTES })).toBe("「big.mov」は大きすぎます (100 MB まで)");
+    expect(refusePicked([file("big.mov", ATTACHMENT_MAX_BYTES + 1)], { maxFiles: 10, maxBytes: ATTACHMENT_MAX_BYTES })).toBe("「big.mov」は大きすぎます（100 MB まで）");
     expect(refusePicked([file("ok")], { maxFiles: 10, maxBytes: ATTACHMENT_MAX_BYTES })).toBeNull();
     expect(log.started).toBe(0);
   });
@@ -143,7 +143,7 @@ describe("the composer's picker (review v0.1.30 #5)", () => {
     const { log, file } = readLog();
     const c = composer();
     pick(c.input, [file("small.mp4"), file("huge.mov", ATTACHMENT_MAX_BYTES + 1)]);
-    expect(c.setError).toHaveBeenCalledWith("「huge.mov」は大きすぎます (100 MB まで)");
+    expect(c.setError).toHaveBeenCalledWith("「huge.mov」は大きすぎます（100 MB まで）");
     expect(log.started).toBe(0);
     expect(c.uploadAttachment).not.toHaveBeenCalled();
   });

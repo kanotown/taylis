@@ -67,7 +67,7 @@ describe("the thread line under a parent (C3)", () => {
     expect(line.textContent).toContain("最終返信 今日 14:05");
     const avatars = [...line.querySelectorAll("span[aria-hidden='true']")].map((a) => a.textContent);
     expect(avatars).toEqual(["E", "D", "C"]); // the three most recent, Erin's first
-    expect(hoverListText(line)).toMatch(/^返信した人: Erin、Dave、Carol ほか 1 人\n最終返信 /);
+    expect(hoverListText(line)).toMatch(/^返信した人：Erin、Dave、Carol ほか 1 人\n最終返信 /);
     fireEvent.click(line);
     expect(w.onOpenThread).toHaveBeenCalledWith(w.message.id);
   });

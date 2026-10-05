@@ -71,12 +71,12 @@ function setWidth(row: HTMLElement, width: number) {
 describe("the hover bar", () => {
   it("my own message: three quick reactions, add, thread, save, edit and ⋯", () => {
     const w = world();
-    expect(barLabels(w.mine())).toEqual(["👍 でリアクション", "❤️ でリアクション", "😂 でリアクション", "リアクションを追加", "スレッドで返信", "あとで見る (保存)", "編集 (空の入力欄で ↑)", "その他"]);
+    expect(barLabels(w.mine())).toEqual(["👍 でリアクション", "❤️ でリアクション", "😂 でリアクション", "リアクションを追加", "スレッドで返信", "あとで見る（保存）", "編集（空の入力欄で ↑）", "その他"]);
   });
 
   it("someone else's message: no edit; no thread where threads are not offered", () => {
     const w = world();
-    expect(barLabels(w.theirs())).toEqual(["👍 でリアクション", "❤️ でリアクション", "😂 でリアクション", "リアクションを追加", "スレッドで返信", "あとで見る (保存)", "その他"]);
+    expect(barLabels(w.theirs())).toEqual(["👍 でリアクション", "❤️ でリアクション", "😂 でリアクション", "リアクションを追加", "スレッドで返信", "あとで見る（保存）", "その他"]);
     cleanup();
     const noThreads = world({ thread: false });
     expect(barLabels(noThreads.mine())).not.toContain("スレッドで返信");
@@ -84,14 +84,14 @@ describe("the hover bar", () => {
 
   it("a row of the Times feed: no edit in place, nor 「ここから未読にする」", () => {
     const w = world({ feed: { channelName: "times-alice", isNew: false, onOpenChannel: vi.fn(), onActivate: vi.fn() }, lastRead: 0 });
-    expect(barLabels(w.mine())).not.toContain("編集 (空の入力欄で ↑)");
+    expect(barLabels(w.mine())).not.toContain("編集（空の入力欄で ↑）");
     expect(rowMenuLabels(w.mine())).not.toContain("ここから未読にする");
   });
 
   it("a narrow row (the thread pane) leaves out the quick reactions; a wide one has them again", () => {
     const w = world();
     setWidth(w.mine(), 360);
-    expect(barLabels(w.mine())).toEqual(["リアクションを追加", "スレッドで返信", "あとで見る (保存)", "編集 (空の入力欄で ↑)", "その他"]);
+    expect(barLabels(w.mine())).toEqual(["リアクションを追加", "スレッドで返信", "あとで見る（保存）", "編集（空の入力欄で ↑）", "その他"]);
     setWidth(w.mine(), 420);
     expect(barLabels(w.mine()).slice(0, 3)).toEqual(["👍 でリアクション", "❤️ でリアクション", "😂 でリアクション"]);
     // Keyboard focus measures too (the bar shows on focus).
@@ -175,9 +175,9 @@ describe("the ⋯ menu", () => {
 
   it("the bar's buttons and gestures: save, edit, thread, Alt+click", () => {
     const w = world({ lastRead: 0 });
-    fireEvent.click(within(w.mine()).getByRole("button", { name: "あとで見る (保存)" }));
+    fireEvent.click(within(w.mine()).getByRole("button", { name: "あとで見る（保存）" }));
     expect(w.controller.toggleBookmark).toHaveBeenCalled();
-    fireEvent.click(within(w.mine()).getByRole("button", { name: "編集 (空の入力欄で ↑)" }));
+    fireEvent.click(within(w.mine()).getByRole("button", { name: "編集（空の入力欄で ↑）" }));
     expect(w.controller.setEditing).toHaveBeenCalledWith(w.mineMessage.id);
     fireEvent.click(within(w.theirs()).getByRole("button", { name: "スレッドで返信" }));
     expect(w.onOpenThread).toHaveBeenCalledWith(w.theirMessage.id);

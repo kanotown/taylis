@@ -66,7 +66,7 @@ it("creates a bot: name, username, character, model, effort, private, enabled", 
   const dialog = screen.getByRole("dialog");
   // Opus 5.5 is the default model.
   expect((within(dialog).getByLabelText("モデル") as HTMLSelectElement).value).toBe("claude-opus-5-5");
-  fireEvent.change(within(dialog).getByLabelText("名前 (投稿者として表示されます)"), { target: { value: "はんぺん" } });
+  fireEvent.change(within(dialog).getByLabelText("名前（投稿者として表示されます）"), { target: { value: "はんぺん" } });
   fireEvent.change(within(dialog).getByLabelText(/ユーザー名/), { target: { value: "AI-Hanpen" } });
   fireEvent.change(within(dialog).getByLabelText(/性格/), { target: { value: "簡潔に答える" } });
   fireEvent.change(within(dialog).getByLabelText("モデル"), { target: { value: "claude-haiku-4-5" } });
@@ -97,7 +97,7 @@ it("a taken username is shown in Japanese", async () => {
   fireEvent.click(screen.getByRole("button", { name: /ボットを作成/ }));
   await settle();
   const dialog = screen.getByRole("dialog");
-  fireEvent.change(within(dialog).getByLabelText("名前 (投稿者として表示されます)"), { target: { value: "x" } });
+  fireEvent.change(within(dialog).getByLabelText("名前（投稿者として表示されます）"), { target: { value: "x" } });
   fireEvent.change(within(dialog).getByLabelText(/ユーザー名/), { target: { value: "bob" } });
   fireEvent.click(within(dialog).getByRole("button", { name: "作成" }));
   await settle();
@@ -166,11 +166,11 @@ it("models are grouped by provider and a provider without a key is marked (§12)
   const groups = Array.from(select.querySelectorAll("optgroup")).map((g) => [g.label, Array.from(g.querySelectorAll("option")).map((o) => o.value)]);
   expect(groups).toEqual([
     ["Anthropic", ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"]],
-    ["OpenAI (キー未設定)", ["gpt-6.1-sol", "gpt-6-luna"]],
+    ["OpenAI（キー未設定）", ["gpt-6.1-sol", "gpt-6-luna"]],
   ]);
   fireEvent.change(select, { target: { value: "gpt-6-luna" } });
   expect(within(dialog).getByText(/OpenAI の API キーが設定されていません/)).toBeTruthy();
-  fireEvent.change(within(dialog).getByLabelText("名前 (投稿者として表示されます)"), { target: { value: "ルナ" } });
+  fireEvent.change(within(dialog).getByLabelText("名前（投稿者として表示されます）"), { target: { value: "ルナ" } });
   fireEvent.change(within(dialog).getByLabelText(/ユーザー名/), { target: { value: "ai-luna" } });
   fireEvent.click(within(dialog).getByRole("button", { name: "作成" }));
   await settle();

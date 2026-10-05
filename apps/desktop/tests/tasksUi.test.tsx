@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // M55 (TASKS.md §6): the board (columns, cards, drag and drop, read-only), the task dialog, 「自分のタスク」,
-// 「タスクにする」 from a message, the tasks in the calendar, and 「タスク (割り当て・期限)」 in the settings.
+// 「タスクにする」 from a message, the tasks in the calendar, and 「タスク（割り当て・期限）」 in the settings.
 process.env.TZ = "Asia/Tokyo";
 
 import { useSyncExternalStore } from "react";
@@ -253,7 +253,7 @@ describe("the task dialog", () => {
 });
 
 describe("「自分のタスク」", () => {
-  it("my list with checkboxes and 「完了 (N)」, then 「自分の担当」 by channel (its name opens the board)", async () => {
+  it("my list with checkboxes and 「完了（N）」, then 「自分の担当」 by channel (its name opens the board)", async () => {
     const p1 = task("牛乳を買う", { channel_id: null, channel_name: null });
     const p2 = task("済んだこと", { channel_id: null, channel_name: null, status: "done", completed_at: "2026-09-30T00:00:00Z" });
     const s1 = task("発表", { assignee_ids: [ME], status: "doing" });
@@ -264,7 +264,7 @@ describe("「自分のタスク」", () => {
     const mine = screen.getByRole("region", { name: "自分のタスク" });
     expect(within(mine).getByText("牛乳を買う")).toBeTruthy();
     expect(within(mine).queryByText("済んだこと")).toBeNull(); // folded
-    fireEvent.click(within(mine).getByRole("button", { name: /完了 \(1\)/ }));
+    fireEvent.click(within(mine).getByRole("button", { name: /完了（1）/ }));
     expect(within(mine).getByText("済んだこと")).toBeTruthy();
     const assigned = screen.getByRole("region", { name: "自分の担当" });
     expect(within(assigned).getByText("発表")).toBeTruthy();
@@ -340,7 +340,7 @@ describe("「タスクにする」", () => {
     const dialog = screen.getByRole("dialog", { name: "タスクを追加" });
     const where = within(dialog).getByLabelText("追加先") as HTMLSelectElement;
     expect(where.value).toBe(conversation.id);
-    expect([...where.options].map((o) => o.textContent)).toEqual(["#general のボード", "自分のタスク (自分だけに表示)"]);
+    expect([...where.options].map((o) => o.textContent)).toEqual(["#general のボード", "自分のタスク（自分だけに表示）"]);
     fireEvent.click(within(dialog).getByRole("button", { name: "追加" }));
     await flush();
     expect(api.createTask).toHaveBeenCalledWith(expect.objectContaining({ channel_id: conversation.id }));
@@ -369,7 +369,7 @@ describe("the calendar", () => {
 });
 
 describe("the settings", () => {
-  it("「タスク (割り当て・期限)」 is saved as notify_tasks", async () => {
+  it("「タスク（割り当て・期限）」 is saved as notify_tasks", async () => {
     const patches: unknown[] = [];
     const controller = new AppController();
     controller.api = {
@@ -385,12 +385,12 @@ describe("the settings", () => {
     }
     render(<View />);
     fireEvent.click(within(screen.getByRole("navigation", { name: "設定の項目" })).getByRole("button", { name: "通知" }));
-    const toggle = screen.getByRole("switch", { name: /タスク \(割り当て・期限\)/ }) as HTMLInputElement;
+    const toggle = screen.getByRole("switch", { name: /タスク（割り当て・期限）/ }) as HTMLInputElement;
     expect(toggle.checked).toBe(true);
     fireEvent.click(toggle);
     await flush();
     expect(patches).toEqual([{ notify_tasks: false }]);
-    expect((screen.getByRole("switch", { name: /タスク \(割り当て・期限\)/ }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole("switch", { name: /タスク（割り当て・期限）/ }) as HTMLInputElement).checked).toBe(false);
   });
 });
 

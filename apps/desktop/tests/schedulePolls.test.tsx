@@ -182,7 +182,7 @@ describe("the form (日程調整を作成)", () => {
     fireEvent.click(screen.getByLabelText("次の月"));
     expect(screen.getByText("2026年11月")).toBeTruthy();
     fireEvent.click(w.day("2026-11-02"));
-    fireEvent.click(screen.getByLabelText("匿名にする (誰が答えたか表示しない)"));
+    fireEvent.click(screen.getByLabelText("匿名にする（誰が答えたか表示しない）"));
     await act(async () => { fireEvent.click(screen.getByText("作成")); });
     expect(w.createSchedulePoll).toHaveBeenCalledWith("c1", null, "ゼミ", [{ date: "2026-10-03" }, { date: "2026-11-02" }], "Asia/Tokyo", true);
   });
@@ -297,11 +297,11 @@ describe("the table (表で見る)", () => {
     expect(w.row("counts")).toEqual(["集計", "○1 △1 ×1", "○2 △0 ×1", ""]);
     expect(w.row(alice.id)).toEqual(["Alice", "○", "×", ""]);
     expect(w.row(carol.id)).toEqual(["Carol", "×", "○", "遅れます"]);
-    expect(w.row("me")[0]).toBe("Bob (自分)");
+    expect(w.row("me")[0]).toBe("Bob （自分）");
     // ○ → △ → × → unanswered.
-    fireEvent.click(screen.getByLabelText("自分の 10/3 (土) 14:00〜15:00: 未定 (押すと変わります)"));
+    fireEvent.click(screen.getByLabelText("自分の 10/3 (土) 14:00〜15:00：未定（押すと変わります）"));
     expect(w.controller.answerSchedule).toHaveBeenLastCalledWith(w.message, ["no", "yes"]);
-    fireEvent.click(screen.getByLabelText("自分の 10/5 (月) 終日: 参加できる (押すと変わります)"));
+    fireEvent.click(screen.getByLabelText("自分の 10/5 (月) 終日：参加できる（押すと変わります）"));
     expect(w.controller.answerSchedule).toHaveBeenLastCalledWith(w.message, ["maybe", "maybe"]);
     expect((screen.getByLabelText("ひとこと") as HTMLInputElement).value).toBe("午後なら");
   });

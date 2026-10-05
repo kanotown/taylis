@@ -42,7 +42,7 @@ describe("the lab roster (M23)", () => {
     expect(rosterSection(roster.get("m1a"))).toBe("M1");
     expect(rosterSection(roster.get("old"))).toBe("卒業生");
     expect(rosterSection(undefined)).toBeNull();
-    expect(rosterSummary(roster.get("doc")!, new Map([[prof.id, prof]]))).toBe("D1 · 指導教員: Prof");
+    expect(rosterSummary(roster.get("doc")!, new Map([[prof.id, prof]]))).toBe("D1 · 指導教員：Prof");
   });
 
   it("compares names by code point like the server, also past U+FFFF", () => {

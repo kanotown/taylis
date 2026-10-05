@@ -179,7 +179,7 @@ it("「ステータスを更新」 is the status only (no pause, no quiet hours)
   expect(within(view).queryByText("おやすみ時間")).toBeNull();
   // The emoji comes from the picker (a text field only brought up the keyboard).
   fireEvent.click(within(view).getByRole("button", { name: "絵文字を選ぶ" }));
-  fireEvent.change(await screen.findByPlaceholderText("検索 (例: tada、乾杯)"), { target: { value: "books" } });
+  fireEvent.change(await screen.findByPlaceholderText("検索（例：tada、乾杯）"), { target: { value: "books" } });
   fireEvent.click(await screen.findByTitle(":books:"));
   fireEvent.change(within(view).getByLabelText("ステータス"), { target: { value: "論文執筆中" } });
   fireEvent.click(within(view).getByRole("button", { name: "保存" }));
@@ -254,11 +254,11 @@ it("「表示」 → テーマの色: a palette goes on <html> and stays on this
   await openRow("表示 端末に合わせる");
   const colours = within(you()).getByRole("radiogroup", { name: "テーマの色" });
   expect(within(colours).getAllByRole("radio")).toHaveLength(6);
-  expect((within(colours).getByRole("radio", { name: "Taylis (栗)" }) as HTMLInputElement).checked).toBe(true);
+  expect((within(colours).getByRole("radio", { name: "Taylis（栗）" }) as HTMLInputElement).checked).toBe(true);
   fireEvent.click(within(colours).getByRole("radio", { name: "緑" }));
   expect(document.documentElement.dataset["palette"]).toBe("green");
   expect(localStorage.getItem("chikuwa.prefs.palette")).toBe("green");
-  fireEvent.click(within(colours).getByRole("radio", { name: "Taylis (栗)" }));
+  fireEvent.click(within(colours).getByRole("radio", { name: "Taylis（栗）" }));
   expect(document.documentElement.dataset["palette"]).toBeUndefined();
   expect(within(you()).queryByRole("combobox", { name: "文字の大きさ" })).toBeNull();
   w.engine.stop();
@@ -274,12 +274,12 @@ it("every old setting is still there: 入力 (送信キー, テンプレート),
   await openRow("プロフィールを編集");
   expect(within(you()).getByRole("button", { name: /写真を選ぶ/ })).toBeTruthy();
   expect(within(you()).getByText("表示名")).toBeTruthy();
-  expect(within(you()).getByText("肩書 (任意)")).toBeTruthy();
+  expect(within(you()).getByText("肩書（任意）")).toBeTruthy();
   expect(within(you()).getByRole("switch", { name: /在席を隠す/ })).toBeTruthy();
   await back();
   await openRow("通知");
   expect(within(you()).getByRole("radiogroup", { name: "通知" })).toBeTruthy();
-  fireEvent.change(within(you()).getByPlaceholderText("例: 加納, kano, リリース"), { target: { value: "締切, deadline" } });
+  fireEvent.change(within(you()).getByPlaceholderText("例：加納, kano, リリース"), { target: { value: "締切, deadline" } });
   fireEvent.click(within(you()).getByRole("button", { name: "キーワードを保存" }));
   await flush();
   expect(updates.at(-1)).toEqual({ notify_keywords: ["締切", "deadline"] });

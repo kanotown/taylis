@@ -140,7 +140,7 @@ it("a narrow header (the thread pane open): the tabs fold into one menu, then pi
     return this.tagName === "HEADER" ? ({ width: headerWidth, height: 52, top: 0, left: 0, right: headerWidth, bottom: 52, x: 0, y: 0, toJSON: () => ({}) } as DOMRect) : rect.call(this);
   });
   await setup();
-  const fold = () => screen.getByRole("button", { name: "会話の表示: メッセージ" });
+  const fold = () => screen.getByRole("button", { name: "会話の表示：メッセージ" });
   expect(screen.queryByRole("tablist", { name: "会話の表示" })).toBeNull();
   expect(screen.getByRole("button", { name: "ピン留め" })).toBeTruthy(); // "tabMenu": the buttons stay
   fireEvent.keyDown(fold(), { key: "Enter" });
@@ -149,7 +149,7 @@ it("a narrow header (the thread pane open): the tabs fold into one menu, then pi
   expect(screen.getByRole("menuitemradio", { name: /メッセージ/ }).getAttribute("aria-checked")).toBe("true");
   fireEvent.click(screen.getByRole("menuitemradio", { name: "キャンバス" }));
   await settle();
-  expect(screen.getByRole("button", { name: "会話の表示: キャンバス" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "会話の表示：キャンバス" })).toBeTruthy();
   expect(screen.getByText("この会話にはまだキャンバスがありません")).toBeTruthy();
 
   // Narrower ("tight"): pins, files, members and the shortcuts button go into ⋯; the star, the bell and ⋯ stay.

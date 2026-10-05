@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * M35 (PUSH_NOTIFICATIONS.md §4): the overall notification setting in the settings, a conversation's notification menu
- * (「既定 (…)」 / its own levels / 「ミュート」 / 「8 時間ミュート」), the sidebar row's 「ミュート」, and /mute and /unmute —
+ * (「既定（…）」 / its own levels / 「ミュート」 / 「8 時間ミュート」), the sidebar row's 「ミュート」, and /mute and /unmute —
  * on the real MainScreen with a real SyncEngine and the fake server answering the PUTs and PATCH /users/me.
  */
 import { useSyncExternalStore } from "react";
@@ -84,7 +84,7 @@ async function choose(item: HTMLElement, w: World) {
 
 const sidebarRow = () => within(screen.getByRole("navigation", { name: "チャンネルとDM" })).getByRole("button", { name: /^c/ });
 
-it("the header menu: 「既定 (…)」 follows the overall setting, own levels, 「ミュート」 on / off and the timed mute", async () => {
+it("the header menu: 「既定（…）」 follows the overall setting, own levels, 「ミュート」 on / off and the timed mute", async () => {
   const { w, controller, puts } = await setup();
   render(<Screen w={w} controller={controller} />);
   await flush();
@@ -92,21 +92,21 @@ it("the header menu: 「既定 (…)」 follows the overall setting, own levels,
   await flush();
 
   let menu = await openBellMenu();
-  const followDefault = within(menu).getByRole("menuitemradio", { name: "既定 (メンションと DM のみ)" });
+  const followDefault = within(menu).getByRole("menuitemradio", { name: "既定（メンションと DM のみ）" });
   expect(followDefault.getAttribute("aria-checked")).toBe("true");
   expect(within(menu).getByRole("menuitemcheckbox", { name: "ミュート" }).getAttribute("aria-checked")).toBe("false");
   await choose(within(menu).getByRole("menuitemradio", { name: "すべてのメッセージ" }), w);
   expect(puts.at(-1)).toEqual({ channelId: w.channelId, level: "all", mutedUntil: null, muted: undefined });
   expect(w.store.getChannel(w.channelId)).toMatchObject({ notificationLevel: "all", muted: false });
 
-  // Back to the default: level null. The overall setting changes 「既定 (…)」.
+  // Back to the default: level null. The overall setting changes 「既定（…）」.
   menu = await openBellMenu();
-  await choose(within(menu).getByRole("menuitemradio", { name: "既定 (メンションと DM のみ)" }), w);
+  await choose(within(menu).getByRole("menuitemradio", { name: "既定（メンションと DM のみ）" }), w);
   expect(puts.at(-1)).toMatchObject({ level: null, muted: undefined });
   expect(w.store.getChannel(w.channelId)!.notificationLevel).toBeNull();
   await act(async () => { await controller.setNotificationDefault("all"); });
   menu = await openBellMenu();
-  expect(within(menu).getByRole("menuitemradio", { name: "既定 (すべての新着メッセージ)" }).getAttribute("aria-checked")).toBe("true");
+  expect(within(menu).getByRole("menuitemradio", { name: "既定（すべての新着メッセージ）" }).getAttribute("aria-checked")).toBe("true");
 
   // Muted until unmuted: the own level stays null, the sidebar shows it muted; the bell is crossed out.
   await choose(within(menu).getByRole("menuitemcheckbox", { name: "ミュート" }), w);
@@ -123,7 +123,7 @@ it("the header menu: 「既定 (…)」 follows the overall setting, own levels,
   expect(puts.at(-1)!.mutedUntil).not.toBeNull();
   expect(w.store.getChannel(w.channelId)).toMatchObject({ muted: true });
   menu = await openBellMenu();
-  expect(within(menu).getByRole("menuitem", { name: /^ミュート解除 \(/ })).toBeTruthy();
+  expect(within(menu).getByRole("menuitem", { name: /^ミュート解除（/ })).toBeTruthy();
   await choose(within(menu).getByRole("menuitemcheckbox", { name: "ミュート" }), w);
   expect(puts.at(-1)).toMatchObject({ level: null, muted: false });
   expect(puts.at(-1)!.mutedUntil).not.toBeNull(); // the timed mute keeps running
@@ -175,7 +175,7 @@ it("the phone's details page: the same choices as radios, 「ミュート」 as 
   render(<Details />);
   await flush();
   const group = screen.getByRole("radiogroup", { name: "通知" });
-  expect((within(group).getByRole("radio", { name: "既定 (メンションと DM のみ)" }) as HTMLInputElement).checked).toBe(true);
+  expect((within(group).getByRole("radio", { name: "既定（メンションと DM のみ）" }) as HTMLInputElement).checked).toBe(true);
   fireEvent.click(within(group).getByRole("radio", { name: "通知しない" }));
   await flush();
   expect(puts.at(-1)).toEqual({ channelId: w.channelId, level: "none", mutedUntil: null, muted: undefined });

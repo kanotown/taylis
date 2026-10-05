@@ -179,7 +179,7 @@ it("a reply also sent to the channel: its body shows the channel's row (no threa
   expect(screen.getByText("times-carol", { selector: "header strong" })).toBeTruthy();
   expect(controller.messageFocus).toMatchObject({ channelId: carolTimes, parentId: null });
   expect(screen.queryByLabelText("スレッドのメッセージ一覧")).toBeNull();
-  // Back in the feed (another conversation open behind it now: #c), 「スレッドに返信:」 opens the parent's thread.
+  // Back in the feed (another conversation open behind it now: #c), 「スレッドに返信：」 opens the parent's thread.
   fireEvent.click(screen.getByRole("button", { name: "c" }));
   await settle(w);
   fireEvent.click(screen.getByRole("button", { name: "Times フィード" }));

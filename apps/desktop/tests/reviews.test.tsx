@@ -92,11 +92,11 @@ describe("the rules (pure)", () => {
     expect(messageTaskInit({ id: "m1", body: "x" }, dmState("d1", ["u-me"], { archived: true }), users, new Map(), false).shareChannelId).toBeNull();
   });
 
-  it("「レビューを依頼」: 「レビュー: <one line>」 within 200 characters, kind review, in the message's conversation", () => {
+  it("「レビューを依頼」: 「レビュー：<one line>」 within 200 characters, kind review, in the message's conversation", () => {
     const init = messageReviewInit({ id: "m1", channel_id: "d1", body: "**原稿** です\n見てください" }, new Map(), new Map());
-    expect(init).toMatchObject({ kind: "review", channelId: "d1", title: "レビュー: 原稿 です 見てください", sourceMessageId: "m1", sourceExcerpt: "原稿 です 見てください" });
+    expect(init).toMatchObject({ kind: "review", channelId: "d1", title: "レビュー：原稿 です 見てください", sourceMessageId: "m1", sourceExcerpt: "原稿 です 見てください" });
     expect(messageReviewInit({ id: "m1", channel_id: "c1", body: "あ".repeat(400) }, new Map(), new Map()).title.length).toBeLessThanOrEqual(200);
-    expect(messageReviewInit({ id: "m1", channel_id: "c1", body: "", attachments: [{ content_type: "application/pdf" }] }, new Map(), new Map()).title).toMatch(/^レビュー: \S/);
+    expect(messageReviewInit({ id: "m1", channel_id: "c1", body: "", attachments: [{ content_type: "application/pdf" }] }, new Map(), new Map()).title).toMatch(/^レビュー：\S/);
     const body = taskCreateBody({ title: init.title, notes: "", status: "todo", dueOn: "2026-10-09", assigneeIds: ["u-kano"] }, init, "d1", "k1", "Asia/Tokyo");
     expect(body).toMatchObject({ kind: "review", channel_id: "d1", assignee_ids: ["u-kano"], due_on: "2026-10-09", source_message_id: "m1" });
   });
@@ -118,9 +118,9 @@ describe("the rules (pure)", () => {
 
   it("the open app's notices: a review requested, a review done, a DM's (no channel name)", () => {
     const base = { task_id: "t1", channel_id: "c1", channel_name: "lab", title: "原稿", by_user_id: "u-kano" };
-    expect(taskNoticeText({ kind: "assigned", data: { ...base, kind: "review" } }, nameOf).body).toBe("加納 がレビューを依頼しました: 原稿 (#lab)");
-    expect(taskNoticeText({ kind: "assigned", data: base }, nameOf).body).toBe("加納 がタスクを割り当てました: 原稿 (#lab)");
-    expect(taskNoticeText({ kind: "review_done", data: { ...base, channel_name: "" } }, nameOf).body).toBe("加納 がレビューを完了しました: 原稿");
+    expect(taskNoticeText({ kind: "assigned", data: { ...base, kind: "review" } }, nameOf).body).toBe("加納 がレビューを依頼しました：原稿 (#lab)");
+    expect(taskNoticeText({ kind: "assigned", data: base }, nameOf).body).toBe("加納 がタスクを割り当てました：原稿 (#lab)");
+    expect(taskNoticeText({ kind: "review_done", data: { ...base, channel_name: "" } }, nameOf).body).toBe("加納 がレビューを完了しました：原稿");
   });
 });
 
@@ -171,7 +171,7 @@ describe("「レビューを依頼」", () => {
     expect(within(picker).queryByLabelText("Alice")).toBeNull(); // not myself
     expect(within(picker).getAllByRole("checkbox")).toHaveLength(2);
     const title = within(dialog).getByLabelText("題名") as HTMLInputElement;
-    expect(title.value).toBe("レビュー: 明日までに 原稿 を見てください");
+    expect(title.value).toBe("レビュー：明日までに 原稿 を見てください");
     expect(picker.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy(); // the picker comes first
     expect(within(dialog).queryByRole("radiogroup", { name: "状態" })).toBeNull();
     const submit = within(dialog).getByRole("button", { name: "依頼する" }) as HTMLButtonElement;
@@ -188,7 +188,7 @@ describe("「レビューを依頼」", () => {
       assignee_ids: [bob.id],
       due_on: "2026-10-09",
       source_message_id: message.id,
-      title: "レビュー: 明日までに 原稿 を見てください",
+      title: "レビュー：明日までに 原稿 を見てください",
     });
     expect(controller.setNotice).toHaveBeenCalledWith("レビューを依頼しました");
   });
@@ -271,7 +271,7 @@ describe("the chip under a message", () => {
       tasks: [{ id: "t-rev", kind: "review", status: "todo", assignee_ids: [], due_on: null, owner_id: "x" }],
       loadTask: async () => loaded,
     });
-    loaded = task("レビュー: 原稿", { id: "t-rev", kind: "review", channel_id: channel.id, channel_name: "general", assignee_ids: [me.id], owner_id: "u-bob" });
+    loaded = task("レビュー：原稿", { id: "t-rev", kind: "review", channel_id: channel.id, channel_name: "general", assignee_ids: [me.id], owner_id: "u-bob" });
     fireEvent.click(document.querySelector('[data-task-chip="t-rev"]') as HTMLElement);
     await flush();
     expect(controller.loadTask).toHaveBeenCalledWith("t-rev");
@@ -368,7 +368,7 @@ describe("「自分が依頼した」", () => {
     expect([...section.querySelectorAll("[data-task-place]")].map((p) => p.textContent)).toEqual(["加納", "#lab"]);
     expect(within(section).getByText("対応中")).toBeTruthy(); // a review's doing
     expect(within(section).queryAllByRole("checkbox")).toHaveLength(0); // the assignee completes it
-    expect(within(section).getByRole("button", { name: /完了 \(1\)/ })).toBeTruthy();
+    expect(within(section).getByRole("button", { name: /完了（1）/ })).toBeTruthy();
 
     act(() => hub.applyEvent("task.updated", { task: { ...data(lab), assignee_ids: [], updated_at: "2026-10-02T00:00:00Z" }, deleter_ids: [] }));
     expect(cards()).toEqual(["DM の依頼"]);

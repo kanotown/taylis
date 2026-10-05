@@ -50,7 +50,7 @@ describe("settings → テンプレート (M30)", () => {
     await act(async () => { fireEvent.click(screen.getByLabelText("議事録 を上へ")); });
     expect(controller.moveTemplate).toHaveBeenCalledWith([expect.objectContaining({ id: "u1" }), expect.objectContaining({ id: "u2" })], "u2", -1);
     fireEvent.click(screen.getByText("追加"));
-    fireEvent.change(screen.getByPlaceholderText("例: 日報"), { target: { value: "週報" } });
+    fireEvent.change(screen.getByPlaceholderText("例：日報"), { target: { value: "週報" } });
     fireEvent.change(screen.getByRole("textbox", { name: /本文/ }), { target: { value: "週報 {week}" } });
     fireEvent.click(screen.getByLabelText("times で先に出す"));
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "追加" })); });

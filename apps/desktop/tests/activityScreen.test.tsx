@@ -106,7 +106,7 @@ const dots = (scope?: HTMLElement) => rows(scope).filter((row) => row.dataset["u
 
 it("the phone's activity tab: [すべて | メンション | スレッド | リアクション], rows newest first with their dots; on screen a moment, the badge clears and the dots stay until it is left", async () => {
   const { w, controller } = await setup();
-  expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ (未読 3)");
+  expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ（未読 3）");
   expect(tabButton("activity").querySelector("[data-badge]")?.getAttribute("data-badge")).toBe("danger");
   await tap("activity");
   const activity = root("activity");
@@ -228,7 +228,7 @@ it("a row opens its message: a mention in its conversation, a reply in its threa
 it("the wide layout: 「アクティビティ」 in the sidebar with the same badge opens the same view; a row reveals its message in its conversation", async () => {
   compact = false;
   const { w } = await setup();
-  const entry = screen.getByRole("button", { name: "アクティビティ (未読 3)" });
+  const entry = screen.getByRole("button", { name: "アクティビティ（未読 3）" });
   expect(entry.querySelector("[data-badge]")?.getAttribute("data-badge")).toBe("danger");
   fireEvent.click(entry);
   await settle(w);
@@ -280,7 +280,7 @@ it("M76: a canvas that mentions me is a row (📝, 「Alice が「議事録」�
   await settle(w);
   // canvas.mentioned brings the badge from the server: four unread, a mention among them.
   expect(w.store.activity).toMatchObject({ unread_count: 4, mention_unread: true });
-  fireEvent.click(screen.getByRole("button", { name: "アクティビティ (未読 4)" }));
+  fireEvent.click(screen.getByRole("button", { name: "アクティビティ（未読 4）" }));
   await settle(w);
   const view = screen.getByRole("region", { name: "アクティビティ" });
   expect(labels(view)[0]).toBe("未読 Alice が「議事録」であなたをメンションしました · #c");

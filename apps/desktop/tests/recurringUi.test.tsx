@@ -85,7 +85,7 @@ describe("the list", () => {
     expect(api.recurringPosts).toHaveBeenCalledWith("c-lab");
     const row = screen.getByText("週報").closest("li")!;
     expect(within(row).getByText(/毎週 月・木 9:00 · 次回 10\/5 \(月\) 9:00/)).toBeTruthy();
-    expect(within(row).getByText("回収: @students、キャロル · 3 日後 18:00 締切")).toBeTruthy();
+    expect(within(row).getByText("回収：@students、キャロル · 3 日後 18:00 締切")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /今すぐ投稿/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /定期投稿を追加/ })).toBeNull();
   });
@@ -244,7 +244,7 @@ describe("the collection chip", () => {
     expect(within(chip).getByText("未提出").className).toContain("bg-danger");
     fireEvent.click(chip);
     const dialog = within(screen.getByRole("dialog", { name: "提出状況" }));
-    expect(dialog.getByText("提出 1/3 · 締切 10/9 (金) 18:00 (締切を過ぎました)")).toBeTruthy();
+    expect(dialog.getByText("提出 1/3 · 締切 10/9 (金) 18:00（締切を過ぎました）")).toBeTruthy();
     const done = within(screen.getByRole("region", { name: "提出済み" }));
     expect(done.getByText("提出済み 1 人")).toBeTruthy();
     expect(done.getByText("ボブ")).toBeTruthy();

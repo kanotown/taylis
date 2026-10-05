@@ -1,5 +1,5 @@
 {
-  "_comment": "MOBILE_UI.md §6.3 / §7.1 (M49): the DM list's preview line. excerpt: what the server puts in ChannelOut.last_message.excerpt and what a client computes from a message event: the body as one line (mention tokens as display names, unknown people 「@メンバー」, unknown groups 「@グループ」; light markdown dropped; newlines collapsed; at most 140 characters, the 140th being …), or, without text, the attachments' words (the push body's rule). line: the client's prefix: nothing without a last message or with an empty excerpt; a system message as it is; my message 「あなた: 」 except in my own DM (only me); someone else's in a 1:1 DM as it is; elsewhere 「<表示名>: 」 (an unknown sender 「メンバー: 」). Hand-written; the server (tests/test_last_message.py) and every client test against it.",
+  "_comment": "MOBILE_UI.md §6.3 / §7.1 (M49): the DM list's preview line. excerpt: what the server puts in ChannelOut.last_message.excerpt and what a client computes from a message event: the body as one line (mention tokens as display names, unknown people 「@メンバー」, unknown groups 「@グループ」; light markdown dropped; newlines collapsed; at most 140 characters, the 140th being …), or, without text, the attachments' words (the push body's rule). line: the client's prefix: nothing without a last message or with an empty excerpt; a system message as it is; my message 「あなた：」 except in my own DM (only me); someone else's in a 1:1 DM as it is; elsewhere 「<表示名>: 」 (an unknown sender 「メンバー: 」). Hand-written; the server (tests/test_last_message.py) and every client test against it.",
   "me": "00000000-0000-7000-8000-0000000000a0",
   "users": {
     "00000000-0000-7000-8000-0000000000a0": "自分",
@@ -154,7 +154,7 @@
         "type": "user",
         "excerpt": "了解です"
       },
-      "line": "あなた: 了解です"
+      "line": "あなた：了解です"
     },
     {
       "name": "1:1 theirs",
@@ -210,7 +210,7 @@
         "type": "user",
         "excerpt": "ファイルを送信しました"
       },
-      "line": "あなた: ファイルを送信しました"
+      "line": "あなた：ファイルを送信しました"
     },
     {
       "name": "group theirs",

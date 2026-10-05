@@ -126,7 +126,7 @@ describe("templates in the composer (M30)", () => {
     await w.sendKey();
     const notice = String(w.setNotice.mock.calls[0]?.[0]);
     expect(notice).toContain("/日程 [題名] 日付 …");
-    expect(notice.endsWith("テンプレート: /日報 /週報 /メモ")).toBe(true);
+    expect(notice.endsWith("テンプレート：/日報 /週報 /メモ")).toBe(true);
   });
 
   it("a template changed on another device shows at once (template.updated → the store)", () => {

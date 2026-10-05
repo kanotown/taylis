@@ -101,7 +101,7 @@ describe("the list", () => {
     expect(api.channelFeeds).toHaveBeenCalledWith("c-lab");
     const row = screen.getByText("ボブの週報").closest("li")!;
     expect(within(row).getByRole("link").getAttribute("href")).toBe("https://bob.example.com/feed.xml");
-    expect(within(row).getByText("追加: ボブ")).toBeTruthy();
+    expect(within(row).getByText("追加：ボブ")).toBeTruthy();
     expect(within(row).getByText("最終取得 10/4 (日) 9:30 · 投稿 3 件")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /止める/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /削除/ })).toBeNull();
@@ -120,7 +120,7 @@ describe("the list", () => {
     await flush();
     const broken = screen.getByText("壊れた").closest("li")!;
     expect(within(broken).getByText("エラー")).toBeTruthy();
-    expect(within(broken).getByText("取得に失敗: サイトがエラーを返しました (HTTP 500) · 6 回続けて失敗")).toBeTruthy();
+    expect(within(broken).getByText("取得に失敗：サイトがエラーを返しました (HTTP 500) · 6 回続けて失敗")).toBeTruthy();
     expect(within(screen.getByText("止めた").closest("li")!).getByText("停止中")).toBeTruthy();
     expect(within(screen.getByText("いない").closest("li")!).getByText("取得を休止中")).toBeTruthy();
   });
@@ -199,7 +199,7 @@ describe("helpers", () => {
     expect(feedState({ ...FEED, owner_active: false })).toBe("owner_absent");
     expect(feedState({ ...FEED, last_error_code: "timeout" })).toBe("failing");
     expect(feedState({ ...FEED, last_success_at: null })).toBe("new");
-    expect(feedStatusLine({ ...FEED, last_error_code: "timeout", last_error: "timeout", consecutive_failures: 1 }, () => "")).toBe("取得に失敗: サイトが応答しません");
+    expect(feedStatusLine({ ...FEED, last_error_code: "timeout", last_error: "timeout", consecutive_failures: 1 }, () => "")).toBe("取得に失敗：サイトが応答しません");
     expect(feedStatusLine({ ...FEED, last_fetched_at: null, post_count: 0 }, () => "")).toBe("まだ取得していません");
     expect(feedUrlProblem("http://a.example/rss")).toBeNull();
     expect(feedUrlProblem("ftp://a.example/rss")).not.toBeNull();
@@ -245,7 +245,7 @@ describe("the feed bot (M98)", () => {
     await flush();
     expect(api.updateChannelFeedBot).toHaveBeenCalledWith("c-lab", { bot_user_id: IMPORTED.id });
     expect(screen.getByText("週報 - 中村の週報")).toBeTruthy();
-    expect(screen.getByText("(既存のボットを使用)")).toBeTruthy();
+    expect(screen.getByText("（既存のボットを使用）")).toBeTruthy();
     expect(api.channelFeeds.mock.calls.length).toBeGreaterThan(loads);
   });
 

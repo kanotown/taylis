@@ -22,7 +22,7 @@ describe("invite links (M12h)", () => {
   it("describes uses and explains failures in words", () => {
     const base = { id: "i", created_by: "u", role: "member", channel_ids: [], note: null, expires_at: "", revoked_at: null, created_at: "", used_by: [], status: "active" as const };
     expect(inviteUsesLabel({ ...base, max_uses: 1, use_count: 0 })).toBe("0 / 1 回");
-    expect(inviteUsesLabel({ ...base, max_uses: null, use_count: 3 })).toBe("3 回使用 (回数無制限)");
+    expect(inviteUsesLabel({ ...base, max_uses: null, use_count: 3 })).toBe("3 回使用（回数無制限）");
     expect(inviteErrorText(new ApiError(410, "invite_expired", "Invite is expired"))).toBe("この招待リンクは期限切れです");
     expect(inviteErrorText(new ApiError(409, "username_taken", "taken"))).toBe("このユーザー名はすでに使われています");
     // Anything else: the shared Japanese text (ARCHITECTURE.md §9), never the server's English message.

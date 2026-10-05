@@ -124,8 +124,8 @@ const composer = () => document.querySelector<HTMLTextAreaElement>(".composer te
 it("the ← → buttons go back and forward between conversations and views; a new place drops the forward entries", async () => {
   const { w } = await setup();
   expect(title()).toBe("c");
-  expect(backButton().getAttribute("aria-label")).toBe("戻る (⌘[)");
-  expect(forwardButton().getAttribute("aria-label")).toBe("進む (⌘])");
+  expect(backButton().getAttribute("aria-label")).toBe("戻る（⌘[）");
+  expect(forwardButton().getAttribute("aria-label")).toBe("進む（⌘]）");
   expect(backButton().disabled).toBe(true);
   expect(forwardButton().disabled).toBe(true);
 
@@ -194,7 +194,7 @@ it("macOS: ⌘[ / ⌘] anywhere, ⌘← / ⌘→ only outside a text field, noth
   // Under a dialog (the shortcut list) the keys do nothing.
   await press(w, { key: "/", metaKey: true });
   expect(screen.getByRole("dialog")).toBeTruthy();
-  expect(screen.getByText("履歴を戻る / 進む (マウスの戻る / 進むボタンも)")).toBeTruthy();
+  expect(screen.getByText("履歴を戻る / 進む（マウスの戻る / 進むボタンも）")).toBeTruthy();
   await press(w, { key: "]", metaKey: true });
   expect(title()).toBe("c");
   await press(w, { key: "Escape" });
@@ -207,7 +207,7 @@ it("Windows: Alt+← / Alt+→ (also in the composer), not ⌘[; the mouse's bac
   platform = "Win32";
   env.web = false;
   const { w } = await setup();
-  expect(backButton().getAttribute("aria-label")).toBe("戻る (Alt + ←)");
+  expect(backButton().getAttribute("aria-label")).toBe("戻る（Alt + ←）");
   await openRow(w, "d");
   await press(w, { key: "[", metaKey: true });
   await press(w, { key: "[", ctrlKey: true });

@@ -213,9 +213,9 @@ it("the bar shows on the tabs' roots and pushed lists, not in a conversation; th
 it.each([true, false])("badges (activity from the server: %s): DM counts unread DMs, activity the unread items, home a dot for unread channels", async (activity) => {
   const { w, dmId } = await setup({ activity });
   expect(w.store.activity === null).toBe(!activity);
-  expect(tabButton("dm").getAttribute("aria-label")).toBe("DM (未読 1)");
+  expect(tabButton("dm").getAttribute("aria-label")).toBe("DM（未読 1）");
   expect(tabButton("dm").querySelector("[data-badge]")?.textContent).toBe("1");
-  expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ (未読 1)");
+  expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ（未読 1）");
   expect(tabButton("activity").querySelector("[data-badge]")?.getAttribute("data-badge")).toBe("neutral");
   expect(tabButton("home").querySelector("[data-badge=dot]")).toBeNull();
 
@@ -226,7 +226,7 @@ it.each([true, false])("badges (activity from the server: %s): DM counts unread 
   });
   expect(w.store.getChannel(w.channelId)!.mentionCount).toBe(1);
   expect(tabButton("home").querySelector("[data-badge=dot]")).toBeTruthy();
-  expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ (未読 2)");
+  expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ（未読 2）");
   expect(tabButton("activity").querySelector("[data-badge]")?.getAttribute("data-badge")).toBe("danger");
   // A new DM message: the DM badge stays one conversation.
   await act(async () => {
@@ -273,7 +273,7 @@ it("the DM tab: my own DM (titled with my name) first, then by the last message,
   w.engine.stop();
 });
 
-it("M49: a DM row's second line is the last message (theirs as it is, mine 「あなた: 」, a group DM's with the name), bold while unread, following new, edited and deleted messages", async () => {
+it("M49: a DM row's second line is the last message (theirs as it is, mine 「あなた：」, a group DM's with the name), bold while unread, following new, edited and deleted messages", async () => {
   const { w, dmId, groupId } = await setup({ group: true });
   await tap("dm");
   const preview = (title: string) => {
@@ -293,18 +293,18 @@ it("M49: a DM row's second line is the last message (theirs as it is, mine 「�
   expect(preview("Alice")!.textContent).toBe("明日の件 よろしく");
   const mine = w.server.post(dmId, w.bob.id, `<@${w.alice.id}> 了解です`).message;
   await live(() => {});
-  expect(preview("Alice")!.textContent).toBe("あなた: @Alice 了解です");
+  expect(preview("Alice")!.textContent).toBe("あなた：@Alice 了解です");
   await live(() => w.server.edit(dmId, w.bob.id, mine.id, "了解しました"));
-  expect(preview("Alice")!.textContent).toBe("あなた: 了解しました");
+  expect(preview("Alice")!.textContent).toBe("あなた：了解しました");
   // A reply only in the thread leaves it; deleting the last one brings back the one before (from the server: no
   // timeline of this DM is held here).
   await live(() => w.server.post(dmId, w.alice.id, "スレッドだけ", undefined, mine.id));
-  expect(preview("Alice")!.textContent).toBe("あなた: 了解しました");
+  expect(preview("Alice")!.textContent).toBe("あなた：了解しました");
   await live(() => w.server.delete(dmId, w.bob.id, mine.id));
   expect(preview("Alice")!.textContent).toBe("明日の件 よろしく");
 
   await live(() => w.server.post(groupId!, w.bob.id, "", undefined, null, ["a1"]));
-  expect(preview("Alice, Carol")!.textContent).toBe("あなた: ファイルを送信しました");
+  expect(preview("Alice, Carol")!.textContent).toBe("あなた：ファイルを送信しました");
   w.engine.stop();
 });
 

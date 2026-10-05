@@ -51,7 +51,7 @@ describe("my profile from my avatar (sidebar header)", () => {
     const controller = { store, engine: null, me, isGuest: false, isAdmin: false, version: 0, subscribe: () => () => {} } as unknown as AppController;
     render(<Sidebar controller={controller} channels={[]} currentId={null} unreadOnly={false} onToggleUnreadOnly={() => {}} onOpen={() => {}} onNewDm={() => {}} onNewChannel={() => {}} />);
     const header = screen.getByTestId("sidebar-header");
-    const trigger = within(header).getByRole("button", { name: `自分のプロフィール (${me.display_name})` });
+    const trigger = within(header).getByRole("button", { name: `自分のプロフィール（${me.display_name}）` });
     expect(trigger.tagName).toBe("BUTTON");
     fireEvent.click(trigger);
     const card = await screen.findByRole("dialog");
@@ -72,7 +72,7 @@ describe("the title hint", () => {
     const { me, store } = signedIn();
     const controller = { store, me, isAdmin: false, workspaces: [], activeServer: null } as unknown as AppController;
     render(<SettingsSectionBody controller={controller} section="profile" />);
-    expect(screen.getByPlaceholderText("例: 研究室長 / TA / 秘書 (名簿の学年・職位は自動で表示されます)")).toBeTruthy();
+    expect(screen.getByPlaceholderText("例：研究室長 / TA / 秘書（名簿の学年・職位は自動で表示されます）")).toBeTruthy();
   });
 });
 

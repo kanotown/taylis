@@ -159,13 +159,13 @@ describe("確認のお願い (M27, its own row since 2026-10-05)", () => {
     const done = within(row).getByRole("button", { name: "確認済み" });
     expect(done.getAttribute("aria-pressed")).toBe("true");
     expect(await within(row).findByText("2/4 人が確認")).toBeTruthy();
-    const count = within(row).getByRole("button", { name: "確認した人 (2 人)" });
+    const count = within(row).getByRole("button", { name: "確認した人（2 人）" });
     expect(count.textContent).toBe("2/4 人が確認· Carol、Alice");
     expect(hoverListText(count)).toBe("Carol、Alice");
 
     w.acknowledge([2, 0, 3, 4]);
     // Dave and Erin have confirmed since the list was loaded: they no longer count as pending.
-    const line = within(w.ackRow()).getByRole("button", { name: "確認した人 (4 人)" });
+    const line = within(w.ackRow()).getByRole("button", { name: "確認した人（4 人）" });
     expect(line.textContent).toBe("4/4 人が確認· Carol、Alice、Dave ほか 1 人");
     expect(within(w.ackRow()).getByText("全員が確認済み")).toBeTruthy();
     fireEvent.click(line);

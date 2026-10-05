@@ -90,7 +90,7 @@ describe("the board's columns", () => {
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /列を追加/ }));
     fireEvent.change(screen.getByLabelText("名前"), { target: { value: " 見送り " } });
-    fireEvent.click(screen.getByLabelText(/完了 \(カードは完了になる\)/));
+    fireEvent.click(screen.getByLabelText(/完了（カードは完了になる）/));
     fireEvent.click(screen.getByRole("button", { name: "追加" }));
     await flush();
     expect(api.createTaskColumn).toHaveBeenCalledWith({ channel_id: "c-lab", name: "見送り", status: "done" });
