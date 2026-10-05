@@ -3,27 +3,28 @@
  * check them; the choice of filter and sort is remembered per device (localStorage, a convenience only).
  */
 import type { AdminUserOut } from "../api/types";
+import { labelled } from "../i18n";
 
 export type UserFilter = "all" | "active" | "deactivated" | "admin" | "member" | "guest" | "bot" | "temporary";
 export type UserSort = "name" | "username" | "newest" | "oldest" | "role";
 
 export const USER_FILTERS: ReadonlyArray<[UserFilter, string]> = [
-  ["all", "すべて"],
-  ["active", "有効"],
-  ["deactivated", "無効"],
-  ["admin", "管理者"],
-  ["member", "メンバー"],
-  ["guest", "ゲスト"],
-  ["bot", "ボット"],
-  ["temporary", "仮パスワード"],
+  labelled("all", "admin.users.filter.all"),
+  labelled("active", "admin.users.filter.active"),
+  labelled("deactivated", "admin.users.filter.deactivated"),
+  labelled("admin", "admin.users.role.admin"),
+  labelled("member", "admin.users.role.member"),
+  labelled("guest", "dialogs.guest"),
+  labelled("bot", "admin.users.filter.bot"),
+  labelled("temporary", "admin.users.temporaryPassword"),
 ];
 
 export const USER_SORTS: ReadonlyArray<[UserSort, string]> = [
-  ["name", "名前"],
-  ["username", "ユーザー名"],
-  ["newest", "作成日 (新しい順)"],
-  ["oldest", "作成日 (古い順)"],
-  ["role", "役割"],
+  labelled("name", "reservations.name"),
+  labelled("username", "admin.users.sort.username"),
+  labelled("newest", "admin.users.sort.newest"),
+  labelled("oldest", "admin.users.sort.oldest"),
+  labelled("role", "admin.users.sort.role"),
 ];
 
 const ROLE_ORDER = ["admin", "member", "guest", "bot"];
