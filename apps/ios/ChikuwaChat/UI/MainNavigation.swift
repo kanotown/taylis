@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// iPad (MOBILE_UI.md §12): the phone's four tabs at a compact width (an iPhone, an iPad in a narrow Split View, Slide
+/// iPad (MOBILE_UI.md §13): the phone's four tabs at a compact width (an iPhone, an iPad in a narrow Split View, Slide
 /// Over or a small Stage Manager window), a Slack-like sidebar and conversation at a regular width.
 enum MainLayout: Equatable {
     case tabs, split
@@ -33,6 +33,11 @@ struct MainNavigation: Equatable {
     /// The DM tab's list and the activity, as the split's detail (the sidebar's 「すべての DM」 and 「アクティビティ」).
     static let dmsId = "split.dms"
     static let activityId = "split.activity"
+
+    /// The split's sidebar (320) steps aside for the thread pane (400) where the conversation would keep less than
+    /// about 460 pt: an iPad in portrait, a narrower Stage Manager window; a 13" or 11" iPad in landscape keeps all three.
+    static let threeColumnWidth: CGFloat = 1180
+    static func sidebarStepsAside(width: CGFloat) -> Bool { width > 0 && width < threeColumnWidth }
 
     /// The screen in front: the top of the selected tab's stack, or of the detail column.
     var front: MainRoute? { layout == .split ? split.last : paths[tab]?.last }

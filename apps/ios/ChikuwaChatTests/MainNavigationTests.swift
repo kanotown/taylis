@@ -2,7 +2,7 @@ import SwiftUI
 import XCTest
 @testable import ChikuwaChat
 
-/// MOBILE_UI.md §12: the phone's tabs at a compact width, the iPad's split at a regular one, and the navigation state
+/// MOBILE_UI.md §13: the phone's tabs at a compact width, the iPad's split at a regular one, and the navigation state
 /// carried across a change of size class (the open conversation, the screens over it, its thread).
 final class MainNavigationTests: XCTestCase {
     private let dms: Set<String> = ["dm-1", "dm-2"]
@@ -18,6 +18,14 @@ final class MainNavigationTests: XCTestCase {
         XCTAssertEqual(MainLayout.of(.regular), .split)
         XCTAssertEqual(MainLayout.of(.compact), .tabs)
         XCTAssertEqual(MainLayout.of(nil), .tabs) // unknown: the phone's layout
+    }
+
+    func testSidebarStepsAsideForThePaneWhenNarrow() {
+        XCTAssertFalse(MainNavigation.sidebarStepsAside(width: 1376)) // 13" landscape
+        XCTAssertFalse(MainNavigation.sidebarStepsAside(width: 1210)) // 11" landscape
+        XCTAssertTrue(MainNavigation.sidebarStepsAside(width: 1032)) // 13" portrait
+        XCTAssertTrue(MainNavigation.sidebarStepsAside(width: 834)) // 11" portrait
+        XCTAssertFalse(MainNavigation.sidebarStepsAside(width: 0)) // not measured yet
     }
 
     func testLandingInEachLayout() {

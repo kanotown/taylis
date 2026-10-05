@@ -7,11 +7,11 @@ struct ChannelView: View {
     let channelId: String
     @Binding var pendingThreadId: String?
     /// The thread opened or closed here: MainView carries it across a change of layout, and in the split shows it in its
-    /// pane (MOBILE_UI.md §12).
+    /// pane (MOBILE_UI.md §13).
     var onThreadChange: ((String?) -> Void)? = nil
     @State private var sheet: ChannelSheet?
     /// M29: the thread and the channel's details are pages pushed over the conversation (Slack), not sheets. On an
-    /// iPad's split (MOBILE_UI.md §12) the thread is MainView's pane beside the conversation instead (`onThreadChange`).
+    /// iPad's split (MOBILE_UI.md §13) the thread is MainView's pane beside the conversation instead (`onThreadChange`).
     @State private var thread: ThreadTarget?
     @Environment(\.threadInPane) private var threadInPane
     @State private var showInfo = false
@@ -470,7 +470,7 @@ struct ChannelView: View {
                             // Exactly as wide as the list: a row wider than the screen made the whole stack wider, and the
                             // scroll view showed it centred, the messages shifted to the left (testers, 2026-09-29).
                             // The viewport's width, not `containerRelativeFrame`: in an iPad's split detail column that
-                            // laid the conversation out again and again without end (a frozen app, MOBILE_UI.md §12).
+                            // laid the conversation out again and again without end (a frozen app, MOBILE_UI.md §13).
                             .frame(width: viewport.size.width)
                             // A new newest row: the others move up for it, animated (the list keeps its origin by itself).
                             .animation(positioned ? .easeOut(duration: 0.25) : nil, value: items.last?.id)
@@ -684,7 +684,7 @@ struct ChannelView: View {
             ThreadView(controller: controller, channelId: channelId, parentId: target.id)
         }
         .onChange(of: thread?.id) { _, id in
-            // The split (MOBILE_UI.md §12): MainView shows the thread in its pane beside the detail column (an inspector
+            // The split (MOBILE_UI.md §13): MainView shows the thread in its pane beside the detail column (an inspector
             // here, inside the conversation, laid it out without end); nothing is pushed or kept here.
             if threadInPane {
                 guard let id else { return }

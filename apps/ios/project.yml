@@ -47,7 +47,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.chikuwachat.ios
-        # iPhone and iPad (MOBILE_UI.md §12). App Store Connect wants every iPad orientation for multitasking
+        # iPhone and iPad (MOBILE_UI.md §13). App Store Connect wants every iPad orientation for multitasking
         # (UISupportedInterfaceOrientations~ipad above, no UIRequiresFullScreen) and 13" iPad screenshots.
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
