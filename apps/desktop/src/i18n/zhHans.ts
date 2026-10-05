@@ -788,7 +788,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "reservations.prevDay": "前一天",
   "reservations.nextDay": "后一天",
   "reservations.date": "日期",
-  "reservations.rules": "预约须整点开始，最长 {maxHours} 小时，最多提前 2 周，每人最多 2 个。“立即”可使用空闲名额直到下一个预约开始（最长保证 {minHours} 小时；之后如有人等待，{grace} 分钟后替换）。",
+  "reservations.rules": "预约须整点开始，最长 {maxHours} 小时，最多提前 2 周；每人只能有一个预约、排队或正在使用。“立即”可使用空闲名额直到下一个预约开始（最长保证 {minHours} 小时；之后如有人等待，{grace} 分钟后替换）。",
   "reservations.operatorRule": " 负责人请在管理界面中实际操作后，再点击“已分配”“已移除”“已替换”。",
   "reservations.dontDo": "算了",
   "reservations.assigned": "已分配",
