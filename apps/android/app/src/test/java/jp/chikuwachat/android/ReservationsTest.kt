@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -151,6 +152,58 @@ class ReservationsTest {
         server.noticeReservation(bob.id, "🙋 割り当ててください")
         engine.idle()
         assertEquals(listOf("🙋 割り当ててください"), notices)
+        engine.stop(); scope.cancel()
+    }
+
+    /** Review v0.1.37 #6: an event while the reload's GET is on its way is not dropped: a second read follows and the store converges. */
+    @Test fun anEventDuringTheReloadReadsAgainAfterIt() = runBlocking {
+        val server = FakeServer()
+        val alice = server.addUser("alice"); val bob = server.addUser("bob")
+        server.createChannel("general", alice.id)
+        server.pools = listOf(PoolOut(id = "p1", name = "v0", capacity = 1))
+        val store = Store()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = server.api(bob.id)
+        val engine = SyncEngine(api, server.connector(bob.id), "ws://fake", store, { "t" }, scope, EngineOptions(sleep = {}))
+        engine.start(); engine.idle()
+        val reads = server.poolReads
+        val hold = Hold()
+        api.poolsHold = hold
+        server.publishPools(listOf(PoolOut(id = "p1", name = "v1", capacity = 1)))
+        engine.idle()
+        val deadline = System.currentTimeMillis() + 2_000
+        while (!hold.asked && System.currentTimeMillis() < deadline) delay(20)
+        assertTrue(hold.asked) // the first GET answers "v1" but is held
+        server.publishPools(listOf(PoolOut(id = "p1", name = "v2", capacity = 1)))
+        engine.idle()
+        hold.release()
+        delay(700)
+        assertEquals(reads + 2, server.poolReads)
+        assertEquals(listOf("v2"), store.reservationPools?.map { it.name })
+        engine.stop(); scope.cancel()
+    }
+
+    /** Review v0.1.37 #6: an answer that started before one already kept never overwrites it. */
+    @Test fun anOlderPoolsAnswerDoesNotOverwriteANewerOne() = runBlocking {
+        val server = FakeServer()
+        val alice = server.addUser("alice"); val bob = server.addUser("bob")
+        server.createChannel("general", alice.id)
+        server.pools = listOf(PoolOut(id = "p1", name = "v0", capacity = 1))
+        val store = Store()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = server.api(bob.id)
+        val engine = SyncEngine(api, server.connector(bob.id), "ws://fake", store, { "t" }, scope, EngineOptions(sleep = {}))
+        engine.start(); engine.idle()
+        val hold = Hold()
+        api.poolsHold = hold
+        server.pools = listOf(PoolOut(id = "p1", name = "old", capacity = 1))
+        val first = scope.launch { engine.loadReservationPools() } // held: answers "old"
+        server.pools = listOf(PoolOut(id = "p1", name = "new", capacity = 1))
+        engine.loadReservationPools()
+        assertEquals(listOf("new"), store.reservationPools?.map { it.name })
+        hold.release()
+        first.join()
+        assertEquals(listOf("new"), store.reservationPools?.map { it.name })
         engine.stop(); scope.cancel()
     }
 }

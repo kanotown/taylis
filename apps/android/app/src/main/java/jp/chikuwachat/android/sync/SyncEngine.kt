@@ -239,16 +239,35 @@ class SyncEngine(
      */
     suspend fun loadReservationPools() {
         val poolsApi = api as? ReservationsApi ?: return
-        runCatching { poolsApi.reservationPools() }.onSuccess { store.setReservationPools(it) }
+        // Review v0.1.37 #6: reads may overlap (bootstrap's and an event's); an answer older than one already kept is dropped.
+        val read = ++reservationReads
+        runCatching { poolsApi.reservationPools() }.onSuccess {
+            if (read < reservationKept) return@onSuccess
+            reservationKept = read
+            store.setReservationPools(it)
+        }
     }
+
+    /** Review v0.1.37 #6: GET /reservation-pools started, and the latest one whose answer the store took. */
+    private var reservationReads = 0
+    private var reservationKept = 0
 
     /** reservation.updated comes once per change (and a press brings several): one read for a burst. */
     private var reservationReload: Job? = null
+    /**
+     * Review v0.1.37 #6: an event came after the running reload began (its debounce over, its GET maybe answering from
+     * before that change): the loop reads once more when it ends.
+     */
+    private var reservationDirty = false
     private fun scheduleReservationReload() {
+        reservationDirty = true
         if (reservationReload?.isActive == true) return
         reservationReload = scope.launch {
-            kotlinx.coroutines.delay(300)
-            loadReservationPools()
+            while (reservationDirty) {
+                kotlinx.coroutines.delay(300)
+                reservationDirty = false
+                loadReservationPools()
+            }
         }
     }
 
