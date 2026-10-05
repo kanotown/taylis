@@ -139,6 +139,10 @@ object MainTabs {
     fun landTasks(state: TabStacks, channelId: String): TabStacks =
         withStack(state, MainTab.HOME, MainNav.openTasks(rootStack(MainTab.HOME), channelId)).copy(selected = MainTab.HOME)
 
+    /** M112: a reservation notice: the home tab shows 「予約」 over its list. */
+    fun landReservations(state: TabStacks): TabStacks =
+        withStack(state, MainTab.HOME, MainNav.openReservations(rootStack(MainTab.HOME))).copy(selected = MainTab.HOME)
+
     /** M56: a personal task's notification: the home tab shows 「タスク」 over its list. */
     fun landMyTasks(state: TabStacks): TabStacks =
         withStack(state, MainTab.HOME, MainNav.openMyTasks(rootStack(MainTab.HOME))).copy(selected = MainTab.HOME)

@@ -1,35 +1,29 @@
 package jp.chikuwachat.android.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,284 +32,375 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import jp.chikuwachat.android.api.PoolOut
 import jp.chikuwachat.android.api.ReservationOut
+import jp.chikuwachat.android.api.ReservationTodo
 import jp.chikuwachat.android.app.AppController
-import jp.chikuwachat.android.sync.ChannelState
 import kotlinx.coroutines.launch
 
-/** M99 (docs/RESERVATIONS.md §6): the pure parts of a channel's reservation pools (the chip's and the card's words). */
+/**
+ * M112 (docs/RESERVATIONS.md §6): the pure parts of 「予約」 — the booking choices, a day's hours, my reservations, the
+ * operators' to-do and the words (the web's ui/reservationPools.ts). Times are the device's (`zone`).
+ */
 object ReservationRules {
-    sealed interface Mine {
-        data object None : Mine
-        data class Waiting(val row: ReservationOut) : Mine
-        data class Holding(val row: ReservationOut) : Mine
-        data class Returning(val row: ReservationOut) : Mine
+    private val HOUR: Duration = Duration.ofHours(1)
+    private val WEEKDAYS = listOf("月", "火", "水", "木", "金", "土", "日")
+
+    private fun time(iso: String?): Instant? = iso?.let { runCatching { Instant.parse(it) }.getOrNull() ?: runCatching { java.time.OffsetDateTime.parse(it).toInstant() }.getOrNull() }
+
+    fun days(now: Instant, horizonDays: Int, zone: ZoneId): List<LocalDate> {
+        val today = now.atZone(zone).toLocalDate()
+        return (0..horizonDays).map { today.plusDays(it.toLong()) }
     }
 
-    /** My request in the pool, if any. */
-    fun mine(pool: PoolOut): Mine {
-        val id = pool.myReservationId ?: return Mine.None
-        pool.holders.firstOrNull { it.id == id }?.let { return if (it.status == "returning") Mine.Returning(it) else Mine.Holding(it) }
-        pool.waiting.firstOrNull { it.id == id }?.let { return Mine.Waiting(it) }
-        return Mine.None
-    }
-
-    /** 「2/3 · 待ち 1」. */
-    fun summary(pool: PoolOut): String {
-        val base = "${pool.holders.size}/${pool.capacity}"
-        return if (pool.waiting.isEmpty()) base else "$base · 待ち ${pool.waiting.size}"
-    }
-
-    /** What my chip says about me (empty when I am not in the pool). */
-    fun myStatus(pool: PoolOut, whenText: (String?) -> String = { Recurring.shortDateTime(it) }): String = when (val mine = mine(pool)) {
-        Mine.None -> ""
-        is Mine.Waiting -> "待ち ${mine.row.position ?: "?"} 番目"
-        is Mine.Returning -> "返却中"
-        is Mine.Holding -> when {
-            mine.row.evictAt != null -> "${whenText(mine.row.evictAt)} 以降に外されます"
-            mine.row.guaranteeUntil != null -> "利用中 (保証 ${whenText(mine.row.guaranteeUntil)} まで)"
-            else -> "利用中"
+    /** 「今日」 「明日」 or 「10/7 (水)」. */
+    fun dayLabel(day: LocalDate, now: Instant, zone: ZoneId): String {
+        val diff = ChronoUnit.DAYS.between(now.atZone(zone).toLocalDate(), day)
+        return when (diff) {
+            0L -> "今日"
+            1L -> "明日"
+            else -> "${day.monthValue}/${day.dayOfMonth} (${WEEKDAYS[day.dayOfWeek.value - 1]})"
         }
     }
 
-    /** Whether my chip should stand out: I am about to lose the seat, or a seat is ready for me. */
-    fun urgent(pool: PoolOut): Boolean = when (val mine = mine(pool)) {
-        is Mine.Holding -> mine.row.evictAt != null
-        is Mine.Waiting -> mine.row.ready
-        else -> false
+    fun hm(instant: Instant, zone: ZoneId): String = instant.atZone(zone).let { "%02d:%02d".format(it.hour, it.minute) }
+
+    /** 「13:00」 today, else 「10/7 (水) 13:00」. */
+    fun whenText(iso: String, now: Instant, zone: ZoneId): String {
+        val at = time(iso) ?: return ""
+        val day = at.atZone(zone).toLocalDate()
+        return if (day == now.atZone(zone).toLocalDate()) hm(at, zone) else "${dayLabel(day, now, zone)} ${hm(at, zone)}"
     }
 
-    /** The line under a waiting member. */
-    fun waiterLine(row: ReservationOut, pool: PoolOut, name: (String) -> String, whenText: (String?) -> String = { Recurring.shortDateTime(it) }): String {
-        val since = "${whenText(row.requestedAt)} に予約"
-        return when (row.step) {
-            "assign" -> "$since · 空きあり (担当者の割り当て待ち)"
-            "swap" -> {
-                val holder = pool.holders.firstOrNull { it.id == row.pairId }
-                val who = holder?.let { "${name(it.userId)} さん" } ?: "前の人"
-                when {
-                    holder?.status == "returning" -> "$since · ${who}の返却分 (担当者が外し次第)"
-                    row.ready -> "$since · ${who}と入れ替えできます"
-                    holder?.evictAt != null -> "$since · ${who}の後 (${whenText(holder.evictAt)} 以降)"
-                    else -> "$since · ${who}の後"
-                }
-            }
-            else -> "$since · 保証時間が過ぎる人を待っています"
+    /** 「13:00〜16:00」 today, else 「10/7 (水) 13:00〜16:00」. */
+    fun span(startIso: String?, endIso: String?, now: Instant, zone: ZoneId): String {
+        val start = time(startIso) ?: return ""
+        val end = time(endIso) ?: return ""
+        val day = start.atZone(zone).toLocalDate()
+        val prefix = if (day == now.atZone(zone).toLocalDate()) "" else dayLabel(day, now, zone) + " "
+        return "$prefix${hm(start, zone)}〜${hm(end, zone)}"
+    }
+
+    /** Bookings still counting (booked or on a seat). */
+    fun live(pool: PoolOut): List<ReservationOut> = pool.bookings.filter { it.status in setOf("booked", "holding", "returning") }
+
+    private fun promised(pool: PoolOut, start: Instant, end: Instant, now: Instant): Int {
+        var count = live(pool).count { b ->
+            val s = time(b.startAt); val e = time(b.endAt)
+            s != null && e != null && s < end && e > start
+        }
+        val from = if (start > now) start else now
+        count += pool.holders.count { h ->
+            h.kind == "walkin" && h.status == "holding" && (time(h.guaranteeUntil)?.let { it > from } ?: false) && from < end
+        }
+        return count
+    }
+
+    /** Whether every hour of [start, start + hours) has a seat left (the server's check, as far as the app knows). */
+    fun fits(pool: PoolOut, start: Instant, hours: Int, now: Instant): Boolean =
+        (0 until hours).all { i ->
+            val from = start.plus(HOUR.multipliedBy(i.toLong()))
+            promised(pool, from, from.plus(HOUR), now) + 1 <= pool.capacity
+        }
+
+    fun horizonEnd(pool: PoolOut, now: Instant, zone: ZoneId): Instant =
+        now.atZone(zone).toLocalDate().plusDays(pool.horizonDays + 1L).atStartOfDay(zone).toInstant()
+
+    data class StartChoice(val start: Instant, val full: Boolean)
+
+    /** The starts on `day`: every hour from the current one (today) on. */
+    fun starts(pool: PoolOut, day: LocalDate, now: Instant, zone: ZoneId): List<StartChoice> {
+        val hourNow = now.atZone(zone).truncatedTo(ChronoUnit.HOURS).toInstant()
+        val limit = horizonEnd(pool, now, zone)
+        return (0 until 24).mapNotNull { h ->
+            val start = day.atStartOfDay(zone).plusHours(h.toLong())
+            if (start.toLocalDate() != day) return@mapNotNull null
+            val at = start.toInstant()
+            if (at < hourNow || at >= limit) null else StartChoice(at, !fits(pool, at, 1, now))
         }
     }
 
-    /** The line under a holder. */
-    fun holderLine(row: ReservationOut, whenText: (String?) -> String = { Recurring.shortDateTime(it) }): String =
-        listOfNotNull(row.assignedAt?.let { "${whenText(it)} から" }, row.guaranteeUntil?.let { "保証 ${whenText(it)} まで" }).joinToString(" · ")
-
-    /** A holder's state at a glance; `danger` for the ones about to go. */
-    fun holderBadge(row: ReservationOut, pool: PoolOut, now: Instant = Instant.now(), whenText: (String?) -> String = { Recurring.shortDateTime(it) }): Pair<String, Boolean>? {
-        if (row.status == "returning") return "返却済み · 外し待ち" to false
-        if (row.evictAt != null) return if (row.ready) "入れ替えできます" to true else "${whenText(row.evictAt)} 以降に外す" to true
-        if (pool.nextEvictId == row.id) return "次に外す" to false
-        val until = Recurring.instant(row.guaranteeUntil)
-        if (until != null && !until.isAfter(now)) return "保証時間終了" to false
-        return null
+    /** How long a booking from `start` can be: 1 h up to max_hours, stopping at the first full hour and the horizon. */
+    fun durations(pool: PoolOut, start: Instant, now: Instant, zone: ZoneId): List<Int> {
+        val out = mutableListOf<Int>()
+        val limit = horizonEnd(pool, now, zone)
+        for (hours in 1..maxOf(1, pool.maxHours)) {
+            if (start.plus(HOUR.multipliedBy(hours.toLong())) > limit || !fits(pool, start, hours, now)) break
+            out += hours
+        }
+        return out
     }
 
-    /** Before the guarantee ends: 「外した」 asks louder. */
-    fun early(row: ReservationOut, now: Instant = Instant.now()): Boolean {
-        if (row.status != "holding" || row.evictAt != null) return false
-        val until = Recurring.instant(row.guaranteeUntil) ?: return false
-        return until.isAfter(now)
+    data class HourRow(val start: Instant, val rows: List<ReservationOut>)
+
+    /** The hours of `day` with their bookings and walk-ins (from assignment to the end of the guarantee, or now). */
+    fun hours(pool: PoolOut, day: LocalDate, now: Instant, zone: ZoneId): List<HourRow> {
+        val spans = mutableListOf<Triple<ReservationOut, Instant, Instant>>()
+        pool.bookings.forEach { b -> val s = time(b.startAt); val e = time(b.endAt); if (s != null && e != null) spans += Triple(b, s, e) }
+        pool.holders.filter { it.kind == "walkin" }.forEach { h ->
+            val s = time(h.assignedAt) ?: return@forEach
+            val until = time(h.guaranteeUntil)?.takeIf { it > now } ?: now
+            spans += Triple(h, s, until)
+        }
+        return (0 until 24).map { h ->
+            val start = day.atStartOfDay(zone).plusHours(h.toLong()).toInstant()
+            val end = start.plus(HOUR)
+            HourRow(start, spans.filter { it.second < end && it.third > start }.map { it.first })
+        }
+    }
+
+    data class Mine(val walkin: ReservationOut?, val bookings: List<ReservationOut>)
+
+    fun mine(pool: PoolOut, me: String?): Mine =
+        Mine((pool.holders + pool.waiting).firstOrNull { it.id == pool.myReservationId }, live(pool).filter { it.userId == me })
+
+    fun walkinText(row: ReservationOut, pool: PoolOut, now: Instant, zone: ZoneId): String {
+        if (row.status == "waiting") return when (row.step) {
+            "assign" -> row.until?.let { "空きあり (〜${whenText(it, now, zone)} まで) · 担当者の割り当て待ち" } ?: "空きあり · 担当者の割り当て待ち"
+            "swap" -> if (row.ready) "まもなく担当者が割り当てます" else "前の人の保証時間の後に割り当てられます"
+            else -> "順番待ち ${row.position ?: "?"} 番目"
+        }
+        if (row.status == "returning") return "返却済み · 担当者が外すのを待っています"
+        row.evictAt?.let { return "${whenText(it, now, zone)} 以降に外されます" }
+        return row.guaranteeUntil?.let { "利用中 (〜${whenText(it, now, zone)} まで保証)" } ?: "利用中"
+    }
+
+    fun bookingText(row: ReservationOut, now: Instant, zone: ZoneId): String {
+        val s = span(row.startAt, row.endAt, now, zone)
+        return when (row.status) {
+            "holding" -> "$s · 利用中"
+            "returning" -> "$s · 返却済み"
+            else -> if (time(row.startAt)?.let { it <= now } == true) "$s · 開始 (担当者の割り当て待ち)" else s
+        }
+    }
+
+    /** To-dos due now in the pools I operate (the tile's number). */
+    fun todoCount(pools: List<PoolOut>): Int = pools.sumOf { pool -> pool.todos.count { !it.upcoming } }
+
+    fun row(pool: PoolOut, id: String?): ReservationOut? =
+        id?.let { pool.holders.firstOrNull { r -> r.id == it } ?: pool.waiting.firstOrNull { r -> r.id == it } ?: pool.bookings.firstOrNull { r -> r.id == it } }
+
+    private val REASONS = mapOf("free" to "空きあり", "returned" to "返却済み", "booking_ended" to "予約時間が終了", "guarantee_over" to "保証時間が終了")
+
+    fun todoLine(todo: ReservationTodo, pool: PoolOut, name: (String) -> String, now: Instant, zone: ZoneId): String {
+        fun who(id: String?): String {
+            val row = row(pool, id) ?: return "(不明)"
+            return row.email?.let { "${name(row.userId)} さん ($it)" } ?: "${name(row.userId)} さん"
+        }
+        val target = row(pool, todo.assignId)
+        val booked = if (target?.kind == "booking") " · 予約 ${span(target.startAt, target.endAt, now, zone)}" else ""
+        val head = if (todo.upcoming) "${whenText(todo.dueAt, now, zone)} から: " else ""
+        val reason = REASONS[todo.reason] ?: ""
+        return when (todo.action) {
+            "assign" -> "$head${who(todo.assignId)} に割り当てる$booked"
+            "swap" -> "$head${who(todo.removeId)} を外して ${who(todo.assignId)} に割り当てる ($reason)$booked"
+            else -> "$head${who(todo.removeId)} を外す ($reason)"
+        }
+    }
+
+    fun todoButton(todo: ReservationTodo): String = when (todo.action) {
+        "assign" -> "割り当てた"
+        "remove" -> "外した"
+        else -> "入れ替えた"
     }
 }
 
-/** The channel's pools as chips at the top of the conversation; nothing when it has none. A chip opens the pool's card. */
-@Composable
-fun ReservationChipRow(controller: AppController, channel: ChannelState, version: Int) {
-    val pools = remember(version, channel.id) {
-        controller.store.poolsOf(channel.id).filter { it.enabled || it.holders.isNotEmpty() || it.waiting.isNotEmpty() }
-    }
-    var openId by remember(channel.id) { mutableStateOf<String?>(null) }
-    if (pools.isNotEmpty()) {
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            pools.forEach { pool ->
-                val status = ReservationRules.myStatus(pool)
-                AssistChip(
-                    onClick = { openId = pool.id },
-                    leadingIcon = { Icon(Icons.Outlined.ConfirmationNumber, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                    label = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(pool.name, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Spacer(Modifier.width(4.dp))
-                            Text(ReservationRules.summary(pool), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (status.isNotEmpty()) {
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    "· $status",
-                                    color = if (ReservationRules.urgent(pool)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                    maxLines = 1,
-                                )
-                            }
-                        }
-                    },
-                )
-            }
-        }
-        HorizontalDivider()
-    }
-    val open = openId?.let { id -> controller.store.poolsOf(channel.id).firstOrNull { it.id == id } }
-    if (openId != null && open != null) ReservationSheet(controller, channel, open) { openId = null }
-}
+private data class Confirm(val text: String, val label: String, val run: suspend () -> Unit)
 
-private data class Confirm(val text: String, val label: String, val destructive: Boolean = false, val run: suspend () -> Unit)
-
-/** One pool's card: holders, the queue, my status and buttons; operators also assign / remove / swap / cancel. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** 「予約」: per pool mine, 予約する / 今すぐ, the operators' to-do and a day's hours. Settings are on the desktop / web. */
 @Composable
-fun ReservationSheet(controller: AppController, channel: ChannelState, pool: PoolOut, onDismiss: () -> Unit) {
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+fun ReservationsPane(controller: AppController, version: Int) {
+    val store = controller.store
+    LaunchedEffect(Unit) { controller.engine?.loadReservationPools() }
+    val pools = remember(version) { store.reservationPools }
+    val zone = remember { ZoneId.systemDefault() }
+    val now = remember(version) { Instant.now() }
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<Confirm?>(null) }
-    fun name(userId: String) = controller.store.users[userId]?.displayName ?: "(不明)"
-    fun run(block: suspend () -> Unit) {
+    var booking by remember { mutableStateOf<PoolOut?>(null) }
+    val days = remember { mutableStateOf<Map<String, LocalDate>>(emptyMap()) }
+    fun run(call: suspend () -> Unit) {
         if (busy) return
         busy = true
-        scope.launch { try { block() } finally { busy = false } }
+        scope.launch { try { call() } finally { busy = false } }
     }
-    val operate = pool.canOperate && !channel.channel.archived
-
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
-        Column(
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(pool.name, style = MaterialTheme.typography.titleMedium)
-            MineRow(controller, channel, pool, busy, ::run) { confirm = it }
-            Text("利用中 ${pool.holders.size}/${pool.capacity}", style = MaterialTheme.typography.labelLarge)
-            if (pool.holders.isEmpty()) Text("いません", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            pool.holders.forEach { row ->
-                PersonRow(row, name(row.userId), row.id == pool.myReservationId, ReservationRules.holderLine(row), ReservationRules.holderBadge(row, pool)) {
-                    if (operate) {
-                        val early = ReservationRules.early(row)
-                        val action = {
-                            confirm = Confirm(
-                                if (early) "${name(row.userId)} さんはまだ保証時間内です。管理画面で外しましたか？" else "${name(row.userId)} さんを管理画面で外しましたか？",
-                                "外した", destructive = early,
-                            ) { controller.reservationAction(row.id, "remove") }
-                        }
-                        if (row.ready) Button(onClick = action, enabled = !busy) { Text("外した") }
-                        else OutlinedButton(onClick = action, enabled = !busy) { Text("外した") }
-                    }
-                }
-            }
-            Text("待ち ${pool.waiting.size} 人", style = MaterialTheme.typography.labelLarge)
-            if (pool.waiting.isEmpty()) Text("いません", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            pool.waiting.forEach { row ->
-                val holder = if (row.step == "swap") pool.holders.firstOrNull { it.id == row.pairId } else null
-                PersonRow(row, name(row.userId), row.id == pool.myReservationId, ReservationRules.waiterLine(row, pool, ::name), null) {
-                    if (operate) {
-                        Column(horizontalAlignment = Alignment.End) {
-                            if (row.step == "assign") {
-                                Button(onClick = { run { controller.reservationAction(row.id, "assign") } }, enabled = !busy) { Text("割り当てた") }
-                            }
-                            if (holder != null && row.ready) {
-                                Button(onClick = {
-                                    confirm = Confirm("管理画面で ${name(holder.userId)} さんを外して ${name(row.userId)} さんを割り当てましたか？", "入れ替えた") {
-                                        controller.swapReservations(pool.id, holder.id, row.id)
-                                    }
-                                }, enabled = !busy) { Text("入れ替えた") }
-                            }
-                            if (row.id != pool.myReservationId) {
-                                TextButton(onClick = {
-                                    confirm = Confirm("${name(row.userId)} さんの予約を取り消しますか？ 本人に知らせます。", "取り消す", destructive = true) {
-                                        controller.reservationAction(row.id, "cancel")
-                                    }
-                                }, enabled = !busy) { Text("取り消す") }
-                            }
+    val name: (String) -> String = { id -> store.users[id]?.displayName ?: "(不明)" }
+    if (pools == null) {
+        Text("読み込み中…", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    if (pools.isEmpty()) {
+        Text("予約の枠はありません (枠は管理者が Desktop / Web で作ります)", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+        pools.forEach { pool ->
+            val mine = ReservationRules.mine(pool, store.me?.id)
+            item(key = "h:" + pool.id) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(
+                        "🎫 ${pool.name}" + if (!pool.enabled) " (停止中)" else "",
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() },
+                    )
+                    Text("${pool.capacity} 枠 · 予約は 1 回 ${pool.maxHours} 時間まで、2 週間先まで、1 人 2 件まで", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { booking = pool }, enabled = pool.enabled && !busy && mine.bookings.size < 2 && !controller.isGuest) { Text("予約する") }
+                        if (mine.walkin == null) {
+                            OutlinedButton(onClick = { run { controller.reservePool(pool.id) } }, enabled = pool.enabled && !busy && !controller.isGuest) { Text("今すぐ (順番待ち)") }
                         }
                     }
                 }
             }
-            Text(
-                "割り当てから ${pool.minHours} 時間は外されません。過ぎた後に待つ人がいれば、保証の終わりが早い人から ${pool.graceMinutes} 分の猶予の後に入れ替えます。" +
-                    if (pool.canOperate) " 担当者の操作は、管理画面で実際に変えた後に押してください。" else "",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            items(mine.bookings, key = { "b:" + it.id }) { row ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(ReservationRules.bookingText(row, now, zone), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    if (row.status == "booked" || row.status == "holding") {
+                        TextButton(onClick = { run { controller.extendReservation(row.id) } }, enabled = row.canExtend && !busy) { Text("延長") }
+                    }
+                    if (row.status == "booked") {
+                        TextButton(onClick = { confirm = Confirm("この予約を取り消しますか？", "取り消す") { controller.reservationAction(row.id, "cancel") } }, enabled = !busy) { Text("取り消す") }
+                    } else if (row.status == "holding") {
+                        TextButton(onClick = { confirm = Confirm("使い終わりましたか？ 担当者に外してもらいます。", "返却する") { controller.reservationAction(row.id, "return") } }, enabled = !busy) { Text("返却する") }
+                    }
+                }
+            }
+            mine.walkin?.let { row ->
+                item(key = "w:" + row.id) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("今すぐ: " + ReservationRules.walkinText(row, pool, now, zone), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        if (row.status == "waiting") TextButton(onClick = { run { controller.reservationAction(row.id, "cancel") } }, enabled = !busy) { Text("取り消す") }
+                        if (row.status == "holding") {
+                            TextButton(onClick = { confirm = Confirm("使い終わりましたか？ 担当者に外してもらいます。", "返却する") { controller.reservationAction(row.id, "return") } }, enabled = !busy) { Text("返却する") }
+                        }
+                    }
+                }
+            }
+            if (pool.canOperate) {
+                item(key = "t:" + pool.id) {
+                    Text("担当者の作業", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
+                    if (pool.todos.isEmpty()) Text("今はありません", modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                items(pool.todos, key = { "todo:" + pool.id + it.key }) { todo ->
+                    val early = todo.upcoming && (ReservationRules.row(pool, todo.assignId)?.startAt?.let { runCatching { Instant.parse(it) }.getOrNull() }?.let { Duration.between(now, it).toMinutes() > 10 } ?: false)
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            if (todo.upcoming) Text("まもなく", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            SelectionContainer { Text(ReservationRules.todoLine(todo, pool, name, now, zone), style = MaterialTheme.typography.bodyMedium) }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button(onClick = {
+                            when (todo.action) {
+                                "assign" -> todo.assignId?.let { id -> run { controller.reservationAction(id, "assign") } }
+                                "remove" -> todo.removeId?.let { id -> run { controller.reservationAction(id, "remove") } }
+                                else -> {
+                                    val out = todo.removeId; val into = todo.assignId
+                                    if (out != null && into != null) confirm = Confirm("管理画面で入れ替えましたか？", "入れ替えた") { controller.swapReservations(pool.id, out, into) }
+                                }
+                            }
+                        }, enabled = !busy && !early) { Text(ReservationRules.todoButton(todo)) }
+                    }
+                }
+            }
+            item(key = "d:" + pool.id) {
+                val day = days.value[pool.id] ?: now.atZone(zone).toLocalDate()
+                Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    Text("${pool.name} の空き", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, bottom = 4.dp))
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ReservationRules.days(now, pool.horizonDays, zone).forEach { d ->
+                            FilterChip(selected = d == day, onClick = { days.value = days.value + (pool.id to d) }, label = { Text(ReservationRules.dayLabel(d, now, zone)) })
+                        }
+                    }
+                    val hourNow = now.atZone(zone).truncatedTo(ChronoUnit.HOURS).toInstant()
+                    ReservationRules.hours(pool, day, now, zone).filter { it.start >= hourNow || it.rows.isNotEmpty() }.forEach { hour ->
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+                            Text(ReservationRules.hm(hour.start, zone), Modifier.width(52.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "${hour.rows.size}/${pool.capacity}", Modifier.width(40.dp), style = MaterialTheme.typography.labelMedium,
+                                color = if (hour.rows.size >= pool.capacity) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(hour.rows.joinToString("、") { name(it.userId) + if (it.kind == "walkin") " (今すぐ)" else "" }, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                        }
+                    }
+                    HorizontalDivider(Modifier.padding(top = 12.dp))
+                }
+            }
         }
     }
     confirm?.let { which ->
         AlertDialog(
             onDismissRequest = { confirm = null },
             text = { Text(which.text) },
-            confirmButton = {
-                TextButton(onClick = { confirm = null; run { which.run() } }) {
-                    Text(which.label, color = if (which.destructive) MaterialTheme.colorScheme.error else Color.Unspecified)
-                }
-            },
+            confirmButton = { TextButton(onClick = { confirm = null; run { which.run() } }) { Text(which.label) } },
             dismissButton = { TextButton(onClick = { confirm = null }) { Text("キャンセル") } },
         )
     }
+    booking?.let { pool -> BookingDialog(controller, pool, now, zone, onDismiss = { booking = null }) }
 }
 
+/** 「予約する」: a day, a start on the hour (full hours marked) and how long. */
 @Composable
-private fun MineRow(controller: AppController, channel: ChannelState, pool: PoolOut, busy: Boolean, run: (suspend () -> Unit) -> Unit, ask: (Confirm) -> Unit) {
-    val canReserve = pool.enabled && channel.isMember && !channel.channel.archived && !controller.isGuest
-    Column(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            when (val mine = ReservationRules.mine(pool)) {
-                ReservationRules.Mine.None -> {
-                    Text(if (pool.enabled) "予約していません" else "この枠は今は予約を受け付けていません", Modifier.weight(1f))
-                    if (canReserve) Button(onClick = { run { controller.reservePool(pool.id) } }, enabled = !busy) { Text("予約する") }
+private fun BookingDialog(controller: AppController, pool: PoolOut, now: Instant, zone: ZoneId, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var day by remember { mutableStateOf(now.atZone(zone).toLocalDate()) }
+    var start by remember { mutableStateOf<Instant?>(null) }
+    var hours by remember { mutableStateOf(1) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val starts = ReservationRules.starts(pool, day, now, zone)
+    val chosenStart = start?.takeIf { s -> starts.any { it.start == s && !it.full } } ?: starts.firstOrNull { !it.full }?.start
+    val durations = chosenStart?.let { ReservationRules.durations(pool, it, now, zone) } ?: emptyList()
+    val chosenHours = if (hours in durations) hours else durations.lastOrNull() ?: 1
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${pool.name} を予約") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ReservationRules.days(now, pool.horizonDays, zone).forEach { d ->
+                        FilterChip(selected = d == day, onClick = { day = d; start = null }, label = { Text(ReservationRules.dayLabel(d, now, zone)) })
+                    }
                 }
-                is ReservationRules.Mine.Waiting -> {
-                    Text("予約中: 待ち ${mine.row.position ?: "?"} 番目" + if (mine.row.step == "assign") " (空きあり)" else "", Modifier.weight(1f))
-                    OutlinedButton(onClick = { run { controller.reservationAction(mine.row.id, "cancel") } }, enabled = !busy) { Text("取り消す") }
+                Text("開始", style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    starts.forEach { choice ->
+                        FilterChip(
+                            selected = choice.start == chosenStart, enabled = !choice.full, onClick = { start = choice.start },
+                            label = { Text(ReservationRules.hm(choice.start, zone) + if (choice.full) " (満)" else "") },
+                        )
+                    }
                 }
-                is ReservationRules.Mine.Holding -> {
-                    Text(mine.row.guaranteeUntil?.let { "利用中 · 保証 ${Recurring.shortDateTime(it)} まで" } ?: "利用中", Modifier.weight(1f))
-                    OutlinedButton(onClick = {
-                        ask(Confirm("「${pool.name}」を返却しますか？ 担当者が外します。", "返却する") { controller.reservationAction(mine.row.id, "return") })
-                    }, enabled = !busy) { Text("返却する") }
+                if (starts.none { !it.full }) Text("この日は空いている時間がありません", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("時間", style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    durations.forEach { h -> FilterChip(selected = h == chosenHours, onClick = { hours = h }, label = { Text("$h 時間") }) }
                 }
-                is ReservationRules.Mine.Returning -> Text("返却しました。担当者が外すのを待っています", Modifier.weight(1f))
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
-        }
-        val holding = ReservationRules.mine(pool) as? ReservationRules.Mine.Holding
-        holding?.row?.evictAt?.let {
-            Text("待っている人がいます。${Recurring.shortDateTime(it)} 以降に担当者が外します", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
-private fun PersonRow(row: ReservationOut, name: String, mine: Boolean, line: String, badge: Pair<String, Boolean>?, buttons: @Composable () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Avatar(row.userId, name, size = 28.dp)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(name, fontWeight = FontWeight.Medium)
-                if (mine) Text("(自分)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                row.position?.let { Text("$it 番目", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                badge?.let { (text, danger) ->
-                    val tone = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    Text(
-                        text, color = tone, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.background(tone.copy(alpha = 0.12f), RoundedCornerShape(50)).padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
-                }
-            }
-            row.email?.let { SelectionContainer { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-            Text(line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        buttons()
-    }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && chosenStart != null && durations.isNotEmpty(),
+                onClick = {
+                    val at = chosenStart ?: return@TextButton
+                    busy = true
+                    scope.launch {
+                        val out = controller.bookReservation(pool.id, at, chosenHours)
+                        busy = false
+                        if (out != null) onDismiss() else error = controller.error ?: "予約できませんでした"
+                    }
+                },
+            ) { Text("予約する") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+    )
 }

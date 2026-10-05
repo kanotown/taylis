@@ -790,14 +790,17 @@ data class ActivityItem(
     val actorIds: List<String>,
     val emojis: List<String> = emptyList(),
     val canvas: ActivityCanvas? = null,
+    /** M112: a reservation item's notice (asked for with `include=reservation`). */
+    val reservation: ActivityReservation? = null,
 ) {
     /** One row per kind and message (a reaction row is per message, whoever reacts next); a canvas one per item. */
-    val key: String get() = canvas?.let { "canvas_mention:${it.itemId}" } ?: "$kind:${message?.id}"
+    val key: String get() = canvas?.let { "canvas_mention:${it.itemId}" } ?: reservation?.let { "reservation:${it.itemId}" } ?: "$kind:${message?.id}"
 
     /** Whether this device can show the item: a kind it knows, with the part that kind needs. */
     val isShown: Boolean get() = when (kind) {
         "mention", "reaction", "thread_reply" -> message != null
         "canvas_mention" -> canvas != null
+        "reservation" -> reservation != null
         else -> false
     }
 
@@ -821,7 +824,11 @@ data class ActivityCanvas(
 
 /** M77 (CANVAS.md §20.3): the kinds beyond M39's this device reads, sent on every activity call (`include=`). */
 object ActivityInclude {
-    const val VALUE = "canvas_mention"
+    /** M112: reservation notices too. */
+    val VALUES = listOf("canvas_mention", "reservation")
+
+    /** `name=canvas_mention&name=reservation`. */
+    fun query(name: String): String = VALUES.joinToString("&") { "$name=$it" }
 }
 
 /** The activity items one at a time: a bad or unknown one is dropped, the others stay (CANVAS.md §20.5). */

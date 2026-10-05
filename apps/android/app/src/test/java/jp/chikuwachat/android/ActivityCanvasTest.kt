@@ -111,10 +111,10 @@ class ActivityCanvasTest {
         client.markActivityRead("2026-09-30T05:00:00Z")
         assertEquals(
             listOf(
-                "GET /api/v1/sync/bootstrap?activity_include=canvas_mention",
-                "GET /api/v1/activity?filter=mentions&limit=50&include=canvas_mention",
-                "GET /api/v1/activity/summary?include=canvas_mention",
-                "PUT /api/v1/activity/read?include=canvas_mention",
+                "GET /api/v1/sync/bootstrap?activity_include=canvas_mention&activity_include=reservation",
+                "GET /api/v1/activity?filter=mentions&limit=50&include=canvas_mention&include=reservation",
+                "GET /api/v1/activity/summary?include=canvas_mention&include=reservation",
+                "PUT /api/v1/activity/read?include=canvas_mention&include=reservation",
             ),
             seen,
         )
@@ -234,7 +234,7 @@ class ActivityCanvasTest {
         engine.flushActivity(); settle(engine)
         assertEquals(setOf("i1"), store.blankedActivityItems)
         assertEquals(1, store.activityRevision) // the list on screen reads its first page again
-        assertEquals(0, api.activitySummaryCalls) // the badge does not change
+        assertEquals(1, api.activitySummaryCalls) // M112: the badge is read again (a reservation to-do may be done)
         engine.stop(); scope.cancel()
     }
 

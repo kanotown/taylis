@@ -68,6 +68,14 @@ class MainActivity : ComponentActivity() {
             controller.openTaskFromNotification(workspace, channel, taskId)
             return
         }
+        // M112: a reservation notice opens 「予約」.
+        if (intent?.getBooleanExtra(Notifier.EXTRA_RESERVATIONS, false) == true) {
+            val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
+            intent.removeExtra(Notifier.EXTRA_RESERVATIONS)
+            intent.removeExtra(Notifier.EXTRA_WORKSPACE)
+            controller.openReservationsFromNotification(workspace)
+            return
+        }
         // M73: a canvas mention's notification opens the canvas in its conversation's 「キャンバス」 tab.
         val canvasId = intent?.getStringExtra(Notifier.EXTRA_CANVAS_ID)
         val canvasChannel = intent?.getStringExtra(Notifier.EXTRA_CHANNEL_ID)

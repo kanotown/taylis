@@ -152,6 +152,8 @@ enum class HomeTile(val label: String) {
     TASKS("タスク"),
     /** M86 (DEADLINES.md §8 3.): my channels' deadlines (今週 / 今月 / それ以降 / 過ぎたもの), next to タスク; no number. */
     DEADLINES("締切"),
+    /** M112 (RESERVATIONS.md §6): the workspace's reservation pools, after 締切; the to-dos due in the pools I operate. */
+    RESERVATIONS("予約"),
     FILES("ファイル"),
     /** M78 (CANVAS.md §21.2): the canvases of all my conversations, after ファイル (as the desktop's sidebar); no number. */
     CANVASES("キャンバス"),
@@ -172,12 +174,26 @@ object HomeTiles {
      * 下書き the drafts and scheduled messages; 保存 the saved messages; リマインダー the fired ones, red; ファイル no number.
      */
     /** M111: in my order without the ones I hid (UserMe.nav_items, [NavItems]); null = the defaults (all, this order). */
-    fun tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: List<NavItem>?): List<TileState> {
-        val byKey = tiles(threads, drafts, saved, firedReminders).associateBy { it.tile.navKey }
+    fun tiles(
+        threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: List<NavItem>?, reservations: ReservationTile? = null,
+    ): List<TileState> {
+        val byKey = tiles(threads, drafts, saved, firedReminders, reservations).associateBy { it.tile.navKey }
         return NavItems.tileKeys(navItems).mapNotNull { byKey[it] }
     }
 
-    fun tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int): List<TileState> = listOf(
+    /** M112: 予約 once the server answered the pools: the to-dos due (shown only for an operator, red when any). */
+    data class ReservationTile(val todos: Int, val operates: Boolean)
+
+    fun tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, reservations: ReservationTile? = null): List<TileState> {
+        val row = base(threads, drafts, saved, firedReminders).toMutableList()
+        if (reservations != null) {
+            val at = row.indexOfFirst { it.tile == HomeTile.DEADLINES }
+            row.add(at + 1, TileState(HomeTile.RESERVATIONS, if (reservations.operates) reservations.todos else null, alert = reservations.todos > 0))
+        }
+        return row
+    }
+
+    private fun base(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int): List<TileState> = listOf(
         TileState(HomeTile.THREADS, threads.unreadCount, alert = threads.unreadCount > 0 && threads.mentionCount > 0),
         TileState(HomeTile.TIMES, null),
         TileState(HomeTile.DRAFTS, drafts),
@@ -196,6 +212,7 @@ object HomeTiles {
         val number = when (state.tile) {
             HomeTile.THREADS -> "未読 $count 件"
             HomeTile.REMINDERS -> "通知済み $count 件"
+            HomeTile.RESERVATIONS -> "担当者の作業 $count 件"
             else -> "$count 件"
         }
         return "${state.tile.label}、$number" + if (state.alert && state.tile == HomeTile.THREADS) "、メンションあり" else ""

@@ -233,13 +233,27 @@ class SyncEngine(
     }
 
     /**
-     * M99 (docs/RESERVATIONS.md §6): the conversation's reservation pools; loaded when it opens, after reconnecting and on
-     * reservation.updated (the event carries no card: it differs per person).
+     * M112 (docs/RESERVATIONS.md §6): the workspace's reservation pools; read after every bootstrap (the home tile's count)
+     * and on reservation.updated (the event carries no pool: what one shows differs per person). A server before M112
+     * answers 404 / 405: the pools stay null (no page).
      */
-    suspend fun loadReservationPools(channelId: String) {
+    suspend fun loadReservationPools() {
         val poolsApi = api as? ReservationsApi ?: return
-        runCatching { poolsApi.reservationPools(channelId) }.onSuccess { store.setReservationPools(channelId, it) }
+        runCatching { poolsApi.reservationPools() }.onSuccess { store.setReservationPools(it) }
     }
+
+    /** reservation.updated comes once per change (and a press brings several): one read for a burst. */
+    private var reservationReload: Job? = null
+    private fun scheduleReservationReload() {
+        if (reservationReload?.isActive == true) return
+        reservationReload = scope.launch {
+            kotlinx.coroutines.delay(300)
+            loadReservationPools()
+        }
+    }
+
+    /** M112: reservation.notice while the app is open (the server pushes to phones not on screen). */
+    var onReservationNotice: ((jp.chikuwachat.android.api.ReservationNotice) -> Unit)? = null
 
     /** Save edited drafts now instead of after the typing pause (tests, sign-out). */
     suspend fun flushDrafts() = drafts.flush()
@@ -645,6 +659,7 @@ class SyncEngine(
         drafts.applyBootstrap(bootstrap.drafts)
         scope.launch { loadScheduled() }
         scope.launch { loadReminders() }
+        scope.launch { loadReservationPools() } // M112
     }
 
     /**
@@ -761,11 +776,16 @@ class SyncEngine(
                 store.setChannelLinks(id, Codec.snake.decodeFromJsonElement(ListSerializer(ChannelLinkOut.serializer()), frame.data["links"] ?: return))
             }
             "reservation.updated" -> {
-                // M99: read the pools again where they are held (a conversation opened so far).
-                val id = frame.data.str("channel_id") ?: return
+                // M112: read the pools again (each shows differently per person).
                 val poolId = frame.data.str("pool_id")
-                if (frame.data.bool("deleted") == true && poolId != null) store.dropReservationPool(id, poolId)
-                if (store.holdsPools(id) || id == currentChannelId) scope.launch { loadReservationPools(id) }
+                if (frame.data.bool("deleted") == true && poolId != null) store.dropReservationPool(poolId)
+                scheduleReservationReload()
+            }
+            "reservation.notice" -> {
+                // M112: an activity item for me (an operator's to-do, or news of my own reservation).
+                scheduleActivityRefresh()
+                runCatching { Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.ReservationNotice.serializer(), frame.data) }
+                    .onSuccess { notice -> onReservationNotice?.invoke(notice) }
             }
             "canvas.created", "canvas.updated", "canvas.deleted" -> canvases.applyEvent(frame.event, frame.data)
             "canvas.mentioned" -> {
@@ -881,6 +901,7 @@ class SyncEngine(
             "activity.updated" -> {
                 val ids = (frame.data["item_ids"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } ?: return
                 store.blankActivityExcerpts(ids)
+                scheduleActivityRefresh() // M112: a reservation to-do another operator handled is done (the badge)
             }
             "session.revoked" -> signOut()
             // M88 (MEMBERSHIP.md §3): an admin changed a switch; the open preview follows at once (§5 item 5).
@@ -1131,7 +1152,6 @@ class SyncEngine(
             return
         }
         scope.launch { loadLinks(channelId) }
-        scope.launch { loadReservationPools(channelId) } // M99
         scope.launch { canvases.loadList(channelId) } // M46 (CANVAS.md §4.6)
         enqueue {
             val channel = store.channel(channelId) ?: return@enqueue

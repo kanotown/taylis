@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -140,7 +141,10 @@ fun HomeScreen(
     }
     val tiles = remember(version) {
         HomeTiles.tiles(store.threadSummary, drafts = store.listDrafts().size + store.scheduled.size, saved = store.bookmarks.size, firedReminders = store.firedReminderCount(),
-            navItems = store.me?.navItems)
+            navItems = store.me?.navItems,
+            reservations = store.reservationPools?.let { pools ->
+                HomeTiles.ReservationTile(ReservationRules.todoCount(pools), pools.any { it.canOperate })
+            })
     }
     // M24: offer to make my times until I have one (joined or not: a times I left is in the channel browser).
     val canCreateTimes = remember(version, isGuest, meId) { !isGuest && meId != null && store.channels.values.none { it.channel.timesOwnerId == meId } }
@@ -309,6 +313,7 @@ private fun tileIcon(tile: HomeTile): ImageVector = when (tile) {
     HomeTile.CALENDAR -> Icons.Default.CalendarMonth
     HomeTile.TASKS -> Icons.Default.Checklist
     HomeTile.DEADLINES -> Icons.Default.AlarmOn
+    HomeTile.RESERVATIONS -> Icons.Outlined.ConfirmationNumber
     HomeTile.FILES -> Icons.Outlined.Folder
     HomeTile.CANVASES -> Icons.AutoMirrored.Outlined.Article
 }
