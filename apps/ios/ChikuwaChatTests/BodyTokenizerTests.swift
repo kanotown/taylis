@@ -64,6 +64,76 @@ final class InlineFormatFixtureTests: XCTestCase {
             XCTAssertEqual(Timeline.plainText(c.line, limit: 200), c.plain, "\(c.name) (plain)")
         }
     }
+
+    private struct CodeBlocks: Decodable {
+        struct Case: Decodable { let name: String; let body: String; let text: String }
+        let code_blocks: [Case]
+    }
+
+    /// 2026-10-06: quotes a keyboard curled are straight again in code blocks too.
+    func testTheSharedCodeBlocks() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/inline-format.json")
+        let fixture = try JSONDecoder().decode(CodeBlocks.self, from: Data(contentsOf: url))
+        XCTAssertFalse(fixture.code_blocks.isEmpty)
+        for c in fixture.code_blocks {
+            let code = BodyTokenizer.parseBlocks(c.body).compactMap { block -> String? in
+                if case .codeBlock(let text, _) = block { return text } else { return nil }
+            }.first
+            XCTAssertEqual(code, c.text, c.name)
+            XCTAssertEqual(BodyTokenizer.tokenize(c.body).compactMap { token -> String? in
+                if case .codeBlock(let text, _) = token { return text } else { return nil }
+            }.first, c.text, "\(c.name) (whole body)")
+        }
+    }
+}
+
+/// 2026-10-06: list levels, numbers and markers (apps/shared/lists.json, as the desktop's lists.test.tsx and Android's
+/// ListsTest read it): nested numbers are 1. a. i., each nested list counts from its own start.
+final class ListsFixtureTests: XCTestCase {
+    private struct Item: Decodable, Equatable {
+        let level: Int; let marker: String; let text: String
+        init(level: Int, marker: String, text: String) { self.level = level; self.marker = marker; self.text = text }
+        init(from decoder: Decoder) throws {
+            var row = try decoder.unkeyedContainer()
+            level = try row.decode(Int.self); marker = try row.decode(String.self); text = try row.decode(String.self)
+        }
+    }
+
+    private struct Fixture: Decodable {
+        struct Case: Decodable { let name: String; let body: String; let blocks: [String]; let lists: [[Item]] }
+        let cases: [Case]
+    }
+
+    private func kind(_ block: BodyBlock) -> String {
+        switch block {
+        case .heading: "heading"
+        case .paragraph: "paragraph"
+        case .quote: "quote"
+        case .list: "list"
+        case .codeBlock: "codeblock"
+        case .table: "table"
+        case .task: "task"
+        case .image: "image"
+        case .rule: "hr"
+        }
+    }
+
+    func testTheSharedCases() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/lists.json")
+        let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+        XCTAssertGreaterThan(fixture.cases.count, 20)
+        for c in fixture.cases {
+            let blocks = BodyTokenizer.parseBlocks(c.body)
+            XCTAssertEqual(blocks.map(kind), c.blocks, c.name)
+            let lists = blocks.compactMap { block -> [Item]? in
+                guard case .list(_, _, let items) = block else { return nil }
+                return items.map { Item(level: $0.level, marker: $0.marker, text: CanvasMarkdownFixtureTests.plain($0.tokens)) }
+            }
+            XCTAssertEqual(lists, c.lists, c.name)
+        }
+    }
 }
 
 final class BodyTokenizerTests: XCTestCase {
@@ -93,9 +163,12 @@ final class BodyTokenizerTests: XCTestCase {
         XCTAssertEqual(blocks[1], .list(ordered: false, start: 1, items: [
             BodyListItem(level: 0, tokens: [.text("one "), .bold("strong")]),
             BodyListItem(level: 0, tokens: [.text("two")]),
-            BodyListItem(level: 1, tokens: [.text("nested")]),
+            BodyListItem(level: 1, marker: "◦", tokens: [.text("nested")]),
         ]))
-        XCTAssertEqual(blocks[2], .list(ordered: true, start: 1, items: [BodyListItem(level: 0, tokens: [.text("first")]), BodyListItem(level: 0, tokens: [.text("second")])]))
+        XCTAssertEqual(blocks[2], .list(ordered: true, start: 1, items: [
+            BodyListItem(level: 0, ordered: true, number: 1, marker: "1.", tokens: [.text("first")]),
+            BodyListItem(level: 0, ordered: true, number: 2, marker: "2.", tokens: [.text("second")]),
+        ]))
         XCTAssertEqual(blocks[3], .quote([[.text("quoted "), .italic("q")], [.text("more")]]))
         XCTAssertEqual(blocks[4], .codeBlock("const x = 1;", lang: "ts"))
         XCTAssertEqual(blocks[5], .paragraph([[.text("tail")]]))

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { MessageSquareText } from "lucide-react";
 import type { CustomEmojiOut, GroupOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
-import { type Block, paragraphLayout, parseBlocks, type Token } from "./markdown";
+import { type Block, type ListItem, paragraphLayout, parseBlocks, type Token } from "./markdown";
 import { replaceShortcodes } from "./emoji";
 import { CustomEmojiImage, splitCustomEmoji } from "./customEmoji";
 import { splitKeywords } from "./keywords";
@@ -110,19 +110,7 @@ export function BlockView({ block, users, options }: { block: Block; users: Map<
     case "quote":
       return <blockquote className="my-1 border-l-[3px] border-line pl-3 text-muted">{lines(block.lines, users, options)}</blockquote>;
     case "list":
-      return block.ordered ? (
-        <ol start={block.start} className="my-0.5 list-decimal pl-6">
-          {block.items.map((item, i) => (
-            <li key={i} className={item.level > 0 ? "ml-4 list-[lower-alpha]" : undefined}>{inline(item.tokens, users, options)}</li>
-          ))}
-        </ol>
-      ) : (
-        <ul className="my-0.5 list-disc pl-6">
-          {block.items.map((item, i) => (
-            <li key={i} className={item.level > 0 ? "ml-4 list-[circle]" : undefined}>{inline(item.tokens, users, options)}</li>
-          ))}
-        </ul>
-      );
+      return <ListView groups={listGroups(block.items)} users={users} options={options} top />;
     case "table":
       return (
         <div className="my-1 max-w-full overflow-x-auto">
@@ -154,6 +142,64 @@ export function BlockView({ block, users, options }: { block: Block; users: Map<
         </pre>
       );
   }
+}
+
+/** A list of one kind at one level, its items each with the lists nested under it (apps/shared/lists.json). */
+export interface ListGroup {
+  ordered: boolean;
+  level: number;
+  start: number;
+  entries: Array<{ item: ListItem; children: ListGroup[] }>;
+}
+
+/**
+ * The flat items of a list block as nested lists: a run of items of one kind at one level under one parent is one list
+ * (`<ol start>` from its first item's number), so each nested list counts from its own start (the counter of an item
+ * at a deeper level is never the outer list's, 2026-10-06).
+ */
+export function listGroups(items: readonly ListItem[]): ListGroup[] {
+  const top: ListGroup[] = [];
+  // The open groups by level; an item closes the deeper ones.
+  const open: ListGroup[] = [];
+  for (const item of items) {
+    open.length = Math.min(open.length, item.level + 1);
+    let group = open[item.level];
+    if (!group || group.ordered !== item.ordered) {
+      group = { ordered: item.ordered, level: item.level, start: item.ordered ? item.number : 1, entries: [] };
+      const parent = item.level > 0 ? open[item.level - 1]?.entries.at(-1) : undefined;
+      if (parent) parent.children.push(group);
+      else top.push(group);
+      open[item.level] = group;
+      open.length = item.level + 1;
+    }
+    group.entries.push({ item, children: [] });
+  }
+  return top;
+}
+
+const ORDERED_STYLES = ["decimal", "lower-alpha", "lower-roman"] as const;
+const BULLET_STYLES = ["disc", "circle", "square"] as const;
+
+function ListView({ groups, users, options, top = false }: { groups: ListGroup[]; users: Map<string, UserPublic>; options?: InlineOptions; top?: boolean }) {
+  return (
+    <>
+      {groups.map((group, g) => {
+        const level = Math.min(group.level, 2);
+        const children = group.entries.map((entry, i) => (
+          <li key={i}>
+            {inline(entry.item.tokens, users, options)}
+            {entry.children.length > 0 && <ListView groups={entry.children} users={users} options={options} />}
+          </li>
+        ));
+        const className = cn("pl-6", top && "my-0.5");
+        return group.ordered ? (
+          <ol key={g} start={group.start} className={className} style={{ listStyleType: ORDERED_STYLES[level] }}>{children}</ol>
+        ) : (
+          <ul key={g} className={className} style={{ listStyleType: BULLET_STYLES[level] }}>{children}</ul>
+        );
+      })}
+    </>
+  );
 }
 
 /** M12b: how links on our own server are rendered (a chip that reveals the message); M12f: custom emoji images. */

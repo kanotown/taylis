@@ -11,6 +11,8 @@ import { setUpZoom } from "./platform/zoom";
 import { applyFont, applyPalette, applySidebarTone, applyTheme, readFont, readPalette, readSidebarTone, readTheme } from "./ui/theme";
 // Noto Sans JP (variable, the weight axis only): split by unicode-range, so only the subsets the text needs are fetched.
 import "@fontsource-variable/noto-sans-jp/wght.css";
+// JetBrains Mono (variable, upright only) for code (styles.css --font-code); fetched only where code is shown.
+import "@fontsource-variable/jetbrains-mono/wght.css";
 import "./styles.css";
 
 // M40 「表示」: this device's light / dark choice, 「テーマの色」, 「サイドバー」 and 「フォント」, before the first paint (nothing is

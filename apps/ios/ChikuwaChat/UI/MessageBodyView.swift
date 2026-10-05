@@ -15,8 +15,12 @@ enum BodyToken: Equatable {
     case newline
 }
 
+/// One list item (apps/shared/lists.json): its level (0–2), its kind, its number (0 for a bullet) and the marker drawn.
 struct BodyListItem: Equatable {
     let level: Int
+    var ordered: Bool = false
+    var number: Int = 0
+    var marker: String = "•"
     let tokens: [BodyToken]
 }
 
@@ -54,7 +58,7 @@ enum BodyTokenizer {
     // the closing one not followed by a letter, digit or `_`, so snake_case and e-mail addresses stay as they are.
     // `\_` `\*` `\~` `\`` are the literal character (also inside emphasis). E-mail addresses (and the shrug, which keeps its
     // backslash) are text tokens of their own, so emphasis and escapes are never read inside them.
-    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)"#
+    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)"#
     private static let escaped = try! NSRegularExpression(pattern: #"\\([_*~`])"#)
     private static let inlinePattern = try! NSRegularExpression(pattern: inline)
     private static let fullPattern = try! NSRegularExpression(pattern: #"(```([\s\S]*?)```)|"# + inline + #"|(\n)"#)
@@ -134,7 +138,7 @@ enum BodyTokenizer {
                 let (text, lang) = splitFence(raw(2) ?? "")
                 tokens.append(.codeBlock(text, lang: lang))
             } else if group(1) != nil { tokens.append(.bold(unescape(group(2) ?? ""))) }
-            else if group(3) != nil { tokens.append(.code(group(4) ?? "")) }
+            else if let whole = group(3) { tokens.append(.code(codeSpan(whole, single: group(4)))) }
             else if group(5) != nil { tokens.append(.bold(unescape(group(6) ?? ""))) }
             else if group(7) != nil { tokens.append(.italic(unescape(group(8) ?? ""))) }
             else if group(9) != nil { tokens.append(.strike(unescape(group(10) ?? ""))) }
@@ -170,12 +174,100 @@ enum BodyTokenizer {
         if lines.count > 1, let first = lines.first, !first.isEmpty, first.range(of: #"^[A-Za-z0-9_+#.-]{1,20}$"#, options: .regularExpression) != nil {
             var rest = lines.dropFirst().joined(separator: "\n")
             if rest.hasSuffix("\n") { rest.removeLast() }
-            return (rest, first.lowercased())
+            return (straightQuotes(rest), first.lowercased())
         }
         var text = raw
         if text.hasPrefix("\n") { text.removeFirst() }
         if text.hasSuffix("\n") { text.removeLast() }
-        return (text, nil)
+        return (straightQuotes(text), nil)
+    }
+
+    /// The text of an inline code span (apps/shared/inline-format.json, markdown.ts codeSpan): `single` is the text
+    /// between single backticks; otherwise `whole` is a ``double`` span, which may hold a backtick and loses one space at
+    /// each end when it has one at both ("`` ` ``" is a backtick).
+    static func codeSpan(_ whole: String, single: String?) -> String {
+        if let single { return straightQuotes(single) }
+        var inner = String(whole.dropFirst(2).dropLast(2))
+        if inner.count >= 2, inner.hasPrefix(" "), inner.hasSuffix(" "), !inner.trimmingCharacters(in: .whitespaces).isEmpty {
+            inner = String(inner.dropFirst().dropLast())
+        }
+        return straightQuotes(inner)
+    }
+
+    /// Code shows the quotes a keyboard curled back straight (2026-10-06): the composer's smart punctuation and the
+    /// Japanese keyboards turn ' and " into ‘ ’ “ ”, so `it's` arrived as `it’s`.
+    static func straightQuotes(_ text: String) -> String {
+        guard text.contains(where: { "‘’“”".contains($0) }) else { return text }
+        return String(text.map { $0 == "‘" || $0 == "’" ? "'" : $0 == "“" || $0 == "”" ? "\"" : $0 })
+    }
+
+    /// A list line: its indent (a tab is 4 columns), its kind, the number written ("3." → 3) and its text.
+    struct ListLine {
+        let indent: Int
+        let ordered: Bool
+        let written: Int
+        let text: String
+    }
+
+    static func listLine(_ line: String) -> ListLine? {
+        func width(_ indent: String) -> Int { indent.replacingOccurrences(of: "\t", with: "    ").count }
+        if let m = firstMatch(numbered, line) {
+            return ListLine(indent: width(group(m, 1, in: line)), ordered: true, written: Int(group(m, 2, in: line)) ?? 1, text: group(m, 3, in: line))
+        }
+        if let m = firstMatch(bullet, line) {
+            return ListLine(indent: width(group(m, 1, in: line)), ordered: false, written: 0, text: group(m, 2, in: line))
+        }
+        return nil
+    }
+
+    static let listLevels = 3
+
+    /// Levels, numbers and markers of consecutive list lines (apps/shared/lists.json, as markdown.ts listItems): an item
+    /// indented 2 or more columns past the one before nests one level deeper (2–4 spaces or a tab, three levels at most);
+    /// a smaller indent goes back to the level it matches. Each run of items of one kind at one level under one parent
+    /// is a list of its own: it starts at the number its first item is written with and counts on by one; a nested
+    /// list starts again under every parent item. Numbers are 1. / a. / i. by level, bullets • / ◦ / ▪.
+    static func listItems(_ rows: [ListLine]) -> [BodyListItem] {
+        var indents: [Int] = []
+        var counters: [(ordered: Bool, next: Int)?] = []
+        return rows.map { row in
+            if indents.isEmpty {
+                indents.append(row.indent)
+            } else {
+                while indents.count > 1, row.indent < indents[indents.count - 1] { indents.removeLast() }
+                if row.indent >= indents[indents.count - 1] + 2, indents.count < listLevels { indents.append(row.indent) }
+            }
+            let level = indents.count - 1
+            if counters.count > level + 1 { counters.removeLast(counters.count - level - 1) } // deeper lists end here
+            while counters.count < level + 1 { counters.append(nil) }
+            let number: Int
+            if !row.ordered { number = 0 } else if let counter = counters[level], counter.ordered { number = counter.next } else { number = row.written }
+            counters[level] = (row.ordered, number + 1)
+            return BodyListItem(level: level, ordered: row.ordered, number: number, marker: listMarker(ordered: row.ordered, level: level, number: number),
+                                tokens: tokenizeInline(row.text))
+        }
+    }
+
+    /// "1." / "a." / "i." by level (a number below 1 stays decimal), "•" / "◦" / "▪" for bullets.
+    static func listMarker(ordered: Bool, level: Int, number: Int) -> String {
+        if !ordered { return ["•", "◦", "▪"][min(level, 2)] }
+        if level == 1, number >= 1 {
+            var out = ""
+            var k = number
+            while k > 0 {
+                out = String(UnicodeScalar(UInt8(97 + (k - 1) % 26))) + out
+                k = (k - 1) / 26
+            }
+            return out + "."
+        }
+        if level >= 2, number >= 1, number < 4000 {
+            let table: [(Int, String)] = [(1000, "m"), (900, "cm"), (500, "d"), (400, "cd"), (100, "c"), (90, "xc"), (50, "l"), (40, "xl"), (10, "x"), (9, "ix"), (5, "v"), (4, "iv"), (1, "i")]
+            var out = ""
+            var k = number
+            for (value, letters) in table { while k >= value { out += letters; k -= value } }
+            return out + "."
+        }
+        return "\(number)."
     }
 
     private static func firstMatch(_ regex: NSRegularExpression, _ line: String) -> NSTextCheckingResult? {
@@ -220,7 +312,7 @@ enum BodyTokenizer {
             func append(_ block: BodyBlock) { lined.append((block, first)) }
             if opensFence(i), let open = firstMatch(fenceOpen, line), let close = fenceCloseAfter(i) {
                 let lang = group(open, 1, in: line)
-                append(.codeBlock(lines[(i + 1)..<close].joined(separator: "\n"), lang: lang.isEmpty ? nil : lang.lowercased()))
+                append(.codeBlock(straightQuotes(lines[(i + 1)..<close].joined(separator: "\n")), lang:lang.isEmpty ? nil : lang.lowercased()))
                 i = close + 1
                 continue
             }
@@ -272,19 +364,21 @@ enum BodyTokenizer {
                 append(.table(align: align, header: header.map(tokenizeInline), rows: rows))
                 continue
             }
-            let isBullet = firstMatch(bullet, line) != nil
-            if isBullet || firstMatch(numbered, line) != nil {
-                let ordered = !isBullet
-                var items: [BodyListItem] = []
-                var start = 1
-                if ordered, let first = firstMatch(numbered, line) { start = Int(group(first, 2, in: line)) ?? 1 }
-                while i < lines.count, !isTask(i), let m = firstMatch(ordered ? numbered : bullet, lines[i]) {
-                    let indent = group(m, 1, in: lines[i]).replacingOccurrences(of: "\t", with: "  ").count
-                    let text = group(m, ordered ? 3 : 2, in: lines[i])
-                    items.append(BodyListItem(level: indent >= 2 ? 1 : 0, tokens: tokenizeInline(text)))
+            if listLine(line) != nil {
+                var rows: [ListLine] = []
+                while i < lines.count, !isTask(i), let row = listLine(lines[i]) {
+                    rows.append(row)
                     i += 1
                 }
-                append(.list(ordered: ordered, start: start, items: items))
+                // A top-level item of the other kind starts a new list (as in CommonMark); each keeps the first line.
+                let items = listItems(rows)
+                var from = 0
+                for k in 1...items.count {
+                    if k < items.count, !(items[k].level == 0 && items[k].ordered != items[from].ordered) { continue }
+                    let run = Array(items[from..<k])
+                    lined.append((.list(ordered: run[0].ordered, start: run[0].ordered ? run[0].number : 1, items: run), first + from))
+                    from = k
+                }
                 continue
             }
             var paragraph: [[BodyToken]] = []
@@ -464,18 +558,20 @@ struct MessageBodyView: View {
                 .overlay(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 1.5).fill(Color.secondary.opacity(0.35)).frame(width: 3)
                 }
-        case .list(let ordered, let start, let items):
+        case .list(_, _, let items):
+            // apps/shared/lists.json: each item's marker (1. a. i. / • ◦ ▪) comes from the parser.
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(marker(ordered: ordered, index: index, start: start, level: item.level))
+                        Text(item.marker)
+                            .monospacedDigit()
                             .foregroundStyle(.secondary)
-                            .frame(minWidth: 18, alignment: .trailing)
+                            .frame(minWidth: 20, alignment: .trailing)
                         inlineText(item.tokens)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.leading, CGFloat(item.level) * 16)
+                    .padding(.leading, CGFloat(item.level) * 20)
                 }
             }
         case .table(let align, let header, let rows):
@@ -485,12 +581,17 @@ struct MessageBodyView: View {
         case .codeBlock(let code, let lang):
             VStack(alignment: .trailing, spacing: 0) {
                 if let lang { Text(lang.uppercased()).font(.caption2).foregroundStyle(.secondary) }
-                Text(Self.untabbed(code)).font(.system(.body, design: .monospaced))
+                // 2026-10-06: SF Mono (the system's monospaced design) a step smaller than the text, a little more
+                // room between lines; a soft box with a hairline edge, as on the web.
+                Text(Self.untabbed(code)).font(Self.codeBlockFont)
+                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(8)
-            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Self.codeBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2), lineWidth: 0.5))
         }
     }
 
@@ -517,6 +618,18 @@ struct MessageBodyView: View {
             .padding(.top, layout.gapBefore ? Self.paragraphGap - Self.blockSpacing : 0)
             .padding(.bottom, layout.gapAfter ? Self.paragraphGap - Self.blockSpacing : 0)
         }
+    }
+
+    /// Code (2026-10-06): the system's monospaced design (SF Mono) everywhere. A code block a step smaller than the body
+    /// text; inline code keeps the size and weight of the text around it (a heading's, a table cell's) on a soft
+    /// background, with a thin space either side so the background does not touch the letters.
+    static let codeBlockFont: Font = .system(.callout, design: .monospaced)
+    static let codeBackground = Color.secondary.opacity(0.12)
+
+    static func inlineCode(_ text: String) -> Text {
+        var code = AttributedString("\u{2009}" + untabbed(text) + "\u{2009}")
+        code.backgroundColor = Color.secondary.opacity(0.16)
+        return Text(code).monospaced()
     }
 
     /// The text of a quote starts this far right of the row's text (its bar and the gap after it).
@@ -559,11 +672,6 @@ struct MessageBodyView: View {
             .border(Color.secondary.opacity(0.25), width: 0.5)
     }
 
-    private func marker(ordered: Bool, index: Int, start: Int, level: Int) -> String {
-        if ordered { return "\(start + index)." }
-        return level > 0 ? "◦" : "•"
-    }
-
     private func joined(_ lines: [[BodyToken]]) -> Text {
         lines.enumerated().reduce(Text("")) { acc, entry in
             let (index, tokens) = entry
@@ -599,8 +707,8 @@ struct MessageBodyView: View {
         case .bold(let text): return emojiText(text, height: emojiHeight).bold()
         case .italic(let text): return emojiText(text, height: emojiHeight).italic()
         case .strike(let text): return emojiText(text, height: emojiHeight).strikethrough()
-        case .code(let text): return Text(Self.untabbed(text)).font(.system(.body, design: .monospaced))
-        case .codeBlock(let text, _): return Text(Self.untabbed(text)).font(.system(.body, design: .monospaced))
+        case .code(let text): return Self.inlineCode(text)
+        case .codeBlock(let text, _): return Text(Self.untabbed(text)).font(Self.codeBlockFont)
         case .link(let url, let label):
             if let id = CanvasLink.canvasId(base: internalBase, url: url) {
                 // M45: a canvas of this server opens in the app (its screen, or 「メンバーではありません」).
