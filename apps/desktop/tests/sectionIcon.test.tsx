@@ -72,4 +72,18 @@ describe("section letter badges (M114, apps/shared/section-icons.json)", () => {
     expect(((await screen.findByLabelText("アイコンの文字")) as HTMLInputElement).value).toBe("B");
     expect(screen.getByRole("radio", { name: "オレンジ" }).getAttribute("aria-checked")).toBe("true");
   });
+
+  it("draws the colour swatches as fixed squares (no line box under the badge, never stretched)", async () => {
+    render(<SectionDialog controller={controller()} title="セクションを編集" submitLabel="保存" pickChannels={false} initial={{ name: "卒論指導", emoji: "letter:B:orange" }} onClose={() => {}} onSubmit={vi.fn(async () => true)} />);
+    fireEvent.click(screen.getByRole("button", { name: "アイコンを変更" }));
+    await screen.findByLabelText("アイコンの文字");
+    for (const swatch of screen.getAllByRole("radio")) {
+      expect(swatch.className).toMatch(/\bsize-7\b/);
+      expect(swatch.className).toMatch(/\bshrink-0\b/);
+      expect(swatch.className).toMatch(/\binline-flex\b/);
+      const badge = swatch.querySelector("[data-letter-icon]") as HTMLElement;
+      expect(badge.className).toMatch(/\bblock\b/);
+      expect(badge.className).not.toMatch(/inline-block/);
+    }
+  });
 });
