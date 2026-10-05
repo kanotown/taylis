@@ -29,8 +29,8 @@ targets:
       path: ChikuwaChat/Info.plist
       properties:
         CFBundleDisplayName: Taylis
-        CFBundleShortVersionString: "1.0.0"
-        CFBundleVersion: "97"
+        CFBundleShortVersionString: "1.0.1"
+        CFBundleVersion: "98"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
