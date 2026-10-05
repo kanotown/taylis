@@ -27,6 +27,45 @@ final class BodyParagraphsFixtureTests: XCTestCase {
     }
 }
 
+/// M107: inline markup — `_` emphasis never inside a word, URLs and e-mail addresses never read for emphasis, backslash
+/// escapes — against the cases every client and the server share (apps/shared/inline-format.json).
+final class InlineFormatFixtureTests: XCTestCase {
+    private struct Fixture: Decodable {
+        struct Case: Decodable { let name: String; let line: String; let tokens: [[String]]; let plain: String }
+        let cases: [Case]
+    }
+
+    private func simple(_ tokens: [BodyToken]) -> [[String]] {
+        tokens.map { token in
+            switch token {
+            case .text(let text): return ["text", text]
+            case .bold(let text): return ["bold", text]
+            case .italic(let text): return ["italic", text]
+            case .strike(let text): return ["strike", text]
+            case .code(let text): return ["code", text]
+            case .codeBlock(let text, _): return ["codeblock", text]
+            case .link(let url, let label): return label.map { ["link", url, $0] } ?? ["link", url]
+            case .mention(let id): return ["mention", id]
+            case .mentionGroup(let id): return ["mention_group", id]
+            case .mentionAll(let target): return ["mention_all", target]
+            case .newline: return ["newline"]
+            }
+        }
+    }
+
+    func testTheSharedCases() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/inline-format.json")
+        let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+        XCTAssertGreaterThan(fixture.cases.count, 20)
+        for c in fixture.cases {
+            XCTAssertEqual(simple(BodyTokenizer.tokenizeInline(c.line)), c.tokens, c.name)
+            XCTAssertEqual(simple(BodyTokenizer.tokenize(c.line)), c.tokens, "\(c.name) (whole body)")
+            XCTAssertEqual(Timeline.plainText(c.line, limit: 200), c.plain, "\(c.name) (plain)")
+        }
+    }
+}
+
 final class BodyTokenizerTests: XCTestCase {
     func testInlineSubsetMentionsLinksAndNewlines() {
         let body = "hi *bold* and _it_ `code` <@00000000-0000-7000-8000-000000000001> <!channel>\nhttps://example.com/x?y=1 done"

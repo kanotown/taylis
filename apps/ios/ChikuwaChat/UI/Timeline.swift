@@ -73,13 +73,11 @@ enum Timeline {
         replace(#"(?m)^#{1,3}\s+"#)
         replace(#"(?m)^>\s?"#)
         replace(#"(?m)^\s*(?:[-*•]|\d{1,3}\.)\s+"#)
-        // Bold, italics, strikes, code and links keep their text (the web and Android; parity audit 2026-09-29).
-        replace(#"\*\*([^*\n]+?)\*\*"#, "$1")
-        replace(#"\*([^*\n]+)\*"#, "$1")
-        replace(#"_([^_\n]+)_"#, "$1")
-        replace(#"~~([^~\n]+)~~"#, "$1")
-        replace(#"`([^`\n]+)`"#, "$1")
-        replace(#"\[([^\]\n]+)\]\((https?://[^\s)]+)\)"#, "$1")
+        // Bold, italics, strikes, code and links keep their text (the web and Android; parity audit 2026-09-29). M107: the
+        // markers are those the tokenizer reads (apps/shared/inline-format.json), not patterns of their own.
+        text = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { BodyTokenizer.tokenizeInline(String($0)).map(BodyTokenizer.inlineText).joined() }
+            .joined(separator: "\n")
         replace(#"\s*\n+\s*"#, " ")
         let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return line.count > limit ? String(line.prefix(max(limit - 1, 0))) + "…" : line

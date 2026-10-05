@@ -38,14 +38,40 @@ _FENCE_LINE = re.compile(r"^```[A-Za-z0-9_+#.-]*\s*$", re.MULTILINE)
 _HEADING = re.compile(r"^#{1,3}\s+", re.MULTILINE)
 _QUOTE = re.compile(r"^>\s?", re.MULTILINE)
 _LIST_MARKER = re.compile(r"^\s*(?:[-*•]|\d{1,3}\.)\s+", re.MULTILINE)
-_INLINE = [
-    (re.compile(r"\*\*([^*\n]+?)\*\*"), r"\1"),
-    (re.compile(r"\*([^*\n]+)\*"), r"\1"),
-    (re.compile(r"_([^_\n]+)_"), r"\1"),
-    (re.compile(r"~~([^~\n]+)~~"), r"\1"),
-    (re.compile(r"`([^`\n]+)`"), r"\1"),
-    (re.compile(r"\[([^\]\n]+)\]\((https?://[^\s)]+)\)"), r"\1"),
-]
+# M107 (apps/shared/inline-format.json): the clients' inline tokenizer (markdown.ts INLINE),
+# mention tokens left out (they are names by then). `_` emphasis is never inside a word (`\w` =
+# a letter, digit or `_`, as the clients' `[\p{L}\p{N}_]`); URLs and e-mail addresses (and the
+# shrug) are kept as they are, so their `_` `*` `~` stay; `\_` `\*` `\~` `\`` are the literal
+# character, also inside emphasis.
+_INLINE = re.compile(
+    r"(\*\*((?:\\.|[^*\n\\])+?)\*\*)"
+    r"|(`([^`\n]+)`)"
+    r"|(\*((?:\\.|[^*\n\\])+)\*)"
+    r"|((?<!\w)_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?!\w))"
+    r"|(~~((?:\\.|[^~\n\\])+)~~)"
+    r"|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))"
+    r"|(https?://[^\s<>]+)"
+    r"|(\\([_*~`]))"
+    r"|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)"
+)
+_ESCAPED = re.compile(r"\\([_*~`])")
+
+
+def _inline_text(match: re.Match[str]) -> str:
+    """What a reader sees of one inline token: emphasis and code without their markers, a link's
+    label, an escape's character; URLs and e-mail addresses as they are."""
+    for whole, inner in ((1, 2), (5, 6), (7, 8), (9, 10)):
+        if match.group(whole) is not None:
+            return _ESCAPED.sub(r"\1", match.group(inner))
+    if match.group(3) is not None:
+        return match.group(4)
+    if match.group(11) is not None:
+        return match.group(12)
+    if match.group(15) is not None:
+        return match.group(16)
+    return match.group(0)
+
+
 _WHITESPACE = re.compile(r"\s*\n+\s*")
 # M15g: a table's separator rows vanish and each row becomes its cells joined by spaces.
 _TABLE_SEPARATOR = re.compile(
@@ -84,8 +110,7 @@ def notification_text(body: str, names: dict[uuid.UUID, str], max_length: int = 
     text = _HEADING.sub("", text)
     text = _QUOTE.sub("", text)
     text = _LIST_MARKER.sub("", text)
-    for pattern, replacement in _INLINE:
-        text = pattern.sub(replacement, text)
+    text = _INLINE.sub(_inline_text, text)
     text = _WHITESPACE.sub(" ", text).strip()
     return text[: max_length - 1] + "…" if len(text) > max_length else text
 

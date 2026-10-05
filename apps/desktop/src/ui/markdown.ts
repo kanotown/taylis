@@ -3,7 +3,8 @@
  * markdown subset shared by the three clients. This is a tokenizer, not an HTML renderer: React
  * escapes everything.
  *
- * Inline: **bold** / *bold*, _italic_, ~~strike~~, `code`, [label](url), bare https?:// links,
+ * Inline: **bold** / *bold*, _italic_ (never inside a word, M107), ~~strike~~, `code`, [label](url), bare https?:// links,
+ * e-mail addresses (text, never read for emphasis), \_ \* \~ \` escapes,
  * <@user-id>, <@group:group-id> (M12k), <!channel> / <!here>. Blocks: "# " … "### " headings, ``` fences (optional language),
  * "> " quotes, "- " / "* " bullets, "1. " numbered items (two leading spaces nest one level),
  * and (M15g) GFM tables: a "| a | b |" header, a "| --- | :-: |" separator, then "| … |" rows.
@@ -61,45 +62,68 @@ const RULE_LINE = /^-{3,}\s*$/;
 /** M15g: a column's alignment from its separator cell (":--" left, ":-:" center, "--:" right). */
 export type TableAlign = "left" | "center" | "right" | null;
 
+// M107 (apps/shared/inline-format.json): `_` emphasis follows CommonMark's word rule: the closing `_` is not followed by a
+// letter, digit or `_` (the lookahead) and the opening one is not preceded by one (checked in `scan`; no lookbehind for
+// older WebKit), so snake_case and e-mail addresses stay as they are. `\_` `\*` `\~` `` \` `` are the literal character
+// (also inside emphasis). E-mail addresses (and the shrug ¯\_(ツ)_/¯, which keeps its backslash) are text tokens of
+// their own, so emphasis and escapes are never read inside them.
 const INLINE =
-  /(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)/g;
-const WITH_BLOCKS = new RegExp(`(\`\`\`([\\s\\S]*?)\`\`\`)|${INLINE.source}|(\\n)`, "g");
+  /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)/gu;
+const WITH_BLOCKS = new RegExp(`(\`\`\`([\\s\\S]*?)\`\`\`)|${INLINE.source}|(\\n)`, "gu");
+const WORD_BEFORE = /[\p{L}\p{N}_]$/u;
+const ESCAPED = /\\([_*~`])/g;
 
 /** Whole-body tokens (inline markup, fenced code and newlines); kept for highlighting and old callers. */
 export function tokenize(body: string): Token[] {
-  return scan(body, WITH_BLOCKS, true);
+  return scan(body, new RegExp(WITH_BLOCKS.source, "gu"), true);
 }
 
 /** Inline tokens of one line (no fences, no newlines). */
 export function tokenizeInline(line: string): Token[] {
-  return scan(line, new RegExp(INLINE.source, "g"), false);
+  return scan(line, new RegExp(INLINE.source, "gu"), false);
 }
 
 function scan(body: string, pattern: RegExp, withBlocks: boolean): Token[] {
   const tokens: Token[] = [];
+  const text = (value: string) => {
+    if (value === "") return;
+    const previous = tokens[tokens.length - 1];
+    if (previous?.kind === "text") previous.text += value;
+    else tokens.push({ kind: "text", text: value });
+  };
+  const unescape = (value: string) => value.replace(ESCAPED, "$1");
   let last = 0;
-  for (const match of body.matchAll(pattern)) {
-    const index = match.index ?? 0;
-    if (index > last) tokens.push({ kind: "text", text: body.slice(last, index) });
+  pattern.lastIndex = 0;
+  for (let match = pattern.exec(body); match !== null; match = pattern.exec(body)) {
+    const index = match.index;
     // The fence groups exist only in WITH_BLOCKS; shift the inline group indices accordingly.
-    const g = (n: number) => match[withBlocks ? n + 2 : n];
+    const groups = match;
+    const g = (n: number) => groups[withBlocks ? n + 2 : n];
+    if (g(7) !== undefined && WORD_BEFORE.test(body.slice(Math.max(0, index - 2), index))) {
+      // An underscore inside a word never opens emphasis: it stays text and the scan goes on after it.
+      pattern.lastIndex = index + 1;
+      continue;
+    }
+    text(body.slice(last, index));
     if (withBlocks && match[1] !== undefined) {
       const fenced = splitFence(match[2] ?? "");
       tokens.push({ kind: "codeblock", text: fenced.text, lang: fenced.lang });
-    } else if (g(1) !== undefined) tokens.push({ kind: "bold", text: g(2) ?? "" });
+    } else if (g(1) !== undefined) tokens.push({ kind: "bold", text: unescape(g(2) ?? "") });
     else if (g(3) !== undefined) tokens.push({ kind: "code", text: g(4) ?? "" });
-    else if (g(5) !== undefined) tokens.push({ kind: "bold", text: g(6) ?? "" });
-    else if (g(7) !== undefined) tokens.push({ kind: "italic", text: g(8) ?? "" });
-    else if (g(9) !== undefined) tokens.push({ kind: "strike", text: g(10) ?? "" });
+    else if (g(5) !== undefined) tokens.push({ kind: "bold", text: unescape(g(6) ?? "") });
+    else if (g(7) !== undefined) tokens.push({ kind: "italic", text: unescape(g(8) ?? "") });
+    else if (g(9) !== undefined) tokens.push({ kind: "strike", text: unescape(g(10) ?? "") });
     else if (g(11) !== undefined) tokens.push({ kind: "link", url: g(13) ?? "", label: g(12) ?? "" });
     else if (g(14) !== undefined) tokens.push({ kind: "mention_group", groupId: g(15) ?? "" });
     else if (g(16) !== undefined) tokens.push({ kind: "mention", userId: g(17) ?? "" });
     else if (g(18) !== undefined) tokens.push({ kind: "mention_all", target: g(19) ?? "" });
     else if (g(20) !== undefined) tokens.push({ kind: "link", url: g(20) ?? "" });
+    else if (g(21) !== undefined) text(g(22) ?? "");
+    else if (g(23) !== undefined) text(g(23) ?? "");
     else tokens.push({ kind: "newline" });
     last = index + match[0].length;
   }
-  if (last < body.length) tokens.push({ kind: "text", text: body.slice(last) });
+  text(body.slice(last));
   return tokens;
 }
 
@@ -297,15 +321,31 @@ export function plainText(body: string, maxLength = 200): string {
     .replace(/^(#{1,3})\s+/gm, "")
     .replace(/^>\s?/gm, "")
     .replace(/^\s*(?:[-*•]|\d{1,3}\.)\s+/gm, "")
-    .replace(/\*\*([^*\n]+?)\*\*/g, "$1")
-    .replace(/\*([^*\n]+)\*/g, "$1")
-    .replace(/_([^_\n]+)_/g, "$1")
-    .replace(/~~([^~\n]+)~~/g, "$1")
-    .replace(/`([^`\n]+)`/g, "$1")
-    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1")
+    // M107: the inline markers are those the tokenizer reads (apps/shared/inline-format.json), not patterns of their own.
+    .split("\n")
+    .map((line) => tokenizeInline(line).map(inlineText).join(""))
+    .join("\n")
     .replace(/\s*\n+\s*/g, " ")
     .trim();
   return text.length > maxLength ? text.slice(0, maxLength - 1) + "…" : text;
+}
+
+/** What a reader sees of an inline token as text; mention tokens stay as they are (callers name them first). */
+function inlineText(token: Token): string {
+  switch (token.kind) {
+    case "link":
+      return token.label || token.url;
+    case "mention":
+      return `<@${token.userId}>`;
+    case "mention_group":
+      return `<@group:${token.groupId}>`;
+    case "mention_all":
+      return `<!${token.target}>`;
+    case "newline":
+      return "\n";
+    default:
+      return token.text;
+  }
 }
 
 /**
