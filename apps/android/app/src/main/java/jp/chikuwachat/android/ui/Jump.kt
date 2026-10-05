@@ -96,15 +96,38 @@ object Jump {
             JumpMatch.Item(it.id, title(it), names(it, meId, userNames), unread = Channels.hasUnread(it, meId, now))
         }.take(MAX_CONVERSATIONS)
 
-    /** 「人」: people not deactivated (me too: my own DM) that match by display name or username, at most [MAX_PEOPLE]. */
+    /**
+     * 「人」: people not deactivated and not bots (me too: my own DM) that match by display name or username, at most
+     * [MAX_PEOPLE].
+     */
     fun people(query: String, users: Collection<UserPublic>): List<UserPublic> =
         rankPeople(query, users).take(MAX_PEOPLE)
 
-    private fun rankPeople(query: String, users: Collection<UserPublic>): List<UserPublic> =
-        JumpMatch.rank(query, users.filter { it.deactivatedAt == null }) { JumpMatch.Item(it.id, it.displayName, listOf(it.displayName, it.username)) }
+    /**
+     * 「ボット」 (jump-match.json `pick`): a bot is offered for a new DM only when it is an AI bot ([aiBotIds], GET
+     * /ai/status: it answers there), after the people; never a webhook, a feed or the reservation bot. Not deactivated;
+     * ranked with a query, by name without. An existing DM with any bot stays in the lists.
+     */
+    fun bots(query: String, users: Collection<UserPublic>, aiBotIds: Set<String>, limit: Int = Int.MAX_VALUE): List<UserPublic> {
+        val bots = users.filter { it.deactivatedAt == null && it.role == "bot" && it.id in aiBotIds }
+        return (if (query.isBlank()) bots.sortedWith(byName) else rank(query, bots)).take(limit)
+    }
 
-    /** The new-message picker's rows: my channels, then public channels I can join, then people. */
-    data class Destinations(val channels: List<ChannelState>, val joinable: List<ChannelState>, val people: List<UserPublic>)
+    private val byName = compareBy<UserPublic> { JumpMatch.normalize(it.displayName) }.thenBy { it.id }
+
+    private fun rank(query: String, users: Collection<UserPublic>): List<UserPublic> =
+        JumpMatch.rank(query, users) { JumpMatch.Item(it.id, it.displayName, listOf(it.displayName, it.username)) }
+
+    private fun rankPeople(query: String, users: Collection<UserPublic>): List<UserPublic> =
+        rank(query, users.filter { it.deactivatedAt == null && it.role != "bot" })
+
+    /** The new-message picker's rows: my channels, then public channels I can join, then people, then AI bots. */
+    data class Destinations(
+        val channels: List<ChannelState>,
+        val joinable: List<ChannelState>,
+        val people: List<UserPublic>,
+        val bots: List<UserPublic> = emptyList(),
+    )
 
     /**
      * ✏️ (§6.1): one search box over channels and people. Empty: my channels and the joinable public ones by name, and
@@ -117,7 +140,9 @@ object Jump {
         users: Collection<UserPublic>,
         meId: String?,
         now: Instant = Instant.now(),
+        aiBotIds: Set<String> = emptySet(),
     ): Destinations {
+        val bots = bots(query, users, aiBotIds)
         val mine = channels.filter { it.isMember && !it.channel.isDm && !it.channel.archived }
         val joinable = channels.filter { !it.isMember && it.channel.type == "public" && !it.channel.archived }
         if (query.isBlank()) {
@@ -125,14 +150,15 @@ object Jump {
             return Destinations(
                 channels = mine.sortedWith(byName),
                 joinable = joinable.sortedWith(byName),
-                people = users.filter { it.deactivatedAt == null }
+                people = users.filter { it.deactivatedAt == null && it.role != "bot" }
                     .sortedWith(compareBy<UserPublic> { it.id != meId }.thenBy { JumpMatch.normalize(it.displayName) }.thenBy { it.id }),
+                bots = bots,
             )
         }
         fun rankChannels(list: List<ChannelState>) = JumpMatch.rank(query, list) {
             JumpMatch.Item(it.id, it.channel.name ?: "", listOfNotNull(it.channel.name), unread = Channels.hasUnread(it, meId, now))
         }
-        return Destinations(rankChannels(mine), rankChannels(joinable), rankPeople(query, users))
+        return Destinations(rankChannels(mine), rankChannels(joinable), rankPeople(query, users), bots)
     }
 }
 

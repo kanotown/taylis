@@ -1214,6 +1214,7 @@
     <string name="search_or_more">以上</string>
     <string name="search_pane_apply_these_dates">この期間で絞り込む</string>
     <string name="search_pane_back_to_results">検索結果に戻る</string>
+    <string name="search_pane_bots">ボット</string>
     <string name="search_pane_channels_search_within">チャンネル (この中を検索)</string>
     <string name="search_pane_choose_dates">期間を指定</string>
     <string name="search_pane_clear_filters">条件をクリア</string>

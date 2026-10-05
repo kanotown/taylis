@@ -10,9 +10,16 @@ final class JumpMatchTests: XCTestCase {
         struct Item: Decodable { let id: String; let title: String; let names: [String]; let unread: Bool? }
         struct Case: Decodable { let query: String; let ids: [String] }
         struct Rank: Decodable { let items: [Item]; let cases: [Case] }
+        struct PickUser: Decodable {
+            let id: String, displayName: String, username: String, role: String, deactivated: Bool?, ai: Bool?
+            enum CodingKeys: String, CodingKey { case id, displayName = "display_name", username, role, deactivated, ai }
+        }
+        struct PickCase: Decodable { let query: String; let people: [String]; let bots: [String] }
+        struct Pick: Decodable { let users: [PickUser]; let cases: [PickCase] }
         let normalize: [Normalize]
         let score: [Score]
         let rank: Rank
+        let pick: Pick
     }
 
     private func vectors() throws -> Vectors {
@@ -36,6 +43,23 @@ final class JumpMatchTests: XCTestCase {
         XCTAssertFalse(vectors.rank.cases.isEmpty)
         for c in vectors.rank.cases {
             XCTAssertEqual(JumpMatch.rank(c.query, items).map(\.id), c.ids, c.query)
+        }
+    }
+
+    /// jump-match.json `pick`: a new DM's people, then only the AI bots (no webhook, feed or reservation bot).
+    func testSharedPickVectors() throws {
+        let pick = try vectors().pick
+        XCTAssertFalse(pick.cases.isEmpty)
+        let users = pick.users.map {
+            UserPublic(id: $0.id, username: $0.username, displayName: $0.displayName, role: $0.role,
+                       deactivatedAt: $0.deactivated == true ? "2026-01-01T00:00:00Z" : nil,
+                       createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z")
+        }
+        let ai = Set(pick.users.filter { $0.ai == true }.map(\.id))
+        for c in pick.cases {
+            XCTAssertEqual(JumpMatch.destinationPeople(c.query, users: users, meId: nil), c.people, c.query)
+            XCTAssertEqual(JumpMatch.bots(c.query, users: users, aiBotIds: ai), c.bots, c.query)
+            if !c.query.isEmpty { XCTAssertEqual(JumpMatch.people(c.query, users: users), Array(c.people.prefix(10)), c.query) }
         }
     }
 

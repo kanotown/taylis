@@ -399,11 +399,13 @@ class JumpTargets(
     val onOpenConversation: (String) -> Unit,
     /** A person: the DM with them (me: my own DM). */
     val onOpenPerson: (String) -> Unit,
+    /** The AI bots (GET /ai/status): the only bots offered, as 「ボット」 after the people (jump-match.json `pick`). */
+    val aiBotIds: Set<String> = emptySet(),
 )
 
 /**
  * M37 (MOBILE_UI.md §6.2): empty, 「最近の会話」 then the recent searches and quick filters (`rows`); typing, 「会話」 (at
- * most 20) and 「人」 (at most 10) by jump-match.json's rule, then 「"語" をメッセージ検索」 (the results screen).
+ * most 20), 「人」 and the AI bots' 「ボット」 (at most 10 each) by jump-match.json's rule, then 「"語" をメッセージ検索」 (the results screen).
  */
 @Composable
 private fun ColumnScope.JumpList(
@@ -427,6 +429,7 @@ private fun ColumnScope.JumpList(
         if (query.isEmpty()) emptyList() else Jump.conversations(query, store.channels.values, meId, { channelTitle(it, store) }, userNames)
     }
     val people = remember(query, version) { if (query.isEmpty()) emptyList() else Jump.people(query, store.users.values) }
+    val bots = remember(query, version) { if (query.isEmpty()) emptyList() else Jump.bots(query, store.users.values, jump.aiBotIds, Jump.MAX_PEOPLE) }
     // The last row (「"語" をメッセージ検索」) scrolls clear of the gesture bar.
     LazyColumn(Modifier.fillMaxWidth().weight(1f).imePadding(), contentPadding = WindowInsets.navigationBars.asPaddingValues()) {
         if (query.isEmpty()) {
@@ -455,6 +458,18 @@ private fun ColumnScope.JumpList(
                         headlineContent = { Text(user.displayName + if (mine) stringResource(R.string.common_you_2) else "", fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         supportingContent = { Text(if (mine) MainTabs.SELF_NOTES_HINT else "@" + user.username, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingContent = { Avatar(user.id, user.displayName, size = 28.dp, presence = store.presenceOf(user.id)) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.search_pane_open_dm)) { jump.onOpenPerson(user.id) },
+                    )
+                }
+            }
+            if (bots.isNotEmpty()) {
+                item(key = "h:bots") { SuggestionHeader(stringResource(R.string.search_pane_bots)) }
+                items(bots, key = { "b:" + it.id }) { user ->
+                    ListItem(
+                        headlineContent = { Text(user.displayName, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text("@" + user.username, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingContent = { Avatar(user.id, user.displayName, size = 28.dp) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         modifier = Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.search_pane_open_dm)) { jump.onOpenPerson(user.id) },
                     )

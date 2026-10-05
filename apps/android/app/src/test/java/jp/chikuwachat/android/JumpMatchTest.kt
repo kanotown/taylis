@@ -1,5 +1,7 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.api.UserPublic
+import jp.chikuwachat.android.ui.Jump
 import jp.chikuwachat.android.ui.JumpMatch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -50,6 +52,28 @@ class JumpMatchTest {
         assertTrue(cases.isNotEmpty())
         cases.forEach { case ->
             assertEquals(case.text("query"), case.list("ids"), JumpMatch.rank(case.text("query"), items) { it }.map { it.id })
+        }
+    }
+
+    /** `pick`: who a new DM can go to: the people, then only the AI bots (no webhook, feed or reservation bot). */
+    @Test fun sharedPickVectors() {
+        val pick = vectors["pick"]!!.jsonObject
+        val raw = pick["users"]!!.jsonArray.map { it.jsonObject }
+        val users = raw.map { u ->
+            UserPublic(
+                id = u.text("id"), username = u.text("username"), displayName = u.text("display_name"), role = u.text("role"),
+                deactivatedAt = if (u["deactivated"]?.jsonPrimitive?.booleanOrNull == true) "2026-01-01T00:00:00Z" else null,
+                createdAt = "", updatedAt = "",
+            )
+        }
+        val ai = raw.filter { it["ai"]?.jsonPrimitive?.booleanOrNull == true }.map { it.text("id") }.toSet()
+        val cases = pick["cases"]!!.jsonArray.map { it.jsonObject }
+        assertTrue(cases.isNotEmpty())
+        cases.forEach { case ->
+            val picked = Jump.destinations(case.text("query"), emptyList(), users, meId = null, aiBotIds = ai)
+            assertEquals(case.text("query"), case.list("people"), picked.people.map { it.id })
+            assertEquals(case.text("query"), case.list("bots"), picked.bots.map { it.id })
+            if (case.text("query").isNotEmpty()) assertEquals(case.list("people").take(Jump.MAX_PEOPLE), Jump.people(case.text("query"), users).map { it.id })
         }
     }
 }

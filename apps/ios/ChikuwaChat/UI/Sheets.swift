@@ -7,8 +7,12 @@ struct NewDmView: View {
     @State private var selected = Set<String>()
     @State private var error: String?
 
+    /// People by name, then the AI bots (no other bot: apps/shared/jump-match.json `pick`).
     private var users: [UserPublic] {
-        controller.store.users.values.filter { $0.id != controller.store.me?.id && $0.deactivatedAt == nil }.sorted { $0.displayName < $1.displayName }
+        let all = Array(controller.store.users.values), meId = controller.store.me?.id
+        let ids = JumpMatch.destinationPeople("", users: all, meId: meId).filter { $0 != meId }
+            + JumpMatch.bots("", users: all, aiBotIds: controller.aiHub?.botUserIds ?? [])
+        return ids.compactMap { controller.store.users[$0] }
     }
 
     var body: some View {

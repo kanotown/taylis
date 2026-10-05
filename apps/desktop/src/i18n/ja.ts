@@ -2137,6 +2137,7 @@ export const ja = {
   "popover.blockTitle": "このユーザーのメッセージを隠し、通知と DM を受け取らない",
   "popover.block": "ブロック",
   "jump.recentConversations": "最近の会話",
+  "jump.bots": "ボット",
   "jump.people": "人",
   "jump.placeholder": "会話・人・メッセージを検索",
   "jump.hint": "チャンネルや人の名前で移動、語句でメッセージを検索します",

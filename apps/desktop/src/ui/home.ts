@@ -57,10 +57,35 @@ export function jumpConversations(query: string, channels: Iterable<ChannelState
   return rankItems(query, items).slice(0, limit).map((item) => item.channel);
 }
 
-/** 「人」 while typing: the people I can see who are not deactivated (me too: my own DM), by the rule; at most 10. */
-export function jumpPeople(query: string, users: Iterable<UserPublic>, limit = JUMP_PEOPLE_LIMIT): UserPublic[] {
-  const items = [...users].filter((u) => !u.deactivated_at).map((user) => ({ id: user.id, title: user.display_name || user.username, names: [user.display_name, user.username].filter(Boolean), user }));
-  return rankItems(query, items).slice(0, limit).map((item) => item.user);
+/** People ranked by the jump-match rule (display name and username). */
+function rankPeople(query: string, users: UserPublic[]): UserPublic[] {
+  const items = users.map((user) => ({ id: user.id, title: user.display_name || user.username, names: [user.display_name, user.username].filter(Boolean), user }));
+  return rankItems(query, items).map((item) => item.user);
+}
+
+/** Who a new DM can go to, in two groups: the people, then 「ボット」. */
+export interface DmCandidates {
+  people: UserPublic[];
+  /** AI bots only (they answer in a DM); other bots are never offered. */
+  bots: UserPublic[];
+}
+
+/**
+ * Who a new DM can go to (apps/shared/jump-match.json `pick`): not deactivated; a bot (role "bot": a webhook, a feed, the
+ * reservation bot, …) only when it is an AI bot (`aiBotIds`, GET /ai/status), and then in its own group after the
+ * people. Each group by the rule with a query, by name without. An existing DM with any bot stays in the DM lists.
+ */
+export function dmCandidates(query: string, users: Iterable<UserPublic>, aiBotIds: ReadonlySet<string> = new Set()): DmCandidates {
+  const live = [...users].filter((u) => !u.deactivated_at);
+  const order = (list: UserPublic[]) => (query.trim() ? rankPeople(query, list) : list.sort((a, b) => a.display_name.localeCompare(b.display_name, "ja")));
+  return { people: order(live.filter((u) => u.role !== "bot")), bots: order(live.filter((u) => u.role === "bot" && aiBotIds.has(u.id))) };
+}
+
+/** 「人」 (and 「ボット」) while typing: as `dmCandidates` (me too: my own DM), each group at most 10. */
+export function jumpPeople(query: string, users: Iterable<UserPublic>, limit = JUMP_PEOPLE_LIMIT, aiBotIds: ReadonlySet<string> = new Set()): DmCandidates {
+  if (!query.trim()) return { people: [], bots: [] };
+  const { people, bots } = dmCandidates(query, users, aiBotIds);
+  return { people: people.slice(0, limit), bots: bots.slice(0, limit) };
 }
 
 // --- the new-message picker (§6.1 ✏️) ---------------------------------------------------------
@@ -78,11 +103,9 @@ export function pickerChannels(query: string, channels: Iterable<ChannelState>, 
   return { mine: order(all.filter((c) => c.isMember)), joinable: order(all.filter((c) => !c.isMember && c.type === "public")) };
 }
 
-/** The picker's people (not me: my own DM is its own row), by the rule, or by name without a query. */
-export function pickerPeople(query: string, users: Iterable<UserPublic>, meId: string | null): UserPublic[] {
-  const others = [...users].filter((u) => u.id !== meId && !u.deactivated_at);
-  if (query.trim()) return jumpPeople(query, others, Number.POSITIVE_INFINITY);
-  return others.sort((a, b) => a.display_name.localeCompare(b.display_name, "ja"));
+/** The picker's people and AI bots (not me: my own DM is its own row), by the rule, or by name without a query. */
+export function pickerPeople(query: string, users: Iterable<UserPublic>, meId: string | null, aiBotIds: ReadonlySet<string> = new Set()): DmCandidates {
+  return dmCandidates(query, [...users].filter((u) => u.id !== meId), aiBotIds);
 }
 
 // --- the home sections (§6.1) -----------------------------------------------------------------

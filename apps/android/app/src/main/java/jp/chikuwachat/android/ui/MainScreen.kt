@@ -537,6 +537,7 @@ fun MainScreen(controller: AppController) {
                     onOpenConversation = { openPicked(it) },
                     // Made when there is none; a failure is the app's error (openDmWith sets it).
                     onOpenPerson = { userId -> scope.launch { controller.openDmWith(userId)?.let { openPicked(it) } } },
+                    aiBotIds = controller.aiBotIds,
                 ),
             )
         } else if (top == Route.ChannelList) {

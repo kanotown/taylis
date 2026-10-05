@@ -90,7 +90,11 @@ fun NewChannelDialog(controller: AppController, onDismiss: () -> Unit, onOpened:
 fun NewDmDialog(controller: AppController, onDismiss: () -> Unit, onOpened: (String) -> Unit) {
     val store = controller.store
     val version by store.version.collectAsState()
-    val users = remember(store, version) { store.users.values.filter { it.id != store.me?.id && it.deactivatedAt == null }.sortedBy { it.displayName } }
+    // People by name, then the AI bots; no other bot (apps/shared/jump-match.json `pick`).
+    val users = remember(store, version) {
+        store.users.values.filter { it.id != store.me?.id && it.deactivatedAt == null && it.role != "bot" }.sortedBy { it.displayName } +
+            Jump.bots("", store.users.values, controller.aiBotIds)
+    }
     var selected by remember { mutableStateOf(setOf<String>()) }
     var query by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }

@@ -3,6 +3,7 @@ import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 
 
 import type { AppController } from "../state/app";
 import type { ChannelState, UserPublic } from "../sync/types";
+import { AiBadge } from "./ai";
 import { Avatar } from "./Avatar";
 import { badgeCount, hasUnread, isDmChannel, isMutedChannel } from "./channels";
 import { jumpConversations, jumpPeople } from "./home";
@@ -16,6 +17,7 @@ import { tRich } from "../i18n/rich";
 type Row =
   | { kind: "conversation"; channel: ChannelState }
   | { kind: "person"; user: UserPublic }
+  | { kind: "bot"; user: UserPublic }
   | { kind: "recent-search"; params: SearchParams }
   | { kind: "search"; q: string };
 
@@ -51,10 +53,11 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
   const conversations: ChannelState[] = query
     ? jumpConversations(query, store.channels.values(), context)
     : recentIds.map((id) => store.getChannel(id)).filter((c): c is ChannelState => !!c && c.isMember && !c.archived);
-  const people = query ? jumpPeople(query, store.users.values()) : [];
+  const { people, bots } = jumpPeople(query, store.users.values(), undefined, new Set(store.aiStatus?.agents.map((a) => a.bot_user_id)));
   const rows: Row[] = [
     ...conversations.map((channel) => ({ kind: "conversation", channel }) as const),
     ...people.map((user) => ({ kind: "person", user }) as const),
+    ...bots.map((user) => ({ kind: "bot", user }) as const),
     ...(query ? [{ kind: "search", q: query } as const] : recentSearches.map((params) => ({ kind: "recent-search", params }) as const)),
   ];
   const current = Math.min(active, rows.length - 1);
@@ -64,6 +67,7 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
       case "conversation":
         return onOpen(row.channel.id);
       case "person":
+      case "bot":
         return onOpenPerson(row.user.id);
       case "recent-search":
         return onSearch(row.params);
@@ -88,11 +92,12 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
   };
 
   const heading = (index: number): string | null => {
-    const group = (row: Row | undefined) => (!row ? null : row.kind === "conversation" ? "c" : row.kind === "person" ? "p" : row.kind === "recent-search" ? "r" : "s");
+    const group = (row: Row | undefined) => (!row ? null : row.kind === "conversation" ? "c" : row.kind === "person" ? "p" : row.kind === "bot" ? "b" : row.kind === "recent-search" ? "r" : "s");
     const here = group(rows[index]);
     if (here === group(rows[index - 1])) return null;
     if (here === "c") return query ? t("ask.conversation") : t("jump.recentConversations");
     if (here === "p") return t("jump.people");
+    if (here === "b") return t("jump.bots");
     if (here === "r") return t("searchBar.recent");
     return null;
   };
@@ -155,6 +160,7 @@ function rowKey(row: Row, index: number): string {
     case "conversation":
       return `c:${row.channel.id}`;
     case "person":
+    case "bot":
       return `p:${row.user.id}`;
     default:
       return `${row.kind}:${index}`;
@@ -167,10 +173,12 @@ function JumpRowBody({ controller, row, meId }: { controller: AppController; row
     case "conversation":
       return <ConversationRowBody controller={controller} channel={row.channel} meId={meId} />;
     case "person":
+    case "bot":
       return (
         <>
-          <Avatar id={row.user.id} name={row.user.display_name} size={24} className="rounded-md text-[10px]" presence={store.presenceOf(row.user.id)} presenceClassName="border border-canvas" />
+          <Avatar id={row.user.id} name={row.user.display_name} size={24} className="rounded-md text-[10px]" presence={row.kind === "bot" ? undefined : store.presenceOf(row.user.id)} presenceClassName="border border-canvas" />
           <span className="min-w-0 truncate">{row.user.display_name}</span>
+          {row.kind === "bot" && <AiBadge />}
           <span className="min-w-0 shrink truncate text-[13px] text-muted">@{row.user.username}{row.user.id === meId ? ` ${t("tasks.dialog.me")}` : ""}</span>
         </>
       );

@@ -85,7 +85,7 @@ fun NewMessageDialog(controller: AppController, version: Int, onDismiss: () -> U
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val destinations = remember(query, version) { Jump.destinations(query, store.channels.values, store.users.values, meId) }
+    val destinations = remember(query, version) { Jump.destinations(query, store.channels.values, store.users.values, meId, aiBotIds = controller.aiBotIds) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
@@ -172,7 +172,16 @@ fun NewMessageDialog(controller: AppController, version: Int, onDismiss: () -> U
                             }
                         }
                     }
-                    if (destinations.channels.isEmpty() && destinations.joinable.isEmpty() && destinations.people.isEmpty()) {
+                    if (destinations.bots.isNotEmpty()) {
+                        item(key = "h:bots") { PickerHeader(stringResource(R.string.search_pane_bots)) }
+                        items(destinations.bots, key = { "b:" + it.id }) { user ->
+                            val checked = user.id in selected
+                            PickerPersonRow(user, subtitle = "@" + user.username, checked = checked, enabled = !busy && (checked || selected.size < MAX_RECIPIENTS)) {
+                                selected = if (checked) selected - user.id else selected + user.id
+                            }
+                        }
+                    }
+                    if (destinations.channels.isEmpty() && destinations.joinable.isEmpty() && destinations.people.isEmpty() && destinations.bots.isEmpty()) {
                         item(key = "empty") {
                             Text(stringResource(R.string.new_message_no_matching_channels_or_people), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp))
                         }

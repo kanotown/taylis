@@ -2138,6 +2138,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "popover.blockTitle": "Hide this user's messages and get no notifications or DMs from them",
   "popover.block": "Block",
   "jump.recentConversations": "Recent conversations",
+  "jump.bots": "Bots",
   "jump.people": "People",
   "jump.placeholder": "Search conversations, people and messages",
   "jump.hint": "Type a channel or person's name to go there, or words to search messages",
