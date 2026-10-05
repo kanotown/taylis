@@ -77,11 +77,11 @@ enum DMList {
         if last.type != "user" { return last.excerpt }
         if let meId, last.senderId == meId {
             let notesToSelf = type == "dm" && (dmUserIds ?? []).allSatisfy { $0 == meId }
-            return notesToSelf ? last.excerpt : "あなた: " + last.excerpt
+            return notesToSelf ? last.excerpt : tr("あなた: ") + last.excerpt
         }
         if type == "dm" { return last.excerpt }
         let name = users[last.senderId]?.displayName.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return (name.isEmpty ? "メンバー" : name) + ": " + last.excerpt
+        return (name.isEmpty ? tr("メンバー") : name) + ": " + last.excerpt
     }
 
     static func previewLine(_ channel: ChannelState, meId: String?, users: [String: UserPublic]) -> String {
@@ -91,13 +91,13 @@ enum DMList {
     /// A DM row's second line while there is no preview (as the web's): how many are in a group DM, else the person's
     /// status text (its emoji is beside the name already), else their presence.
     static func fallbackLine(memberCount: Int, status: (emoji: String, text: String)?, presence: String?) -> String {
-        if memberCount > 2 { return "\(memberCount) 人" }
+        if memberCount > 2 { return tr("\(memberCount) 人") }
         if let text = status?.text, !text.isEmpty { return text }
         return presence.map(presenceLabel) ?? ""
     }
 
     /// What the notes to self are for, where the conversation starts (as Slack and Mattermost say it).
-    static let notesIntro = "ここはあなただけのスペースです。メモや下書き、あとで見返したいリンクやファイルを置いておけます。ほかの人には見えません。"
+    static var notesIntro: String { tr("ここはあなただけのスペースです。メモや下書き、あとで見返したいリンクやファイルを置いておけます。ほかの人には見えません。") }
 
     /// 「14:32」 today, 「昨日」, 「火曜日」 within the week, 「9/3」 this year, 「2025/9/3」 before.
     static func timeLabel(_ iso: String?, now: Date = Date(), calendar: Calendar = .current) -> String? {
@@ -106,8 +106,8 @@ enum DMList {
         let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute, .weekday], from: date)
         switch days {
         case ...0: return String(format: "%d:%02d", parts.hour ?? 0, parts.minute ?? 0)
-        case 1: return "昨日"
-        case 2...6: return ["日", "月", "火", "水", "木", "金", "土"][((parts.weekday ?? 1) - 1) % 7] + "曜日"
+        case 1: return tr("昨日")
+        case 2...6: return AppDates.weekdaysFullSundayFirst[((parts.weekday ?? 1) - 1) % 7]
         default:
             let thisYear = calendar.component(.year, from: now)
             return parts.year == thisYear ? "\(parts.month ?? 1)/\(parts.day ?? 1)" : "\(parts.year ?? thisYear)/\(parts.month ?? 1)/\(parts.day ?? 1)"

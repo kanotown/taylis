@@ -49,7 +49,7 @@ struct EmojiPickerView: View {
     }
     private var categories: [(key: String, label: String)] {
         let base = EmojiData.categories.map { (key: $0.key, label: $0.label) }
-        return custom.isEmpty ? base : base + [(key: "custom", label: "カスタム")]
+        return custom.isEmpty ? base : base + [(key: "custom", label: tr("カスタム"))]
     }
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 8)
     /// A pack's emoji are illustrations: four to a row, twice the cell (M100).
@@ -171,7 +171,7 @@ struct EmojiPickerView: View {
                 ScrollView {
                     // C10: 「よく使う」 first (Slack), scrolling with the category under it.
                     if browsing && !frequentShown.isEmpty {
-                        sectionTitle("よく使う")
+                        sectionTitle(tr("よく使う"))
                         LazyVGrid(columns: columns, spacing: 4) {
                             ForEach(frequentShown, id: \.self) { recentCell($0) }
                         }

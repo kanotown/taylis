@@ -44,9 +44,9 @@ struct AvatarView: View {
 
 func presenceLabel(_ status: String) -> String {
     switch status {
-    case "online": return "オンライン"
-    case "away": return "離席中"
-    default: return "オフライン"
+    case "online": return tr("オンライン")
+    case "away": return tr("離席中")
+    default: return tr("オフライン")
     }
 }
 

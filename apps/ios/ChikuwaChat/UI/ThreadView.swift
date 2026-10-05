@@ -138,8 +138,8 @@ struct ThreadView: View {
             if let channel = controller.store.channel(channelId), channel.isMember, !channel.channel.archived, parent != nil {
                 TypingLine(controller: controller, channelId: channelId, parentId: parentId)
                 let canShare = channel.canPostTopLevel(isAdmin: controller.store.me?.role == "admin")
-                ComposerView(channelId: channelId, parentId: parentId, users: Array(controller.store.users.values), placeholder: "スレッドに返信", controller: controller,
-                             accessory: canShare ? AnyView(AlsoSendRow(title: channel.channel.isDm ? "会話にも送信" : "#\(channel.channel.name ?? "") にも送信",
+                ComposerView(channelId: channelId, parentId: parentId, users: Array(controller.store.users.values), placeholder: tr("スレッドに返信"), controller: controller,
+                             accessory: canShare ? AnyView(AlsoSendRow(title: channel.channel.isDm ? tr("会話にも送信") : tr("#\(channel.channel.name ?? "") にも送信"),
                                                                        isOn: $alsoInChannel)) : nil) { body, attachmentIds, _ in
                     let shared = canShare && alsoInChannel
                     alsoInChannel = false

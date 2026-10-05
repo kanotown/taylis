@@ -604,7 +604,7 @@ struct MessageBodyView: View {
         case .link(let url, let label):
             if let id = CanvasLink.canvasId(base: internalBase, url: url) {
                 // M45: a canvas of this server opens in the app (its screen, or 「メンバーではありません」).
-                var attributed = AttributedString("📄 " + ((label != nil && label != url) ? label! : "キャンバスを開く"))
+                var attributed = AttributedString("📄 " + ((label != nil && label != url) ? label! : tr("キャンバスを開く")))
                 attributed.link = CanvasLink.internalLink(canvasId: id)
                 return Text(attributed)
             }
@@ -615,7 +615,7 @@ struct MessageBodyView: View {
                     attributed.link = Permalink.internalLink(messageId: id)
                     return Text(attributed).foregroundStyle(Color.accentColor)
                 }
-                var attributed = AttributedString("💬 " + ((label != nil && label != url) ? label! : "メッセージを表示"))
+                var attributed = AttributedString("💬 " + ((label != nil && label != url) ? label! : tr("メッセージを表示")))
                 attributed.link = Permalink.internalLink(messageId: id)
                 return Text(attributed)
             }
@@ -623,7 +623,7 @@ struct MessageBodyView: View {
             attributed.link = URL(string: url)
             return Text(attributed)
         case .mention(let userId): return Text("@" + (users[userId]?.displayName ?? "unknown")).foregroundStyle(Color.accentColor)
-        case .mentionGroup(let groupId): return Text("@" + (groups[groupId]?.name ?? "グループ")).foregroundStyle(Color.accentColor)
+        case .mentionGroup(let groupId): return Text("@" + (groups[groupId]?.name ?? tr("グループ"))).foregroundStyle(Color.accentColor)
         case .mentionAll(let target): return Text("@" + target).foregroundStyle(Color.accentColor)
         case .newline: return Text("\n")
         }

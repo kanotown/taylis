@@ -28,7 +28,7 @@ struct InviteView: View {
                     if preview.role == "admin" { Text("管理者として参加します").font(.footnote) }
                     if let lab = preview.lab { Text(Invite.labLine(lab)).font(.footnote) }  // L7
                     if !preview.channels.isEmpty {
-                        Text("参加するチャンネル: " + preview.channels.map { "#\($0)" }.joined(separator: " ")).font(.footnote).foregroundStyle(.secondary)
+                        Text(tr("参加するチャンネル: ") + preview.channels.map { "#\($0)" }.joined(separator: " ")).font(.footnote).foregroundStyle(.secondary)
                     }
                     Text("サーバ \(target.server.absoluteString)").font(.footnote).foregroundStyle(.secondary)
                 }
@@ -74,7 +74,7 @@ struct InviteView: View {
 
     private func check() async {
         guard let parsed = Invite.parse(link) else {
-            error = "招待リンクの形式が正しくありません (https://サーバ/invite/… の形です)"
+            error = tr("招待リンクの形式が正しくありません (https://サーバ/invite/… の形です)")
             return
         }
         busy = true

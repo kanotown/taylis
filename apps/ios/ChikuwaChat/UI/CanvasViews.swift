@@ -207,7 +207,7 @@ struct CanvasDocument: View {
             } else if editing {
                 CanvasEditor(controller: controller, saver: saver)
             } else {
-                CanvasReader(controller: controller, saver: saver, title: meta?.title ?? "キャンバス", meta: meta,
+                CanvasReader(controller: controller, saver: saver, title: meta?.title ?? tr("キャンバス"), meta: meta,
                              onToggleTask: rights.tick && status != .gone ? toggle : nil,
                              onEditSection: rights.edit && status != .gone ? { section = SectionTarget(line: $0) } : nil,
                              onStartWriting: rights.edit ? { mode = .edit } : nil,
@@ -274,7 +274,7 @@ struct CanvasDocument: View {
             Button { onOpenList?() } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "doc.text").foregroundStyle(.tint)
-                    Text(meta?.title ?? "キャンバス").font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text(meta?.title ?? tr("キャンバス")).font(.subheadline.weight(.semibold)).lineLimit(1)
                     if onOpenList != nil { Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.secondary) }
                 }
                 .frame(minHeight: 44)
@@ -341,7 +341,7 @@ struct CanvasDocument: View {
                 }
                 if CanvasShare.offersShare(meta, rights: rights) {
                     Button("会話に共有", systemImage: "square.and.arrow.up") {
-                        Task { if await controller.shareCanvas(meta.id) != nil { controller.notice = "会話に共有しました" } }
+                        Task { if await controller.shareCanvas(meta.id) != nil { controller.notice = tr("会話に共有しました") } }
                     }
                 }
                 if onOpenThread != nil && CanvasShare.showsComments(meta, rights: rights) {
@@ -374,16 +374,16 @@ struct CanvasDocument: View {
     private func notice(rights: CanvasRights) -> (text: String, warn: Bool, copy: Bool)? {
         if saver.loadFailed { return nil } // the screen says it
         switch saver.status {
-        case .gone: return ("このキャンバスはゴミ箱に移されたか、見られなくなりました。手元の本文はコピーできます。", true, true)
-        case .blocked: return ("保存できませんでした: " + (saver.error.map { controller.describe($0) } ?? ErrorMessages.unknown), true, true)
+        case .gone: return (tr("このキャンバスはゴミ箱に移されたか、見られなくなりました。手元の本文はコピーできます。"), true, true)
+        case .blocked: return (tr("保存できませんでした: ") + (saver.error.map { controller.describe($0) } ?? ErrorMessages.unknown), true, true)
         default: break
         }
         // M74 (§19.1): the copy kept on this device, the server out of reach.
         if saver.offlineCopy, let savedAt = saver.cachedAt { return (CanvasOffline.notice(savedAt: savedAt), true, false) }
-        if channel.channel.archived { return ("アーカイブされた会話のキャンバスは閲覧だけです。", false, false) }
+        if channel.channel.archived { return (tr("アーカイブされた会話のキャンバスは閲覧だけです。"), false, false) }
         if saver.status == .loading || meta == nil { return nil }
-        if !rights.edit && rights.tick { return ("チェックだけ付けられます。本文を変更できるのは作成者・オーナー・管理者です。", false, false) }
-        if !rights.tick { return ("閲覧のみです。", false, false) }
+        if !rights.edit && rights.tick { return (tr("チェックだけ付けられます。本文を変更できるのは作成者・オーナー・管理者です。"), false, false) }
+        if !rights.tick { return (tr("閲覧のみです。"), false, false) }
         return nil
     }
 }
@@ -404,12 +404,12 @@ struct CanvasEditingRow: View {
         }
     }
 
-    private func name(_ id: String) -> String { controller.store.users[id]?.displayName ?? "メンバー" }
+    private func name(_ id: String) -> String { controller.store.users[id]?.displayName ?? tr("メンバー") }
 
     private func row(_ editors: [CanvasEditingUser]) -> some View {
         let shown = Array(editors.prefix(3))
         let label = CanvasPresence.editingLabel(editors.map { name($0.userId) })
-        let detail = editors.map { editor in editor.section.map { "\(name(editor.userId)): \($0)" } ?? name(editor.userId) }.joined(separator: "、")
+        let detail = editors.map { editor in editor.section.map { "\(name(editor.userId)): \($0)" } ?? name(editor.userId) }.joined(separator: tr("、"))
         return VStack(spacing: 0) {
             HStack(spacing: 6) {
                 HStack(spacing: -6) {
@@ -448,15 +448,15 @@ struct CanvasSaveStateLabel: View {
 
     static func label(_ status: CanvasSaveStatus) -> String {
         switch status {
-        case .loading: "読み込み中…"
-        case .saved: "保存済み"
-        case .editing: "編集中"
-        case .saving: "保存中…"
-        case .offline: "オフライン"
-        case .retrying: "再試行中…"
-        case .conflict, .expired: "競合"
-        case .blocked: "保存できません"
-        case .gone: "ゴミ箱"
+        case .loading: tr("読み込み中…")
+        case .saved: tr("保存済み")
+        case .editing: tr("編集中")
+        case .saving: tr("保存中…")
+        case .offline: tr("オフライン")
+        case .retrying: tr("再試行中…")
+        case .conflict, .expired: tr("競合")
+        case .blocked: tr("保存できません")
+        case .gone: tr("ゴミ箱")
         }
     }
 
@@ -560,7 +560,7 @@ private struct CanvasReader: View {
 
     /// 「最終更新: 名前 · 10:23」, the task progress, the tab mark, who edits.
     private func byline(_ meta: CanvasMeta) -> some View {
-        let who = controller.store.users[meta.updatedBy]?.displayName ?? (controller.store.me?.id == meta.updatedBy ? controller.store.me?.displayName : nil) ?? "メンバー"
+        let who = controller.store.users[meta.updatedBy]?.displayName ?? (controller.store.me?.id == meta.updatedBy ? controller.store.me?.displayName : nil) ?? tr("メンバー")
         return HStack(spacing: 10) {
             Text("最終更新: \(who) · \(DMList.timeLabel(meta.updatedAt) ?? "")")
             if let progress = CanvasText.taskProgress(total: meta.taskTotal, done: meta.taskDone) {
@@ -633,7 +633,7 @@ private struct CanvasListSheet: View {
             Image(systemName: "doc.text").foregroundStyle(canvas.id == currentId ? Color.accentColor : Color.secondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(canvas.title).lineLimit(1).fontWeight(canvas.id == currentId ? .semibold : .regular)
-                Text("\(controller.store.users[canvas.updatedBy]?.displayName ?? "メンバー") · \(DMList.timeLabel(canvas.updatedAt) ?? "")")
+                Text("\(controller.store.users[canvas.updatedBy]?.displayName ?? tr("メンバー")) · \(DMList.timeLabel(canvas.updatedAt) ?? "")")
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
@@ -668,7 +668,7 @@ private struct NewCanvasSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    option("", "空白のキャンバス", nil)
+                    option("", tr("空白のキャンバス"), nil)
                     if let templates {
                         ForEach(templates) { option($0.key, $0.name, $0.description) }
                     } else {
@@ -748,7 +748,7 @@ private struct CanvasTrashSheet: View {
                             Image(systemName: "doc.text").foregroundStyle(.secondary)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(canvas.title).lineLimit(1)
-                                Text("削除: " + (DMList.timeLabel(canvas.deletedAt) ?? "")).font(.caption).foregroundStyle(.secondary)
+                                Text(tr("削除: ") + (DMList.timeLabel(canvas.deletedAt) ?? "")).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer(minLength: 4)
                             if CanvasRights.of(channel, actor: controller.canvasActor, meta: canvas).trash {
@@ -796,10 +796,10 @@ private struct CanvasConflictSheet: View {
                     }
                     ForEach(Array(shown.enumerated()), id: \.offset) { _, region in
                         VStack(alignment: .leading, spacing: 6) {
-                            side("自分の版", region.ours, mine: true)
-                            side("相手の版", region.theirs, mine: false)
+                            side(tr("自分の版"), region.ours, mine: true)
+                            side(tr("相手の版"), region.theirs, mine: false)
                             if !region.base.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text("元の文: " + String(names(region.base).prefix(200))).font(.caption).foregroundStyle(.secondary)
+                                Text(tr("元の文: ") + String(names(region.base).prefix(200))).font(.caption).foregroundStyle(.secondary)
                             }
                         }
                         .padding(10)
@@ -839,7 +839,7 @@ private struct CanvasConflictSheet: View {
     private func side(_ label: String, _ text: String, mine: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            Text(text.isEmpty ? "(削除)" : names(text)).font(.callout).foregroundStyle(text.isEmpty ? .secondary : .primary)
+            Text(text.isEmpty ? tr("(削除)") : names(text)).font(.callout).foregroundStyle(text.isEmpty ? .secondary : .primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -862,8 +862,8 @@ private struct CanvasExpiredSheet: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("長くオフラインだった間に版が整理されました。自分の本文と今の本文を見比べて選んでください。")
                         .font(.subheadline).foregroundStyle(.secondary)
-                    side("自分の本文", saver.text, mine: true)
-                    side("今の本文", head.body, mine: false)
+                    side(tr("自分の本文"), saver.text, mine: true)
+                    side(tr("今の本文"), head.body, mine: false)
                 }
                 .padding(16)
             }
@@ -987,7 +987,7 @@ struct CanvasOpenView: View {
 
     private var title: String {
         if case .open(let channelId) = state, let channel = controller.store.channel(channelId) { return channelTitle(channel, store: controller.store) }
-        return "キャンバス"
+        return tr("キャンバス")
     }
 
     private var notMember: some View {
@@ -1021,7 +1021,7 @@ struct CanvasOpenView: View {
 enum CanvasOffline {
     /// The line under the bar while the kept copy is shown and the server cannot be reached.
     static func notice(savedAt: Date, calendar: Calendar = .current) -> String {
-        "オフライン — 最後に読み込んだ時点 (\(Timeline.fullLabel(savedAt, calendar: calendar))) の内容です"
+        tr("オフライン — 最後に読み込んだ時点 (\(Timeline.fullLabel(savedAt, calendar: calendar))) の内容です")
     }
 
     /// A canvas opened by its id (a link, a search hit): the conversation of its kept copy when I am still a member of

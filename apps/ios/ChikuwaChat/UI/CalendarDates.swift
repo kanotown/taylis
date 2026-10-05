@@ -19,7 +19,7 @@ enum CalendarDates {
     /// Today and tomorrow (the 「予定 N」 count of a channel's tab).
     static let upcomingDays = 2
 
-    static let weekdays = ["日", "月", "火", "水", "木", "金", "土"]
+    static var weekdays: [String] { AppDates.weekdaysSundayFirst }
 
     /// Tests pin the zone (Asia/Tokyo, as the web's tests); the app uses the device's.
     nonisolated(unsafe) static var zoneOverride: TimeZone?
@@ -223,48 +223,48 @@ enum CalendarDates {
     /// "10月1日 (木)".
     static func dayLabel(_ key: DayKey) -> String {
         let p = parts(key)
-        return "\(p.month)月\(p.day)日 (\(weekdays[weekday(key)]))"
+        return tr("\(p.month)月\(p.day)日 (\(weekdays[weekday(key)]))")
     }
 
     /// "2026年10月".
     static func monthLabel(_ key: DayKey) -> String {
         let p = parts(key)
-        return "\(p.year)年\(p.month)月"
+        return tr("\(String(p.year))年\(p.month)月")
     }
 
     /// What a row says of the time on `day`: 「終日」, 「14:00〜15:30」, 「〜15:30」 (began earlier), 「14:00〜」 (ends later).
     static func timeOnDay(_ event: CalendarEventOut, _ day: DayKey) -> String {
-        if event.allDay { return "終日" }
+        if event.allDay { return tr("終日") }
         let days = eventDays(event)
         let start = days.first == day ? clock(event.startsAt) : ""
         let end = days.last == day ? clock(event.endsAt) : ""
-        if start.isEmpty && end.isEmpty { return "終日" }
-        return "\(start)〜\(end)"
+        if start.isEmpty && end.isEmpty { return tr("終日") }
+        return tr("\(start)〜\(end)")
     }
 
     /// The whole time of an event: 「10月1日 (木) 14:00〜15:00」, 「10月1日 (木)〜10月3日 (土) 終日」.
     static func eventWhen(_ event: CalendarEventOut) -> String {
         let days = eventDays(event)
         if event.allDay {
-            return days.first == days.last ? "\(dayLabel(days.first)) 終日" : "\(dayLabel(days.first))〜\(dayLabel(days.last)) 終日"
+            return days.first == days.last ? tr("\(dayLabel(days.first)) 終日") : tr("\(dayLabel(days.first))〜\(dayLabel(days.last)) 終日")
         }
         guard let start = startDate(event), let end = endDate(event) else { return "" }
         let startText = "\(dayLabel(dayKey(start))) \(clock(start))"
         let endText = dayKey(end) == dayKey(start) ? clock(end) : "\(dayLabel(dayKey(end))) \(clock(end))"
-        return "\(startText)〜\(endText)"
+        return tr("\(startText)〜\(endText)")
     }
 
     /// The in-app word when my alarm fires, as the server's push: 「14:00 ゼミ (#m2-進捗)」, 「終日 学会」. `event` nil (the
     /// occurrence is not known here, Review v0.1.22 #9): 「予定の通知があります (#…)」, never another occurrence's title.
     /// `channelName` is the calendar's channel from the channel list, used when the event names none.
     static func alarmText(_ event: CalendarEventOut?, channelName: String? = nil) -> String {
-        guard let event else { return "予定の通知があります" + (channelName.map { " (#\($0))" } ?? "") }
-        let when = event.allDay ? "終日" : clock(event.startsAt)
+        guard let event else { return tr("予定の通知があります") + (channelName.map { " (#\($0))" } ?? "") }
+        let when = event.allDay ? tr("終日") : clock(event.startsAt)
         return "\(when) \(event.title)" + ((event.channelName ?? channelName).map { " (#\($0))" } ?? "")
     }
 
     /// A channel's tab: 「予定 2」 while it has events today or tomorrow.
-    static func eventsTabLabel(_ count: Int) -> String { count > 0 ? "予定 \(count)" : "予定" }
+    static func eventsTabLabel(_ count: Int) -> String { count > 0 ? tr("予定 \(count)") : tr("予定") }
 
     // MARK: colours
 
@@ -295,28 +295,28 @@ enum CalendarDates {
         let label: String
     }
 
-    static let timedAlarms = [
-        AlarmChoice(value: nil, label: "なし"),
-        AlarmChoice(value: 0, label: "開始時"),
-        AlarmChoice(value: 5, label: "5 分前"),
-        AlarmChoice(value: 10, label: "10 分前"),
-        AlarmChoice(value: 15, label: "15 分前"),
-        AlarmChoice(value: 30, label: "30 分前"),
-        AlarmChoice(value: 60, label: "1 時間前"),
-        AlarmChoice(value: 1440, label: "前日 (24 時間前)"),
-    ]
+    static var timedAlarms: [AlarmChoice] { [
+        AlarmChoice(value: nil, label: tr("なし")),
+        AlarmChoice(value: 0, label: tr("開始時")),
+        AlarmChoice(value: 5, label: tr("5 分前")),
+        AlarmChoice(value: 10, label: tr("10 分前")),
+        AlarmChoice(value: 15, label: tr("15 分前")),
+        AlarmChoice(value: 30, label: tr("30 分前")),
+        AlarmChoice(value: 60, label: tr("1 時間前")),
+        AlarmChoice(value: 1440, label: tr("前日 (24 時間前)")),
+    ] }
 
     /// An all-day event's alarm goes out at 8:00: the day before (1440) or on the day (-480).
-    static let allDayAlarms = [
-        AlarmChoice(value: nil, label: "なし"),
-        AlarmChoice(value: 1440, label: "前日 8:00"),
-        AlarmChoice(value: -480, label: "当日 8:00"),
-    ]
+    static var allDayAlarms: [AlarmChoice] { [
+        AlarmChoice(value: nil, label: tr("なし")),
+        AlarmChoice(value: 1440, label: tr("前日 8:00")),
+        AlarmChoice(value: -480, label: tr("当日 8:00")),
+    ] }
 
     static func alarmChoices(allDay: Bool) -> [AlarmChoice] { allDay ? allDayAlarms : timedAlarms }
 
     static func alarmLabel(_ minutes: Int?, allDay: Bool) -> String {
-        alarmChoices(allDay: allDay).first { $0.value == minutes }?.label ?? "なし"
+        alarmChoices(allDay: allDay).first { $0.value == minutes }?.label ?? tr("なし")
     }
 
     /// The alarm kept when the event turns all-day or back (the server does the same, CALENDAR.md §2).
@@ -428,23 +428,23 @@ struct EventDraft: Equatable {
     /// What stops the form from being saved (the server's rules, said first here), or nil.
     var problem: String? {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if title.isEmpty { return "題名を入れてください" }
-        if Self.length(title) > CalendarDates.maxTitle { return "題名は \(CalendarDates.maxTitle) 文字までです" }
+        if title.isEmpty { return tr("題名を入れてください") }
+        if Self.length(title) > CalendarDates.maxTitle { return tr("題名は \(CalendarDates.maxTitle) 文字までです") }
         if Self.length(location.trimmingCharacters(in: .whitespacesAndNewlines)) > CalendarDates.maxLocation {
-            return "場所は \(CalendarDates.maxLocation) 文字までです"
+            return tr("場所は \(CalendarDates.maxLocation) 文字までです")
         }
         if Self.length(description.trimmingCharacters(in: .whitespacesAndNewlines)) > CalendarDates.maxDescription {
-            return "説明は \(CalendarDates.maxDescription) 文字までです"
+            return tr("説明は \(String(CalendarDates.maxDescription)) 文字までです")
         }
         if let repeatProblem = CalendarRecurrence.problem(repetition, start: startDay) { return repeatProblem }
         if allDay {
-            if endDay < startDay { return "終了日は開始日より後にしてください" }
-            if CalendarDates.daysBetween(startDay, endDay) >= CalendarDates.maxAllDayDays { return "終日の予定は \(CalendarDates.maxAllDayDays) 日までです" }
+            if endDay < startDay { return tr("終了日は開始日より後にしてください") }
+            if CalendarDates.daysBetween(startDay, endDay) >= CalendarDates.maxAllDayDays { return tr("終日の予定は \(CalendarDates.maxAllDayDays) 日までです") }
             return nil
         }
         let startMinute = CalendarDates.isoUtc(start), endMinute = CalendarDates.isoUtc(end)
-        if endMinute <= startMinute { return "終了は開始より後にしてください" }
-        if end.timeIntervalSince(start) > Double(CalendarDates.maxTimedDays) * 86_400 { return "時刻の予定は \(CalendarDates.maxTimedDays) 日までです" }
+        if endMinute <= startMinute { return tr("終了は開始より後にしてください") }
+        if end.timeIntervalSince(start) > Double(CalendarDates.maxTimedDays) * 86_400 { return tr("時刻の予定は \(CalendarDates.maxTimedDays) 日までです") }
         return nil
     }
 

@@ -7,14 +7,12 @@ enum Invite {
 
     /// L7: 「研究室の名簿に 学生 (B4)・指導教員 加納 として載ります。times を作ります。」
     static func labLine(_ lab: InviteLabPreview) -> String {
-        let affiliation = Roster.affiliations.first { $0.value == lab.affiliation }?.label ?? "研究室のメンバー"
+        let affiliation = Roster.affiliations.first { $0.value == lab.affiliation }?.label ?? tr("研究室のメンバー")
         var label = affiliation
         if lab.affiliation == "faculty", let rank = Roster.ranks.first(where: { $0.value == lab.rank })?.label { label = "\(affiliation) (\(rank))" }
         if lab.affiliation == "student", let grade = lab.grade { label = "\(affiliation) (\(grade))" }
-        var line = "研究室の名簿に \(label)"
-        if let supervisor = lab.supervisorName { line += "・指導教員 \(supervisor)" }
-        line += " として載ります。"
-        if lab.times { line += "times を作ります。" }
+        var line = lab.supervisorName.map { tr("研究室の名簿に \(label)・指導教員 \($0) として載ります。") } ?? tr("研究室の名簿に \(label) として載ります。")
+        if lab.times { line += tr("times を作ります。") }
         return line
     }
 
@@ -39,12 +37,12 @@ enum Invite {
     static func errorText(_ error: Error) -> String? {
         guard case ApiError.api(_, let code, _) = error else { return nil }
         switch code {
-        case "invite_not_found": return "この招待リンクは無効です"
-        case "invite_expired": return "この招待リンクは期限切れです"
-        case "invite_exhausted": return "この招待リンクはすでに使われています"
-        case "invite_revoked": return "この招待リンクは取り消されています"
-        case "username_taken": return "このユーザー名はすでに使われています"
-        case "validation_error": return "入力内容を確認してください"
+        case "invite_not_found": return tr("この招待リンクは無効です")
+        case "invite_expired": return tr("この招待リンクは期限切れです")
+        case "invite_exhausted": return tr("この招待リンクはすでに使われています")
+        case "invite_revoked": return tr("この招待リンクは取り消されています")
+        case "username_taken": return tr("このユーザー名はすでに使われています")
+        case "validation_error": return tr("入力内容を確認してください")
         default: return nil
         }
     }

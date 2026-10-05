@@ -148,23 +148,23 @@ enum TaskRules {
     /// What stops a column's name (1〜50 after whitespace is collapsed), or nil.
     static func columnNameProblem(_ name: String) -> String? {
         let cleaned = cleanTitle(name)
-        if cleaned.isEmpty { return "列の名前を入れてください" }
-        if cleaned.count > maxColumnName { return "列の名前は \(maxColumnName) 文字までです" }
+        if cleaned.isEmpty { return tr("列の名前を入れてください") }
+        if cleaned.count > maxColumnName { return tr("列の名前は \(maxColumnName) 文字までです") }
         return nil
     }
 
     /// A new column's 「種類」.
     static func columnKindLabel(_ status: TaskStatus) -> String {
         switch status {
-        case .todo: "未着手 (まだ始めていない)"
-        case .doing: "進行中"
-        case .done: "完了 (カードは完了になる)"
+        case .todo: tr("未着手 (まだ始めていない)")
+        case .doing: tr("進行中")
+        case .done: tr("完了 (カードは完了になる)")
         }
     }
 
     /// The question before deleting an added column: where its cards go.
     static func deleteColumnMessage(_ columns: [TaskColumnOut], _ column: TaskColumnOut) -> String {
-        "カードは『\(builtinColumn(columns, column.status)?.name ?? column.status.label)』へ移ります"
+        tr("カードは『\(builtinColumn(columns, column.status)?.name ?? column.status.label)』へ移ります")
     }
 
     /// The switch's title: 「未着手 3」 (the name and its cards), a 完了 column without a count (it holds only the latest 100).
@@ -260,7 +260,7 @@ enum TaskRules {
 
     /// A card's due date: 「今日」, else M/D (with the year when not this year's).
     static func dueLabel(_ dueOn: String, today: DayKey) -> String {
-        if dueOn == today { return "今日" }
+        if dueOn == today { return tr("今日") }
         let parts = dueOn.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return dueOn }
         let md = "\(parts[1])/\(parts[2])"
@@ -269,9 +269,9 @@ enum TaskRules {
 
     /// The due date in full, for the form's read-only view: 2026/10/5 (今日), M81 with its time: 2026/10/5 14:00 (今日).
     static func dueText(_ dueOn: String?, today: DayKey, dueAt: String? = nil) -> String {
-        guard let day = dueDay(dueOn: dueOn, dueAt: dueAt) else { return "なし" }
+        guard let day = dueDay(dueOn: dueOn, dueAt: dueAt) else { return tr("なし") }
         let time = dueAt.flatMap { parseIsoDate($0) != nil ? " " + CalendarDates.clock($0) : nil } ?? ""
-        return day.replacingOccurrences(of: "-", with: "/") + time + (day == today ? " (今日)" : "")
+        return day.replacingOccurrences(of: "-", with: "/") + time + (day == today ? tr(" (今日)") : "")
     }
 
     /// The tasks due on a day (the calendar's rows): open ones first, then (M81) those without a time before those with
@@ -335,12 +335,12 @@ enum TaskRules {
 
     /// Why a board is read-only (or could not be read), as the banner over it says; nil when it is mine to change.
     static func boardNote(_ state: TaskList.State?, channel: ChannelState, canEdit: Bool) -> String? {
-        if state == .unsupported { return "このサーバはタスクに対応していません" }
-        if state == .failed { return "タスクを読み込めませんでした。下に引いて読み直せます" }
+        if state == .unsupported { return tr("このサーバはタスクに対応していません") }
+        if state == .failed { return tr("タスクを読み込めませんでした。下に引いて読み直せます") }
         if canEdit { return nil }
-        if channel.channel.archived { return "アーカイブされたチャンネルのタスクは変更できません" }
+        if channel.channel.archived { return tr("アーカイブされたチャンネルのタスクは変更できません") }
         if !channel.isMember { return nil }
-        return "このボードを変更できるのは、チャンネルのオーナーと管理者だけです"
+        return tr("このボードを変更できるのは、チャンネルのオーナーと管理者だけです")
     }
 
     // MARK: 「自分のタスク」
@@ -516,7 +516,7 @@ enum TaskRules {
         return draft
     }
 
-    static let reviewPrefix = "レビュー: "
+    static var reviewPrefix: String { tr("レビュー: ") }
 
     /// L9 「レビューを依頼」 (REVIEWS.md §2.3): 「タスクにする」's form as a review request — 「レビュー: <excerpt>」, the
     /// message's own conversation (a channel's board or the DM; the menu offers it only there), 依頼先 to choose (at
@@ -537,9 +537,9 @@ enum TaskRules {
     /// 「レビュー依頼」 / 「締切」 (M86) / 「タスク」.
     static func kindLabel(_ kind: TaskKind) -> String {
         switch kind {
-        case .review: "レビュー依頼"
-        case .deadline: "締切"
-        case .task: "タスク"
+        case .review: tr("レビュー依頼")
+        case .deadline: tr("締切")
+        case .task: tr("タスク")
         }
     }
 
@@ -547,16 +547,16 @@ enum TaskRules {
     static func statusLabel(_ status: TaskStatus, kind: TaskKind) -> String {
         guard kind == .review else { return status.label }
         switch status {
-        case .todo: return "依頼中"
-        case .doing: return "対応中"
-        case .done: return "完了"
+        case .todo: return tr("依頼中")
+        case .doing: return tr("対応中")
+        case .done: return tr("完了")
         }
     }
 
     /// The assignees on one line: two names, then 「他 N 人」.
     static func namesText(_ names: [String]) -> String {
-        guard names.count > 2 else { return names.joined(separator: "、") }
-        return names.prefix(2).joined(separator: "、") + " 他 \(names.count - 2) 人"
+        guard names.count > 2 else { return names.joined(separator: tr("、")) }
+        return names.prefix(2).joined(separator: tr("、")) + tr(" 他 \(names.count - 2) 人")
     }
 
     struct Chip: Equatable {
@@ -581,7 +581,7 @@ enum TaskRules {
         parts.append(statusLabel(task.status, kind: task.kind))
         let done = task.status == .done
         if task.dueOn != nil, !done, let due = dueLabel(dueOn: task.dueOn, dueAt: task.dueAt, today: today) {
-            parts.append(due == "今日" ? "今日まで" : due + " まで")
+            parts.append(due == tr("今日") ? tr("今日まで") : tr("\(due) まで"))
         }
         let late = overdue(dueOn: task.dueOn, dueAt: task.dueAt, done: done, today: today, now: now)
         return Chip(text: parts.joined(separator: " · "), tone: done ? .done : late ? .overdue : .open)
@@ -593,19 +593,19 @@ enum TaskRules {
     /// (#<channel>)」 / 「今日が期限: <title>」 (+ 「 (#<channel>)」 for a shared one).
     /// L9: a review request says 「レビューを依頼しました」; a DM's task (its name empty) has no 「(#…)」.
     static func noticeText(assigned: TaskAssigned, nameOf: (String) -> String?) -> String {
-        let verb = assigned.kind == .review ? "レビューを依頼しました" : "タスクを割り当てました"
-        return "\(nameOf(assigned.byUserId) ?? "メンバー") が\(verb): \(assigned.title)\(whereText(assigned.channelName))"
+        let verb = assigned.kind == .review ? tr("レビューを依頼しました") : tr("タスクを割り当てました")
+        return tr("\(nameOf(assigned.byUserId) ?? tr("メンバー")) が\(verb): \(assigned.title)\(whereText(assigned.channelName))")
     }
 
     /// M81: a due time (the notification went out at it) says 「14:00 が期限: <title>」.
     static func noticeText(due: TaskDue) -> String {
-        let when = due.dueAt.flatMap { parseIsoDate($0) != nil ? CalendarDates.clock($0) + " が期限" : nil } ?? "今日が期限"
+        let when = due.dueAt.flatMap { parseIsoDate($0) != nil ? tr("\(CalendarDates.clock($0)) が期限") : nil } ?? tr("今日が期限")
         return "\(when): \(due.title)\(due.channelId != nil ? whereText(due.channelName) : "")"
     }
 
     /// L9 task.review_done: 「<name> がレビューを完了しました: <title> (#<channel>)」.
     static func noticeText(reviewDone: TaskReviewDone, nameOf: (String) -> String?) -> String {
-        "\(nameOf(reviewDone.byUserId) ?? "メンバー") がレビューを完了しました: \(reviewDone.title)\(whereText(reviewDone.channelName))"
+        tr("\(nameOf(reviewDone.byUserId) ?? tr("メンバー")) がレビューを完了しました: \(reviewDone.title)\(whereText(reviewDone.channelName))")
     }
 
     /// 「 (#lab)」, nothing for a DM (no name) — the push's rule.
@@ -741,18 +741,18 @@ struct TaskDraft: Equatable {
 
     var problem: String? {
         let title = TaskRules.cleanTitle(title)
-        if needsAssignee && assigneeIds.isEmpty { return "依頼先を選んでください" }
-        if title.isEmpty { return "題名を入れてください" }
-        if title.count > TaskRules.maxTitle { return "題名は \(TaskRules.maxTitle) 文字までです" }
-        if notes.count > TaskRules.maxNotes { return "メモは \(TaskRules.maxNotes) 文字までです" }
-        if kind == .deadline && dueOn.isEmpty { return "締切の日付を入れてください" }  // M86
+        if needsAssignee && assigneeIds.isEmpty { return tr("依頼先を選んでください") }
+        if title.isEmpty { return tr("題名を入れてください") }
+        if title.count > TaskRules.maxTitle { return tr("題名は \(TaskRules.maxTitle) 文字までです") }
+        if notes.count > TaskRules.maxNotes { return tr("メモは \(String(TaskRules.maxNotes)) 文字までです") }
+        if kind == .deadline && dueOn.isEmpty { return tr("締切の日付を入れてください") }  // M86
         if kind == .task && repetition.kind != .none {
-            if dueOn.isEmpty { return "繰り返すには期限を入れてください" }
+            if dueOn.isEmpty { return tr("繰り返すには期限を入れてください") }
             if let problem = CalendarRecurrence.problem(repetition, start: dueOn) { return problem }
         }
-        if subtasksBody.count > TaskRules.maxSubtasks { return "サブタスクは \(TaskRules.maxSubtasks) 個までです" }
+        if subtasksBody.count > TaskRules.maxSubtasks { return tr("サブタスクは \(TaskRules.maxSubtasks) 個までです") }
         if subtasks.contains(where: { TaskRules.cleanTitle($0.title).count > TaskRules.maxTitle }) {
-            return "サブタスクは \(TaskRules.maxTitle) 文字までです"
+            return tr("サブタスクは \(TaskRules.maxTitle) 文字までです")
         }
         return nil
     }

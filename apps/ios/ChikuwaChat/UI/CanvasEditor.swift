@@ -114,7 +114,7 @@ struct CanvasEditor: View {
                     // Library photos are mostly HEIC: re-encoded as JPEG as the composer does (the server keeps a thumbnail).
                     guard let data = try? await item.loadTransferable(type: Data.self), let photo = ImageUpload.prepare(data) else {
                         uploading -= 1
-                        controller.error = "写真を読み込めませんでした"
+                        controller.error = tr("写真を読み込めませんでした")
                         continue
                     }
                     await upload(photo.data, filename: "photo." + photo.ext, contentType: photo.mime)
@@ -156,12 +156,12 @@ struct CanvasEditor: View {
                     Button("見出し 3") { model.apply { CanvasText.setHeading($0, level: 3) } }
                 } label: { toolIcon("textformat.size") }
                 .accessibilityLabel("見出し")
-                tool("list.bullet", "箇条書き") { CanvasText.toggleLinePrefix($0, marker: "- ") }
-                tool("checklist", "チェックリスト") { CanvasText.toggleTasks($0) }
-                tool("bold", "太字") { CanvasText.toggleWrap($0, "**") }
-                tool("link", "リンク") { CanvasText.insertLink($0) }
-                tool("at", "メンション") { CanvasText.insertMentionMark($0) }
-                tool("minus", "区切り線") { CanvasText.insertRule($0) }
+                tool("list.bullet", tr("箇条書き")) { CanvasText.toggleLinePrefix($0, marker: "- ") }
+                tool("checklist", tr("チェックリスト")) { CanvasText.toggleTasks($0) }
+                tool("bold", tr("太字")) { CanvasText.toggleWrap($0, "**") }
+                tool("link", tr("リンク")) { CanvasText.insertLink($0) }
+                tool("at", tr("メンション")) { CanvasText.insertMentionMark($0) }
+                tool("minus", tr("区切り線")) { CanvasText.insertRule($0) }
                 Button { model.openTable() } label: { toolIcon("tablecells") }
                     .accessibilityLabel("表")
                 Menu {
@@ -469,7 +469,7 @@ final class CanvasEditorModel {
     /// The edit menu's 「タスクにする」 for the item at the selection, or nil.
     func makeTaskAction(at location: Int) -> UIAction? {
         guard onMakeTask != nil, textView?.markedTextRange == nil, let line = checklistLine(at: location) else { return nil }
-        return UIAction(title: "タスクにする", image: UIImage(systemName: "checklist")) { [weak self] _ in
+        return UIAction(title: tr("タスクにする"), image: UIImage(systemName: "checklist")) { [weak self] _ in
             guard let self else { return }
             self.onMakeTask?(self.wire, line)
         }
@@ -525,7 +525,7 @@ struct CanvasTextView: UIViewRepresentable {
         view.smartDashesType = .no
         view.smartQuotesType = .no
         view.smartInsertDeleteType = .no
-        view.accessibilityLabel = "キャンバスの本文 (Markdown)"
+        view.accessibilityLabel = tr("キャンバスの本文 (Markdown)")
         view.accessibilityIdentifier = "canvas-editor"
         view.text = model.shown
         model.textView = view

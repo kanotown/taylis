@@ -1,6 +1,9 @@
 // Generated from apps/shared/errors.json by apps/shared/gen_errors.py; do not edit by hand.
 
 enum ErrorMessages {
+    /// The UI language the accessors answer in ("ja", "en", "zh-Hans"); the app sets it from its effective locale.
+    static var locale = "ja"
+
     /// Japanese message for each server error code.
     static let byCode: [String: String] = [
         "account_disabled": "このアカウントは無効化されています。管理者に連絡してください",

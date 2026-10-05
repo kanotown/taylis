@@ -28,16 +28,16 @@ enum Workflows {
     static let maxText = 200
     static let maxTextarea = 4000
     static let maxUsers = 20
-    static let weekdays = ["月", "火", "水", "木", "金", "土", "日"]  // 0 = Monday
+    static var weekdays: [String] { AppDates.weekdaysMondayFirst }  // 0 = Monday
 
     /// `details.fields` reasons, in the desktop's words.
     static func errorText(_ reason: String) -> String {
         switch reason {
-        case "required": return "入力してください"
-        case "too_long": return "長すぎます"
-        case "not_an_option": return "選択肢から選んでください"
-        case "user_not_found": return "選べない人が含まれています"
-        default: return "形式が正しくありません"
+        case "required": return tr("入力してください")
+        case "too_long": return tr("長すぎます")
+        case "not_an_option": return tr("選択肢から選んでください")
+        case "user_not_found": return tr("選べない人が含まれています")
+        default: return tr("形式が正しくありません")
         }
     }
 
@@ -85,7 +85,7 @@ enum Workflows {
     /// 「2026年7月28日 (火)」 for `YYYY-MM-DD`; "" when it is not a date.
     static func dateLabel(_ value: String) -> String {
         guard let day = parseDate(value) else { return "" }
-        return "\(day.year)年\(day.month)月\(day.day)日 (\(weekdays[day.weekdayIndex]))"
+        return tr("\(String(day.year))年\(day.month)月\(day.day)日 (\(weekdays[day.weekdayIndex]))")
     }
 
     static func emptyValue(_ field: WorkflowField) -> Value {
@@ -185,12 +185,12 @@ enum Workflows {
 
     /// A typed value cannot call anyone: `<@…` and `<!…` lose their `<`.
     static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "<@", with: "＜@").replacingOccurrences(of: "<!", with: "＜!")
+        value.replacingOccurrences(of: "<@", with: "＜@").replacingOccurrences(of: "<!", with: "＜!")  // i18n-ignore
     }
 
     static func format(_ field: WorkflowField, _ value: Value?) -> String {
         switch field.type {
-        case "checkbox": return value?.flag == true ? "はい" : "いいえ"
+        case "checkbox": return value?.flag == true ? tr("はい") : tr("いいえ")
         case "user": return (value?.users ?? []).map { "<@\($0)>" }.joined(separator: " ")
         default: break
         }
@@ -336,10 +336,10 @@ enum Workflows {
     /// Why I cannot submit it, for the menu; nil when I can (the desktop's runBlockedText). `target`: 「#送り先」.
     static func runBlockedText(_ workflow: WorkflowOut, target: String) -> String? {
         switch workflow.runBlocked {
-        case "disabled": return "停止中"
-        case "archived": return "\(target) はアーカイブ済みです"
-        case "not_a_member": return "\(target) に参加すると使えます"
-        case "posting_restricted": return "\(target) はオーナーと管理者だけが投稿できます"
+        case "disabled": return tr("停止中")
+        case "archived": return tr("\(target) はアーカイブ済みです")
+        case "not_a_member": return tr("\(target) に参加すると使えます")
+        case "posting_restricted": return tr("\(target) はオーナーと管理者だけが投稿できます")
         default: return nil
         }
     }

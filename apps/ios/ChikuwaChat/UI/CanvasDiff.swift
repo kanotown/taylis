@@ -120,7 +120,7 @@ enum CanvasDiff {
     }
 
     private static let wordPattern = try! NSRegularExpression(
-        pattern: #"\n|[^\S\n]+|[\p{Script=Han}々〆ヶ]+|\p{Script=Hiragana}+|[\p{Script=Katakana}ー]+|[\p{L}\p{N}_]+|."#)
+        pattern: #"\n|[^\S\n]+|[\p{Script=Han}々〆ヶ]+|\p{Script=Hiragana}+|[\p{Script=Katakana}ー]+|[\p{L}\p{N}_]+|."#)  // i18n-ignore
 
     /// A line cut into words as the server's merge cuts it.
     static func words(_ text: String) -> [String] {

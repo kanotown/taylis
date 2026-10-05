@@ -15,9 +15,9 @@ enum SearchTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .messages: "メッセージ"
-        case .files: "ファイル"
-        case .canvases: "キャンバス"
+        case .messages: tr("メッセージ")
+        case .files: tr("ファイル")
+        case .canvases: tr("キャンバス")
         }
     }
 }
@@ -516,7 +516,7 @@ struct SearchView: View {
         if store.channel(channelId)?.isMember != true {
             if store.channel(channelId) == nil {
                 guard let channel = model.channels[channelId] else {
-                    controller.error = "この会話は開けません"
+                    controller.error = tr("この会話は開けません")
                     return
                 }
                 store.upsertChannel(channel, isMember: false)
@@ -673,7 +673,7 @@ struct SearchResultsView: View {
                     if hit.id == model.hits.last?.id { Task { await model.loadMore(api: controller.api) } }
                 }
             }
-            if model.loading { loadingRow(model.hits.isEmpty ? "検索しています…" : "続きを読み込んでいます…") }
+            if model.loading { loadingRow(model.hits.isEmpty ? tr("検索しています…") : tr("続きを読み込んでいます…")) }
             if let failure = model.failure { failureRow(failure) }
         }
         .listStyle(.plain)
@@ -721,7 +721,7 @@ struct SearchResultsView: View {
                         if item.id == model.files.last?.id { Task { await model.loadMoreFiles(api: controller.api) } }
                     }
             }
-            if model.filesLoading { loadingRow(model.files.isEmpty ? "検索しています…" : "続きを読み込んでいます…") }
+            if model.filesLoading { loadingRow(model.files.isEmpty ? tr("検索しています…") : tr("続きを読み込んでいます…")) }
             if let failure = model.filesFailure { failureRow(failure) }
         }
         .listStyle(.plain)
@@ -775,14 +775,14 @@ struct SearchFilterBar: View {
                     SearchChip(active: sender != nil, onClear: { onUpdate { $0.fromUserId = nil } }) {
                         Button { onPick(.sender) } label: {
                             // A canvas's person is who made it or changed it last.
-                            SearchChipLabel(title: sender.map { (canvases ? "作成・更新: " : "送信者: ") + $0 } ?? (canvases ? "作成・更新した人" : "送信者"),
+                            SearchChipLabel(title: sender.map { (canvases ? tr("作成・更新: ") : tr("送信者: ")) + $0 } ?? (canvases ? tr("作成・更新した人") : tr("送信者")),
                                             systemImage: "person", active: sender != nil)
                         }
                     }
                 }
                 let channel = params.channelId.map { id in store.channel(id).map { channelTitle($0, store: store) } ?? "?" }
                 SearchChip(active: channel != nil, onClear: { onUpdate { $0.channelId = nil } }) {
-                    Button { onPick(.channel) } label: { SearchChipLabel(title: channel ?? "チャンネル", systemImage: "number", active: channel != nil) }
+                    Button { onPick(.channel) } label: { SearchChipLabel(title: channel ?? tr("チャンネル"), systemImage: "number", active: channel != nil) }
                 }
                 if !filesOnly {
                     let date = SearchLogic.dateLabel(params.date)
@@ -796,7 +796,7 @@ struct SearchFilterBar: View {
                             Divider()
                             Button("日付を指定…", systemImage: "calendar") { onPick(.dates) }
                         } label: {
-                            SearchChipLabel(title: date ?? "期間", systemImage: "calendar", active: date != nil)
+                            SearchChipLabel(title: date ?? tr("期間"), systemImage: "calendar", active: date != nil)
                         }
                     }
                 }
@@ -813,14 +813,14 @@ struct SearchFilterBar: View {
                                 }
                             }
                         } label: {
-                            SearchChipLabel(title: params.has.isEmpty ? "種類" : params.has.map(\.label).joined(separator: "・"), systemImage: "paperclip",
+                            SearchChipLabel(title: params.has.isEmpty ? tr("種類") : params.has.map(\.label).joined(separator: tr("・")), systemImage: "paperclip",
                                             active: !params.has.isEmpty)
                         }
                         .menuActionDismissBehavior(.disabled)
                     }
                     SearchChip(active: params.isThread, onClear: nil) {
                         Button { onUpdate { $0.isThread.toggle() } } label: {
-                            SearchChipLabel(title: "スレッド内", systemImage: "bubble.left.and.bubble.right", active: params.isThread, menu: false)
+                            SearchChipLabel(title: tr("スレッド内"), systemImage: "bubble.left.and.bubble.right", active: params.isThread, menu: false)
                         }
                         .accessibilityAddTraits(params.isThread ? .isSelected : [])
                     }

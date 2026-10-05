@@ -19,7 +19,7 @@ struct ShareMessageSheet: View {
         if state.channel.type == "dm" || state.channel.type == "group_dm" {
             let me = controller.store.me?.id
             let names = (state.channel.dmUserIds ?? []).filter { $0 != me }.compactMap { controller.store.users[$0]?.displayName }
-            return names.isEmpty ? "自分" : names.joined(separator: ", ")
+            return names.isEmpty ? tr("自分") : names.joined(separator: ", ")
         }
         return (state.channel.type == "private" ? "🔒" : "#") + (state.channel.name ?? "")
     }

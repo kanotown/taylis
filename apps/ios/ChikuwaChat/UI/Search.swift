@@ -11,11 +11,11 @@ enum SearchHasFlag: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .file: return "ファイルあり"
-        case .link: return "リンクあり"
-        case .pin: return "ピン留め"
-        case .reaction: return "リアクションあり"
-        case .poll: return "投票"
+        case .file: return tr("ファイルあり")
+        case .link: return tr("リンクあり")
+        case .pin: return tr("ピン留め")
+        case .reaction: return tr("リアクションあり")
+        case .poll: return tr("投票")
         }
     }
 
@@ -34,7 +34,7 @@ enum SearchSort: String, Codable, CaseIterable, Identifiable {
     case relevance, newest
 
     var id: String { rawValue }
-    var label: String { self == .relevance ? "関連度順" : "新しい順" }
+    var label: String { self == .relevance ? tr("関連度順") : tr("新しい順") }
 }
 
 enum SearchDatePreset: String, Codable, CaseIterable, Identifiable {
@@ -44,11 +44,11 @@ enum SearchDatePreset: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .today: return "今日"
-        case .yesterday: return "昨日"
-        case .week: return "過去 7 日間"
-        case .month: return "過去 30 日間"
-        case .year: return "過去 1 年間"
+        case .today: return tr("今日")
+        case .yesterday: return tr("昨日")
+        case .week: return tr("過去 7 日間")
+        case .month: return tr("過去 30 日間")
+        case .year: return tr("過去 1 年間")
         }
     }
 
@@ -228,9 +228,9 @@ enum SearchLogic {
         case .range(let from, let to):
             let start = from?.replacingOccurrences(of: "-", with: "/")
             let end = to?.replacingOccurrences(of: "-", with: "/")
-            if let start, let end { return start == end ? start : "\(start) 〜 \(end)" }
-            if let start { return "\(start) 以降" }
-            if let end { return "\(end) まで" }
+            if let start, let end { return start == end ? start : tr("\(start) 〜 \(end)") }
+            if let start { return tr("\(start) 以降") }
+            if let end { return tr("\(end) まで") }
             return nil
         }
     }
@@ -246,26 +246,26 @@ enum SearchLogic {
     /// archived one; 「?」 without one.
     static func otherChannelName(_ channel: ChannelOut?) -> String {
         guard let channel, let name = channel.name else { return "?" }
-        return channel.archived ? "\(name) (アーカイブ済み)" : name
+        return channel.archived ? tr("\(name) (アーカイブ済み)") : name
     }
 
     /// 「123 件」, or 「1,000 件以上」 when the server stopped counting.
     static func totalLabel(_ total: Int, capped: Bool) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.locale = Locale(identifier: "ja_JP")
-        return "\(formatter.string(from: NSNumber(value: total)) ?? String(total)) 件\(capped ? "以上" : "")"
+        formatter.locale = UILanguage.shared.locale
+        return tr("\(formatter.string(from: NSNumber(value: total)) ?? String(total)) 件\(capped ? tr("以上") : "")")
     }
 
     /// One line for a search: the words, then the filters (「設計」 · 送信者: 田中 · #general · 過去 7 日間).
     static func describe(_ params: SearchParams, userName: (String) -> String?, channelTitle: (String) -> String?) -> String {
         var parts: [String] = []
         if !params.words.isEmpty { parts.append(params.words) }
-        if let id = params.fromUserId { parts.append("送信者: \(userName(id) ?? "?")") }
+        if let id = params.fromUserId { parts.append(tr("送信者: \(userName(id) ?? "?")")) }
         if let id = params.channelId { parts.append(channelTitle(id) ?? "?") }
         if let date = dateLabel(params.date) { parts.append(date) }
         parts += params.has.map(\.label)
-        if params.isThread { parts.append("スレッド内") }
+        if params.isThread { parts.append(tr("スレッド内")) }
         if params.isTimes { parts.append("Times") }
         return parts.joined(separator: " · ")
     }
@@ -373,10 +373,10 @@ enum SearchSuggestionGroup: String {
     var heading: String? {
         switch self {
         case .search: return nil
-        case .recent: return "最近の検索"
-        case .filters: return "絞り込み"
-        case .people: return "人 (この人の投稿)"
-        case .conversations: return "チャンネル (この中を検索)"
+        case .recent: return tr("最近の検索")
+        case .filters: return tr("絞り込み")
+        case .people: return tr("人 (この人の投稿)")
+        case .conversations: return tr("チャンネル (この中を検索)")
         }
     }
 }

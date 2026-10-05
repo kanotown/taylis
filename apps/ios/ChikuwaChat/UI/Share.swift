@@ -5,7 +5,7 @@ enum Share {
     static func body(original: String, permalink: String, comment: String, maxQuote: Int = 300) -> String {
         let text = original.trimmingCharacters(in: .whitespacesAndNewlines)
         let clipped = text.count > maxQuote ? String(text.prefix(maxQuote)).trimmingCharacters(in: .whitespaces) + "…" : text
-        let quote = (clipped.isEmpty ? "(添付ファイル)" : clipped).split(separator: "\n", omittingEmptySubsequences: false).map { "> " + $0 }.joined(separator: "\n")
+        let quote = (clipped.isEmpty ? tr("(添付ファイル)") : clipped).split(separator: "\n", omittingEmptySubsequences: false).map { "> " + $0 }.joined(separator: "\n")
         return [comment.trimmingCharacters(in: .whitespacesAndNewlines), quote, permalink].filter { !$0.isEmpty }.joined(separator: "\n")
     }
 }

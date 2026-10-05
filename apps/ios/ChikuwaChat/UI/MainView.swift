@@ -145,7 +145,15 @@ struct MainView: View {
         .fullScreenCover(item: $controller.workflowRun) { target in
             WorkflowFormView(controller: controller, target: target)
         }
-        .onChange(of: sizeClass, initial: true) { _, _ in applyLayout() }
+        .onChange(of: sizeClass, initial: true) { _, _ in
+            applyLayout()
+            // A new UI language rebuilt the screens (RootView): back to 自分 → 表示 → 言語, where it was chosen.
+            if controller.reopenLanguageSettings {
+                controller.reopenLanguageSettings = false
+                youPath = [.appearance, .language]
+                if nav.layout == .split { nav.youSheet = true } else { nav.tab = .you }
+            }
+        }
         .onChange(of: scenePhase) { _, _ in applyLayout() }
         .onChange(of: homeSelection) { _, id in
             guard let id else { return }
@@ -605,11 +613,11 @@ enum HomeAvatarBadge: Equatable {
     /// What VoiceOver says after 「自分」.
     var spoken: String? {
         switch self {
-        case .online: "オンライン"
-        case .away: "離席中"
-        case .dnd: "通知を一時停止中"
-        case .connecting: "接続中"
-        case .offline: "オフライン、再接続中"
+        case .online: tr("オンライン")
+        case .away: tr("離席中")
+        case .dnd: tr("通知を一時停止中")
+        case .connecting: tr("接続中")
+        case .offline: tr("オフライン、再接続中")
         case .none: nil
         }
     }
@@ -639,7 +647,7 @@ struct HomeAvatarButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(["自分", badge.spoken].compactMap { $0 }.joined(separator: "、"))
+        .accessibilityLabel([tr("自分"), badge.spoken].compactMap { $0 }.joined(separator: tr("、")))
     }
 
     @ViewBuilder
@@ -681,8 +689,8 @@ struct ConnectionBanner: View {
     var body: some View {
         Group {
             switch shown {
-            case .connecting: strip("サーバに接続しています…", color: .accentColor)
-            case .offline: strip("オフラインです。再接続を待っています…", color: .orange)
+            case .connecting: strip(tr("サーバに接続しています…"), color: .accentColor)
+            case .offline: strip(tr("オフラインです。再接続を待っています…"), color: .orange)
             default: EmptyView()
             }
         }

@@ -16,12 +16,12 @@ enum DocumentFit {
     /// 「12 ページ」, or nil when the count is unknown.
     static func pagesLabel(_ pages: Int?) -> String? {
         guard let pages, pages > 0 else { return nil }
-        return "\(pages) ページ"
+        return tr("\(pages) ページ")
     }
 
     /// The card's second line: 「プレビューを作成中…」 while the server works, else size and page count.
     static func detail(_ attachment: AttachmentOut) -> String {
-        if attachment.preview?.isPending == true { return "プレビューを作成中…" }
+        if attachment.preview?.isPending == true { return tr("プレビューを作成中…") }
         return [formatSize(attachment.sizeBytes), pagesLabel(attachment.preview?.pages)].compactMap { $0 }.joined(separator: " · ")
     }
 

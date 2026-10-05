@@ -187,7 +187,7 @@ struct ActivityRowView: View {
     private var store: Store { controller.store }
 
     var body: some View {
-        let nameOf: (String) -> String = { store.users[$0]?.displayName ?? (store.me?.id == $0 ? store.me?.displayName : nil) ?? "メンバー" }
+        let nameOf: (String) -> String = { store.users[$0]?.displayName ?? (store.me?.id == $0 ? store.me?.displayName : nil) ?? tr("メンバー") }
         let (who, what) = ActivityRules.headline(item, nameOf: nameOf)
         let conversation = item.channelId.flatMap { store.channel($0) }.map { channelTitle($0, store: store) } ?? ""
         let place = conversation.isEmpty ? "" : ActivityRules.whereText(item, conversation: conversation)
@@ -235,8 +235,8 @@ struct ActivityRowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel([unread ? "未読" : nil, ActivityRules.headlineText(item, nameOf: nameOf), done ? "対応済み" : nil, place.isEmpty ? nil : place,
-                             DMList.timeLabel(item.at), excerpt.isEmpty ? nil : excerpt].compactMap { $0 }.joined(separator: "、"))
+        .accessibilityLabel([unread ? tr("未読") : nil, ActivityRules.headlineText(item, nameOf: nameOf), done ? tr("対応済み") : nil, place.isEmpty ? nil : place,
+                             DMList.timeLabel(item.at), excerpt.isEmpty ? nil : excerpt].compactMap { $0 }.joined(separator: tr("、")))
         .accessibilityAddTraits(.isButton)
     }
 

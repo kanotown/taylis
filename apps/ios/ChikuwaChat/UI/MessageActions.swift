@@ -224,17 +224,17 @@ struct MessageActionsSheet: View {
                 .padding(.bottom, 8)
                 // M27: who reacted (a long press on a reaction in Slack; here the message's own long press), first as
                 // on the other clients.
-                if !message.reactions.isEmpty { row("リアクションした人", "person.2") { then(.reactors) } }
-                if canThread { row("スレッドで返信", "bubble.left.and.bubble.right") { then(.thread) } }
-                if isMine { row("編集", "pencil") { then(.edit) } }
+                if !message.reactions.isEmpty { row(tr("リアクションした人"), "person.2") { then(.reactors) } }
+                if canThread { row(tr("スレッドで返信"), "bubble.left.and.bubble.right") { then(.thread) } }
+                if isMine { row(tr("編集"), "pencil") { then(.edit) } }
                 if !message.body.isEmpty {
-                    row("テキストをコピー", "doc.on.doc") {
+                    row(tr("テキストをコピー"), "doc.on.doc") {
                         UIPasteboard.general.string = Mentions.decode(message.body, users: store.users, groups: store.groups)
                         dismiss()
                     }
                 }
                 let saved = store.isBookmarked(message.id)
-                row(saved ? "保存を解除" : "あとで見る (保存)", saved ? "bookmark.slash" : "bookmark") {
+                row(saved ? tr("保存を解除") : tr("あとで見る (保存)"), saved ? "bookmark.slash" : "bookmark") {
                     run { await controller.toggleBookmark(message.id) }
                 }
                 Menu {
@@ -246,30 +246,30 @@ struct MessageActionsSheet: View {
                     Button("日時を指定…", systemImage: "calendar") { then(.customReminder) } // M28d: with a note, as on the web / Android
                 } label: {
                     VStack(spacing: 0) {
-                        rowLabel("リマインド", "alarm").foregroundStyle(Color.primary)
+                        rowLabel(tr("リマインド"), "alarm").foregroundStyle(Color.primary)
                         Divider().padding(.leading, 56)
                     }
                 }
                 // M56 (TASKS.md §6): after リマインド, as on the web; not on a server without tasks.
                 if controller.serverHasTasks && controller.taskHub?.available == true && message.type == "user" {
-                    row("タスクにする", "checklist") { then(.task) }
+                    row(tr("タスクにする"), "checklist") { then(.task) }
                     // L9 (REVIEWS.md §2.3): beside it, where the request can be shared (a board I may add to, a DM).
                     if TaskRules.canRequestReview(controller.store.channel(message.channelId), isAdmin: controller.isAdmin) {
-                        row("レビューを依頼", "text.badge.checkmark") { then(.review) }
+                        row(tr("レビューを依頼"), "text.badge.checkmark") { then(.review) }
                     }
                 }
-                if canMarkUnread { row("ここから未読にする", "envelope.badge") { onMarkUnread(); dismiss() } }
-                row("リンクをコピー", "link") { controller.copyPermalink(message.id); dismiss() }
-                row("別のチャンネルに共有…", "arrowshape.turn.up.right") { then(.share) }
-                row(message.pinnedAt != nil ? "ピン留めを外す" : "チャンネルにピン留め", message.pinnedAt != nil ? "pin.slash" : "pin") {
+                if canMarkUnread { row(tr("ここから未読にする"), "envelope.badge") { onMarkUnread(); dismiss() } }
+                row(tr("リンクをコピー"), "link") { controller.copyPermalink(message.id); dismiss() }
+                row(tr("別のチャンネルに共有…"), "arrowshape.turn.up.right") { then(.share) }
+                row(message.pinnedAt != nil ? tr("ピン留めを外す") : tr("チャンネルにピン留め"), message.pinnedAt != nil ? "pin.slash" : "pin") {
                     run { await controller.togglePin(message) }
                 }
                 // M104 (MODERATION.md §3): someone else's stored message.
                 if Moderation.canReport(message, meId: store.me?.id) {
-                    row("報告する", "flag") { then(.report) }
+                    row(tr("報告する"), "flag") { then(.report) }
                 }
                 if isMine || controller.isAdmin {
-                    row("削除", "trash", role: .destructive) { then(.delete) }
+                    row(tr("削除"), "trash", role: .destructive) { then(.delete) }
                 }
             }
             .padding(.bottom, 8)

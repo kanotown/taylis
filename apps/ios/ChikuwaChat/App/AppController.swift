@@ -12,6 +12,8 @@ final class AppController {
     var error: String?
     /// A short confirmation (「リンクをコピーしました」); nil when nothing to say.
     var notice: String?
+    /// A new UI language rebuilds the screens: MainView opens 自分 → 表示 → 言語 again, where it was chosen.
+    var reopenLanguageSettings = false
     var me: UserMe?
     struct MessageFocus {
         var channelId: String
@@ -299,7 +301,7 @@ final class AppController {
         case .server(let url, let answer): (serverUrl, info) = (url, answer)
         case .done(let outcome): return outcome
         }
-        guard let url = URL(string: serverUrl) else { return .failed("サーバ URL が正しくありません") }
+        guard let url = URL(string: serverUrl) else { return .failed(tr("サーバ URL が正しくありません")) }
         let ticket: String, verifier: String
         switch await Sso.run(server: url, authenticator: authenticator ?? SystemWebAuthenticator()) {
         case .ticket(let t, let v): (ticket, verifier) = (t, v)
@@ -338,10 +340,10 @@ final class AppController {
     /// The form's address, normalized and asked for GET /server. Adding a workspace needs a ChikuwaChat answer, and a
     /// workspace registered already (same workspace_id or address) is opened instead: one account per server.
     private func signInTarget(_ input: String, adding: Bool) async -> SignInTarget {
-        guard let normalized = Workspaces.normalize(input) else { return .done(.failed("サーバ URL が正しくありません")) }
+        guard let normalized = Workspaces.normalize(input) else { return .done(.failed(tr("サーバ URL が正しくありません"))) }
         // A registered address keeps its spelling: it names the Keychain item and the local store.
         var serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
-        guard let url = URL(string: serverUrl) else { return .done(.failed("サーバ URL が正しくありません")) }
+        guard let url = URL(string: serverUrl) else { return .done(.failed(tr("サーバ URL が正しくありません"))) }
         var info: ServerInfoOut?
         do {
             let answer = try await ApiClient(baseUrl: url).serverInfo()
@@ -352,11 +354,11 @@ final class AppController {
             info = nil
         }
         if adding {
-            guard let info else { return .done(.failed("Taylis のサーバーではありません")) }
+            guard let info else { return .done(.failed(tr("Taylis のサーバーではありません"))) }
             if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info.workspaceId, in: workspaces) {
                 if known.isSignedIn {
                     await switchTo(known.serverUrl)
-                    notice = "\(known.name) は登録済みです"
+                    notice = tr("\(known.name) は登録済みです")
                     return .done(.switched)
                 }
                 serverUrl = known.serverUrl // registered but signed out: sign in to it again
@@ -398,17 +400,17 @@ final class AppController {
     }
 
     func beginTotpSetup(password: String) async throws -> TotpSetupOut {
-        guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "ログインしていません") }
+        guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: tr("ログインしていません")) }
         return try await api.totpSetup(password: password)
     }
 
     func enableTotp(code: String) async throws -> TotpEnabledOut {
-        guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "ログインしていません") }
+        guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: tr("ログインしていません")) }
         return try await api.totpEnable(code: Totp.normalize(code))
     }
 
     func disableTotp(password: String) async throws {
-        guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "ログインしていません") }
+        guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: tr("ログインしていません")) }
         try await api.totpDisable(password: password)
     }
 
@@ -420,12 +422,12 @@ final class AppController {
     /// M12h: create the account the link allows and enter the session; returns the failure text, if any. The server
     /// becomes a workspace like any other (one account per server).
     func acceptInvite(server: URL, token: String, username: String, displayName: String, password: String) async -> String? {
-        guard let normalized = Workspaces.normalize(server.absoluteString) else { return "サーバ URL が正しくありません" }
+        guard let normalized = Workspaces.normalize(server.absoluteString) else { return tr("サーバ URL が正しくありません") }
         let serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
         let answer = try? await ApiClient(baseUrl: URL(string: serverUrl) ?? server).serverInfo()
         let info = answer?.product == "chikuwachat" ? answer : nil
         if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info?.workspaceId, in: workspaces), known.isSignedIn {
-            return "\(known.name) にはすでにログインしています (1 つのサーバーに 1 アカウント)"
+            return tr("\(known.name) にはすでにログインしています (1 つのサーバーに 1 アカウント)")
         }
         let api = makeClient(serverUrl: serverUrl, username: username)
         do {
@@ -767,7 +769,7 @@ final class AppController {
     /// The refusal text when `bytes` exceed the server's attachment limit (from bootstrap); nil while it fits or is not known yet.
     func attachmentTooLarge(_ bytes: Int) -> String? {
         guard let limit = store.limits?.maxAttachmentBytes, bytes > limit else { return nil }
-        return "\(ErrorMessages.byCode["attachment_too_large"] ?? ErrorMessages.unknown) (上限 \(formatSize(Int64(limit))))"
+        return tr("\(ErrorMessages.byCode["attachment_too_large"] ?? ErrorMessages.unknown) (上限 \(formatSize(Int64(limit))))")
     }
 
     /// Fetch with authentication into a per-attachment temporary file for preview / sharing.
@@ -941,7 +943,7 @@ final class AppController {
         do {
             let row = try await api.createReminder(messageId: messageId, remindAt: at, note: note)
             store.applyReminder(row)
-            notice = "\(Schedule.label(at)) にリマインドします"
+            notice = tr("\(Schedule.label(at)) にリマインドします")
             return true
         } catch { self.error = describe(error); return false }
     }
@@ -964,7 +966,7 @@ final class AppController {
             let row = try await api.scheduleMessage(channelId: channelId, clientMsgId: UUID().uuidString.lowercased(), body: body,
                                                     parentId: parentId, attachmentIds: attachmentIds, sendAt: sendAt)
             store.applyScheduled(row)
-            notice = "\(Schedule.label(sendAt)) に送信します"
+            notice = tr("\(Schedule.label(sendAt)) に送信します")
             return true
         } catch { self.error = describe(error); return false }
     }
@@ -1002,7 +1004,7 @@ final class AppController {
     func copyPermalink(_ messageId: String) {
         guard let url = permalink(messageId) else { return }
         UIPasteboard.general.string = url
-        notice = "リンクをコピーしました"
+        notice = tr("リンクをコピーしました")
     }
 
     /// A permalink tapped in a body: fetch the message (membership is checked there), reveal it and open its conversation.
@@ -1030,7 +1032,7 @@ final class AppController {
         if engine.status != .online {
             error = ErrorMessages.network
         } else if !(await engine.setThreadFollow(parentId, following: following)) {
-            error = following ? "スレッドをフォローできませんでした" : "スレッドのフォローを外せませんでした"
+            error = following ? tr("スレッドをフォローできませんでした") : tr("スレッドのフォローを外せませんでした")
         }
     }
 
@@ -1055,7 +1057,7 @@ final class AppController {
         store.setBlocked(userId, on: on)
         do {
             if on { _ = try await api.blockUser(id: userId) } else { _ = try await api.unblockUser(id: userId) }
-            notice = on ? "ブロックしました" : "ブロックを解除しました"
+            notice = on ? tr("ブロックしました") : tr("ブロックを解除しました")
         } catch {
             store.setBlocked(userId, on: before)
             self.error = describe(error)
@@ -1068,7 +1070,7 @@ final class AppController {
         do {
             let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
             _ = try await api.reportMessage(id: messageId, reason: reason, note: trimmed.isEmpty ? nil : trimmed)
-            notice = "報告しました。管理者が確認します"
+            notice = tr("報告しました。管理者が確認します")
             return true
         } catch {
             self.error = describe(error)
@@ -1079,7 +1081,7 @@ final class AppController {
     /// M104 「アカウントを削除」 (MODERATION.md §2): my password, or my username for an account without one. On success the
     /// server has ended every session and this workspace is signed out here. Returns the error to show, or nil.
     func deleteAccount(secret: String) async -> String? {
-        guard let api, let serverUrl = activeServerUrl else { return "ログインしていません" }
+        guard let api, let serverUrl = activeServerUrl else { return tr("ログインしていません") }
         let hasPassword = (store.me ?? me)?.passwordSet ?? true
         do {
             try await api.deleteAccount(password: hasPassword ? secret : nil, confirmUsername: hasPassword ? nil : secret)
@@ -1289,7 +1291,7 @@ final class AppController {
     func shareMessage(_ message: MessageState, to channelId: String, comment: String) async -> Bool {
         guard let engine, let link = permalink(message.id) else { return false }
         await engine.send(channelId, body: Share.body(original: message.body, permalink: link, comment: comment))
-        notice = "共有しました"
+        notice = tr("共有しました")
         return true
     }
 
@@ -1334,9 +1336,11 @@ final class AppController {
     func updateProfile(title: String?? = nil, statusText: String?? = nil, statusEmoji: String?? = nil, statusExpiresAt: String?? = nil,
                        dndUntil: String?? = nil, quietHours: QuietHours?? = nil, notifyKeywords: [String]? = nil,
                        presenceHidden: Bool? = nil, notificationDefault: String? = nil, notifyReactions: Bool? = nil,
-                       quickReactions: [String]?? = nil, notifyTasks: Bool? = nil, navItems: [NavItem]?? = nil) async -> Bool {
+                       quickReactions: [String]?? = nil, notifyTasks: Bool? = nil, navItems: [NavItem]?? = nil,
+                       locale: String?? = nil, quiet: Bool = false) async -> Bool {
         guard let api else { return false }
         var fields: [String: JSONValue] = [:]
+        if let locale { fields["locale"] = locale.map(JSONValue.string) ?? .null }
         if let navItems {  // M111
             fields["nav_items"] = navItems.map { list in .array(list.map { .object(["key": .string($0.key), "visible": .bool($0.visible)]) }) } ?? .null
         }
@@ -1366,7 +1370,11 @@ final class AppController {
             store.setMe(updated)
             store.upsertUser(updated.asPublic)
             return true
-        } catch { self.error = describe(error); return false }
+        } catch {
+            // `quiet`: a background save that is tried again later (the language) shows only what will not pass then.
+            if quiet, case ApiError.network = error { return false }
+            self.error = describe(error); return false
+        }
     }
 
     /// M50: the long-press quick reactions (nil: back to the recent-first rule), shown at once and taken back when the
@@ -1379,6 +1387,42 @@ final class AppController {
         if await updateProfile(quickReactions: .some(list)) { return true }
         if store.me == shown { store.setMe(before) }
         return false
+    }
+
+    /// 自分 → 表示 → 言語 (nil: follow the device): the UI switches at once, here even offline; the server keeps it for
+    /// my other devices (sent again with the next me while it has not taken it, `UILanguage.needsUpload`).
+    func setLanguage(_ language: AppLanguage?) {
+        if language != UILanguage.shared.choice { reopenLanguageSettings = true }
+        UILanguage.shared.set(language)
+        uploadLanguage()
+    }
+
+    /// `UserMe.locale` as it arrives (bootstrap, user.updated → /users/me, the cache): a choice not yet on the server
+    /// is sent; otherwise the server's value (chosen on another device) is adopted.
+    func languageSettingChanged(_ setting: LocaleSetting?) {
+        guard case .value(let raw)? = setting else { return }
+        let language = UILanguage.shared
+        if language.needsUpload {
+            if raw != language.choice?.rawValue { uploadLanguage() } else { language.needsUpload = false }
+        } else if raw != language.choice?.rawValue {
+            language.adoptServerValue(raw)
+        }
+    }
+
+    private var languageUpload: Task<Void, Never>?
+    private func uploadLanguage() {
+        guard store.me?.locale.isSupported == true, languageUpload == nil else { return }
+        languageUpload = Task { [weak self] in
+            guard let self else { return }
+            let choice = UILanguage.shared.choice
+            let raw = choice?.rawValue
+            if await self.updateProfile(locale: .some(raw), quiet: true), UILanguage.shared.choice == choice {
+                UILanguage.shared.needsUpload = false
+            }
+            self.languageUpload = nil
+            // Changed again while that was on its way.
+            if UILanguage.shared.needsUpload, self.store.me?.locale != .value(UILanguage.shared.choice?.rawValue) { self.uploadLanguage() }
+        }
     }
 
     /// M111: 「ホームのタイル」 (nil: back to the defaults), shown at once and taken back when the server refuses (the
@@ -1412,10 +1456,10 @@ final class AppController {
     /// L4: the author (or an admin) reminds them; each gets a reminder only they see. What happened, in words for the
     /// sheet that asked (the app's toasts are behind it), and whether it went through.
     func remindUnacknowledged(_ message: MessageState) async -> (ok: Bool, text: String) {
-        guard let api else { return (false, "サーバーに接続できません") }
+        guard let api else { return (false, tr("サーバーに接続できません")) }
         do {
             let count = try await api.remindUnacknowledged(messageId: message.id)
-            return (true, count > 0 ? "\(count) 人にリマインドしました" : "リマインド済みの人だけです")
+            return (true, count > 0 ? tr("\(count) 人にリマインドしました") : tr("リマインド済みの人だけです"))
         } catch { return (false, describe(error)) }
     }
 
@@ -1488,7 +1532,7 @@ final class AppController {
 
     /// M96: rename myself; nil when done, else the reason for under the field (taken, reserved, 3 times in 24 hours …).
     func renameMe(_ username: String) async -> String? {
-        guard let api, let serverUrl = activeServerUrl else { return "ログインしていません" }
+        guard let api, let serverUrl = activeServerUrl else { return tr("ログインしていません") }
         do {
             let updated = try await api.updateUsername(username)
             me = updated
@@ -1511,7 +1555,7 @@ final class AppController {
 
     /// Password change from the settings sheet; returns the error text or nil.
     func changePasswordInSession(current: String, new: String) async -> String? {
-        guard let api else { return "ログインしていません" }
+        guard let api else { return tr("ログインしていません") }
         do { try await api.changePassword(current: current, new: new); return nil } catch { return describe(error) }
     }
 
@@ -1661,7 +1705,7 @@ final class AppController {
             let answer = try await api.decidePoll(messageId: message.id, index: index, createEvent: createEvent)
             store.upsertMessage(answer)
             store.setMyVotes(answer)
-            notice = "日程を決定しました"
+            notice = tr("日程を決定しました")
             return .decided
         } catch {
             if createEvent, let refused = error as? ApiError, refused.code == "posting_restricted" { return .eventRefused }
@@ -1697,10 +1741,10 @@ final class AppController {
         guard let api, let state = store.channels[channelId] else { return false }
         let isDm = state.channel.type == "dm" || state.channel.type == "group_dm"
         guard let spec = SlashCommands.all.first(where: { $0.name == command.name }) else {
-            error = "/\(command.name) というコマンドはありません (/help で一覧)"
+            error = tr("/\(command.name) というコマンドはありません (/help で一覧)")
             return false
         }
-        if spec.channelOnly && isDm { error = "/\(command.name) はチャンネルでだけ使えます"; return false }
+        if spec.channelOnly && isDm { error = tr("/\(command.name) はチャンネルでだけ使えます"); return false }
         func user(_ handle: String) -> UserPublic? {
             let name = (handle.hasPrefix("@") ? String(handle.dropFirst()) : handle).lowercased()
             return store.users.values.first { $0.username.lowercased() == name }
@@ -1715,22 +1759,22 @@ final class AppController {
         case "status":
             if command.args.isEmpty || command.args == "clear" {
                 let ok = await updateProfile(statusText: .some(nil), statusEmoji: .some(nil), statusExpiresAt: .some(nil))
-                if ok { notice = "ステータスを消しました" }
+                if ok { notice = tr("ステータスを消しました") }
                 return ok
             }
             let parts = SlashCommands.splitStatus(command.args)
             let ok = await updateProfile(statusText: .some(parts.text.isEmpty ? nil : parts.text), statusEmoji: .some(parts.emoji), statusExpiresAt: .some(nil))
-            if ok { notice = "ステータスを更新しました" }
+            if ok { notice = tr("ステータスを更新しました") }
             return ok
         case "dnd":
             if command.args.isEmpty || command.args == "off" {
                 let ok = await updateProfile(dndUntil: .some(nil))
-                if ok { notice = "通知の一時停止を解除しました" }
+                if ok { notice = tr("通知の一時停止を解除しました") }
                 return ok
             }
             guard let until = SlashCommands.duration(command.args) else { error = "/dnd 30m | 1h | 2h | 4h | tomorrow | off"; return false }
             let ok = await updateProfile(dndUntil: .some(iso.string(from: until)))
-            if ok { notice = "\(Schedule.label(until)) まで通知を止めます" }
+            if ok { notice = tr("\(Schedule.label(until)) まで通知を止めます") }
             return ok
         case "topic":
             return await updateTopic(channelId, topic: command.args) // false when refused: the composer keeps the text
@@ -1739,20 +1783,20 @@ final class AppController {
             return true
         case "invite":
             let handles = command.args.split(separator: " ").map(String.init).filter { !$0.isEmpty }
-            if handles.isEmpty { error = "/invite @名前"; return false }
+            if handles.isEmpty { error = tr("/invite @名前"); return false }
             var targets: [String] = []
             for handle in handles {
-                guard let target = user(handle) else { error = "\(handle) というユーザーはいません"; return false }
+                guard let target = user(handle) else { error = tr("\(handle) というユーザーはいません"); return false }
                 if !targets.contains(target.id) { targets.append(target.id) }
             }
             // M89: one request (one 「追加しました」 line); 1 by 1 on a server before M88.
             do { _ = try await api.addMembers(channelId: channelId, userIds: targets) } catch { self.error = describe(error); return false }
-            notice = "\(handles.count) 人を追加しました"
+            notice = tr("\(handles.count) 人を追加しました")
             return true
         case "join":
             let name = (command.args.hasPrefix("#") ? String(command.args.dropFirst()) : command.args).lowercased()
             guard let target = store.channels.values.first(where: { $0.channel.type == "public" && ($0.channel.name ?? "").lowercased() == name }) else {
-                error = "#\(name) という公開チャンネルはありません"
+                error = tr("#\(name) という公開チャンネルはありません")
                 return false
             }
             if !target.isMember {
@@ -1761,7 +1805,7 @@ final class AppController {
             PushCenter.shared.pendingChannelId = target.id
             return true
         case "dm":
-            guard let target = user(command.args.split(separator: " ").first.map(String.init) ?? "") else { error = "/dm @名前"; return false }
+            guard let target = user(command.args.split(separator: " ").first.map(String.init) ?? "") else { error = tr("/dm @名前"); return false }
             guard let id = await openDmWith(target.id) else { return false }
             PushCenter.shared.pendingChannelId = id
             return true
@@ -1770,12 +1814,12 @@ final class AppController {
             guard let until else { error = "/mute 1h | 8h | tomorrow"; return false }
             // The channel's own level goes back as it is (nil keeps it following the overall setting, M35).
             _ = await setTimedMute(state, until: until)
-            notice = "\(Schedule.label(until)) まで通知を止めます"
+            notice = tr("\(Schedule.label(until)) まで通知を止めます")
             return true
         case "unmute":
             // Both mutes end (the timed one and M35's until unmuted); the level stays.
             _ = await setNotification(channelId, level: state.ownNotificationLevel, mutedUntil: nil, muted: false)
-            notice = "通知を再開しました"
+            notice = tr("通知を再開しました")
             return true
         case "me":
             if command.args.isEmpty { return false }
@@ -1786,9 +1830,9 @@ final class AppController {
             return true
         case "poll":
             let parts = command.args.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-            guard parts.count >= 3 else { error = "/poll 質問 | 選択肢 | 選択肢 …"; return false }
+            guard parts.count >= 3 else { error = tr("/poll 質問 | 選択肢 | 選択肢 …"); return false }
             return await createPoll(channelId: channelId, parentId: parentId, question: parts[0], options: Array(parts.dropFirst()), multiple: false)
-        case "日程":  // M54: a scheduling poll of the dates read (the composer opens the form with them instead, to check first)
+        case "日程":  // M54: a scheduling poll of the dates read (the composer opens the form with them instead, to check first) (i18n-ignore)
             let read = Templates.readSchedule(command.args, today: .today())
             let slots = read.map { SchedulePoll.slots(from: $0.entries) } ?? []
             guard let read, (SchedulePoll.minSlots...SchedulePoll.maxSlots).contains(slots.count) else {

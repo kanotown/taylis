@@ -31,7 +31,7 @@ struct CalendarEventForm: View {
         let action: Action
         let allowThis: Bool
 
-        var title: String { action == .delete ? "繰り返しの予定の削除" : "繰り返しの予定の変更" }
+        var title: String { action == .delete ? tr("繰り返しの予定の削除") : tr("繰り返しの予定の変更") }
         var scopes: [OccurrenceScope] { OccurrenceScope.allCases.filter { allowThis || $0 != .this } }
     }
 
@@ -58,8 +58,8 @@ struct CalendarEventForm: View {
     private var canSave: Bool { hub != nil && !busy && problem == nil && (editable || alarmChanged) }
 
     private var title: String {
-        guard event != nil else { return "予定を追加" }
-        return editable ? "予定を編集" : "予定"
+        guard event != nil else { return tr("予定を追加") }
+        return editable ? tr("予定を編集") : tr("予定")
     }
 
     var body: some View {
@@ -93,7 +93,7 @@ struct CalendarEventForm: View {
                 }
             }
             .environment(\.timeZone, CalendarDates.zone)
-            .environment(\.locale, Locale(identifier: "ja_JP")) // the pickers say 2026年10月1日, as the rest of the form
+            .environment(\.locale, UILanguage.shared.locale) // the pickers say 2026年10月1日, as the rest of the form
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -135,7 +135,7 @@ struct CalendarEventForm: View {
                        displayedComponents: draft.allDay ? [.date] : [.date, .hourAndMinute])
         } footer: {
             // An empty title only greys out 追加; a time that cannot be says why.
-            if let problem, problem != "題名を入れてください" { Text(problem).foregroundStyle(.red) }
+            if let problem, problem != tr("題名を入れてください") { Text(problem).foregroundStyle(.red) }
         }
         RepeatPickerSection(repetition: Binding(get: { draft.repetition }, set: { draft.repetition = $0; error = nil }), start: draft.startDay)
         Section {
@@ -160,7 +160,7 @@ struct CalendarEventForm: View {
     }
 
     private func calendarName(_ channelId: String?) -> String {
-        guard let channelId else { return "自分" }
+        guard let channelId else { return tr("自分") }
         return "#" + (controller.store.channel(channelId)?.channel.name ?? event?.channelName ?? "?")
     }
 
@@ -275,7 +275,7 @@ struct RecurrenceLine: View {
     var body: some View {
         Label(CalendarRecurrence.describe(event.rrule, start: CalendarDates.eventDays(event).first), systemImage: "repeat")
             .foregroundStyle(.secondary)
-            .accessibilityLabel("繰り返し: " + CalendarRecurrence.describe(event.rrule, start: CalendarDates.eventDays(event).first))
+            .accessibilityLabel(tr("繰り返し: ") + CalendarRecurrence.describe(event.rrule, start: CalendarDates.eventDays(event).first))
     }
 }
 

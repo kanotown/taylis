@@ -24,22 +24,33 @@ struct ChannelIntroView: View {
     private func summary(store: Store, title: String) -> String {
         let out = channel.channel
         if out.isDm {
-            return DMList.isNotesToSelf(channel, meId: store.me?.id) ? DMList.notesIntro : "\(title) との会話の始まりです。"
+            return DMList.isNotesToSelf(channel, meId: store.me?.id) ? DMList.notesIntro : tr("\(title) との会話の始まりです。")
         }
-        var text = ""
-        if let creator = out.createdBy.flatMap({ store.users[$0]?.displayName }) { text += "\(creator) が" }
-        if let date = Self.date(out.createdAt) { text += Self.dayFormatter.string(from: date) + "に" }
-        text += "作成した\(out.type == "private" ? "非公開" : "公開")チャンネルの始まりです。"
-        if let count = out.memberCount, count > 0 { text += " メンバー \(count) 人。" }
+        let creator = out.createdBy.flatMap { store.users[$0]?.displayName }
+        let day = Self.date(out.createdAt).map { Self.dayFormatter.string(from: $0) }
+        let isPrivate = out.type == "private"
+        var text: String
+        switch (creator, day) {
+        case let (creator?, day?):
+            text = isPrivate ? tr("\(creator) が\(day)に作成した非公開チャンネルの始まりです。") : tr("\(creator) が\(day)に作成した公開チャンネルの始まりです。")
+        case let (creator?, nil):
+            text = isPrivate ? tr("\(creator) が作成した非公開チャンネルの始まりです。") : tr("\(creator) が作成した公開チャンネルの始まりです。")
+        case let (nil, day?):
+            text = isPrivate ? tr("\(day)に作成した非公開チャンネルの始まりです。") : tr("\(day)に作成した公開チャンネルの始まりです。")
+        case (nil, nil):
+            text = isPrivate ? tr("作成した非公開チャンネルの始まりです。") : tr("作成した公開チャンネルの始まりです。")
+        }
+        if let count = out.memberCount, count > 0 { text += tr(" メンバー \(count) 人。") }
         return text
     }
 
-    private static let dayFormatter: DateFormatter = {
+    /// 2026年10月5日 / Oct 5, 2026 / 2026年10月5日, in the UI language.
+    private static var dayFormatter: DateFormatter {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "yyyy年M月d日"
+        formatter.locale = UILanguage.shared.locale
+        formatter.setLocalizedDateFormatFromTemplate("yMMMd")
         return formatter
-    }()
+    }
     private static let fractional: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

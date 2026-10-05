@@ -38,11 +38,11 @@ struct DirectoryView: View {
         if let topic = controller.store.roster[user.id]?.researchTopic, !topic.isEmpty { parts.append(topic) }
         if let status = activeStatus(user) { parts.append("\(status.emoji) \(status.text)".trimmingCharacters(in: .whitespaces)) }
         if !parts.isEmpty { return parts.joined(separator: " · ") }
-        if user.role == "bot" { return controller.isAiBot(user.id) ? "AI のボット" : "受信 Webhook" }
+        if user.role == "bot" { return controller.isAiBot(user.id) ? tr("AI のボット") : tr("受信 Webhook") }
         switch controller.store.presenceOf(user.id) {
-        case "online": return "オンライン"
-        case "away": return "離席中"
-        default: return "オフライン"
+        case "online": return tr("オンライン")
+        case "away": return tr("離席中")
+        default: return tr("オフライン")
         }
     }
 

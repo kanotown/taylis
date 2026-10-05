@@ -290,12 +290,12 @@ enum AiRules {
     }
 
     /// The AI codes are worded here (docs/AI.md §5) so the sheet says what to do; anything else as every other error.
-    static let byCode: [String: String] = [
-        "ai_unavailable": "AI は今使えません。管理者が AI を設定していないか、止めています",
-        "ai_budget_exceeded": "今月の AI の予算の上限に達しました。来月まで要約は使えません",
-        "ai_daily_limit": "今日の AI の利用回数の上限に達しました。明日またお試しください",
-        "ai_run_not_found": "要約が見つかりません",
-    ]
+    static var byCode: [String: String] { [
+        "ai_unavailable": tr("AI は今使えません。管理者が AI を設定していないか、止めています"),
+        "ai_budget_exceeded": tr("今月の AI の予算の上限に達しました。来月まで要約は使えません"),
+        "ai_daily_limit": tr("今日の AI の利用回数の上限に達しました。明日またお試しください"),
+        "ai_run_not_found": tr("要約が見つかりません"),
+    ] }
 
     static func errorText(_ error: Error) -> String {
         if case ApiError.api(_, let code, _) = error, let text = byCode[code] { return text }
@@ -325,11 +325,11 @@ enum AiRules {
     /// it cannot be asked for now (the shared error texts). nil: nothing to say.
     static func targetLine(_ target: AiSummaryTargetOut) -> String? {
         if !target.available {
-            return target.reason.flatMap { ErrorMessages.byCode[$0] } ?? "今は要約できません"
+            return target.reason.flatMap { ErrorMessages.byCode[$0] } ?? tr("今は要約できません")
         }
         guard let provider = target.provider, !provider.isEmpty else { return nil }
-        if let name = target.agentName, !name.isEmpty { return "要約は \(name) (\(providerLabel(provider))) に送られます" }
-        return "要約は \(providerLabel(provider)) に送られます"
+        if let name = target.agentName, !name.isEmpty { return tr("要約は \(name) (\(providerLabel(provider))) に送られます") }
+        return tr("要約は \(providerLabel(provider)) に送られます")
     }
 
     /// The summary sheet's caption: the provider and model the run actually used, e.g. 「OpenAI · gpt-6.1-sol」.
@@ -342,33 +342,33 @@ enum AiRules {
 
     /// A run that failed on the server: its reason when it gave one.
     static func runFailureText(_ reason: String?) -> String {
-        guard let reason = reason?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty else { return "要約できませんでした" }
-        return "要約できませんでした: \(reason)"
+        guard let reason = reason?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty else { return tr("要約できませんでした") }
+        return tr("要約できませんでした: \(reason)")
     }
 
     static func title(_ scope: AiSummaryScope) -> String {
         switch scope {
-        case .unread: return "未読の要約"
-        case .recent(let days): return "直近 \(days) 日の要約"
-        case .thread: return "スレッドの要約"
+        case .unread: return tr("未読の要約")
+        case .recent(let days): return tr("直近 \(days) 日の要約")
+        case .thread: return tr("スレッドの要約")
         }
     }
 
-    static func progressText(running: Bool) -> String { running ? "要約しています…" : "順番を待っています…" }
+    static func progressText(running: Bool) -> String { running ? tr("要約しています…") : tr("順番を待っています…") }
 
-    static func omittedNote(_ count: Int) -> String? { count > 0 ? "古い \(count) 件は省きました" : nil }
+    static func omittedNote(_ count: Int) -> String? { count > 0 ? tr("古い \(count) 件は省きました") : nil }
 
     /// docs/AI.md §4: shown in the channel details while an AI bot is a member.
     static func notice(_ agents: [AiAgentPublic]) -> String? {
         guard !agents.isEmpty else { return nil }
-        let names = agents.map(\.name).joined(separator: "・")
-        return "AI (\(names)) が参加しています。メンションしたときと要約のときに、会話の一部が \(providers(agents)) の API に送られます"
+        let names = agents.map(\.name).joined(separator: tr("・"))
+        return tr("AI (\(names)) が参加しています。メンションしたときと要約のときに、会話の一部が \(providers(agents)) の API に送られます")
     }
 
     /// §12: each bot's model decides where its part goes (Anthropic, OpenAI or both), as on the web.
     static func providers(_ agents: [AiAgentPublic]) -> String {
         let openai = agents.contains { ($0.model ?? "").hasPrefix("gpt-") }
         let anthropic = agents.contains { !($0.model ?? "").hasPrefix("gpt-") }
-        return [anthropic ? "Anthropic" : nil, openai ? "OpenAI" : nil].compactMap { $0 }.joined(separator: " と ")
+        return [anthropic ? "Anthropic" : nil, openai ? "OpenAI" : nil].compactMap { $0 }.joined(separator: tr(" と "))
     }
 }

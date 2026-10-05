@@ -7,9 +7,10 @@ import UIKit
 /// canvas editor, which writes it into the text; キャンセル changes nothing.
 struct CanvasTableEditor: View {
     enum Layout: String, CaseIterable, Identifiable {
-        case cards = "行ごと"
-        case grid = "表の形"
+        case cards
+        case grid
         var id: String { rawValue }
+        var label: String { self == .cards ? tr("行ごと") : tr("表の形") }
     }
 
     let target: CanvasTable.Target
@@ -30,7 +31,7 @@ struct CanvasTableEditor: View {
         NavigationStack {
             VStack(spacing: 0) {
                 Picker("表示", selection: $layout) {
-                    ForEach(Layout.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(Layout.allCases) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
@@ -91,7 +92,7 @@ struct CanvasTableEditor: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     HStack(spacing: 4) {
-                        field(headerBinding(c), prompt: "列の名前", column: c)
+                        field(headerBinding(c), prompt: tr("列の名前"), column: c)
                             .fontWeight(.semibold)
                             .accessibilityLabel("\(c + 1) 列目の見出し")
                         columnMenu(c)
@@ -233,7 +234,7 @@ struct CanvasTableEditor: View {
 
     private func label(_ c: Int) -> String {
         let name = (table.header[safe: c] ?? "").trimmingCharacters(in: .whitespaces)
-        return name.isEmpty ? "\(c + 1) 列目" : name
+        return name.isEmpty ? tr("\(c + 1) 列目") : name
     }
 
     private func headerBinding(_ c: Int) -> Binding<String> {
@@ -254,9 +255,9 @@ struct CanvasTableEditor: View {
 
     static func alignName(_ align: CanvasTable.Align) -> String {
         switch align {
-        case .left: return "左"
-        case .center: return "中央"
-        case .right: return "右"
+        case .left: return tr("左")
+        case .center: return tr("中央")
+        case .right: return tr("右")
         }
     }
 

@@ -15,11 +15,11 @@ enum Totp {
     static func errorText(_ error: Error) -> String? {
         guard case ApiError.api(_, let code, _) = error else { return nil }
         switch code {
-        case "invalid_password": return "パスワードが違います"
-        case "invalid_totp": return "認証コードが違います"
-        case "totp_required": return "認証アプリのコードを入力してください"
-        case "totp_already_enabled": return "2 要素認証はすでに有効です"
-        case "totp_setup_required": return "先に設定を始めてください"
+        case "invalid_password": return tr("パスワードが違います")
+        case "invalid_totp": return tr("認証コードが違います")
+        case "totp_required": return tr("認証アプリのコードを入力してください")
+        case "totp_already_enabled": return tr("2 要素認証はすでに有効です")
+        case "totp_setup_required": return tr("先に設定を始めてください")
         default: return nil
         }
     }
@@ -31,6 +31,6 @@ enum Totp {
 
     /// The recovery codes as one text block for the clipboard.
     static func recoveryCodesText(_ codes: [String]) -> String {
-        (["Taylis の回復コード (各 1 回だけ使えます)", ""] + codes).joined(separator: "\n")
+        ([tr("Taylis の回復コード (各 1 回だけ使えます)"), ""] + codes).joined(separator: "\n")
     }
 }

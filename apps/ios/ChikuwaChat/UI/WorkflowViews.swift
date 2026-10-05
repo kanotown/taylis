@@ -151,7 +151,7 @@ struct WorkflowFormView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text(workflow.description.isEmpty ? "\(targetName) に投稿します" : workflow.description)
+                    Text(workflow.description.isEmpty ? tr("\(targetName) に投稿します") : workflow.description)
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
                 ForEach(workflow.fields) { field in
@@ -230,8 +230,8 @@ struct WorkflowFormView: View {
                                    title: field.label, single: !field.multiple)
             } label: {
                 let ids = value.wrappedValue.users
-                Text(ids.isEmpty ? (field.multiple ? "人を選ぶ" : "人を選ぶ (1 人)")
-                     : ids.map { controller.store.users[$0]?.displayName ?? "?" }.joined(separator: "、"))
+                Text(ids.isEmpty ? (field.multiple ? tr("人を選ぶ") : tr("人を選ぶ (1 人)"))
+                     : ids.map { controller.store.users[$0]?.displayName ?? "?" }.joined(separator: tr("、")))
                     .foregroundStyle(ids.isEmpty ? Color.secondary : Color.primary)
                     .lineLimit(2)
             }
@@ -258,7 +258,7 @@ struct WorkflowFormView: View {
                 dismiss()
             case .invalid(let fields):
                 errors = fields
-                problem = "入力を確認してください"
+                problem = tr("入力を確認してください")
             case .failed(let text):
                 problem = text
             }

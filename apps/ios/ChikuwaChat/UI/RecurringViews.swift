@@ -36,7 +36,7 @@ struct RecurringPostsSection: View {
                 Text("読み込めませんでした").foregroundStyle(.red)
             case .ready(let list):
                 if list.isEmpty {
-                    Text("定期投稿はありません。" + (manage ? "毎週のスレッド (週報など) をボットが立て、返信で提出を集められます。" : ""))
+                    Text(tr("定期投稿はありません。") + (manage ? tr("毎週のスレッド (週報など) をボットが立て、返信で提出を集められます。") : ""))
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
                 ForEach(list) { post in
@@ -69,20 +69,20 @@ struct RecurringPostsSection: View {
         .alert("「\(deleting?.name ?? "")」を削除しますか？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                presenting: deleting) { post in
             Button("キャンセル", role: .cancel) {}
-            Button("削除", role: .destructive) { act(post, done: "削除しました") { try await $0.deleteRecurringPost(id: post.id) } }
+            Button("削除", role: .destructive) { act(post, done: tr("削除しました")) { try await $0.deleteRecurringPost(id: post.id) } }
         } message: { _ in Text("これまでの投稿と提出状況は残ります。") }
     }
 
     @ViewBuilder
     private func actions(_ post: RecurringPostOut) -> some View {
-        Button("今すぐ投稿", systemImage: "paperplane") { act(post, done: "投稿しました") { _ = try await $0.runRecurringPost(id: post.id) } }
+        Button("今すぐ投稿", systemImage: "paperplane") { act(post, done: tr("投稿しました")) { _ = try await $0.runRecurringPost(id: post.id) } }
         if post.enabled {
             Button("止める", systemImage: "pause.circle") {
-                act(post, done: "止めました") { _ = try await $0.updateRecurringPost(id: post.id, RecurringPostPatch(enabled: false)) }
+                act(post, done: tr("止めました")) { _ = try await $0.updateRecurringPost(id: post.id, RecurringPostPatch(enabled: false)) }
             }
         } else {
             Button("再開", systemImage: "play.circle") {
-                act(post, done: "再開しました") { _ = try await $0.updateRecurringPost(id: post.id, RecurringPostPatch(enabled: true)) }
+                act(post, done: tr("再開しました")) { _ = try await $0.updateRecurringPost(id: post.id, RecurringPostPatch(enabled: true)) }
             }
         }
         Button("編集", systemImage: "pencil") { editing = .post(post) }
@@ -92,12 +92,12 @@ struct RecurringPostsSection: View {
     private func summary(_ post: RecurringPostOut) -> RecurringPostRow.Summary {
         let store = controller.store
         let collect = post.collect.map { spec in
-            "回収: " + RecurringRules.targetsSummary(spec, groupName: { store.groups[$0]?.name }, userName: { store.users[$0]?.displayName })
+            tr("回収: ") + RecurringRules.targetsSummary(spec, groupName: { store.groups[$0]?.name }, userName: { store.users[$0]?.displayName })
                 + " · " + RecurringRules.dueSummary(spec.due)
         }
         return .init(schedule: RecurringRules.scheduleSummary(post.schedule, tz: post.tz, localTz: localTz),
-                     next: post.enabled && !post.nextRunAt.isEmpty ? "次回 " + RecurringRules.shortDateTime(post.nextRunAt) : nil,
-                     collect: collect ?? "回収なし")
+                     next: post.enabled && !post.nextRunAt.isEmpty ? tr("次回 ") + RecurringRules.shortDateTime(post.nextRunAt) : nil,
+                     collect: collect ?? tr("回収なし"))
     }
 
     private func load() async {
@@ -215,7 +215,7 @@ struct RecurringPostForm: View {
 
     private var localTz: String { CalendarDates.zoneId }
     private var zone: String { post?.tz ?? localTz }
-    private var title: String { post == nil ? "定期投稿を追加" : "定期投稿を編集" }
+    private var title: String { post == nil ? tr("定期投稿を追加") : tr("定期投稿を編集") }
     private var store: Store { controller.store }
 
     /// The channel's people who can submit (bots never do).
@@ -248,7 +248,7 @@ struct RecurringPostForm: View {
                 }
             }
             .environment(\.timeZone, CalendarDates.zone)
-            .environment(\.locale, Locale(identifier: "ja_JP"))
+            .environment(\.locale, UILanguage.shared.locale)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -320,7 +320,7 @@ struct RecurringPostForm: View {
                 }
                 if !draft.allMembers {
                     NavigationLink {
-                        TaskAssigneePicker(controller: controller, memberIds: people, selected: $draft.userIds, title: "提出する人")
+                        TaskAssigneePicker(controller: controller, memberIds: people, selected: $draft.userIds, title: tr("提出する人"))
                     } label: {
                         LabeledContent("人") {
                             Text(peopleSummary).lineLimit(2)
@@ -363,7 +363,7 @@ struct RecurringPostForm: View {
     }
 
     private var peopleSummary: String {
-        draft.userIds.isEmpty ? "なし" : draft.userIds.map { store.users[$0]?.displayName ?? "?" }.joined(separator: "、")
+        draft.userIds.isEmpty ? tr("なし") : draft.userIds.map { store.users[$0]?.displayName ?? "?" }.joined(separator: tr("、"))
     }
 
     /// "HH:MM" in the draft as a time of today for the picker (the zone does not matter: only the clock is read back).
@@ -404,7 +404,7 @@ struct RecurringPostForm: View {
             } else {
                 _ = try await client.createRecurringPost(channelId: channel.id, draft.create(tz: localTz))
             }
-            onSaved("保存しました")
+            onSaved(tr("保存しました"))
             dismiss()
         } catch {
             self.error = controller.describe(error)
@@ -478,7 +478,7 @@ struct CollectionStatusView: View {
                     let lists = RecurringRules.lists(collection)
                     let chip = RecurringRules.chip(collection, meId: store.me?.id, now: now ?? Date())
                     Section {
-                        Text(chip.label + (chip.overdue ? " (締切を過ぎました)" : "")).font(.subheadline).foregroundStyle(.secondary)
+                        Text(chip.label + (chip.overdue ? tr(" (締切を過ぎました)") : "")).font(.subheadline).foregroundStyle(.secondary)
                     }
                     Section("提出済み \(lists.submitted.count) 人") {
                         if lists.submitted.isEmpty { Text("まだいません").foregroundStyle(.secondary) }
@@ -490,8 +490,8 @@ struct CollectionStatusView: View {
                     } header: {
                         Text("未提出 \(lists.missing.count) 人")
                     } footer: {
-                        Text("スレッドに返信すると提出済みになります。"
-                             + (collection.remindedAt != nil ? "締切後、未提出の人にリマインドしました。" : "締切を過ぎると、未提出の人にだけリマインドが届きます。"))
+                        Text(tr("スレッドに返信すると提出済みになります。")
+                             + (collection.remindedAt != nil ? tr("締切後、未提出の人にリマインドしました。") : tr("締切を過ぎると、未提出の人にだけリマインドが届きます。")))
                     }
                 } else {
                     Text("この投稿は提出を集めていません").foregroundStyle(.secondary)

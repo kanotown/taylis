@@ -37,7 +37,7 @@ struct TaskAssigneeStack: View {
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("担当: " + ids.map(name).joined(separator: "、"))
+            .accessibilityLabel(tr("担当: ") + ids.map(name).joined(separator: tr("、")))
         }
     }
 
@@ -93,7 +93,7 @@ struct TaskCardContent: View {
                             .monospacedDigit()
                             .fontWeight(overdue || (isToday && !done) ? .semibold : .regular)
                             .foregroundStyle(overdue ? Color.red : isToday && !done ? Color.primary : Color.secondary)
-                            .accessibilityLabel("期限 " + TaskRules.dueText(task.dueOn, today: today, dueAt: task.dueAt) + (overdue ? "、過ぎています" : ""))
+                            .accessibilityLabel(tr("期限 ") + TaskRules.dueText(task.dueOn, today: today, dueAt: task.dueAt) + (overdue ? tr("、過ぎています") : ""))
                     }
                     if task.rrule != nil {  // M81
                         Image(systemName: "repeat").accessibilityLabel("繰り返し")
@@ -136,7 +136,7 @@ private struct TightLabelStyle: LabelStyle {
 
 /// 「＋ 追加」: a title field; Return adds and keeps it open for the next one, an empty field closes it when left.
 struct TaskInlineAdd: View {
-    var label = "追加"
+    var label = tr("追加")
     let onAdd: (String) async -> Bool
     @State private var open = false
     @State private var title = ""
@@ -252,15 +252,15 @@ struct ChannelTasksPane: View {
             }
             Divider()
             if hub == nil {
-                CalendarNote(title: "接続すると表示します", systemImage: "checklist")
+                CalendarNote(title: tr("接続すると表示します"), systemImage: "checklist")
             } else if board?.state == .unsupported {
-                CalendarNote(title: "このサーバはタスクに対応していません", systemImage: "checklist", detail: "サーバの更新後に使えるようになります。")
+                CalendarNote(title: tr("このサーバはタスクに対応していません"), systemImage: "checklist", detail: tr("サーバの更新後に使えるようになります。"))
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(cards) { task in card(task, column: cards, columns: columns, canEdit: canEdit) }
                         if cards.isEmpty {
-                            Text(board == nil || board?.state == .loading ? "読み込み中…" : emptyText(shown, canEdit: canEdit))
+                            Text(board == nil || board?.state == .loading ? tr("読み込み中…") : emptyText(shown, canEdit: canEdit))
                                 .font(.subheadline).foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity).padding(.vertical, 20)
                         }
@@ -315,7 +315,7 @@ struct ChannelTasksPane: View {
             Button("キャンセル", role: .cancel) {}
             Button("削除する", role: .destructive) { Task { await remove(task) } }
         } message: { task in
-            Text("「\(task.title)」" + (task.kind == .deadline ? "\n" + DeadlineRules.deleteNote : ""))
+            Text(tr("「\(task.title)」") + (task.kind == .deadline ? "\n" + DeadlineRules.deleteNote : ""))
         }
     }
 
@@ -366,11 +366,11 @@ struct ChannelTasksPane: View {
     }
 
     private func emptyText(_ shown: TaskColumnOut, canEdit: Bool) -> String {
-        if !shown.builtin { return canEdit ? "「\(shown.name)」のタスクはありません。下の「追加」から足せます" : "「\(shown.name)」のタスクはありません" }
+        if !shown.builtin { return canEdit ? tr("「\(shown.name)」のタスクはありません。下の「追加」から足せます") : tr("「\(shown.name)」のタスクはありません") }
         switch shown.status {
-        case .todo: return canEdit ? "未着手のタスクはありません。下の「追加」から足せます" : "未着手のタスクはありません"
-        case .doing: return "進行中のタスクはありません"
-        case .done: return "完了したタスクはありません"
+        case .todo: return canEdit ? tr("未着手のタスクはありません。下の「追加」から足せます") : tr("未着手のタスクはありません")
+        case .doing: return tr("進行中のタスクはありません")
+        case .done: return tr("完了したタスクはありません")
         }
     }
 
@@ -532,7 +532,7 @@ struct TaskColumnsEditor: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
-                Text(item.builtin ? "\(item.status.label) · 最初からある列" : item.status.label)
+                Text(item.builtin ? tr("\(item.status.label) · 最初からある列") : item.status.label)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -775,7 +775,7 @@ struct MyTasksView: View {
         Button { form = .task(task) } label: {
             VStack(alignment: .leading, spacing: 4) {
                 TaskCardContent(controller: controller, task: task, today: now, showStatus: true)
-                Text(TaskRules.kindLabel(task.kind) + " · " + place(task) + (task.status == .done ? " · 完了" : ""))
+                Text(TaskRules.kindLabel(task.kind) + " · " + place(task) + (task.status == .done ? tr(" · 完了") : ""))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -786,7 +786,7 @@ struct MyTasksView: View {
     }
 
     private func place(_ task: TaskOut) -> String {
-        guard let channelId = task.channelId else { return "自分のタスク" }
+        guard let channelId = task.channelId else { return tr("自分のタスク") }
         let name = controller.taskPlaceName(channelId, fallback: task.channelName)
         if controller.isDmTask(channelId) || (controller.store.channel(channelId) == nil && task.channelName == nil) { return name }
         return glyph(channelId) + name
@@ -834,7 +834,7 @@ struct CalendarTaskRow: View {
                     .foregroundStyle(done ? Color.secondary : Color.primary)
                     .lineLimit(2)
                 if showCalendar {
-                    Text(task.channelName.map { "#" + $0 } ?? "自分のタスク").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(task.channelName.map { "#" + $0 } ?? tr("自分のタスク")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
@@ -842,7 +842,7 @@ struct CalendarTaskRow: View {
         .fixedSize(horizontal: false, vertical: true)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel((done ? "完了したタスク " : "タスク ") + Self.time(task) + task.title)
+        .accessibilityLabel((done ? tr("完了したタスク ") : tr("タスク ")) + Self.time(task) + task.title)
     }
 
     /// 「14:00 」 for a due time (the device's clock), nothing for the whole day.
@@ -873,7 +873,7 @@ struct MessageTaskChips: View {
                 Button { onOpen?(task.id) } label: { face(chip, kind: task.kind) }
                     .buttonStyle(.plain)
                     .disabled(onOpen == nil)
-                    .accessibilityLabel(chip.text + (chip.tone == .overdue ? "、期限を過ぎています" : ""))
+                    .accessibilityLabel(chip.text + (chip.tone == .overdue ? tr("、期限を過ぎています") : ""))
                     .accessibilityHint(onOpen == nil ? "" : "タスクを開く")
             }
         }
@@ -939,7 +939,7 @@ struct TaskDetailLoader: View {
 
     private func load() async {
         guard let hub = controller.taskHub, hub.available else {
-            error = "接続すると表示します"
+            error = tr("接続すると表示します")
             return
         }
         do {

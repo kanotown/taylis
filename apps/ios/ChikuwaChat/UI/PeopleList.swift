@@ -4,8 +4,8 @@ import SwiftUI
 enum PeopleList {
     /// Up to `limit` names, then 「ほか N 人」 (the same on every platform).
     static func compact(_ names: [String], limit: Int = 3) -> String {
-        guard names.count > limit else { return names.joined(separator: "、") }
-        return names.prefix(limit).joined(separator: "、") + " ほか \(names.count - limit) 人"
+        guard names.count > limit else { return names.joined(separator: tr("、")) }
+        return names.prefix(limit).joined(separator: tr("、")) + tr(" ほか \(names.count - limit) 人")
     }
 
     @MainActor static func names(_ userIds: [String], store: Store) -> [String] {

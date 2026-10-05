@@ -10,12 +10,12 @@ enum RepeatKind: String, CaseIterable, Hashable {
 
     var label: String {
         switch self {
-        case .none: "しない"
-        case .daily: "毎日"
-        case .weekly: "毎週"
-        case .monthly: "毎月"
-        case .yearly: "毎年"
-        case .custom: "カスタム"
+        case .none: tr("しない")
+        case .daily: tr("毎日")
+        case .weekly: tr("毎週")
+        case .monthly: tr("毎月")
+        case .yearly: tr("毎年")
+        case .custom: tr("カスタム")
         }
     }
 }
@@ -26,10 +26,10 @@ enum RepeatFreq: String, CaseIterable, Hashable {
     /// The unit of カスタム's 「N … ごと」.
     var unit: String {
         switch self {
-        case .daily: "日"
-        case .weekly: "週"
-        case .monthly: "か月"
-        case .yearly: "年"
+        case .daily: tr("日")
+        case .weekly: tr("週")
+        case .monthly: tr("か月")
+        case .yearly: tr("年")
         }
     }
 }
@@ -45,9 +45,9 @@ enum RepeatEnd: String, CaseIterable, Hashable {
 
     var label: String {
         switch self {
-        case .never: "なし"
-        case .until: "日付"
-        case .count: "回数"
+        case .never: tr("なし")
+        case .until: tr("日付")
+        case .count: tr("回数")
         }
     }
 }
@@ -100,7 +100,7 @@ enum CalendarRecurrence {
     static let maxCount = 999
 
     static let codes = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]
-    static let names = CalendarDates.weekdays
+    static var names: [String] { CalendarDates.weekdays }
     /// The server's order (RFC 5545's default week start): Monday first.
     static let mondayFirst = [1, 2, 3, 4, 5, 6, 0]
 
@@ -218,47 +218,47 @@ enum CalendarRecurrence {
     }
 
     private static func weekdayList(_ days: [Int]) -> String {
-        mondayFirst.filter(days.contains).map { names[$0] }.joined(separator: "・")
+        mondayFirst.filter(days.contains).map { names[$0] }.joined(separator: tr("・"))
     }
 
     private static func longDay(_ day: DayKey) -> String {
         let p = day.split(separator: "-").compactMap { Int($0) }
         guard p.count == 3 else { return day }
-        return "\(p[0])年\(p[1])月\(p[2])日"
+        return tr("\(String(p[0]))年\(p[1])月\(p[2])日")
     }
 
     /// A rule in words: 「毎日」「3 日ごと」「毎週 火・木曜日」「2 週間ごと 月曜日」「毎月 10 日」「毎月 月末」「毎月 第 2 火曜日」
     /// 「毎月 最終 金曜日」「毎年 10月13日」, then 「、2026年12月20日まで」 or 「、10 回」. `start` gives the date and the weekday
     /// a rule may leave out.
     static func describe(_ rrule: String?, start: DayKey) -> String {
-        guard let rrule else { return "繰り返さない" }
-        guard let rule = parse(rrule) else { return "繰り返し" }
-        func every(_ unit: String, _ one: String) -> String { rule.interval == 1 ? one : "\(rule.interval) \(unit)ごと" }
+        guard let rrule else { return tr("繰り返さない") }
+        guard let rule = parse(rrule) else { return tr("繰り返し") }
+        func every(_ unit: String, _ one: String) -> String { rule.interval == 1 ? one : tr("\(rule.interval) \(unit)ごと") }
         var text: String
         switch rule.freq {
         case .daily:
-            text = every("日", "毎日")
+            text = every(tr("日"), tr("毎日"))
         case .weekly:
             let days = rule.byday.isEmpty ? [CalendarDates.weekday(start)] : rule.byday.map(\.weekday)
-            text = "\(every("週間", "毎週")) \(weekdayList(days))曜日"
+            text = tr("\(every(tr("週間"), tr("毎週"))) \(weekdayList(days))曜日")
         case .monthly:
             let which: String
             if let first = rule.byday.first, let n = first.n {
-                which = "\(n < 0 ? "最終" : "第 \(n)") \(names[first.weekday])曜日"
+                which = tr("\(n < 0 ? tr("最終") : tr("第 \(n)")) \(names[first.weekday])曜日")
             } else if rule.bymonthday == -1 {
-                which = "月末"
+                which = tr("月末")
             } else {
-                which = "\(rule.bymonthday ?? CalendarDates.dayOfMonth(start)) 日"
+                which = tr("\(rule.bymonthday ?? CalendarDates.dayOfMonth(start)) 日")
             }
-            text = "\(every("か月", "毎月")) \(which)"
+            text = "\(every(tr("か月"), tr("毎月"))) \(which)"
         case .yearly:
             let p = start.split(separator: "-").compactMap { Int($0) }
-            text = "\(every("年", "毎年")) \(p.count == 3 ? "\(p[1])月\(p[2])日" : start)"
+            text = "\(every(tr("年"), tr("毎年"))) \(p.count == 3 ? tr("\(p[1])月\(p[2])日") : start)"
         }
         if let until = rule.until {
-            text += "、\(longDay(until))まで"
+            text += tr("、\(longDay(until))まで")
         } else if let count = rule.count, count != 0 {
-            text += "、\(count) 回"
+            text += tr("、\(count) 回")
         }
         return text
     }
@@ -274,23 +274,23 @@ enum CalendarRecurrence {
         let date = CalendarDates.dayOfMonth(start)
         let (n, last) = nthOfMonth(start)
         let weekday = names[CalendarDates.weekday(start)]
-        var choices = [MonthlyChoice(value: .day, label: "毎月 \(date) 日")]
-        if daysInMonth(start) == date { choices.append(.init(value: .monthEnd, label: "毎月 月末")) }
-        if n <= 4 { choices.append(.init(value: .nth, label: "毎月 第 \(n) \(weekday)曜日")) }
-        if last { choices.append(.init(value: .last, label: "毎月 最終 \(weekday)曜日")) }
+        var choices = [MonthlyChoice(value: .day, label: tr("毎月 \(date) 日"))]
+        if daysInMonth(start) == date { choices.append(.init(value: .monthEnd, label: tr("毎月 月末"))) }
+        if n <= 4 { choices.append(.init(value: .nth, label: tr("毎月 第 \(n) \(weekday)曜日"))) }
+        if last { choices.append(.init(value: .last, label: tr("毎月 最終 \(weekday)曜日"))) }
         return choices
     }
 
     /// What stops the picker from being saved, or nil.
     static func problem(_ draft: RepeatDraft, start: DayKey) -> String? {
         if draft.kind == .none { return nil }
-        if draft.kind == .custom && !(1...maxInterval).contains(draft.interval) { return "間隔は 1〜\(maxInterval) にしてください" }
-        if draft.frequency == .weekly && draft.weekdays.isEmpty { return "曜日を選んでください" }
+        if draft.kind == .custom && !(1...maxInterval).contains(draft.interval) { return tr("間隔は 1〜\(maxInterval) にしてください") }
+        if draft.frequency == .weekly && draft.weekdays.isEmpty { return tr("曜日を選んでください") }
         if draft.end == .until {
-            if draft.until.isEmpty { return "終了日を入れてください" }
-            if draft.until < start { return "終了日は開始日より後にしてください" }
+            if draft.until.isEmpty { return tr("終了日を入れてください") }
+            if draft.until < start { return tr("終了日は開始日より後にしてください") }
         }
-        if draft.end == .count && !(1...maxCount).contains(draft.count) { return "回数は 1〜\(maxCount) にしてください" }
+        if draft.end == .count && !(1...maxCount).contains(draft.count) { return tr("回数は 1〜\(maxCount) にしてください") }
         return nil
     }
 }

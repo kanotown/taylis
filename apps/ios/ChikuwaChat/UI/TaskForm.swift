@@ -53,8 +53,8 @@ struct TaskForm: View {
     private var isReview: Bool { (current?.kind ?? draft.kind) == .review }
     /// M86: a deadline — 締切日 (required), 事前の通知, no repeat, only on a channel's board.
     private var isDeadline: Bool { (current?.kind ?? draft.kind) == .deadline }
-    private var assigneeLabel: String { isReview ? "依頼先" : "担当者" }
-    private var dueLabel: String { isReview ? "希望日" : isDeadline ? "締切日" : "期限" }
+    private var assigneeLabel: String { isReview ? tr("依頼先") : tr("担当者") }
+    private var dueLabel: String { isReview ? tr("希望日") : isDeadline ? tr("締切日") : tr("期限") }
 
     /// The boards a new task may go to besides 「自分のタスク」 (those I may still add to; a deadline: not as a guest).
     private var boards: [String] { draft.boardChoices.filter(isDeadline ? controller.canAddDeadline : controller.canEditBoard) }
@@ -68,10 +68,10 @@ struct TaskForm: View {
     }
 
     private var title: String {
-        guard task != nil else { return isReview ? "レビューを依頼" : isDeadline ? "締切を追加" : "タスクを追加" }
-        if isReview { return "レビュー依頼" }
-        if isDeadline { return editable ? "締切を編集" : "締切" }
-        return editable ? "タスクを編集" : "タスク"
+        guard task != nil else { return isReview ? tr("レビューを依頼") : isDeadline ? tr("締切を追加") : tr("タスクを追加") }
+        if isReview { return tr("レビュー依頼") }
+        if isDeadline { return editable ? tr("締切を編集") : tr("締切") }
+        return editable ? tr("タスクを編集") : tr("タスク")
     }
 
     /// L9 (REVIEWS.md §2.2): an assignee's 「対応を始める」 / 「完了にする」, while the task is open.
@@ -129,7 +129,7 @@ struct TaskForm: View {
                 }
             }
             .environment(\.timeZone, CalendarDates.zone)
-            .environment(\.locale, Locale(identifier: "ja_JP")) // the date picker says 2026年10月5日, as the rest of the form
+            .environment(\.locale, UILanguage.shared.locale) // the date picker says 2026年10月5日, as the rest of the form
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -147,7 +147,7 @@ struct TaskForm: View {
                 Button("キャンセル", role: .cancel) {}
                 Button("削除する", role: .destructive) { Task { await remove() } }
             } message: {
-                Text("「\(current?.title ?? draft.title)」" + (isDeadline ? "\n" + DeadlineRules.deleteNote : ""))
+                Text(tr("「\(current?.title ?? draft.title)」") + (isDeadline ? "\n" + DeadlineRules.deleteNote : ""))
             }
             .interactiveDismissDisabled(busy)
             .task(id: channelId) { await loadMembers() }
@@ -155,9 +155,9 @@ struct TaskForm: View {
     }
 
     private func boardName(_ id: String?) -> String {
-        guard let id else { return "自分のタスク" }
-        if let state = controller.store.channel(id), state.channel.isDm { return channelTitle(state, store: controller.store) + " との DM" }  // L9
-        return "#" + (controller.store.channel(id)?.channel.name ?? task?.channelName ?? "?") + " のボード"
+        guard let id else { return tr("自分のタスク") }
+        if let state = controller.store.channel(id), state.channel.isDm { return tr("\(channelTitle(state, store: controller.store)) との DM") }  // L9
+        return tr("#\(controller.store.channel(id)?.channel.name ?? task?.channelName ?? "?") のボード")
     }
 
     /// The header over the title: the task's board (or DM); a new review request says where it is asked.
@@ -176,7 +176,7 @@ struct TaskForm: View {
         } header: {
             if let placeHeader { Text(placeHeader) }
         } footer: {
-            if let problem, problem != "題名を入れてください", problem != "依頼先を選んでください", problem != Self.noDeadlineDate {
+            if let problem, problem != tr("題名を入れてください"), problem != tr("依頼先を選んでください"), problem != Self.noDeadlineDate {
                 Text(problem).foregroundStyle(.red)
             }
         }
@@ -222,14 +222,14 @@ struct TaskForm: View {
         // or (M86) a deadline.
         if !isReview && !isDeadline && !draft.dueOn.isEmpty {
             RepeatPickerSection(repetition: Binding(get: { draft.repetition }, set: { draft.repetition = $0; error = nil }), start: draft.dueOn,
-                                note: "完了にすると、次の回のタスクができます")
+                                note: tr("完了にすると、次の回のタスクができます"))
         }
         if isDeadline { noticeSection }
         if !(task == nil && isReview) { subtaskSection }
         if !isReview { assigneeSection }
     }
 
-    static let noDeadlineDate = "締切の日付を入れてください"
+    static var noDeadlineDate: String { tr("締切の日付を入れてください") }
 
     /// M86 (DEADLINES.md §8 4.): 「事前の通知」 — 14 日前・7 日前・3 日前・前日・当日 (and any other day it already has), each a
     /// check; saved with the rest (PATCH `notice_days`, the whole set).
@@ -247,7 +247,7 @@ struct TaskForm: View {
         } header: {
             Text("事前の通知")
         } footer: {
-            Text(draft.noticeDays.isEmpty ? "通知しません" : DeadlineRules.botNote)
+            Text(draft.noticeDays.isEmpty ? tr("通知しません") : DeadlineRules.botNote)
         }
     }
 
@@ -344,7 +344,7 @@ struct TaskForm: View {
                 .accessibilityLabel(assigneeLabel)
                 .accessibilityValue(assigneeSummary)
             } header: {
-                Text(draft.assigneeIds.isEmpty ? assigneeLabel : "\(assigneeLabel) (\(draft.assigneeIds.count) 人)")
+                Text(draft.assigneeIds.isEmpty ? assigneeLabel : tr("\(assigneeLabel) (\(draft.assigneeIds.count) 人)"))
             } footer: {
                 if task == nil {
                     if isReview {
@@ -385,7 +385,7 @@ struct TaskForm: View {
     }
 
     private var assigneeSummary: String {
-        draft.assigneeIds.isEmpty ? "なし" : draft.assigneeIds.map { controller.store.users[$0]?.displayName ?? "?" }.joined(separator: "、")
+        draft.assigneeIds.isEmpty ? tr("なし") : draft.assigneeIds.map { controller.store.users[$0]?.displayName ?? "?" }.joined(separator: tr("、"))
     }
 
     /// What someone who may not change the board sees of the task.
@@ -418,7 +418,7 @@ struct TaskForm: View {
             }
             if task.channelId != nil {
                 LabeledContent(assigneeLabel) {
-                    Text(task.assigneeIds.isEmpty ? "なし" : task.assigneeIds.map { controller.store.users[$0]?.displayName ?? "?" }.joined(separator: "、"))
+                    Text(task.assigneeIds.isEmpty ? tr("なし") : task.assigneeIds.map { controller.store.users[$0]?.displayName ?? "?" }.joined(separator: tr("、")))
                 }
             }
             if let notes = task.notes {
@@ -452,7 +452,7 @@ struct TaskForm: View {
             }
         } else if draft.sourceMessageId != nil {
             Section("元のメッセージ") {
-                Label(draft.sourceExcerpt ?? "メッセージ", systemImage: "text.bubble").font(.subheadline).lineLimit(3)
+                Label(draft.sourceExcerpt ?? tr("メッセージ"), systemImage: "text.bubble").font(.subheadline).lineLimit(3)
             }
         }
         canvasSourceSection
@@ -486,15 +486,15 @@ struct TaskForm: View {
             }
         } else if let canvasId = draft.sourceCanvasId {
             Section(canvasHeader(canvasId)) {
-                Label(draft.sourceCanvasExcerpt ?? "チェックリストの項目", systemImage: "checklist").font(.subheadline).lineLimit(3)
+                Label(draft.sourceCanvasExcerpt ?? tr("チェックリストの項目"), systemImage: "checklist").font(.subheadline).lineLimit(3)
             }
         }
     }
 
     /// 「元のキャンバス: 議事録」 when this device knows its title.
     private func canvasHeader(_ canvasId: String) -> String {
-        guard let title = controller.store.canvasMeta(canvasId)?.title, !title.isEmpty else { return "元のキャンバス" }
-        return "元のキャンバス: " + title
+        guard let title = controller.store.canvasMeta(canvasId)?.title, !title.isEmpty else { return tr("元のキャンバス") }
+        return tr("元のキャンバス: ") + title
     }
 
     private func loadMembers() async {
@@ -526,7 +526,7 @@ struct TaskForm: View {
                 // M73: the server looks for a checklist item's line in the saved body, so what is typed goes first.
                 if let canvasId = draft.sourceCanvasId { await controller.engine?.canvases.current(canvasId)?.flush() }
                 _ = try await hub.create(draft.create(clientTaskId: clientTaskId, tz: CalendarDates.zoneId))
-                controller.notice = draft.kind == .review ? "レビューを依頼しました" : draft.kind == .deadline ? "締切を追加しました" : "タスクを作成しました"
+                controller.notice = draft.kind == .review ? tr("レビューを依頼しました") : draft.kind == .deadline ? tr("締切を追加しました") : tr("タスクを作成しました")
             }
             dismiss()
         } catch {
@@ -568,7 +568,7 @@ struct TaskAssigneePicker: View {
     let memberIds: [String]?
     @Binding var selected: [String]
     /// The page's title (L6's 「提出する人」 picks people the same way).
-    var title = "担当者"
+    var title = tr("担当者")
     /// M95: one person only (a workflow's 「人」 field without `multiple`): a pick replaces the one chosen.
     var single = false
     @State private var query = ""
@@ -620,7 +620,7 @@ struct TaskAssigneePicker: View {
             }
         }
         .modifier(SearchableWhenLong(enabled: rows.count > 8, query: $query))
-        .navigationTitle(selected.isEmpty ? title : "\(title) (\(selected.count) 人)")
+        .navigationTitle(selected.isEmpty ? title : tr("\(title) (\(selected.count) 人)"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

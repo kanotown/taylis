@@ -250,6 +250,10 @@
 		FB26D88A3A28AF522C46FD3B /* BrowserSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57361050F0BB2C12BDB8B78B /* BrowserSnapshotTests.swift */; };
 		FEDDC0F643516E74169B0597 /* PollTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC003D2126376F0BCBAEB48E /* PollTests.swift */; };
 		FF91D7B337478DE41D4D5486 /* UnreadRangeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53CCFFE89EA1C7A2E59262F2 /* UnreadRangeTests.swift */; };
+		3BD9985864F4BA45C1EF91AA /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E38D4AC28D98FDE03E0904D8 /* AppLanguage.swift */; };
+		327DC32B81663343B7999D85 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CEEC8A5C9E1B7B02C067D94E /* Localizable.xcstrings */; };
+		5D1AED381349DD0AE1652304 /* LocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88C41DB72A7ACC02BA31F63 /* LocalizationTests.swift */; };
+		673CB3A82A87B2A95188FD57 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 61434ED44419F8D6B0B3F1EE /* InfoPlist.xcstrings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -508,6 +512,10 @@
 		FE36D6CD7D0C2E99A3D15F7E /* UsernameRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsernameRules.swift; sourceTree = "<group>"; };
 		FF1A3BB91D7C492224A91ECD /* CalendarDates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarDates.swift; sourceTree = "<group>"; };
 		FF56C1D17673E9A46D280F6D /* Frames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Frames.swift; sourceTree = "<group>"; };
+		E38D4AC28D98FDE03E0904D8 /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
+		CEEC8A5C9E1B7B02C067D94E /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		A88C41DB72A7ACC02BA31F63 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
+		61434ED44419F8D6B0B3F1EE /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -565,6 +573,8 @@
 			children = (
 				6511D58639F80B71BAF90EC5 /* Assets.xcassets */,
 				14DF989D71BA1C2A2618805E /* PrivacyInfo.xcprivacy */,
+				61434ED44419F8D6B0B3F1EE /* InfoPlist.xcstrings */,
+				CEEC8A5C9E1B7B02C067D94E /* Localizable.xcstrings */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -602,6 +612,7 @@
 				551D58741D5F426321F75F3F /* AppDelegate.swift */,
 				E23B1562429E692C8A4A632F /* ChikuwaChatApp.swift */,
 				5E67B45469B6C5625C8D9A6A /* Workspaces.swift */,
+				E38D4AC28D98FDE03E0904D8 /* AppLanguage.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -701,6 +712,7 @@
 				A07E85FF7965E4D1558A04EB /* WorkflowsTests.swift */,
 				5EB0EC6D3A44DDEB8FDB92A4 /* WorkspacesTests.swift */,
 				E56327099E6493E52A5CB905 /* YouTests.swift */,
+				A88C41DB72A7ACC02BA31F63 /* LocalizationTests.swift */,
 			);
 			path = ChikuwaChatTests;
 			sourceTree = "<group>";
@@ -919,11 +931,13 @@
 				};
 			};
 			buildConfigurationList = 6EF8B7D9E98740C43CDCB4CE /* Build configuration list for PBXProject "ChikuwaChat" */;
-			developmentRegion = en;
+			developmentRegion = ja;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
 				en,
+				ja,
+				"zh-Hans",
 			);
 			mainGroup = EF7AAD189524D9626BFB43BC;
 			minimizedProjectReferenceProxies = 1;
@@ -943,6 +957,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				673CB3A82A87B2A95188FD57 /* InfoPlist.xcstrings in Resources */,
+				327DC32B81663343B7999D85 /* Localizable.xcstrings in Resources */,
 				2726ED0573B89D3354A20F52 /* Assets.xcassets in Resources */,
 				DF6D34DAED2202CC4CB807EB /* PrivacyInfo.xcprivacy in Resources */,
 			);
@@ -963,6 +979,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5D1AED381349DD0AE1652304 /* LocalizationTests.swift in Sources */,
 				2D611B9798C698881239F77F /* ActivityCanvasTests.swift in Sources */,
 				F61DD3ECA05DE74855A4FAC4 /* ActivityTests.swift in Sources */,
 				DF4BC814FC9C67FF3E465453 /* AiAskTests.swift in Sources */,
@@ -1062,6 +1079,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3BD9985864F4BA45C1EF91AA /* AppLanguage.swift in Sources */,
 				962AA13BC8E1FA6BB823D36D /* Activity.swift in Sources */,
 				A00D3D2574285DE0FEA21A2A /* ActivityFeedView.swift in Sources */,
 				18285AEFA36EA634DEA37155 /* AiAsk.swift in Sources */,
@@ -1322,6 +1340,8 @@
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1383,6 +1403,8 @@
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

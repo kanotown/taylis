@@ -14,7 +14,7 @@ enum JumpMatch {
     }
 
     /// Word boundaries: space, - _ . / ・ and the ideographic space (NFKC makes that one a space already).
-    private static let separators: Set<Unicode.Scalar> = Set(" -_./・\u{3000}".unicodeScalars)
+    private static let separators: Set<Unicode.Scalar> = Set(" -_./・\u{3000}".unicodeScalars)  // i18n-ignore
 
     /// NFKC (full-width / half-width forms), lower case, katakana as hiragana, no leading # or @, trimmed.
     static func normalize(_ text: String) -> String {

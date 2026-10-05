@@ -67,7 +67,7 @@ enum Sso {
         ErrorMessages.byCode[code] ?? failedText
     }
 
-    static let failedText = "Google でのログインに失敗しました。もう一度お試しください"
+    static var failedText: String { tr("Google でのログインに失敗しました。もう一度お試しください") }
 
     /// Opens the start URL of `server` and waits for the sheet to come back.
     @MainActor

@@ -133,7 +133,7 @@ struct CanvasImageView: View {
                 Image(uiImage: image).resizable().scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: 320, alignment: .leading)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .accessibilityLabel(alt.isEmpty ? "画像" : alt)
+                    .accessibilityLabel(alt.isEmpty ? tr("画像") : alt)
             } else if loader.failed {
                 Button { attempt += 1 } label: {
                     Label(alt.isEmpty ? "表示できない画像" : "表示できない画像: \(alt)", systemImage: "photo")

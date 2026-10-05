@@ -43,7 +43,7 @@ struct LoginView: View {
     private var title: String {
         switch mode {
         case .initial: return "Taylis"
-        case .add: return "ワークスペースを追加"
+        case .add: return tr("ワークスペースを追加")
         case .relogin(let workspace): return workspace.name
         }
     }

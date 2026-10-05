@@ -31,7 +31,7 @@ extension AppController {
 
     /// 「#name」 of a workflow's target channel.
     func workflowTarget(_ channelId: String) -> String {
-        store.channel(channelId)?.channel.name.map { "#\($0)" } ?? "送り先のチャンネル"
+        store.channel(channelId)?.channel.name.map { "#\($0)" } ?? tr("送り先のチャンネル")
     }
 
     /// Opens the form of a workflow I can use; otherwise says why (the label on a message, `/name`).
@@ -39,7 +39,7 @@ extension AppController {
         if workflow.canRun && workflow.runBlocked == nil {
             workflowRun = WorkflowRunTarget(workflow: workflow, here: here)
         } else {
-            error = Workflows.runBlockedText(workflow, target: workflowTarget(workflow.channelId)) ?? "このワークフローは使えません"
+            error = Workflows.runBlockedText(workflow, target: workflowTarget(workflow.channelId)) ?? tr("このワークフローは使えません")
         }
     }
 
@@ -56,7 +56,7 @@ extension AppController {
     /// After a post: the message into the store; elsewhere than `here`, a notice where it went.
     func workflowPosted(_ message: MessageOut, here: String?) {
         if let engine { engine.postedFromHere(message) } else { store.upsertMessage(message) }
-        if let here, message.channelId != here { notice = "\(workflowTarget(message.channelId)) に投稿しました" }
+        if let here, message.channelId != here { notice = tr("\(workflowTarget(message.channelId)) に投稿しました") }
     }
 }
 

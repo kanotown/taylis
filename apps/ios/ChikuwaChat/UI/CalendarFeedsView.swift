@@ -19,7 +19,7 @@ final class CalendarFeedsModel {
         case all, personal
 
         var id: String { rawValue }
-        var choice: String { self == .all ? "すべて (自分のカレンダーと参加しているチャンネル)" : "自分のカレンダーだけ" }
+        var choice: String { self == .all ? tr("すべて (自分のカレンダーと参加しているチャンネル)") : tr("自分のカレンダーだけ") }
     }
 
     /// nil: not read yet.
@@ -40,7 +40,7 @@ final class CalendarFeedsModel {
 
     var available: Bool { api != nil }
 
-    static func scopeLabel(_ scope: String) -> String { scope == "personal" ? "自分のカレンダーだけ" : "すべて" }
+    static func scopeLabel(_ scope: String) -> String { scope == "personal" ? tr("自分のカレンダーだけ") : tr("すべて") }
 
     /// 「2026/10/2」.
     static func shortDate(_ iso: String) -> String {
@@ -51,8 +51,8 @@ final class CalendarFeedsModel {
 
     /// 「2026/10/2 に作成 ・ まだ読まれていません」.
     static func detail(_ feed: CalendarFeedOut) -> String {
-        let used = feed.lastUsedAt.map { "\(shortDate($0)) に読まれました" } ?? "まだ読まれていません"
-        return "\(shortDate(feed.createdAt)) に作成 ・ \(used)"
+        let used = feed.lastUsedAt.map { tr("\(shortDate($0)) に読まれました") } ?? tr("まだ読まれていません")
+        return tr("\(shortDate(feed.createdAt)) に作成 ・ \(used)")
     }
 
     /// The URL as Apple's calendar subscribes to it (webcal: opens the 「照会」 sheet on the phone).

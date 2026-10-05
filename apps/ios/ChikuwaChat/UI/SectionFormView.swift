@@ -9,10 +9,10 @@ struct SectionLetterIcon: Equatable {
 
     static let prefix = "letter:"
     /// The palette keys in the server's order (apps/shared/text-emoji.json), with the names the picker says.
-    static let colors: [(key: String, name: String)] = [
-        ("gray", "グレー"), ("red", "赤"), ("orange", "オレンジ"), ("yellow", "黄"),
-        ("green", "緑"), ("blue", "青"), ("purple", "紫"), ("pink", "ピンク"),
-    ]
+    static var colors: [(key: String, name: String)] { [
+        ("gray", tr("グレー")), ("red", tr("赤")), ("orange", tr("オレンジ")), ("yellow", tr("黄")),
+        ("green", tr("緑")), ("blue", tr("青")), ("purple", tr("紫")), ("pink", tr("ピンク")),
+    ] }
 
     var icon: String { Self.prefix + text + ":" + color }
 

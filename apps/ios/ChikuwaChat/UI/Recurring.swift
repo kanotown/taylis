@@ -5,7 +5,7 @@ import Foundation
 /// Dates and times are read in `CalendarDates.zone` (the device's; tests pin Asia/Tokyo).
 enum RecurringRules {
     /// 0 = Monday (the server's weekday numbers).
-    static let weekdayLabels = ["月", "火", "水", "木", "金", "土", "日"]
+    static var weekdayLabels: [String] { AppDates.weekdaysMondayFirst }
     static let maxName = 40
     static let maxBody = 4000
     static let maxAfterDays = 30
@@ -28,21 +28,21 @@ enum RecurringRules {
 
     /// 「1 日」, 「30 日 (ない月は末日)」, 「末日」.
     static func dayLabel(_ day: Int) -> String {
-        day == 31 ? "末日" : day >= 29 ? "\(day) 日 (ない月は末日)" : "\(day) 日"
+        day == 31 ? tr("末日") : day >= 29 ? tr("\(day) 日 (ない月は末日)") : tr("\(day) 日")
     }
 
     /// 「毎週 月・木 9:00」, 「毎日 9:00」, 「毎月 1 日 9:00」, 「毎月 末日 18:00」; the zone when it is not this device's.
     static func scheduleSummary(_ schedule: RecurringSchedule, tz: String? = nil, localTz: String? = nil) -> String {
         var text: String
         if schedule.kind == "monthly" {
-            text = "毎月 \(dayLabel(schedule.day ?? 1)) \(clockLabel(schedule.time))"
+            text = tr("毎月 \(dayLabel(schedule.day ?? 1)) \(clockLabel(schedule.time))")
         } else if schedule.kind != "weekly" {
             text = clockLabel(schedule.time) // a later server's kind: at least the time
         } else {
             let days = schedule.weekdays.sorted()
             text = Set(days).count == 7
-                ? "毎日 \(clockLabel(schedule.time))"
-                : "毎週 \(days.compactMap { weekdayLabels.indices.contains($0) ? weekdayLabels[$0] : nil }.joined(separator: "・")) \(clockLabel(schedule.time))"
+                ? tr("毎日 \(clockLabel(schedule.time))")
+                : tr("毎週 \(days.compactMap { weekdayLabels.indices.contains($0) ? weekdayLabels[$0] : nil }.joined(separator: tr("・"))) \(clockLabel(schedule.time))")
         }
         if let tz, let localTz, !tz.isEmpty, tz != localTz { text += " (\(tz))" }
         return text
@@ -50,7 +50,7 @@ enum RecurringRules {
 
     /// 「当日 18:00 締切」 / 「3 日後 18:00 締切」.
     static func dueSummary(_ due: CollectDue) -> String {
-        "\(due.afterDays == 0 ? "当日" : "\(due.afterDays) 日後") \(clockLabel(due.time)) 締切"
+        tr("\(due.afterDays == 0 ? tr("当日") : tr("\(due.afterDays) 日後")) \(clockLabel(due.time)) 締切")
     }
 
     /// 「10/9 (金) 18:00」 on this device's calendar; the text itself when it is not a date.
@@ -62,9 +62,9 @@ enum RecurringRules {
 
     /// Whom it collects from, as one line (names from the caller).
     static func targetsSummary(_ spec: CollectSpec, groupName: (String) -> String?, userName: (String) -> String?) -> String {
-        if spec.targets.allMembers { return "チャンネルの全員" }
-        let names = spec.targets.groupIds.map { "@" + (groupName($0) ?? "グループ") } + spec.targets.userIds.map { userName($0) ?? "?" }
-        return names.count > 4 ? names.prefix(4).joined(separator: "、") + " ほか \(names.count - 4)" : names.joined(separator: "、")
+        if spec.targets.allMembers { return tr("チャンネルの全員") }
+        let names = spec.targets.groupIds.map { "@" + (groupName($0) ?? tr("グループ")) } + spec.targets.userIds.map { userName($0) ?? "?" }
+        return names.count > 4 ? names.prefix(4).joined(separator: tr("、")) + tr(" ほか \(names.count - 4)") : names.joined(separator: tr("、"))
     }
 
     /// Owners and the administrators among the members of a channel (not a DM) manage its recurring posts.
@@ -78,7 +78,7 @@ enum RecurringRules {
         let p = CalendarDates.local.dateComponents([.year, .month, .day, .weekday], from: today)
         let weekday = CalendarDates.weekdays[p.weekday! - 1]
         let date = String(format: "%04d/%02d/%02d", p.year!, p.month!, p.day!)
-        return "{date} → \(date) (\(weekday))、{weekday} → \(weekday)、{week} → 週番号 (例 \(isoWeek(year: p.year!, month: p.month!, day: p.day!)))。投稿した日に置き換わります"
+        return tr("{date} → \(date) (\(weekday))、{weekday} → \(weekday)、{week} → 週番号 (例 \(isoWeek(year: p.year!, month: p.month!, day: p.day!)))。投稿した日に置き換わります")
     }
 
     /// "2026-W40": the ISO week of a calendar day.
@@ -105,8 +105,8 @@ enum RecurringRules {
         /// VoiceOver: the label and where I stand.
         var accessibilityLabel: String {
             switch mine {
-            case .pending?: label + (overdue ? " (未提出、締切を過ぎています)" : " (未提出)")
-            case .submitted?: label + " (提出済み)"
+            case .pending?: label + (overdue ? tr(" (未提出、締切を過ぎています)") : tr(" (未提出)"))
+            case .submitted?: label + tr(" (提出済み)")
             case nil: label
             }
         }
@@ -116,7 +116,7 @@ enum RecurringRules {
         let submitted = collection.submittedUserIds.count
         let isTarget = meId.map { collection.targetUserIds.contains($0) } ?? false
         let due = parseIsoDate(collection.dueAt)
-        return Chip(label: "提出 \(submitted)/\(collection.targetCount) · 締切 \(shortDateTime(collection.dueAt))",
+        return Chip(label: tr("提出 \(submitted)/\(collection.targetCount) · 締切 \(shortDateTime(collection.dueAt))"),
                     mine: isTarget ? (collection.submittedUserIds.contains(meId!) ? .submitted : .pending) : nil,
                     overdue: due.map { $0 <= now } ?? false,
                     complete: collection.targetCount > 0 && submitted >= collection.targetCount)
@@ -190,17 +190,17 @@ struct RecurringDraft: Equatable {
     /// What keeps the draft from being saved, in words; nil when it can be. The server checks the same.
     var problem: String? {
         let folded = name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        if folded.isEmpty { return "名前を入力してください" }
-        if folded.unicodeScalars.count > RecurringRules.maxName { return "名前は \(RecurringRules.maxName) 文字までです" }
-        if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "本文を入力してください" }
-        if body.unicodeScalars.count > RecurringRules.maxBody { return "本文は \(RecurringRules.maxBody) 文字までです" }
-        if kind == .weekly && weekdays.isEmpty { return "曜日を 1 つ以上選んでください" }
-        if kind == .monthly && !(1...31).contains(day) { return "日は 1〜31 で選んでください" }
-        if !RecurringRules.isTime(time) { return "時刻を選んでください" }
+        if folded.isEmpty { return tr("名前を入力してください") }
+        if folded.unicodeScalars.count > RecurringRules.maxName { return tr("名前は \(RecurringRules.maxName) 文字までです") }
+        if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return tr("本文を入力してください") }
+        if body.unicodeScalars.count > RecurringRules.maxBody { return tr("本文は \(String(RecurringRules.maxBody)) 文字までです") }
+        if kind == .weekly && weekdays.isEmpty { return tr("曜日を 1 つ以上選んでください") }
+        if kind == .monthly && !(1...31).contains(day) { return tr("日は 1〜31 で選んでください") }
+        if !RecurringRules.isTime(time) { return tr("時刻を選んでください") }
         if collect {
-            if !allMembers && groupIds.isEmpty && userIds.isEmpty { return "提出する人を選んでください" }
-            if !(0...RecurringRules.maxAfterDays).contains(afterDays) { return "締切は 0〜\(RecurringRules.maxAfterDays) 日後で選んでください" }
-            if !RecurringRules.isTime(dueTime) { return "締切の時刻を選んでください" }
+            if !allMembers && groupIds.isEmpty && userIds.isEmpty { return tr("提出する人を選んでください") }
+            if !(0...RecurringRules.maxAfterDays).contains(afterDays) { return tr("締切は 0〜\(RecurringRules.maxAfterDays) 日後で選んでください") }
+            if !RecurringRules.isTime(dueTime) { return tr("締切の時刻を選んでください") }
         }
         return nil
     }

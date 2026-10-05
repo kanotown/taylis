@@ -62,7 +62,7 @@ enum AskRules {
     }
 
     /// An answer's citations: [3], [1][4], [1, 4], [1、4].
-    private static let citation = try! NSRegularExpression(pattern: #"\[(\d+(?:\s*[,、]\s*\d+)*)\]"#)
+    private static let citation = try! NSRegularExpression(pattern: #"\[(\d+(?:\s*[,、]\s*\d+)*)\]"#)  // i18n-ignore
 
     /// docs/AI.md §13.3: the answer's citations as message links on this server (`<base>/m/<id>`, labelled with the
     /// number), one link per number. A group with a number that is not among the sources stays as it was.
@@ -75,7 +75,7 @@ enum AskRules {
         var last = 0
         for match in citation.matches(in: output, range: NSRange(location: 0, length: ns.length)) {
             let group = ns.substring(with: match.range(at: 1))
-            let numbers = group.components(separatedBy: CharacterSet(charactersIn: ",、")).map { Int($0.trimmingCharacters(in: .whitespaces)) }
+            let numbers = group.components(separatedBy: CharacterSet(charactersIn: ",、")).map { Int($0.trimmingCharacters(in: .whitespaces)) }  // i18n-ignore
             guard numbers.allSatisfy({ $0.flatMap { byNumber[$0] } != nil }) else { continue }
             result += ns.substring(with: NSRange(location: last, length: match.range.location - last))
             result += numbers.compactMap { $0 }.map { "[\($0)](\(Permalink.url(base: base, messageId: byNumber[$0]!.messageId)))" }.joined(separator: " ")
@@ -96,15 +96,15 @@ enum AskRules {
     static func targetLine(_ target: AiAskTargetOut) -> String? {
         if !target.available {
             switch target.reason ?? "" {
-            case "ai_private_not_allowed": return "この会話のボットは非公開の会話を読めないため、ここでは聞けません"
-            case "ai_budget_exceeded": return "今月の AI の利用上限に達しました"
-            default: return target.reason.flatMap { ErrorMessages.byCode[$0] ?? AiRules.byCode[$0] } ?? "今は AI に聞けません"
+            case "ai_private_not_allowed": return tr("この会話のボットは非公開の会話を読めないため、ここでは聞けません")
+            case "ai_budget_exceeded": return tr("今月の AI の利用上限に達しました")
+            default: return target.reason.flatMap { ErrorMessages.byCode[$0] ?? AiRules.byCode[$0] } ?? tr("今は AI に聞けません")
             }
         }
         guard let provider = target.provider, !provider.isEmpty else { return nil }
         let label = AiRules.providerLabel(provider)
         let destination = target.agentName.flatMap { $0.isEmpty ? nil : "\($0) (\(label))" } ?? label
-        return "質問と見つかったメッセージは \(destination) に送られます"
+        return tr("質問と見つかったメッセージは \(destination) に送られます")
     }
 
     /// An error of the AI routes: the shared table first, then the AI texts, else as every other error.
@@ -118,16 +118,16 @@ enum AskRules {
 
     /// A question that failed on the server: its reason when it gave one.
     static func runFailureText(_ reason: String?) -> String {
-        guard let reason = reason?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty else { return "答えられませんでした" }
-        return "答えられませんでした: \(reason)"
+        guard let reason = reason?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty else { return tr("答えられませんでした") }
+        return tr("答えられませんでした: \(reason)")
     }
 
-    static let startingText = "質問を送っています…"
+    static var startingText: String { tr("質問を送っています…") }
 
-    static func progressText(running: Bool) -> String { running ? "答えを書いています…" : "メッセージを探しています…" }
+    static func progressText(running: Bool) -> String { running ? tr("答えを書いています…") : tr("メッセージを探しています…") }
 
     /// docs/AI.md §13.2 5: the hits in conversations the bot may not read.
-    static func omittedNote(_ count: Int) -> String? { count > 0 ? "非公開の会話の \(count) 件は、このボットに送れないため除きました" : nil }
+    static func omittedNote(_ count: Int) -> String? { count > 0 ? tr("非公開の会話の \(count) 件は、このボットに送れないため除きました") : nil }
 
-    static let footer = "この答えはあなたにだけ表示されます。AI が書いた答えです。間違いがあるかもしれません。"
+    static var footer: String { tr("この答えはあなたにだけ表示されます。AI が書いた答えです。間違いがあるかもしれません。") }
 }

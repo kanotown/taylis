@@ -14,9 +14,9 @@ enum TaskStatus: String, CaseIterable, Codable, Hashable {
 
     var label: String {
         switch self {
-        case .todo: "未着手"
-        case .doing: "進行中"
-        case .done: "完了"
+        case .todo: tr("未着手")
+        case .doing: tr("進行中")
+        case .done: tr("完了")
         }
     }
 }

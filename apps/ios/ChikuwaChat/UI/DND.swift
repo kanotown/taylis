@@ -3,7 +3,7 @@ import Foundation
 /// Do not disturb (M12c): a manual pause or the daily quiet hours, evaluated in the user's own zone.
 /// Same rule as the server: an overnight window belongs to the day it starts on.
 enum DND {
-    static let dayLabels = ["月", "火", "水", "木", "金", "土", "日"]
+    static var dayLabels: [String] { AppDates.weekdaysMondayFirst }
 
     static func minutes(_ hhmm: String) -> Int {
         let parts = hhmm.split(separator: ":").compactMap { Int($0) }
@@ -46,10 +46,10 @@ enum DND {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .halfHour: "30 分"
-            case .hour: "1 時間"
-            case .twoHours: "2 時間"
-            case .tomorrow: "明日 8:00"
+            case .halfHour: tr("30 分")
+            case .hour: tr("1 時間")
+            case .twoHours: tr("2 時間")
+            case .tomorrow: tr("明日 8:00")
             }
         }
         func until(from now: Date = Date()) -> Date {
@@ -67,7 +67,7 @@ enum DND {
 
     /// "22:00〜07:00 (月〜金)" for the profile card.
     static func label(_ hours: QuietHours) -> String {
-        let days = (hours.days.isEmpty || hours.days.count == 7) ? "" : " (" + hours.days.sorted().map { dayLabels[$0] }.joined() + ")"
-        return "\(hours.start)〜\(hours.end)\(days)"
+        let days = (hours.days.isEmpty || hours.days.count == 7) ? "" : " (" + hours.days.sorted().map { dayLabels[$0] }.joined(separator: AppDates.weekdayRunSeparator) + ")"
+        return tr("\(hours.start)〜\(hours.end)\(days)")
     }
 }

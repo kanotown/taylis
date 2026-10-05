@@ -24,8 +24,8 @@ enum CanvasPresence {
     /// 「〇〇 が編集中」, 「〇〇、△△ が編集中」, 「〇〇 ほか N 人が編集中」.
     static func editingLabel(_ names: [String]) -> String {
         if names.isEmpty { return "" }
-        if names.count <= 2 { return names.joined(separator: "、") + " が編集中" }
-        return "\(names[0]) ほか \(names.count - 1) 人が編集中"
+        if names.count <= 2 { return names.joined(separator: tr("、")) + tr(" が編集中") }
+        return tr("\(names[0]) ほか \(names.count - 1) 人が編集中")
     }
 }
 
