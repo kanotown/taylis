@@ -5,7 +5,8 @@ description: Start a Taylis server and create the first administrator
 
 # Quick start
 
-From an empty Linux server to logging in with a browser. Check the [requirements](index.md#requirements) first.
+These steps take you from an empty Linux server to logging in with a browser. Check the
+[requirements](index.md#requirements) first.
 
 ## 1. DNS and firewall
 

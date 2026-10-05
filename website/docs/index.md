@@ -20,11 +20,11 @@ hide:
 
 </div>
 
-Taylis は、研究室・ゼミ・小さなチームのためのチャットです。Slack に近い使い心地で、チャンネル・スレッド・
-DM・リアクション・検索・ファイル共有といった毎日の連絡を一つにまとめます。
+Taylis は、研究室・ゼミ・小さなチームのためのチャットです。Slack と同じように、チャンネル・スレッド・DM・
+リアクション・検索・ファイルの共有が使えます。
 
-サーバーは自分たちで用意して動かします。メッセージやファイルは自分たちのサーバーに保存されるので、
-会話の記録を自分たちの手元で管理できます。アプリは Windows・macOS・iOS・Android、それにブラウザから使えます。
+サーバーは自分たちで用意して動かします。メッセージやファイルはそのサーバーに保存され、会話の記録は自分たちで
+管理します。アプリは Windows・macOS・iOS・Android 版と、ブラウザ版があります。
 
 <div class="screens" markdown>
 ![デスクトップ版: スレッドを開いたチャンネル (デモのデータ)](assets/screens/desktop.png){ .wide }
@@ -42,21 +42,21 @@ DM・リアクション・検索・ファイル共有といった毎日の連絡
 
 <div class="grid cards" markdown>
 
--   :material-forum-outline:{ .lg } **Slack に近い使い心地**
+-   :material-forum-outline:{ .lg } **チャンネル・DM・スレッド**
 
     ---
 
     公開・非公開のチャンネル、DM とグループ DM、スレッド、メンション、リアクション、ピン留め。
     未読の位置はパソコンとスマートフォンの間で同期します。
 
--   :material-server-outline:{ .lg } **自分たちのサーバーで**
+-   :material-server-outline:{ .lg } **セルフホスト**
 
     ---
 
     Docker Compose で 1 台のサーバーに立てられます。データの置き場所は PostgreSQL とファイルのディレクトリの
     2 か所だけで、バックアップと復元のスクリプトも付いています。
 
--   :material-check-decagram-outline:{ .lg } **取りこぼさない**
+-   :material-check-decagram-outline:{ .lg } **同期とプッシュ通知**
 
     ---
 
@@ -69,14 +69,14 @@ DM・リアクション・検索・ファイル共有といった毎日の連絡
 
     PGroonga による全文検索で、日本語も英語も探せます。送信者・チャンネル・期間で絞り込めます。
 
--   :material-calendar-check-outline:{ .lg } **研究室の毎日に**
+-   :material-calendar-check-outline:{ .lg } **研究室で使う機能**
 
     ---
 
     投票と日程調整、カレンダー、タスクとカンバン、締切、キャンバス (共有の文書)、Times (作業ログ)、
     ワークフロー、共有の機材やアカウントの予約。
 
--   :material-shield-account-outline:{ .lg } **管理しやすく**
+-   :material-shield-account-outline:{ .lg } **管理と移行**
 
     ---
 
@@ -85,7 +85,7 @@ DM・リアクション・検索・ファイル共有といった毎日の連絡
 
 </div>
 
-すべての機能は [機能の一覧](features.md) をご覧ください。
+機能の全体は [機能](features.md) のページにまとめています。
 
 ## ダウンロード { #download }
 

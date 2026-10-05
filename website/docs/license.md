@@ -8,7 +8,7 @@ description: Taylis のライセンス、商標、第三者のソフトウェア
 ## ソースコード: Apache License 2.0
 
 Taylis のソースコードは [Apache License 2.0](https://github.com/kanotown/taylis/blob/main/LICENSE) で公開しています。
-使う・調べる・改変する・自分たちのサーバーで動かす、のどれも、このライセンスの条件のもとで自由に行えます。
+このライセンスの条件に従えば、使う・調べる・改変する・自分たちのサーバーで動かす、のいずれも自由です。
 
 ## 名前とアイコン (商標)
 

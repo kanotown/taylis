@@ -23,8 +23,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy 
 
 ## タグから自動でデプロイする (GitHub Actions)
 
-自分のリポジトリ (フォーク) で `v1.2.3` の形のタグを push すると、テスト → イメージの作成 → サーバーへのデプロイ
-までを GitHub Actions で自動で行えます (`.github/workflows/release.yml`)。
+自分のリポジトリ (フォーク) で `v1.2.3` の形のタグを push すると、GitHub Actions がテスト → イメージの作成 →
+サーバーへのデプロイまでを自動で実行します (`.github/workflows/release.yml`)。
 
 ```text
 git tag v1.2.3 && git push origin v1.2.3
@@ -54,5 +54,5 @@ git tag v1.2.3 && git push origin v1.2.3
 ## サーバーとアプリの版
 
 アプリとサーバーは同じ API の仕様 ([openapi/openapi.json](https://github.com/kanotown/taylis/blob/main/openapi/openapi.json))
-でやり取りします。新しい機能は、古いアプリでも困らないように (知らない項目を無視するなど) 足しています。
+でやり取りします。新しい機能は、古いアプリが動かなくならないように (知らない項目は無視されるように) 追加しています。
 それでも、サーバーとアプリはなるべく新しい版にそろえてください。

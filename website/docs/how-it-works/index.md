@@ -45,7 +45,7 @@ Android (Jetpack Compose)     ┘                                        ├─ 
 どのアプリも、同じ API の仕様 ([openapi/openapi.json](https://github.com/kanotown/taylis/blob/main/openapi/openapi.json))
 でサーバーとやり取りします。アプリごとに違う動きを作らないようにしています。
 
-## 導入しないもの
+## 使わないもの
 
 Redis、Kafka、RabbitMQ、Elasticsearch、Kubernetes、分散データベースは使いません。この規模では PostgreSQL 1 台で
 十分で、部品が少ないほど壊れにくく、バックアップも簡単だからです。将来、横に増やす必要が出たときに替えられるように、

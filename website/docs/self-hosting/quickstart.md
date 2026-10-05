@@ -43,7 +43,7 @@ S3_SECRET_KEY=
 CHAT_DOMAIN=chat.example.com
 ```
 
-ランダムな値はこのコマンドで作れます:
+ランダムな値は次のコマンドで作れます。
 
 ```sh
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -63,7 +63,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy 
 - 起動のときにデータベースの移行が自動で適用されます。
 - Caddy が TLS の証明書を自動で取ります (80 / 443 が開いていて、DNS が向いている必要があります)。
 
-動いているかを確かめます:
+動いているかを確かめます。
 
 ```sh
 curl https://chat.example.com/healthz
