@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Timer, Users } from "lucide-react";
+import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -62,6 +62,11 @@ interface Props {
   /** M85 「締切」. */
   onDeadlines?: () => void;
   deadlinesActive?: boolean;
+  /** M112: 「予約」 (shown once the server answered the pools; a server before M112 has none). */
+  onReservations?: () => void;
+  reservationsActive?: boolean;
+  /** To-dos due in the pools I operate. */
+  reservationsCount?: number;
   /** M12a: every channel read to its end. */
   onReadAll?: () => void;
   /** M12e: reminders; listed while any is open. */
@@ -70,7 +75,7 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReadAll, onReminders, remindersActive = false }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -375,6 +380,25 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
               >
                 <Timer size={15} className="shrink-0 opacity-70" />
                 <span className="flex-1 truncate">締切</span>
+              </button>
+            </li>
+          )}
+          {onReservations && (
+            <li>
+              <button
+                type="button"
+                onClick={onReservations}
+                data-nav-item="reservations"
+                aria-current={reservationsActive ? "page" : undefined}
+                title="共有の枠の予約"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                  reservationsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                )}
+              >
+                <Ticket size={15} className="shrink-0 opacity-70" />
+                <span className="flex-1 truncate">予約</span>
+                {!!reservationsCount && <Badge tone="danger">{reservationsCount > 99 ? "99+" : reservationsCount}</Badge>}
               </button>
             </li>
           )}

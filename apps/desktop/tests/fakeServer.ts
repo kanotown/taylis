@@ -986,13 +986,19 @@ export class FakeServer {
     this.emit(record.members, { type: "event", id: ++this.eventId, event: "channel.links_updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, links } });
   }
 
-  /** M99: each channel's reservation pools; setPools announces a change like the server (no card in the event). */
-  readonly pools = new Map<string, PoolOut[]>();
+  /** M112: the workspace's reservation pools; setPools announces a change like the server (to everyone, no pool in it). */
+  pools: PoolOut[] = [];
+  /** How many times GET /reservation-pools was read. */
+  poolReads = 0;
 
-  setPools(channelId: string, pools: PoolOut[], changed: string = pools[0]?.id ?? "p"): void {
-    const record = this.record(channelId);
-    this.pools.set(channelId, pools);
-    this.emit(record.members, { type: "event", id: ++this.eventId, event: "reservation.updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, pool_id: changed, deleted: false } });
+  setPools(pools: PoolOut[], changed: string = pools[0]?.id ?? "p"): void {
+    this.pools = pools;
+    this.emit(new Set(this.users.keys()), { type: "event", id: ++this.eventId, event: "reservation.updated", ts: now(), channel_id: null, seq: null, data: { pool_id: changed, deleted: false } });
+  }
+
+  /** M112: a reservation notice for one person (an activity item; the badge refreshes, the app may show a banner). */
+  noticeReservation(userId: string, text: string): void {
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "reservation.notice", ts: now(), channel_id: null, seq: null, data: { item_id: `n${this.eventId}`, pool_id: "p1", reservation_id: null, text, operator: true, at: now() } } as EventFrame);
   }
 
   // --- canvases (M43, CANVAS.md §4.4–§4.7) -------------------------------------------------------
@@ -1654,9 +1660,10 @@ export class FakeServer {
         if (this.canvasTemplates[index]!.builtin) throw new ApiError(409, "template_builtin", "builtin");
         this.canvasTemplates.splice(index, 1);
       },
-      reservationPools: async (channelId) => {
+      reservationPools: async () => {
         maybeFail();
-        return this.pools.get(channelId) ?? [];
+        this.poolReads += 1;
+        return this.pools;
       },
       channelLinks: async (channelId) => {
         maybeFail();

@@ -129,11 +129,21 @@ export type FeedUpdate = components["schemas"]["FeedUpdate"];
 export type FeedBotOut = components["schemas"]["FeedBotOut"];
 export type FeedBotUpdate = components["schemas"]["FeedBotUpdate"];
 
-/** Reservation pools: a channel's shared seats with a queue (M99, docs/RESERVATIONS.md). */
+/** Reservation pools: the workspace's shared seats, booked by the hour or queued for (M99, M112, docs/RESERVATIONS.md). */
 export type PoolOut = components["schemas"]["PoolOut"];
 export type PoolCreate = components["schemas"]["PoolCreate"];
 export type PoolUpdate = components["schemas"]["PoolUpdate"];
 export type ReservationOut = components["schemas"]["ReservationOut"];
+export type TodoOut = components["schemas"]["TodoOut"];
+/** `reservation.notice` (ws-events.json): a new activity item about reservations for me. */
+export interface ReservationNotice {
+  item_id: string;
+  pool_id: string;
+  reservation_id: string | null;
+  text: string;
+  operator: boolean;
+  at: string;
+}
 
 /** Workflows: forms that post a message (M94, docs/WORKFLOWS.md). */
 export type WorkflowOut = components["schemas"]["WorkflowOut"];

@@ -1,19 +1,39 @@
 // @vitest-environment jsdom
-// M99 (docs/RESERVATIONS.md §6): a channel's reservation pools — the bar's chips, the card for members and operators,
-// and the pure helpers.
+// M112 (docs/RESERVATIONS.md §6): the 「予約」 page — the timeline, the booking choices, my reservations, the operators'
+// to-do — and its pure helpers.
 process.env.TZ = "Asia/Tokyo";
 
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ChannelOut, PoolOut, ReservationOut, UserMe, UserPublic } from "../src/api/types";
+import type { PoolOut, ReservationOut, TodoOut, UserMe, UserPublic } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
-import type { ChannelState } from "../src/sync/types";
-import { ReservationBar, ReservationCard } from "../src/ui/Reservations";
-import { holderBadge, myReservation, myStatusText, poolFormProblem, poolSummary, waiterLine } from "../src/ui/reservationPools";
+import { BookingDialog, PoolSection } from "../src/ui/Reservations";
+import {
+  bookingDays,
+  dayLabel,
+  durationChoices,
+  hourCounts,
+  myReservations,
+  poolFormProblem,
+  reservationTodoCount,
+  slotFits,
+  startChoices,
+  timelineBars,
+  todoLine,
+  walkinText,
+} from "../src/ui/reservationPools";
 
+// 2026-10-05 (月) 10:20 in Tokyo.
+const NOW = new Date("2026-10-05T01:20:00Z");
+const at = (hour: number, day = 5) => new Date(2026, 9, day, hour).toISOString();
+
+beforeEach(() => {
+  vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
+});
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
 });
 
@@ -30,8 +50,11 @@ function row(over: Partial<ReservationOut>): ReservationOut {
   return {
     id: "r",
     user_id: ALICE,
-    status: "waiting",
+    kind: "booking",
+    status: "booked",
     requested_at: "2026-10-04T00:00:00Z",
+    start_at: null,
+    end_at: null,
     assigned_at: null,
     guarantee_until: null,
     returned_at: null,
@@ -41,46 +64,106 @@ function row(over: Partial<ReservationOut>): ReservationOut {
     step: null,
     pair_id: null,
     ready: false,
+    until: null,
+    can_extend: false,
     ...over,
   };
 }
 
-const HOLDER = row({ id: "h1", user_id: ALICE, status: "holding", assigned_at: "2026-10-04T00:00:00Z", guarantee_until: "2026-10-04T06:00:00Z", pair_id: "w1" });
-const WAITER = row({ id: "w1", user_id: BOB, position: 1, step: "swap", pair_id: "h1" });
-
 function pool(over: Partial<PoolOut> = {}): PoolOut {
   return {
     id: "p1",
-    channel_id: "c-lab",
     name: "Claude Premium シート",
-    capacity: 1,
+    capacity: 2,
     min_hours: 6,
+    max_hours: 6,
     grace_minutes: 15,
     tz: "Asia/Tokyo",
     enabled: true,
     operator_ids: [],
-    bot_user_id: null,
-    holders: [HOLDER],
-    waiting: [WAITER],
-    next_evict_id: "h1",
+    log_channel_id: null,
+    visibility: "all",
+    visibility_channel_id: null,
+    visibility_group_id: null,
+    holders: [],
+    waiting: [],
+    bookings: [],
+    todos: [],
+    next_evict_id: null,
     my_reservation_id: null,
     can_manage: false,
     can_operate: false,
+    horizon_days: 14,
     created_at: "2026-10-01T00:00:00Z",
     updated_at: "2026-10-01T00:00:00Z",
     ...over,
   };
 }
 
-function setup(p: PoolOut, { inBar = false } = {}) {
+const B1 = row({ id: "b1", user_id: ALICE, start_at: at(12), end_at: at(15) });
+const B2 = row({ id: "b2", user_id: BOB, start_at: at(13), end_at: at(14) });
+const WALK = row({ id: "w1", user_id: BOB, kind: "walkin", status: "holding", assigned_at: at(9), guarantee_until: at(11) });
+
+describe("the helpers", () => {
+  it("puts bars in lanes and counts the seats per hour", () => {
+    const p = pool({ bookings: [B1, B2], holders: [WALK] });
+    const bars = timelineBars(p, new Date(2026, 9, 5), NOW);
+    expect(bars.map((b) => [b.id, b.lane])).toEqual([["w1", 0], ["b1", 0], ["b2", 1]]);
+    expect(bars[1]!.from).toBeCloseTo(12 / 24);
+    const counts = hourCounts(p, new Date(2026, 9, 5), NOW);
+    expect(counts.slice(9, 16)).toEqual([1, 1, 0, 1, 2, 1, 0]);
+    // another day shows nothing of today
+    expect(timelineBars(p, new Date(2026, 9, 6), NOW)).toEqual([]);
+  });
+
+  it("offers the starts from the current hour, greys full ones and stops durations at the first full hour", () => {
+    const p = pool({ bookings: [B1, B2] });
+    const starts = startChoices(p, new Date(2026, 9, 5), NOW);
+    expect(starts[0]!.start.getHours()).toBe(10); // 10:20 → the current hour
+    expect(starts.find((s) => s.start.getHours() === 13)?.full).toBe(true);
+    expect(starts.find((s) => s.start.getHours() === 12)?.full).toBe(false);
+    expect(durationChoices(p, new Date(2026, 9, 5, 10), NOW)).toEqual([1, 2, 3]); // 13:00 is full
+    expect(durationChoices(p, new Date(2026, 9, 5, 14), NOW)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(slotFits(p, new Date(2026, 9, 5, 13), 1, NOW)).toBe(false);
+    // a walk-in's guarantee holds its hours too
+    const walk = pool({ capacity: 1, holders: [WALK] });
+    expect(slotFits(walk, new Date(2026, 9, 5, 10), 1, NOW)).toBe(false);
+    expect(slotFits(walk, new Date(2026, 9, 5, 11), 1, NOW)).toBe(true);
+    // two weeks: the last day, nothing past it
+    const days = bookingDays(NOW, 14);
+    expect(days).toHaveLength(15);
+    expect(dayLabel(days[0]!, NOW)).toBe("今日");
+    expect(dayLabel(days[1]!, NOW)).toBe("明日");
+    expect(dayLabel(days[2]!, NOW)).toBe("10/7 (水)");
+    expect(durationChoices(p, new Date(2026, 9, 19, 22), NOW)).toEqual([1, 2]);
+  });
+
+  it("words my walk-in, the to-dos and the badge", () => {
+    const waiting = row({ id: "q1", user_id: ME, kind: "walkin", status: "waiting", step: "assign", until: at(13), position: 1 });
+    const p = pool({ waiting: [waiting], my_reservation_id: "q1", bookings: [B1] });
+    expect(myReservations(p, ME).walkin?.id).toBe("q1");
+    expect(walkinText(waiting, p, NOW)).toBe("空きあり (〜13:00 まで) · 担当者の割り当て待ち");
+    expect(walkinText({ ...waiting, step: "wait", position: 2, until: null }, p, NOW)).toBe("順番待ち 2 番目");
+    const todos: TodoOut[] = [
+      { key: "assign:q1", action: "assign", reason: "free", assign_id: "q1", remove_id: null, due_at: NOW.toISOString(), upcoming: false },
+      { key: "booking:b1", action: "swap", reason: "guarantee_over", assign_id: "b1", remove_id: "w1", due_at: at(12), upcoming: true },
+    ];
+    const withTodos = pool({ waiting: [{ ...waiting, email: "me@example.jp" }], holders: [WALK], bookings: [B1], todos });
+    const name = (id: string) => people.find((u) => u.id === id)!.display_name;
+    expect(todoLine(todos[0]!, withTodos, name, NOW)).toBe("わたし さん (me@example.jp) に割り当てる");
+    expect(todoLine(todos[1]!, withTodos, name, NOW)).toBe("12:00 から: ボブ さん を外して アリス さん に割り当てる (保証時間が終了) · 予約 12:00〜15:00");
+    expect(reservationTodoCount([withTodos])).toBe(1);
+    expect(reservationTodoCount(null)).toBe(0);
+    expect(poolFormProblem({ name: "x", capacity: "3", maxHours: "25", minHours: "6", graceMinutes: "15" })).toMatch("予約の最長");
+    expect(poolFormProblem({ name: "x", capacity: "3", maxHours: "6", minHours: "6", graceMinutes: "15" })).toBeNull();
+  });
+});
+
+function setup(p: PoolOut) {
   const store = new Store();
   store.setMe({ ...people[0]! } as unknown as UserMe);
   for (const user of people) store.upsertUser(user);
-  const channel = store.upsertChannel(
-    { id: "c-lab", type: "public", name: "claude", topic: null, purpose: null, archived: false, created_at: "2026-01-01T00:00:00Z", last_seq: 0, posting_policy: "everyone" } as unknown as ChannelOut,
-    { isMember: true, membership: { role: "member" } as never },
-  );
-  store.setReservationPools("c-lab", [p]);
+  store.setReservationPools([p]);
   const controller = {
     store,
     isAdmin: false,
@@ -91,119 +174,64 @@ function setup(p: PoolOut, { inBar = false } = {}) {
     reservePool: vi.fn(async () => p),
     reservationAction: vi.fn(async () => p),
     swapReservations: vi.fn(async () => p),
+    bookReservation: vi.fn(async () => p),
+    extendReservation: vi.fn(async () => p),
   } as unknown as AppController & Record<string, ReturnType<typeof vi.fn>>;
-  if (inBar) render(<ReservationBar controller={controller} channel={channel as ChannelState} />);
-  else render(<ReservationCard controller={controller} channel={channel as ChannelState} pool={p} />);
   return { controller };
 }
 
-const flush = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const settle = () => act(async () => { await Promise.resolve(); });
 
-describe("helpers", () => {
-  it("summarises the pool and my place", () => {
-    expect(poolSummary(pool())).toBe("1/1 · 待ち 1");
-    expect(poolSummary(pool({ waiting: [] }))).toBe("1/1");
-    expect(myReservation(pool()).kind).toBe("none");
-    expect(myStatusText(pool({ my_reservation_id: "w1" }))).toBe("待ち 1 番目");
-    expect(myStatusText(pool({ my_reservation_id: "h1" }))).toBe("利用中 (保証 10/4 (日) 15:00 まで)");
-    const told = pool({ my_reservation_id: "h1", holders: [{ ...HOLDER, evict_at: "2026-10-04T07:15:00Z" }] });
-    expect(myStatusText(told)).toBe("10/4 (日) 16:15 以降に外されます");
-  });
-
-  it("says where a waiting member stands and what a holder is", () => {
-    const name = (id: string) => (id === ALICE ? "アリス" : "ボブ");
-    expect(waiterLine(WAITER, pool(), name)).toBe("10/4 (日) 9:00 に予約 · アリス さんの後");
-    expect(waiterLine({ ...WAITER, step: "assign" }, pool(), name)).toContain("空きあり");
-    expect(waiterLine({ ...WAITER, step: "wait" }, pool(), name)).toContain("保証時間が過ぎる人を待っています");
-    const now = new Date("2026-10-04T08:00:00Z");
-    expect(holderBadge(HOLDER, pool(), now)?.text).toBe("次に外す");
-    expect(holderBadge({ ...HOLDER, evict_at: "2026-10-04T08:15:00Z" }, pool(), now)?.text).toBe("10/4 (日) 17:15 以降に外す");
-    expect(holderBadge({ ...HOLDER, evict_at: "2026-10-04T07:15:00Z", ready: true }, pool(), now)?.text).toBe("入れ替えできます");
-    expect(holderBadge({ ...HOLDER, status: "returning" }, pool(), now)?.text).toBe("返却済み · 外し待ち");
-    expect(holderBadge(HOLDER, pool({ next_evict_id: null }), now)?.text).toBe("保証時間終了");
-  });
-
-  it("checks the settings form", () => {
-    const ok = { name: "シート", capacity: "3", minHours: "6", graceMinutes: "15" };
-    expect(poolFormProblem(ok)).toBeNull();
-    expect(poolFormProblem({ ...ok, name: " " })).toBe("名前を入力してください");
-    expect(poolFormProblem({ ...ok, capacity: "0" })).toContain("枠の数");
-    expect(poolFormProblem({ ...ok, minHours: "1.5" })).toContain("最低保証");
-    expect(poolFormProblem({ ...ok, graceMinutes: "2000" })).toContain("猶予");
-  });
-});
-
-describe("the card", () => {
-  it("lets a member reserve and shows no operator buttons or addresses", async () => {
-    const { controller } = setup(pool({ holders: [{ ...HOLDER, email: null }] }));
-    expect(screen.getByText("予約していません")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "割り当てた" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "外した" })).toBeNull();
-    expect(document.querySelector("[data-email]")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "予約する" }));
-    await flush();
+describe("the page", () => {
+  it("lists my bookings with extend / cancel and the walk-in button", async () => {
+    const mine = row({ id: "m1", user_id: ME, start_at: at(16), end_at: at(18), can_extend: true });
+    const { controller } = setup(pool({ bookings: [B1, mine] }));
+    render(<PoolSection controller={controller} pool={controller.store.reservationPools![0]!} onEdit={() => {}} />);
+    const box = screen.getByLabelText("自分の予約");
+    expect(within(box).getByText("16:00〜18:00")).toBeTruthy();
+    fireEvent.click(within(box).getByRole("button", { name: "1 時間延長" }));
+    expect(controller.extendReservation).toHaveBeenCalledWith("m1");
+    await settle();
+    fireEvent.click(within(box).getByRole("button", { name: "取り消す" }));
+    fireEvent.click(within(box).getAllByRole("button", { name: "取り消す" }).at(-1)!);
+    expect(controller.reservationAction).toHaveBeenCalledWith("m1", "cancel");
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "今すぐ (順番待ち)" }));
     expect(controller.reservePool).toHaveBeenCalledWith("p1");
+    // the timeline draws both bookings (mine stands out)
+    expect(document.querySelector('[data-bar="m1"]')).toBeTruthy();
+    expect(document.querySelector('[data-bar="b1"]')?.getAttribute("title")).toBe("アリス · 予約 12:00〜15:00");
   });
 
-  it("lets the holder return the seat after a confirmation", async () => {
-    const { controller } = setup(pool({ my_reservation_id: "h1", holders: [{ ...HOLDER, user_id: ME }] }));
-    expect(screen.getAllByText(/利用中/).length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: "返却する" }));
-    const dialog = screen.getByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "返却する" }));
-    await flush();
-    expect(controller.reservationAction).toHaveBeenCalledWith("h1", "return");
+  it("gives operators the to-do buttons", async () => {
+    const waiting = row({ id: "q1", user_id: ALICE, kind: "walkin", status: "waiting", step: "assign", email: "alice@example.jp" });
+    const back = row({ id: "h1", user_id: BOB, kind: "walkin", status: "returning", assigned_at: at(8), guarantee_until: at(14) });
+    const todos: TodoOut[] = [
+      { key: "assign:q1", action: "assign", reason: "free", assign_id: "q1", remove_id: null, due_at: NOW.toISOString(), upcoming: false },
+      { key: "remove:h1", action: "remove", reason: "returned", assign_id: null, remove_id: "h1", due_at: NOW.toISOString(), upcoming: false },
+    ];
+    const { controller } = setup(pool({ waiting: [waiting], holders: [back], todos, can_operate: true }));
+    render(<PoolSection controller={controller} pool={controller.store.reservationPools![0]!} onEdit={() => {}} />);
+    const list = screen.getByLabelText("担当者の作業");
+    expect(within(list).getByText("アリス さん (alice@example.jp) に割り当てる")).toBeTruthy();
+    fireEvent.click(within(list).getByRole("button", { name: "割り当てた" }));
+    expect(controller.reservationAction).toHaveBeenCalledWith("q1", "assign");
+    await settle();
+    fireEvent.click(within(list).getByRole("button", { name: "外した" }));
+    expect(controller.reservationAction).toHaveBeenCalledWith("h1", "remove");
   });
 
-  it("gives operators the addresses, 外した and 入れ替えた when the swap is ready", async () => {
-    const ready = pool({
-      can_operate: true,
-      holders: [{ ...HOLDER, email: "alice@example.jp", evict_at: "2026-10-04T06:15:00Z", ready: true }],
-      waiting: [{ ...WAITER, email: "bob@example.jp", ready: true }],
-    });
-    const { controller } = setup(ready);
-    expect(screen.getByText("alice@example.jp")).toBeTruthy();
-    expect(screen.getByText("bob@example.jp")).toBeTruthy();
-    expect(screen.getByText("入れ替えできます")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "外した" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "入れ替えた" }));
-    const dialog = screen.getByRole("alertdialog");
-    expect(dialog.textContent).toContain("アリス さんを外して ボブ さんを割り当てましたか");
-    fireEvent.click(within(dialog).getByRole("button", { name: "入れ替えた" }));
-    await flush();
-    expect(controller.swapReservations).toHaveBeenCalledWith("p1", "h1", "w1");
-  });
-
-  it("offers 割り当てた for a free seat", async () => {
-    const free = pool({ capacity: 2, can_operate: true, waiting: [{ ...WAITER, step: "assign", pair_id: null, ready: true }] });
-    const { controller } = setup(free);
-    expect(screen.queryByRole("button", { name: "入れ替えた" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "割り当てた" }));
-    await flush();
-    expect(controller.reservationAction).toHaveBeenCalledWith("w1", "assign");
-  });
-});
-
-describe("the bar", () => {
-  it("shows one chip per pool with the count and my status, and opens the card", async () => {
-    setup(pool({ my_reservation_id: "w1" }), { inBar: true });
-    const bar = screen.getByLabelText("共有枠の予約");
-    expect(within(bar).getByText("Claude Premium シート")).toBeTruthy();
-    expect(within(bar).getByText("1/1 · 待ち 1")).toBeTruthy();
-    expect(within(bar).getByText("· 待ち 1 番目")).toBeTruthy();
-    fireEvent.click(within(bar).getByRole("button"));
-    await flush();
-    expect(document.querySelector("[data-reservation-card]")).toBeTruthy();
-  });
-});
-
-describe("the store", () => {
-  it("replaces a pool in place and drops a deleted one", () => {
-    const store = new Store();
-    store.setReservationPools("c-lab", [pool(), pool({ id: "p2" })]);
-    store.putReservationPool(pool({ name: "新しい名前" }));
-    expect(store.poolsOf("c-lab").map((p) => p.name)).toEqual(["新しい名前", "Claude Premium シート"]);
-    store.dropReservationPool("c-lab", "p1");
-    expect(store.poolsOf("c-lab").map((p) => p.id)).toEqual(["p2"]);
+  it("books the chosen start and length", async () => {
+    const p = pool({ bookings: [B1, B2] });
+    const { controller } = setup(p);
+    const onClose = vi.fn();
+    render(<BookingDialog controller={controller} pool={p} initialDay={new Date(2026, 9, 5)} onClose={onClose} />);
+    const start = screen.getByLabelText("開始") as HTMLSelectElement;
+    expect([...start.options].find((o) => o.text.startsWith("13:00"))?.disabled).toBe(true);
+    fireEvent.change(start, { target: { value: String(new Date(2026, 9, 5, 14).getTime()) } });
+    fireEvent.change(screen.getByLabelText("時間"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "予約する" }));
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(controller.bookReservation).toHaveBeenCalledWith("p1", new Date(2026, 9, 5, 14).toISOString(), 3);
   });
 });
