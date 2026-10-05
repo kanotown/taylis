@@ -36,7 +36,7 @@ describe("dictionaries", () => {
   it("English and Chinese texts are not left in Japanese (kana)", () => {
     const kana = /[぀-ヿ]/;
     // Names and examples that are Japanese on purpose.
-    const allowed = new Set<string>(["settings.profile.readingPlaceholder"]);
+    const allowed = new Set<string>(["settings.profile.readingPlaceholder", "commands.shrug.description"]);
     for (const key of Object.keys(ja) as MessageKey[]) {
       if (allowed.has(key)) continue;
       expect(kana.test(en[key]), `en ${key}: ${en[key]}`).toBe(false);

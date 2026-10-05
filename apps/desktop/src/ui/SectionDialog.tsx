@@ -10,6 +10,7 @@ import { EmojiPicker, readRecentEmoji } from "./EmojiPicker";
 import { Button, cn, Field, Input, Modal, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { isLetterText, letterIcon, normalizeLetterInput, parseLetterIcon } from "./sectionIcon";
 import { TEXT_EMOJI_COLOR_NAMES, TEXT_EMOJI_COLORS, textEmojiColors } from "./textEmoji";
+import { t } from "../i18n";
 
 /**
  * A section's icon (M26): an emoji, or a custom emoji drawn from its image (a text emoji as its pill); M114: a letter
@@ -65,8 +66,8 @@ function LetterIconPicker({ initial, onPick }: { initial: string | null; onPick:
           <Input
             value={raw}
             autoFocus
-            aria-label="アイコンの文字"
-            placeholder="例: M、B、修"
+            aria-label={t("sectionDialog.iconText")}
+            placeholder={t("sectionDialog.iconTextPlaceholder")}
             onChange={(e) => setRaw(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.nativeEvent.isComposing) {
@@ -75,10 +76,10 @@ function LetterIconPicker({ initial, onPick }: { initial: string | null; onPick:
               }
             }}
           />
-          <div className={cn("mt-1 text-[11px]", text && !valid ? "text-danger" : "text-muted")}>英数字 2 文字まで、または日本語 1 文字</div>
+          <div className={cn("mt-1 text-[11px]", text && !valid ? "text-danger" : "text-muted")}>{t("sectionDialog.iconTextRule")}</div>
         </div>
       </div>
-      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="色">
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("emoji.color")}>
         {(Object.keys(TEXT_EMOJI_COLORS) as TextEmojiColor[]).map((key) => (
           <button key={key} type="button" role="radio" aria-checked={color === key} aria-label={TEXT_EMOJI_COLOR_NAMES[key]} title={TEXT_EMOJI_COLOR_NAMES[key]} onClick={() => setColor(key)} className={cn("rounded-md p-0.5", color === key ? "ring-2 ring-accent" : "")}>
             <LetterBadge text={valid ? text : "A"} color={key} size={24} />
@@ -86,7 +87,7 @@ function LetterIconPicker({ initial, onPick }: { initial: string | null; onPick:
         ))}
       </div>
       <div className="text-right">
-        <Button type="button" size="sm" disabled={!valid} onClick={() => onPick(letterIcon(text, color))}>このアイコンにする</Button>
+        <Button type="button" size="sm" disabled={!valid} onClick={() => onPick(letterIcon(text, color))}>{t("sectionDialog.useIcon")}</Button>
       </div>
     </div>
   );
@@ -139,19 +140,19 @@ export function SectionDialog({ controller, title, submitLabel, initial, pickCha
   return (
     <Modal onClose={onClose} title={title} className="w-[460px]">
       <form className="mt-4 space-y-4" onSubmit={(e) => void submit(e)}>
-        <Field label="名前とアイコン">
+        <Field label={t("sectionDialog.nameIcon")}>
           <div className="flex items-center gap-2">
             <PopoverRoot open={picking} onOpenChange={setPicking}>
               <PopoverTrigger asChild>
-                <button type="button" aria-label={emoji ? "アイコンを変更" : "アイコンを選ぶ"} title="アイコン" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-canvas text-muted hover:bg-panel">
+                <button type="button" aria-label={emoji ? t("sectionDialog.changeIcon") : t("sectionDialog.pickIcon")} title={t("workspace.icon")} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-canvas text-muted hover:bg-panel">
                   {emoji ? <SectionIcon controller={controller} emoji={emoji} size={18} /> : <SmilePlus size={16} />}
                 </button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-auto p-3">
-                <div className="mb-2 flex gap-1" role="tablist" aria-label="アイコンの種類">
+                <div className="mb-2 flex gap-1" role="tablist" aria-label={t("sectionDialog.iconKind")}>
                   {(["emoji", "letter"] as const).map((tab) => (
                     <button key={tab} type="button" role="tab" aria-selected={pickerTab === tab} onClick={() => setPickerTab(tab)} className={cn("rounded-md px-3 py-1 text-sm", pickerTab === tab ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel")}>
-                      {tab === "emoji" ? "絵文字" : "文字"}
+                      {tab === "emoji" ? t("composer.emoji") : t("emoji.kindText")}
                     </button>
                   ))}
                 </div>
@@ -176,20 +177,20 @@ export function SectionDialog({ controller, title, submitLabel, initial, pickCha
                 )}
                 {emoji && (
                   <div className="mt-2 border-t border-line pt-2 text-right">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => { setEmoji(null); setPicking(false); }}>アイコンを外す</Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => { setEmoji(null); setPicking(false); }}>{t("sectionDialog.removeIcon")}</Button>
                   </div>
                 )}
               </PopoverContent>
             </PopoverRoot>
-            <Input value={name} maxLength={40} required autoFocus placeholder="例: 研究、授業、事務連絡" onChange={(e) => setName(e.target.value)} />
+            <Input value={name} maxLength={40} required autoFocus placeholder={t("sectionDialog.namePlaceholder")} onChange={(e) => setName(e.target.value)} />
           </div>
         </Field>
         {pickChannels && (
           <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted">入れる会話 ({chosen.size})</span>
+            <span className="text-xs font-medium text-muted">{t("sectionDialog.conversations", { count: chosen.size })}</span>
             <div className="relative">
               <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="チャンネルや DM を絞り込む" className="pl-8" />
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("sectionDialog.filter")} className="pl-8" />
             </div>
             <ul className="max-h-60 divide-y divide-line overflow-y-auto rounded-xl border border-line">
               {conversations.map((channel) => {
@@ -204,18 +205,18 @@ export function SectionDialog({ controller, title, submitLabel, initial, pickCha
                         onChange={(e) => setChosen((all) => { const next = new Set(all); if (e.target.checked) next.add(channel.id); else next.delete(channel.id); return next; })}
                       />
                       <span className="min-w-0 flex-1 truncate">{channelTitle(channel, controller)}</span>
-                      {current && <span className="shrink-0 text-[11px] text-muted">{current.name} から移動</span>}
+                      {current && <span className="shrink-0 text-[11px] text-muted">{t("sectionDialog.movesFrom", { name: current.name })}</span>}
                     </label>
                   </li>
                 );
               })}
-              {conversations.length === 0 && <li className="px-3 py-4 text-center text-sm text-muted">該当する会話がありません</li>}
+              {conversations.length === 0 && <li className="px-3 py-4 text-center text-sm text-muted">{t("sectionDialog.noMatch")}</li>}
             </ul>
           </div>
         )}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" disabled={busy || !name.trim()}>{busy ? "保存中…" : submitLabel}</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" disabled={busy || !name.trim()}>{busy ? t("common.saving") : submitLabel}</Button>
         </div>
       </form>
     </Modal>
