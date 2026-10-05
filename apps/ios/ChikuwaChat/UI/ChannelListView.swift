@@ -230,7 +230,8 @@ struct ChannelListView: View {
     private var tiles: some View {
         let store = controller.store
         let row = HomeTile.tiles(threads: store.threadSummary, drafts: store.listDrafts().count + store.scheduled.count,
-                                 saved: store.bookmarks.count, firedReminders: store.firedReminderCount)
+                                 saved: store.bookmarks.count, firedReminders: store.firedReminderCount,
+                                 navItems: (store.me ?? controller.me)?.navItems.chosen)
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(row) { tile in

@@ -25,6 +25,18 @@ protocol SyncApi: AnyObject {
     func setThreadFollow(messageId: String, following: Bool) async throws -> ThreadState
     /// M49: one of my conversations as its member sees it (GET /channels/{id}, with `last_message`).
     func channel(id: String) async throws -> ChannelOut
+    /// M111: my private settings again (GET /users/me) after another of my devices changed them.
+    func me() async throws -> UserMe
+}
+
+extension SyncApi {
+    /// Fakes without it: nothing to read (the settings then come with the next bootstrap).
+    func me() async throws -> UserMe { throw CancellationError() }
+}
+
+private func isNewer(_ a: String, than b: String) -> Bool {
+    guard let dateA = parseIsoDate(a), let dateB = parseIsoDate(b) else { return a > b }
+    return dateA > dateB
 }
 
 enum EngineStatus: String { case idle, connecting, online, offline, signedOut }
@@ -195,6 +207,14 @@ final class SyncEngine {
         } catch {
             print("could not refresh the conversation's last message: \(error)")
         }
+    }
+
+    /// M111: my own settings again (GET /users/me), kept only when still newer than what the store holds (as the
+    /// desktop's). A failure waits for the next bootstrap.
+    func refreshMe() async {
+        guard let fresh = try? await api.me(), let held = store.me, held.id == fresh.id,
+              !isNewer(held.updatedAt, than: fresh.updatedAt) else { return }
+        store.setMe(fresh)
     }
 
     /// M15f: the conversation's link bar; loaded when it opens and after reconnecting (not in bootstrap).
@@ -640,7 +660,13 @@ final class SyncEngine {
             if let id = frame.data["channel_id"]?.stringValue { store.memberListVersion[id, default: 0] += 1 }
         case "user.created", "user.updated", "user.deactivated":
             struct Payload: Decodable { let user: UserPublic }
-            store.upsertUser(try frame.data.decode(Payload.self).user)
+            let user = try frame.data.decode(Payload.self).user
+            store.upsertUser(user)
+            // M111: me, changed on another of my devices (home tiles, quick reactions …): my private settings are not in
+            // the event (it is everyone's), so read them again.
+            if frame.event == "user.updated", let me = store.me, user.id == me.id, isNewer(user.updatedAt, than: me.updatedAt) {
+                Task { await refreshMe() }
+            }
         case "read.updated":
             if let id = frame.data["channel_id"]?.stringValue {
                 applyReadState(id, try frame.data.decode(ReadStateOut.self), allowDecrease: frame.data["reason"]?.stringValue == "set")
