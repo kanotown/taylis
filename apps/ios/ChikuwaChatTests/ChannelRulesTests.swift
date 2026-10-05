@@ -18,7 +18,7 @@ final class ChannelRulesTests: XCTestCase {
         XCTAssertTrue(PreviewJoin.canJoin(out))
         out.archived = true
         XCTAssertFalse(PreviewJoin.canJoin(out))
-        XCTAssertEqual(PreviewJoin.archivedNote, "アーカイブされたチャンネルです (読むだけ)")
+        XCTAssertEqual(PreviewJoin.archivedNote, "アーカイブされたチャンネルです（読むだけ）")
     }
 
     func testMutedChannelsCountOnlyMentions() {
@@ -127,9 +127,9 @@ final class ChannelRulesTests: XCTestCase {
     }
 
     func testTheNotificationMenuLabel() {
-        XCTAssertEqual(NotificationRules.menuLabel(level: "all", muted: false, timedMute: nil), "通知: すべて")
-        XCTAssertEqual(NotificationRules.menuLabel(level: "mentions", muted: false, timedMute: "15:30 までミュート"), "通知 (15:30 までミュート)")
-        XCTAssertEqual(NotificationRules.menuLabel(level: "none", muted: true, timedMute: "15:30 までミュート"), "通知: ミュート中")
+        XCTAssertEqual(NotificationRules.menuLabel(level: "all", muted: false, timedMute: nil), "通知：すべて")
+        XCTAssertEqual(NotificationRules.menuLabel(level: "mentions", muted: false, timedMute: "15:30 までミュート"), "通知（15:30 までミュート）")
+        XCTAssertEqual(NotificationRules.menuLabel(level: "none", muted: true, timedMute: "15:30 までミュート"), "通知：ミュート中")
         XCTAssertEqual(NotificationRules.overallLabel("mentions"), "メンションと DM のみ")
     }
 

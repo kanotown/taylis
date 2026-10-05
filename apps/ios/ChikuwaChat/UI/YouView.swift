@@ -106,7 +106,7 @@ struct YouView: View {
                 }
             }
         }
-        .accessibilityLabel(status.map { "ステータス: \($0.emoji) \($0.text)" } ?? "ステータスを更新")
+        .accessibilityLabel(status.map { "ステータス：\($0.emoji) \($0.text)" } ?? "ステータスを更新")
     }
 
     @ViewBuilder
@@ -255,7 +255,7 @@ struct QuietHoursView: View {
                 } header: {
                     Text("曜日")
                 } footer: {
-                    Text("タイムゾーン: \(TimeZone.current.identifier)")
+                    Text("タイムゾーン：\(TimeZone.current.identifier)")
                 }
             }
         }
@@ -337,7 +337,7 @@ struct NotificationSettingsView: View {
             // M56 (TASKS.md §5): task assignments and due dates; a server before M55 has no tasks.
             if let notifyTasks = me?.notifyTasks {
                 Section {
-                    Toggle("タスク (割り当て・期限)", isOn: Binding(get: { notifyTasks }, set: { on in
+                    Toggle("タスク（割り当て・期限）", isOn: Binding(get: { notifyTasks }, set: { on in
                         Task { _ = await controller.updateProfile(notifyTasks: on) }
                     }))
                 } footer: {
@@ -346,7 +346,7 @@ struct NotificationSettingsView: View {
             }
             // M12g: words that notify me like a mention, edited as a comma-separated line.
             Section {
-                TextField("例: リリース, 締切", text: $keywords, axis: .vertical)
+                TextField("例：リリース, 締切", text: $keywords, axis: .vertical)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .onChange(of: keywords) { _, _ in saved = false }
                 HStack {
@@ -475,7 +475,7 @@ struct AppearanceView: View {
                     }
                     .buttonStyle(.plain)
                     .frame(maxWidth: .infinity)
-                    .accessibilityLabel(glyph.map { "候補 \(index + 1): \($0)" } ?? "候補 \(index + 1): 空き")
+                    .accessibilityLabel(glyph.map { "候補 \(index + 1)：\($0)" } ?? "候補 \(index + 1)：空き")
                     .accessibilityHint("タップして絵文字を選びます")
                 }
             }
@@ -508,7 +508,7 @@ struct AppearanceView: View {
         } header: {
             Text("メッセージ")
         } footer: {
-            Text("オフ: 投稿ごとにアイコンと名前を表示します。オン: 同じ人の続けての投稿をまとめます (チャンネル・DM・スレッド)。この端末だけの設定です。")
+            Text("オフ：投稿ごとにアイコンと名前を表示します。オン：同じ人の続けての投稿をまとめます（チャンネル・DM・スレッド）。この端末だけの設定です。")
         }
     }
 }
@@ -528,7 +528,7 @@ struct LanguageSettingsView: View {
         Form {
             Section {
                 Picker("言語", selection: Binding(get: { language.choice }, set: { controller.setLanguage($0) })) {
-                    Text("端末に合わせる (\(language.deviceLanguage.nativeName))").tag(AppLanguage?.none)
+                    Text("端末に合わせる（\(language.deviceLanguage.nativeName)）").tag(AppLanguage?.none)
                     ForEach(AppLanguage.allCases) { Text(verbatim: $0.nativeName).tag(AppLanguage?.some($0)) }
                 }
                 .pickerStyle(.inline)
@@ -628,7 +628,7 @@ struct ProfileEditView: View {
                             .onChange(of: displayName) { _, _ in saved = false }
                     }
                     LabeledContent("肩書") {
-                        TextField("例: 研究室長 / TA (学年・職位は自動)", text: $title).multilineTextAlignment(.trailing)
+                        TextField("例：研究室長 / TA（学年・職位は自動）", text: $title).multilineTextAlignment(.trailing)
                             .onChange(of: title) { _, _ in saved = false }
                     }
                     if rosterLine != nil {
@@ -871,7 +871,7 @@ struct AccountView: View {
                 HStack(spacing: 8) { ProgressView(); Text("読み込んでいます…").foregroundStyle(.secondary) }
             }
         } header: {
-            Text(sessions.map { "ログイン中の端末 (\($0.count))" } ?? "ログイン中の端末")
+            Text(sessions.map { "ログイン中の端末（\($0.count)）" } ?? "ログイン中の端末")
         } footer: {
             Text("心当たりのない端末はログアウトさせてください。この端末からのログアウトは「自分」の一番下から行います。")
         }
@@ -929,8 +929,8 @@ struct PasswordChangeView: View {
         Form {
             Section {
                 SecureField("現在のパスワード", text: $current).textContentType(.password)
-                SecureField("新しいパスワード (8 文字以上)", text: $next).textContentType(.newPassword)
-                SecureField("新しいパスワード (確認)", text: $repeated).textContentType(.newPassword)
+                SecureField("新しいパスワード（8 文字以上）", text: $next).textContentType(.newPassword)
+                SecureField("新しいパスワード（確認）", text: $repeated).textContentType(.newPassword)
             } footer: {
                 if let message {
                     Text(message).foregroundStyle(message == tr("パスワードを変更しました") ? Color.secondary : Color.red)

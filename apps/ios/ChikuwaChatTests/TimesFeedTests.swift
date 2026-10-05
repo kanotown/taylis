@@ -380,7 +380,7 @@ final class TimesFeedTests: XCTestCase {
     func testAHitInAChannelIAmNotInIsNamedFromTheAnswer() {
         var archived = channel("t9", member: false).channel
         archived.archived = true
-        XCTAssertEqual(SearchLogic.otherChannelName(archived), "times-t9 (アーカイブ済み)")
+        XCTAssertEqual(SearchLogic.otherChannelName(archived), "times-t9（アーカイブ済み）")
         XCTAssertEqual(SearchLogic.otherChannelName(channel("t8", member: false).channel), "times-t8")
         XCTAssertEqual(SearchLogic.otherChannelName(nil), "?")
     }

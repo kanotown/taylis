@@ -119,7 +119,7 @@ enum AskRules {
     /// A question that failed on the server: its reason when it gave one.
     static func runFailureText(_ reason: String?) -> String {
         guard let reason = reason?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty else { return tr("答えられませんでした") }
-        return tr("答えられませんでした: \(reason)")
+        return tr("答えられませんでした：\(reason)")
     }
 
     static var startingText: String { tr("質問を送っています…") }

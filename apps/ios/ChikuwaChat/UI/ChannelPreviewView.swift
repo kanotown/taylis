@@ -3,7 +3,7 @@ import SwiftUI
 /// The preview's join bar (M27): an archived channel offers no 「参加する」 (the server answers 409 channel_archived).
 enum PreviewJoin {
     /// In place of the button when the channel is archived.
-    static var archivedNote: String { tr("アーカイブされたチャンネルです (読むだけ)") }
+    static var archivedNote: String { tr("アーカイブされたチャンネルです（読むだけ）") }
 
     static func canJoin(_ channel: ChannelOut) -> Bool { !channel.archived }
 

@@ -12,6 +12,6 @@ final class ShareTests: XCTestCase {
     func testClipsLongBodiesAndStandsInForAttachmentOnlyMessages() {
         let long = String(repeating: "あ", count: 400)
         XCTAssertEqual(Share.body(original: long, permalink: link, comment: ""), "> " + String(repeating: "あ", count: 300) + "…\n\(link)")
-        XCTAssertEqual(Share.body(original: "   ", permalink: link, comment: "資料です"), "資料です\n> (添付ファイル)\n\(link)")
+        XCTAssertEqual(Share.body(original: "   ", permalink: link, comment: "資料です"), "資料です\n> （添付ファイル）\n\(link)")
     }
 }

@@ -140,7 +140,7 @@ struct CalendarEventForm: View {
         RepeatPickerSection(repetition: Binding(get: { draft.repetition }, set: { draft.repetition = $0; error = nil }), start: draft.startDay)
         Section {
             Picker("カレンダー", selection: $draft.channelId) {
-                Text("自分 (自分だけに表示)").tag(String?.none)
+                Text("自分（自分だけに表示）").tag(String?.none)
                 if let channelId = event?.channelId, !controller.writableCalendars.contains(where: { $0.id == channelId }) {
                     Text(calendarName(channelId)).tag(String?.some(channelId))
                 }
@@ -153,7 +153,7 @@ struct CalendarEventForm: View {
             if event != nil { Text("予定のカレンダーはあとから変えられません。") }
         }
         Section {
-            TextField("場所 (5 号館 501 / https://…)", text: $draft.location)
+            TextField("場所（5 号館 501 / https://…）", text: $draft.location)
             TextField("説明", text: $draft.description, axis: .vertical)
                 .lineLimit(3...10)
         }
@@ -275,7 +275,7 @@ struct RecurrenceLine: View {
     var body: some View {
         Label(CalendarRecurrence.describe(event.rrule, start: CalendarDates.eventDays(event).first), systemImage: "repeat")
             .foregroundStyle(.secondary)
-            .accessibilityLabel(tr("繰り返し: ") + CalendarRecurrence.describe(event.rrule, start: CalendarDates.eventDays(event).first))
+            .accessibilityLabel(tr("繰り返し：") + CalendarRecurrence.describe(event.rrule, start: CalendarDates.eventDays(event).first))
     }
 }
 

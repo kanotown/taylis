@@ -28,17 +28,17 @@ struct InviteView: View {
                     if preview.role == "admin" { Text("管理者として参加します").font(.footnote) }
                     if let lab = preview.lab { Text(Invite.labLine(lab)).font(.footnote) }  // L7
                     if !preview.channels.isEmpty {
-                        Text(tr("参加するチャンネル: ") + preview.channels.map { "#\($0)" }.joined(separator: " ")).font(.footnote).foregroundStyle(.secondary)
+                        Text(tr("参加するチャンネル：") + preview.channels.map { "#\($0)" }.joined(separator: " ")).font(.footnote).foregroundStyle(.secondary)
                     }
                     Text("サーバ \(target.server.absoluteString)").font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("アカウント") {
-                    TextField("ユーザー名 (3〜32 文字、a-z 0-9 . _ -)", text: $username)
+                    TextField("ユーザー名（3〜32 文字、a-z 0-9 . _ -）", text: $username)
                         .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .onChange(of: username) { _, value in username = value.lowercased() }
                     TextField("表示名", text: $displayName)
-                    SecureField("パスワード (\(minLength) 文字以上)", text: $password).textContentType(.newPassword)
-                    SecureField("パスワード (確認)", text: $repeatPassword).textContentType(.newPassword)
+                    SecureField("パスワード（\(minLength) 文字以上）", text: $password).textContentType(.newPassword)
+                    SecureField("パスワード（確認）", text: $repeatPassword).textContentType(.newPassword)
                 }
                 if mismatch { Section { Text("パスワードが一致しません").foregroundStyle(.red) } }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
@@ -74,7 +74,7 @@ struct InviteView: View {
 
     private func check() async {
         guard let parsed = Invite.parse(link) else {
-            error = tr("招待リンクの形式が正しくありません (https://サーバ/invite/… の形です)")
+            error = tr("招待リンクの形式が正しくありません（https://サーバ/invite/… の形です）")
             return
         }
         busy = true

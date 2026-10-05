@@ -326,7 +326,7 @@ final class TaskExtrasTests: XCTestCase {
         XCTAssertEqual(TaskRules.dueLabel(timed, today: "2029-12-01"), "2030/1/10 14:00")
         XCTAssertEqual(TaskRules.dueLabel(task("x", dueOn: "2030-01-10"), today: "2030-01-01"), "1/10")
         XCTAssertNil(TaskRules.dueLabel(task("x"), today: "2030-01-01"))
-        XCTAssertEqual(TaskRules.dueText(timed.dueOn, today: "2030-01-10", dueAt: timed.dueAt), "2030/01/10 14:00 (今日)")
+        XCTAssertEqual(TaskRules.dueText(timed.dueOn, today: "2030-01-10", dueAt: timed.dueAt), "2030/01/10 14:00（今日）")
         // Late once the time has passed (a date only once its day is over).
         let iso = ISO8601DateFormatter()
         XCTAssertFalse(TaskRules.isOverdue(timed, today: "2030-01-10", now: iso.date(from: "2030-01-10T04:59:00Z")!))
@@ -348,9 +348,9 @@ final class TaskExtrasTests: XCTestCase {
         XCTAssertEqual(TaskRules.chip(MessageTaskOut(id: "k", dueOn: "2030-01-10"), names: [], today: "2030-01-10").text, "タスク · 未着手 · 今日まで")
         // The open app's notice.
         XCTAssertEqual(TaskRules.noticeText(due: TaskDue(taskId: "t", channelId: nil, channelName: nil, title: "会議", dueOn: "2030-01-10",
-                                                         dueAt: "2030-01-10T05:00:00Z", tz: "Asia/Tokyo")), "14:00 が期限: 会議")
+                                                         dueAt: "2030-01-10T05:00:00Z", tz: "Asia/Tokyo")), "14:00 が期限：会議")
         XCTAssertEqual(TaskRules.noticeText(due: TaskDue(taskId: "t", channelId: "c", channelName: "lab", title: "会議", dueOn: "2030-01-10")),
-                       "今日が期限: 会議 (#lab)")
+                       "今日が期限：会議 (#lab)")
     }
 
     func testTheChecklistsProgress() {
@@ -420,6 +420,6 @@ final class TaskExtrasTests: XCTestCase {
             XCTAssertNotEqual(text, "English", code)
         }
         XCTAssertEqual(ErrorMessages.text(for: ApiError.api(status: 409, code: "task_column_builtin", message: "")),
-                       "最初からある 3 つの列 (未着手・進行中・完了) は削除できません")
+                       "最初からある 3 つの列（未着手・進行中・完了）は削除できません")
     }
 }

@@ -170,7 +170,7 @@ struct ChannelLinkEditor: View {
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    TextField("名前 (例: デザイン資料)", text: $title)
+                    TextField("名前（例：デザイン資料）", text: $title)
                 } footer: {
                     if !url.isEmpty && !urlOk { Text("http:// か https:// で始まる URL を入れてください").foregroundStyle(.red) }
                 }

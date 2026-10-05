@@ -266,7 +266,7 @@ final class CanvasOfflineSaverTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
         let date = ISO8601DateFormatter().date(from: "2026-10-02T05:30:00Z")!
-        XCTAssertEqual(CanvasOffline.notice(savedAt: date, calendar: calendar), "オフライン — 最後に読み込んだ時点 (2026年10月2日 (金) 14:30) の内容です")
+        XCTAssertEqual(CanvasOffline.notice(savedAt: date, calendar: calendar), "オフライン — 最後に読み込んだ時点（2026年10月2日 (金) 14:30）の内容です")
     }
 }
 

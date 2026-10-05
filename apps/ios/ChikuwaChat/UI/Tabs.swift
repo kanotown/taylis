@@ -76,7 +76,7 @@ enum DMList {
         if last.type != "user" { return last.excerpt }
         if let meId, last.senderId == meId {
             let notesToSelf = type == "dm" && (dmUserIds ?? []).allSatisfy { $0 == meId }
-            return notesToSelf ? last.excerpt : tr("あなた: ") + last.excerpt
+            return notesToSelf ? last.excerpt : tr("あなた：") + last.excerpt
         }
         if type == "dm" { return last.excerpt }
         let name = users[last.senderId]?.displayName.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

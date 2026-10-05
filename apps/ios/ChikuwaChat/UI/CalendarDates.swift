@@ -303,7 +303,7 @@ enum CalendarDates {
         AlarmChoice(value: 15, label: tr("15 分前")),
         AlarmChoice(value: 30, label: tr("30 分前")),
         AlarmChoice(value: 60, label: tr("1 時間前")),
-        AlarmChoice(value: 1440, label: tr("前日 (24 時間前)")),
+        AlarmChoice(value: 1440, label: tr("前日（24 時間前）")),
     ] }
 
     /// An all-day event's alarm goes out at 8:00: the day before (1440) or on the day (-480).

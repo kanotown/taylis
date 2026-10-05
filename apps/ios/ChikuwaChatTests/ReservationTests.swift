@@ -116,9 +116,9 @@ final class ReservationTests: XCTestCase {
                            bookings: [booking("b1", user: "alice", from: 12, to: 15)], todos: todos, myReservationId: "q1", canOperate: true)
         let name: (String) -> String = { ["me": "わたし", "bob": "ボブ", "alice": "アリス"][$0] ?? "?" }
         XCTAssertEqual(ReservationRules.mine(pool, me: "me").walkin?.id, "q1")
-        XCTAssertTrue(ReservationRules.walkinText(waiting, pool: pool, now: now).hasPrefix("空きあり (〜"))
-        XCTAssertEqual(ReservationRules.todoLine(todos[0], pool: pool, name: name, now: now), "わたし さん (me@example.jp) に割り当てる")
-        XCTAssertTrue(ReservationRules.todoLine(todos[1], pool: pool, name: name, now: now).contains("ボブ さん を外して アリス さん に割り当てる (保証時間が終了)"))
+        XCTAssertTrue(ReservationRules.walkinText(waiting, pool: pool, now: now).hasPrefix("空きあり（〜"))
+        XCTAssertEqual(ReservationRules.todoLine(todos[0], pool: pool, name: name, now: now), "わたし さん（me@example.jp） に割り当てる")
+        XCTAssertTrue(ReservationRules.todoLine(todos[1], pool: pool, name: name, now: now).contains("ボブ さん を外して アリス さん に割り当てる（保証時間が終了）"))
         XCTAssertEqual(ReservationRules.todoCount([pool]), 1)
         let tiles = HomeTile.tiles(threads: ThreadSummary(unreadCount: 0, mentionCount: 0), drafts: 0, saved: 0, firedReminders: 0,
                                    reservations: HomeTile.ReservationTile(todos: 1, operates: true))

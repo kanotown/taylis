@@ -190,14 +190,14 @@ enum ReservationRules {
     static func walkinText(_ row: ReservationOut, pool: PoolOut, now: Date) -> String {
         if row.status == "waiting" {
             switch row.step {
-            case "assign": return row.until.map { tr("空きあり (〜\(when($0, now: now)) まで) · 担当者の割り当て待ち") } ?? tr("空きあり · 担当者の割り当て待ち")
+            case "assign": return row.until.map { tr("空きあり（〜\(when($0, now: now)) まで）· 担当者の割り当て待ち") } ?? tr("空きあり · 担当者の割り当て待ち")
             case "swap": return row.ready ? tr("まもなく担当者が割り当てます") : tr("前の人の保証時間の後に割り当てられます")
             default: return tr("順番待ち \(row.position.map(String.init) ?? "?") 番目")
             }
         }
         if row.status == "returning" { return tr("返却済み · 担当者が外すのを待っています") }
         if let evict = row.evictAt { return tr("\(when(evict, now: now)) 以降に外されます") }
-        return row.guaranteeUntil.map { tr("利用中 (〜\(when($0, now: now)) まで保証)") } ?? tr("利用中")
+        return row.guaranteeUntil.map { tr("利用中（〜\(when($0, now: now)) まで保証）") } ?? tr("利用中")
     }
 
     /// What a booking of mine says.
@@ -207,7 +207,7 @@ enum ReservationRules {
         case "holding": return tr("\(s) · 利用中")
         case "returning": return tr("\(s) · 返却済み")
         default:
-            if let start = date(row.startAt), start <= now { return tr("\(s) · 開始 (担当者の割り当て待ち)") }
+            if let start = date(row.startAt), start <= now { return tr("\(s) · 開始（担当者の割り当て待ち）") }
             return s
         }
     }
@@ -225,17 +225,17 @@ enum ReservationRules {
     /// One to-do as a line (the web's todoLine).
     static func todoLine(_ todo: ReservationTodo, pool: PoolOut, name: (String) -> String, now: Date) -> String {
         func who(_ id: String?) -> String {
-            guard let row = row(pool, id) else { return tr("(不明)") }
-            return row.email.map { tr("\(name(row.userId)) さん (\($0))") } ?? tr("\(name(row.userId)) さん")
+            guard let row = row(pool, id) else { return tr("（不明）") }
+            return row.email.map { tr("\(name(row.userId)) さん（\($0)）") } ?? tr("\(name(row.userId)) さん")
         }
         let target = row(pool, todo.assignId)
         let booked = target?.kind == "booking" ? tr(" · 予約 \(span(target?.startAt, target?.endAt, now: now))") : ""
-        let head = todo.upcoming ? tr("\(when(todo.dueAt, now: now)) から: ") : ""
+        let head = todo.upcoming ? tr("\(when(todo.dueAt, now: now)) から：") : ""
         let reason = reasons[todo.reason] ?? ""
         switch todo.action {
         case "assign": return tr("\(head)\(who(todo.assignId)) に割り当てる\(booked)")
-        case "swap": return tr("\(head)\(who(todo.removeId)) を外して \(who(todo.assignId)) に割り当てる (\(reason))\(booked)")
-        default: return tr("\(head)\(who(todo.removeId)) を外す (\(reason))")
+        case "swap": return tr("\(head)\(who(todo.removeId)) を外して \(who(todo.assignId)) に割り当てる（\(reason)）\(booked)")
+        default: return tr("\(head)\(who(todo.removeId)) を外す（\(reason)）")
         }
     }
 
@@ -302,7 +302,7 @@ struct PoolSection: View {
         let run: () async -> Void
     }
 
-    private func name(_ userId: String) -> String { controller.store.statusUser(userId)?.displayName ?? tr("(不明)") }
+    private func name(_ userId: String) -> String { controller.store.statusUser(userId)?.displayName ?? tr("（不明）") }
 
     private func run(_ call: @escaping () async -> Void) {
         guard !busy else { return }
@@ -324,7 +324,7 @@ struct PoolSection: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(!pool.enabled || busy || active != nil || controller.isGuest)
                 if mine.walkin == nil {
-                    Button("今すぐ (順番待ち)") { run { _ = await controller.reservePool(pool.id) } }
+                    Button("今すぐ（順番待ち）") { run { _ = await controller.reservePool(pool.id) } }
                         .buttonStyle(.bordered)
                         .disabled(!pool.enabled || busy || active != nil || controller.isGuest)
                 }
@@ -362,7 +362,7 @@ struct PoolSection: View {
             }
             if let walkin = mine.walkin {
                 HStack {
-                    Text(tr("今すぐ: ") + ReservationRules.walkinText(walkin, pool: pool, now: now)).font(.subheadline)
+                    Text(tr("今すぐ：") + ReservationRules.walkinText(walkin, pool: pool, now: now)).font(.subheadline)
                     Spacer()
                     if walkin.status == "waiting" {
                         Button("取り消す") { run { _ = await controller.reservationAction(walkin.id, "cancel") } }.buttonStyle(.bordered)
@@ -423,7 +423,7 @@ struct PoolSection: View {
                         Text(ReservationRules.hm(hour.start)).font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 44, alignment: .leading)
                         Text("\(hour.rows.count)/\(pool.capacity)").font(.caption.monospacedDigit())
                             .foregroundStyle(hour.rows.count >= pool.capacity ? Color.red : Color.secondary).frame(width: 36, alignment: .leading)
-                        Text(hour.rows.map { name($0.userId) + ($0.kind == "walkin" ? tr(" (今すぐ)") : "") }.joined(separator: tr("、")))
+                        Text(hour.rows.map { name($0.userId) + ($0.kind == "walkin" ? tr("（今すぐ）") : "") }.joined(separator: tr("、")))
                             .font(.caption).lineLimit(2)
                     }
                     .accessibilityElement(children: .combine)
@@ -497,7 +497,7 @@ struct BookingSheet: View {
                 } else {
                     Picker("開始", selection: Binding(get: { chosenStart ?? now }, set: { start = $0 })) {
                         ForEach(starts) { choice in
-                            Text(ReservationRules.hm(choice.start) + (choice.full ? tr(" (満)") : "")).tag(choice.start)
+                            Text(ReservationRules.hm(choice.start) + (choice.full ? tr("（満）") : "")).tag(choice.start)
                                 .selectionDisabled(choice.full)
                         }
                     }

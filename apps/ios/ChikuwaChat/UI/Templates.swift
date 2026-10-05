@@ -125,7 +125,7 @@ enum Templates {
 
     // MARK: /日程
 
-    static var scheduleUsage: String { tr("/日程 [題名] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)") }
+    static var scheduleUsage: String { tr("/日程 [題名] 日付 …（例：/日程 ゼミ 10/3 10/5-10/7 13:00）") }
 
     struct Schedule: Equatable {
         let question: String

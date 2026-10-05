@@ -85,7 +85,7 @@ struct TimesFeedView: View {
             Button("既読にする") { Task { await controller.markTimesRead() } }
             Button("キャンセル", role: .cancel) {}
         } message: {
-            Text("フィードに出ている times (ミュートしていないもの) の未読がなくなります。")
+            Text("フィードに出ている times（ミュートしていないもの）の未読がなくなります。")
         }
         .navigationDestination(item: $thread) { target in ThreadView(controller: controller, channelId: target.channelId, parentId: target.parentId) }
         .messageSheets(controller, sheet: $messageSheet, openThread: { message in openThread(channelId: message.channelId, id: message.id, parentId: message.parentId) })

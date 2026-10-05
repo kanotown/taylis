@@ -206,7 +206,7 @@ struct EmojiPickerView: View {
                 }
             }
             .padding(.top, 8)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "検索 (例: tada、乾杯、ありがとう)")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "検索（例：tada、乾杯、ありがとう）")
             .navigationTitle("絵文字")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }

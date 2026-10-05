@@ -27,7 +27,7 @@ struct ShareMessageSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section { TextField("コメント (任意)", text: $comment, axis: .vertical).lineLimit(1...3) }
+                Section { TextField("コメント（任意）", text: $comment, axis: .vertical).lineLimit(1...3) }
                 Section("共有先") {
                     ForEach(targets) { state in
                         Button {

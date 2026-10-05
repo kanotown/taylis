@@ -19,7 +19,7 @@ final class CalendarFeedsModel {
         case all, personal
 
         var id: String { rawValue }
-        var choice: String { self == .all ? tr("すべて (自分のカレンダーと参加しているチャンネル)") : tr("自分のカレンダーだけ") }
+        var choice: String { self == .all ? tr("すべて（自分のカレンダーと参加しているチャンネル）") : tr("自分のカレンダーだけ") }
     }
 
     /// nil: not read yet.
@@ -134,7 +134,7 @@ struct CalendarFeedsView: View {
                 } header: {
                     Text("範囲")
                 } footer: {
-                    Text("Google カレンダーや Apple のカレンダーにこのカレンダーの予定を表示します (読み取り専用)。")
+                    Text("Google カレンダーや Apple のカレンダーにこのカレンダーの予定を表示します（読み取り専用）。")
                 }
                 if let url = model.madeUrl {
                     Section {
@@ -148,7 +148,7 @@ struct CalendarFeedsView: View {
                     } header: {
                         Text("購読 URL")
                     } footer: {
-                        Text("この URL はいまだけ表示します。閉じると再表示できません (必要なら作り直してください)。")
+                        Text("この URL はいまだけ表示します。閉じると再表示できません（必要なら作り直してください）。")
                     }
                 }
                 Section("作った購読 URL") {
@@ -180,15 +180,15 @@ struct CalendarFeedsView: View {
                 }
                 Section("使い方") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Google カレンダー (ブラウザ): 左の「他のカレンダー」の「＋」→「URL で追加」に URL を貼り付けて「カレンダーを追加」。")
-                        Text("iPhone: 上の「この iPhone のカレンダーに追加」、または「設定」→「カレンダー」→「アカウント」→「アカウントを追加」→「その他」→「照会するカレンダーを追加」に URL を貼り付け。Mac は「ファイル」→「新規カレンダー照会…」。")
-                        Text("反映はカレンダーのアプリが読みに来たとき (数分〜数時間ごと) です。90 日前から 400 日先までの予定が入ります。")
+                        Text("Google カレンダー（ブラウザ）：左の「他のカレンダー」の「＋」→「URL で追加」に URL を貼り付けて「カレンダーを追加」。")
+                        Text("iPhone：上の「この iPhone のカレンダーに追加」、または「設定」→「カレンダー」→「アカウント」→「アカウントを追加」→「その他」→「照会するカレンダーを追加」に URL を貼り付け。Mac は「ファイル」→「新規カレンダー照会…」。")
+                        Text("反映はカレンダーのアプリが読みに来たとき（数分〜数時間ごと）です。90 日前から 400 日先までの予定が入ります。")
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("カレンダーを購読 (iCal)")
+            .navigationTitle("カレンダーを購読（iCal）")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("閉じる") { dismiss() } }

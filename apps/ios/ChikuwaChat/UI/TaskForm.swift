@@ -103,7 +103,7 @@ struct TaskForm: View {
                             draft.assigneeIds = []
                         })) {
                             ForEach(boards, id: \.self) { id in Text(boardName(id)).tag(String?.some(id)) }
-                            if !isDeadline { Text("自分のタスク (自分だけに表示)").tag(String?.none) }  // M86: a deadline is a channel's
+                            if !isDeadline { Text("自分のタスク（自分だけに表示）").tag(String?.none) }  // M86: a deadline is a channel's
                         }
                         .disabled(boards.isEmpty || (isDeadline && boards.count == 1))
                     }
@@ -170,7 +170,7 @@ struct TaskForm: View {
     private var editableFields: some View {
         if isReview { assigneeSection }
         Section {
-            TextField(isDeadline ? "題名 (例: 全国大会 原稿)" : "題名 (例: 資料をまとめる)", text: $draft.title, axis: .vertical)
+            TextField(isDeadline ? "題名（例：全国大会 原稿）" : "題名（例：資料をまとめる）", text: $draft.title, axis: .vertical)
                 .lineLimit(1...4)
                 .onChange(of: draft.title) { _, _ in error = nil }
         } header: {
@@ -296,7 +296,7 @@ struct TaskForm: View {
                 Button("サブタスクを追加", systemImage: "plus") { draft.subtasks.append(SubtaskDraft(title: "")) }
             }
         } header: {
-            Text(draft.subtasks.isEmpty ? "サブタスク" : "サブタスク (\(doneCount)/\(draft.subtasks.count))")
+            Text(draft.subtasks.isEmpty ? "サブタスク" : "サブタスク（\(doneCount)/\(draft.subtasks.count)）")
         }
     }
 
@@ -344,15 +344,15 @@ struct TaskForm: View {
                 .accessibilityLabel(assigneeLabel)
                 .accessibilityValue(assigneeSummary)
             } header: {
-                Text(draft.assigneeIds.isEmpty ? assigneeLabel : tr("\(assigneeLabel) (\(draft.assigneeIds.count) 人)"))
+                Text(draft.assigneeIds.isEmpty ? assigneeLabel : tr("\(assigneeLabel)（\(draft.assigneeIds.count) 人）"))
             } footer: {
                 if task == nil {
                     if isReview {
                         Text("選んだ人にレビューの依頼が届きます。状態はメッセージの下に表示されます")
                     } else if draft.channelId == nil && draft.dmChannelId != nil {
-                        Text("担当者を選ぶと、この DM のメンバーにも表示されます (選ばなければ自分だけのタスク)")
+                        Text("担当者を選ぶと、この DM のメンバーにも表示されます（選ばなければ自分だけのタスク）")
                     } else if controller.store.channel(channelId) != nil {
-                        Text("加えた人には通知が届きます (自分を除く)")
+                        Text("加えた人には通知が届きます（自分を除く）")
                     }
                 }
             }
@@ -408,7 +408,7 @@ struct TaskForm: View {
             }
             if let progress = TaskRules.subtaskProgress(task) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("サブタスク (\(progress.done)/\(progress.total))").font(.subheadline).foregroundStyle(.secondary)
+                    Text("サブタスク（\(progress.done)/\(progress.total)）").font(.subheadline).foregroundStyle(.secondary)
                     ForEach(task.subtasks) { item in
                         Text("\(item.done ? "☑" : "☐") \(Text(item.title).strikethrough(item.done))")
                             .font(.subheadline)
@@ -494,7 +494,7 @@ struct TaskForm: View {
     /// 「元のキャンバス: 議事録」 when this device knows its title.
     private func canvasHeader(_ canvasId: String) -> String {
         guard let title = controller.store.canvasMeta(canvasId)?.title, !title.isEmpty else { return tr("元のキャンバス") }
-        return tr("元のキャンバス: ") + title
+        return tr("元のキャンバス：") + title
     }
 
     private func loadMembers() async {
@@ -607,7 +607,7 @@ struct TaskAssigneePicker: View {
                     HStack(spacing: 10) {
                         AvatarView(id: row.id, name: row.name, size: 30)
                         Text(row.name).foregroundStyle(Color.primary)
-                        if row.id == controller.store.me?.id { Text("(自分)").font(.caption).foregroundStyle(.secondary) }
+                        if row.id == controller.store.me?.id { Text("（自分）").font(.caption).foregroundStyle(.secondary) }
                         Spacer(minLength: 0)
                         if selected.contains(row.id) {
                             Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Color.accentColor)
@@ -620,7 +620,7 @@ struct TaskAssigneePicker: View {
             }
         }
         .modifier(SearchableWhenLong(enabled: rows.count > 8, query: $query))
-        .navigationTitle(selected.isEmpty ? title : tr("\(title) (\(selected.count) 人)"))
+        .navigationTitle(selected.isEmpty ? title : tr("\(title)（\(selected.count) 人）"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

@@ -116,8 +116,8 @@ final class SearchLogicTests: XCTestCase {
         XCTAssertEqual(edited.channelId, "c2")
         XCTAssertEqual(edited.has, [.file])
         XCTAssertEqual(SearchLogic.describe(params, userName: { $0 == "u1" ? "田中" : nil }, channelTitle: { $0 == "c1" ? "#general" : nil }),
-                       "設計 · 送信者: 田中 · #general · 過去 7 日間 · ファイルあり · スレッド内")
-        XCTAssertEqual(SearchLogic.describe(SearchParams(fromUserId: "gone"), userName: { _ in nil }, channelTitle: { _ in nil }), "送信者: ?")
+                       "設計 · 送信者：田中 · #general · 過去 7 日間 · ファイルあり · スレッド内")
+        XCTAssertEqual(SearchLogic.describe(SearchParams(fromUserId: "gone"), userName: { _ in nil }, channelTitle: { _ in nil }), "送信者：?")
     }
 
     func testRecentSearchesKeepTenNewestFirstWithoutDuplicatesPerAccount() {

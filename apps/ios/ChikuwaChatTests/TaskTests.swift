@@ -285,7 +285,7 @@ final class TaskRulesTests: XCTestCase {
         XCTAssertEqual(TaskRules.dueLabel("2026-10-01", today: "2026-10-01"), "今日")
         XCTAssertEqual(TaskRules.dueLabel("2026-10-05", today: "2026-10-01"), "10/5")
         XCTAssertEqual(TaskRules.dueLabel("2027-01-05", today: "2026-10-01"), "2027/1/5")
-        XCTAssertEqual(TaskRules.dueText("2026-10-01", today: "2026-10-01"), "2026/10/01 (今日)")
+        XCTAssertEqual(TaskRules.dueText("2026-10-01", today: "2026-10-01"), "2026/10/01（今日）")
         XCTAssertEqual(TaskRules.dueText(nil, today: "2026-10-01"), "なし")
         // A day's tasks: open ones first, then by title.
         let a = F.task("b-open", dueOn: "2026-10-05")
@@ -459,11 +459,11 @@ final class TaskRulesTests: XCTestCase {
 
     func testNoticesAreWordedLikeThePush() {
         let assigned = TaskAssigned(taskId: "t1", channelId: "c-lab", channelName: "lab", title: "資料", byUserId: "u-bob")
-        XCTAssertEqual(TaskRules.noticeText(assigned: assigned) { $0 == "u-bob" ? "ボブ" : nil }, "ボブ がタスクを割り当てました: 資料 (#lab)")
-        XCTAssertEqual(TaskRules.noticeText(assigned: assigned) { _ in nil }, "メンバー がタスクを割り当てました: 資料 (#lab)")
-        XCTAssertEqual(TaskRules.noticeText(due: TaskDue(taskId: "t2", channelId: nil, channelName: nil, title: "買い物", dueOn: "2026-10-01")), "今日が期限: 買い物")
+        XCTAssertEqual(TaskRules.noticeText(assigned: assigned) { $0 == "u-bob" ? "ボブ" : nil }, "ボブ がタスクを割り当てました：資料 (#lab)")
+        XCTAssertEqual(TaskRules.noticeText(assigned: assigned) { _ in nil }, "メンバー がタスクを割り当てました：資料 (#lab)")
+        XCTAssertEqual(TaskRules.noticeText(due: TaskDue(taskId: "t2", channelId: nil, channelName: nil, title: "買い物", dueOn: "2026-10-01")), "今日が期限：買い物")
         XCTAssertEqual(TaskRules.noticeText(due: TaskDue(taskId: "t3", channelId: "c-lab", channelName: "lab", title: "発表", dueOn: "2026-10-01")),
-                       "今日が期限: 発表 (#lab)")
+                       "今日が期限：発表 (#lab)")
     }
 }
 
@@ -810,7 +810,7 @@ final class TaskWireTests: XCTestCase {
         controller.store.upsertUser(UserPublic(id: "u-bob", username: "bob", displayName: "ボブ", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: ""))
         let assigned = TaskNotice.assigned(TaskAssigned(taskId: "t1", channelId: "c1", channelName: "lab", title: "資料", byUserId: "u-bob"))
         controller.sayTaskNotice(assigned)
-        XCTAssertEqual(controller.notice, "☑️ ボブ がタスクを割り当てました: 資料 (#lab)")
+        XCTAssertEqual(controller.notice, "☑️ ボブ がタスクを割り当てました：資料 (#lab)")
         controller.notice = nil
         me.notifyTasks = false
         controller.store.setMe(me)
@@ -824,7 +824,7 @@ final class TaskWireTests: XCTestCase {
         me.dndUntil = nil
         controller.store.setMe(me)
         controller.sayTaskNotice(.due(TaskDue(taskId: "t2", channelId: nil, channelName: nil, title: "買い物", dueOn: nil)))
-        XCTAssertEqual(controller.notice, "☑️ 今日が期限: 買い物")
+        XCTAssertEqual(controller.notice, "☑️ 今日が期限：買い物")
     }
 }
 
@@ -995,7 +995,7 @@ final class ReviewTests: XCTestCase {
     func testTheReviewFormAsksSomeoneInTheMessagesConversation() {
         let store = store()
         let lab = TaskRules.messageReviewInit(message("原稿を見てください", channel: "lab"), channel: store.channel("lab"), users: store.users, groups: [:])
-        XCTAssertEqual(lab.title, "レビュー: 原稿を見てください")
+        XCTAssertEqual(lab.title, "レビュー：原稿を見てください")
         XCTAssertEqual(lab.kind, .review)
         XCTAssertEqual(lab.channelId, "lab")
         XCTAssertEqual(lab.sourceMessageId, "m1")
@@ -1006,14 +1006,14 @@ final class ReviewTests: XCTestCase {
         let body = asked.create(clientTaskId: "k1", tz: "Asia/Tokyo")
         XCTAssertEqual(body.channelId, "lab")
         XCTAssertEqual(body.assigneeIds, ["u-kano"])
-        XCTAssertEqual(body.json, .object(["title": .string("レビュー: 原稿を見てください"), "status": .string("todo"), "client_task_id": .string("k1"),
+        XCTAssertEqual(body.json, .object(["title": .string("レビュー：原稿を見てください"), "status": .string("todo"), "client_task_id": .string("k1"),
                                            "tz": .string("Asia/Tokyo"), "channel_id": .string("lab"), "assignee_ids": .array([.string("u-kano")]),
                                            "source_message_id": .string("m1"), "kind": .string("review")]))
         // A long body: the title stays within 200.
         let long = TaskRules.messageReviewInit(message(String(repeating: "あ", count: 300), channel: "lab"), channel: store.channel("lab"),
                                                users: store.users, groups: [:])
         XCTAssertEqual(long.title.count, TaskRules.maxTitle)
-        XCTAssertTrue(long.title.hasPrefix("レビュー: "))
+        XCTAssertTrue(long.title.hasPrefix("レビュー："))
         // In a DM: shared there.
         var dm = TaskRules.messageReviewInit(message("修論の 3 章", channel: "dm"), channel: store.channel("dm"), users: store.users, groups: [:])
         dm.assigneeIds = ["u-kano"]
@@ -1047,23 +1047,23 @@ final class ReviewTests: XCTestCase {
         XCTAssertNil(TaskRules.messageTaskInit(message("x", channel: "lab"), channel: store.channel("lab"), users: store.users, groups: [:],
                                                isAdmin: false).dmChannelId)
         // A DM's task is mine to change while I am in it; it opens with its kind.
-        let dmTask = F.task("レビュー: 3 章", channelId: "dm", channelName: nil, kind: .review)
+        let dmTask = F.task("レビュー：3 章", channelId: "dm", channelName: nil, kind: .review)
         XCTAssertTrue(TaskRules.canEditTask(dmTask, channel: store.channel("dm"), isAdmin: false))
         XCTAssertFalse(TaskRules.canEditTask(dmTask, channel: store.channel("olddm"), isAdmin: false))
         XCTAssertEqual(TaskDraft(task: dmTask).kind, .review)
     }
 
     func testRequestedHoldsMySharedTasksWithSomeoneElseAssigned() async {
-        let mine = F.task("レビュー: 1 章", ownerId: "u-me", dueOn: "2026-10-09", assigneeIds: ["u-kano"], kind: .review)
+        let mine = F.task("レビュー：1 章", ownerId: "u-me", dueOn: "2026-10-09", assigneeIds: ["u-kano"], kind: .review)
         let api = FakeTaskApi()
         api.requested = [mine]
         let hub = TaskHub(api: api, me: { "u-me" })
         await hub.openRequested()
         XCTAssertEqual(hub.requested?.state, .ready)
-        XCTAssertEqual(hub.requested?.tasks.map(\.title), ["レビュー: 1 章"])
+        XCTAssertEqual(hub.requested?.tasks.map(\.title), ["レビュー：1 章"])
         XCTAssertEqual(hub.find(mine.id)?.kind, .review)
         // A new request made elsewhere comes in; one taken off its assignees (or only me left) goes.
-        let dm = F.task("レビュー: 2 章", channelId: "dm", channelName: nil, ownerId: "u-me", assigneeIds: ["u-kano"], kind: .review)
+        let dm = F.task("レビュー：2 章", channelId: "dm", channelName: nil, ownerId: "u-me", assigneeIds: ["u-kano"], kind: .review)
         hub.applyEvent("task.updated", F.updated(dm, deleters: ["u-me"]))
         XCTAssertEqual(hub.requested?.tasks.count, 2)
         var selfOnly = mine
@@ -1109,12 +1109,12 @@ final class ReviewTests: XCTestCase {
 
     func testNoticesForReviewsAreWordedLikeThePush() {
         let nameOf: (String) -> String? = { $0 == "u-kano" ? "加納" : nil }
-        let asked = TaskAssigned(taskId: "t1", channelId: "c-lab", channelName: "lab", title: "レビュー: 1 章", byUserId: "u-kano", kind: .review)
-        XCTAssertEqual(TaskRules.noticeText(assigned: asked, nameOf: nameOf), "加納 がレビューを依頼しました: レビュー: 1 章 (#lab)")
+        let asked = TaskAssigned(taskId: "t1", channelId: "c-lab", channelName: "lab", title: "レビュー：1 章", byUserId: "u-kano", kind: .review)
+        XCTAssertEqual(TaskRules.noticeText(assigned: asked, nameOf: nameOf), "加納 がレビューを依頼しました：レビュー：1 章 (#lab)")
         let inDm = TaskAssigned(taskId: "t1", channelId: "dm", channelName: "", title: "資料", byUserId: "u-kano")
-        XCTAssertEqual(TaskRules.noticeText(assigned: inDm, nameOf: nameOf), "加納 がタスクを割り当てました: 資料")
-        let done = TaskReviewDone(taskId: "t1", channelId: "dm", channelName: "", title: "レビュー: 1 章", byUserId: "u-kano")
-        XCTAssertEqual(TaskRules.noticeText(reviewDone: done, nameOf: nameOf), "加納 がレビューを完了しました: レビュー: 1 章")
+        XCTAssertEqual(TaskRules.noticeText(assigned: inDm, nameOf: nameOf), "加納 がタスクを割り当てました：資料")
+        let done = TaskReviewDone(taskId: "t1", channelId: "dm", channelName: "", title: "レビュー：1 章", byUserId: "u-kano")
+        XCTAssertEqual(TaskRules.noticeText(reviewDone: done, nameOf: nameOf), "加納 がレビューを完了しました：レビュー：1 章")
         // task.assigned carries kind from M63; task.review_done is said through the hub.
         let frame = JSONValue.object(["task_id": .string("t1"), "channel_id": .string("c1"), "channel_name": .string("lab"), "title": .string("x"),
                                       "by_user_id": .string("u-kano"), "kind": .string("review")])

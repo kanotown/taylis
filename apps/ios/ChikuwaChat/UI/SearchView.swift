@@ -564,7 +564,7 @@ struct SearchSuggestionLabel: View {
         case .thread:
             Label { Text("スレッド内のメッセージ") } icon: { Image(systemName: "bubble.left.and.bubble.right").foregroundStyle(.secondary) }
         case .times:
-            Label { Text("Times の投稿 (is:times)") } icon: { Image(systemName: "newspaper").foregroundStyle(.secondary) }
+            Label { Text("Times の投稿（is:times）") } icon: { Image(systemName: "newspaper").foregroundStyle(.secondary) }
         }
     }
 }
@@ -700,7 +700,7 @@ struct SearchResultsView: View {
             Label("見つかりませんでした", systemImage: "magnifyingglass")
         } description: {
             if !model.unresolved.isEmpty {
-                Text("理解できない条件があります: \(model.unresolved.joined(separator: " "))\n名前や書き方を確かめてください。")
+                Text("理解できない条件があります：\(model.unresolved.joined(separator: " "))\n名前や書き方を確かめてください。")
             } else {
                 Text(params.hasFilters ? "条件を減らすと見つかるかもしれません。" : "別の言葉や、より短い言葉で試してください。")
             }
@@ -775,7 +775,7 @@ struct SearchFilterBar: View {
                     SearchChip(active: sender != nil, onClear: { onUpdate { $0.fromUserId = nil } }) {
                         Button { onPick(.sender) } label: {
                             // A canvas's person is who made it or changed it last.
-                            SearchChipLabel(title: sender.map { (canvases ? tr("作成・更新: ") : tr("送信者: ")) + $0 } ?? (canvases ? tr("作成・更新した人") : tr("送信者")),
+                            SearchChipLabel(title: sender.map { (canvases ? tr("作成・更新：") : tr("送信者：")) + $0 } ?? (canvases ? tr("作成・更新した人") : tr("送信者")),
                                             systemImage: "person", active: sender != nil)
                         }
                     }

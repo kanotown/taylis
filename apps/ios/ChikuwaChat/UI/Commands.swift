@@ -21,7 +21,7 @@ enum SlashCommands {
     static let scheduleName = "日程"  // i18n-ignore
 
     static var all: [Command] { [
-        Command(name: "status", usage: tr("/status [絵文字] 文"), description: tr("ステータスを設定 (/status clear で消す)")),
+        Command(name: "status", usage: tr("/status [絵文字] 文"), description: tr("ステータスを設定（/status clear で消す）")),
         Command(name: "dnd", usage: "/dnd 30m | 1h | 2h | 4h | tomorrow | off", description: tr("通知を一時停止")),
         Command(name: "topic", usage: tr("/topic 文"), description: tr("チャンネルのトピックを変更"), channelOnly: true),
         Command(name: "invite", usage: tr("/invite @名前 …"), description: tr("メンバーを追加"), channelOnly: true),
@@ -34,7 +34,7 @@ enum SlashCommands {
         Command(name: "shrug", usage: tr("/shrug [文]"), description: tr("¯\\_(ツ)_/¯ を添えて投稿")),
         Command(name: "poll", usage: tr("/poll 質問 | 選択肢 | 選択肢 …"), description: tr("投票を作る")),
         // M54 (SCHEDULING.md): a scheduling poll; the form opens, with the dates (and times) typed after it as candidates.
-        Command(name: scheduleName, usage: tr("/日程 [題名] 日付 …"), description: tr("日程調整を作る (候補に ○ △ × で答える)")),
+        Command(name: scheduleName, usage: tr("/日程 [題名] 日付 …"), description: tr("日程調整を作る（候補に ○ △ × で答える）")),
         Command(name: "help", usage: "/help", description: tr("コマンド一覧")),
     ] }
 

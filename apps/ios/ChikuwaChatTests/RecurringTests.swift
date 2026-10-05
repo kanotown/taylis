@@ -25,7 +25,7 @@ final class RecurringTests: XCTestCase {
         XCTAssertEqual(R.scheduleSummary(.weekly([0, 1, 2, 3, 4, 5, 6], time: "08:15")), "毎日 8:15")
         XCTAssertEqual(R.scheduleSummary(.weekly([6], time: "23:59")), "毎週 日 23:59")
         XCTAssertEqual(R.scheduleSummary(.monthly(1, time: "09:00")), "毎月 1 日 9:00")
-        XCTAssertEqual(R.scheduleSummary(.monthly(30, time: "09:00")), "毎月 30 日 (ない月は末日) 9:00")
+        XCTAssertEqual(R.scheduleSummary(.monthly(30, time: "09:00")), "毎月 30 日（ない月は末日） 9:00")
         XCTAssertEqual(R.scheduleSummary(.monthly(31, time: "18:00")), "毎月 末日 18:00")
         // Another zone than this device's is named.
         XCTAssertEqual(R.scheduleSummary(.monthly(1, time: "09:00"), tz: "America/New_York", localTz: "Asia/Tokyo"), "毎月 1 日 9:00 (America/New_York)")
@@ -52,8 +52,8 @@ final class RecurringTests: XCTestCase {
 
     func testThePlaceholdersReadWithTodaysValues() {
         XCTAssertEqual(R.placeholderHint(today: local(2026, 9, 28)),
-                       "{date} → 2026/09/28 (月)、{weekday} → 月、{week} → 週番号 (例 2026-W40)。投稿した日に置き換わります")
-        XCTAssertTrue(R.placeholderHint(today: local(2027, 1, 1)).contains("(例 2026-W53)"))
+                       "{date} → 2026/09/28 (月)、{weekday} → 月、{week} → 週番号（例 2026-W40）。投稿した日に置き換わります")
+        XCTAssertTrue(R.placeholderHint(today: local(2027, 1, 1)).contains("（例 2026-W53）"))
         // Late in the evening in Tokyo is still that day (not the UTC one).
         XCTAssertTrue(R.placeholderHint(today: local(2026, 10, 1, 23)).hasPrefix("{date} → 2026/10/01 (木)"))
     }
@@ -202,8 +202,8 @@ final class RecurringTests: XCTestCase {
         let late = R.chip(collection(["a"]), meId: "b", now: after)
         XCTAssertEqual(late.mine, .pending)
         XCTAssertTrue(late.overdue)
-        XCTAssertEqual(late.accessibilityLabel, "提出 1/3 · 締切 10/9 (金) 18:00 (未提出、締切を過ぎています)")
-        XCTAssertEqual(R.chip(collection(["a"]), meId: "a", now: before).accessibilityLabel, "提出 1/3 · 締切 10/9 (金) 18:00 (提出済み)")
+        XCTAssertEqual(late.accessibilityLabel, "提出 1/3 · 締切 10/9 (金) 18:00（未提出、締切を過ぎています）")
+        XCTAssertEqual(R.chip(collection(["a"]), meId: "a", now: before).accessibilityLabel, "提出 1/3 · 締切 10/9 (金) 18:00（提出済み）")
     }
 
     func testTheListsKeepTheTargetsOrder() {

@@ -48,7 +48,7 @@ struct PollFormView: View {
         NavigationStack {
             Form {
                 Section("質問") {
-                    TextField("例: 次回のミーティングはいつにしますか？", text: $question, axis: .vertical)
+                    TextField("例：次回のミーティングはいつにしますか？", text: $question, axis: .vertical)
                         .onChange(of: question) { _, value in if value.count > 200 { question = String(value.prefix(200)) } }
                 }
                 Section("選択肢") {

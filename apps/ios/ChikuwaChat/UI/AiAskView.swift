@@ -65,9 +65,9 @@ struct AiAskBar: View {
 
     private static func state(_ phase: AiAskSession.Phase) -> String {
         switch phase {
-        case .starting, .working: return tr(" (作成中)")
+        case .starting, .working: return tr("（作成中）")
         case .done: return ""
-        case .failed: return tr(" (失敗)")
+        case .failed: return tr("（失敗）")
         }
     }
 }
@@ -139,7 +139,7 @@ struct AiAskSheet: View {
                 Text(AskRules.footer).font(.caption).foregroundStyle(.secondary)
                 if let caption = hub.ask?.run.flatMap(AiRules.runCaption) {
                     Text(caption).font(.caption2).foregroundStyle(.secondary)
-                        .accessibilityLabel("送り先: \(caption)")
+                        .accessibilityLabel("送り先：\(caption)")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -240,7 +240,7 @@ struct AiAskSheet: View {
                         showingHistory = false
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(run.question ?? tr("(質問)")).lineLimit(2).foregroundStyle(.primary)
+                            Text(run.question ?? tr("（質問）")).lineLimit(2).foregroundStyle(.primary)
                             Text(Timeline.fullLabel(run.createdAt) + (run.status == "failed" ? tr(" · 失敗") : run.isFinished ? "" : tr(" · 作成中")))
                                 .font(.caption).foregroundStyle(.secondary)
                         }

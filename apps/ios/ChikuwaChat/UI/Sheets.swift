@@ -77,7 +77,7 @@ struct NewChannelView: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField("名前 (例: general)", text: $name).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField("名前（例：general）", text: $name).textInputAutocapitalization(.never).autocorrectionDisabled()
                 Toggle("プライベート", isOn: $isPrivate)
                 if let error { Text(error).foregroundStyle(.red).font(.footnote) }
             }
@@ -385,7 +385,7 @@ struct ChannelInfoView: View {
     private func purposeSection(_ channel: ChannelState, canEdit: Bool) -> some View {
         Section("説明") {
             if editingPurpose {
-                TextField("例: デザインレビューの依頼と結果を共有する", text: $purpose)
+                TextField("例：デザインレビューの依頼と結果を共有する", text: $purpose)
                 HStack {
                     Button("保存") { Task { if await controller.updatePurpose(channelId, purpose: purpose) { editingPurpose = false } } }
                     Spacer()
@@ -454,7 +454,7 @@ struct ChannelInfoView: View {
                 if isChannel {
                     Section("トピック") {
                         if editingTopic {
-                            TextField("例: 週次の進捗共有", text: $topic)
+                            TextField("例：週次の進捗共有", text: $topic)
                             HStack {
                                 Button("保存") { Task { if await controller.updateTopic(channelId, topic: topic) { editingTopic = false } } }
                                 Spacer()
@@ -471,7 +471,7 @@ struct ChannelInfoView: View {
                     }
                     purposeSection(channel, canEdit: canEdit)
                 }
-                Section(members.map { "メンバー (\($0.count))" } ?? "メンバー") {
+                Section(members.map { "メンバー（\($0.count)）" } ?? "メンバー") {
                     if let members {
                         ForEach(sortedMembers(members), id: \.userId) { member in memberRow(member) }
                     } else {
@@ -610,7 +610,7 @@ struct ChannelNotificationsView: View {
                 Section {
                     NotificationMuteControls(controller: controller, channel: channel)
                 } footer: {
-                    Text(isMuted(channel) ? "ミュート中: 通知せず、メンションだけを未読にします。" : "この会話の通知: \(NotificationRules.levelLabel(level))")
+                    Text(isMuted(channel) ? "ミュート中：通知せず、メンションだけを未読にします。" : "この会話の通知：\(NotificationRules.levelLabel(level))")
                 }
             }
         }

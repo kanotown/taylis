@@ -71,7 +71,7 @@ struct ReportMessageSheet: View {
                 } footer: {
                     Text("ワークスペースの管理者に知らせます。投稿した人には伝わりません。")
                 }
-                Section("補足 (任意)") {
+                Section("補足（任意）") {
                     TextField("補足", text: $note, axis: .vertical).lineLimit(2...5)
                 }
             }
@@ -123,7 +123,7 @@ struct DeleteAccountView: View {
                     if hasPassword {
                         SecureField("パスワード", text: $secret).textContentType(.password)
                     } else {
-                        TextField("ユーザー名 (\(username))", text: $secret)
+                        TextField("ユーザー名（\(username)）", text: $secret)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                     }
                 } header: {

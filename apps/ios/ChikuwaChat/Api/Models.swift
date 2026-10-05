@@ -543,9 +543,9 @@ enum NotificationRules {
     /// The label of a conversation's notification menu: muted (until unmuted), a timed mute ("15:30 までミュート",
     /// `Timeline.muteLabel`), or the level it notifies me of.
     static func menuLabel(level: String, muted: Bool, timedMute: String?) -> String {
-        if muted { return tr("通知: ミュート中") }
-        if let timedMute { return tr("通知 (\(timedMute))") }
-        return tr("通知: \(levelLabel(level))")
+        if muted { return tr("通知：ミュート中") }
+        if let timedMute { return tr("通知（\(timedMute)）") }
+        return tr("通知：\(levelLabel(level))")
     }
 }
 

@@ -61,7 +61,7 @@ struct ScheduleFormView: View {
         NavigationStack {
             Form {
                 Section("題名") {
-                    TextField("例: M2 中間発表の練習", text: $question, axis: .vertical)
+                    TextField("例：M2 中間発表の練習", text: $question, axis: .vertical)
                         .onChange(of: question) { _, value in
                             if value.count > SchedulePoll.maxQuestion { question = String(value.prefix(SchedulePoll.maxQuestion)) }
                         }
@@ -71,9 +71,9 @@ struct ScheduleFormView: View {
                 } header: {
                     Text("候補の日")
                 } footer: {
-                    Text("日を押すと候補に入ります (もう一度押すと外れます)。")
+                    Text("日を押すと候補に入ります（もう一度押すと外れます）。")
                 }
-                Section("時刻 (すべての候補)") {
+                Section("時刻（すべての候補）") {
                     Picker("時刻か終日か", selection: Binding(get: { allDay }, set: { value in
                         allDay = value
                         slots = SchedulePoll.applyToAll(slots, allDay: value)

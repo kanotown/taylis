@@ -86,7 +86,7 @@ struct DirectoryView: View {
                 }
             }
             .searchable(text: $query, prompt: headed ? "名前・ユーザー名・肩書・研究テーマで検索" : "名前・ユーザー名・肩書で検索")
-            .navigationTitle("メンバー (\(people.count))")
+            .navigationTitle("メンバー（\(people.count)）")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
         }

@@ -74,7 +74,7 @@ struct ConversationLabel: View {
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(channel.channel.isDm ? "DM: \(title)" : "チャンネル: \(String(title.drop { $0 == "#" }))")
+        .accessibilityLabel(channel.channel.isDm ? "DM: \(title)" : "チャンネル：\(String(title.drop { $0 == "#" }))")
         .accessibilityValue([note, unread ? (badge > 0 ? tr("未読 \(badge) 件") : tr("未読あり")) : nil].compactMap { $0 }.joined(separator: tr("、")))
     }
 }
@@ -94,7 +94,7 @@ struct PersonLabel: View {
                 HStack(spacing: 6) {
                     Text(user.displayName).lineLimit(1)
                     Text("@\(user.username)").font(.footnote).foregroundStyle(.secondary).lineLimit(1)
-                    if isMe { Text("(自分)").font(.footnote).foregroundStyle(.secondary) }
+                    if isMe { Text("（自分）").font(.footnote).foregroundStyle(.secondary) }
                 }
                 if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
             }
@@ -183,7 +183,7 @@ struct JumpView: View {
                     .buttonStyle(.plain)
                     .listRowSeparator(.hidden)
                     .listRowInsets(ChannelListView.rowInsets)
-                    .accessibilityLabel("最近の検索: \(describe(params))")
+                    .accessibilityLabel("最近の検索：\(describe(params))")
                 }
             } header: { header(tr("最近の検索")) }
         }
@@ -359,7 +359,7 @@ struct NewMessageView: View {
     private func peopleRows(_ users: [String: UserPublic]) -> some View {
         let ids = JumpMatch.destinationPeople(text, users: Array(users.values), meId: meId).filter { $0 != meId || selected.isEmpty }
         let bots = JumpMatch.bots(text, users: Array(users.values), aiBotIds: controller.aiHub?.botUserIds ?? [])
-        personSection(ids.compactMap { users[$0] }, title: selected.isEmpty ? tr("人") : tr("人 (\(selected.count) 人を選択中)"))
+        personSection(ids.compactMap { users[$0] }, title: selected.isEmpty ? tr("人") : tr("人（\(selected.count) 人を選択中）"))
         personSection(bots.compactMap { users[$0] }, title: tr("ボット"))
     }
 

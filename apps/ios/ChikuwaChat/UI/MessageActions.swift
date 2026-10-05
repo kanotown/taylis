@@ -234,7 +234,7 @@ struct MessageActionsSheet: View {
                     }
                 }
                 let saved = store.isBookmarked(message.id)
-                row(saved ? tr("保存を解除") : tr("あとで見る (保存)"), saved ? "bookmark.slash" : "bookmark") {
+                row(saved ? tr("保存を解除") : tr("あとで見る（保存）"), saved ? "bookmark.slash" : "bookmark") {
                     run { await controller.toggleBookmark(message.id) }
                 }
                 Menu {

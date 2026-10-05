@@ -93,7 +93,7 @@ enum Roster {
     /// 「指導教員: 加納」, or nil without one.
     static func supervisorLabel(_ profile: LabProfileOut, users: [String: UserPublic]) -> String? {
         guard let id = profile.supervisorId, let name = users[id]?.displayName else { return nil }
-        return tr("指導教員: \(name)")
+        return tr("指導教員：\(name)")
     }
 
     /// 「M1 · 指導教員: 加納」: the label and the supervisor, for the profile card (lists show the label as a badge).

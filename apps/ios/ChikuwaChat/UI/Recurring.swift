@@ -28,7 +28,7 @@ enum RecurringRules {
 
     /// 「1 日」, 「30 日 (ない月は末日)」, 「末日」.
     static func dayLabel(_ day: Int) -> String {
-        day == 31 ? tr("末日") : day >= 29 ? tr("\(day) 日 (ない月は末日)") : tr("\(day) 日")
+        day == 31 ? tr("末日") : day >= 29 ? tr("\(day) 日（ない月は末日）") : tr("\(day) 日")
     }
 
     /// 「毎週 月・木 9:00」, 「毎日 9:00」, 「毎月 1 日 9:00」, 「毎月 末日 18:00」; the zone when it is not this device's.
@@ -78,7 +78,7 @@ enum RecurringRules {
         let p = CalendarDates.local.dateComponents([.year, .month, .day, .weekday], from: today)
         let weekday = CalendarDates.weekdays[p.weekday! - 1]
         let date = String(format: "%04d/%02d/%02d", p.year!, p.month!, p.day!)
-        return tr("{date} → \(date) (\(weekday))、{weekday} → \(weekday)、{week} → 週番号 (例 \(isoWeek(year: p.year!, month: p.month!, day: p.day!)))。投稿した日に置き換わります")
+        return tr("{date} → \(date) (\(weekday))、{weekday} → \(weekday)、{week} → 週番号（例 \(isoWeek(year: p.year!, month: p.month!, day: p.day!))）。投稿した日に置き換わります")
     }
 
     /// "2026-W40": the ISO week of a calendar day.
@@ -105,8 +105,8 @@ enum RecurringRules {
         /// VoiceOver: the label and where I stand.
         var accessibilityLabel: String {
             switch mine {
-            case .pending?: label + (overdue ? tr(" (未提出、締切を過ぎています)") : tr(" (未提出)"))
-            case .submitted?: label + tr(" (提出済み)")
+            case .pending?: label + (overdue ? tr("（未提出、締切を過ぎています）") : tr("（未提出）"))
+            case .submitted?: label + tr("（提出済み）")
             case nil: label
             }
         }

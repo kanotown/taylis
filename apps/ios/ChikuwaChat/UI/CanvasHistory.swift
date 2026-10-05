@@ -481,7 +481,7 @@ struct CanvasDiffView: View {
             .padding(.vertical, 1)
             .background(line.kind == .add ? Color.green.opacity(0.12) : line.kind == .del ? Color.red.opacity(0.10) : Color.clear)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel((line.kind == .add ? tr("追加: ") : line.kind == .del ? tr("削除: ") : "") + (line.text.isEmpty ? tr("空行") : line.text))
+            .accessibilityLabel((line.kind == .add ? tr("追加：") : line.kind == .del ? tr("削除：") : "") + (line.text.isEmpty ? tr("空行") : line.text))
         }
     }
 

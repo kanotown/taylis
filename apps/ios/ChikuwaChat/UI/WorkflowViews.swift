@@ -167,14 +167,14 @@ struct WorkflowFormView: View {
                 }
                 Section {
                     if preview.isEmpty {
-                        Text("(空です)").foregroundStyle(.secondary)
+                        Text("（空です）").foregroundStyle(.secondary)
                     } else {
                         MessageBodyView(text: preview, users: controller.store.users, groups: controller.store.groups,
                                         customEmoji: controller.store.customEmoji, emojiImages: controller.store.emojiImages,
                                         emojiAnimations: controller.store.emojiAnimations, onNeedEmojiImage: { controller.loadEmojiImage($0) })
                     }
                 } header: {
-                    Text("プレビュー (\(targetName) に、あなたの投稿として)")
+                    Text("プレビュー（\(targetName) に、あなたの投稿として）")
                 }
                 if let problem {
                     Section { Text(problem).foregroundStyle(.red) }
@@ -230,7 +230,7 @@ struct WorkflowFormView: View {
                                    title: field.label, single: !field.multiple)
             } label: {
                 let ids = value.wrappedValue.users
-                Text(ids.isEmpty ? (field.multiple ? tr("人を選ぶ") : tr("人を選ぶ (1 人)"))
+                Text(ids.isEmpty ? (field.multiple ? tr("人を選ぶ") : tr("人を選ぶ（1 人）"))
                      : ids.map { controller.store.users[$0]?.displayName ?? "?" }.joined(separator: tr("、")))
                     .foregroundStyle(ids.isEmpty ? Color.secondary : Color.primary)
                     .lineLimit(2)

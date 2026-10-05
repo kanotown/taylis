@@ -146,13 +146,13 @@ struct SectionFormView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(emoji == nil ? "アイコンを選ぶ" : "アイコンを変更")
-                        TextField("セクション名 (例: 研究、授業)", text: $name)
+                        TextField("セクション名（例：研究、授業）", text: $name)
                             .onChange(of: name) { _, value in if value.count > 40 { name = String(value.prefix(40)) } }
                     }
                     if emoji != nil { Button("アイコンを外す", role: .destructive) { emoji = nil } }
                 }
                 if creating {
-                    Section("入れる会話 (\(chosen.count))") {
+                    Section("入れる会話（\(chosen.count)）") {
                         HStack {
                             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                             TextField("チャンネルや DM を絞り込む", text: $query).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -287,7 +287,7 @@ struct LetterIconPickerView: View {
                     HStack(spacing: 16) {
                         LetterBadge(text: valid ? text : (text.isEmpty ? "A" : "?"), color: color, size: 52)
                             .opacity(valid ? 1 : 0.5)
-                        TextField("例: M、B、修", text: $raw)
+                        TextField("例：M、B、修", text: $raw)
                             .font(.title3)
                             .textInputAutocapitalization(.characters)
                             .autocorrectionDisabled()
@@ -298,7 +298,7 @@ struct LetterIconPickerView: View {
                     }
                     .padding(.vertical, 4)
                 } footer: {
-                    Text("英数字 2 文字まで、または日本語 1 文字 (例: 修論指導は「M」や「修」)")
+                    Text("英数字 2 文字まで、または日本語 1 文字（例：修論指導は「M」や「修」）")
                         .foregroundStyle(!text.isEmpty && !valid ? Color.red : Color.secondary)
                 }
                 Section("色") {

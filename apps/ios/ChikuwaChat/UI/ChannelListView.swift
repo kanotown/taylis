@@ -407,7 +407,7 @@ struct ChannelListView: View {
 
     /// 「自分の times を作る」 (M24): POST /times, then open it.
     private var makeTimesRow: some View {
-        actionRow(tr("自分の times を作る (作業ログ)"), icon: "plus") { makeTimes() }
+        actionRow(tr("自分の times を作る（作業ログ）"), icon: "plus") { makeTimes() }
     }
 
     /// The glyph already says "#", so rows show the bare channel name.

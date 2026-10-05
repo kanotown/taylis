@@ -773,7 +773,7 @@ struct NotificationLevelPicker: View {
         Picker("通知", selection: Binding(get: { channel.ownNotificationLevel ?? Self.followDefaultTag }, set: { value in
             Task { _ = await controller.setNotificationLevel(channel, own: value == Self.followDefaultTag ? nil : value) }
         })) {
-            Text("既定 (\(NotificationRules.overallLabel(overall)))").tag(Self.followDefaultTag)
+            Text("既定（\(NotificationRules.overallLabel(overall))）").tag(Self.followDefaultTag)
             Text("すべてのメッセージ").tag("all")
             Text("メンションのみ").tag("mentions")
             Text("通知しない").tag("none")
@@ -797,7 +797,7 @@ struct NotificationMuteControls: View {
             Button {
                 Task { _ = await controller.setTimedMute(channel, until: nil) }
             } label: {
-                if withIcons { Label("ミュート解除 (\(timed))", systemImage: "bell") } else { Text("ミュート解除 (\(timed))") }
+                if withIcons { Label("ミュート解除（\(timed)）", systemImage: "bell") } else { Text("ミュート解除（\(timed)）") }
             }
         } else {
             Button {
@@ -1021,7 +1021,7 @@ struct MessageRow: View {
     /// Why the server refused an unsent message (its outbox row keeps the code), in the shared Japanese words.
     private var failureText: String {
         let code = store.outbox.first { $0.clientMsgId == message.clientMsgId }?.failed
-        return code.flatMap { ErrorMessages.byCode[$0] }.map { tr("送信に失敗しました: \($0)") } ?? tr("送信に失敗しました")
+        return code.flatMap { ErrorMessages.byCode[$0] }.map { tr("送信に失敗しました：\($0)") } ?? tr("送信に失敗しました")
     }
 
     /// M15c: in the channel a shared reply names its thread (tap opens it); in the thread it says it was shared.
@@ -1032,7 +1032,7 @@ struct MessageRow: View {
             let excerpt = parent.map { Timeline.excerpt($0.body, attachments: $0.attachments, users: store.users, groups: store.groups) }
             Button { onOpenThread() } label: {
                 Label {
-                    CustomEmoji.excerpt(tr("スレッドに返信: \(excerpt ?? tr("元のメッセージ"))"), controller: controller, height: 11)
+                    CustomEmoji.excerpt(tr("スレッドに返信：\(excerpt ?? tr("元のメッセージ"))"), controller: controller, height: 11)
                 } icon: {
                     Image(systemName: "bubble.left")
                 }
@@ -1097,15 +1097,15 @@ struct MessageRow: View {
                         Text(Timeline.timeLabel(message.createdAt)).font(.caption).foregroundStyle(.secondary)
                         if message.editedAt != nil {
                             if isMine {
-                                Button { show(.revisions) } label: { Text("(編集済み)").font(.caption).underline() }
+                                Button { show(.revisions) } label: { Text("（編集済み）").font(.caption).underline() }
                                     .buttonStyle(.plain).foregroundStyle(.secondary)
                             } else {
-                                Text("(編集済み)").font(.caption).foregroundStyle(.secondary)
+                                Text("（編集済み）").font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
                 } else if message.editedAt != nil {
-                    Text(Timeline.fullLabel(message.createdAt) + (message.editedAt != nil ? tr(" (編集済み)") : ""))
+                    Text(tr("\(Timeline.fullLabel(message.createdAt))（編集済み）"))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 if !message.body.isEmpty && !PollCardView.hidesBody(message.body, poll: message.poll) {
@@ -1610,12 +1610,12 @@ struct ComposerView: View {
                             controller.error = command.args.isEmpty ? tr("/wf の後にワークフローの名前を続けてください")
                                 : tr("「\(command.args)」というワークフローはこのチャンネルにありません")
                         } else {
-                            controller.error = tr("/\(command.name) というコマンドはありません (/help で一覧)")
+                            controller.error = tr("/\(command.name) というコマンドはありません（/help で一覧）")
                         }
                     }
                     return
                 }
-                controller.error = tr("/\(command.name) というコマンドはありません (/help で一覧)")
+                controller.error = tr("/\(command.name) というコマンドはありません（/help で一覧）")
                 return
             }
             if command.name == "poll" && command.args.isEmpty {  // the form instead of the syntax
@@ -1740,7 +1740,7 @@ struct ComposerView: View {
     @ViewBuilder
     private var templateItems: some View {
         ForEach(templates) { template in
-            Button(template.scope == "user" ? tr("\(template.name) (個人)") : template.name) { insertTemplate(template) }
+            Button(template.scope == "user" ? tr("\(template.name)（個人）") : template.name) { insertTemplate(template) }
         }
     }
 

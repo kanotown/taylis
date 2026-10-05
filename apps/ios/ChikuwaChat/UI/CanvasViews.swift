@@ -332,7 +332,7 @@ struct CanvasDocument: View {
                             Task { await controller.updateCanvas(meta.id, editPolicy: value) }
                         })) {
                             Text("投稿できるメンバー全員").tag("members")
-                            Text("作成者・オーナー・管理者 (チェックは全員)").tag("owners")
+                            Text("作成者・オーナー・管理者（チェックは全員）").tag("owners")
                         } label: {
                             Label("編集できる人", systemImage: "person.2")
                         }
@@ -375,7 +375,7 @@ struct CanvasDocument: View {
         if saver.loadFailed { return nil } // the screen says it
         switch saver.status {
         case .gone: return (tr("このキャンバスはゴミ箱に移されたか、見られなくなりました。手元の本文はコピーできます。"), true, true)
-        case .blocked: return (tr("保存できませんでした: ") + (saver.error.map { controller.describe($0) } ?? ErrorMessages.unknown), true, true)
+        case .blocked: return (tr("保存できませんでした：") + (saver.error.map { controller.describe($0) } ?? ErrorMessages.unknown), true, true)
         default: break
         }
         // M74 (§19.1): the copy kept on this device, the server out of reach.
@@ -562,7 +562,7 @@ private struct CanvasReader: View {
     private func byline(_ meta: CanvasMeta) -> some View {
         let who = controller.store.users[meta.updatedBy]?.displayName ?? (controller.store.me?.id == meta.updatedBy ? controller.store.me?.displayName : nil) ?? tr("メンバー")
         return HStack(spacing: 10) {
-            Text("最終更新: \(who) · \(DMList.timeLabel(meta.updatedAt) ?? "")")
+            Text("最終更新：\(who) · \(DMList.timeLabel(meta.updatedAt) ?? "")")
             if let progress = CanvasText.taskProgress(total: meta.taskTotal, done: meta.taskDone) {
                 Label(progress, systemImage: "checkmark.square")
             }
@@ -680,7 +680,7 @@ private struct NewCanvasSheet: View {
                     Text("日付や名前はテンプレートに入ります。")
                 }
                 Section {
-                    TextField(choice.isEmpty ? "題名 (空欄なら「無題のキャンバス」)" : "題名 (空欄ならテンプレートの題名)", text: $title)
+                    TextField(choice.isEmpty ? "題名（空欄なら「無題のキャンバス」）" : "題名（空欄ならテンプレートの題名）", text: $title)
                     if !hasTab {
                         Toggle("会話のキャンバスにする", isOn: $asTab)
                     }
@@ -748,7 +748,7 @@ private struct CanvasTrashSheet: View {
                             Image(systemName: "doc.text").foregroundStyle(.secondary)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(canvas.title).lineLimit(1)
-                                Text(tr("削除: ") + (DMList.timeLabel(canvas.deletedAt) ?? "")).font(.caption).foregroundStyle(.secondary)
+                                Text(tr("削除：") + (DMList.timeLabel(canvas.deletedAt) ?? "")).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer(minLength: 4)
                             if CanvasRights.of(channel, actor: controller.canvasActor, meta: canvas).trash {
@@ -799,7 +799,7 @@ private struct CanvasConflictSheet: View {
                             side(tr("自分の版"), region.ours, mine: true)
                             side(tr("相手の版"), region.theirs, mine: false)
                             if !region.base.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text(tr("元の文: ") + String(names(region.base).prefix(200))).font(.caption).foregroundStyle(.secondary)
+                                Text(tr("元の文：") + String(names(region.base).prefix(200))).font(.caption).foregroundStyle(.secondary)
                             }
                         }
                         .padding(10)
@@ -839,7 +839,7 @@ private struct CanvasConflictSheet: View {
     private func side(_ label: String, _ text: String, mine: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            Text(text.isEmpty ? tr("(削除)") : names(text)).font(.callout).foregroundStyle(text.isEmpty ? .secondary : .primary)
+            Text(text.isEmpty ? tr("（削除）") : names(text)).font(.callout).foregroundStyle(text.isEmpty ? .secondary : .primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1021,7 +1021,7 @@ struct CanvasOpenView: View {
 enum CanvasOffline {
     /// The line under the bar while the kept copy is shown and the server cannot be reached.
     static func notice(savedAt: Date, calendar: Calendar = .current) -> String {
-        tr("オフライン — 最後に読み込んだ時点 (\(Timeline.fullLabel(savedAt, calendar: calendar))) の内容です")
+        tr("オフライン — 最後に読み込んだ時点（\(Timeline.fullLabel(savedAt, calendar: calendar))）の内容です")
     }
 
     /// A canvas opened by its id (a link, a search hit): the conversation of its kept copy when I am still a member of

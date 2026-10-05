@@ -156,9 +156,9 @@ enum TaskRules {
     /// A new column's 「種類」.
     static func columnKindLabel(_ status: TaskStatus) -> String {
         switch status {
-        case .todo: tr("未着手 (まだ始めていない)")
+        case .todo: tr("未着手（まだ始めていない）")
         case .doing: tr("進行中")
-        case .done: tr("完了 (カードは完了になる)")
+        case .done: tr("完了（カードは完了になる）")
         }
     }
 
@@ -271,7 +271,7 @@ enum TaskRules {
     static func dueText(_ dueOn: String?, today: DayKey, dueAt: String? = nil) -> String {
         guard let day = dueDay(dueOn: dueOn, dueAt: dueAt) else { return tr("なし") }
         let time = dueAt.flatMap { parseIsoDate($0) != nil ? " " + CalendarDates.clock($0) : nil } ?? ""
-        return day.replacingOccurrences(of: "-", with: "/") + time + (day == today ? tr(" (今日)") : "")
+        return day.replacingOccurrences(of: "-", with: "/") + time + (day == today ? tr("（今日）") : "")
     }
 
     /// The tasks due on a day (the calendar's rows): open ones first, then (M81) those without a time before those with
@@ -516,7 +516,7 @@ enum TaskRules {
         return draft
     }
 
-    static var reviewPrefix: String { tr("レビュー: ") }
+    static var reviewPrefix: String { tr("レビュー：") }
 
     /// L9 「レビューを依頼」 (REVIEWS.md §2.3): 「タスクにする」's form as a review request — 「レビュー: <excerpt>」, the
     /// message's own conversation (a channel's board or the DM; the menu offers it only there), 依頼先 to choose (at
@@ -594,18 +594,18 @@ enum TaskRules {
     /// L9: a review request says 「レビューを依頼しました」; a DM's task (its name empty) has no 「(#…)」.
     static func noticeText(assigned: TaskAssigned, nameOf: (String) -> String?) -> String {
         let verb = assigned.kind == .review ? tr("レビューを依頼しました") : tr("タスクを割り当てました")
-        return tr("\(nameOf(assigned.byUserId) ?? tr("メンバー")) が\(verb): \(assigned.title)\(whereText(assigned.channelName))")
+        return tr("\(nameOf(assigned.byUserId) ?? tr("メンバー")) が\(verb)：\(assigned.title)\(whereText(assigned.channelName))")
     }
 
     /// M81: a due time (the notification went out at it) says 「14:00 が期限: <title>」.
     static func noticeText(due: TaskDue) -> String {
         let when = due.dueAt.flatMap { parseIsoDate($0) != nil ? tr("\(CalendarDates.clock($0)) が期限") : nil } ?? tr("今日が期限")
-        return "\(when): \(due.title)\(due.channelId != nil ? whereText(due.channelName) : "")"
+        return tr("\(when)：\(due.title)\(due.channelId != nil ? whereText(due.channelName) : "")")
     }
 
     /// L9 task.review_done: 「<name> がレビューを完了しました: <title> (#<channel>)」.
     static func noticeText(reviewDone: TaskReviewDone, nameOf: (String) -> String?) -> String {
-        tr("\(nameOf(reviewDone.byUserId) ?? tr("メンバー")) がレビューを完了しました: \(reviewDone.title)\(whereText(reviewDone.channelName))")
+        tr("\(nameOf(reviewDone.byUserId) ?? tr("メンバー")) がレビューを完了しました：\(reviewDone.title)\(whereText(reviewDone.channelName))")
     }
 
     /// 「 (#lab)」, nothing for a DM (no name) — the push's rule.

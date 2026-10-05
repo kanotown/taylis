@@ -125,7 +125,7 @@ enum ActivityRules {
     /// names, 「画像を送信しました」 without text — the same for every kind (a reaction's no longer in 「」), as
     /// Android's activity and the search results say it.
     static func excerpt(_ message: MessageOut, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
-        if message.deleted { return tr("(削除されたメッセージ)") }
+        if message.deleted { return tr("（削除されたメッセージ）") }
         return Timeline.excerpt(message.body, attachments: message.attachments, users: users, groups: groups)
     }
 
