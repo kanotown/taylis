@@ -11,7 +11,7 @@ keep the old name.)
 > **No support guarantee.** Taylis is developed for the author's own use and published as-is. Issues and pull
 > requests are welcome, but there is no promise of support, fixes, or a roadmap. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-<!-- Screenshots: docs/images/ (not yet published) -->
+![Taylis on iPhone: home, a channel, a thread and a reservation pool (demo data)](docs/images/screenshots-ios.png)
 
 ## Features
 
@@ -54,7 +54,7 @@ You need a Linux server (2 vCPU / 4 GB RAM or more) with Docker Engine and the c
 at it with ports 80 and 443 open.
 
 ```sh
-git clone https://github.com/kanotown/chikuwachat.git /srv/chikuwachat
+git clone https://github.com/kanotown/taylis.git /srv/chikuwachat
 cd /srv/chikuwachat/infra
 cp .env.example .env && chmod 600 .env     # fill in SECRET_KEY, POSTGRES_PASSWORD, S3_SECRET_KEY, CHAT_DOMAIN
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy up -d --build
