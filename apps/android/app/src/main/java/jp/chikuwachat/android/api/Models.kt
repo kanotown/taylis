@@ -92,7 +92,25 @@ data class UserMe(
      * 自分 → 通知 then hides the switch.
      */
     val notifyTasks: Boolean? = null,
+    /**
+     * M111: `nav_items` as it came (my home tiles / the desktop's sidebar items, apps/shared/nav-items.json): no key
+     * ([NAV_ITEMS_ABSENT], a server before M111: the setting is hidden, the tiles are the defaults) differs from null
+     * (not customised). Read it through [navItems] / [knowsNavItems].
+     */
+    @SerialName("nav_items") val navItemsJson: JsonElement = NAV_ITEMS_ABSENT,
 ) {
+    /** M111: my list as saved (in order, unknown keys kept); null = the defaults (or an older server). */
+    val navItems: List<NavItem>?
+        get() = (navItemsJson as? JsonArray)?.mapNotNull { element ->
+            val item = element as? JsonObject ?: return@mapNotNull null
+            val key = (item["key"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+            val visible = (item["visible"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: return@mapNotNull null
+            NavItem(key, visible)
+        }
+
+    /** M111: the server has the setting; 自分 → 表示 offers 「ホームのタイル」 only then. */
+    val knowsNavItems: Boolean get() = navItemsJson != NAV_ITEMS_ABSENT
+
     /** M50: the long-press sheet's reactions I chose (1–6 plain emoji, in order); null = not chosen (or an older server). */
     val quickReactions: List<String>?
         get() = (quickReactionsJson as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
@@ -102,6 +120,13 @@ data class UserMe(
 
     val asPublic: UserPublic get() = UserPublic(id, username, displayName, role, deactivatedAt, createdAt, updatedAt, title, statusText, statusEmoji, statusExpiresAt, dndUntil, quietHours, avatarUpdatedAt)
 }
+
+/** M111: one sidebar item / home tile and whether it shows (UserMe.nav_items). */
+@Serializable
+data class NavItem(val key: String, val visible: Boolean)
+
+/** [UserMe.navItemsJson] when the key was missing (a server before M111). */
+val NAV_ITEMS_ABSENT: JsonElement = JsonObject(mapOf("absent" to JsonPrimitive(true)))
 
 /** [UserMe.quickReactionsJson] when the key was missing (a server before M50); a server never sends an object there. */
 val QUICK_REACTIONS_ABSENT: JsonElement = JsonObject(emptyMap())
