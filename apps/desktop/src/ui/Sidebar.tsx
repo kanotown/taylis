@@ -85,7 +85,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // M39: the same badge as the phone's activity tab (none before M39: the entry is the mentions list then).
   const activity = activityBadge(channels, store.threadSummary, store.activity);
   const me = store.me ?? controller.me;
-  const sections = sectionChannels(channels, (c) => channelTitle(c, controller), { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections, meId: me?.id ?? null });
+  const sections = sectionChannels(channels, { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections, meId: me?.id ?? null });
   // M24: offer to make my times until I have one.
   const hasMyTimes = !!me && channels.some((c) => c.times_owner_id === me.id);
   // M26: the default sections fold up on this device (my own sections fold on all of them, via the server).

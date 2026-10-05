@@ -1,0 +1,55 @@
+{
+  "_comment": "DATA_MODEL.md sidebar_sections 「セクションの中の並び順」 (2026-10-06): the order of conversations inside a sidebar / home section, the same on every client. The server keeps no order inside a section (sidebar_section_channels has none; channel_ids comes in no meaningful order), so the clients sort. names: channels (public / private) by name: the key is the name after NFKC, A-Z lower-cased and katakana (U+30A1-U+30F6) folded to hiragana, compared by UTF-16 code unit; equal keys by the raw name the same way, then by id. No locale collation (localeCompare / Collator differ per platform) and no natural number order (\"10\" before \"2\"). sections: a favorites or my-own section: its channels by name first, then its DMs and group DMs newest first (last_message_at, else created_at, compared as the server's text; equal times by id ascending). The default 「チャンネル」 and Times sections and 「チャンネルを探す」 use the same name order; 「ダイレクトメッセージ」 the same newest-first order after my own DM. Muting does not move a row; archived channels are not listed at all (not part of the order). Hand-written; desktop (tests/sidebarOrder.test.ts), iOS (SidebarOrderTests) and Android (SidebarOrderTest) read this file.",
+  "names": [
+    { "name": "ASCII case is ignored, then upper case first", "input": ["beta", "Alpha", "alpha", "Beta"], "sorted": ["Alpha", "alpha", "Beta", "beta"] },
+    { "name": "numbers compare as text", "input": ["10-seminar", "2-seminar", "1-intro"], "sorted": ["1-intro", "10-seminar", "2-seminar"] },
+    { "name": "full-width letters as half-width", "input": ["ｚｏｏ", "apple", "Ｂｅｅ"], "sorted": ["apple", "Ｂｅｅ", "ｚｏｏ"] },
+    { "name": "katakana among hiragana, half-width kana too", "input": ["カメラ", "あめ", "いぬ", "ｱｲｽ"], "sorted": ["ｱｲｽ", "あめ", "いぬ", "カメラ"] },
+    { "name": "digits, symbols, Latin, kana, kanji", "input": ["研究", "zoom", "ゼミ", "2026年度", "_misc"], "sorted": ["2026年度", "_misc", "zoom", "ゼミ", "研究"] },
+    { "name": "hiragana before the same katakana", "input": ["アイ", "あい"], "sorted": ["あい", "アイ"] },
+    { "name": "voiced kana after the plain one", "input": ["き", "ｶﾞ", "か"], "sorted": ["か", "ｶﾞ", "き"] },
+    { "name": "voiced and kana variants", "input": ["ゼミ", "ぜみ", "セミ"], "sorted": ["セミ", "ぜみ", "ゼミ"] },
+    { "name": "punctuation by code unit", "input": ["lab-b", "lab_a", "lab a", "Lab"], "sorted": ["Lab", "lab a", "lab-b", "lab_a"] }
+  ],
+  "sections": [
+    {
+      "name": "channels by name, then DMs newest first",
+      "conversations": [
+        { "id": "d1", "type": "dm", "name": null, "last_message_at": "2026-10-05T10:00:00Z", "created_at": "2026-09-01T00:00:00Z" },
+        { "id": "c1", "type": "public", "name": "zeta", "last_message_at": "2026-10-06T12:00:00Z", "created_at": "2026-09-01T00:00:00Z" },
+        { "id": "g1", "type": "group_dm", "name": null, "last_message_at": "2026-10-06T09:00:00Z", "created_at": "2026-09-01T00:00:00Z" },
+        { "id": "c2", "type": "private", "name": "Alpha", "last_message_at": null, "created_at": "2026-09-01T00:00:00Z" },
+        { "id": "c3", "type": "public", "name": "ゼミ", "last_message_at": null, "created_at": "2026-09-01T00:00:00Z" }
+      ],
+      "order": ["c2", "c1", "c3", "g1", "d1"]
+    },
+    {
+      "name": "a DM without messages by when it was made, equal times by id",
+      "conversations": [
+        { "id": "d3", "type": "dm", "name": null, "last_message_at": null, "created_at": "2026-10-01T00:00:00Z" },
+        { "id": "d2", "type": "dm", "name": null, "last_message_at": null, "created_at": "2026-10-01T00:00:00Z" },
+        { "id": "d1", "type": "dm", "name": null, "last_message_at": "2026-09-30T00:00:00Z", "created_at": "2026-09-01T00:00:00Z" },
+        { "id": "d4", "type": "dm", "name": null, "last_message_at": "2026-10-02T00:00:00Z", "created_at": "2026-09-01T00:00:00Z" }
+      ],
+      "order": ["d4", "d2", "d3", "d1"]
+    },
+    {
+      "name": "the same name by id",
+      "conversations": [
+        { "id": "c9", "type": "public", "name": "lab", "last_message_at": "2026-10-06T00:00:00Z", "created_at": "2026-09-01T00:00:00Z" },
+        { "id": "c5", "type": "private", "name": "lab", "last_message_at": null, "created_at": "2026-09-01T00:00:00Z" },
+        { "id": "c7", "type": "public", "name": "Lab", "last_message_at": null, "created_at": "2026-09-01T00:00:00Z" }
+      ],
+      "order": ["c7", "c5", "c9"]
+    },
+    {
+      "name": "recent activity does not move a channel",
+      "conversations": [
+        { "id": "c1", "type": "public", "name": "いぬ", "last_message_at": "2026-10-06T12:00:00Z", "created_at": "2026-09-01T00:00:00Z" },
+        { "id": "c2", "type": "public", "name": "カメラ", "last_message_at": "2026-10-01T12:00:00Z", "created_at": "2026-09-01T00:00:00Z" },
+        { "id": "c3", "type": "public", "name": "あめ", "last_message_at": null, "created_at": "2026-09-01T00:00:00Z" }
+      ],
+      "order": ["c3", "c1", "c2"]
+    }
+  ]
+}
