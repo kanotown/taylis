@@ -26,6 +26,7 @@ import { ScheduleDialog, type ScheduleFormInitial } from "./ScheduleDialog";
 import { slotsFromEntries } from "./scheduling";
 import { appendTemplate, expandTemplate, findTemplate, orderTemplates, readSchedule, SCHEDULE_USAGE, templateCandidates, templateSummary, templateWithText } from "./templates";
 import { Button, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, modKey, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { t } from "../i18n";
 
 const MAX_LENGTH = 20_000;
 /** Bold, italic, strikethrough, code, code block: always on the formatting bar. */
@@ -37,7 +38,7 @@ export function Composer({
   controller,
   channel,
   parentId = null,
-  placeholder = "メッセージを入力 (@ でメンション)",
+  placeholder = t("composer.placeholder"),
   onReplyLast,
 }: {
   controller: AppController;
@@ -144,10 +145,10 @@ export function Composer({
           return;
         }
         if (command.name === "wf") {
-          controller.setError(command.args ? `「${command.args}」というワークフローはこのチャンネルにありません` : "/wf の後にワークフローの名前を続けてください");
+          controller.setError(command.args ? t("composer.noWorkflow", { name: command.args }) : t("composer.wfUsage"));
           return;
         }
-        controller.setError(`/${command.name} というコマンドはありません (/help で一覧)`);
+        controller.setError(t("command.unknown", { name: command.name }));
         return;
       }
       if (command.name === "poll" && !command.args.trim()) {
@@ -174,7 +175,7 @@ export function Composer({
     }
     const body = encodeMentions(text.trim(), store.users.values(), store.groups.values());
     if ((!body && pending.length === 0) || !controller.engine || uploading > 0) return;
-    if (pending.length > 10 || body.length > MAX_LENGTH) { controller.setError("添付は10件、本文は20,000文字までです"); return; }
+    if (pending.length > 10 || body.length > MAX_LENGTH) { controller.setError(t("composer.tooLong")); return; }
     const ids = pending.map((a) => a.id);
     setText("");
     setPending([]);
@@ -199,7 +200,7 @@ export function Composer({
   const schedule = async (sendAt: Date) => {
     const body = encodeMentions(text.trim(), store.users.values(), store.groups.values());
     if ((!body && pending.length === 0) || uploading > 0 || scheduling) return;
-    if (Number.isNaN(sendAt.getTime()) || sendAt.getTime() < Date.now() + 60_000) { controller.setError("1 分以上先の時刻を選んでください"); return; }
+    if (Number.isNaN(sendAt.getTime()) || sendAt.getTime() < Date.now() + 60_000) { controller.setError(t("composer.pickLater")); return; }
     const ids = pending.map((a) => a.id);
     const what = JSON.stringify([channel.id, parentId, body, ids]);
     if (scheduleKey.current?.what !== what) scheduleKey.current = { key: crypto.randomUUID(), what };
@@ -249,7 +250,7 @@ export function Composer({
 
   /** Opens a file picker, unless the files picked on it last are still being read (a new pick would replace them). */
   const openPicker = (input: HTMLInputElement | null) => {
-    if (isPickBusy(input)) { controller.setError("前に選んだファイルを読み込み中です"); return; }
+    if (isPickBusy(input)) { controller.setError(t("composer.stillReading")); return; }
     input?.click();
   };
 
@@ -349,16 +350,16 @@ export function Composer({
   // The first PRIMARY_TOOLS always show; the rest fold into 「その他の書式」 when the composer is narrow. `group`
   // starts a group after a divider.
   const tools: Array<{ icon: ReactNode; label: string; run: () => void; group?: true }> = [
-    { icon: <Bold size={15} />, label: `太字 (${modKey()}+B)`, run: () => edit((s) => toggleWrap(s, "**")) },
-    { icon: <Italic size={15} />, label: `斜体 (${modKey()}+I)`, run: () => edit((s) => toggleWrap(s, "_")) },
-    { icon: <Strikethrough size={15} />, label: `取り消し線 (${modKey()}+Shift+X)`, run: () => edit((s) => toggleWrap(s, "~~")) },
-    { icon: <Code size={15} />, label: `コード (${modKey()}+Shift+C)`, run: () => edit((s) => toggleWrap(s, "`")), group: true },
-    { icon: <SquareCode size={15} />, label: "コードブロック", run: () => edit(toggleFence) },
-    { icon: <Heading size={15} />, label: "見出し (## )", run: () => edit((s) => toggleLinePrefix(s, "## ")), group: true },
-    { icon: <TextQuote size={15} />, label: "引用", run: () => edit((s) => toggleLinePrefix(s, "> ")) },
-    { icon: <List size={15} />, label: "箇条書き", run: () => edit((s) => toggleLinePrefix(s, "- ")) },
-    { icon: <ListOrdered size={15} />, label: "番号付きリスト", run: () => edit((s) => toggleLinePrefix(s, (i) => `${i + 1}. `)) },
-    { icon: <LinkIcon size={15} />, label: `リンク (${modKey()}+Shift+U)`, run: () => edit((s) => insertLink(s)), group: true },
+    { icon: <Bold size={15} />, label: t("composer.format.boldKey", { key: `${modKey()}+B` }), run: () => edit((s) => toggleWrap(s, "**")) },
+    { icon: <Italic size={15} />, label: t("composer.format.italicKey", { key: `${modKey()}+I` }), run: () => edit((s) => toggleWrap(s, "_")) },
+    { icon: <Strikethrough size={15} />, label: t("composer.format.strikeKey", { key: `${modKey()}+Shift+X` }), run: () => edit((s) => toggleWrap(s, "~~")) },
+    { icon: <Code size={15} />, label: t("composer.format.codeKey", { key: `${modKey()}+Shift+C` }), run: () => edit((s) => toggleWrap(s, "`")), group: true },
+    { icon: <SquareCode size={15} />, label: t("composer.format.codeBlock"), run: () => edit(toggleFence) },
+    { icon: <Heading size={15} />, label: t("composer.format.heading"), run: () => edit((s) => toggleLinePrefix(s, "## ")), group: true },
+    { icon: <TextQuote size={15} />, label: t("composer.format.quote"), run: () => edit((s) => toggleLinePrefix(s, "> ")) },
+    { icon: <List size={15} />, label: t("composer.format.bullets"), run: () => edit((s) => toggleLinePrefix(s, "- ")) },
+    { icon: <ListOrdered size={15} />, label: t("composer.format.numbered"), run: () => edit((s) => toggleLinePrefix(s, (i) => `${i + 1}. `)) },
+    { icon: <LinkIcon size={15} />, label: t("composer.format.linkKey", { key: `${modKey()}+Shift+U` }), run: () => edit((s) => insertLink(s)), group: true },
   ];
 
   // A menu entry that opens something else (a popover, the poll form, the member list) runs once the menu has closed
@@ -481,7 +482,7 @@ export function Composer({
       {workflowMenu && <ChannelWorkflowsDialog controller={controller} channel={channel} onClose={() => setWorkflowMenu(false)} />}
       {scheduleForm && <ScheduleDialog controller={controller} channelId={channel.id} parentId={parentId} initial={scheduleForm} onClose={() => setScheduleForm(null)} />}
       {emojiHits.length > 0 && (
-        <ul className="absolute bottom-full left-4 z-20 mb-1 w-72 rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="絵文字の候補">
+        <ul className="absolute bottom-full left-4 z-20 mb-1 w-72 rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label={t("composer.emojiSuggestions")}>
           {emojiHits.map((entry, index) => (
             <li
               key={entry.shortcode}
@@ -513,13 +514,13 @@ export function Composer({
                 pick(candidate);
               }}
             >
-              <strong>@{candidate.username}</strong> <span className="text-muted">{candidate.label}</span>{candidate.kind === "group" && <span className="ml-auto rounded bg-accent-soft px-1.5 text-[10px] text-accent">グループ</span>}{candidate.ai && <AiBadge className="ml-auto" />}
+              <strong>@{candidate.username}</strong> <span className="text-muted">{candidate.label}</span>{candidate.kind === "group" && <span className="ml-auto rounded bg-accent-soft px-1.5 text-[10px] text-accent">{t("composer.group")}</span>}{candidate.ai && <AiBadge className="ml-auto" />}
             </li>
           ))}
         </ul>
       )}
       {slashHits.length > 0 && (
-        <ul className="absolute bottom-full left-4 z-20 mb-1 max-h-80 w-96 max-w-[calc(100%-2rem)] overflow-y-auto rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="コマンドの候補">
+        <ul className="absolute bottom-full left-4 z-20 mb-1 max-h-80 w-96 max-w-[calc(100%-2rem)] overflow-y-auto rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label={t("composer.commandSuggestions")}>
           {slashHits.map((hit, index) => (
             <li
               key={hit.kind === "command" ? hit.command.name : hit.kind === "workflow" ? `wf:${hit.workflow.id}` : hit.template.id}
@@ -537,8 +538,8 @@ export function Composer({
                 <>
                   <WorkflowEmoji workflow={hit.workflow} className="self-center" />
                   <strong className="shrink-0 font-mono">{/\s/.test(hit.workflow.name) ? `/wf ${hit.workflow.name}` : `/${hit.workflow.name}`}</strong>
-                  <span className="min-w-0 flex-1 truncate text-muted">{hit.workflow.description || "ワークフロー"}</span>
-                  {!hit.workflow.can_run && <span className="ml-auto shrink-0 text-[10px] text-warning">使えません</span>}
+                  <span className="min-w-0 flex-1 truncate text-muted">{hit.workflow.description || t("composer.workflow")}</span>
+                  {!hit.workflow.can_run && <span className="ml-auto shrink-0 text-[10px] text-warning">{t("composer.unavailable")}</span>}
                 </>
               ) : (
                 <>
@@ -555,7 +556,7 @@ export function Composer({
       <div className="@container rounded-xl border border-line bg-canvas shadow-sm transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
         {/* The formatting bar above the text, as in Slack (tester, 2026-09-30); 「Aa」 below shows or hides it. */}
         {formatBar && (
-          <div className="flex items-center gap-0.5 px-2 pt-1.5" aria-label="書式">
+          <div className="flex items-center gap-0.5 px-2 pt-1.5" aria-label={t("composer.formatting")}>
             {tools.map((tool, index) => (
               <Fragment key={tool.label}>
                 {tool.group && <span className={cn("mx-1 h-4 w-px shrink-0 bg-line", index >= PRIMARY_TOOLS && "hidden @[22rem]:block")} />}
@@ -572,7 +573,7 @@ export function Composer({
             ))}
             <PopoverRoot open={moreToolsOpen} onOpenChange={setMoreToolsOpen}>
               <PopoverTrigger asChild>
-                <button type="button" title="その他の書式" aria-label="その他の書式" disabled={preview} onMouseDown={(e) => e.preventDefault()} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink disabled:opacity-40 @[22rem]:hidden">
+                <button type="button" title={t("composer.moreFormatting")} aria-label={t("composer.moreFormatting")} disabled={preview} onMouseDown={(e) => e.preventDefault()} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink disabled:opacity-40 @[22rem]:hidden">
                   <Ellipsis size={15} />
                 </button>
               </PopoverTrigger>
@@ -600,15 +601,15 @@ export function Composer({
         {(priority || ackRequested) && (
           <div className="flex items-center gap-2 px-3 pt-2 text-xs">
             {priority && <PriorityLabel priority={priority} />}
-            {ackRequested && <span className="inline-flex items-center gap-1 text-muted"><CheckCheck size={12} /> 確認を求める</span>}
-            <button type="button" className="text-muted hover:text-ink" aria-label="重要度を外す" onClick={() => { setPriority(null); setAckRequested(false); }}>
+            {ackRequested && <span className="inline-flex items-center gap-1 text-muted"><CheckCheck size={12} /> {t("composer.askAck")}</span>}
+            <button type="button" className="text-muted hover:text-ink" aria-label={t("composer.clearPriority")} onClick={() => { setPriority(null); setAckRequested(false); }}>
               <X size={12} />
             </button>
           </div>
         )}
         {uploading > 0 && (
           <div className="flex items-center gap-2 px-3 pt-2 text-xs text-muted" role="status">
-            <Loader2 size={12} className="animate-spin" /> 添付をアップロード中… 完了後に送信できます
+            <Loader2 size={12} className="animate-spin" /> {t("composer.uploading")}
           </div>
         )}
         <div className={cn((pending.length > 0 || uploading > 0) && "px-2 pt-2")}>
@@ -630,7 +631,7 @@ export function Composer({
           accept="image/*,video/*"
           multiple
           hidden
-          aria-label="写真・動画を選択"
+          aria-label={t("composer.pickMedia")}
           onChange={(e) => {
             const picked = takePicked(e.target);
             void pickFiles(picked.files, picked);
@@ -639,8 +640,8 @@ export function Composer({
         <div className="relative">
           {/* As tall as the text area at most: a long preview pushed the send button off the window (tester, 2026-09-30). */}
           {preview && (
-            <div className="max-h-[280px] min-h-14 overflow-y-auto pb-1 pl-3 pr-10 pt-3" aria-label="プレビュー">
-              {text.trim() ? <MessageBody body={text} users={store.users} /> : <span className="text-sm text-muted">プレビューする本文がありません</span>}
+            <div className="max-h-[280px] min-h-14 overflow-y-auto pb-1 pl-3 pr-10 pt-3" aria-label={t("composer.preview")}>
+              {text.trim() ? <MessageBody body={text} users={store.users} /> : <span className="text-sm text-muted">{t("composer.nothingToPreview")}</span>}
             </div>
           )}
           <textarea
@@ -668,7 +669,7 @@ export function Composer({
                 apply(linked);
               }
             }}
-            aria-label={parentId ? "スレッドの返信" : "メッセージ"}
+            aria-label={parentId ? t("composer.threadReply") : t("composer.message")}
             onKeyDown={onKeyDown}
             onKeyUp={(e) => syncCaret(e.currentTarget)}
             onClick={(e) => syncCaret(e.currentTarget)}
@@ -682,7 +683,7 @@ export function Composer({
             rows={2}
           />
           {/* The preview toggle in the text's top-right corner (2026-10-04); 「書式の書き方」 is by the send button. */}
-          <IconButton label={preview ? "編集に戻る" : "プレビュー"} aria-pressed={preview} className={cn("absolute right-1 top-1 h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
+          <IconButton label={preview ? t("composer.backToEdit") : t("composer.preview")} aria-pressed={preview} className={cn("absolute right-1 top-1 h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
             {preview ? <EyeOff size={15} /> : <Eye size={15} />}
           </IconButton>
         </div>
@@ -693,40 +694,40 @@ export function Composer({
               <Menu>
                 <PopoverAnchor asChild>
                   <MenuTrigger asChild>
-                    <IconButton label={`ファイルを添付・その他 (${modKey()}+U)`} className="h-7 w-7 shrink-0 text-muted hover:text-ink">
+                    <IconButton label={t("composer.attachKey", { key: `${modKey()}+U` })} className="h-7 w-7 shrink-0 text-muted hover:text-ink">
                       <Plus size={17} />
                     </IconButton>
                   </MenuTrigger>
                 </PopoverAnchor>
                 <MenuContent align="start" side="top" onCloseAutoFocus={runAfterMenu}>
                   <MenuItem disabled={uploading > 0} onSelect={() => openPicker(mediaInput.current)}>
-                    <Image size={14} className="text-muted" /> 写真・動画
+                    <Image size={14} className="text-muted" /> {t("composer.media")}
                   </MenuItem>
                   <MenuItem disabled={uploading > 0} onSelect={() => openPicker(fileInput.current)}>
-                    <Paperclip size={14} className="text-muted" /> ファイル <Kbd className="ml-auto">{modKey()}+U</Kbd>
+                    <Paperclip size={14} className="text-muted" /> {t("composer.file")} <Kbd className="ml-auto">{modKey()}+U</Kbd>
                   </MenuItem>
                   <MenuItem onSelect={() => { afterMenu.current = () => setPollForm({}); }}>
-                    <Vote size={14} className="text-muted" /> アンケート
+                    <Vote size={14} className="text-muted" /> {t("composer.poll")}
                   </MenuItem>
                   <MenuItem onSelect={() => { afterMenu.current = () => setScheduleForm({}); }}>
-                    <CalendarDays size={14} className="text-muted" /> 日程調整
+                    <CalendarDays size={14} className="text-muted" /> {t("composer.schedulePoll")}
                   </MenuItem>
                   <MenuItem onSelect={() => { afterMenu.current = () => setTemplatesOpen(true); }}>
-                    <LayoutTemplate size={14} className="text-muted" /> テンプレート…
+                    <LayoutTemplate size={14} className="text-muted" /> {t("composer.templatesMenu")}
                   </MenuItem>
                   {!parentId && isChannel && (
                     <MenuItem onSelect={() => { afterMenu.current = () => setWorkflowMenu(true); }}>
-                      <Zap size={14} className="text-muted" /> ワークフロー…
+                      <Zap size={14} className="text-muted" /> {t("channel.workflowsMenu")}
                     </MenuItem>
                   )}
                 </MenuContent>
               </Menu>
               <PopoverContent align="start" side="top" className="w-80 p-1" onCloseAutoFocus={(e) => e.preventDefault()}>
-                <div className="px-2 pb-1 pt-1 text-xs font-semibold text-muted">テンプレート</div>
+                <div className="px-2 pb-1 pt-1 text-xs font-semibold text-muted">{t("composer.templates")}</div>
                 {templates.length === 0 ? (
-                  <p className="px-2 pb-2 text-sm text-muted">テンプレートはありません (設定で追加できます)</p>
+                  <p className="px-2 pb-2 text-sm text-muted">{t("composer.noTemplates")}</p>
                 ) : (
-                  <ul className="max-h-72 overflow-y-auto" aria-label="テンプレートの一覧">
+                  <ul className="max-h-72 overflow-y-auto" aria-label={t("composer.templateList")}>
                     {templates.map((template) => (
                       <li key={template.id}>
                         <button type="button" className="flex w-full items-baseline gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel" onClick={() => insertTemplate(template)}>
@@ -740,30 +741,30 @@ export function Composer({
                 )}
               </PopoverContent>
             </PopoverRoot>
-            <IconButton label={formatBar ? "書式を隠す" : "書式を表示"} className={cn("h-7 w-7 shrink-0 hover:text-ink", formatBar ? "text-ink" : "text-muted")} onMouseDown={(e) => e.preventDefault()} onClick={toggleFormatBar}>
+            <IconButton label={formatBar ? t("composer.hideFormatting") : t("composer.showFormatting")} className={cn("h-7 w-7 shrink-0 hover:text-ink", formatBar ? "text-ink" : "text-muted")} onMouseDown={(e) => e.preventDefault()} onClick={toggleFormatBar}>
               <CaseSensitive size={18} />
             </IconButton>
             <PopoverRoot open={emojiOpen} onOpenChange={setEmojiOpen}>
               <PopoverAnchor virtualRef={emojiAnchor.anchor} />
-              <button ref={emojiButton} type="button" title="絵文字" aria-label="絵文字" aria-haspopup="dialog" aria-expanded={emojiOpen} onClick={() => setEmojiOpen((open) => !open)} className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[17rem]:flex">
+              <button ref={emojiButton} type="button" title={t("composer.emoji")} aria-label={t("composer.emoji")} aria-haspopup="dialog" aria-expanded={emojiOpen} onClick={() => setEmojiOpen((open) => !open)} className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[17rem]:flex">
                 <Smile size={15} />
               </button>
               <PopoverContent align="start" side="top" className="w-auto p-3" onInteractOutside={emojiAnchor.keepOpenOnButton}>
                 <EmojiPicker recent={readRecentEmoji()} custom={[...store.customEmoji.values()]} controller={controller} onAddCustom={() => { setEmojiOpen(false); setAddEmojiOpen(true); }} onPick={insertEmoji} />
               </PopoverContent>
             </PopoverRoot>
-            <IconButton label="メンションを追加" className="hidden h-7 w-7 shrink-0 text-muted hover:text-ink @[17rem]:inline-flex" disabled={preview} onMouseDown={(e) => e.preventDefault()} onClick={startMention}>
+            <IconButton label={t("composer.addMention")} className="hidden h-7 w-7 shrink-0 text-muted hover:text-ink @[17rem]:inline-flex" disabled={preview} onMouseDown={(e) => e.preventDefault()} onClick={startMention}>
               <AtSign size={15} />
             </IconButton>
             {!parentId && (
               <PopoverRoot open={priorityOpen} onOpenChange={setPriorityOpen}>
                 <PopoverAnchor virtualRef={priorityAnchor.anchor} />
-                <button ref={priorityButton} type="button" title="重要度" aria-label="重要度" aria-haspopup="dialog" aria-expanded={priorityOpen} onClick={() => setPriorityOpen((open) => !open)} className={cn("hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg hover:bg-ink/6 @[17rem]:inline-flex", priority || ackRequested ? "text-accent" : "text-muted hover:text-ink")}>
+                <button ref={priorityButton} type="button" title={t("composer.priority")} aria-label={t("composer.priority")} aria-haspopup="dialog" aria-expanded={priorityOpen} onClick={() => setPriorityOpen((open) => !open)} className={cn("hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg hover:bg-ink/6 @[17rem]:inline-flex", priority || ackRequested ? "text-accent" : "text-muted hover:text-ink")}>
                   <Flag size={15} />
                 </button>
                 <PopoverContent align="start" side="top" className="w-60 p-2" onInteractOutside={priorityAnchor.keepOpenOnButton}>
-                  <div className="px-1 pb-1 text-xs font-semibold text-muted">重要度</div>
-                  {([[null, "通常"], ["important", "重要"], ["urgent", "緊急"]] as Array<[Priority | null, string]>).map(([value, label]) => (
+                  <div className="px-1 pb-1 text-xs font-semibold text-muted">{t("composer.priority")}</div>
+                  {([[null, t("composer.priorityNormal")], ["important", t("composer.priorityImportant")], ["urgent", t("composer.priorityUrgent")]] as Array<[Priority | null, string]>).map(([value, label]) => (
                     <button key={label} type="button" className={cn("flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel", priority === value && "bg-accent-soft")} onClick={() => setPriority(value)}>
                       {value ? <PriorityLabel priority={value} /> : <span>{label}</span>}
                       {priority === value && <Check size={14} className="text-accent" />}
@@ -771,27 +772,27 @@ export function Composer({
                   ))}
                   <label className="mt-1 flex cursor-pointer items-center gap-2 border-t border-line px-2 pt-2 text-sm">
                     <input type="checkbox" className="accent-[var(--accent)]" checked={ackRequested} onChange={(e) => setAckRequested(e.target.checked)} />
-                    確認を求める
+                    {t("composer.askAck")}
                   </label>
                 </PopoverContent>
               </PopoverRoot>
             )}
             <Menu>
               <MenuTrigger asChild>
-                <button ref={moreButton} type="button" title="その他" aria-label="その他の操作" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[17rem]:hidden">
+                <button ref={moreButton} type="button" title={t("composer.more")} aria-label={t("composer.moreActions")} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink @[17rem]:hidden">
                   <Ellipsis size={15} />
                 </button>
               </MenuTrigger>
               <MenuContent align="start" side="top" onCloseAutoFocus={runAfterMenu}>
                 <MenuItem onSelect={() => { afterMenu.current = () => setEmojiOpen(true); }}>
-                  <Smile size={14} className="text-muted" /> 絵文字
+                  <Smile size={14} className="text-muted" /> {t("composer.emoji")}
                 </MenuItem>
                 <MenuItem disabled={preview} onSelect={() => { afterMenu.current = startMention; }}>
-                  <AtSign size={14} className="text-muted" /> メンションを追加
+                  <AtSign size={14} className="text-muted" /> {t("composer.addMention")}
                 </MenuItem>
                 {!parentId && (
                   <MenuItem onSelect={() => { afterMenu.current = () => setPriorityOpen(true); }}>
-                    <Flag size={14} className="text-muted" /> 重要度
+                    <Flag size={14} className="text-muted" /> {t("composer.priority")}
                   </MenuItem>
                 )}
               </MenuContent>
@@ -800,21 +801,21 @@ export function Composer({
           <div className="flex shrink-0 items-center gap-3">
             <MarkdownHelp />
             <span className="-ml-2 hidden items-center gap-1 whitespace-nowrap text-[11px] text-muted @3xl:flex">
-              <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> 送信 <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").newline}</Kbd> 改行
+              <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> {t("composer.send")} <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").newline}</Kbd> {t("composer.newline")}
             </span>
             {/* 「送信」 and its ▾ with 「後で送信」, as Slack's schedule dropdown. */}
             <div className="flex items-center">
               <Button size="sm" className="rounded-r-none" onClick={send} disabled={uploading > 0 || (!text.trim() && pending.length === 0)}>
-                <SendHorizontal size={14} /> 送信
+                <SendHorizontal size={14} /> {t("composer.send")}
               </Button>
               <PopoverRoot open={scheduleOpen} onOpenChange={setScheduleOpen}>
                 <PopoverTrigger asChild>
-                  <button type="button" aria-label="後で送信" title="後で送信" disabled={uploading > 0 || scheduling || (!text.trim() && pending.length === 0)} className="inline-flex h-7 w-6 items-center justify-center rounded-r-md border-l border-white/30 bg-accent-solid text-white shadow-sm transition-colors hover:bg-accent-solid/90 disabled:pointer-events-none disabled:opacity-50">
+                  <button type="button" aria-label={t("composer.sendLater")} title={t("composer.sendLater")} disabled={uploading > 0 || scheduling || (!text.trim() && pending.length === 0)} className="inline-flex h-7 w-6 items-center justify-center rounded-r-md border-l border-white/30 bg-accent-solid text-white shadow-sm transition-colors hover:bg-accent-solid/90 disabled:pointer-events-none disabled:opacity-50">
                     <ChevronDown size={14} />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent align="end" side="top" className="w-72 p-3">
-                  <div className="mb-2 text-xs font-semibold text-muted">後で送信</div>
+                  <div className="mb-2 text-xs font-semibold text-muted">{t("composer.sendLater")}</div>
                   <ul className="space-y-0.5">
                     {schedulePresets().map((preset) => (
                       <li key={preset.key}>
@@ -826,8 +827,8 @@ export function Composer({
                     ))}
                   </ul>
                   <div className="mt-2 flex items-center gap-2 border-t border-line pt-2">
-                    <input type="datetime-local" value={customAt} aria-label="日時を指定" className="h-8 flex-1 rounded-lg border border-line bg-canvas px-2 text-xs" onChange={(e) => setCustomAt(e.target.value)} />
-                    <Button size="sm" variant="secondary" onClick={() => void schedule(new Date(customAt))}>予約</Button>
+                    <input type="datetime-local" value={customAt} aria-label={t("settings.pause.custom")} className="h-8 flex-1 rounded-lg border border-line bg-canvas px-2 text-xs" onChange={(e) => setCustomAt(e.target.value)} />
+                    <Button size="sm" variant="secondary" onClick={() => void schedule(new Date(customAt))}>{t("composer.schedule")}</Button>
                   </div>
                 </PopoverContent>
               </PopoverRoot>
@@ -838,7 +839,7 @@ export function Composer({
       {canShare && (
         <label className="mt-1.5 flex w-fit cursor-pointer items-center gap-1.5 text-xs text-muted">
           <input type="checkbox" className="accent-[var(--accent)]" checked={alsoInChannel} onChange={(e) => setAlsoInChannel(e.target.checked)} />
-          {channel.type === "dm" || channel.type === "group_dm" ? "会話にも送信" : `#${channel.name ?? ""} にも送信`}
+          {channel.type === "dm" || channel.type === "group_dm" ? t("composer.alsoToConversation") : t("composer.alsoToChannel", { name: channel.name ?? "" })}
         </label>
       )}
     </div>
@@ -872,23 +873,25 @@ function useShownAnchor(button: RefObject<HTMLElement | null>, more: RefObject<H
 
 /** Marks my own templates in the lists (the workspace's have none). */
 function TemplateMark() {
-  return <span className="ml-auto shrink-0 rounded bg-accent-soft px-1.5 text-[10px] text-accent">個人</span>;
+  return <span className="ml-auto shrink-0 rounded bg-accent-soft px-1.5 text-[10px] text-accent">{t("composer.personal")}</span>;
 }
 
-const SYNTAX: Array<[string, string]> = [
-  ["**太字** または *太字*", "太字"],
-  ["_斜体_", "斜体 (前後が空白か記号のとき。snake_case やメールアドレスの _ は斜体にしない)"],
-  ["~~取り消し~~", "取り消し線"],
-  ["`コード`", "インラインコード"],
-  ["# 見出し / ## / ###", "見出し (3 段階)"],
-  ["```言語 … ``` (行頭)", "コードブロック。中では Enter で改行"],
-  ["> 引用", "引用。Enter で次の行も引用"],
-  ["- 項目 / 1. 項目", "箇条書き / 番号付き。Enter で次の項目、空の項目で Enter すると終了、Tab で字下げ"],
-  ["[表示名](https://…)", "リンク"],
-  ["| 項目 | 担当 |\n| --- | --- |\n| API | 田中 |", "表 (2 行目の --- で見出しと区切る。:--: で中央寄せ)"],
-  ["@名前", "メンション (候補から選ぶ)"],
-  ["\\_ \\* \\~ \\`", "記号をそのまま表示 (斜体・太字などにしない)"],
-];
+function syntaxRows(): Array<[string, string]> {
+  return [
+    [t("composer.syntax.boldEx"), t("composer.syntax.bold")],
+    [t("composer.syntax.italicEx"), t("composer.syntax.italic")],
+    [t("composer.syntax.strikeEx"), t("composer.syntax.strike")],
+    [t("composer.syntax.codeEx"), t("composer.syntax.code")],
+    [t("composer.syntax.headingEx"), t("composer.syntax.heading")],
+    [t("composer.syntax.fenceEx"), t("composer.syntax.fence")],
+    [t("composer.syntax.quoteEx"), t("composer.syntax.quote")],
+    [t("composer.syntax.listEx"), t("composer.syntax.list")],
+    [t("composer.syntax.linkEx"), t("composer.syntax.link")],
+    [t("composer.syntax.tableEx"), t("composer.syntax.table")],
+    [t("composer.syntax.mentionEx"), t("composer.syntax.mention")],
+    ["\\_ \\* \\~ \\`", t("composer.syntax.escape")],
+  ];
+}
 
 /**
  * 「書式の書き方」: the supported syntax, by the send button. Kept inside the window (2026-10-04: cut off at times):
@@ -899,15 +902,15 @@ export function MarkdownHelp() {
   return (
     <PopoverRoot>
       <PopoverTrigger asChild>
-        <button type="button" aria-label="書式の書き方" title="書式の書き方" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-ink/6 hover:text-ink">
+        <button type="button" aria-label={t("composer.syntaxHelp")} title={t("composer.syntaxHelp")} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-ink/6 hover:text-ink">
           <Info size={15} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" side="top" className="max-h-[var(--radix-popover-content-available-height)] w-[420px] overflow-y-auto p-3">
-        <div className="mb-2 text-xs font-semibold">書式 (軽量 Markdown)</div>
+        <div className="mb-2 text-xs font-semibold">{t("composer.syntaxTitle")}</div>
         <table className="w-full text-xs">
           <tbody className="divide-y divide-line">
-            {SYNTAX.map(([syntax, meaning]) => (
+            {syntaxRows().map(([syntax, meaning]) => (
               <tr key={syntax}>
                 <td className="py-1 pr-3 align-top">
                   {syntax.includes("\n") ? (

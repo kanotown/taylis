@@ -31,6 +31,7 @@ import { hoverMenuGroups, type MessageActionKey, messageActions, rowFitsQuickRea
 import { EmojiText, StatusEmoji, UserPopover } from "./UserPopover";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { isSelfNotes, selfNotesIntro } from "./channels";
+import { intlLocale, t } from "../i18n";
 import { EmojiPicker, rememberEmoji, useRecentEmoji } from "./EmojiPicker";
 import { autoLinkPreview, LinkPreviewCard } from "./LinkPreviewCard";
 import { LONG_PRESS_MS, MessageActionsSheet, quickReactions } from "./MessageActionsSheet";
@@ -482,37 +483,37 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
         <div className="unread-banner mx-4 mt-2 flex shrink-0 items-center justify-between gap-3 rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">
           <span className="min-w-0 truncate">{bannerText(channel.unreadCount, channel.firstUnreadAt, new Date())}</span>
           {jumping === channel.id ? (
-            <span className="shrink-0 text-muted">読み込み中…</span>
+            <span className="shrink-0 text-muted">{t("common.loading")}</span>
           ) : (
             <span className="flex shrink-0 items-center gap-2">
               {jumpButtonShown(readRangeReady(channel), channel.unreadCount) && (
                 <Button variant="link" size="sm" disabled={!online} onClick={() => void jumpToFirstUnread()}>
-                  最初の未読へ
+                  {t("timeline.firstUnread")}
                 </Button>
               )}
               <Button variant="link" size="sm" disabled={!online} onClick={readToEnd}>
-                既読にする
+                {t("timeline.markRead")}
               </Button>
             </span>
           )}
         </div>
       )}
-      <div data-message-list data-chat-focus tabIndex={-1} aria-label="メッセージ一覧" className="timeline flex-1 overflow-y-auto px-4 pb-2 pt-2 [overflow-anchor:none]" ref={container} onScroll={onScroll} {...tapHandlers}>
+      <div data-message-list data-chat-focus tabIndex={-1} aria-label={t("timeline.list")} className="timeline flex-1 overflow-y-auto px-4 pb-2 pt-2 [overflow-anchor:none]" ref={container} onScroll={onScroll} {...tapHandlers}>
         <div ref={content}>
         {focus && (
           <div className="sticky top-0 z-10 mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">
-            <span>検索位置の前後の会話</span>
+            <span>{t("timeline.aroundResult")}</span>
             {/* The conversation then opens like any other (first unread row or the newest), see the positioning above. */}
             <Button variant="link" size="sm" onClick={() => controller.clearMessageFocus()}>
-              最新の会話に戻る
+              {t("timeline.backToLatest")}
             </Button>
           </div>
         )}
-        {loadingOlder && <div className="py-2 text-center text-xs text-muted">読み込み中…</div>}
+        {loadingOlder && <div className="py-2 text-center text-xs text-muted">{t("common.loading")}</div>}
         {!focus && !loadingOlder && channel.hasOlder && messages.length > 0 && engine && (
           <div className="py-1 text-center">
             <Button variant="link" size="sm" onClick={loadOlder}>
-              以前のメッセージを読み込む
+              {t("timeline.loadOlder")}
             </Button>
           </div>
         )}
@@ -530,8 +531,8 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
               </>
             ) : (
               <>
-                <strong className="text-base">まだメッセージはありません</strong>
-                <span className="text-sm text-muted">最初のメッセージを送ってみましょう。</span>
+                <strong className="text-base">{t("timeline.empty")}</strong>
+                <span className="text-sm text-muted">{t("timeline.emptyHint")}</span>
               </>
             )}
           </div>
@@ -550,7 +551,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
             return (
               <div key={item.key} ref={divider} className="my-2 flex items-center gap-3 text-xs font-semibold text-rose-500">
                 <span className="h-px flex-1 bg-rose-400/70" />
-                <span>新着メッセージ</span>
+                <span>{t("timeline.newMessages")}</span>
                 <span className="h-px flex-1 bg-rose-400/70" />
               </div>
             );
@@ -573,7 +574,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
           )}
         >
           <ArrowDown size={14} />
-          {unseenBelow > 0 ? `新着 ${unseenBelow} 件` : "最新のメッセージへ"}
+          {unseenBelow > 0 ? t("timeline.newCount", { count: unseenBelow }) : t("timeline.toLatest")}
         </button>
       )}
     </div>
@@ -636,12 +637,11 @@ export function ChannelIntro({ controller, channel }: { controller: AppControlle
         {self ? (
           selfNotesIntro()
         ) : isDm ? (
-          <>{title} との会話の始まりです。</>
+          <>{t("timeline.dmStart", { title })}</>
         ) : (
           <>
-            {creator ? `${creator} が` : ""}
-            {created ? `${created.getFullYear()}年${created.getMonth() + 1}月${created.getDate()}日に` : ""}作成した{channel.type === "private" ? "非公開" : "公開"}チャンネルの始まりです。
-            {channel.member_count ? ` メンバー ${channel.member_count} 人。` : ""}
+            {channelStartText(creator || null, created, channel.type === "private")}
+            {channel.member_count ? t("timeline.memberCount", { count: channel.member_count }) : ""}
           </>
         )}
       </p>
@@ -733,8 +733,8 @@ function BlockedMessageRow({ message, thread, onShow }: { message: MessageState;
       onKeyDown={(event) => messageRowKey(event, undefined)}
       className="message -mx-2 my-1 flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
     >
-      <span className="min-w-0 italic">ブロック中のユーザーのメッセージ</span>
-      <button type="button" className="shrink-0 text-accent hover:underline" onClick={onShow}>表示</button>
+      <span className="min-w-0 italic">{t("timeline.blockedMessage")}</span>
+      <button type="button" className="shrink-0 text-accent hover:underline" onClick={onShow}>{t("timeline.show")}</button>
     </article>
   );
 }
@@ -812,8 +812,8 @@ function ThreadSummaryLine({ message, store, onOpen }: { message: MessageState; 
   const last = message.last_reply_at ? lastReplyLabel(message.last_reply_at) : "";
   // Who replied and when last, above the line (HoverList), not a native title at the pointer.
   const hover = [
-    repliers.length > 0 ? `返信した人: ${compactNames(repliers.map(nameOf))}` : "",
-    message.last_reply_at ? `最終返信 ${fullTimestamp(message.last_reply_at)}` : "",
+    repliers.length > 0 ? t("timeline.repliers", { names: compactNames(repliers.map(nameOf)) }) : "",
+    message.last_reply_at ? t("timeline.lastReply", { at: fullTimestamp(message.last_reply_at) }) : "",
   ].filter(Boolean).join("\n");
   return (
     <HoverList content={hover}>
@@ -832,7 +832,7 @@ function ThreadSummaryLine({ message, store, onOpen }: { message: MessageState; 
       ) : (
         <MessageSquare size={13} className="shrink-0 text-accent" />
       )}
-      <span className="whitespace-nowrap font-semibold text-accent group-hover:underline">{message.reply_count} 件の返信</span>
+      <span className="whitespace-nowrap font-semibold text-accent group-hover:underline">{t("timeline.replyCount", { count: message.reply_count })}</span>
       {last && (
         <span className="truncate text-muted">{last}</span>
       )}
@@ -1017,12 +1017,12 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         {!thread && message.parent_id && (
           <button type="button" className="mb-0.5 flex max-w-full items-center gap-1 text-left text-[11px] text-muted hover:text-ink" onClick={() => onOpenThread?.(threadId)}>
             <MessageSquare size={11} className="shrink-0" />
-            <span className="shrink-0">スレッドに返信:</span>
-            <span className="truncate">{threadParent ? <EmojiText controller={controller} text={plainText(mentionsToNames(threadParent.body, store.users, store.groups), 80) || attachmentText(threadParent.attachments) || "(添付ファイル)"} /> : "元のメッセージ"}</span>
+            <span className="shrink-0">{t("timeline.repliedToThread")}</span>
+            <span className="truncate">{threadParent ? <EmojiText controller={controller} text={plainText(mentionsToNames(threadParent.body, store.users, store.groups), 80) || attachmentText(threadParent.attachments) || t("common.attachmentParen")} /> : t("timeline.originalMessage")}</span>
           </button>
         )}
         {thread && message.parent_id && message.also_in_channel && (
-          <div className="mb-0.5 text-[11px] text-muted">チャンネルにも送信済み</div>
+          <div className="mb-0.5 text-[11px] text-muted">{t("timeline.alsoSentToChannel")}</div>
         )}
         {message.priority && <PriorityLabel priority={message.priority} className="mb-1" />}
         {/* M94: posted through a workflow's form. */}
@@ -1031,12 +1031,12 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           <div className="mb-0.5 flex items-center gap-3 text-[11px] text-muted">
             {pinnedBy && (
               <span className="inline-flex items-center gap-1 text-warning" title={message.pinned_at ? fullTimestamp(message.pinned_at) : undefined}>
-                <Pin size={11} /> {pinnedBy} がピン留め
+                <Pin size={11} /> {t("timeline.pinnedBy", { name: pinnedBy })}
               </span>
             )}
             {saved && (
               <span className="inline-flex items-center gap-1 text-accent">
-                <BookmarkCheck size={11} /> 保存済み
+                <BookmarkCheck size={11} /> {t("nav.saved")}
               </span>
             )}
           </div>
@@ -1046,22 +1046,22 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             <UserPopover controller={controller} userId={message.sender_id} className="hover:underline">
               <strong className="text-sm text-ink">{senderName}</strong>
             </UserPopover>
-            {sender?.role === "bot" && (store.aiAgentOf(message.sender_id) ? <AiBadge /> : <span className="rounded bg-panel-2 px-1 text-[10px] font-bold text-muted" title="ボット (受信 Webhook・定期投稿・フィード) の投稿">BOT</span>)}
+            {sender?.role === "bot" && (store.aiAgentOf(message.sender_id) ? <AiBadge /> : <span className="rounded bg-panel-2 px-1 text-[10px] font-bold text-muted" title={t("timeline.botTitle")}>BOT</span>)}
             <StatusEmoji controller={controller} userId={message.sender_id} />
             {feedChannel !== undefined && (
-              <button type="button" data-feed-channel="" className="min-w-0 truncate font-medium text-muted hover:text-ink hover:underline" title={`${feedChannel} を開く`} onClick={() => onOpenChannel?.(message.channel_id)}>
+              <button type="button" data-feed-channel="" className="min-w-0 truncate font-medium text-muted hover:text-ink hover:underline" title={t("timeline.openChannel", { name: feedChannel })} onClick={() => onOpenChannel?.(message.channel_id)}>
                 #{feedChannel}
               </button>
             )}
             <time title={fullTimestamp(message.created_at)}>{feedChannel !== undefined ? `${dateLabel(message.created_at)} ${timeLabel(message.created_at)}` : timeLabel(message.created_at)}</time>
-            {feedNew && <span data-feed-new="" role="img" aria-label="新しい投稿" title="新しい投稿 (まだ読んでいない位置より後)" className="h-2 w-2 shrink-0 self-center rounded-full bg-accent" />}
+            {feedNew && <span data-feed-new="" role="img" aria-label={t("timeline.newPost")} title={t("timeline.newPostTitle")} className="h-2 w-2 shrink-0 self-center rounded-full bg-accent" />}
             {message.edited_at &&
               (mine && !readOnly ? (
-                <button type="button" className="hover:text-ink hover:underline" title="編集履歴を見る" onClick={() => setRevisionsOpen(true)}>
-                  (編集済み)
+                <button type="button" className="hover:text-ink hover:underline" title={t("timeline.viewRevisions")} onClick={() => setRevisionsOpen(true)}>
+                  {t("timeline.edited")}
                 </button>
               ) : (
-                <span title={fullTimestamp(message.edited_at)}>(編集済み)</span>
+                <span title={fullTimestamp(message.edited_at)}>{t("timeline.edited")}</span>
               ))}
           </div>
         )}
@@ -1078,9 +1078,9 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
         )}
         {message.failed && (
           <div className="mt-1 flex items-center gap-2 text-xs text-danger">
-            送信に失敗しました
-            <Button variant="link" size="sm" onClick={() => message.client_msg_id && void engine?.retryFailed(message.client_msg_id)}>再送</Button>
-            <Button variant="link" size="sm" onClick={() => message.client_msg_id && engine?.discardFailed(message.client_msg_id)}>破棄</Button>
+            {t("timeline.sendFailed")}
+<Button variant="link" size="sm" onClick={() => message.client_msg_id && void engine?.retryFailed(message.client_msg_id)}>{t("timeline.resend")}</Button>
+            <Button variant="link" size="sm" onClick={() => message.client_msg_id && engine?.discardFailed(message.client_msg_id)}>{t("timeline.discard")}</Button>
           </div>
         )}
         {message.poll && <PollCard poll={message.poll} message={message} controller={controller} readOnly={readOnly} />}
@@ -1120,7 +1120,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             {/* M25: add another reaction right there (the picker on a mouse, the sheet's picker on a phone). */}
             {!readOnly && <PopoverRoot open={chipPicker} onOpenChange={(open) => { if (open && touchScreen()) setSheet("emoji"); else setChipPicker(open); }}>
               <PopoverTrigger asChild>
-                <button type="button" aria-label="リアクションを追加" title="リアクションを追加" className="inline-flex h-6 items-center rounded-full border border-line bg-panel px-1.5 text-muted hover:border-accent/50 hover:text-ink">
+                <button type="button" aria-label={t("timeline.addReaction")} title={t("timeline.addReaction")} className="inline-flex h-6 items-center rounded-full border border-line bg-panel px-1.5 text-muted hover:border-accent/50 hover:text-ink">
                   <SmilePlus size={14} />
                 </button>
               </PopoverTrigger>
@@ -1148,13 +1148,13 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           {/* The first three I chose (M50), else the three I used last (then the defaults), as the phone sheet's six (M25).
               Left out on a narrow row (the thread pane): 「リアクションを追加」 still has them. */}
           {wideRow && quickReactions(recentEmoji, 3, chosenReactions).map((emoji) => (
-            <button key={emoji} type="button" title={`${emoji} でリアクション`} className="h-7 w-7 shrink-0 rounded-md text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
+            <button key={emoji} type="button" title={t("timeline.reactWith", { emoji })} className="h-7 w-7 shrink-0 rounded-md text-base leading-none hover:bg-panel-2" onClick={() => void controller.toggleReaction(message, emoji)}>
               {emoji}
             </button>
           ))}
           <PopoverRoot open={pickerOpen} onOpenChange={setPickerOpen}>
             <PopoverTrigger asChild>
-              <button type="button" title="リアクションを追加" aria-label="リアクションを追加" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
+              <button type="button" title={t("timeline.addReaction")} aria-label={t("timeline.addReaction")} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink">
                 <SmilePlus size={16} />
               </button>
             </PopoverTrigger>
@@ -1172,25 +1172,25 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             </PopoverContent>
           </PopoverRoot>
           {offered.has("thread") && (
-            <IconButton label="スレッドで返信" className="h-7 w-7 shrink-0 text-muted hover:text-ink" onClick={() => onOpenThread?.(threadId)}>
+            <IconButton label={t("timeline.replyInThread")} className="h-7 w-7 shrink-0 text-muted hover:text-ink" onClick={() => onOpenThread?.(threadId)}>
               <MessageSquare size={15} />
             </IconButton>
           )}
-          <IconButton label={saved ? "保存を解除" : "あとで見る (保存)"} className={cn("h-7 w-7 shrink-0 hover:text-ink", saved ? "text-accent" : "text-muted")} onClick={() => void controller.toggleBookmark(message)}>
+          <IconButton label={saved ? t("timeline.unsave") : t("timeline.save")} className={cn("h-7 w-7 shrink-0 hover:text-ink", saved ? "text-accent" : "text-muted")} onClick={() => void controller.toggleBookmark(message)}>
             {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
           </IconButton>
           {offered.has("edit") && (
-            <IconButton label="編集 (空の入力欄で ↑)" className="h-7 w-7 shrink-0 text-muted hover:text-ink" onClick={() => controller.setEditing(message.id)}>
+            <IconButton label={t("timeline.editHint")} className="h-7 w-7 shrink-0 text-muted hover:text-ink" onClick={() => controller.setEditing(message.id)}>
               <Pencil size={15} />
             </IconButton>
           )}
           <Menu open={menuOpen} onOpenChange={(open) => { if (open) afterMenu.current = null; setMenuOpen(open); }}>
             <MenuTrigger asChild>
-              <button ref={moreButton} type="button" title="その他" aria-label="その他" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink data-[state=open]:bg-panel-2 data-[state=open]:text-ink">
+              <button ref={moreButton} type="button" title={t("composer.more")} aria-label={t("composer.more")} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink data-[state=open]:bg-panel-2 data-[state=open]:text-ink">
                 <MoreHorizontal size={16} />
               </button>
             </MenuTrigger>
-            <MenuContent align="end" aria-label="メッセージのその他の操作" onCloseAutoFocus={runAfterMenu}>
+            <MenuContent align="end" aria-label={t("timeline.moreActions")} onCloseAutoFocus={runAfterMenu}>
               {hoverMenuGroups(actions).map((group, index) => (
                 <Fragment key={group[0]!.key}>
                   {index > 0 && <MenuSeparator />}
@@ -1198,7 +1198,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
                     <MenuItem key={action.key} className={action.danger ? "text-danger" : undefined} onSelect={menuRun[action.key]}>
                       <action.icon size={14} className={action.danger ? undefined : "text-muted"} />
                       {action.label}
-                      {action.key === "unread" && <span aria-hidden className="ml-auto pl-3 text-[11px] text-muted">Alt+クリック</span>}
+                      {action.key === "unread" && <span aria-hidden className="ml-auto pl-3 text-[11px] text-muted">{t("timeline.altClick")}</span>}
                     </MenuItem>
                   ))}
                 </Fragment>
@@ -1208,9 +1208,9 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           {/* 「リマインド…」 and 「削除」 from the menu open by ⋯. */}
           <PopoverRoot open={remindOpen} onOpenChange={setRemindOpen}>
             <PopoverAnchor virtualRef={moreAnchor} />
-            <PopoverContent align="end" className="w-72 p-3" aria-label="リマインド">
-              <div className="mb-2 text-xs font-semibold text-muted">リマインド</div>
-              <Input value={remindNote} maxLength={200} placeholder="メモ (任意)" aria-label="リマインドのメモ" className="mb-2 h-9 text-sm" onChange={(e) => setRemindNote(e.target.value)} />
+            <PopoverContent align="end" className="w-72 p-3" aria-label={t("timeline.remind")}>
+              <div className="mb-2 text-xs font-semibold text-muted">{t("timeline.remind")}</div>
+              <Input value={remindNote} maxLength={200} placeholder={t("timeline.remindNote")} aria-label={t("timeline.remindNoteLabel")} className="mb-2 h-9 text-sm" onChange={(e) => setRemindNote(e.target.value)} />
               <ul className="space-y-0.5">
                 {reminderPresets().map((preset) => (
                   <li key={preset.key}>
@@ -1223,22 +1223,22 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               </ul>
               {/* Finger-sized on a touch screen (the hover bar floats there too, styles.css). */}
               <div className="mt-2 flex items-center gap-2 border-t border-line pt-2">
-                <input type="datetime-local" value={remindAt} aria-label="日時を指定" className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-canvas px-2 text-sm" onChange={(e) => setRemindAt(e.target.value)} />
-                <Button size="sm" variant="secondary" onClick={() => { const at = new Date(remindAt); if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() + 60_000) { controller.setError("1 分以上先の時刻を選んでください"); return; } remind(at); }}>設定</Button>
+                <input type="datetime-local" value={remindAt} aria-label={t("settings.pause.custom")} className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-canvas px-2 text-sm" onChange={(e) => setRemindAt(e.target.value)} />
+                <Button size="sm" variant="secondary" onClick={() => { const at = new Date(remindAt); if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() + 60_000) { controller.setError(t("composer.pickLater")); return; } remind(at); }}>{t("timeline.set")}</Button>
               </div>
             </PopoverContent>
           </PopoverRoot>
           <PopoverRoot open={confirmDelete} onOpenChange={setConfirmDelete}>
             <PopoverAnchor virtualRef={moreAnchor} />
-            <PopoverContent align="end" className="w-64 p-3" aria-label="メッセージの削除">
-              <div className="text-sm font-medium">このメッセージを削除しますか？</div>
-              <div className="mt-1 text-xs text-muted">削除したメッセージは元に戻せません。</div>
+            <PopoverContent align="end" className="w-64 p-3" aria-label={t("timeline.deleteMessage")}>
+              <div className="text-sm font-medium">{t("timeline.deleteTitle")}</div>
+              <div className="mt-1 text-xs text-muted">{t("timeline.deleteNote")}</div>
               <div className="mt-3 flex justify-end gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
-                  キャンセル
+                  {t("common.cancel")}
                 </Button>
                 <Button variant="danger" size="sm" onClick={() => { setConfirmDelete(false); void controller.deleteMessage(message.id); }}>
-                  削除する
+                  {t("common.deleteConfirm")}
                 </Button>
               </div>
             </PopoverContent>
@@ -1312,7 +1312,7 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
         value={draft}
         rows={3}
         autoFocus
-        aria-label="メッセージを編集"
+        aria-label={t("timeline.editMessage")}
         onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
         onChange={(e) => setDraft(e.target.value)}
         onPaste={(e) => {
@@ -1342,15 +1342,25 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
       />
       <div className="flex items-center gap-2">
         <Button size="sm" onClick={() => void save()} disabled={!draft.trim() || saving}>
-          {saving ? "保存中…" : "保存"}
+          {saving ? t("common.saving") : t("common.save")}
         </Button>
         <Button size="sm" variant="secondary" onClick={finish}>
-          キャンセル
+          {t("common.cancel")}
         </Button>
         <span className="flex items-center gap-1 text-[11px] text-muted">
-          <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> 保存 <Kbd>Esc</Kbd> 取り消し
+          <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> {t("common.save")} <Kbd>Esc</Kbd> {t("timeline.escCancel")}
         </span>
       </div>
     </div>
   );
+}
+
+/** The intro line of a channel's history: who made it and when (both optional), public or private (M115). */
+function channelStartText(creator: string | null, created: Date | null, isPrivate: boolean): string {
+  const kind = isPrivate ? t("timeline.kindPrivate") : t("timeline.kindPublic");
+  const date = created ? created.toLocaleDateString(intlLocale(), { year: "numeric", month: "long", day: "numeric" }) : null;
+  if (creator && date) return t("timeline.channelStartByOn", { creator, date, kind });
+  if (creator) return t("timeline.channelStartBy", { creator, kind });
+  if (date) return t("timeline.channelStartOn", { date, kind });
+  return t("timeline.channelStart", { kind });
 }
