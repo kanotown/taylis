@@ -10,15 +10,15 @@ Linux のサーバーに Taylis を立てて、ブラウザでログインする
 
 ## 1. DNS とファイアウォール
 
-- ドメインの DNS に **A レコード** (IPv6 も使うなら AAAA) を足し、`chat.example.com` がサーバーの IP アドレスを
+- ドメインの DNS に **A レコード**（IPv6 も使うなら AAAA）を足し、`chat.example.com` がサーバーの IP アドレスを
   指すようにします。`dig +short chat.example.com` でサーバーの IP が返れば反映されています。
-- TCP 80 と 443 を開けます (HTTP/3 を使うなら UDP 443 も)。
-- Cloudflare を使っている場合は、プロキシをオフ (DNS only) にしてください。Caddy が自分で証明書を取り、
+- TCP 80 と 443 を開けます（HTTP/3 を使うなら UDP 443 も）。
+- Cloudflare を使っている場合は、プロキシをオフ（DNS only）にしてください。Caddy が自分で証明書を取り、
   WebSocket と大きなアップロードをそのまま通すためです。
 
 ## 2. Docker を入れる
 
-Docker Engine と compose プラグインを入れます (Docker 公式の手順に従ってください)。`docker compose version` で
+Docker Engine と compose プラグインを入れます（Docker 公式の手順に従ってください）。`docker compose version` で
 確かめられます。
 
 ## 3. 取得と設定
@@ -51,7 +51,7 @@ python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 
 !!! danger "`.env` と `secrets/` はリポジトリに入れない"
     `.env` には秘密の値が入ります。Git にコミットせず、バックアップとは別の安全な場所に控えておいてください
-    (なくすと、バックアップを戻しても動かせなくなります)。
+    （なくすと、バックアップを戻しても動かせなくなります）。
 
 ## 4. 起動
 
@@ -59,9 +59,9 @@ python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy up -d --build
 ```
 
-- 外に出るのは Caddy (80 / 443) だけです。データベース・アプリ・オブジェクトストレージのポートはホストに出しません。
+- 外に出るのは Caddy（80 / 443）だけです。データベース・アプリ・オブジェクトストレージのポートはホストに出しません。
 - 起動のときにデータベースの移行が自動で適用されます。
-- Caddy が TLS の証明書を自動で取ります (80 / 443 が開いていて、DNS が向いている必要があります)。
+- Caddy が TLS の証明書を自動で取ります（80 / 443 が開いていて、DNS が向いている必要があります）。
 
 動いているかを確かめます。
 
@@ -87,7 +87,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app \
 
 ## 次にすること
 
-- [バックアップ](backup.md) を毎日動かす (いちばん大事です)
+- [バックアップ](backup.md) を毎日動かす（いちばん大事です）
 - [プッシュ通知](push.md) を設定する
 - 他のサイトの nginx がすでにあるサーバーなら [既存のリバースプロキシの後ろで](reverse-proxy.md)
 - 新しい版への [更新](updates.md)
