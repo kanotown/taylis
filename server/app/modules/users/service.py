@@ -3,6 +3,7 @@
 import uuid
 from datetime import datetime
 
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -120,10 +121,31 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
     return user
 
 
+async def lock_admin_set(db: AsyncSession) -> None:
+    """Review v0.1.37 #1: everything that can lower the number of active administrators (one's own
+    account deletion, an administrator deactivating, demoting or anonymizing someone, the lab
+    rollover's graduation to guest) runs one at a time. Taken first in the transaction, before
+    any User row lock or the lab roster lock, so the lock order is always the same."""
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('admin_set'))"))
+
+
+async def ensure_admin_remains(db: AsyncSession, *, losing: uuid.UUID) -> None:
+    """409 last_admin unless an active administrator other than `losing` remains. Re-reads the
+    admin set under lock_admin_set (taken here too; it is re-entrant within the transaction)."""
+    await lock_admin_set(db)
+    stmt = select(User.id).where(
+        User.role == "admin", User.deactivated_at.is_(None), User.id != losing
+    )
+    if (await db.execute(stmt.limit(1))).scalar_one_or_none() is None:
+        raise conflict("last_admin", "This would leave no active administrator")
+
+
 async def set_role_in_tx(db: AsyncSession, user: User, role: str) -> None:
     """For the lab module's graduation (L7): a graduate may become a guest; the caller commits."""
     if user.role == role:
         return
+    if user.is_admin and user.is_active:
+        await ensure_admin_remains(db, losing=user.id)
     user.role = role
     user.updated_at = utcnow()
     await db.flush()

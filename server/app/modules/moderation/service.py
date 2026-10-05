@@ -382,16 +382,17 @@ async def delete_own_account(
     """The person's 「アカウントを削除」: confirmed by the password (or the username), then the
     account is anonymized at once (signed out everywhere, devices and push tokens gone, profile
     erased, the username a `deleted-…` tombstone). Messages stay under 「退会したユーザー」."""
+    # Review v0.1.37 #1: the admin-set lock first (then the row), so two last administrators
+    # deleting their accounts at once, or a deletion racing a demotion, leave one standing.
+    await users.lock_admin_set(db)
     user = await users.get_user(db, actor.id, for_update=True)
     if user is None or not user.is_active:
         raise not_found("user_not_found", "User not found")
     if user.role == "bot":
         raise conflict("cannot_modify_self", "A bot account cannot be deleted this way")
     await _check_confirmation(user, data)
-    if user.is_admin and not await _active_admin_ids(db, excluding=user.id):
-        raise conflict(
-            "last_admin", "The last administrator cannot delete their account; appoint another"
-        )
+    if user.is_admin:
+        await users.ensure_admin_remains(db, losing=user.id)
     tombstone_id = user.id
     avatar_key = await admin.anonymize_in_tx(
         db, user, admin=None, actor_id=user.id, action="user.account_deleted"
