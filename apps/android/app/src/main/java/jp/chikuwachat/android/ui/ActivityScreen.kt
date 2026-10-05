@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -39,6 +40,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -73,6 +75,8 @@ object ActivityText {
     /** The headline before a reaction's emoji (which the row draws, a custom one as its picture). */
     fun lead(item: ActivityItem, name: (String) -> String?): String {
         // 「佐藤 が」 but 「佐藤 ほか 2 人が」 (MOBILE_UI.md §6.4).
+        // M112: a reservation notice — the pool, and whether it is a to-do (an operator's) or news of my own reservation.
+        item.reservation?.let { return it.poolName.ifEmpty { "予約" } + if (it.operator) " · 担当者の作業" else " · 予約" }
         val who = actors(item.actorIds, name) + if (item.actorIds.size > 1) "" else " "
         return when (item.kind) {
             "mention" -> "${who}がメンション"
@@ -99,6 +103,7 @@ object ActivityText {
 
     /** Where a tapped row goes: its message (a reply in its thread), or a canvas item's canvas (M77). */
     fun target(item: ActivityItem): ActivityTarget? {
+        if (item.reservation != null) return ActivityTarget.Reservations
         item.canvas?.takeIf { item.kind == "canvas_mention" }?.let { return ActivityTarget.Canvas(it.channelId, it.canvasId) }
         return item.message?.let { ActivityTarget.Message(it) }
     }
@@ -128,6 +133,7 @@ object ActivityText {
      * The row leaves the line out when it is empty.
      */
     fun excerpt(item: ActivityItem, blanked: Set<String>, messageLine: (MessageOut) -> String): String {
+        item.reservation?.let { return it.text } // M112
         item.canvas?.takeIf { item.kind == "canvas_mention" }?.let { return if (it.itemId in blanked) "" else it.excerpt }
         return item.message?.let(messageLine) ?: ""
     }
@@ -138,6 +144,8 @@ sealed interface ActivityTarget {
     data class Message(val message: MessageOut) : ActivityTarget
     /** M77 (CANVAS.md §20.7): the canvas in its conversation's 「キャンバス」 tab, on the activity tab's stack. */
     data class Canvas(val channelId: String, val canvasId: String) : ActivityTarget
+    /** M112: 「予約」. */
+    data object Reservations : ActivityTarget
 }
 
 /** The activity tab's list on screen: its rows, where the next page starts, and which rows have the unread dot. */
@@ -227,6 +235,8 @@ fun ActivityScreen(
     onOpenMessage: (MessageOut) -> Unit,
     onOpenThread: (ThreadEntry) -> Unit,
     onOpenCanvas: (channelId: String, canvasId: String) -> Unit,
+    /** M112: a reservation row opens 「予約」. */
+    onOpenReservations: () -> Unit = {},
 ) {
     val store = controller.store
     if (store.activity == null) {
@@ -323,6 +333,7 @@ fun ActivityScreen(
                                     when (val target = ActivityText.target(item)) {
                                         is ActivityTarget.Message -> onOpenMessage(target.message)
                                         is ActivityTarget.Canvas -> onOpenCanvas(target.channelId, target.canvasId)
+                                        ActivityTarget.Reservations -> onOpenReservations()
                                         null -> Unit
                                     }
                                 },
@@ -369,6 +380,9 @@ private fun ActivityRow(
     val conversation = remember(version, channelId) { channel?.let { channelTitle(it, store) } ?: "" }
     val where = ActivityText.where(item, conversation)
     val canvas = item.canvas.takeIf { item.kind == "canvas_mention" }
+    // M112: a to-do another operator handled (or no longer needed) is done: dimmed, 「対応済み」 (activity.updated names it).
+    val reservation = item.reservation
+    val done = reservation != null && (reservation.done || reservation.itemId in store.blankedActivityItems)
     val excerpt = remember(version, item) {
         ActivityText.excerpt(item, store.blankedActivityItems) { messageLine(it.body, it.attachments, store) }
     }
@@ -380,14 +394,21 @@ private fun ActivityRow(
         Modifier.fillMaxWidth()
             .then(if (spoken != null) Modifier.clearAndSetSemantics { contentDescription = spoken; this.onClick(label = null, action = { tap(); true }) } else Modifier)
             .clickable(onClick = onClick)
+            .alpha(if (done) 0.6f else 1f)
             .padding(start = 6.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Box(Modifier.width(14.dp).padding(top = 14.dp), contentAlignment = Alignment.Center) {
-            if (unread) Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = "未読" })
+            if (unread && !done) Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = "未読" })
         }
         Box {
-            ActorFaces(item.actorIds, name)
+            if (reservation != null) {
+                Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                    Text("🎫", style = MaterialTheme.typography.titleMedium)
+                }
+            } else {
+                ActorFaces(item.actorIds, name)
+            }
             // M77: the kind's mark on the face, 📝 for a canvas mention.
             if (canvas != null) {
                 Box(
@@ -407,6 +428,7 @@ private fun ActivityRow(
                     )
                     if (item.kind == "reaction") item.emojis.forEach { emoji -> ReactionGlyph(emoji, store, onNeedEmojiImage) }
                 }
+                if (done) Text("対応済み", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
                 Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
             }
             if (where.isNotEmpty()) {

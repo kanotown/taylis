@@ -216,7 +216,7 @@ class ApiClient(
     suspend fun users(): List<UserPublic> = request("GET", "/api/v1/users")
 
     /** M77: `activity_include` makes its `activity` badge count the canvas items too (CANVAS.md §20.3). */
-    override suspend fun bootstrap(): BootstrapOut = request("GET", "/api/v1/sync/bootstrap?activity_include=${ActivityInclude.VALUE}")
+    override suspend fun bootstrap(): BootstrapOut = request("GET", "/api/v1/sync/bootstrap?" + ActivityInclude.query("activity_include"))
 
     suspend fun channels(includePublic: Boolean): List<ChannelOut> =
         request("GET", "/api/v1/channels" + if (includePublic) "?include=public" else "")
@@ -567,13 +567,13 @@ class ApiClient(
 
     /** GET /activity: `filter` all / mentions / reactions / threads; `cursor` is the previous page's next_cursor. */
     suspend fun listActivity(filter: String = "all", cursor: String? = null, limit: Int = 50): ActivityListOut =
-        request("GET", "/api/v1/activity?filter=$filter&limit=$limit&include=${ActivityInclude.VALUE}" + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
+        request("GET", "/api/v1/activity?filter=$filter&limit=$limit&" + ActivityInclude.query("include") + (cursor?.let { "&cursor=" + Enc.encode(it, "UTF-8") } ?: ""))
 
-    override suspend fun activitySummary(): ActivitySummaryOut = request("GET", "/api/v1/activity/summary?include=${ActivityInclude.VALUE}")
+    override suspend fun activitySummary(): ActivitySummaryOut = request("GET", "/api/v1/activity/summary?" + ActivityInclude.query("include"))
 
     /** PUT /activity/read: everything up to `readAt` is read (the server only moves it forward, never past now). */
     suspend fun markActivityRead(readAt: String): ActivitySummaryOut =
-        request("PUT", "/api/v1/activity/read?include=${ActivityInclude.VALUE}", buildJsonObject { put("read_at", readAt) })
+        request("PUT", "/api/v1/activity/read?" + ActivityInclude.query("include"), buildJsonObject { put("read_at", readAt) })
 
     /**
      * GET /times/feed (L8, TIMES_FEED.md §3): the timeline rows of my unmuted times, newest first; `cursor` is the
@@ -664,11 +664,20 @@ class ApiClient(
 
     suspend fun deleteChannelLink(channelId: String, linkId: String): List<ChannelLinkOut> = request("DELETE", "/api/v1/channels/$channelId/links/$linkId")
 
-    // --- reservation pools (M99, docs/RESERVATIONS.md §3) ---------------------------------------------------
+    // --- reservation pools (M99, M112, docs/RESERVATIONS.md §3) ---------------------------------------------
 
-    override suspend fun reservationPools(channelId: String): List<PoolOut> = request("GET", "/api/v1/channels/$channelId/reservation-pools")
+    /** The pools I see, with today's and the coming bookings, the queue, the holders and (operators) the to-do. */
+    override suspend fun reservationPools(): List<PoolOut> = request("GET", "/api/v1/reservation-pools")
 
-    /** 「予約する」: join the queue (pressing again changes nothing). */
+    /** A booking: on the hour, 1 h to the pool's max_hours, up to 14 days ahead (409 reservation_slot_full …). */
+    suspend fun bookReservation(poolId: String, startAt: String, hours: Int): PoolOut =
+        request("POST", "/api/v1/reservation-pools/$poolId/bookings", buildJsonObject { put("start_at", startAt); put("hours", hours) })
+
+    /** 「延長」: a booking grows by `hours` if they have a seat. */
+    suspend fun extendReservation(reservationId: String, hours: Int = 1): PoolOut =
+        request("POST", "/api/v1/reservations/$reservationId/extend", buildJsonObject { put("hours", hours) })
+
+    /** 「今すぐ (順番待ち)」: join the walk-in queue (pressing again changes nothing). */
     suspend fun reserve(poolId: String): PoolOut = request("POST", "/api/v1/reservation-pools/$poolId/reserve", buildJsonObject {})
 
     /** cancel (取り消す) / return (返却する) / assign (割り当てた) / remove (外した). */

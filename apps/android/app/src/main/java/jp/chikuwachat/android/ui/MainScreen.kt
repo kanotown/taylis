@@ -444,6 +444,14 @@ fun MainScreen(controller: AppController) {
         focusManager.clearFocus()
         tabs = MainTabs.landCanvas(tabs, MainTabs.landingTab(channel), channelId, canvasId)
     }
+    // M112: a tapped reservation notice (or an activity row): 「予約」 on the home tab.
+    LaunchedEffect(controller.pendingReservations) {
+        if (!controller.pendingReservations) return@LaunchedEffect
+        controller.pendingReservations = false
+        controller.messageFocus = null
+        focusManager.clearFocus()
+        tabs = MainTabs.landReservations(tabs)
+    }
     // M52: a tapped calendar alarm: its channel's 「予定」 tab (once the store knows the channel), or the calendar for my own
     // calendar's event, then the event's form over it (read from the server: it may be outside every range on screen).
     LaunchedEffect(controller.pendingEvent, version) {
@@ -592,6 +600,7 @@ fun MainScreen(controller: AppController) {
                         pane == Route.Calendar -> Text("カレンダー")
                         pane == Route.Tasks -> Text("タスク")
                         pane == Route.Deadlines -> Text("締切")
+                        pane == Route.Reservations -> Text("予約")
                         // 仕上げ A (MOBILE_POLISH.md C5): 「DM」 as on iOS and on the tab (「ダイレクトメッセ…」 was cut).
                         top == Route.DmList -> Text("DM", maxLines = 1, overflow = TextOverflow.Ellipsis)
                         top is Route.Activity -> Text("アクティビティ", maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -784,8 +793,6 @@ fun MainScreen(controller: AppController) {
             // M29: the tab row sits directly under the app bar of a joined conversation's timeline.
             if (selectedChannel != null && ConversationNav.tabRowShown(true, selectedChannel.isMember, threadId != null, searching, detailsOpen)) {
                 // M86 (DEADLINES.md §8 2.): the channel's next deadline, a line of its own over the tabs.
-                // M99 (docs/RESERVATIONS.md §6): the channel's reservation pools, a row of chips.
-                ReservationChipRow(controller, selectedChannel, version)
                 DeadlineChipRow(controller, selectedChannel)
                 ConversationTabRow(controller, selectedChannel, version, conversationTab, onTab = ::selectTab, upcoming = upcomingEvents)
             }
@@ -912,6 +919,9 @@ fun MainScreen(controller: AppController) {
                 } else if (pane == Route.Deadlines) {
                     // M86 (DEADLINES.md §8 3.): 今週 / 今月 / それ以降 / 過ぎたもの; a row opens the deadline's form.
                     DeadlinesPane(controller, version)
+                } else if (pane == Route.Reservations) {
+                    // M112 (RESERVATIONS.md §6): per pool mine, 予約する / 今すぐ, the operators' to-do and a day's hours.
+                    ReservationsPane(controller, version)
                 } else if (pane == Route.Mentions) {
                     MentionsPane(controller, version, onOpen = ::reveal)
                 } else if (pane == Route.Drafts) {
@@ -965,6 +975,7 @@ fun MainScreen(controller: AppController) {
                         // M77 (CANVAS.md §20.7): a canvas row opens its conversation's 「キャンバス」 tab on this tab's
                         // stack, like the message rows (back returns here). A conversation the store does not know yet
                         // lands like the canvas push (M73) once it does.
+                        onOpenReservations = { controller.pendingReservations = true },
                         onOpenCanvas = { channelId, canvasId ->
                             if (store.channel(channelId) != null) {
                                 controller.messageFocus = null
@@ -1004,6 +1015,7 @@ fun MainScreen(controller: AppController) {
                                     HomeTile.CALENDAR -> Route.Calendar
                                     HomeTile.TASKS -> Route.Tasks
                                     HomeTile.DEADLINES -> Route.Deadlines
+                                    HomeTile.RESERVATIONS -> Route.Reservations
                                     HomeTile.FILES -> Route.Files()
                                     HomeTile.CANVASES -> {
                                         // Afresh from the tile (back from a canvas keeps the pages and the place).

@@ -84,6 +84,10 @@ sealed interface Route {
     @Serializable @SerialName("deadlines")
     data object Deadlines : Pane { override val keptUnderConversation get() = true }
 
+    /** M112 (RESERVATIONS.md §6): 「予約」, from the home's tile, an activity row or a tapped reservation notice. */
+    @Serializable @SerialName("reservations")
+    data object Reservations : Pane { override val keptUnderConversation get() = true }
+
     /** A draft row closes the list itself before opening its conversation ([MainNav.openDraft]). */
     @Serializable @SerialName("drafts")
     data object Drafts : Pane { override val keptUnderConversation get() = true }
@@ -235,6 +239,10 @@ object MainNav {
     /** M56: a channel's 「タスク」 tab (a shared task's notification, 「自分の担当」's channel), as [openConversation] does. */
     fun openTasks(stack: List<Route>, channelId: String): List<Route> =
         base(stack) + Route.Channel(channelId, tab = ConversationTab.TASKS)
+
+    /** M112: 「予約」 over the home's list (a tapped notice); one already open stays as it is. */
+    fun openReservations(stack: List<Route>): List<Route> =
+        if (top(stack) == Route.Reservations) stack else stack.filter { it is Route.Root } + Route.Reservations
 
     /** M56: 「タスク」 over the home's list (the tile, or a personal task's notification); one already open stays as it is. */
     fun openMyTasks(stack: List<Route>): List<Route> =

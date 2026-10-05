@@ -47,6 +47,8 @@ class Notifier(private val context: Context) {
         taskId: String? = null,
         /** M73: a canvas mention's notification: the tap opens the canvas (its conversation's 「キャンバス」 tab). */
         canvasId: String? = null,
+        /** M112: a reservation notice: the tap opens 「予約」. */
+        reservations: Boolean = false,
     ) {
         if (!permitted) return
         // M16c: the tap opens the notification's workspace first (WORKSPACES.md §7).
@@ -56,6 +58,7 @@ class Notifier(private val context: Context) {
             if (eventId != null) putExtra(EXTRA_EVENT_ID, eventId)
             if (taskId != null) putExtra(EXTRA_TASK_ID, taskId)
             if (canvasId != null) putExtra(EXTRA_CANVAS_ID, canvasId)
+            if (reservations) putExtra(EXTRA_RESERVATIONS, true)
             if (workspace != null) putExtra(EXTRA_WORKSPACE, workspace)
             if (messageId != null) putExtra(EXTRA_MESSAGE_ID, messageId)
             if (parentId != null) putExtra(EXTRA_PARENT_ID, parentId)
@@ -114,6 +117,7 @@ class Notifier(private val context: Context) {
         const val EXTRA_TASK_ID = "task_id"
         /** M73: the canvas of a mention's notification. */
         const val EXTRA_CANVAS_ID = "canvas_id"
+        const val EXTRA_RESERVATIONS = "reservations"
         /** The workspace's server URL (the list key, WORKSPACES.md §4). */
         const val EXTRA_WORKSPACE = "workspace"
         /** Notifications are told apart by their tag (the key); the id is the same for all. */

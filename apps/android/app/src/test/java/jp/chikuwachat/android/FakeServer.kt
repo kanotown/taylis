@@ -265,7 +265,7 @@ class FakeServer {
             return activity[userId] ?: throw ApiException.Api(404, "not_found", "no activity before M39")
         }
 
-        override suspend fun reservationPools(channelId: String): List<PoolOut> { maybeFail(); return pools[channelId] ?: emptyList() }
+        override suspend fun reservationPools(): List<PoolOut> { maybeFail(); poolReads += 1; return pools }
         override suspend fun channelLinks(channelId: String): List<ChannelLinkOut> { maybeFail(); requireMember(channelId, userId); return links[channelId] ?: emptyList() }
         override suspend fun saveDraft(channelId: String, parentId: String?, body: String): DraftOut { maybeFail(); return this@FakeServer.saveDraft(userId, channelId, parentId, body) }
         override suspend fun deleteDraft(channelId: String, parentId: String?) { maybeFail(); this@FakeServer.deleteDraft(userId, channelId, parentId) }
@@ -579,16 +579,23 @@ class FakeServer {
         }))
     }
 
-    /** M99: each channel's reservation pools; setPools announces a change like the server (no card in the event). */
-    val pools = HashMap<String, List<PoolOut>>()
+    /** M112: the workspace's reservation pools; publishPools announces a change like the server (to everyone, no pool in it). */
+    var pools: List<PoolOut> = emptyList()
+    /** How many times GET /reservation-pools was read. */
+    var poolReads = 0
 
-    fun setPools(channelId: String, rows: List<PoolOut>) {
-        val record = channels[channelId] ?: return
-        pools[channelId] = rows
-        emit(record.members, event("reservation.updated", channelId, null, buildJsonObject {
-            put("channel_id", channelId)
+    fun publishPools(rows: List<PoolOut>) {
+        pools = rows
+        emit(users.keys.toSet(), event("reservation.updated", null, null, buildJsonObject {
             put("pool_id", rows.firstOrNull()?.id ?: "p")
             put("deleted", false)
+        }))
+    }
+
+    /** M112: a reservation notice for one person (an activity item; the app shows a banner). */
+    fun noticeReservation(userId: String, text: String) {
+        emit(setOf(userId), event("reservation.notice", null, null, buildJsonObject {
+            put("item_id", "n1"); put("pool_id", "p1"); put("text", text); put("operator", true); put("at", "2026-10-05T01:00:00Z")
         }))
     }
 

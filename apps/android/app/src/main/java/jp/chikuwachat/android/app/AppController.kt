@@ -1022,6 +1022,13 @@ class AppController(private val app: Application) {
             notice = "📝 $text"
             if (!dndActive(store)) notify(workspace(), channel.id, "キャンバス", text, key = "canvas:${mention.canvasId}", canvasId = mention.canvasId)
         }
+        // M112: a reservation notice while the app is open: the banner and a local notification (the push is not shown then).
+        engine.onReservationNotice = { notice ->
+            notice.text.let { text ->
+                this.notice = "🎫 $text"
+                if (!dndActive(store)) notify(workspace(), null, "予約", text, key = "reservation:${notice.itemId}", reservations = true)
+            }
+        }
         engine.onNotify = { message, channel ->
             // M12c: Do Not Disturb / quiet hours hold local alerts back as well (the server does so for pushes).
             if (!dndActive(store)) {
@@ -1094,13 +1101,13 @@ class AppController(private val app: Application) {
      */
     private fun notify(
         entry: Workspace?, channelId: String?, title: String, body: String, key: String = channelId ?: "", messageId: String? = null, parentId: String? = null,
-        reveal: Boolean = false, eventId: String? = null, taskId: String? = null, canvasId: String? = null,
+        reveal: Boolean = false, eventId: String? = null, taskId: String? = null, canvasId: String? = null, reservations: Boolean = false,
     ) {
         val named = workspaces.size >= 2
         notifier.notifyMessage(
             channelId, title, body, key = key, workspace = entry?.serverUrl, subText = if (named) entry?.name else null,
             messageId = messageId, parentId = parentId, reveal = reveal, badge = totalBadge(), eventId = eventId, taskId = taskId,
-            canvasId = canvasId,
+            canvasId = canvasId, reservations = reservations,
         )
     }
 
@@ -1150,7 +1157,7 @@ class AppController(private val app: Application) {
                 // M52: a calendar alarm's push is shown the same way (while live, the socket's calendar.alarm.updated says it).
                 // §15: a test push is what the reader just asked for: shown even with the app open and the socket live.
                 if (message.shown && (message.isTest || (!live && !reading)) && key != null) {
-                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId)
+                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation)
                 }
                 // M28c: the push's own conversation catches up too (the socket may be stale), not only the open one.
                 engine?.pushReceived(message.channelId, message.messageId)
@@ -1159,7 +1166,7 @@ class AppController(private val app: Application) {
             // The mark first: the notification's number counts this workspace's badge with the others'.
             if (message.kind == "message") updateWorkspace(target.serverUrl) { it.copy(hasUnread = true, badge = message.badge ?: it.badge) }
             if (message.shown && key != null) {
-                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId)
+                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation)
             }
         }
     }
@@ -2408,7 +2415,24 @@ class AppController(private val app: Application) {
         store.setChannelLinks(channelId, api!!.deleteChannelLink(channelId, linkId)); true
     }.getOrElse { error = describe(it); false }
 
-    // --- reservation pools (M99, docs/RESERVATIONS.md §6) ---------------------------------------------
+    // --- reservation pools (M99, M112, docs/RESERVATIONS.md §6) ----------------------------------------
+
+    /** M112: a booking (start on the hour, `hours` long). */
+    suspend fun bookReservation(poolId: String, startAt: java.time.Instant, hours: Int): PoolOut? =
+        withPool { it.bookReservation(poolId, startAt.toString(), hours) }
+
+    /** M112: 「延長」 by an hour. */
+    suspend fun extendReservation(reservationId: String): PoolOut? = withPool { it.extendReservation(reservationId) }
+
+    /** M112: the main screen should open 「予約」 (a tapped notification). */
+    var pendingReservations by mutableStateOf(false)
+
+    /** M112: a tapped reservation notification: its workspace comes on screen, then 「予約」 opens on the home tab. */
+    fun openReservationsFromNotification(workspaceKey: String?) {
+        pendingWorkspaceKey = workspaceKey
+        pendingReservations = true
+        bringWorkspace { pendingReservations = true }
+    }
 
     /** Runs one call that answers with the pool and puts it in the store; an error goes to the banner. */
     private suspend fun withPool(call: suspend (ApiClient) -> PoolOut): PoolOut? = attempt {
@@ -2417,7 +2441,7 @@ class AppController(private val app: Application) {
         pool
     }.getOrElse { error = describe(it); null }
 
-    /** 「予約する」. */
+    /** 「今すぐ (順番待ち)」. */
     suspend fun reservePool(poolId: String): PoolOut? = withPool { it.reserve(poolId) }
 
     /** cancel / return / assign / remove. */
