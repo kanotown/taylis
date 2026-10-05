@@ -121,6 +121,20 @@ class Settings(BaseSettings):
     ffmpeg_path: str = "ffmpeg"
     video_probe_timeout_seconds: float = 20.0
     video_probe_max_concurrent: int = 2
+    # M108 (docs/PREVIEWS.md): previews of documents. A PDF's first page and page count are read
+    # by pypdfium2 in a subprocess; an Office file is first converted to PDF by the converter
+    # service (Gotenberg, compose service `converter`) at this URL. Empty URL: Office files get no
+    # preview (PDFs still do while previews_enabled). A background loop does the work, never the
+    # upload request.
+    previews_enabled: bool = True
+    preview_converter_url: str = ""
+    preview_max_input_bytes: int = 50 * 1024 * 1024
+    preview_max_output_bytes: int = 100 * 1024 * 1024
+    preview_convert_timeout_seconds: float = 100.0
+    preview_render_timeout_seconds: float = 30.0
+    preview_thumbnail_width: int = 800
+    preview_max_attempts: int = 3
+    preview_worker_interval_seconds: float = 30.0
     upload_rate_limit_per_user: int = 20
     search_rate_limit_per_user: int = 30
     # M19: a search running longer is cancelled (503 search_timeout, the client may retry), and at

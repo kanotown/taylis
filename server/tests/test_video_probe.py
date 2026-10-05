@@ -463,7 +463,7 @@ async def test_a_flood_on_stderr_keeps_only_its_tail(tmp_path: Path) -> None:
         "for _ in range(256):\n    sys.stderr.buffer.write(chunk)\n"  # 16 MiB
         "sys.stderr.buffer.flush()\nsys.stdout.buffer.write(b'ok')\n",
     )
-    out, peak, _ = await _measure(videos._run([str(script)], 60, 1024))
+    out, peak, _ = await _measure(videos.run_bounded([str(script)], 60, 1024))
     assert out == b"ok"
     assert peak < 2 * 1024 * 1024, peak  # was ~32 MiB: communicate() held both streams
     assert _gone(pid_file)
@@ -474,7 +474,7 @@ async def test_a_flood_on_both_streams_is_stopped_at_the_stdout_cap(tmp_path: Pa
         tmp_path,
         "while True:\n    sys.stderr.buffer.write(chunk)\n    sys.stdout.buffer.write(chunk)\n",
     )
-    out, peak, elapsed = await _measure(videos._run([str(script)], 60, 1024 * 1024))
+    out, peak, elapsed = await _measure(videos.run_bounded([str(script)], 60, 1024 * 1024))
     assert out is None
     assert elapsed < 20  # killed at the cap, long before the timeout
     assert peak < 4 * 1024 * 1024, peak

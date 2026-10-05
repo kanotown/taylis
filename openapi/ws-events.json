@@ -2637,6 +2637,17 @@
                 "title": "Id",
                 "type": "string"
               },
+              "preview": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AttachmentPreviewOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "size_bytes": {
                 "title": "Size Bytes",
                 "type": "integer"
@@ -2671,6 +2682,61 @@
               "created_at"
             ],
             "title": "AttachmentOut",
+            "type": "object"
+          },
+          "AttachmentPreviewOut": {
+            "description": "M108 (docs/PREVIEWS.md): a PDF's or Office file's preview. 'pending': being made (show\n「プレビューを作成中…」); 'ready': the first page at GET /attachments/{id}/preview/thumbnail\n(WebP, width x height pixels) and every page at GET /attachments/{id}/preview/pdf; 'failed':\nnone (a plain file card).",
+            "properties": {
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Height"
+              },
+              "pages": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Pages"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "ready",
+                  "failed"
+                ],
+                "title": "Status",
+                "type": "string"
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Width"
+              }
+            },
+            "required": [
+              "status",
+              "pages",
+              "width",
+              "height"
+            ],
+            "title": "AttachmentPreviewOut",
             "type": "object"
           },
           "CollectionOut": {
@@ -3643,6 +3709,17 @@
                 "title": "Id",
                 "type": "string"
               },
+              "preview": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AttachmentPreviewOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "size_bytes": {
                 "title": "Size Bytes",
                 "type": "integer"
@@ -3677,6 +3754,61 @@
               "created_at"
             ],
             "title": "AttachmentOut",
+            "type": "object"
+          },
+          "AttachmentPreviewOut": {
+            "description": "M108 (docs/PREVIEWS.md): a PDF's or Office file's preview. 'pending': being made (show\n「プレビューを作成中…」); 'ready': the first page at GET /attachments/{id}/preview/thumbnail\n(WebP, width x height pixels) and every page at GET /attachments/{id}/preview/pdf; 'failed':\nnone (a plain file card).",
+            "properties": {
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Height"
+              },
+              "pages": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Pages"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "ready",
+                  "failed"
+                ],
+                "title": "Status",
+                "type": "string"
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Width"
+              }
+            },
+            "required": [
+              "status",
+              "pages",
+              "width",
+              "height"
+            ],
+            "title": "AttachmentPreviewOut",
             "type": "object"
           },
           "CollectionOut": {
@@ -4650,6 +4782,17 @@
                 "title": "Id",
                 "type": "string"
               },
+              "preview": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AttachmentPreviewOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "size_bytes": {
                 "title": "Size Bytes",
                 "type": "integer"
@@ -4684,6 +4827,61 @@
               "created_at"
             ],
             "title": "AttachmentOut",
+            "type": "object"
+          },
+          "AttachmentPreviewOut": {
+            "description": "M108 (docs/PREVIEWS.md): a PDF's or Office file's preview. 'pending': being made (show\n「プレビューを作成中…」); 'ready': the first page at GET /attachments/{id}/preview/thumbnail\n(WebP, width x height pixels) and every page at GET /attachments/{id}/preview/pdf; 'failed':\nnone (a plain file card).",
+            "properties": {
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Height"
+              },
+              "pages": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Pages"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "ready",
+                  "failed"
+                ],
+                "title": "Status",
+                "type": "string"
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Width"
+              }
+            },
+            "required": [
+              "status",
+              "pages",
+              "width",
+              "height"
+            ],
+            "title": "AttachmentPreviewOut",
             "type": "object"
           },
           "CollectionOut": {
@@ -6040,6 +6238,17 @@
                 "title": "Id",
                 "type": "string"
               },
+              "preview": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AttachmentPreviewOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "size_bytes": {
                 "title": "Size Bytes",
                 "type": "integer"
@@ -6074,6 +6283,61 @@
               "created_at"
             ],
             "title": "AttachmentOut",
+            "type": "object"
+          },
+          "AttachmentPreviewOut": {
+            "description": "M108 (docs/PREVIEWS.md): a PDF's or Office file's preview. 'pending': being made (show\n「プレビューを作成中…」); 'ready': the first page at GET /attachments/{id}/preview/thumbnail\n(WebP, width x height pixels) and every page at GET /attachments/{id}/preview/pdf; 'failed':\nnone (a plain file card).",
+            "properties": {
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Height"
+              },
+              "pages": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Pages"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "ready",
+                  "failed"
+                ],
+                "title": "Status",
+                "type": "string"
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Width"
+              }
+            },
+            "required": [
+              "status",
+              "pages",
+              "width",
+              "height"
+            ],
+            "title": "AttachmentPreviewOut",
             "type": "object"
           },
           "ScheduledOut": {

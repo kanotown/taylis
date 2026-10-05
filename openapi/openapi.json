@@ -1615,6 +1615,16 @@
             "title": "Id",
             "type": "string"
           },
+          "preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttachmentPreviewOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "size_bytes": {
             "title": "Size Bytes",
             "type": "integer"
@@ -1649,6 +1659,61 @@
           "created_at"
         ],
         "title": "AttachmentOut",
+        "type": "object"
+      },
+      "AttachmentPreviewOut": {
+        "description": "M108 (docs/PREVIEWS.md): a PDF's or Office file's preview. 'pending': being made (show\n「プレビューを作成中…」); 'ready': the first page at GET /attachments/{id}/preview/thumbnail\n(WebP, width x height pixels) and every page at GET /attachments/{id}/preview/pdf; 'failed':\nnone (a plain file card).",
+        "properties": {
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "pages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pages"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "ready",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "status",
+          "pages",
+          "width",
+          "height"
+        ],
+        "title": "AttachmentPreviewOut",
         "type": "object"
       },
       "AuthMethodsOut": {
@@ -15362,6 +15427,100 @@
           }
         ],
         "summary": "Download",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/api/v1/attachments/{attachment_id}/preview/pdf": {
+      "get": {
+        "description": "M108: every page of a document's preview as a PDF (the converter's, or a PDF upload\nitself). Inline, and sandboxed by CSP (SECURITY.md §4 「文書のプレビュー」).",
+        "operationId": "preview_pdf_api_v1_attachments__attachment_id__preview_pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Pdf",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/api/v1/attachments/{attachment_id}/preview/thumbnail": {
+      "get": {
+        "description": "M108: the first page of a document's preview (WebP).",
+        "operationId": "preview_thumbnail_api_v1_attachments__attachment_id__preview_thumbnail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Thumbnail",
         "tags": [
           "attachments"
         ]

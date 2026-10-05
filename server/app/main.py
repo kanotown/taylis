@@ -25,6 +25,7 @@ from app.modules.admin.router import router as admin_router
 from app.modules.ai import service as ai_service
 from app.modules.ai.llm import AiRuntime
 from app.modules.ai.router import router as ai_router
+from app.modules.attachments import previews
 from app.modules.attachments import service as attachments_service
 from app.modules.attachments.blobstore import build_blobstore
 from app.modules.attachments.router import router as attachments_router
@@ -289,6 +290,35 @@ async def _ai_loop(app: FastAPI, stop: asyncio.Event) -> None:
             continue
 
 
+async def _preview_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """Document previews (docs/PREVIEWS.md, M108): one at a time, again at once while there are
+    more; woken by an upload (app.state.preview_wake) or every PREVIEW_WORKER_INTERVAL_SECONDS
+    (retries after their backoff, leases that ran out)."""
+    settings: Settings = app.state.settings
+    wake: asyncio.Event = app.state.preview_wake
+    while not stop.is_set():
+        wake.clear()
+        done = 0
+        try:
+            done = await previews.process_due(
+                app.state.db, app.state.blobs, app.state.preview_converter, settings
+            )
+        except Exception:
+            log.exception("preview worker failed")
+        if done:
+            continue
+        waits = [asyncio.ensure_future(stop.wait()), asyncio.ensure_future(wake.wait())]
+        try:
+            await asyncio.wait(
+                waits,
+                timeout=settings.preview_worker_interval_seconds,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            for waiter in waits:
+                waiter.cancel()
+
+
 async def _import_emoji_presets(app: FastAPI) -> None:
     """M102 (docs/EMOJI.md §8): the preset packs under EMOJI_PRESETS_DIR, once per start, in the
     background so that a large first import never delays readiness."""
@@ -326,6 +356,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(_scheduled_send_loop(app, stop), name="scheduled-send"))
         tasks.append(asyncio.create_task(_ai_loop(app, stop), name="ai-worker"))
         tasks.append(asyncio.create_task(_feed_loop(app, stop), name="feeds"))
+        if settings.previews_enabled:
+            tasks.append(asyncio.create_task(_preview_loop(app, stop), name="previews"))
     try:
         yield
     finally:
@@ -447,6 +479,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # M48: Google sign-in when fully configured (docs/SSO.md §2), else None (the log says why).
     app.state.sso_google = build_google(settings)
     app.state.blobs = build_blobstore(settings)
+    # M108 (docs/PREVIEWS.md): the converter of Office files (None: PREVIEW_CONVERTER_URL empty),
+    # and the event an upload sets to wake the preview loop.
+    app.state.preview_converter = previews.build_converter(settings)
+    app.state.preview_wake = asyncio.Event()
     app.state.link_fetcher = build_fetcher(
         timeout_seconds=settings.link_preview_timeout_seconds,
         max_bytes=settings.link_preview_max_bytes,

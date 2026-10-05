@@ -13,10 +13,14 @@ async def get(db: AsyncSession, attachment_id: uuid.UUID) -> Attachment | None:
     return await db.get(Attachment, attachment_id)
 
 
-async def get_many(db: AsyncSession, ids: list[uuid.UUID]) -> list[Attachment]:
+async def get_many(
+    db: AsyncSession, ids: list[uuid.UUID], *, for_update: bool = False
+) -> list[Attachment]:
     if not ids:
         return []
     stmt = select(Attachment).where(Attachment.id.in_(ids))
+    if for_update:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     return list((await db.execute(stmt)).scalars().all())
 
 
