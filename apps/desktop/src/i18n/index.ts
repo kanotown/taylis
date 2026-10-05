@@ -120,6 +120,16 @@ export function tIn(locale: UiLocale, key: MessageKey, params?: Params): string 
   return params ? format(text, params, locale) : text;
 }
 
+/**
+ * A `[value, label]` pair for a module-level option list whose label is looked up when read (`t` at load time would
+ * keep the start's language). Destructuring, `.map(([v, l]) => …)` and toEqual see an ordinary pair.
+ */
+export function labelled<T>(value: T, key: MessageKey): [T, string] {
+  const pair: [T, string] = [value, ""];
+  Object.defineProperty(pair, 1, { get: () => t(key), enumerable: true });
+  return pair;
+}
+
 const pluralRules = new Map<UiLocale, Intl.PluralRules>();
 
 function plural(locale: UiLocale, n: number): string {

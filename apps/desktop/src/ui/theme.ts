@@ -3,19 +3,20 @@
  * tokens in styles.css; "system" leaves them to prefers-color-scheme, the others pin them with <html data-theme>.
  */
 import { useSyncExternalStore } from "react";
+import { t, labelled } from "../i18n";
 
 export type Theme = "system" | "light" | "dark";
 
 const THEME_KEY = "chikuwa.prefs.theme";
 
 export const THEME_OPTIONS: Array<[Theme, string]> = [
-  ["system", "端末に合わせる"],
-  ["light", "ライト"],
-  ["dark", "ダーク"],
+  labelled("system", "theme.system"),
+  labelled("light", "theme.light"),
+  labelled("dark", "theme.dark"),
 ];
 
 export function themeLabel(theme: Theme): string {
-  return THEME_OPTIONS.find(([value]) => value === theme)?.[1] ?? "端末に合わせる";
+  return THEME_OPTIONS.find(([value]) => value === theme)?.[1] ?? t("theme.system");
 }
 
 export function readTheme(): Theme {
@@ -57,12 +58,12 @@ const PALETTE_KEY = "chikuwa.prefs.palette";
 export const DEFAULT_PALETTE: Palette = "taylis";
 
 export const PALETTES: Array<{ value: Palette; label: string; swatch: { sidebar: string; accent: string } }> = [
-  { value: "taylis", label: "Taylis (栗)", swatch: { sidebar: "#3b2b21", accent: "#8f5530" } },
-  { value: "indigo", label: "藍", swatch: { sidebar: "#2a2340", accent: "#5050c8" } },
-  { value: "green", label: "緑", swatch: { sidebar: "#1e3a2f", accent: "#2e7550" } },
-  { value: "purple", label: "紫", swatch: { sidebar: "#3a2150", accent: "#7c3fb0" } },
-  { value: "rose", label: "紅", swatch: { sidebar: "#4a1e2c", accent: "#b02f50" } },
-  { value: "gray", label: "グレー", swatch: { sidebar: "#2c2e33", accent: "#4f5b6b" } },
+  { value: "taylis", get label() { return t("theme.palette.taylis"); }, swatch: { sidebar: "#3b2b21", accent: "#8f5530" } },
+  { value: "indigo", get label() { return t("theme.palette.indigo"); }, swatch: { sidebar: "#2a2340", accent: "#5050c8" } },
+  { value: "green", get label() { return t("theme.palette.green"); }, swatch: { sidebar: "#1e3a2f", accent: "#2e7550" } },
+  { value: "purple", get label() { return t("theme.palette.purple"); }, swatch: { sidebar: "#3a2150", accent: "#7c3fb0" } },
+  { value: "rose", get label() { return t("theme.palette.rose"); }, swatch: { sidebar: "#4a1e2c", accent: "#b02f50" } },
+  { value: "gray", get label() { return t("theme.palette.gray"); }, swatch: { sidebar: "#2c2e33", accent: "#4f5b6b" } },
 ];
 
 export function paletteLabel(palette: Palette): string {
@@ -129,8 +130,8 @@ export type SidebarTone = "dark" | "light";
 const SIDEBAR_KEY = "chikuwa.prefs.sidebar";
 
 export const SIDEBAR_TONES: Array<[SidebarTone, string]> = [
-  ["dark", "濃い色"],
-  ["light", "明るい色"],
+  labelled("dark", "theme.sidebar.dark"),
+  labelled("light", "theme.sidebar.light"),
 ];
 
 export function readSidebarTone(): SidebarTone {
@@ -181,7 +182,7 @@ const FONT_KEY = "chikuwa.prefs.font";
 
 export const FONT_OPTIONS: Array<[FontChoice, string]> = [
   ["noto", "Noto Sans JP"],
-  ["system", "システムのフォント"],
+  labelled("system", "theme.font.system"),
 ];
 
 export function readFont(): FontChoice {

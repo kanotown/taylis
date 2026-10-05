@@ -1,6 +1,7 @@
 /** Sidebar rules shared by the list, the quick switcher and keyboard navigation. */
 import { isMutedChannel, type NotifyLevel } from "../sync/notifications";
 import type { ChannelState, SidebarSectionOut, UserPublic } from "../sync/types";
+import { t } from "../i18n";
 
 export function isDmChannel(channel: ChannelState): boolean {
   return channel.type === "dm" || channel.type === "group_dm";
@@ -33,10 +34,14 @@ export function isSelfNotes(channel: ChannelState, meId: string | null): boolean
 }
 
 /** What my own DM says where its conversation starts (empty, or at the start of its history). */
-export const SELF_NOTES_INTRO = "ここはあなただけのスペースです。メモや下書き、あとで見返したいリンクやファイルを置いておけます。ほかの人には見えません。";
+export function selfNotesIntro(): string {
+  return t("channels.selfNotes.intro");
+}
 
 /** The new-DM picker's line under my name. */
-export const SELF_NOTES_HINT = "メモや下書きに使える、自分だけの DM";
+export function selfNotesHint(): string {
+  return t("channels.selfNotes.hint");
+}
 
 /**
  * Whether a DM list shows my own DM's placeholder row first: there is no DM with only me among my channels yet (a tap on
@@ -83,16 +88,16 @@ export type { NotifyLevel } from "../sync/notifications";
 
 /** The overall setting's choices, as the settings and a conversation's 「既定 (…)」 name them. */
 export const OVERALL_LEVEL_LABELS: Record<NotifyLevel, string> = {
-  all: "すべての新着メッセージ",
-  mentions: "メンションと DM のみ",
-  none: "なし",
+  get all() { return t("notify.overall.all"); },
+  get mentions() { return t("notify.overall.mentions"); },
+  get none() { return t("notify.overall.none"); },
 };
 
 /** A conversation's own levels, as its notification menu names them. */
 export const CHANNEL_LEVEL_LABELS: Record<NotifyLevel, string> = {
-  all: "すべてのメッセージ",
-  mentions: "メンションのみ",
-  none: "通知しない",
+  get all() { return t("notify.channel.all"); },
+  get mentions() { return t("notify.channel.mentions"); },
+  get none() { return t("notify.channel.none"); },
 };
 
 /** The value a conversation's notification menu uses for "no level of its own" (radio values cannot be null). */
@@ -104,13 +109,15 @@ export const FOLLOW_DEFAULT = "default";
  */
 export function notificationChoices(overall: NotifyLevel): Array<{ value: typeof FOLLOW_DEFAULT | NotifyLevel; level: NotifyLevel | null; label: string }> {
   return [
-    { value: FOLLOW_DEFAULT, level: null, label: `既定 (${OVERALL_LEVEL_LABELS[overall]})` },
+    { value: FOLLOW_DEFAULT, level: null, label: t("notify.channel.default", { level: OVERALL_LEVEL_LABELS[overall] }) },
     ...(["all", "mentions", "none"] as const).map((level) => ({ value: level, level, label: CHANNEL_LEVEL_LABELS[level] })),
   ];
 }
 
 /** The footnote under the overall setting. */
-export const OVERALL_LEVEL_NOTE = "チャンネルごとの設定が優先されます。DM は『なし』以外なら常に通知されます。";
+export function overallLevelNote(): string {
+  return t("notify.overall.note");
+}
 
 /**
  * M24: someone else's times that I have not set to level "all" is quiet unread: unread only with a mention, a faint dot

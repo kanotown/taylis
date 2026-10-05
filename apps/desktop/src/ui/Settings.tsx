@@ -11,7 +11,8 @@ import { WorkspaceIcon } from "./workspaceIcons";
 import { AdminBody } from "./AdminDialog";
 import { AvatarCropDialog } from "./AvatarCropDialog";
 import { Avatar } from "./Avatar";
-import { OVERALL_LEVEL_LABELS, OVERALL_LEVEL_NOTE, overallLevel } from "./channels";
+import { OVERALL_LEVEL_LABELS, overallLevel, overallLevelNote } from "./channels";
+import { deviceLocale, getLocalePreference, tIn, type UiLocale, t } from "../i18n";
 import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
 import { MAX_QUICK_REACTIONS, quickReactions } from "./MessageActionsSheet";
 import { fullNavItems, moveNavItem, navLabel, reorderNavItems, setNavItemVisible, shownNavItems } from "./navItems";
@@ -41,17 +42,17 @@ import { versionLabel } from "../state/updates";
 export type SettingsSection = "status" | "pause" | "quiet" | "notifications" | "appearance" | "input" | "profile" | "account" | "workspaces" | "about" | "admin";
 
 export const SECTION_TITLES: Record<SettingsSection, string> = {
-  status: "ステータスを更新",
-  pause: "通知を一時停止",
-  quiet: "おやすみ時間",
-  notifications: "通知",
-  appearance: "表示",
-  input: "入力",
-  profile: "プロフィールを編集",
-  account: "アカウント",
-  workspaces: "ワークスペース",
-  about: "このアプリについて",
-  admin: "管理",
+  get status() { return t("settings.section.status"); },
+  get pause() { return t("settings.section.pause"); },
+  get quiet() { return t("settings.section.quiet"); },
+  get notifications() { return t("settings.section.notifications"); },
+  get appearance() { return t("settings.section.appearance"); },
+  get input() { return t("settings.section.input"); },
+  get profile() { return t("settings.section.profile"); },
+  get account() { return t("settings.section.account"); },
+  get workspaces() { return t("settings.section.workspaces"); },
+  get about() { return t("settings.section.about"); },
+  get admin() { return t("settings.section.admin"); },
 };
 
 /** The pushed screens after the two quick ones, in the list's order (このアプリについて in the desktop app, 管理 only for admins). */
@@ -98,7 +99,7 @@ function sectionValue(controller: AppController, section: SettingsSection, now: 
     case "appearance":
       return theme;
     case "workspaces":
-      return controller.workspaces.length > 1 ? `${controller.workspaces.length} 件` : null;
+      return controller.workspaces.length > 1 ? t("common.count", { count: controller.workspaces.length }) : null;
     case "about":
       return controller.updates.currentVersion ? versionLabel(controller.updates.currentVersion) : null;
     default:
@@ -172,7 +173,7 @@ export function SettingsList({ controller, variant, selected = null, onSelect, o
         <button
           type="button"
           data-section="status"
-          aria-label={status ? `ステータスを更新 (現在: ${status.emoji} ${status.text})`.trim() : "ステータスを更新"}
+          aria-label={status ? t("settings.status.currentLabel", { emoji: status.emoji, text: status.text }).trim() : t("settings.section.status")}
           aria-current={selected === "status" ? "page" : undefined}
           onClick={() => onSelect("status")}
           className={cn(
@@ -183,13 +184,13 @@ export function SettingsList({ controller, variant, selected = null, onSelect, o
         >
           <span className="shrink-0 text-lg leading-none">{status?.emoji ? <StatusGlyph controller={controller} emoji={status.emoji} size={20} /> : "😀"}</span>
           <span className="min-w-0 flex-1">
-            <span className={cn("block truncate", !status && "text-muted")}>{status ? status.text || "ステータス" : "ステータスを更新"}</span>
+            <span className={cn("block truncate", !status && "text-muted")}>{status ? status.text || t("settings.status.label") : t("settings.section.status")}</span>
             {status && expiryLabel(me?.status_expires_at) && <span className="block truncate text-xs text-muted">{expiryLabel(me?.status_expires_at)}</span>}
           </span>
         </button>
       </div>
-      {group([row("pause"), row("quiet")], "すぐ使う設定")}
-      {group(menuSections(controller.isAdmin).map((section) => row(section, page ? sectionSubtitle(section) : undefined)), "設定の項目")}
+      {group([row("pause"), row("quiet")], t("settings.list.quick"))}
+      {group(menuSections(controller.isAdmin).map((section) => row(section, page ? sectionSubtitle(section) : undefined)), t("settings.list.items"))}
       <div className={cn(page ? "border-y border-line" : "border-t border-line pt-2")}>
         <button
           type="button"
@@ -207,35 +208,35 @@ export function SettingsList({ controller, variant, selected = null, onSelect, o
 function sectionSubtitle(section: SettingsSection): string | undefined {
   switch (section) {
     case "notifications":
-      return "全体の設定・キーワード・端末の通知";
+      return t("settings.subtitle.notifications");
     case "appearance":
-      return isTauri() ? "ライト / ダーク・テーマの色・文字の大きさ" : "ライト / ダーク・テーマの色";
+      return isTauri() ? t("settings.subtitle.appearanceDesktop") : t("settings.subtitle.appearance");
     case "input":
-      return "送信キー・リアクションの候補・テンプレート";
+      return t("settings.subtitle.input");
     case "profile":
-      return "写真・表示名・肩書";
+      return t("settings.subtitle.profile");
     case "account":
-      return "パスワード・2 要素認証・ログイン中の端末";
+      return t("settings.subtitle.account");
     case "about":
-      return "バージョン・アップデートを確認";
+      return t("settings.subtitle.about");
     default:
       return undefined;
   }
 }
 
 function logoutLabel(controller: AppController): string {
-  return controller.workspaces.length > 1 ? `${controller.workspaceName} からログアウト` : "ログアウト";
+  return controller.workspaces.length > 1 ? t("settings.logoutFrom", { workspace: controller.workspaceName }) : t("common.logout");
 }
 
 /** 「ログアウト」's confirmation (the red row at the bottom of the list). */
 export function LogoutConfirm({ controller, onClose }: { controller: AppController; onClose: () => void }) {
   return (
-    <Modal onClose={onClose} title="ログアウトしますか？" description={controller.activeEntry ? `${signInName(controller.activeEntry)} @ ${hostLabel(controller.activeEntry.serverUrl)}` : undefined}>
-      <p className="mt-3 text-sm text-muted">この端末に保存したこのワークスペースのメッセージと下書きを消します。サーバ上のデータは消えません。</p>
+    <Modal onClose={onClose} title={t("settings.logout.title")} description={controller.activeEntry ? `${signInName(controller.activeEntry)} @ ${hostLabel(controller.activeEntry.serverUrl)}` : undefined}>
+      <p className="mt-3 text-sm text-muted">{t("settings.logout.body")}</p>
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>キャンセル</Button>
+        <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
         <Button variant="danger" onClick={() => { onClose(); void controller.logout(); }}>
-          ログアウト
+          {t("common.logout")}
         </Button>
       </div>
     </Modal>
@@ -294,10 +295,10 @@ function PauseSection({ controller, onDone }: { controller: AppController; onDon
   return (
     <div className="space-y-4">
       <p className="text-sm">
-        {until ? <>🔕 通知を止めています <span className="text-muted">{pauseValue(until, now)}</span></> : <span className="text-muted">通知は止まっていません (オフ)</span>}
+        {until ? <>🔕 {t("settings.pause.paused")} <span className="text-muted">{pauseValue(until, now)}</span></> : <span className="text-muted">{t("settings.pause.notPaused")}</span>}
       </p>
-      {quietNow && me?.quiet_hours && <p className="text-xs text-muted">いまはおやすみ時間です ({quietHoursLabel(me.quiet_hours)})</p>}
-      <div role="group" aria-label="止める長さ" className="divide-y divide-line overflow-hidden rounded-xl border border-line">
+      {quietNow && me?.quiet_hours && <p className="text-xs text-muted">{t("settings.pause.quietNow", { hours: quietHoursLabel(me.quiet_hours) })}</p>}
+      <div role="group" aria-label={t("settings.pause.length")} className="divide-y divide-line overflow-hidden rounded-xl border border-line">
         {DND_OPTIONS.map(([choice, label]) => (
           <button key={choice} type="button" disabled={busy} className={option} onClick={() => void pause(dndUntilAt(choice))}>
             {label}
@@ -305,18 +306,18 @@ function PauseSection({ controller, onDone }: { controller: AppController; onDon
         ))}
         <div className="flex flex-wrap items-center gap-2 px-3 py-2">
           <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
-            <span className="shrink-0">日時を指定</span>
-            <Input type="datetime-local" value={custom} aria-label="日時を指定" className="min-w-0 flex-1" onChange={(e) => setCustom(e.target.value)} />
+            <span className="shrink-0">{t("settings.pause.custom")}</span>
+            <Input type="datetime-local" value={custom} aria-label={t("settings.pause.custom")} className="min-w-0 flex-1" onChange={(e) => setCustom(e.target.value)} />
           </label>
           <Button size="sm" disabled={busy || !customAt} onClick={() => customAt && void pause(customAt)}>
-            止める
+            {t("settings.pause.pause")}
           </Button>
         </div>
       </div>
-      {custom && !customAt && <p className="text-xs text-danger">今より後の日時を選んでください</p>}
+      {custom && !customAt && <p className="text-xs text-danger">{t("settings.pause.pickFuture")}</p>}
       {until && (
         <Button variant="secondary" disabled={busy} onClick={() => void pause(null)}>
-          再開
+          {t("settings.pause.resume")}
         </Button>
       )}
     </div>
@@ -354,29 +355,29 @@ function QuietHoursSection({ controller, onDone }: { controller: AppController; 
     <form className="space-y-4" onSubmit={save}>
       <label className={cn(CARD, "cursor-pointer")}>
         <Moon size={18} className="text-muted" />
-        <span className="min-w-0 flex-1 text-sm">毎日この時間帯は通知を止める</span>
+        <span className="min-w-0 flex-1 text-sm">{t("settings.quiet.daily")}</span>
         <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={on} onChange={(e) => { setOn(e.target.checked); setSaved(false); }} />
       </label>
       {on && (
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-sm">
-            <Input type="time" value={quiet.start} aria-label="開始" className="w-32" onChange={(e) => { setQuiet({ ...quiet, start: e.target.value }); setSaved(false); }} />
-            <span>〜</span>
-            <Input type="time" value={quiet.end} aria-label="終了" className="w-32" onChange={(e) => { setQuiet({ ...quiet, end: e.target.value }); setSaved(false); }} />
+            <Input type="time" value={quiet.start} aria-label={t("common.start")} className="w-32" onChange={(e) => { setQuiet({ ...quiet, start: e.target.value }); setSaved(false); }} />
+            <span>{t("common.rangeTo")}</span>
+            <Input type="time" value={quiet.end} aria-label={t("common.end")} className="w-32" onChange={(e) => { setQuiet({ ...quiet, end: e.target.value }); setSaved(false); }} />
           </div>
-          <div role="group" aria-label="曜日" className="flex flex-wrap gap-1.5">
+          <div role="group" aria-label={t("settings.quiet.weekdays")} className="flex flex-wrap gap-1.5">
             {DAY_LABELS.map((label, day) => (
               <button key={label} type="button" aria-pressed={quiet.days?.includes(day) ?? false} onClick={() => toggleDay(day)} className={cn("h-9 w-9 rounded-full border text-sm", quiet.days?.includes(day) ? "border-accent bg-accent-soft" : "border-line text-muted")}>
                 {label}
               </button>
             ))}
           </div>
-          <div className="text-xs text-muted">タイムゾーン: {quiet.tz}</div>
+          <div className="text-xs text-muted">{t("settings.quiet.timeZone", { tz: quiet.tz })}</div>
         </div>
       )}
       <div className="flex items-center gap-3">
-        <Button type="submit" disabled={busy || !changed}>保存</Button>
-        {saved && !onDone && <span className="text-xs text-muted">保存しました</span>}
+        <Button type="submit" disabled={busy || !changed}>{t("common.save")}</Button>
+        {saved && !onDone && <span className="text-xs text-muted">{t("common.saved")}</span>}
       </div>
     </form>
   );
@@ -414,9 +415,9 @@ function NotificationsSection({ controller }: { controller: AppController }) {
   return (
     <div className="space-y-6">
       <section className="space-y-2">
-        <h3 className={HEADING}>全体の設定</h3>
+        <h3 className={HEADING}>{t("settings.notifications.overall")}</h3>
         {/* M35: the overall setting; a conversation with a level of its own follows that instead (PUSH_NOTIFICATIONS.md §4). */}
-        <div role="radiogroup" aria-label="通知" className="rounded-xl border border-line p-1">
+        <div role="radiogroup" aria-label={t("settings.section.notifications")} className="rounded-xl border border-line p-1">
           {(["all", "mentions", "none"] as const).map((level) => (
             <label key={level} className="flex min-h-[40px] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-panel">
               <input
@@ -431,14 +432,14 @@ function NotificationsSection({ controller }: { controller: AppController }) {
             </label>
           ))}
         </div>
-        <p className="text-xs text-muted">{OVERALL_LEVEL_NOTE}</p>
+        <p className="text-xs text-muted">{overallLevelNote()}</p>
       </section>
       {/* M39: reactions to my messages as banners (and pushes); a server before M39 has no such setting. */}
       {typeof me?.notify_reactions === "boolean" && (
         <label className={cn(CARD, "cursor-pointer")}>
           <SmilePlus size={18} className="text-muted" />
           <span className="min-w-0 flex-1 text-sm">
-            リアクションのバナー <span className="ml-1 text-xs text-muted">オフでもアクティビティに表示されます</span>
+            {t("settings.notifications.reactions")} <span className="ml-1 text-xs text-muted">{t("settings.notifications.reactionsNote")}</span>
           </span>
           <input
             type="checkbox"
@@ -455,7 +456,7 @@ function NotificationsSection({ controller }: { controller: AppController }) {
         <label className={cn(CARD, "cursor-pointer")}>
           <ListTodo size={18} className="text-muted" />
           <span className="min-w-0 flex-1 text-sm">
-            タスク (割り当て・期限) <span className="ml-1 text-xs text-muted">担当になったときと期限の日の朝</span>
+            {t("settings.notifications.tasks")} <span className="ml-1 text-xs text-muted">{t("settings.notifications.tasksNote")}</span>
           </span>
           <input
             type="checkbox"
@@ -468,46 +469,46 @@ function NotificationsSection({ controller }: { controller: AppController }) {
         </label>
       )}
       <form className="space-y-2" onSubmit={saveKeywords}>
-        <Field label="通知キーワード (任意、コンマ区切り・20 個まで)">
-          <Input value={keywords} placeholder="例: 加納, kano, リリース" onChange={(e) => { setKeywords(e.target.value); setSavedKeywords(false); }} />
-          <span className="mt-1 block text-xs text-muted">本文に含まれると @メンションと同じように知らせます (大文字小文字は区別しません)</span>
+        <Field label={t("settings.notifications.keywords")}>
+          <Input value={keywords} placeholder={t("settings.notifications.keywordsPlaceholder")} onChange={(e) => { setKeywords(e.target.value); setSavedKeywords(false); }} />
+          <span className="mt-1 block text-xs text-muted">{t("settings.notifications.keywordsNote")}</span>
         </Field>
         <div className="flex items-center gap-3">
-          <Button type="submit" size="sm" disabled={busy || !keywordsChanged}>キーワードを保存</Button>
-          {savedKeywords && <span className="text-xs text-muted">保存しました</span>}
+          <Button type="submit" size="sm" disabled={busy || !keywordsChanged}>{t("settings.notifications.saveKeywords")}</Button>
+          {savedKeywords && <span className="text-xs text-muted">{t("common.saved")}</span>}
         </div>
       </form>
       <section className="space-y-2">
-        <h3 className={HEADING}>{isTauri() ? "この端末の通知" : "このブラウザの通知"}</h3>
+        <h3 className={HEADING}>{isTauri() ? t("settings.notifications.thisDevice") : t("settings.notifications.thisBrowser")}</h3>
         <div className={CARD}>
           <Bell size={18} className={permission === "granted" ? "text-success" : "text-muted"} />
           <div className="min-w-0 flex-1 text-sm">
             {permission === null ? (
-              <span className="text-muted">確認中…</span>
+              <span className="text-muted">{t("common.checking")}</span>
             ) : permission === "granted" ? (
               <span>
-                許可済み <span className="ml-1 text-xs text-muted">新しいメッセージを OS の通知で知らせます</span>
+                {t("settings.notifications.granted")} <span className="ml-1 text-xs text-muted">{t("settings.notifications.grantedNote")}</span>
               </span>
             ) : permission === "denied" ? (
               <span>
-                ブロック中 <span className="ml-1 text-xs text-muted">{isTauri() ? "OS の設定" : "ブラウザのサイト設定"}で許可してください</span>
+                {t("settings.notifications.denied")} <span className="ml-1 text-xs text-muted">{isTauri() ? t("settings.notifications.deniedNoteOs") : t("settings.notifications.deniedNoteBrowser")}</span>
               </span>
             ) : permission === "unsupported" ? (
-              <span className="text-muted">このブラウザでは使えません</span>
+              <span className="text-muted">{t("settings.notifications.unsupported")}</span>
             ) : (
               <span>
-                未設定 <span className="ml-1 text-xs text-muted">許可すると新しいメッセージを OS の通知で知らせます</span>
+                {t("settings.notifications.notSet")} <span className="ml-1 text-xs text-muted">{t("settings.notifications.notSetNote")}</span>
               </span>
             )}
           </div>
           {permission === "default" && (
             <Button size="sm" variant="secondary" onClick={() => void requestNotificationPermission().then(setPermission)}>
-              通知を許可
+              {t("settings.notifications.allow")}
             </Button>
           )}
         </div>
         {permission === "granted" && (
-          <p className="text-xs text-muted">止めたいときは {isTauri() ? "OS の設定 (通知)" : "ブラウザのサイト設定"}で変えられます。一時的に止めるなら「通知を一時停止」を使ってください。</p>
+          <p className="text-xs text-muted">{isTauri() ? t("settings.notifications.stopNoteOs") : t("settings.notifications.stopNoteBrowser")}</p>
         )}
         {/* PUSH_NOTIFICATIONS.md §15: does a notification reach this device and my phones? */}
         <TestNotificationCard controller={controller} permission={permission} />
@@ -528,8 +529,9 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
   const zoom = useZoom();
   return (
     <div className="space-y-6">
+      <LanguageSettings controller={controller} />
       <div className="space-y-2">
-        <div role="radiogroup" aria-label="表示" className="rounded-xl border border-line p-1">
+        <div role="radiogroup" aria-label={t("settings.appearance.theme")} className="rounded-xl border border-line p-1">
           {THEME_OPTIONS.map(([value, label]) => (
             <label key={value} className="flex min-h-[40px] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-panel">
               <input type="radio" name="theme" className="h-4 w-4 accent-[var(--accent)]" checked={theme === value} onChange={() => { writeTheme(value); }} />
@@ -537,11 +539,11 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
             </label>
           ))}
         </div>
-        <p className="text-xs text-muted">この端末だけの設定です。「端末に合わせる」は OS のライト / ダークに従います。</p>
+        <p className="text-xs text-muted">{t("settings.appearance.themeNote")}</p>
       </div>
       <section className="space-y-2">
-        <h3 className={HEADING}>テーマの色</h3>
-        <div role="radiogroup" aria-label="テーマの色" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <h3 className={HEADING}>{t("settings.appearance.palette")}</h3>
+        <div role="radiogroup" aria-label={t("settings.appearance.palette")} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {PALETTES.map((option) => (
             <label
               key={option.value}
@@ -559,11 +561,11 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
             </label>
           ))}
         </div>
-        <p className="text-xs text-muted">サイドバーとアクセント (リンク・ボタン・選択中の行) の色です。ライト / ダークのどちらにも効きます。</p>
+        <p className="text-xs text-muted">{t("settings.appearance.paletteNote")}</p>
       </section>
       <section className="space-y-2">
-        <h3 className={HEADING}>サイドバー</h3>
-        <div role="radiogroup" aria-label="サイドバー" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <h3 className={HEADING}>{t("settings.appearance.sidebar")}</h3>
+        <div role="radiogroup" aria-label={t("settings.appearance.sidebar")} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {SIDEBAR_TONES.map(([value, label]) => {
             const swatch = PALETTES.find((p) => p.value === palette)?.swatch ?? PALETTES[0]!.swatch;
             return (
@@ -585,11 +587,11 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
             );
           })}
         </div>
-        <p className="text-xs text-muted">「明るい色」はライト表示のときだけ効きます。ダーク表示ではサイドバーは濃い色のままです。</p>
+        <p className="text-xs text-muted">{t("settings.appearance.sidebarNote")}</p>
       </section>
       <section className="space-y-2">
-        <h3 className={HEADING}>フォント</h3>
-        <div role="radiogroup" aria-label="フォント" className="rounded-xl border border-line p-1">
+        <h3 className={HEADING}>{t("settings.appearance.font")}</h3>
+        <div role="radiogroup" aria-label={t("settings.appearance.font")} className="rounded-xl border border-line p-1">
           {FONT_OPTIONS.map(([value, label]) => (
             <label key={value} className="flex min-h-[40px] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-panel">
               <input type="radio" name="font" className="h-4 w-4 accent-[var(--accent)]" checked={font === value} onChange={() => writeFont(value)} />
@@ -597,17 +599,17 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
             </label>
           ))}
         </div>
-        <p className="text-xs text-muted">この端末だけの設定です。「Noto Sans JP」はアプリに含まれるフォントで、どの OS でも同じ見た目になります。</p>
+        <p className="text-xs text-muted">{t("settings.appearance.fontNote")}</p>
       </section>
       {desktop && (
         <section className="space-y-2">
-          <h3 className={HEADING}>文字の大きさ</h3>
+          <h3 className={HEADING}>{t("settings.appearance.zoom")}</h3>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="icon" aria-label="小さく" disabled={zoom <= ZOOM_STEPS[0]} onClick={() => writeZoom(stepZoom(zoom, -1))}>
+            <Button variant="secondary" size="icon" aria-label={t("settings.appearance.zoomOut")} disabled={zoom <= ZOOM_STEPS[0]} onClick={() => writeZoom(stepZoom(zoom, -1))}>
               −
             </Button>
             <select
-              aria-label="文字の大きさ"
+              aria-label={t("settings.appearance.zoom")}
               className="h-8 rounded-lg border border-line bg-canvas px-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
               value={String(zoom)}
               onChange={(e) => writeZoom(Number(e.target.value))}
@@ -615,16 +617,16 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
               {ZOOM_STEPS.map((step) => (
                 <option key={step} value={String(step)}>
                   {zoomLabel(step)}
-                  {step === DEFAULT_ZOOM ? " (標準)" : ""}
+                  {step === DEFAULT_ZOOM ? t("settings.appearance.zoomDefault") : ""}
                 </option>
               ))}
             </select>
-            <Button variant="secondary" size="icon" aria-label="大きく" disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]!} onClick={() => writeZoom(stepZoom(zoom, 1))}>
+            <Button variant="secondary" size="icon" aria-label={t("settings.appearance.zoomIn")} disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]!} onClick={() => writeZoom(stepZoom(zoom, 1))}>
               ＋
             </Button>
           </div>
           <p className="text-xs text-muted">
-            画面全体を拡大・縮小します。{modKeyName()} + 「+」 / {modKeyName()} + 「-」 / {modKeyName()} + 「0」 (標準に戻す) でも変えられます。
+            {t("settings.appearance.zoomNote", { mod: modKeyName() })}
           </p>
         </section>
       )}
@@ -632,8 +634,8 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
       <label className={cn(CARD, "cursor-pointer")}>
         <Rows3 size={18} className="text-muted" />
         <span className="min-w-0 flex-1 text-sm">
-          連続した投稿をまとめる
-          <span className="block text-xs text-muted">オフ: 投稿ごとにアイコンと名前を表示 / オン: 同じ人の続けての投稿をまとめる (チャンネル・DM・スレッド)</span>
+          {t("settings.appearance.groupPosts")}
+          <span className="block text-xs text-muted">{t("settings.appearance.groupPostsNote")}</span>
         </span>
         <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={controller.groupPosts} onChange={(e) => controller.setGroupPosts(e.target.checked)} />
       </label>
@@ -662,11 +664,11 @@ export function NavItemsSettings({ controller }: { controller: AppController }) 
     save(reorderNavItems(full, keys));
   };
   return (
-    <section className="space-y-2" aria-label="サイドバーの項目">
+    <section className="space-y-2" aria-label={t("settings.navItems.title")}>
       <div className="flex items-center justify-between gap-2">
-        <h3 className={HEADING}>サイドバーの項目</h3>
+        <h3 className={HEADING}>{t("settings.navItems.title")}</h3>
         <Button size="sm" variant="secondary" disabled={me.nav_items === null} onClick={() => save(null)}>
-          元に戻す
+          {t("common.reset")}
         </Button>
       </div>
       <ul className="divide-y divide-line rounded-xl border border-line">
@@ -687,22 +689,47 @@ export function NavItemsSettings({ controller }: { controller: AppController }) 
               <input
                 type="checkbox"
                 role="switch"
-                aria-label={`${navLabel(item.key)} を表示`}
+                aria-label={t("settings.navItems.show", { item: navLabel(item.key) })}
                 className="h-4 w-4 accent-[var(--accent)]"
                 checked={item.visible}
                 onChange={(e) => save(setNavItemVisible(full, item.key, e.target.checked))}
               />
             </label>
-            <button type="button" aria-label={`${navLabel(item.key)} を上へ`} disabled={index === 0} onClick={() => save(moveNavItem(full, item.key, -1))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
+            <button type="button" aria-label={t("settings.navItems.up", { item: navLabel(item.key) })} disabled={index === 0} onClick={() => save(moveNavItem(full, item.key, -1))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
               <ChevronUp size={14} />
             </button>
-            <button type="button" aria-label={`${navLabel(item.key)} を下へ`} disabled={index === shown.length - 1} onClick={() => save(moveNavItem(full, item.key, 1))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
+            <button type="button" aria-label={t("settings.navItems.down", { item: navLabel(item.key) })} disabled={index === shown.length - 1} onClick={() => save(moveNavItem(full, item.key, 1))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
               <ChevronDown size={14} />
             </button>
           </li>
         ))}
       </ul>
-      <p className="text-xs text-muted">ドラッグか ↑ ↓ で並べ替えます。どの端末でも同じで、スマホのホームのタイルにも同じ順と表示が使われます。「下書き」「リマインダー」は中身があるときだけ表示されます。</p>
+      <p className="text-xs text-muted">{t("settings.navItems.note")}</p>
+    </section>
+  );
+}
+
+/**
+ * M115 「言語」 (docs/I18N.md): 端末に合わせる / 日本語 / English / 简体中文, mine on every device (users.locale; null = this
+ * device's language). Each language is named in itself. Applied at once.
+ */
+export function LanguageSettings({ controller }: { controller: AppController }) {
+  const me = meOf(controller);
+  const current = me ? (me.locale ?? null) : getLocalePreference();
+  const choices: Array<[UiLocale | null, string]> = [[null, t("settings.language.device")], ["ja", "日本語"], ["en", "English"], ["zh-Hans", "简体中文"]];
+  return (
+    <section className="space-y-2">
+      <h3 className={HEADING}>{t("settings.language.title")}</h3>
+      <div role="radiogroup" aria-label={t("settings.language.title")} className="rounded-xl border border-line p-1">
+        {choices.map(([value, label]) => (
+          <label key={value ?? "device"} className="flex min-h-[40px] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-panel">
+            <input type="radio" name="ui-locale" className="h-4 w-4 accent-[var(--accent)]" checked={current === value} onChange={() => void controller.setUiLocale(value)} />
+            <span lang={value ?? undefined}>{label}</span>
+            {value === null && <span className="text-xs text-muted">({tIn(deviceLocale(), "settings.language.name")})</span>}
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-muted">{t("settings.language.note")}</p>
     </section>
   );
 }
@@ -712,13 +739,13 @@ function InputSection({ controller }: { controller: AppController }) {
   return (
     <div className="space-y-6">
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold">送信キー</h3>
+        <h3 className="text-sm font-semibold">{t("settings.input.sendKey")}</h3>
         <div className="flex gap-2 max-sm:flex-col">
           {(
             [
-              ["mod-enter", `${modKeyName()}+Enter で送信`, "Enter は改行"],
-              ["shift-enter", "Shift+Enter で送信", "Enter は改行"],
-              ["enter", "Enter で送信", "Shift+Enter は改行"],
+              ["mod-enter", t("settings.input.sendWith", { key: `${modKeyName()}+Enter` }), t("settings.input.newlineWith", { key: "Enter" })],
+              ["shift-enter", t("settings.input.sendWith", { key: "Shift+Enter" }), t("settings.input.newlineWith", { key: "Enter" })],
+              ["enter", t("settings.input.sendWith", { key: "Enter" }), t("settings.input.newlineWith", { key: "Shift+Enter" })],
             ] as Array<[SendKey, string, string]>
           ).map(([value, title, text]) => (
             <button
@@ -768,15 +795,15 @@ export function QuickReactionsSettings({ controller }: { controller: AppControll
     save(next);
   };
   return (
-    <section className="space-y-2" aria-label="リアクションの候補">
-      <h3 className="text-sm font-semibold">リアクションの候補</h3>
+    <section className="space-y-2" aria-label={t("settings.quickReactions.title")}>
+      <h3 className="text-sm font-semibold">{t("settings.quickReactions.title")}</h3>
       <div className="flex flex-wrap items-center gap-2">
         {shown.map((emoji, index) => (
           <button
             key={`${index}:${emoji}`}
             type="button"
             data-slot={index}
-            aria-label={`候補 ${index + 1}: ${emoji} (タップして変更)`}
+            aria-label={t("settings.quickReactions.slot", { n: index + 1, emoji })}
             aria-pressed={slot === index}
             disabled={busy}
             onClick={() => setSlot(slot === index ? null : index)}
@@ -789,19 +816,19 @@ export function QuickReactionsSettings({ controller }: { controller: AppControll
           </button>
         ))}
         <Button size="sm" variant="secondary" disabled={busy || chosen === null} onClick={() => save(null)} className="ml-auto">
-          元に戻す
+          {t("common.reset")}
         </Button>
       </div>
       <p className="text-xs text-muted">
         {chosen === null
-          ? "未設定: 最近使った絵文字が先に並びます。タップして選ぶと、どの端末でもこの順になります。"
-          : "長押しのメニューにこの順で並びます (パソコンのメッセージ上には先頭の 3 つ)。どの端末でも同じです。"}
+          ? t("settings.quickReactions.notSet")
+          : t("settings.quickReactions.set")}
       </p>
       {slot !== null && (
         <div className="rounded-xl border border-line p-3">
           <div className="mb-2 flex items-center justify-between text-xs text-muted">
-            <span>候補 {slot + 1} の絵文字を選んでください</span>
-            <button type="button" className="rounded px-1.5 py-0.5 hover:bg-panel hover:text-ink" onClick={() => setSlot(null)}>キャンセル</button>
+            <span>{t("settings.quickReactions.pick", { n: slot + 1 })}</span>
+            <button type="button" className="rounded px-1.5 py-0.5 hover:bg-panel hover:text-ink" onClick={() => setSlot(null)}>{t("common.cancel")}</button>
           </div>
           {/* Plain emoji only: no custom emoji (no `custom`, and recent ones like :name: are left out). */}
           <EmojiPicker recent={recent.filter((glyph) => !glyph.startsWith(":"))} onPick={(entry) => pick(slot, entry.glyph)} />
@@ -857,12 +884,12 @@ function ProfileSection({ controller }: { controller: AppController }) {
           {/* M16g: any photo; the crop dialog turns the chosen square into a small JPEG before it is sent. */}
           <input ref={avatarInput} type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) setCropping(file); }} />
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="secondary" onClick={() => avatarInput.current?.click()} title="プロフィール画像: 写真を選んで、使う範囲を決めます">
-              <ImagePlus size={14} /> 写真を選ぶ
+            <Button size="sm" variant="secondary" onClick={() => avatarInput.current?.click()} title={t("settings.profile.photoHint")}>
+              <ImagePlus size={14} /> {t("settings.profile.choosePhoto")}
             </Button>
             {me.avatar_updated_at && (
               <Button size="sm" variant="ghost" className="text-danger" onClick={() => void controller.deleteAvatar()}>
-                写真を削除
+                {t("settings.profile.deletePhoto")}
               </Button>
             )}
           </div>
@@ -873,36 +900,36 @@ function ProfileSection({ controller }: { controller: AppController }) {
         <UsernameEditor current={me.username} hasPassword={me.has_password !== false} limitNote={me.role !== "admin"} onSubmit={(name) => controller.renameMe(name)} />
       )}
       <form className="space-y-3" onSubmit={save}>
-        <Field label="表示名">
+        <Field label={t("settings.profile.displayName")}>
           <Input value={displayName} maxLength={80} onChange={edit(setDisplayName)} required />
         </Field>
-        <Field label="肩書 (任意)">
-          <Input value={title} maxLength={80} placeholder="例: 研究室長 / TA / 秘書 (名簿の学年・職位は自動で表示されます)" onChange={edit(setTitle)} />
+        <Field label={t("settings.profile.title")}>
+          <Input value={title} maxLength={80} placeholder={t("settings.profile.titlePlaceholder")} onChange={edit(setTitle)} />
         </Field>
         {line && (
           <>
-            <Field label="研究テーマ (任意)">
-              <Input value={topic} maxLength={200} placeholder="例: 拡散モデルによる音声合成" onChange={edit(setTopic)} />
+            <Field label={t("settings.profile.topic")}>
+              <Input value={topic} maxLength={200} placeholder={t("settings.profile.topicPlaceholder")} onChange={edit(setTopic)} />
             </Field>
-            <Field label="よみ (任意、名簿の並び順に使います)">
-              <Input value={reading} maxLength={80} placeholder="例: かのう とおる" onChange={edit(setReading)} />
+            <Field label={t("settings.profile.reading")}>
+              <Input value={reading} maxLength={80} placeholder={t("settings.profile.readingPlaceholder")} onChange={edit(setReading)} />
             </Field>
           </>
         )}
         <div className="flex items-center gap-3">
           <Button type="submit" size="sm" disabled={busy || !displayName.trim() || (!nameChanged && !titleChanged && !lineChanged)}>
-            プロフィールを保存
+            {t("settings.profile.save")}
           </Button>
-          {saved && <span className="text-xs text-muted">保存しました</span>}
+          {saved && <span className="text-xs text-muted">{t("common.saved")}</span>}
         </div>
       </form>
       <section className="space-y-2">
-        <h3 className={HEADING}>プライバシー</h3>
+        <h3 className={HEADING}>{t("settings.profile.privacy")}</h3>
         {/* L4 (M31): the server shows me as offline to everyone (me included) while this is on. */}
         <label className={cn(CARD, "cursor-pointer")}>
           <EyeOff size={18} className="text-muted" />
           <span className="min-w-0 flex-1 text-sm">
-            在席を隠す <span className="ml-1 text-xs text-muted">ほかの人からは常にオフラインに見えます</span>
+            {t("settings.profile.hidePresence")} <span className="ml-1 text-xs text-muted">{t("settings.profile.hidePresenceNote")}</span>
           </span>
           <input
             type="checkbox"
@@ -930,6 +957,7 @@ function AccountSection({ controller }: { controller: AppController }) {
   const [totpDialog, setTotpDialog] = useState<"setup" | "disable" | null>(null);
   const [sessionsVersion, setSessionsVersion] = useState(0);
   const [deleting, setDeleting] = useState(false);
+  const [passwordChanged, setPasswordChanged] = useState(false);
   // M48: an account made by Google sign-in has no password (nothing to change, and 2FA is Google's).
   const hasPassword = (controller.store.me ?? controller.me)?.has_password !== false;
   useEffect(() => {
@@ -939,13 +967,15 @@ function AccountSection({ controller }: { controller: AppController }) {
   const savePassword = async (event: FormEvent) => {
     event.preventDefault();
     if (next !== repeat) {
-      setPasswordMessage("新しいパスワードが一致しません");
+      setPasswordChanged(false);
+      setPasswordMessage(t("settings.account.passwordMismatch"));
       return;
     }
     setBusy(true);
     const error = await controller.changePasswordInSession(current, next);
     setBusy(false);
-    setPasswordMessage(error ?? "パスワードを変更しました (ほかの端末はログアウトしました)");
+    setPasswordChanged(!error);
+    setPasswordMessage(error ?? t("settings.account.passwordChanged"));
     if (!error) {
       setCurrent("");
       setNext("");
@@ -957,44 +987,44 @@ function AccountSection({ controller }: { controller: AppController }) {
   return (
     <div className="space-y-6">
       {!hasPassword && (
-        <p className="text-sm text-muted">このアカウントは Google でログインします (パスワードはありません。2 段階認証は Google のアカウントで設定します)</p>
+        <p className="text-sm text-muted">{t("settings.account.googleOnly")}</p>
       )}
       {hasPassword && (
         <>
           <form className="space-y-3" onSubmit={savePassword}>
-            <h3 className="text-sm font-semibold">パスワードの変更</h3>
-            <Field label="現在のパスワード">
+            <h3 className="text-sm font-semibold">{t("settings.account.changePassword")}</h3>
+            <Field label={t("settings.account.currentPassword")}>
               <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
             </Field>
-            <Field label="新しいパスワード (8 文字以上)">
+            <Field label={t("settings.account.newPassword")}>
               <Input type="password" value={next} minLength={8} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" required />
             </Field>
-            <Field label="新しいパスワード (確認)">
+            <Field label={t("settings.account.repeatPassword")}>
               <Input type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} autoComplete="new-password" required />
             </Field>
-            {passwordMessage && <p className={cn("text-sm", passwordMessage.includes("しました") ? "text-muted" : "text-danger")}>{passwordMessage}</p>}
+            {passwordMessage && <p className={cn("text-sm", passwordChanged ? "text-muted" : "text-danger")}>{passwordMessage}</p>}
             <Button type="submit" size="sm" disabled={busy}>
-              変更する
+              {t("settings.account.change")}
             </Button>
           </form>
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold">2 要素認証</h3>
+            <h3 className="text-sm font-semibold">{t("settings.account.totp")}</h3>
             <div className={CARD}>
               <ShieldCheck size={18} className={totp?.enabled ? "text-success" : "text-muted"} />
               <div className="min-w-0 flex-1 text-sm">
                 {totp === null ? (
-                  <span className="text-muted">確認中…</span>
+                  <span className="text-muted">{t("common.checking")}</span>
                 ) : totp.enabled ? (
                   <span>
-                    有効 <span className="ml-1 text-xs text-muted">ログイン時に認証アプリのコードが必要です · 回復コード残り {totp.recovery_codes_left}</span>
+                    {t("settings.account.totpOn")} <span className="ml-1 text-xs text-muted">{t("settings.account.totpOnNote", { left: totp.recovery_codes_left })}</span>
                   </span>
                 ) : (
-                  <span className="text-muted">無効 (パスワードだけでログインできます)</span>
+                  <span className="text-muted">{t("settings.account.totpOff")}</span>
                 )}
               </div>
               {totp && (
                 <Button size="sm" variant="secondary" onClick={() => setTotpDialog(totp.enabled ? "disable" : "setup")}>
-                  {totp.enabled ? "無効にする" : "有効にする"}
+                  {totp.enabled ? t("settings.account.turnOff") : t("settings.account.turnOn")}
                 </Button>
               )}
             </div>
@@ -1005,9 +1035,9 @@ function AccountSection({ controller }: { controller: AppController }) {
       <BlockedUsersList controller={controller} />
       {/* M104 (docs/MODERATION.md §2): deleting my account from inside the app (App Store 5.1.1(v), Google Play). */}
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold">アカウントを削除</h3>
-        <p className="text-xs text-muted">すべての端末からログアウトし、プロフィールとログイン情報を消去します。投稿したメッセージは「退会したユーザー」として残ります。取り消せません。</p>
-        <Button size="sm" variant="danger" onClick={() => setDeleting(true)}>アカウントを削除…</Button>
+        <h3 className="text-sm font-semibold">{t("settings.account.delete")}</h3>
+        <p className="text-xs text-muted">{t("settings.account.deleteNote")}</p>
+        <Button size="sm" variant="danger" onClick={() => setDeleting(true)}>{t("settings.account.deleteButton")}</Button>
       </section>
       {deleting && <DeleteAccountDialog controller={controller} onClose={() => setDeleting(false)} />}
       {totpDialog === "setup" && <TotpSetupDialog controller={controller} onClose={() => setTotpDialog(null)} onEnabled={() => { setTotpDialog(null); void controller.totpStatus().then(setTotp); }} />}
@@ -1024,12 +1054,12 @@ function BlockedUsersList({ controller }: { controller: AppController }) {
   if (ids.length === 0) return null;
   return (
     <section className="space-y-2">
-      <h3 className="text-sm font-semibold">ブロック中のユーザー</h3>
+      <h3 className="text-sm font-semibold">{t("settings.account.blocked")}</h3>
       <ul className="space-y-1.5">
         {ids.map((id) => (
           <li key={id} className={CARD}>
-            <span className="min-w-0 flex-1 truncate text-sm">{store.users.get(id)?.display_name ?? "不明なユーザー"}</span>
-            <Button size="sm" variant="secondary" onClick={() => void controller.setUserBlocked(id, false)}>解除</Button>
+            <span className="min-w-0 flex-1 truncate text-sm">{store.users.get(id)?.display_name ?? t("common.unknownUser")}</span>
+            <Button size="sm" variant="secondary" onClick={() => void controller.setUserBlocked(id, false)}>{t("settings.account.unblock")}</Button>
           </li>
         ))}
       </ul>
@@ -1037,7 +1067,7 @@ function BlockedUsersList({ controller }: { controller: AppController }) {
   );
 }
 
-const PLATFORM_LABELS: Record<string, string> = { ios: "iPhone / iPad", android: "Android", desktop: "デスクトップ", web: "ブラウザ" };
+const PLATFORM_LABELS: Record<string, string> = { ios: "iPhone / iPad", android: "Android", get desktop() { return t("device.desktop"); }, get web() { return t("device.browser"); } };
 
 export function sessionName(session: SessionOut): string {
   return session.device.device_name?.trim() || PLATFORM_LABELS[session.device.platform] || session.device.platform;
@@ -1075,32 +1105,32 @@ function SessionsList({ controller, version }: { controller: AppController; vers
   };
   return (
     <section className="space-y-2">
-      <h3 className="text-sm font-semibold">ログイン中の端末</h3>
+      <h3 className="text-sm font-semibold">{t("settings.sessions.title")}</h3>
       {error !== null ? (
         <div className="space-y-2 text-sm">
-          <p role="alert">端末の一覧を読み込めませんでした</p>
+          <p role="alert">{t("settings.sessions.loadFailed")}</p>
           <p className="text-muted">{error}</p>
-          <Button size="sm" variant="secondary" onClick={() => setAttempt((value) => value + 1)}>再試行</Button>
+          <Button size="sm" variant="secondary" onClick={() => setAttempt((value) => value + 1)}>{t("common.retry")}</Button>
         </div>
       ) : sessions === null ? (
-        <p role="status" className="text-sm text-muted">読み込み中…</p>
+        <p role="status" className="text-sm text-muted">{t("common.loading")}</p>
       ) : (
-        <ul aria-label="ログイン中の端末" className="divide-y divide-line rounded-xl border border-line">
+        <ul aria-label={t("settings.sessions.title")} className="divide-y divide-line rounded-xl border border-line">
           {sessions.map((session) => (
             <li key={session.id} data-session={session.id} className="flex items-center gap-3 px-3 py-2.5">
               <span className="shrink-0 text-muted">{session.device.platform === "ios" || session.device.platform === "android" ? <Smartphone size={18} /> : session.device.platform === "web" ? <Monitor size={18} /> : <Laptop size={18} />}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-2 text-sm">
                   <span className="truncate font-medium">{sessionName(session)}</span>
-                  {session.current && <Badge tone="accent" className="shrink-0">この端末</Badge>}
+                  {session.current && <Badge tone="accent" className="shrink-0">{t("settings.sessions.thisDevice")}</Badge>}
                 </div>
                 <div className="text-xs text-muted" title={fullTimestamp(session.last_used_at)}>
-                  {platformLine(session)}最後に使った時刻 <span className="whitespace-nowrap">{sinceLabel(session.last_used_at)}</span>
+                  {platformLine(session)}{t("settings.sessions.lastUsed")} <span className="whitespace-nowrap">{sinceLabel(session.last_used_at)}</span>
                 </div>
               </div>
               {!session.current && (
                 <Button size="sm" variant="secondary" className="shrink-0 text-danger" onClick={() => setRevoking(session)}>
-                  ログアウト
+                  {t("common.logout")}
                 </Button>
               )}
             </li>
@@ -1108,11 +1138,11 @@ function SessionsList({ controller, version }: { controller: AppController; vers
         </ul>
       )}
       {revoking && (
-        <Modal title={`「${sessionName(revoking)}」をログアウトしますか？`} onClose={() => setRevoking(null)}>
-          <p className="mt-3 text-sm text-muted">その端末ではもう一度ログインするまで使えなくなります。</p>
+        <Modal title={t("settings.sessions.revokeTitle", { name: sessionName(revoking) })} onClose={() => setRevoking(null)}>
+          <p className="mt-3 text-sm text-muted">{t("settings.sessions.revokeBody")}</p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setRevoking(null)}>キャンセル</Button>
-            <Button variant="danger" onClick={() => void revoke(revoking)}>ログアウト</Button>
+            <Button variant="secondary" onClick={() => setRevoking(null)}>{t("common.cancel")}</Button>
+            <Button variant="danger" onClick={() => void revoke(revoking)}>{t("common.logout")}</Button>
           </div>
         </Modal>
       )}
@@ -1126,7 +1156,7 @@ function WorkspacesSection({ controller }: { controller: AppController }) {
   const entries = controller.multiWorkspace ? controller.workspaces : controller.workspaces.filter((entry) => entry.serverUrl === controller.activeServer);
   return (
     <div className="space-y-4">
-      <ul aria-label="ワークスペース" className="divide-y divide-line rounded-xl border border-line">
+      <ul aria-label={t("settings.section.workspaces")} className="divide-y divide-line rounded-xl border border-line">
         {entries.map((entry) => {
           const active = entry.serverUrl === controller.activeServer;
           const signedIn = active || controller.isSignedIn(entry.serverUrl);
@@ -1136,18 +1166,18 @@ function WorkspacesSection({ controller }: { controller: AppController }) {
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-2 text-sm">
                   <span className="truncate font-medium">{entry.name}</span>
-                  {active && <Badge tone="accent" className="shrink-0">表示中</Badge>}
+                  {active && <Badge tone="accent" className="shrink-0">{t("settings.workspaces.active")}</Badge>}
                 </div>
-                <div className="truncate text-xs text-muted">{signInName(entry)} @ {hostLabel(entry.serverUrl)}{signedIn ? "" : " · サインインが必要です"}</div>
+                <div className="truncate text-xs text-muted">{signInName(entry)} @ {hostLabel(entry.serverUrl)}{signedIn ? "" : t("settings.workspaces.signInNeeded")}</div>
               </div>
               {!active && controller.multiWorkspace && (
                 <Button size="sm" variant="secondary" onClick={() => void controller.switchWorkspace(entry.serverUrl)}>
-                  切り替え
+                  {t("settings.workspaces.switch")}
                 </Button>
               )}
               {controller.multiWorkspace && (
                 <Button size="sm" variant="ghost" className="text-danger" onClick={() => (signedIn ? setLeaving(entry) : void controller.signOutWorkspace(entry.serverUrl))}>
-                  {signedIn ? "サインアウト" : "外す"}
+                  {signedIn ? t("settings.workspaces.signOut") : t("settings.workspaces.remove")}
                 </Button>
               )}
             </li>
@@ -1156,18 +1186,18 @@ function WorkspacesSection({ controller }: { controller: AppController }) {
       </ul>
       {controller.multiWorkspace ? (
         <Button variant="secondary" onClick={() => controller.beginAddWorkspace()}>
-          <Plus size={15} /> ワークスペースを追加
+          <Plus size={15} /> {t("settings.workspaces.add")}
         </Button>
       ) : (
-        <p className="text-xs text-muted">ブラウザではこのサーバのワークスペースだけを開きます。複数のワークスペースはデスクトップ版で使えます。</p>
+        <p className="text-xs text-muted">{t("settings.workspaces.browserNote")}</p>
       )}
       {leaving && (
-        <Modal title={`${leaving.name} からサインアウトしますか？`} description={`${signInName(leaving)} @ ${hostLabel(leaving.serverUrl)}`} onClose={() => setLeaving(null)}>
-          <p className="mt-3 text-sm text-muted">この端末に保存したこのワークスペースのメッセージと下書きを消し、一覧から外します。サーバ上のデータは消えません。</p>
+        <Modal title={t("settings.workspaces.signOutTitle", { name: leaving.name })} description={`${signInName(leaving)} @ ${hostLabel(leaving.serverUrl)}`} onClose={() => setLeaving(null)}>
+          <p className="mt-3 text-sm text-muted">{t("settings.workspaces.signOutBody")}</p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setLeaving(null)}>キャンセル</Button>
+            <Button variant="secondary" onClick={() => setLeaving(null)}>{t("common.cancel")}</Button>
             <Button variant="danger" onClick={() => { const target = leaving; setLeaving(null); void controller.signOutWorkspace(target.serverUrl); }}>
-              サインアウト
+              {t("settings.workspaces.signOut")}
             </Button>
           </div>
         </Modal>
@@ -1194,21 +1224,21 @@ function AboutSection({ controller }: { controller: AppController }) {
       <div className={CARD}>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">Taylis</div>
-          <div className="text-xs text-muted">バージョン {updates.currentVersion ? versionLabel(updates.currentVersion) : "—"}</div>
+          <div className="text-xs text-muted">{t("settings.about.version")} {updates.currentVersion ? versionLabel(updates.currentVersion) : "—"}</div>
         </div>
         <Button size="sm" variant="secondary" disabled={updates.status === "checking" || busy} onClick={() => void check()}>
-          {updates.status === "checking" ? "確認中…" : "アップデートを確認"}
+          {updates.status === "checking" ? t("common.checking") : t("settings.about.check")}
         </Button>
       </div>
       {updates.available ? (
         <div className={CARD}>
-          <div className="min-w-0 flex-1 text-sm">新しい版 ({versionLabel(updates.available.version)}) があります</div>
+          <div className="min-w-0 flex-1 text-sm">{t("settings.about.available", { version: versionLabel(updates.available.version) })}</div>
           <Button size="sm" disabled={busy} onClick={() => void updates.install(() => controller.prepareForRestart())}>
-            {busy ? "更新中…" : "更新して再起動"}
+            {busy ? t("settings.about.updating") : t("settings.about.restart")}
           </Button>
         </div>
       ) : (
-        checked && updates.status === "idle" && !updates.lastCheckFailed && <p className="text-xs text-muted" role="status">最新の版です。</p>
+        checked && updates.status === "idle" && !updates.lastCheckFailed && <p className="text-xs text-muted" role="status">{t("settings.about.latest")}</p>
       )}
     </div>
   );
@@ -1225,9 +1255,9 @@ export function SettingsDialog({ controller, onClose, initialSection = "notifica
   const [confirmLogout, setConfirmLogout] = useState(false);
   useStoreUpdates(controller);
   return (
-    <Modal onClose={onClose} title="設定" className="flex h-[min(86dvh,760px)] w-[960px] max-w-[94vw] flex-col overflow-hidden">
+    <Modal onClose={onClose} title={t("settings.title")} className="flex h-[min(86dvh,760px)] w-[960px] max-w-[94vw] flex-col overflow-hidden">
       <div className="mt-4 flex min-h-0 flex-1 overflow-hidden rounded-xl border border-line">
-        <nav aria-label="設定の項目" className="w-[248px] shrink-0 overflow-y-auto border-r border-line bg-panel/60 p-2">
+        <nav aria-label={t("settings.list.items")} className="w-[248px] shrink-0 overflow-y-auto border-r border-line bg-panel/60 p-2">
           <SettingsList controller={controller} variant="nav" selected={section} onSelect={setSection} onLogout={() => setConfirmLogout(true)} />
         </nav>
         <section aria-label={SECTION_TITLES[section]} className="flex min-w-0 flex-1 flex-col">
