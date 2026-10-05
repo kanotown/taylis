@@ -200,7 +200,7 @@ describe("the preview on screen", () => {
     await act(async () => { fireEvent.scroll(list, { target: { scrollTop: 0 } }); });
     await waitFor(() => expect(screen.getByText("one")).toBeTruthy());
     const first = document.getElementById(`timeline-${w.first.id}`)!;
-    const chip = within(first).getByTitle("Alice");
+    const chip = first.querySelector<HTMLElement>("[data-reacted-by=\"Alice\"]")!;
     expect(chip.tagName).toBe("SPAN"); // no toggle
     expect(within(first).queryByRole("button", { name: "リアクションを追加" })).toBeNull();
     const option = document.getElementById(`timeline-${w.poll.id}`)!.querySelector<HTMLButtonElement>("li button")!;

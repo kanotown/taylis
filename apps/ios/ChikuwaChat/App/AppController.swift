@@ -68,7 +68,7 @@ final class AppController {
 
     // MARK: workspaces (M16c, WORKSPACES.md)
 
-    /// The registered workspaces in the order added. Only the active one is connected and on screen (§6); the others
+    /// The registered workspaces in the order added or as reordered in the switcher (M114, §5.4). Only the active one is connected and on screen (§6); the others
     /// hear of new messages by push and show their last known badge.
     private(set) var workspaces: [Workspace] = []
     private(set) var activeServerUrl: String?
@@ -135,6 +135,13 @@ final class AppController {
 
     private func persistWorkspaces() {
         Workspaces.save(Workspaces.Saved(list: workspaces, active: activeServerUrl), to: defaults)
+    }
+
+    /// M114 (WORKSPACES.md §5.4): the switcher's order, kept on this device only (each workspace is its own server).
+    func reorderWorkspaces(_ list: [Workspace]) {
+        guard list != workspaces, Set(list.map(\.serverUrl)) == Set(workspaces.map(\.serverUrl)) else { return }
+        workspaces = list
+        persistWorkspaces()
     }
 
     /// M96: the account's username now reaches the saved entry (the list and the next login form show it); `username`
@@ -1327,9 +1334,12 @@ final class AppController {
     func updateProfile(title: String?? = nil, statusText: String?? = nil, statusEmoji: String?? = nil, statusExpiresAt: String?? = nil,
                        dndUntil: String?? = nil, quietHours: QuietHours?? = nil, notifyKeywords: [String]? = nil,
                        presenceHidden: Bool? = nil, notificationDefault: String? = nil, notifyReactions: Bool? = nil,
-                       quickReactions: [String]?? = nil, notifyTasks: Bool? = nil) async -> Bool {
+                       quickReactions: [String]?? = nil, notifyTasks: Bool? = nil, navItems: [NavItem]?? = nil) async -> Bool {
         guard let api else { return false }
         var fields: [String: JSONValue] = [:]
+        if let navItems {  // M111
+            fields["nav_items"] = navItems.map { list in .array(list.map { .object(["key": .string($0.key), "visible": .bool($0.visible)]) }) } ?? .null
+        }
         if let notifyTasks { fields["notify_tasks"] = .bool(notifyTasks) }  // M56
         if let quickReactions { fields["quick_reactions"] = quickReactions.map { .array($0.map(JSONValue.string)) } ?? .null }  // M50
         if let notifyReactions { fields["notify_reactions"] = .bool(notifyReactions) }  // M39
@@ -1367,6 +1377,18 @@ final class AppController {
         shown.quickReactions = list.map(QuickReactionsSetting.chosen) ?? .unset
         store.setMe(shown)
         if await updateProfile(quickReactions: .some(list)) { return true }
+        if store.me == shown { store.setMe(before) }
+        return false
+    }
+
+    /// M111: 「ホームのタイル」 (nil: back to the defaults), shown at once and taken back when the server refuses (the
+    /// reason is shown). My other devices read it again when they hear user.updated about me (SyncEngine).
+    func setNavItems(_ list: [NavItem]?) async -> Bool {
+        guard let before = store.me else { return false }
+        var shown = before
+        shown.navItems = list.map(NavItemsSetting.chosen) ?? .unset
+        store.setMe(shown)
+        if await updateProfile(navItems: .some(list)) { return true }
         if store.me == shown { store.setMe(before) }
         return false
     }

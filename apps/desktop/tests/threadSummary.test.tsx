@@ -10,6 +10,7 @@ import type { MessageState } from "../src/sync/types";
 import { lastReplyLabel } from "../src/ui/format";
 import { Timeline } from "../src/ui/Timeline";
 import { FakeServer } from "./fakeServer";
+import { hoverListText } from "./hoverList";
 
 afterEach(() => {
   cleanup();
@@ -66,7 +67,7 @@ describe("the thread line under a parent (C3)", () => {
     expect(line.textContent).toContain("最終返信 今日 14:05");
     const avatars = [...line.querySelectorAll("span[aria-hidden='true']")].map((a) => a.textContent);
     expect(avatars).toEqual(["E", "D", "C"]); // the three most recent, Erin's first
-    expect(line.getAttribute("title")).toBe("返信した人: Erin、Dave、Carol ほか 1 人");
+    expect(hoverListText(line)).toMatch(/^返信した人: Erin、Dave、Carol ほか 1 人\n最終返信 /);
     fireEvent.click(line);
     expect(w.onOpenThread).toHaveBeenCalledWith(w.message.id);
   });
@@ -78,7 +79,7 @@ describe("the thread line under a parent (C3)", () => {
     expect(line.querySelectorAll("span[aria-hidden='true']")).toHaveLength(0);
     expect(line.querySelector("svg")).not.toBeNull(); // the speech bubble
     expect(line.textContent).toBe("2 件の返信最終返信 今日 09:30");
-    expect(line.getAttribute("title")).toBeNull();
+    expect(hoverListText(line)).toMatch(/^最終返信 /); // no repliers to name
   });
 });
 

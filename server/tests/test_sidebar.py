@@ -1,7 +1,9 @@
 """Custom sidebar sections (M14f)."""
 
+import json
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from httpx import AsyncClient
@@ -11,6 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.events.models import OutboxEvent
 from app.modules.users.models import User
 from tests.helpers import make_user
+
+SECTION_ICON_CASES: list[dict[str, Any]] = json.loads(
+    (Path(__file__).resolve().parents[2] / "apps" / "shared" / "section-icons.json").read_text(
+        encoding="utf-8"
+    )
+)["cases"]
 
 
 def _names(rows: list[dict[str, Any]]) -> list[str]:
@@ -154,3 +162,30 @@ async def test_sections_have_an_icon_fold_up_and_take_conversations_when_made(
         "研究",
         "論文 2",
     ]
+
+
+async def test_letter_badge_icons_are_validated(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """M114: `letter:<text>:<colour>` icons, the cases every client parses (apps/shared)."""
+    cases = SECTION_ICON_CASES
+    as_user(await make_user(db, "alice"))
+    made = await client.post("/api/v1/sidebar/sections", json={"name": "修論指導"})
+    section_id = made.json()[0]["id"]
+    for case in cases:
+        icon = case["icon"]
+        if not icon.startswith("letter:"):
+            continue
+        response = await client.patch(
+            f"/api/v1/sidebar/sections/{section_id}", json={"emoji": icon}
+        )
+        if case["letter"] is None:
+            assert response.status_code == 422, icon
+        else:
+            assert response.status_code == 200, (icon, response.text)
+            assert response.json()[0]["emoji"] == icon
+    created = await client.post(
+        "/api/v1/sidebar/sections", json={"name": "卒論指導", "emoji": " letter:B:green "}
+    )
+    assert created.status_code == 201
+    assert {r["name"]: r["emoji"] for r in created.json()}["卒論指導"] == "letter:B:green"

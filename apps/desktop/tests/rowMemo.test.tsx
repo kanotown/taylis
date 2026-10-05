@@ -105,7 +105,7 @@ describe("memoized message rows (M21)", () => {
       w.store.upsertMessage({ ...target, reactions: [{ emoji: "👍", count: 1, user_ids: [w.me.id] }], updated_seq: target.updated_seq + 100 });
     });
     expect(vi.mocked(firstLink).mock.calls.map(([body]) => body)).toEqual([target.body]);
-    expect(screen.getByTitle(w.me.display_name).textContent).toContain("👍");
+    expect(document.querySelector(`[data-reacted-by="${w.me.display_name}"]`)!.textContent).toContain("👍");
   });
 
   it("rows still follow what they show besides their message", () => {

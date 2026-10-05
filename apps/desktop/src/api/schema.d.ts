@@ -6823,6 +6823,16 @@ export interface components {
             /** Research Topic */
             research_topic?: string | null;
         };
+        /**
+         * NavItem
+         * @description M111: one sidebar item / home tile (apps/shared/nav-items.json) and whether it shows.
+         */
+        NavItem: {
+            /** Key */
+            key: string;
+            /** Visible */
+            visible: boolean;
+        };
         /** NotificationPreferenceIn */
         NotificationPreferenceIn: {
             /** Level */
@@ -8722,6 +8732,8 @@ export interface components {
             id: string;
             /** Must Change Password */
             must_change_password: boolean;
+            /** Nav Items */
+            nav_items?: components["schemas"]["NavItem"][] | null;
             /**
              * Notification Default
              * @default all
@@ -8818,6 +8830,8 @@ export interface components {
             dnd_until?: string | null;
             /** Email */
             email?: string | null;
+            /** Nav Items */
+            nav_items?: components["schemas"]["NavItem"][] | null;
             /** Notification Default */
             notification_default?: ("all" | "mentions" | "none") | null;
             /** Notify Keywords */

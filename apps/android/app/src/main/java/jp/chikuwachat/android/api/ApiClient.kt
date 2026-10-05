@@ -196,7 +196,7 @@ class ApiClient(
 
     // --- endpoints --------------------------------------------------------------------------
 
-    suspend fun me(): UserMe = request("GET", "/api/v1/users/me")
+    override suspend fun me(): UserMe = request("GET", "/api/v1/users/me")
 
     suspend fun changePassword(current: String, new: String) {
         requestRaw("PUT", "/api/v1/users/me/password", buildJsonObject { put("current_password", current); put("new_password", new) }, auth = true, retry401 = true)

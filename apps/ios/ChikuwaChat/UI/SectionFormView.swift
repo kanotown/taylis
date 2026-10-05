@@ -1,6 +1,71 @@
 import SwiftUI
 
-/// A section's icon (M26): an emoji, or a custom emoji drawn from its image (its `:name:` until the image is here).
+/// M114 (DATA_MODEL.md sidebar_sections): a section's letter badge, `letter:<text>:<colour>`: one or two ASCII letters /
+/// digits or one Japanese character (kana, kanji, 々) in a text emoji colour. The server checks the same rule;
+/// apps/shared/section-icons.json holds the cases every client passes.
+struct SectionLetterIcon: Equatable {
+    let text: String
+    let color: String
+
+    static let prefix = "letter:"
+    /// The palette keys in the server's order (apps/shared/text-emoji.json), with the names the picker says.
+    static let colors: [(key: String, name: String)] = [
+        ("gray", "グレー"), ("red", "赤"), ("orange", "オレンジ"), ("yellow", "黄"),
+        ("green", "緑"), ("blue", "青"), ("purple", "紫"), ("pink", "ピンク"),
+    ]
+
+    var icon: String { Self.prefix + text + ":" + color }
+
+    static func isLetterText(_ text: String) -> Bool {
+        let scalars = Array(text.unicodeScalars)
+        if (1...2).contains(scalars.count), scalars.allSatisfy({ $0.isASCII && (("0"..."9").contains($0) || ("A"..."Z").contains($0) || ("a"..."z").contains($0)) }) {
+            return true
+        }
+        guard scalars.count == 1, let value = scalars.first?.value else { return false }
+        return value == 0x3005 || (0x3041...0x309F).contains(value) || (0x30A0...0x30FF).contains(value)
+            || (0x3400...0x4DBF).contains(value) || (0x4E00...0x9FFF).contains(value)
+    }
+
+    /// The badge an icon is, or nil (an emoji or a custom emoji `:name:`, drawn as before).
+    static func parse(_ icon: String?) -> SectionLetterIcon? {
+        guard let icon, icon.hasPrefix(prefix) else { return nil }
+        let parts = icon.dropFirst(prefix.count).split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2, isLetterText(parts[0]), colors.contains(where: { $0.key == parts[1] }) else { return nil }
+        return SectionLetterIcon(text: parts[0], color: parts[1])
+    }
+
+    /// What the picker's field holds, made ready: full-width letters and half-width kana become their usual form.
+    static func normalize(_ input: String) -> String {
+        input.precomposedStringWithCompatibilityMapping.filter { !$0.isWhitespace }
+    }
+}
+
+/// M114: the letters on a rounded square in their text emoji colour (light or dark), `size` points square.
+struct LetterBadge: View {
+    let text: String
+    let color: String
+    var size: CGFloat = 16
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let palette = CustomEmoji.textPalette[color] ?? CustomEmoji.textPalette["gray"]!
+        let pair = colorScheme == .dark ? palette.dark : palette.light
+        Text(text)
+            .font(.system(size: size * (text.unicodeScalars.count > 1 ? 0.52 : 0.64), weight: .bold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+            .foregroundStyle(rgbColor(pair.fg))
+            .frame(width: size, height: size)
+            .background(rgbColor(pair.bg), in: RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
+    }
+
+    private func rgbColor(_ rgb: UInt32) -> Color {
+        Color(red: Double((rgb >> 16) & 0xFF) / 255, green: Double((rgb >> 8) & 0xFF) / 255, blue: Double(rgb & 0xFF) / 255)
+    }
+}
+
+/// A section's icon (M26): an emoji, or a custom emoji drawn from its image (its `:name:` until the image is here; a
+/// text emoji's pill as wide as its label); M114: a letter badge.
 struct SectionIcon: View {
     let controller: AppController
     let emoji: String?
@@ -9,9 +74,12 @@ struct SectionIcon: View {
     var body: some View {
         if let emoji {
             Group {
-                if let name = CustomEmoji.name(of: emoji), let custom = controller.store.customEmoji[name] {
+                if let letter = SectionLetterIcon.parse(emoji) {
+                    LetterBadge(text: letter.text, color: letter.color, size: size)
+                } else if let name = CustomEmoji.name(of: emoji), let custom = controller.store.customEmoji[name] {
                     if let image = controller.store.emojiImages[custom.id] {
-                        EmojiImage(still: image, animation: controller.store.emojiAnimations[custom.id]).frame(width: size, height: size)
+                        EmojiImage(still: image, animation: controller.store.emojiAnimations[custom.id])
+                            .frame(width: CustomEmoji.size(of: custom, height: size).width, height: size)
                     } else {
                         Text(emoji).font(.system(size: size * 0.6)).lineLimit(1).onAppear { controller.loadEmojiImage(custom) }
                     }
@@ -106,9 +174,7 @@ struct SectionFormView: View {
                 }
             }
             .sheet(isPresented: $picking) {
-                EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, animations: store.emojiAnimations,
-                                onNeedImage: { controller.loadEmojiImage($0) }, packs: store.sortedEmojiPacks,
-                                packTabs: store.packTabImages, onNeedPackTab: { controller.loadPackTab($0) }) { glyph in emoji = glyph }
+                SectionIconPicker(controller: controller, current: emoji) { emoji = $0 }
             }
         }
         .interactiveDismissDisabled(busy)
@@ -151,5 +217,120 @@ struct SectionFormView: View {
                 controller.error = nil
             }
         }
+    }
+}
+
+/// The icon sheet (M114): 「絵文字」 (the emoji picker) or 「文字」 (a letter badge), chosen by the segment on top. It
+/// opens on 「文字」 when the section has a letter badge.
+struct SectionIconPicker: View {
+    let controller: AppController
+    let current: String?
+    let onPick: (String) -> Void
+    @State private var letters: Bool
+
+    init(controller: AppController, current: String?, onPick: @escaping (String) -> Void) {
+        self.controller = controller
+        self.current = current
+        self.onPick = onPick
+        _letters = State(initialValue: SectionLetterIcon.parse(current) != nil)
+    }
+
+    var body: some View {
+        let store = controller.store
+        Group {
+            if letters {
+                LetterIconPickerView(current: SectionLetterIcon.parse(current), onPick: onPick)
+            } else {
+                EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, animations: store.emojiAnimations,
+                                onNeedImage: { controller.loadEmojiImage($0) }, packs: store.sortedEmojiPacks,
+                                packTabs: store.packTabImages, onNeedPackTab: { controller.loadPackTab($0) }, onPick: onPick)
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Picker("アイコンの種類", selection: $letters) {
+                Text("絵文字").tag(false)
+                Text("文字").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
+            .background(Color(.systemBackground))
+        }
+        .presentationDetents([.medium, .large])
+        .presentationBackground(Color(.systemBackground))
+    }
+}
+
+/// M114: one or two letters (or one Japanese character) and a colour, previewed as they are typed.
+struct LetterIconPickerView: View {
+    let onPick: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    /// As typed: an IME composes 「しゅう」 before 「修」, so nothing is cut while typing; `text` is what is saved.
+    @State private var raw: String
+    @State private var color: String
+    @FocusState private var focused: Bool
+
+    init(current: SectionLetterIcon?, onPick: @escaping (String) -> Void) {
+        self.onPick = onPick
+        _raw = State(initialValue: current?.text ?? "")
+        _color = State(initialValue: current?.color ?? "blue")
+    }
+
+    private var text: String { SectionLetterIcon.normalize(raw) }
+    private var valid: Bool { SectionLetterIcon.isLetterText(text) }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack(spacing: 16) {
+                        LetterBadge(text: valid ? text : (text.isEmpty ? "A" : "?"), color: color, size: 52)
+                            .opacity(valid ? 1 : 0.5)
+                        TextField("例: M、B、修", text: $raw)
+                            .font(.title3)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                            .focused($focused)
+                            .submitLabel(.done)
+                            .onSubmit(apply)
+                            .accessibilityLabel("アイコンの文字")
+                    }
+                    .padding(.vertical, 4)
+                } footer: {
+                    Text("英数字 2 文字まで、または日本語 1 文字 (例: 修論指導は「M」や「修」)")
+                        .foregroundStyle(!text.isEmpty && !valid ? Color.red : Color.secondary)
+                }
+                Section("色") {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 10) {
+                        ForEach(SectionLetterIcon.colors, id: \.key) { option in
+                            Button { color = option.key } label: {
+                                LetterBadge(text: valid ? text : "A", color: option.key, size: 36)
+                                    .padding(4)
+                                    .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                        .strokeBorder(color == option.key ? Color.accentColor : Color.clear, lineWidth: 2))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(option.name)
+                            .accessibilityAddTraits(color == option.key ? .isSelected : [])
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .navigationTitle("文字のアイコン")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("決定", action: apply).disabled(!valid) }
+            }
+            .onAppear { focused = true }
+        }
+    }
+
+    private func apply() {
+        guard valid else { return }
+        onPick(SectionLetterIcon(text: text, color: color).icon)
+        dismiss()
     }
 }

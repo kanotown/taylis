@@ -37,6 +37,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.outlined.AdminPanelSettings
@@ -59,6 +61,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -98,6 +101,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.ZoneId
 import jp.chikuwachat.android.api.Codec
+import jp.chikuwachat.android.api.NavItem
 import jp.chikuwachat.android.api.QuietHours
 import jp.chikuwachat.android.api.SessionOut
 import jp.chikuwachat.android.api.TotpStatusOut
@@ -600,7 +604,52 @@ private fun AppearanceScreen(controller: AppController, version: Int) {
         Hint("この端末だけの設定です", Modifier.padding(top = 4.dp))
         // Only against a server that sends the field (null or a list): an older one would drop what is saved here.
         if (me != null && me.knowsQuickReactions) QuickReactionsSection(controller, me)
+        // M111: likewise only against a server that knows `nav_items`.
+        if (me != null && me.knowsNavItems) HomeTilesSection(controller, me)
     }
+}
+
+/**
+ * M111 「ホームのタイル」: a switch per tile; 「並べ替え」 turns the rows into ↑ / ↓ (an edit mode, as iOS's list), 「元に戻す」
+ * back to the defaults. Each change saves the whole list at once (the desktop's and newer clients' items kept).
+ */
+@Composable
+private fun HomeTilesSection(controller: AppController, me: UserMe) {
+    val scope = rememberCoroutineScope()
+    val stored = me.navItems
+    val full = NavItems.full(stored)
+    val shown = NavItems.shown(full)
+    var saving by remember { mutableStateOf(false) }
+    var reordering by rememberSaveable { mutableStateOf(false) }
+    fun save(value: List<NavItem>?) {
+        scope.launch {
+            saving = true
+            controller.setNavItems(value)  // a refusal shows the app's error and puts the list back
+            saving = false
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) { SectionTitle("ホームのタイル") }
+        TextButton(onClick = { reordering = !reordering }) { Text(if (reordering) "完了" else "並べ替え") }
+    }
+    shown.forEachIndexed { index, item ->
+        val label = NavItems.label(item.key)
+        if (reordering) {
+            Row(Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN), verticalAlignment = Alignment.CenterVertically) {
+                Text(label, modifier = Modifier.weight(1f), color = if (item.visible) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                IconButton(enabled = !saving && index > 0, onClick = { save(NavItems.move(full, item.key, -1)) }) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "$label を上へ")
+                }
+                IconButton(enabled = !saving && index < shown.lastIndex, onClick = { save(NavItems.move(full, item.key, 1)) }) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "$label を下へ")
+                }
+            }
+        } else {
+            SwitchRow(label, null, checked = item.visible, enabled = !saving) { save(NavItems.setVisible(full, item.key, it)) }
+        }
+    }
+    Hint("ホームの上に並ぶタイルです。すべての端末で同じになり、パソコンのサイドバーにも同じ順と表示が使われます。アクティビティは下のタブにいつもあります。", Modifier.padding(top = 6.dp))
+    TextButton(enabled = !saving && stored != null, onClick = { save(null) }) { Text("元に戻す") }
 }
 
 /**

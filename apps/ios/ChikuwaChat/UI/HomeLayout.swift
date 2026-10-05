@@ -101,8 +101,11 @@ enum HomeSections {
 /// M37 (MOBILE_UI.md §6.1): the row of tiles over the home's sections. A tile with nothing to count is dimmed but
 /// still opens its list.
 struct HomeTile: Identifiable, Equatable {
-    enum Kind: String {
+    enum Kind: String, CaseIterable {
         case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, reservations, files, canvases
+
+        /// M111: the key in apps/shared/nav-items.json (UserMe.nav_items).
+        var navKey: String { self == .times ? "times-feed" : rawValue }
     }
 
     let kind: Kind
@@ -178,8 +181,21 @@ struct HomeTile: Identifiable, Equatable {
     /// messages; リマインダー: the reminders that fired, red; カレンダー (M52, CALENDAR.md §7): no number; タスク (M56,
     /// TASKS.md §6): no number; 締切 (M86, DEADLINES.md §8 3.: after タスク): no number; ファイル: no number; Times (L8, TIMES_FEED.md §7: the feed, after スレッド): no number;
     /// キャンバス (M78, CANVAS.md §21.1: after ファイル, as in the desktop's sidebar): no number.
-    /// M112: 予約 (after 締切; apps/shared/nav-items.json key "reservations") once the server answered the pools
-    /// (`reservations` non-nil); its number is the to-dos due in the pools I operate (red), none for the others.
+    /// M111: in my order without the ones I hid (UserMe.nav_items, NavItems); nil = the defaults (this order, all).
+    /// M112: 予約 (key "reservations", after 締切) once the server answered the pools (`reservations` non-nil); its
+    /// number is the to-dos due in the pools I operate (red), none for the others.
+    static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: [NavItem]?,
+                      reservations: ReservationTile? = nil) -> [HomeTile] {
+        let all = tiles(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders, reservations: reservations)
+        let byKey = Dictionary(uniqueKeysWithValues: all.map { ($0.kind.navKey, $0) })
+        return NavItems.tileKeys(navItems).compactMap { byKey[$0] }
+    }
+
+    struct ReservationTile: Equatable {
+        let todos: Int
+        let operates: Bool
+    }
+
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int,
                       reservations: ReservationTile? = nil) -> [HomeTile] {
         var row = base(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders)
@@ -188,11 +204,6 @@ struct HomeTile: Identifiable, Equatable {
                                 alert: reservations.todos > 0), at: at + 1)
         }
         return row
-    }
-
-    struct ReservationTile: Equatable {
-        let todos: Int
-        let operates: Bool
     }
 
     private static func base(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int) -> [HomeTile] {

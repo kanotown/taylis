@@ -10,6 +10,7 @@ import { Store } from "../src/sync/store";
 import type { MessageState } from "../src/sync/types";
 import { PollCard, pollCounts, pollMine } from "../src/ui/PollCard";
 import { FakeServer, MemoryPersistence } from "./fakeServer";
+import { hoverListText } from "./hoverList";
 
 afterEach(() => {
   cleanup();
@@ -157,7 +158,7 @@ describe("the poll card (M27)", () => {
     card(([alice, bob, carol, dave, erin]) => ({ question: "場所", options: ["A", "B"], multiple: false, anonymous: false, closed_at: null, votes: [[alice!, bob!, carol!, dave!], [erin!]], counts: [4, 1], mine: [0] }));
     const [first, second] = screen.getAllByRole("button") as [HTMLElement, HTMLElement];
     expect(within(first).getByText("Alice、Bob、Carol ほか 1 人")).toBeTruthy();
-    expect(first.getAttribute("title")).toBe("Alice、Bob、Carol、Dave");
+    expect(hoverListText(first.closest("li")!)).toBe("Alice、Bob、Carol、Dave"); // above the option, not at the pointer
     expect(within(second).getByText("Erin")).toBeTruthy();
     expect(screen.queryByText("匿名")).toBeNull();
   });
@@ -167,7 +168,7 @@ describe("the poll card (M27)", () => {
     expect(screen.getByText("匿名")).toBeTruthy();
     const [high, low] = screen.getAllByRole("button") as [HTMLElement, HTMLElement];
     expect(high.textContent).toContain("2");
-    expect(high.getAttribute("title")).toBeNull();
+    expect(hoverListText(high.closest("li")!)).toBeNull();
     expect(low.textContent).toContain("1");
     expect(screen.getByText("3 票")).toBeTruthy();
     // My vote is the chosen option: a click takes it back.

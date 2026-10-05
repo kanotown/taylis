@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import jp.chikuwachat.android.api.NavItem
 import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.platform.KeyValueStore
@@ -154,6 +155,10 @@ enum class HomeTile(val label: String) {
     FILES("ファイル"),
     /** M78 (CANVAS.md §21.2): the canvases of all my conversations, after ファイル (as the desktop's sidebar); no number. */
     CANVASES("キャンバス"),
+    ;
+
+    /** M111: the key in apps/shared/nav-items.json (UserMe.nav_items). */
+    val navKey: String get() = if (this == TIMES) "times-feed" else name.lowercase()
 }
 
 /** A tile's number (null: none shown), red when `alert`; a 0 is dimmed but still opens its list. */
@@ -166,6 +171,12 @@ object HomeTiles {
      * The badge rules of the rows they replaced (§6.1): スレッド the followed threads' unread count, red with a mention;
      * 下書き the drafts and scheduled messages; 保存 the saved messages; リマインダー the fired ones, red; ファイル no number.
      */
+    /** M111: in my order without the ones I hid (UserMe.nav_items, [NavItems]); null = the defaults (all, this order). */
+    fun tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: List<NavItem>?): List<TileState> {
+        val byKey = tiles(threads, drafts, saved, firedReminders).associateBy { it.tile.navKey }
+        return NavItems.tileKeys(navItems).mapNotNull { byKey[it] }
+    }
+
     fun tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int): List<TileState> = listOf(
         TileState(HomeTile.THREADS, threads.unreadCount, alert = threads.unreadCount > 0 && threads.mentionCount > 0),
         TileState(HomeTile.TIMES, null),
