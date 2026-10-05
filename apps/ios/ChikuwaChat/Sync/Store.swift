@@ -948,18 +948,34 @@ final class Store {
 
     // MARK: custom emoji (M12f)
 
+    /// Review v0.1.37 #7: a bootstrap's list (after emoji.updated may have been missed offline) drops the images that no
+    /// longer match, as `applyCustomEmoji` does for one event: removed emoji, and text pills whose look changed.
     func replaceCustomEmoji(_ rows: [CustomEmojiOut]) {
+        let fresh = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        for old in customEmoji.values where Self.drawnDiffers(old, fresh[old.id]) { dropEmojiImage(old.id) }
         // Not uniqueKeysWithValues, which traps when a name comes twice (the server keeps names unique; the app
         // should not depend on it): the last wins.
         customEmoji = Dictionary(rows.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
     }
 
     func applyCustomEmoji(_ row: CustomEmojiOut, deleted: Bool) {
-        // A text emoji's pill is drawn from its label and colour: a changed one is drawn again.
-        if let old = customEmoji[row.name], old.isText, deleted || old.label != row.label || old.color != row.color {
-            emojiImages.removeValue(forKey: old.id)
+        if let old = customEmoji[row.name], Self.drawnDiffers(old, deleted || row.id != old.id ? nil : row) {
+            dropEmojiImage(old.id)
         }
         if deleted { customEmoji.removeValue(forKey: row.name) } else { customEmoji[row.name] = row }
+    }
+
+    /// Whether an emoji's cached image no longer shows `new` (nil: it is gone): a text emoji's pill is drawn from its label
+    /// and colour, so a changed one is drawn again; a changed kind swaps pill and picture. An image emoji's picture is kept
+    /// by id while the app runs (docs/EMOJI.md).
+    private static func drawnDiffers(_ old: CustomEmojiOut, _ new: CustomEmojiOut?) -> Bool {
+        guard let new else { return true }
+        return old.isText != new.isText || (old.isText && (old.label != new.label || old.color != new.color))
+    }
+
+    private func dropEmojiImage(_ id: String) {
+        emojiImages.removeValue(forKey: id)
+        emojiAnimations.removeValue(forKey: id)
     }
 
     // MARK: emoji packs (M100)

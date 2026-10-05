@@ -1022,18 +1022,36 @@ class Store(private val persistence: Persistence? = null) {
 
     // --- custom emoji (M12f) -----------------------------------------------------------------
 
+    /**
+     * Review v0.1.37 #7: a bootstrap's list (after emoji.updated may have been missed offline) drops the images that no
+     * longer match, as [applyCustomEmoji] does for one event: removed emoji, and text pills whose look changed.
+     */
     fun replaceCustomEmoji(rows: List<CustomEmojiOut>) {
+        val fresh = rows.associateBy { it.id }
+        customEmoji.values.forEach { old -> if (drawnDiffers(old, fresh[old.id])) dropEmojiImage(old.id) }
         customEmoji.clear()
         rows.forEach { customEmoji[it.name] = it }
         emit()
     }
 
     fun applyCustomEmoji(row: CustomEmojiOut, deleted: Boolean) {
-        // A text emoji's pill is drawn from its label and colour: a changed one is drawn again.
         val old = customEmoji[row.name]
-        if (old != null && old.isText && (deleted || old.label != row.label || old.color != row.color)) emojiImages.remove(old.id)
+        if (old != null && drawnDiffers(old, row.takeUnless { deleted || it.id != old.id })) dropEmojiImage(old.id)
         if (deleted) customEmoji.remove(row.name) else customEmoji[row.name] = row
         emit()
+    }
+
+    /**
+     * Whether an emoji's cached image no longer shows [new] (null: it is gone): a text emoji's pill is drawn from its label
+     * and colour, so a changed one is drawn again; a changed kind swaps pill and picture. An image emoji's picture is kept
+     * by id while the app runs (docs/EMOJI.md).
+     */
+    private fun drawnDiffers(old: CustomEmojiOut, new: CustomEmojiOut?): Boolean =
+        new == null || old.kind != new.kind || (old.isText && (old.label != new.label || old.color != new.color))
+
+    private fun dropEmojiImage(id: String) {
+        emojiImages.remove(id)
+        emojiAnimations.remove(id)
     }
 
     // --- emoji packs (M100) --------------------------------------------------------------------
