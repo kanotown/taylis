@@ -103,6 +103,49 @@ final class CustomEmojiTests: XCTestCase {
         XCTAssertFalse(old.isText)
     }
 
+    /// The background of a pill: an RGB pixel near its left end, halfway down (inside the rounded corner).
+    private func pillBackground(_ image: UIImage) -> UInt32 {
+        let cg = image.cgImage!
+        var pixel = [UInt8](repeating: 0, count: 4)
+        pixel.withUnsafeMutableBytes { buffer in
+            let context = CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                    space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.draw(cg, in: CGRect(x: -3, y: -CGFloat(cg.height / 2), width: CGFloat(cg.width), height: CGFloat(cg.height)))
+        }
+        return UInt32(pixel[0]) << 16 | UInt32(pixel[1]) << 8 | UInt32(pixel[2])
+    }
+
+    /// 2026-10-05 (build 95): in light mode a pill could keep the dark palette. The look flips for a moment while iOS
+    /// takes the app-switcher snapshot, and a pill whose deferred drawing straddled a change kept the look captured
+    /// before it. Now only an active scene's look counts, a pending pill reads the look when it is drawn, and a change
+    /// swaps the cached pills at once.
+    @MainActor
+    func testTextPillsFollowTheActiveLookAndSwapAtOnce() async throws {
+        let json = #"{"id":"t1","name":"thanks","kind":"text","label":"ありがとう","color":"green","content_type":"","width":0,"height":0,"created_by":"u","created_at":""}"#
+        let emoji = try JSON.snakeDecoder.decode(CustomEmojiOut.self, from: Data(json.utf8))
+        let light = CustomEmoji.textPalette["green"]!.light.bg, dark = CustomEmoji.textPalette["green"]!.dark.bg
+        XCTAssertEqual(pillBackground(CustomEmoji.textPill(emoji, dark: false)), light)
+        XCTAssertEqual(pillBackground(CustomEmoji.textPill(emoji, dark: true)), dark)
+        XCTAssertTrue(CustomEmoji.textPill(emoji, dark: true) === CustomEmoji.textPill(emoji, dark: true)) // drawn once
+
+        let controller = AppController()
+        controller.store.customEmoji = ["thanks": emoji]
+        // A pill asked for in light, the look changing before it is drawn: it is drawn in the new look.
+        controller.loadEmojiImage(emoji)
+        controller.appearanceChanged(dark: true, active: true)
+        for _ in 0..<5 where controller.store.emojiImages["t1"] == nil { await Task.yield() }
+        XCTAssertEqual(pillBackground(try XCTUnwrap(controller.store.emojiImages["t1"])), dark)
+        // Back to light: swapped at once, no blank, no redraw to wait for.
+        controller.appearanceChanged(dark: false, active: true)
+        XCTAssertEqual(pillBackground(try XCTUnwrap(controller.store.emojiImages["t1"])), light)
+        // The snapshot's flip in the background is ignored; becoming active reports the look again.
+        controller.appearanceChanged(dark: true, active: false)
+        XCTAssertEqual(pillBackground(try XCTUnwrap(controller.store.emojiImages["t1"])), light)
+        controller.appearanceChanged(dark: false, active: true)
+        XCTAssertFalse(controller.textEmojiDark)
+        XCTAssertEqual(pillBackground(try XCTUnwrap(controller.store.emojiImages["t1"])), light)
+    }
+
     /// M101 (docs/EMOJI.md §7): the emoji-only rule's tables and cases shared with the web and Android.
     func testEmojiOnlyFollowsTheSharedCases() throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
