@@ -1,4 +1,4 @@
-import { Bell, BellOff, Building2, ChevronRight, EyeOff, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
+import { Bell, BellOff, Building2, ChevronDown, ChevronRight, ChevronUp, GripVertical, EyeOff, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { SessionOut, TotpStatusOut } from "../api/types";
@@ -14,6 +14,7 @@ import { Avatar } from "./Avatar";
 import { OVERALL_LEVEL_LABELS, OVERALL_LEVEL_NOTE, overallLevel } from "./channels";
 import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
 import { MAX_QUICK_REACTIONS, quickReactions } from "./MessageActionsSheet";
+import { fullNavItems, moveNavItem, navLabel, reorderNavItems, setNavItemVisible, shownNavItems } from "./navItems";
 import { customPauseAt, DAY_LABELS, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
 import { fullTimestamp, sinceLabel } from "./format";
 import { useNow, useStoreUpdates } from "./hooks";
@@ -636,7 +637,73 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
         </span>
         <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={controller.groupPosts} onChange={(e) => controller.setGroupPosts(e.target.checked)} />
       </label>
+      <NavItemsSettings controller={controller} />
     </div>
+  );
+}
+
+/**
+ * M111 「サイドバーの項目」: which menu items the sidebar shows and in what order, mine on every device (users.nav_items,
+ * apps/shared/nav-items.json). A switch per item, drag (or ↑ / ↓) to reorder, 「元に戻す」 back to the defaults (null).
+ * A change saves the whole list, items of the phones and of newer clients included. A server before M111 has no such setting.
+ */
+export function NavItemsSettings({ controller }: { controller: AppController }) {
+  const me = meOf(controller);
+  const [dragging, setDragging] = useState<string | null>(null);
+  if (!me || me.nav_items === undefined) return null;
+  const full = fullNavItems(me.nav_items);
+  const shown = shownNavItems(full);
+  const save = (list: typeof full | null) => void controller.setNavItems(list);
+  const drop = (target: string) => {
+    if (!dragging || dragging === target) return setDragging(null);
+    const keys = shown.map((item) => item.key).filter((key) => key !== dragging);
+    keys.splice(keys.indexOf(target) + (shown.findIndex((i) => i.key === dragging) < shown.findIndex((i) => i.key === target) ? 1 : 0), 0, dragging);
+    setDragging(null);
+    save(reorderNavItems(full, keys));
+  };
+  return (
+    <section className="space-y-2" aria-label="サイドバーの項目">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className={HEADING}>サイドバーの項目</h3>
+        <Button size="sm" variant="secondary" disabled={me.nav_items === null} onClick={() => save(null)}>
+          元に戻す
+        </Button>
+      </div>
+      <ul className="divide-y divide-line rounded-xl border border-line">
+        {shown.map((item, index) => (
+          <li
+            key={item.key}
+            data-nav-item={item.key}
+            draggable
+            onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragging(item.key); }}
+            onDragEnd={() => setDragging(null)}
+            onDragOver={(e) => { if (dragging) e.preventDefault(); }}
+            onDrop={(e) => { e.preventDefault(); drop(item.key); }}
+            className={cn("flex min-h-[40px] items-center gap-2 px-2 py-1 text-sm", dragging === item.key && "opacity-50")}
+          >
+            <GripVertical size={15} className="shrink-0 cursor-grab text-muted" aria-hidden />
+            <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+              <span className={cn("min-w-0 flex-1 truncate", !item.visible && "text-muted")}>{navLabel(item.key)}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label={`${navLabel(item.key)} を表示`}
+                className="h-4 w-4 accent-[var(--accent)]"
+                checked={item.visible}
+                onChange={(e) => save(setNavItemVisible(full, item.key, e.target.checked))}
+              />
+            </label>
+            <button type="button" aria-label={`${navLabel(item.key)} を上へ`} disabled={index === 0} onClick={() => save(moveNavItem(full, item.key, -1))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
+              <ChevronUp size={14} />
+            </button>
+            <button type="button" aria-label={`${navLabel(item.key)} を下へ`} disabled={index === shown.length - 1} onClick={() => save(moveNavItem(full, item.key, 1))} className="rounded p-1 text-muted hover:bg-panel hover:text-ink disabled:opacity-30">
+              <ChevronDown size={14} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted">ドラッグか ↑ ↓ で並べ替えます。どの端末でも同じで、スマホのホームのタイルにも同じ順と表示が使われます。「下書き」「リマインダー」は中身があるときだけ表示されます。</p>
+    </section>
   );
 }
 

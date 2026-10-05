@@ -8,6 +8,7 @@ import { badgeCount, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, sec
 import { useOpenSelfNotes } from "./DmListView";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { activityBadge } from "./mobileTabs";
+import { sidebarNavKeys } from "./navItems";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { ChannelContextMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
@@ -103,6 +104,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     if (store.sidebarSections.some((section) => section.channel_ids.includes(channelId))) void controller.moveToSection(channelId, null);
   };
   const status = controller.engine?.status ?? "idle";
+  // M111: the menu items I chose to show, in my order (UserMe.nav_items; null = all, the default order).
+  const navKeys = sidebarNavKeys(me?.nav_items);
 
   const item = (channel: ChannelState, folded = false) => {
     const muted = isMutedChannel(channel);
@@ -211,191 +214,209 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
 
       {onThreads && (
         <ul className="mt-1 space-y-px">
-          <li>
-            <button
-              type="button"
-              onClick={onThreads}
-              aria-current={threadsActive ? "page" : undefined}
-              title={`スレッド (${modKey()}+Shift+T)`}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                store.threadSummary.unread_count > 0 && "font-semibold text-sidebar-strong",
-                threadsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-              )}
-            >
-              <MessagesSquare size={15} className="shrink-0 opacity-70" />
-              <span className="flex-1 truncate">スレッド</span>
-              {store.threadSummary.unread_count > 0 && (
-                <Badge tone={store.threadSummary.mention_count > 0 ? "danger" : "neutral"} className={store.threadSummary.mention_count > 0 ? undefined : "bg-current/20 text-inherit"}>
-                  {store.threadSummary.unread_count}
-                </Badge>
-              )}
-            </button>
-          </li>
-          {onActivity && (
-            <li>
-              <button
-                type="button"
-                onClick={onActivity}
-                aria-current={activityActive ? "page" : undefined}
-                aria-label={store.activity ? (activity.count > 0 ? `アクティビティ (未読 ${activity.count})` : "アクティビティ") : "メンション"}
-                title={store.activity ? "メンション・スレッドへの返信・リアクション" : "自分宛てのメンション"}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                  store.activity && activity.count > 0 && "font-semibold text-sidebar-strong",
-                  activityActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                )}
-              >
-                {store.activity ? <Bell size={15} className="shrink-0 opacity-70" /> : <AtSign size={15} className="shrink-0 opacity-70" />}
-                <span className="flex-1 truncate">{store.activity ? "アクティビティ" : "メンション"}</span>
-                {store.activity && activity.count > 0 && (
-                  <Badge tone={activity.mention ? "danger" : "neutral"} className={activity.mention ? undefined : "bg-current/20 text-inherit"}>
-                    <span data-badge={activity.mention ? "danger" : "neutral"}>{activity.count > 99 ? "99+" : activity.count}</span>
-                  </Badge>
-                )}
-              </button>
-            </li>
-          )}
-          {onDrafts && draftCount > 0 && (
-            <li>
-              <button
-                type="button"
-                onClick={onDrafts}
-                aria-current={draftsActive ? "page" : undefined}
-                title="送信していない下書き"
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                  draftsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                )}
-              >
-                <FileText size={15} className="shrink-0 opacity-70" />
-                <span className="flex-1 truncate">下書き</span>
-                <span className="text-[11px] opacity-70">{draftCount}</span>
-              </button>
-            </li>
-          )}
-          {onReminders && reminderCount > 0 && (
-            <li>
-              <button
-                type="button"
-                onClick={onReminders}
-                aria-current={remindersActive ? "page" : undefined}
-                title="リマインダー"
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                  remindersActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                  firedCount > 0 && !remindersActive && "font-semibold text-sidebar-strong",
-                )}
-              >
-                <AlarmClock size={15} className="shrink-0 opacity-70" />
-                <span className="flex-1 truncate">リマインダー</span>
-                {firedCount > 0 ? <Badge tone="danger">{firedCount}</Badge> : <span className="text-[11px] opacity-70">{reminderCount}</span>}
-              </button>
-            </li>
-          )}
-          {onFiles && (
-            <li>
-              <button
-                type="button"
-                onClick={onFiles}
-                aria-current={filesActive ? "page" : undefined}
-                title="チャンネルのファイル"
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                  filesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                )}
-              >
-                <Files size={15} className="shrink-0 opacity-70" />
-                <span className="flex-1 truncate">ファイル</span>
-              </button>
-            </li>
-          )}
-          {onCanvases && (
-            <li>
-              <button
-                type="button"
-                onClick={onCanvases}
-                aria-current={canvasesActive ? "page" : undefined}
-                title="自分の会話のキャンバス"
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                  canvasesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                )}
-              >
-                <NotebookText size={15} className="shrink-0 opacity-70" />
-                <span className="flex-1 truncate">キャンバス</span>
-              </button>
-            </li>
-          )}
-          {onCalendar && (
-            <li>
-              <button
-                type="button"
-                onClick={onCalendar}
-                aria-current={calendarActive ? "page" : undefined}
-                title="自分とチャンネルの予定"
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                  calendarActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                )}
-              >
-                <CalendarDays size={15} className="shrink-0 opacity-70" />
-                <span className="flex-1 truncate">カレンダー</span>
-              </button>
-            </li>
-          )}
-          {onTasks && (
-            <li>
-              <button
-                type="button"
-                onClick={onTasks}
-                aria-current={tasksActive ? "page" : undefined}
-                title="自分のタスクと担当のタスク"
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                  tasksActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                )}
-              >
-                <ListTodo size={15} className="shrink-0 opacity-70" />
-                <span className="flex-1 truncate">タスク</span>
-              </button>
-            </li>
-          )}
-          {onDeadlines && (
-            <li>
-              <button
-                type="button"
-                onClick={onDeadlines}
-                aria-current={deadlinesActive ? "page" : undefined}
-                title="参加しているチャンネルの締切"
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                  deadlinesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                )}
-              >
-                <Timer size={15} className="shrink-0 opacity-70" />
-                <span className="flex-1 truncate">締切</span>
-              </button>
-            </li>
-          )}
-          {onSaved && (
-            <li>
-              <button
-                type="button"
-                onClick={onSaved}
-                aria-current={savedActive ? "page" : undefined}
-                title="保存したメッセージ"
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
-                  savedActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
-                )}
-              >
-                <Bookmark size={15} className="shrink-0 opacity-70" />
-                <span className="flex-1 truncate">保存済み</span>
-                {store.bookmarks.size > 0 && <span className="text-[11px] opacity-70">{store.bookmarks.size}</span>}
-              </button>
-            </li>
-          )}
+          {navKeys.map((key) => {
+            switch (key) {
+              case "threads":
+                return (
+                <li key="threads">
+                  <button
+                    type="button"
+                    onClick={onThreads}
+                    aria-current={threadsActive ? "page" : undefined}
+                    title={`スレッド (${modKey()}+Shift+T)`}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      store.threadSummary.unread_count > 0 && "font-semibold text-sidebar-strong",
+                      threadsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                    )}
+                  >
+                    <MessagesSquare size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">スレッド</span>
+                    {store.threadSummary.unread_count > 0 && (
+                      <Badge tone={store.threadSummary.mention_count > 0 ? "danger" : "neutral"} className={store.threadSummary.mention_count > 0 ? undefined : "bg-current/20 text-inherit"}>
+                        {store.threadSummary.unread_count}
+                      </Badge>
+                    )}
+                  </button>
+                </li>
+                );
+              case "activity":
+                return onActivity ? (
+                <li key="activity">
+                  <button
+                    type="button"
+                    onClick={onActivity}
+                    aria-current={activityActive ? "page" : undefined}
+                    aria-label={store.activity ? (activity.count > 0 ? `アクティビティ (未読 ${activity.count})` : "アクティビティ") : "メンション"}
+                    title={store.activity ? "メンション・スレッドへの返信・リアクション" : "自分宛てのメンション"}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      store.activity && activity.count > 0 && "font-semibold text-sidebar-strong",
+                      activityActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                    )}
+                  >
+                    {store.activity ? <Bell size={15} className="shrink-0 opacity-70" /> : <AtSign size={15} className="shrink-0 opacity-70" />}
+                    <span className="flex-1 truncate">{store.activity ? "アクティビティ" : "メンション"}</span>
+                    {store.activity && activity.count > 0 && (
+                      <Badge tone={activity.mention ? "danger" : "neutral"} className={activity.mention ? undefined : "bg-current/20 text-inherit"}>
+                        <span data-badge={activity.mention ? "danger" : "neutral"}>{activity.count > 99 ? "99+" : activity.count}</span>
+                      </Badge>
+                    )}
+                  </button>
+                </li>
+                ) : null;
+              case "drafts":
+                return onDrafts && draftCount > 0 ? (
+                <li key="drafts">
+                  <button
+                    type="button"
+                    onClick={onDrafts}
+                    aria-current={draftsActive ? "page" : undefined}
+                    title="送信していない下書き"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      draftsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                    )}
+                  >
+                    <FileText size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">下書き</span>
+                    <span className="text-[11px] opacity-70">{draftCount}</span>
+                  </button>
+                </li>
+                ) : null;
+              case "reminders":
+                return onReminders && reminderCount > 0 ? (
+                <li key="reminders">
+                  <button
+                    type="button"
+                    onClick={onReminders}
+                    aria-current={remindersActive ? "page" : undefined}
+                    title="リマインダー"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      remindersActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                      firedCount > 0 && !remindersActive && "font-semibold text-sidebar-strong",
+                    )}
+                  >
+                    <AlarmClock size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">リマインダー</span>
+                    {firedCount > 0 ? <Badge tone="danger">{firedCount}</Badge> : <span className="text-[11px] opacity-70">{reminderCount}</span>}
+                  </button>
+                </li>
+                ) : null;
+              case "files":
+                return onFiles ? (
+                <li key="files">
+                  <button
+                    type="button"
+                    onClick={onFiles}
+                    aria-current={filesActive ? "page" : undefined}
+                    title="チャンネルのファイル"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      filesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                    )}
+                  >
+                    <Files size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">ファイル</span>
+                  </button>
+                </li>
+                ) : null;
+              case "canvases":
+                return onCanvases ? (
+                <li key="canvases">
+                  <button
+                    type="button"
+                    onClick={onCanvases}
+                    aria-current={canvasesActive ? "page" : undefined}
+                    title="自分の会話のキャンバス"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      canvasesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                    )}
+                  >
+                    <NotebookText size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">キャンバス</span>
+                  </button>
+                </li>
+                ) : null;
+              case "calendar":
+                return onCalendar ? (
+                <li key="calendar">
+                  <button
+                    type="button"
+                    onClick={onCalendar}
+                    aria-current={calendarActive ? "page" : undefined}
+                    title="自分とチャンネルの予定"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      calendarActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                    )}
+                  >
+                    <CalendarDays size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">カレンダー</span>
+                  </button>
+                </li>
+                ) : null;
+              case "tasks":
+                return onTasks ? (
+                <li key="tasks">
+                  <button
+                    type="button"
+                    onClick={onTasks}
+                    aria-current={tasksActive ? "page" : undefined}
+                    title="自分のタスクと担当のタスク"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      tasksActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                    )}
+                  >
+                    <ListTodo size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">タスク</span>
+                  </button>
+                </li>
+                ) : null;
+              case "deadlines":
+                return onDeadlines ? (
+                <li key="deadlines">
+                  <button
+                    type="button"
+                    onClick={onDeadlines}
+                    aria-current={deadlinesActive ? "page" : undefined}
+                    title="参加しているチャンネルの締切"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      deadlinesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                    )}
+                  >
+                    <Timer size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">締切</span>
+                  </button>
+                </li>
+                ) : null;
+              case "saved":
+                return onSaved ? (
+                <li key="saved">
+                  <button
+                    type="button"
+                    onClick={onSaved}
+                    aria-current={savedActive ? "page" : undefined}
+                    title="保存したメッセージ"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      savedActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                    )}
+                  >
+                    <Bookmark size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">保存済み</span>
+                    {store.bookmarks.size > 0 && <span className="text-[11px] opacity-70">{store.bookmarks.size}</span>}
+                  </button>
+                </li>
+                ) : null;
+              default:
+                return null; // a key this client does not draw (yet)
+            }
+          })}
         </ul>
       )}
 
