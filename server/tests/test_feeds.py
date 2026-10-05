@@ -1,7 +1,9 @@
 """M97 (docs/FEEDS.md): RSS / Atom feeds posted into a channel by its feed bot."""
 
+import asyncio
+import time
 import uuid
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
 from email.utils import format_datetime
@@ -26,6 +28,7 @@ from app.modules.feeds.parser import (
     parse_feed,
     strip_html,
 )
+from app.modules.link_previews import fetcher as fetcher_module
 from app.modules.link_previews.fetcher import (
     FeedResponse,
     PreviewError,
@@ -680,3 +683,117 @@ async def test_fetcher_sends_validators_follows_checked_redirects_and_caps_size(
     assert big.value.code == "too_large"
     with pytest.raises(UrlNotAllowed):
         await fetch("http://169.254.169.254/latest", None, None)
+
+
+# --- Review v0.1.37 #3: a server dripping bytes under the read timeout --------------------------
+
+
+@pytest.fixture
+async def drip_server() -> AsyncIterator[str]:
+    """A real local HTTP server: /slow sends a few bytes every 30 ms forever (each read is well
+    inside the read timeout), anything else answers a small RSS document at once."""
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            head = await reader.readuntil(b"\r\n\r\n")
+            path = head.split(b" ", 2)[1].decode()
+            if path.startswith("/slow"):
+                kind = b"text/html" if path.endswith("page") else b"application/rss+xml"
+                writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: " + kind + b"\r\n")
+                writer.write(b"Connection: close\r\n\r\n<rss>")
+                for _ in range(2000):
+                    await writer.drain()
+                    writer.write(b"     ")
+                    await asyncio.sleep(0.03)
+            else:
+                doc = rss([WEEK1])
+                writer.write(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/rss+xml\r\n"
+                    + f"Content-Length: {len(doc)}\r\nConnection: close\r\n\r\n".encode()
+                    + doc
+                )
+                await writer.drain()
+        except (ConnectionError, asyncio.IncompleteReadError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    yield f"http://127.0.0.1:{port}"
+    server.close()
+
+
+@pytest.fixture
+def allow_loopback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only the address check is replaced, so the real fetchers can reach the local server."""
+
+    async def allow(url: str) -> str:
+        return url
+
+    monkeypatch.setattr(fetcher_module, "validate_public_url", allow)
+
+
+@pytest.mark.usefixtures("allow_loopback")
+async def test_fetchers_give_up_at_the_overall_deadline(drip_server: str) -> None:
+    feed_fetch = build_feed_fetcher(
+        timeout_seconds=0.2, deadline_seconds=0.5, max_bytes=10_000_000, user_agent="t"
+    )
+    started = time.monotonic()
+    with pytest.raises(PreviewError) as slow:
+        await feed_fetch(f"{drip_server}/slow", None, None)
+    assert slow.value.code == "timeout"
+    assert 0.4 < time.monotonic() - started < 2
+    # Each read was inside the read timeout: without the deadline it would still be running.
+    fast = await feed_fetch(f"{drip_server}/feed", None, None)
+    assert fast.status == 200 and parse_feed(fast.body, fast.url).entries
+
+    page_fetch = fetcher_module.build_fetcher(
+        timeout_seconds=0.2, deadline_seconds=0.5, max_bytes=10_000_000, user_agent="t"
+    )
+    started = time.monotonic()
+    with pytest.raises(PreviewError) as page:
+        await page_fetch(f"{drip_server}/slow-page")
+    assert page.value.code == "timeout" and time.monotonic() - started < 2
+
+
+@pytest.mark.usefixtures("allow_loopback")
+async def test_a_dripping_feed_fails_at_the_deadline_and_the_next_feed_is_polled(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    fetch: FakeFetch,
+    drip_server: str,
+) -> None:
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    cid = await _channel(client, "weekly", [])
+    slow_url, fast_url = "https://slow.example.com/feed", "https://fast.example.com/feed"
+    ids = []
+    for url in (slow_url, fast_url):  # the slow one is due first
+        fetch.docs[url] = rss([WEEK1])
+        added = await client.post(f"/api/v1/channels/{cid}/feeds", json={"url": url})
+        assert added.status_code == 201, added.text
+        ids.append(added.json()["id"])
+    real = build_feed_fetcher(
+        timeout_seconds=0.2, deadline_seconds=0.5, max_bytes=10_000_000, user_agent="t"
+    )
+    local = {slow_url: f"{drip_server}/slow", fast_url: f"{drip_server}/feed"}
+
+    async def via_local_server(
+        url: str, etag: str | None, last_modified: str | None
+    ) -> FeedResponse:
+        return await real(local[url], etag, last_modified)
+
+    started = time.monotonic()
+    polled = await feeds.poll_due(
+        app.state.db.session_factory,
+        settings=app.state.settings,
+        fetch=via_local_server,
+        now=utcnow() + timedelta(hours=1),
+    )
+    assert polled == 2 and time.monotonic() - started < 3
+    slow_row, fast_row = await _row(db, ids[0]), await _row(db, ids[1])
+    assert slow_row.last_error_code == "timeout" and slow_row.consecutive_failures == 1
+    assert fast_row.last_error_code is None and fast_row.consecutive_failures == 0
