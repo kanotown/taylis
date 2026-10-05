@@ -5,6 +5,9 @@
 Taylis is a self-hosted, Slack-like team chat for small organisations such as research labs: one server you run
 yourself, and native clients for Windows, macOS, iOS and Android plus a browser client.
 
+**Documentation: <https://kanotown.github.io/taylis/>** (user guide, admin guide, self-hosting; mostly in Japanese,
+with an English top page and self-hosting quick start). Its source is in [website/](website/).
+
 (Formerly "ChikuwaChat"; internal identifiers such as bundle IDs, package names and the `chikuwachat://` URL scheme
 keep the old name.)
 

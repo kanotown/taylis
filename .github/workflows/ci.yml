@@ -3,10 +3,10 @@ name: ci
 on:
   push:
     branches: [main]
-    # Docs alone change nothing the checks look at.
-    paths-ignore: ["docs/**", "**/*.md"]
+    # Docs (and the docs site, which pages.yml builds) alone change nothing the checks look at.
+    paths-ignore: ["docs/**", "website/**", ".github/workflows/pages.yml", "**/*.md"]
   pull_request:
-    paths-ignore: ["docs/**", "**/*.md"]
+    paths-ignore: ["docs/**", "website/**", ".github/workflows/pages.yml", "**/*.md"]
   # release.yml runs the server and web checks before it builds and deploys a tag.
   workflow_call:
     inputs:

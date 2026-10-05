@@ -1,0 +1,62 @@
+/* Taylis brand colours (the desktop app's default "Taylis" palette: sidebar #3b2b21, accent #8f5530,
+   accent text on dark #dba67c). */
+:root > * {
+  --md-primary-fg-color: #3b2b21;
+  --md-primary-fg-color--light: #5a4334;
+  --md-primary-fg-color--dark: #2a1e17;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+  --md-accent-fg-color: #8f5530;
+  --md-accent-fg-color--transparent: rgba(143, 85, 48, 0.1);
+  --md-typeset-a-color: #8f5530;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #3b2b21;
+  --md-accent-fg-color: #dba67c;
+  --md-accent-fg-color--transparent: rgba(219, 166, 124, 0.12);
+  --md-typeset-a-color: #dba67c;
+  --md-default-bg-color: #1e1915;
+}
+
+/* Header logo: the round app icon reads better a little larger. */
+.md-header__button.md-logo img {
+  height: 1.8rem;
+  width: auto;
+}
+
+/* Screenshots */
+.screens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: center;
+  margin: 1rem 0;
+}
+.screens img {
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+.screens .wide { width: 100%; max-width: 760px; }
+.screens .phone { width: 30%; max-width: 230px; min-width: 140px; }
+.screens .tablet { width: 48%; min-width: 260px; }
+@media screen and (max-width: 600px) {
+  .screens .phone { width: 45%; }
+  .screens .tablet { width: 100%; }
+}
+
+.hero {
+  text-align: center;
+  margin: 1.5rem 0 1rem;
+}
+.hero img.hero-icon {
+  width: 96px;
+  height: 96px;
+  border-radius: 22px;
+}
+.hero p.tagline {
+  font-size: 1.15rem;
+  margin: 0.6rem 0 1.2rem;
+}
+.hero .md-button { margin: 0.25rem; }

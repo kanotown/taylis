@@ -18,6 +18,7 @@ the Apache License grant; all rights reserved (see TRADEMARKS.md):
   apps/ios/ChikuwaChat/Resources/Assets.xcassets/AppIcon.appiconset/
   apps/android/app/src/main/res/drawable-*/ic_launcher_*.png
   apps/android/app/src/main/res/drawable/ic_notification.xml
+  website/docs/assets/logo.png, website/docs/assets/favicon.png
 
 The scripts that generate these files (apps/shared/brand/*.py, *.sh) are
 covered by the Apache License. Forks must replace the name and the brand

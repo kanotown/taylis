@@ -1,0 +1,147 @@
+# Taylis documentation site (GitHub Pages). Build: mkdocs build --strict -f website/mkdocs.yml
+# Content is in website/docs/ (Japanese is the default; English pages are <name>.en.md next to the Japanese page).
+# The design documents in /docs stay where they are; the site links to them on GitHub.
+site_name: Taylis
+site_description: 研究室や小さなチームのためのセルフホスト型チャット
+site_url: https://kanotown.github.io/taylis/
+site_author: Toru Kano
+repo_url: https://github.com/kanotown/taylis
+repo_name: kanotown/taylis
+edit_uri: edit/main/website/docs/
+copyright: >-
+  &copy; 2026 Toru Kano · ソースコードは Apache License 2.0 ·
+  「Taylis」の名前とリスのアイコンは Apache License の対象外です
+
+theme:
+  name: material
+  language: ja
+  logo: assets/logo.png
+  favicon: assets/favicon.png
+  font:
+    text: Noto Sans JP
+    code: Roboto Mono
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: ライト / ダークを切り替える
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: ダークにする
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: 端末の設定に合わせる
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+extra_css:
+  - assets/extra.css
+
+plugins:
+  - search:
+      lang:
+        - ja
+        - en
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      languages:
+        - locale: ja
+          name: 日本語
+          default: true
+          build: true
+        - locale: en
+          name: English
+          build: true
+          site_description: A self-hosted team chat for research labs and small teams
+          nav:
+            - Home: index.md
+            - Self-hosting:
+                - self-hosting/index.md
+                - Quick start: self-hosting/quickstart.md
+            - License: license.md
+            - Full documentation (Japanese): https://kanotown.github.io/taylis/
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.superfences
+  - pymdownx.tilde:
+      subscript: false
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - ホーム: index.md
+  - 機能: features.md
+  - 使い方ガイド:
+      - guide/index.md
+      - ログイン: guide/login.md
+      - 通知の設定: guide/notifications.md
+      - メッセージの書き方: guide/formatting.md
+      - 絵文字とリアクション: guide/emoji.md
+      - 予約: guide/reservations.md
+      - サイドバーと表示: guide/sidebar.md
+  - 管理者ガイド:
+      - admin/index.md
+      - ユーザーと招待・SSO: admin/users.md
+      - チャンネル: admin/channels.md
+      - カスタム絵文字とセット: admin/emoji.md
+      - 報告とモデレーション: admin/moderation.md
+      - 予約の枠: admin/reservations.md
+      - AI: admin/ai.md
+      - ワークスペースの設定: admin/workspace.md
+  - サーバーを立てる:
+      - self-hosting/index.md
+      - クイックスタート: self-hosting/quickstart.md
+      - 既存のリバースプロキシの後ろで: self-hosting/reverse-proxy.md
+      - プッシュ通知 (APNs / FCM): self-hosting/push.md
+      - 文書のプレビュー: self-hosting/previews.md
+      - バックアップと復元: self-hosting/backup.md
+      - 更新と自動デプロイ: self-hosting/updates.md
+      - Slack / Mattermost からの移行: self-hosting/import.md
+      - 困ったとき: self-hosting/troubleshooting.md
+  - 仕組み:
+      - how-it-works/index.md
+      - 同期と信頼性: how-it-works/sync.md
+      - プッシュ通知の設計: how-it-works/push.md
+      - 検索: how-it-works/search.md
+      - セキュリティ: how-it-works/security.md
+      - データモデル: how-it-works/data-model.md
+  - FAQ: faq.md
+  - プライバシー: privacy.md
+  - ライセンス: license.md
