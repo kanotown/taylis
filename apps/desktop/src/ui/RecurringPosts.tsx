@@ -32,7 +32,6 @@ import {
   targetsSummary,
   updateBody,
   monthDayLabel,
-  WEEKDAY_LABELS,
 } from "./recurring";
 import { t, weekdayName } from "../i18n";
 
@@ -253,7 +252,7 @@ export function RecurringPostDialog({ controller, channel, post, onClose, onSave
           <div className="flex flex-wrap items-center gap-2">
             {draft.kind === "weekly" ? (
               <div role="group" aria-label={t("settings.quiet.weekdays")} className="flex gap-1">
-                {WEEKDAY_LABELS.map((label, day) => {
+                {[0, 1, 2, 3, 4, 5, 6].map((day) => weekdayName(day)).map((label, day) => {
                   const on = draft.weekdays.includes(day);
                   return (
                     <button
