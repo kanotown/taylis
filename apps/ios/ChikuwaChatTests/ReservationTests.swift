@@ -156,4 +156,30 @@ final class ReservationTests: XCTestCase {
         XCTAssertEqual(notices, ["🙋 割り当ててください"])
         engine.stop()
     }
+
+    /// Review v0.1.37 #6: an answer that started before one already kept never overwrites it (two reads overlapping).
+    func testAnOlderPoolsAnswerDoesNotOverwriteANewerOne() async throws {
+        let server = FakeServer()
+        let bob = server.addUser("bob")
+        server.pools = [PoolOut(id: "p1", name: "v0", capacity: 1)]
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: server.api(for: bob.id), connect: server.connector(for: bob.id), wsUrl: URL(string: "ws://fake")!, store: store,
+                                getAccessToken: { "t" }, options: options)
+        let (released, release) = AsyncStream<Void>.makeStream()
+        var asked = false
+        server.poolsHold = { asked = true; for await _ in released { break } }
+        server.pools = [PoolOut(id: "p1", name: "old", capacity: 1)]
+        let first = Task { await engine.loadReservationPools() } // held: answers "old"
+        for _ in 0..<50 where !asked { await Task.yield() }
+        XCTAssertTrue(asked)
+        server.pools = [PoolOut(id: "p1", name: "new", capacity: 1)]
+        await engine.loadReservationPools()
+        XCTAssertEqual(store.reservationPools?.map(\.name), ["new"])
+        release.yield()
+        await first.value
+        XCTAssertEqual(store.reservationPools?.map(\.name), ["new"])
+        engine.stop()
+    }
 }

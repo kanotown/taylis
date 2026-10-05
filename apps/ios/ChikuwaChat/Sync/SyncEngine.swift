@@ -228,8 +228,18 @@ final class SyncEngine {
     /// M112 answers 404 / 405: the pools stay nil (no page).
     func loadReservationPools() async {
         guard let poolsApi = api as? ReservationsApi else { return }
-        if let pools = try? await poolsApi.reservationPools() { store.setReservationPools(pools) }
+        // Review v0.1.37 #6: reads may overlap (bootstrap's and an event's, or two events' once the debounce let go);
+        // an answer that started before one already kept is dropped.
+        reservationReads += 1
+        let read = reservationReads
+        guard let pools = try? await poolsApi.reservationPools(), read > reservationKept else { return }
+        reservationKept = read
+        store.setReservationPools(pools)
     }
+
+    /// Review v0.1.37 #6: GET /reservation-pools started, and the latest one whose answer the store took.
+    private var reservationReads = 0
+    private var reservationKept = 0
 
     /// reservation.updated comes once per change (and a press brings several): one read for a burst.
     private var reservationReload: Task<Void, Never>?
