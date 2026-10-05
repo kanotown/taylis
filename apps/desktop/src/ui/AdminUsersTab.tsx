@@ -6,6 +6,7 @@ import type { AdminUserOut, Role } from "../api/types";
 import type { AppController } from "../state/app";
 import { readUsersView, USER_FILTERS, USER_SORTS, userFilterCounts, type UserFilter, type UserSort, visibleUsers, matchesUserSearch, writeUsersView } from "./adminUsers";
 import { Avatar } from "./Avatar";
+import { absoluteTime, relativeTime } from "./analytics";
 import { fullTimestamp } from "./format";
 import { Badge, Button, cn, Field, Input, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal } from "./primitives";
 import { displayTitle } from "./roster";
@@ -180,8 +181,9 @@ export function UsersTab({ controller }: { controller: AppController }) {
                     <span data-part="username" className="max-w-full shrink-0 truncate" title={`@${user.username}`}>@{user.username}</span>
                     {user.email && <span data-part="email" className="min-w-0 truncate" title={user.email}>&nbsp;· {user.email}</span>}
                   </div>
-                  <div className="truncate text-[11px] text-muted" title={[title, t("admin.users.createdAt", { at: fullTimestamp(user.created_at) })].filter(Boolean).join(" · ")}>
+                  <div className="truncate text-[11px] text-muted" title={[title, t("admin.users.createdAt", { at: fullTimestamp(user.created_at) }), lastLoginTitle(user)].filter(Boolean).join(" · ")}>
                     {title && <>{title} · </>}{t("admin.users.createdAt", { at: fullTimestamp(user.created_at) })}
+                    {user.role !== "bot" && lastLoginText(user) && <> · <span data-part="last-login">{lastLoginText(user)}</span></>}
                   </div>
                 </div>
                 <UserActions
@@ -236,6 +238,20 @@ export function UsersTab({ controller }: { controller: AppController }) {
       )}
     </div>
   );
+}
+
+/** M116: 「最終ログイン 3 日前」 (「未ログイン」 when never); a server before M116 sends neither → nothing. */
+function lastLoginText(user: AdminUserOut): string {
+  if (user.last_login_at === undefined) return "";
+  return user.last_login_at ? t("admin.users.lastLogin", { at: relativeTime(user.last_login_at) }) : t("admin.users.neverSignedIn");
+}
+
+/** The hover: both times in full. */
+function lastLoginTitle(user: AdminUserOut): string {
+  const parts = [];
+  if (user.last_login_at) parts.push(t("admin.users.lastLogin", { at: absoluteTime(user.last_login_at) }));
+  if (user.last_active_at) parts.push(t("admin.users.lastActive", { at: absoluteTime(user.last_active_at) }));
+  return parts.join(" · ");
 }
 
 /**

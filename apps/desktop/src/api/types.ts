@@ -76,6 +76,20 @@ export type ReadAllScope = components["schemas"]["ReadAllIn"]["scope"];
 
 /** Administration (M11e). */
 export type AdminUserOut = components["schemas"]["AdminUserOut"];
+/** M116 (docs/ANALYTICS.md §4): the administrators' analytics. */
+export type AnalyticsOverviewOut = components["schemas"]["AnalyticsOverviewOut"];
+export type AnalyticsMemberOut = components["schemas"]["AnalyticsMemberOut"];
+export type AnalyticsMembersOut = components["schemas"]["AnalyticsMembersOut"];
+export type AnalyticsMemberSort = "name" | "role" | "status" | "created_at" | "last_login_at" | "last_active_at" | "messages_30d";
+export interface AnalyticsMembersQuery {
+  sort?: AnalyticsMemberSort;
+  order?: "asc" | "desc";
+  status?: "active" | "deactivated";
+  inactive_days?: number;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
 export type AdminUserCreate = components["schemas"]["AdminUserCreate"];
 export type AdminUserCreated = components["schemas"]["AdminUserCreated"];
 export type AdminUserUpdate = components["schemas"]["AdminUserUpdate"];
