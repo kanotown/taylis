@@ -23,7 +23,7 @@ import { StatusForm } from "./StatusDialog";
 import { TemplatesSettings } from "./TemplatesSettings";
 import { TestNotificationCard } from "./TestNotification";
 import { displayTitle } from "./roster";
-import { PALETTES, SIDEBAR_TONES, THEME_OPTIONS, themeLabel, usePalette, useSidebarTone, useTheme, writePalette, writeSidebarTone, writeTheme } from "./theme";
+import { FONT_OPTIONS, PALETTES, SIDEBAR_TONES, THEME_OPTIONS, themeLabel, useFont, usePalette, useSidebarTone, useTheme, writeFont, writePalette, writeSidebarTone, writeTheme } from "./theme";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { DeleteAccountDialog } from "./ModerationDialogs";
 import { UsernameEditor } from "./UsernameEditor";
@@ -516,13 +516,14 @@ function NotificationsSection({ controller }: { controller: AppController }) {
 }
 
 /**
- * 「表示」: 端末に合わせる / ライト / ダーク, 「テーマの色」, 「サイドバー」 (濃い色 / 明るい色), 「文字の大きさ」 (the desktop app; a browser zooms by itself) and
+ * 「表示」: 端末に合わせる / ライト / ダーク, 「テーマの色」, 「サイドバー」 (濃い色 / 明るい色), 「フォント」, 「文字の大きさ」 (the desktop app; a browser zooms by itself) and
  * 「連続した投稿をまとめる」 (M47), on this device only.
  */
 function AppearanceSection({ controller, desktop = isTauri() }: { controller: AppController; desktop?: boolean }) {
   const theme = useTheme();
   const palette = usePalette();
   const sidebarTone = useSidebarTone();
+  const font = useFont();
   const zoom = useZoom();
   return (
     <div className="space-y-6">
@@ -584,6 +585,18 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
           })}
         </div>
         <p className="text-xs text-muted">「明るい色」はライト表示のときだけ効きます。ダーク表示ではサイドバーは濃い色のままです。</p>
+      </section>
+      <section className="space-y-2">
+        <h3 className={HEADING}>フォント</h3>
+        <div role="radiogroup" aria-label="フォント" className="rounded-xl border border-line p-1">
+          {FONT_OPTIONS.map(([value, label]) => (
+            <label key={value} className="flex min-h-[40px] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-panel">
+              <input type="radio" name="font" className="h-4 w-4 accent-[var(--accent)]" checked={font === value} onChange={() => writeFont(value)} />
+              <span style={{ fontFamily: value === "noto" ? '"Noto Sans JP Variable", var(--font-system)' : "var(--font-system)" }}>{label}</span>
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-muted">この端末だけの設定です。「Noto Sans JP」はアプリに含まれるフォントで、どの OS でも同じ見た目になります。</p>
       </section>
       {desktop && (
         <section className="space-y-2">

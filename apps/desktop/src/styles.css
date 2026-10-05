@@ -195,8 +195,16 @@
 }
 :root[data-theme="dark"] .text-emoji { background: var(--te-bg-dark); color: var(--te-fg-dark); }
 
+/* 「フォント」 (2026-10-05, ui/theme.ts): the bundled Noto Sans JP first, then the system's; <html data-font="system">
+   leaves it out (and so never fetches it). Code stays monospace (.body code / pre). */
+:root {
+  --font-system: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+  --font-ui: "Noto Sans JP Variable", var(--font-system);
+}
+:root[data-font="system"] { --font-ui: var(--font-system); }
+
 @theme inline {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+  --font-sans: var(--font-ui);
   --color-canvas: var(--canvas);
   --color-panel: var(--panel);
   --color-panel-2: var(--panel-2);
@@ -226,7 +234,7 @@
   /* The app shell never scrolls as a page: only the sidebar, the timeline and the panes scroll. On a phone it is as
      tall as what the keyboard leaves (--app-height, platform/viewport.ts). */
   html, body, #root { height: var(--app-height, 100%); overflow: hidden; }
-  body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
   * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 25%, transparent) transparent; }
   ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
   /* Tailwind v4's preflight leaves buttons with the platform's default arrow; a chat UI wants the hand. */

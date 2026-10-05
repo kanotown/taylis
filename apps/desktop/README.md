@@ -77,6 +77,17 @@ tests/        fakeServer.ts (プロトコルの模擬サーバ)、engine / apiCl
   白の直書きでなく `sidebar-strong` (濃い: 白 / 明るい: 濃い文字)・`sidebar-active-fg`・`sidebar-rail`・
   `sidebar-line`・`sidebar-edge` のトークンで書く。未読の太字と選択中の行が重なるときは選択中の文字色が勝つ
   よう、`cn()` で選択中のクラスを後に置く。macOS の信号機ボタンは OS が描くのでどちらでも同じ。
+- **フォント** (2026-10-05): 既定は同梱の **Noto Sans JP** (`@fontsource-variable/noto-sans-jp`、SIL OFL 1.1、
+  THIRD_PARTY_NOTICES.md)。`main.tsx` が重さの軸だけの可変フォント (`wght.css`) を読み込み、`styles.css` の
+  `--font-ui` が `"Noto Sans JP Variable"` を先頭に、その後に以前のシステムのフォント (`--font-system`:
+  -apple-system・Segoe UI・Hiragino Sans・Yu Gothic UI …) を並べる。コードは等幅のまま。woff2 は unicode-range で
+  124 個 (合計 5.2 MB) に分かれ、ブラウザは画面の文字が使う分だけを取る (日本語の画面で数百 KB、Web では
+  `/assets/` が immutable でキャッシュされる)。ビルドの大きさは woff2 の分 (約 5.2 MB) 増える (Tauri のアプリと
+  Web のイメージ)。CSS は約 105 KB (gzip で約 30 KB) 増える。CSP は Tauri が `default-src 'self'`、Caddy が
+  `font-src 'self' data:` で、同梱のファイルはそのまま読める。設定の「フォント」で「システムのフォント」を選ぶと
+  `<html data-font="system">` (`ui/theme.ts` の `FONT_OPTIONS`、端末ごと、描画前に `main.tsx` が付ける) で
+  Noto を外し、ファイルも取らない。スマホは変えない (Android の日本語のシステムフォントは Noto Sans CJK JP、
+  iOS は Hiragino / SF のまま)。
 - **文字の大きさ** (デスクトップ版だけ): ⌘ / Ctrl + 「+」(「=」「;」、テンキーの + も)・「-」・「0」(100%)
   と設定の項目で 80〜200% (0.8 / 0.9 / 1 / 1.1 / 1.25 / 1.5 / 1.75 / 2)。`platform/zoom.ts` が
   Tauri の `Webview.setZoom` (権限 `core:webview:allow-set-webview-zoom`) で画面全体を拡大し、起動時に戻す。
@@ -119,3 +130,8 @@ tests/        fakeServer.ts (プロトコルの模擬サーバ)、engine / apiCl
 | `https://...` | リンク (別ウィンドウで開く) |
 
 HTML は解釈しない (React が全文をエスケープする)。
+
+改行と空行 (2026-10-05、DATA_MODEL.md「本文の形式」): 1 つの改行は `<br>`、1 行以上の空行は段落の間隔
+(`<p>` ごとに `mt-2.5` = 10px、本文の行の高さ 24px の約 0.4)。空行が何行あっても間隔は 1 つ、段落の端の空行は
+前後のブロックとの同じ間隔 (`markdown.ts` の `paragraphLayout`、ケースは `apps/shared/body-paragraphs.json`)。
+タイムライン・スレッド・入力欄のプレビュー・キャンバスが同じ `MessageBody` / `BlockView` で描く。

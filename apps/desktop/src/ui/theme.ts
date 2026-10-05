@@ -169,3 +169,54 @@ export function useSidebarTone(): SidebarTone {
     readSidebarTone,
   );
 }
+
+/**
+ * 「フォント」 (2026-10-05): the bundled Noto Sans JP (the default; @fontsource-variable/noto-sans-jp, its unicode-range
+ * subsets fetched only as the text needs them) or the system's fonts, per device. <html data-font="system"> swaps the
+ * stylesheet's --font-ui; with it set, no Noto file is fetched.
+ */
+export type FontChoice = "noto" | "system";
+
+const FONT_KEY = "chikuwa.prefs.font";
+
+export const FONT_OPTIONS: Array<[FontChoice, string]> = [
+  ["noto", "Noto Sans JP"],
+  ["system", "システムのフォント"],
+];
+
+export function readFont(): FontChoice {
+  try {
+    return localStorage.getItem(FONT_KEY) === "system" ? "system" : "noto";
+  } catch {
+    return "noto";
+  }
+}
+
+/** Puts the choice on screen (<html data-font="system">; the default has none). */
+export function applyFont(font: FontChoice, root: HTMLElement = document.documentElement): void {
+  if (font === "system") root.dataset["font"] = "system";
+  else delete root.dataset["font"];
+}
+
+const fontListeners = new Set<() => void>();
+
+export function writeFont(font: FontChoice): void {
+  try {
+    if (font === "system") localStorage.setItem(FONT_KEY, "system");
+    else localStorage.removeItem(FONT_KEY);
+  } catch {
+    /* per-device convenience only: it still applies to this window */
+  }
+  applyFont(font);
+  for (const listener of fontListeners) listener();
+}
+
+export function useFont(): FontChoice {
+  return useSyncExternalStore(
+    (listener) => {
+      fontListeners.add(listener);
+      return () => fontListeners.delete(listener);
+    },
+    readFont,
+  );
+}
