@@ -61,7 +61,7 @@ struct CanvasEditor: View {
             if uploading > 0 {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
-                    Text("画像をアップロード中… (\(uploading))").font(.caption).foregroundStyle(.secondary)
+                    Text("画像をアップロード中…（\(uploading)）").font(.caption).foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 12)
@@ -525,7 +525,7 @@ struct CanvasTextView: UIViewRepresentable {
         view.smartDashesType = .no
         view.smartQuotesType = .no
         view.smartInsertDeleteType = .no
-        view.accessibilityLabel = tr("キャンバスの本文 (Markdown)")
+        view.accessibilityLabel = tr("キャンバスの本文（Markdown）")
         view.accessibilityIdentifier = "canvas-editor"
         view.text = model.shown
         model.textView = view

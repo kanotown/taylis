@@ -79,7 +79,7 @@ struct CalendarView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button { feeds = true } label: { Label("カレンダーを購読 (iCal)", systemImage: "dot.radiowaves.up.forward") }
+                    Button { feeds = true } label: { Label("カレンダーを購読（iCal）", systemImage: "dot.radiowaves.up.forward") }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }

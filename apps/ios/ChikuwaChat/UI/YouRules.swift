@@ -121,6 +121,6 @@ enum SessionList {
         } else {
             when = tr("\(String(parts.year ?? 0))年\(parts.month ?? 0)月\(parts.day ?? 0)日 \(time)")
         }
-        return tr("最後に使用: \(when)")
+        return tr("最後に使用：\(when)")
     }
 }

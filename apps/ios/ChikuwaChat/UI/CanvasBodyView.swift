@@ -136,7 +136,7 @@ struct CanvasImageView: View {
                     .accessibilityLabel(alt.isEmpty ? tr("画像") : alt)
             } else if loader.failed {
                 Button { attempt += 1 } label: {
-                    Label(alt.isEmpty ? "表示できない画像" : "表示できない画像: \(alt)", systemImage: "photo")
+                    Label(alt.isEmpty ? "表示できない画像" : "表示できない画像：\(alt)", systemImage: "photo")
                         .font(.footnote).foregroundStyle(.secondary)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4])).foregroundStyle(.secondary))

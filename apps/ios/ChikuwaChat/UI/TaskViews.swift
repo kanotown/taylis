@@ -37,7 +37,7 @@ struct TaskAssigneeStack: View {
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(tr("担当: ") + ids.map(name).joined(separator: tr("、")))
+            .accessibilityLabel(tr("担当：") + ids.map(name).joined(separator: tr("、")))
         }
     }
 
@@ -481,12 +481,12 @@ struct TaskColumnsEditor: View {
                         row(item, index: index, count: columns.count, columns: columns)
                     }
                 } header: {
-                    Text("列 (左から)")
+                    Text("列（左から）")
                 } footer: {
                     Text("最初からある 3 つの列は名前の変更と並べ替えだけできます。列の種類は後から変えられません。")
                 }
                 Section {
-                    TextField("列の名前 (例: レビュー待ち)", text: $newName)
+                    TextField("列の名前（例：レビュー待ち）", text: $newName)
                         .submitLabel(.done)
                         .onSubmit { Task { await add() } }
                     Picker("種類", selection: $newStatus) {
@@ -659,7 +659,7 @@ struct MyTasksView: View {
                     TaskInlineAdd { title in await addPersonal(title) }
                 }
                 if !personal.done.isEmpty {
-                    DisclosureGroup("完了 (\(personal.done.count))", isExpanded: $showDone) {
+                    DisclosureGroup("完了（\(personal.done.count)）", isExpanded: $showDone) {
                         ForEach(personal.done) { row($0) }
                     }
                     .font(.subheadline)

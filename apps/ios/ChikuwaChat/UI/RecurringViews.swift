@@ -36,7 +36,7 @@ struct RecurringPostsSection: View {
                 Text("読み込めませんでした").foregroundStyle(.red)
             case .ready(let list):
                 if list.isEmpty {
-                    Text(tr("定期投稿はありません。") + (manage ? tr("毎週のスレッド (週報など) をボットが立て、返信で提出を集められます。") : ""))
+                    Text(tr("定期投稿はありません。") + (manage ? tr("毎週のスレッド（週報など）をボットが立て、返信で提出を集められます。") : ""))
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
                 ForEach(list) { post in
@@ -92,7 +92,7 @@ struct RecurringPostsSection: View {
     private func summary(_ post: RecurringPostOut) -> RecurringPostRow.Summary {
         let store = controller.store
         let collect = post.collect.map { spec in
-            tr("回収: ") + RecurringRules.targetsSummary(spec, groupName: { store.groups[$0]?.name }, userName: { store.users[$0]?.displayName })
+            tr("回収：") + RecurringRules.targetsSummary(spec, groupName: { store.groups[$0]?.name }, userName: { store.users[$0]?.displayName })
                 + " · " + RecurringRules.dueSummary(spec.due)
         }
         return .init(schedule: RecurringRules.scheduleSummary(post.schedule, tz: post.tz, localTz: localTz),
@@ -230,7 +230,7 @@ struct RecurringPostForm: View {
                     TextField("週報", text: $draft.name)
                         .onChange(of: draft.name) { _, _ in error = nil }
                 } header: {
-                    Text("名前 (ボットの表示名)")
+                    Text("名前（ボットの表示名）")
                 }
                 Section {
                     TextField("**週報 {date}**\nこのスレッドに今週の進捗を返信してください", text: $draft.body, axis: .vertical)
@@ -478,7 +478,7 @@ struct CollectionStatusView: View {
                     let lists = RecurringRules.lists(collection)
                     let chip = RecurringRules.chip(collection, meId: store.me?.id, now: now ?? Date())
                     Section {
-                        Text(chip.label + (chip.overdue ? tr(" (締切を過ぎました)") : "")).font(.subheadline).foregroundStyle(.secondary)
+                        Text(chip.label + (chip.overdue ? tr("（締切を過ぎました）") : "")).font(.subheadline).foregroundStyle(.secondary)
                     }
                     Section("提出済み \(lists.submitted.count) 人") {
                         if lists.submitted.isEmpty { Text("まだいません").foregroundStyle(.secondary) }
@@ -509,7 +509,7 @@ struct CollectionStatusView: View {
         return HStack(spacing: 10) {
             AvatarView(id: id, name: name, size: 28)
             Text(name)
-            if id == store.me?.id { Text("(自分)").font(.caption).foregroundStyle(.secondary) }
+            if id == store.me?.id { Text("（自分）").font(.caption).foregroundStyle(.secondary) }
         }
     }
 }

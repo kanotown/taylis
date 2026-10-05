@@ -16,7 +16,7 @@ struct ReminderFormView: View {
             Form {
                 Section {
                     DatePicker("日時", selection: $at, in: Date()..., displayedComponents: [.date, .hourAndMinute])
-                    TextField("メモ (任意)", text: $note)
+                    TextField("メモ（任意）", text: $note)
                 } footer: {
                     if tooSoon { Text("1 分以上先の時刻を選んでください").foregroundStyle(.red) }
                 }

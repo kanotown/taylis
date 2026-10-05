@@ -246,7 +246,7 @@ enum SearchLogic {
     /// archived one; 「?」 without one.
     static func otherChannelName(_ channel: ChannelOut?) -> String {
         guard let channel, let name = channel.name else { return "?" }
-        return channel.archived ? tr("\(name) (アーカイブ済み)") : name
+        return channel.archived ? tr("\(name)（アーカイブ済み）") : name
     }
 
     /// 「123 件」, or 「1,000 件以上」 when the server stopped counting.
@@ -261,7 +261,7 @@ enum SearchLogic {
     static func describe(_ params: SearchParams, userName: (String) -> String?, channelTitle: (String) -> String?) -> String {
         var parts: [String] = []
         if !params.words.isEmpty { parts.append(params.words) }
-        if let id = params.fromUserId { parts.append(tr("送信者: \(userName(id) ?? "?")")) }
+        if let id = params.fromUserId { parts.append(tr("送信者：\(userName(id) ?? "?")")) }
         if let id = params.channelId { parts.append(channelTitle(id) ?? "?") }
         if let date = dateLabel(params.date) { parts.append(date) }
         parts += params.has.map(\.label)
@@ -375,8 +375,8 @@ enum SearchSuggestionGroup: String {
         case .search: return nil
         case .recent: return tr("最近の検索")
         case .filters: return tr("絞り込み")
-        case .people: return tr("人 (この人の投稿)")
-        case .conversations: return tr("チャンネル (この中を検索)")
+        case .people: return tr("人（この人の投稿）")
+        case .conversations: return tr("チャンネル（この中を検索）")
         }
     }
 }

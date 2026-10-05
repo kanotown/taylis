@@ -23,7 +23,7 @@ struct ProfileSheet: View {
                         AvatarView(id: userId, name: user?.displayName ?? "?", size: 64, presence: controller.store.presenceOf(userId))
                         VStack(alignment: .leading, spacing: 3) {
                             Text(user?.displayName ?? "?").font(.title3).bold()
-                            if user?.role == "guest" { Text("ゲスト (参加したチャンネルだけ見えます)").font(.caption).foregroundStyle(.secondary) }
+                            if user?.role == "guest" { Text("ゲスト（参加したチャンネルだけ見えます）").font(.caption).foregroundStyle(.secondary) }
                             if user?.role == "bot" { Text(controller.isAiBot(userId) ? "AI のボット" : "受信 Webhook の bot").font(.caption).foregroundStyle(.secondary) }
                             Text("@\(user?.username ?? "")").font(.footnote).foregroundStyle(.secondary)
                             // The roster label is the title too (LAB.md 「肩書と名簿」): 「M2 · 研究室長」.
@@ -44,7 +44,7 @@ struct ProfileSheet: View {
                                 Text(supervisor).font(.subheadline).fontWeight(.medium)
                             }
                             if let topic = line.researchTopic, !topic.isEmpty {
-                                Text("研究テーマ: \(topic)").font(.footnote).foregroundStyle(.secondary)
+                                Text("研究テーマ：\(topic)").font(.footnote).foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -80,7 +80,7 @@ struct ProfileSheet: View {
                             Button("ブロック", systemImage: "hand.raised", role: .destructive) { confirmingBlock = true }
                         }
                     } footer: {
-                        Text(blocked ? "ブロック中: メッセージは折りたたまれ、通知されません。" : "ブロックすると、この人のメッセージは折りたたまれ、通知も届かず、この人から 1 対 1 の DM を受け取りません。相手には知らされません。")
+                        Text(blocked ? "ブロック中：メッセージは折りたたまれ、通知されません。" : "ブロックすると、この人のメッセージは折りたたまれ、通知も届かず、この人から 1 対 1 の DM を受け取りません。相手には知らされません。")
                     }
                 }
             }

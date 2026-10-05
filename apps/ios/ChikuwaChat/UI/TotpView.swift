@@ -54,14 +54,14 @@ struct TotpSetupView: View {
     @ViewBuilder
     private func scanSection(_ setup: TotpSetupOut) -> some View {
         Section {
-            Text("認証アプリ (Google Authenticator、1Password など) で QR コードを読み取るか、キーを手で入力してください。").font(.footnote)
+            Text("認証アプリ（Google Authenticator、1Password など）で QR コードを読み取るか、キーを手で入力してください。").font(.footnote)
             if let image = Totp.qrImage(base64: setup.qrPngBase64) {
                 HStack { Spacer(); Image(uiImage: image).resizable().interpolation(.none).scaledToFit().frame(width: 200, height: 200); Spacer() }
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("手入力用のキー").font(.caption).foregroundStyle(.secondary)
                 Text(setup.secret).font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
-                Text("種類: 時間ベース (TOTP)、6 桁、30 秒").font(.caption).foregroundStyle(.secondary)
+                Text("種類：時間ベース（TOTP）、6 桁、30 秒").font(.caption).foregroundStyle(.secondary)
             }
             if let url = URL(string: setup.otpauthUri) {
                 Link("この端末の認証アプリで開く", destination: url).font(.footnote)

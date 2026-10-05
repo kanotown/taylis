@@ -31,6 +31,6 @@ enum Totp {
 
     /// The recovery codes as one text block for the clipboard.
     static func recoveryCodesText(_ codes: [String]) -> String {
-        ([tr("Taylis の回復コード (各 1 回だけ使えます)"), ""] + codes).joined(separator: "\n")
+        ([tr("Taylis の回復コード（各 1 回だけ使えます）"), ""] + codes).joined(separator: "\n")
     }
 }

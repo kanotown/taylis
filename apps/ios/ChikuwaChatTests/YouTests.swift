@@ -75,10 +75,10 @@ final class YouTests: XCTestCase {
         XCTAssertEqual(SessionList.name(session("x", used: "2026-09-30T00:00:00Z", platform: "desktop")), "デスクトップ")
 
         let now = at("2026-09-30T05:10:00Z") // 14:10 in Tokyo
-        XCTAssertEqual(SessionList.lastUsed("2026-09-30T04:05:00Z", now: now, calendar: tokyo), "最後に使用: 今日 13:05")
-        XCTAssertEqual(SessionList.lastUsed("2026-09-29T00:30:00Z", now: now, calendar: tokyo), "最後に使用: 昨日 9:30")
-        XCTAssertEqual(SessionList.lastUsed("2026-09-28T05:05:00Z", now: now, calendar: tokyo), "最後に使用: 9月28日 14:05")
-        XCTAssertEqual(SessionList.lastUsed("2025-12-01T00:00:00Z", now: now, calendar: tokyo), "最後に使用: 2025年12月1日 9:00")
+        XCTAssertEqual(SessionList.lastUsed("2026-09-30T04:05:00Z", now: now, calendar: tokyo), "最後に使用：今日 13:05")
+        XCTAssertEqual(SessionList.lastUsed("2026-09-29T00:30:00Z", now: now, calendar: tokyo), "最後に使用：昨日 9:30")
+        XCTAssertEqual(SessionList.lastUsed("2026-09-28T05:05:00Z", now: now, calendar: tokyo), "最後に使用：9月28日 14:05")
+        XCTAssertEqual(SessionList.lastUsed("2025-12-01T00:00:00Z", now: now, calendar: tokyo), "最後に使用：2025年12月1日 9:00")
         XCTAssertEqual(SessionList.lastUsed("", now: now, calendar: tokyo), "")
     }
 

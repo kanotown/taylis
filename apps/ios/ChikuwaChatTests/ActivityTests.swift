@@ -187,7 +187,7 @@ final class ActivityTests: XCTestCase {
         let photo = AttachmentOut(id: "a", filename: "IMG_0001.jpg", contentType: "image/jpeg", sizeBytes: 1, width: 1, height: 1, hasThumbnail: true,
                                   status: "ready", createdAt: "")
         XCTAssertEqual(ActivityRules.excerpt(message("", attachments: [photo, photo]), users: users), "画像を 2 枚送信しました")
-        XCTAssertEqual(ActivityRules.excerpt(message("", deleted: true), users: users), "(削除されたメッセージ)")
+        XCTAssertEqual(ActivityRules.excerpt(message("", deleted: true), users: users), "（削除されたメッセージ）")
         XCTAssertFalse(ActivityRules.excerpt(message(String(repeating: "あ", count: 200)), users: users).contains("\n"))
     }
 

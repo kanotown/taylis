@@ -328,7 +328,7 @@ enum AiRules {
             return target.reason.flatMap { ErrorMessages.byCode[$0] } ?? tr("今は要約できません")
         }
         guard let provider = target.provider, !provider.isEmpty else { return nil }
-        if let name = target.agentName, !name.isEmpty { return tr("要約は \(name) (\(providerLabel(provider))) に送られます") }
+        if let name = target.agentName, !name.isEmpty { return tr("要約は \(name)（\(providerLabel(provider))）に送られます") }
         return tr("要約は \(providerLabel(provider)) に送られます")
     }
 
@@ -343,7 +343,7 @@ enum AiRules {
     /// A run that failed on the server: its reason when it gave one.
     static func runFailureText(_ reason: String?) -> String {
         guard let reason = reason?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty else { return tr("要約できませんでした") }
-        return tr("要約できませんでした: \(reason)")
+        return tr("要約できませんでした：\(reason)")
     }
 
     static func title(_ scope: AiSummaryScope) -> String {
@@ -362,7 +362,7 @@ enum AiRules {
     static func notice(_ agents: [AiAgentPublic]) -> String? {
         guard !agents.isEmpty else { return nil }
         let names = agents.map(\.name).joined(separator: tr("・"))
-        return tr("AI (\(names)) が参加しています。メンションしたときと要約のときに、会話の一部が \(providers(agents)) の API に送られます")
+        return tr("AI（\(names)）が参加しています。メンションしたときと要約のときに、会話の一部が \(providers(agents)) の API に送られます")
     }
 
     /// §12: each bot's model decides where its part goes (Anthropic, OpenAI or both), as on the web.

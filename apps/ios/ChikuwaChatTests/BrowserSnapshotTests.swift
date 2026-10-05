@@ -60,7 +60,7 @@ final class BrowserSnapshotTests: XCTestCase {
 
     func testDocumentPreviewAndFailureRetry() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("実験手順.txt")
-        try "実験手順\n\n1. 試料を準備する\n2. 条件を記録する\n3. 結果を研究室で共有する\n\n担当: 山田 太郎".write(to: url, atomically: true, encoding: .utf8)
+        try "実験手順\n\n1. 試料を準備する\n2. 条件を記録する\n3. 結果を研究室で共有する\n\n担当：山田 太郎".write(to: url, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: url) }
         let loader = AttachmentFileLoader()
         await loader.load { nil }

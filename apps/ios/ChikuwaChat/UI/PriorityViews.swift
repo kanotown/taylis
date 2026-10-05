@@ -45,7 +45,7 @@ struct AckBarView: View {
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(names.isEmpty ? "確認の状況: まだ誰も確認していません" : "確認の状況: \(names.count) 人が確認")
+                .accessibilityLabel(names.isEmpty ? "確認の状況：まだ誰も確認していません" : "確認の状況：\(names.count) 人が確認")
             } else if names.isEmpty {
                 Text("まだ誰も確認していません").font(.caption).foregroundStyle(.secondary)
             } else {
@@ -55,7 +55,7 @@ struct AckBarView: View {
                 } label: {
                     Text(PeopleList.compact(names) + tr(" が確認")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
-                .accessibilityLabel(tr("\(names.count) 人が確認: ") + names.joined(separator: tr("、")))
+                .accessibilityLabel(tr("\(names.count) 人が確認：") + names.joined(separator: tr("、")))
             }
         }
         .padding(.top, 2)

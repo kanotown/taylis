@@ -47,7 +47,7 @@ final class RosterTests: XCTestCase {
         XCTAssertEqual(Roster.section(roster["m1a"]), "M1")
         XCTAssertEqual(Roster.section(roster["old"]), "卒業生")
         XCTAssertNil(Roster.section(nil))
-        XCTAssertEqual(Roster.summary(roster["doc"]!, users: [prof.id: prof]), "D1 · 指導教員: Prof")
+        XCTAssertEqual(Roster.summary(roster["doc"]!, users: [prof.id: prof]), "D1 · 指導教員：Prof")
         XCTAssertEqual(Roster.summary(roster["doc"]!, users: [:]), "D1") // the supervisor is not someone this user can see
 
         // The directory's headings, then everyone else under その他のメンバー.

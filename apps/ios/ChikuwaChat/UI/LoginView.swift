@@ -83,7 +83,7 @@ struct LoginView: View {
                 }
                 if needsCode {
                     Section("2 要素認証") {
-                        TextField("認証アプリの 6 桁のコード (または回復コード)", text: $totpCode)
+                        TextField("認証アプリの 6 桁のコード（または回復コード）", text: $totpCode)
                             .keyboardType(.asciiCapable).textContentType(.oneTimeCode).textInputAutocapitalization(.never).autocorrectionDisabled()
                     }
                 }

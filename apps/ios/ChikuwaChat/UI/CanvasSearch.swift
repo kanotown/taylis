@@ -109,7 +109,7 @@ final class CanvasSearchResults {
         for match in imageRef.matches(in: snippet, range: NSRange(location: 0, length: ns.length)) {
             out += ns.substring(with: NSRange(location: last, length: match.range.location - last))
             let alt = ns.substring(with: match.range(at: 1))
-            out += alt.isEmpty ? tr("[画像]") : tr("[画像: \(alt)]")
+            out += alt.isEmpty ? tr("[画像]") : tr("[画像：\(alt)]")
             last = match.range.location + match.range.length
         }
         return out + ns.substring(from: last)
@@ -136,7 +136,7 @@ struct CanvasSearchList: View {
                     .listRowSeparator(.hidden)
             }
             if !results.unresolved.isEmpty {
-                Label("キャンバスには使えない条件があります: \(results.unresolved.joined(separator: " "))", systemImage: "exclamationmark.triangle")
+                Label("キャンバスには使えない条件があります：\(results.unresolved.joined(separator: " "))", systemImage: "exclamationmark.triangle")
                     .font(.footnote).foregroundStyle(.red)
                     .listRowSeparator(.hidden)
             }

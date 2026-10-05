@@ -168,21 +168,21 @@ final class AiRulesTests: XCTestCase {
         XCTAssertNil(AiRules.omittedNote(0))
         XCTAssertEqual(AiRules.omittedNote(3), "古い 3 件は省きました")
         XCTAssertEqual(AiRules.runFailureText(nil), "要約できませんでした")
-        XCTAssertEqual(AiRules.runFailureText(" 断られました "), "要約できませんでした: 断られました")
+        XCTAssertEqual(AiRules.runFailureText(" 断られました "), "要約できませんでした：断られました")
         XCTAssertNil(AiRules.notice([]))
         XCTAssertEqual(AiRules.notice([AiAgentPublic(id: "a", botUserId: "b", name: "ちくわ"), AiAgentPublic(id: "c", botUserId: "d", name: "はんぺん")]),
-                       "AI (ちくわ・はんぺん) が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます")
+                       "AI（ちくわ・はんぺん）が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます")
         XCTAssertEqual(AiRules.notice([AiAgentPublic(id: "a", botUserId: "b", name: "そる", model: "gpt-6.1-sol")]),
-                       "AI (そる) が参加しています。メンションしたときと要約のときに、会話の一部が OpenAI の API に送られます")
+                       "AI（そる）が参加しています。メンションしたときと要約のときに、会話の一部が OpenAI の API に送られます")
         XCTAssertTrue(AiRules.notice([AiAgentPublic(id: "a", botUserId: "b", name: "ちくわ", model: "claude-opus-5-5"),
                                       AiAgentPublic(id: "c", botUserId: "d", name: "そる", model: "gpt-6.1-sol")])!.contains("Anthropic と OpenAI の API"))
     }
 
     func testSummaryTargetLine() {
         XCTAssertEqual(AiRules.targetLine(AiSummaryTargetOut(available: true, provider: "anthropic", model: "claude-opus-5-5", agentName: "ちくわ")),
-                       "要約は ちくわ (Anthropic) に送られます")
+                       "要約は ちくわ（Anthropic）に送られます")
         XCTAssertEqual(AiRules.targetLine(AiSummaryTargetOut(available: true, provider: "openai", model: "gpt-6.1-sol", agentName: "そる")),
-                       "要約は そる (OpenAI) に送られます")
+                       "要約は そる（OpenAI）に送られます")
         XCTAssertEqual(AiRules.targetLine(AiSummaryTargetOut(available: true, provider: "openai")), "要約は OpenAI に送られます")
         XCTAssertNil(AiRules.targetLine(AiSummaryTargetOut(available: true)))
         XCTAssertFalse(AiRules.choicesDisabled(AiSummaryTargetOut(available: true, provider: "openai")))
@@ -278,7 +278,7 @@ final class AiHubTests: XCTestCase {
         let hub = AiHub(api: api)
         await hub.startSummary(AiSummaryRequest(channelId: "c1", scope: .unread))
         hub.applyEvent(runEvent(AiRunOut(id: "r1", status: "failed", channelId: "c1", error: "API のエラーが続きました")))
-        XCTAssertEqual(hub.summary?.phase, .failed("要約できませんでした: API のエラーが続きました"))
+        XCTAssertEqual(hub.summary?.phase, .failed("要約できませんでした：API のエラーが続きました"))
     }
 
     func testRefusalsAreWordedAndRefreshTheStatus() async {

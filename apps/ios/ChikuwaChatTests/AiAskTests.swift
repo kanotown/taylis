@@ -133,7 +133,7 @@ final class AskRulesTests: XCTestCase {
         XCTAssertEqual(AskRules.errorText(ApiError.api(status: 503, code: "search_busy", message: "busy")), ErrorMessages.byCode["search_busy"])
         XCTAssertEqual(AskRules.errorText(ApiError.network(URLError(.notConnectedToInternet))), ErrorMessages.network)
         XCTAssertEqual(AskRules.runFailureText(nil), "答えられませんでした")
-        XCTAssertEqual(AskRules.runFailureText(" ボットが無効になりました "), "答えられませんでした: ボットが無効になりました")
+        XCTAssertEqual(AskRules.runFailureText(" ボットが無効になりました "), "答えられませんでした：ボットが無効になりました")
         XCTAssertNil(AskRules.omittedNote(0))
         XCTAssertEqual(AskRules.omittedNote(3), "非公開の会話の 3 件は、このボットに送れないため除きました")
         XCTAssertEqual(AskRules.progressText(running: false), "メッセージを探しています…")
@@ -190,7 +190,7 @@ final class AiAskHubTests: XCTestCase {
         let hub = AiHub(api: api)
         await hub.startAsk(AiAskRequest(question: "日程"))
         hub.applyEvent(askEvent("q1", status: "failed", error: "質問に使うボットが無効になりました"))
-        XCTAssertEqual(hub.ask?.phase, .failed("答えられませんでした: 質問に使うボットが無効になりました"))
+        XCTAssertEqual(hub.ask?.phase, .failed("答えられませんでした：質問に使うボットが無効になりました"))
     }
 
     func testRefusalsAreWordedRefreshTheStatusAndTheTarget() async {

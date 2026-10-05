@@ -110,7 +110,7 @@ struct ScheduleCardView: View {
             Button("予定を作らずに決定") { decide(index, createEvent: false) }
             Button("キャンセル", role: .cancel) {}
         } message: { _ in
-            Text("このチャンネルのカレンダーに予定を追加できるのはオーナーと管理者だけです。予定を作らずに決めますか？ (スレッドでは知らせます)")
+            Text("このチャンネルのカレンダーに予定を追加できるのはオーナーと管理者だけです。予定を作らずに決めますか？（スレッドでは知らせます）")
         }
         .fullScreenCover(item: $eventForm) { target in
             CalendarEventForm(controller: controller, hub: controller.calendarHub, target: target)
@@ -127,7 +127,7 @@ struct ScheduleCardView: View {
     private func confirmText(_ index: Int) -> String {
         let label = index < poll.options.count ? poll.options[index] : ""
         let what = isDm ? tr("スレッドで回答した人に知らせます。") : tr("チャンネルのカレンダーに予定を作り、スレッドで回答した人に知らせます。")
-        return tr("\(label)\n\(what)回答は締め切られます (取り消すと再開します)。")
+        return tr("\(label)\n\(what)回答は締め切られます（取り消すと再開します）。")
     }
 
     private func decide(_ index: Int, createEvent: Bool) {
@@ -225,7 +225,7 @@ struct ScheduleCardView: View {
 
     private var commentField: some View {
         HStack(spacing: 6) {
-            TextField("ひとこと (例: 午後なら参加できます)", text: $comment)
+            TextField("ひとこと（例：午後なら参加できます）", text: $comment)
                 .font(.subheadline)
                 .textFieldStyle(.roundedBorder)
                 .disabled(disabled)
@@ -282,7 +282,7 @@ struct ScheduleTableView: View {
                     table
                     if poll.isAnonymous, let comments = poll.comments, !comments.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("コメント (匿名)").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                            Text("コメント（匿名）").font(.caption.weight(.medium)).foregroundStyle(.secondary)
                             ForEach(Array(comments.enumerated()), id: \.offset) { _, comment in
                                 Text(tr("・") + comment.text).font(.subheadline)
                             }
@@ -311,7 +311,7 @@ struct ScheduleTableView: View {
                 nameCell(Text("名前").font(.caption.weight(.medium)).foregroundStyle(.secondary), height: Self.headerHeight)
                 nameCell(Text("集計").font(.caption.weight(.medium)).foregroundStyle(.secondary), height: Self.rowHeight)
                 if let me {
-                    nameCell(Text("\(name(me)) (自分)").font(.subheadline.weight(.medium)), height: Self.rowHeight, mine: true)
+                    nameCell(Text("\(name(me))（自分）").font(.subheadline.weight(.medium)), height: Self.rowHeight, mine: true)
                 }
                 ForEach(people, id: \.self) { userId in
                     nameCell(Text(name(userId)).font(.subheadline), height: Self.rowHeight)
@@ -407,7 +407,7 @@ struct ScheduleTableView: View {
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.35)))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("自分の \(label): \(current?.name ?? tr("未回答")) (押すと変わります)")
+            .accessibilityLabel("自分の \(label)：\(current?.name ?? tr("未回答"))（押すと変わります）")
         } else {
             mark(current)
         }

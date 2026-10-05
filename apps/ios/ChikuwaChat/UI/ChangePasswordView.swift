@@ -17,8 +17,8 @@ struct ChangePasswordView: View {
                 }
                 Section {
                     SecureField("現在のパスワード", text: $current).textContentType(.password)
-                    SecureField("新しいパスワード (8 文字以上)", text: $next).textContentType(.newPassword)
-                    SecureField("新しいパスワード (確認)", text: $repeatNext).textContentType(.newPassword)
+                    SecureField("新しいパスワード（8 文字以上）", text: $next).textContentType(.newPassword)
+                    SecureField("新しいパスワード（確認）", text: $repeatNext).textContentType(.newPassword)
                 }
                 if mismatch { Section { Text("パスワードが一致しません").foregroundStyle(.red) } }
                 if let error = controller.error { Section { Text(error).foregroundStyle(.red) } }

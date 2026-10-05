@@ -64,7 +64,7 @@ struct DeadlineChip: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(tr("締切: ") + DeadlineRules.chipText(task, today: today))
+        .accessibilityLabel(tr("締切：") + DeadlineRules.chipText(task, today: today))
         .accessibilityHint("締切を開く")
     }
 }

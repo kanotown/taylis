@@ -27,7 +27,7 @@ struct DraftsView: View {
                                 }
                                 if !row.attachments.isEmpty { Text("· 添付 \(row.attachments.count)").font(.footnote).foregroundStyle(.secondary) }
                             }
-                            Text(row.body.isEmpty ? tr("(本文なし)") : Mentions.decode(row.body, users: store.users, groups: store.groups)).font(.subheadline).lineLimit(2)
+                            Text(row.body.isEmpty ? tr("（本文なし）") : Mentions.decode(row.body, users: store.users, groups: store.groups)).font(.subheadline).lineLimit(2)
                             if row.status == "failed" {
                                 Text(row.error.flatMap { ErrorMessages.byCode[$0] } ?? tr("送信できませんでした")).font(.caption).foregroundStyle(.red)
                             }
@@ -57,7 +57,7 @@ struct DraftsView: View {
                                     Text("· 添付 \(entry.draft.attachments.count)").font(.footnote).foregroundStyle(.secondary)
                                 }
                             }
-                            Text(entry.draft.text.isEmpty ? tr("(本文なし)") : entry.draft.text).font(.subheadline).lineLimit(2)
+                            Text(entry.draft.text.isEmpty ? tr("（本文なし）") : entry.draft.text).font(.subheadline).lineLimit(2)
                         }
                         .padding(.vertical, 2)
                         // The whole row is the target, not only the text (a plain button hit-tests its drawn parts).

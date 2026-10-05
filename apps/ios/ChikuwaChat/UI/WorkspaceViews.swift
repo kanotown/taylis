@@ -247,7 +247,7 @@ struct WorkspaceTitle: View {
                 }
                 .foregroundStyle(.primary)
             }
-            .accessibilityLabel("ワークスペース: \(workspace.name)")
+            .accessibilityLabel("ワークスペース：\(workspace.name)")
             .accessibilityHint(controller.otherWorkspacesUnread ? "ほかのワークスペースに未読があります" : "ワークスペースを切り替えます")
         } else {
             Text(controller.workspaceName).font(.headline).lineLimit(1)

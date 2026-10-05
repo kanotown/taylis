@@ -96,7 +96,7 @@ struct AiSummarySheet: View {
                         .font(.caption).foregroundStyle(.secondary)
                     if let caption = session.run.flatMap(AiRules.runCaption) {
                         Text(caption).font(.caption2).foregroundStyle(.secondary)
-                            .accessibilityLabel("送り先: \(caption)")
+                            .accessibilityLabel("送り先：\(caption)")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

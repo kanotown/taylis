@@ -26,13 +26,13 @@ final class TestNotificationTests: XCTestCase {
         let decoded = try JSON.snakeDecoder.decode(TestNotificationOut.self, from: Data(json.utf8))
         XCTAssertFalse(decoded.fcmConfigured)
         XCTAssertEqual(decoded.devices.map(\.status), ["sent", "not_configured"])
-        XCTAssertEqual(decoded.devices.map(TestNotificationText.deviceName), ["iPhone (この端末)", "Android"])
+        XCTAssertEqual(decoded.devices.map(TestNotificationText.deviceName), ["iPhone（この端末）", "Android"])
         XCTAssertEqual(TestNotificationText.status(decoded.devices[1]).text, "このサーバでは Android のプッシュが無効です")
     }
 
     func testEachStatusInWords() {
         XCTAssertEqual(TestNotificationText.status(device("sent")).tone, .ok)
-        XCTAssertEqual(TestNotificationText.status(device("failed", detail: "BadDeviceToken")).text, "送れませんでした (BadDeviceToken)")
+        XCTAssertEqual(TestNotificationText.status(device("failed", detail: "BadDeviceToken")).text, "送れませんでした（BadDeviceToken）")
         XCTAssertEqual(TestNotificationText.status(device("no_token")).tone, .problem)
         XCTAssertEqual(TestNotificationText.status(device("not_configured")).text, "このサーバでは iOS のプッシュが無効です")
         XCTAssertEqual(TestNotificationText.status(device("in_app", platform: "desktop", provider: "none")).tone, .none)
@@ -42,12 +42,12 @@ final class TestNotificationTests: XCTestCase {
 
     func testNotes() {
         XCTAssertEqual(TestNotificationText.notes(out([device("in_app", platform: "desktop")], apns: false, fcm: false)), [
-            "このサーバはプッシュ通知が設定されていません (iPhone・Android のアプリには、開いている間だけ通知が出ます)",
-            "プッシュ通知を受け取れる端末 (iPhone・Android のアプリ) はありません",
+            "このサーバはプッシュ通知が設定されていません（iPhone・Android のアプリには、開いている間だけ通知が出ます）",
+            "プッシュ通知を受け取れる端末（iPhone・Android のアプリ）はありません",
         ])
-        XCTAssertEqual(TestNotificationText.notes(out([device("sent")], fcm: false)), ["Android のプッシュ (FCM) はこのサーバでは無効です"])
+        XCTAssertEqual(TestNotificationText.notes(out([device("sent")], fcm: false)), ["Android のプッシュ（FCM）はこのサーバでは無効です"])
         XCTAssertEqual(TestNotificationText.notes(out([device("sent")], apns: false, dnd: true)), [
-            "iOS のプッシュ (APNs) はこのサーバでは無効です",
+            "iOS のプッシュ（APNs）はこのサーバでは無効です",
             "通知を一時停止中ですが、テスト通知は送りました",
         ])
     }

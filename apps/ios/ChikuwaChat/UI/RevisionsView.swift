@@ -17,7 +17,7 @@ struct RevisionsView: View {
             List {
                 Section { Text("以前の版は自分にだけ表示されます。メッセージを削除すると履歴も消えます。").font(.footnote).foregroundStyle(.secondary) }
                 if let rows {
-                    if rows.isEmpty { Section { Text("以前の版は記録されていません (履歴の記録を始める前の編集です)。").foregroundStyle(.secondary) } }
+                    if rows.isEmpty { Section { Text("以前の版は記録されていません（履歴の記録を始める前の編集です）。").foregroundStyle(.secondary) } }
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                         Section(tr("\(Timeline.fullLabel(row.writtenAt)) の版")) {
                             Text(text(row.body)).textSelection(.enabled)

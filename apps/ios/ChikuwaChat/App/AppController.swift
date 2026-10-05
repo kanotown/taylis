@@ -427,7 +427,7 @@ final class AppController {
         let answer = try? await ApiClient(baseUrl: URL(string: serverUrl) ?? server).serverInfo()
         let info = answer?.product == "chikuwachat" ? answer : nil
         if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info?.workspaceId, in: workspaces), known.isSignedIn {
-            return tr("\(known.name) にはすでにログインしています (1 つのサーバーに 1 アカウント)")
+            return tr("\(known.name) にはすでにログインしています（1 つのサーバーに 1 アカウント）")
         }
         let api = makeClient(serverUrl: serverUrl, username: username)
         do {
@@ -769,7 +769,7 @@ final class AppController {
     /// The refusal text when `bytes` exceed the server's attachment limit (from bootstrap); nil while it fits or is not known yet.
     func attachmentTooLarge(_ bytes: Int) -> String? {
         guard let limit = store.limits?.maxAttachmentBytes, bytes > limit else { return nil }
-        return tr("\(ErrorMessages.byCode["attachment_too_large"] ?? ErrorMessages.unknown) (上限 \(formatSize(Int64(limit))))")
+        return tr("\(ErrorMessages.byCode["attachment_too_large"] ?? ErrorMessages.unknown)（上限 \(formatSize(Int64(limit)))）")
     }
 
     /// Fetch with authentication into a per-attachment temporary file for preview / sharing.
@@ -1741,7 +1741,7 @@ final class AppController {
         guard let api, let state = store.channels[channelId] else { return false }
         let isDm = state.channel.type == "dm" || state.channel.type == "group_dm"
         guard let spec = SlashCommands.all.first(where: { $0.name == command.name }) else {
-            error = tr("/\(command.name) というコマンドはありません (/help で一覧)")
+            error = tr("/\(command.name) というコマンドはありません（/help で一覧）")
             return false
         }
         if spec.channelOnly && isDm { error = tr("/\(command.name) はチャンネルでだけ使えます"); return false }

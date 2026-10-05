@@ -92,9 +92,9 @@ final class TaskSnapshotTests: XCTestCase {
                    F.task("報告書の提出", id: "d1", channelId: m2Id, channelName: "m2-進捗", status: .done, position: 1, dueOn: today)]
         let api = FakeTaskApi(board: board, mine: mine, due: due)
         api.requested = [  // L9 「自分が依頼した」
-            F.task("レビュー: 修論 3 章 (Overleaf)", id: "r1", channelId: dmId, channelName: nil, position: 1, dueOn: "2026-10-09",
+            F.task("レビュー：修論 3 章 (Overleaf)", id: "r1", channelId: dmId, channelName: nil, position: 1, dueOn: "2026-10-09",
                    assigneeIds: ["u-sato"], kind: .review),
-            F.task("レビュー: 学会原稿のアブストラクト", id: "r2", channelId: labId, status: .doing, position: 2, dueOn: "2026-09-30",
+            F.task("レビュー：学会原稿のアブストラクト", id: "r2", channelId: labId, status: .doing, position: 2, dueOn: "2026-09-30",
                    assigneeIds: ["u-ebi", "u-tanaka"], kind: .review),
             F.task("ポスターの印刷", id: "r3", channelId: labId, status: .done, position: 3, assigneeIds: ["u-kim"], completedAt: "2026-09-30T00:00:00Z"),
         ]
@@ -177,7 +177,7 @@ final class TaskSnapshotTests: XCTestCase {
             draft.dueOn = "2026-10-09"
             _ = try render(TaskForm(controller: controller, hub: hub, target: .new(draft), memberIds: ["me", "u-sato"], today: today), style: style,
                            name: "reviews-form-new-\(suffix).png")
-            let asked = F.task("レビュー: 学会原稿のアブストラクト", id: "q1", channelId: labId, ownerId: "u-ebi", dueOn: "2026-10-09", assigneeIds: ["me"],
+            let asked = F.task("レビュー：学会原稿のアブストラクト", id: "q1", channelId: labId, ownerId: "u-ebi", dueOn: "2026-10-09", assigneeIds: ["me"],
                                source: TaskSourceOut(messageId: "m2", channelId: labId, excerpt: "学会原稿のアブストラクト"), kind: .review)
             _ = try render(TaskForm(controller: controller, hub: hub, target: .task(asked), memberIds: people.map(\.0), today: today), style: style,
                            name: "reviews-form-assignee-\(suffix).png")

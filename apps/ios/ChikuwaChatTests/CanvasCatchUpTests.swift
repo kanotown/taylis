@@ -142,7 +142,7 @@ final class CanvasImageAndShareTests: XCTestCase {
 
     func testAnImageInASnippetReadsAsWords() {
         XCTAssertEqual(CanvasSearchResults.readableSnippet("前 ![](attachment:\(id)) 後"), "前 [画像] 後")
-        XCTAssertEqual(CanvasSearchResults.readableSnippet("![図1](attachment:01a0f790-c7ef"), "[画像: 図1]") // cut by the excerpt
+        XCTAssertEqual(CanvasSearchResults.readableSnippet("![図1](attachment:01a0f790-c7ef"), "[画像：図1]") // cut by the excerpt
         XCTAssertEqual(CanvasSearchResults.readableSnippet("画像なし"), "画像なし")
     }
 
