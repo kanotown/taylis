@@ -186,7 +186,7 @@ private fun FeedRow(controller: AppController, message: MessageOut, version: Int
         canDelete = mine || controller.isAdmin,
         onRetry = {}, onDiscard = {},
         onReact = { emoji -> controller.scope.launch { controller.toggleReaction(state, emoji) } },
-        onEdit = { body -> controller.editMessage(message.id, Mentions.encode(body, store.users.values, store.groups.values)).isSuccess },
+        onEdit = { body -> controller.editMessage(message.id, Mentions.encode(straightenCode(body), store.users.values, store.groups.values)).isSuccess },
         onDelete = { controller.scope.launch { controller.deleteMessage(message.id) } },
         onOpenThread = onOpenThread,
         // An archived times takes no reactions or edits (its rows can still be read and opened).

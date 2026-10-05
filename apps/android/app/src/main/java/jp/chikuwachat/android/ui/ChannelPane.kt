@@ -334,7 +334,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
                                 onRetry = { message.clientMsgId?.let { key -> scope.launch { controller.engine?.retryFailed(key) } } },
                                 onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
                                 onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
-                                onEdit = { body -> controller.editMessage(message.id, Mentions.encode(body, store.users.values, store.groups.values)).isSuccess },
+                                onEdit = { body -> controller.editMessage(message.id, Mentions.encode(straightenCode(body), store.users.values, store.groups.values)).isSuccess },
                                 onDelete = { scope.launch { controller.deleteMessage(message.id) } },
                                 onOpenThread = { onOpenThread(message.parentId ?: message.id) },
                                 // Not offered where it would read unread rows this device never loaded (§10.1).

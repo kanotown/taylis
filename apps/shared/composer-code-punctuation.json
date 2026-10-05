@@ -1,0 +1,60 @@
+{
+  "_comment": "Smart punctuation out of code before a message is sent or saved (2026-10-06): iOS's TextField always curls ' and \" into ‘ ’ “ ” and turns -- into — (and - into –), and Japanese keyboards on Android type ’ ” for ' \". Inside inline code spans (`…`, ``…``) and closed fenced blocks — found as the renderer finds them — ‘ ’ → ', “ ” → \", — → --, – → -; text outside code, an unclosed backtick and an unclosed fence stay as typed. Read by MessageBodyView.swift BodyTokenizer.straightenCode and BodyTokenizer.kt straightenCode (desktop: browsers do not substitute).",
+  "cases": [
+    {
+      "name": "apostrophe in inline code",
+      "input": "say `it’s` now",
+      "output": "say `it's` now"
+    },
+    {
+      "name": "double quotes in inline code",
+      "input": "`print(“x”)`",
+      "output": "`print(\"x\")`"
+    },
+    {
+      "name": "dashes in inline code",
+      "input": "`ls –la --all` and `git log —oneline`",
+      "output": "`ls -la --all` and `git log --oneline`"
+    },
+    {
+      "name": "double-backtick span",
+      "input": "``a ‘b’ ` c``",
+      "output": "``a 'b' ` c``"
+    },
+    {
+      "name": "text outside code untouched",
+      "input": "it’s “fine” — yes `it’s`",
+      "output": "it’s “fine” — yes `it's`"
+    },
+    {
+      "name": "Japanese text outside code untouched",
+      "input": "「これ」は“引用”です — `say “こんにちは”`",
+      "output": "「これ」は“引用”です — `say \"こんにちは\"`"
+    },
+    {
+      "name": "unclosed backtick not touched",
+      "input": "it’s `not “code”",
+      "output": "it’s `not “code”"
+    },
+    {
+      "name": "fenced block",
+      "input": "before ’\n```python\nprint(“hi”)  # it’s — ok\n```\nafter ’",
+      "output": "before ’\n```python\nprint(\"hi\")  # it's -- ok\n```\nafter ’"
+    },
+    {
+      "name": "unclosed fence is not code",
+      "input": "```\nit’s “x”",
+      "output": "```\nit’s “x”"
+    },
+    {
+      "name": "code inside a quote and a list",
+      "input": "> `a ‘b’`\n- `c “d”`",
+      "output": "> `a 'b'`\n- `c \"d\"`"
+    },
+    {
+      "name": "nothing to change",
+      "input": "plain `code` text",
+      "output": "plain `code` text"
+    }
+  ]
+}

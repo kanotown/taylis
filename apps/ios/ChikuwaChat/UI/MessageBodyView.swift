@@ -201,6 +201,51 @@ enum BodyTokenizer {
         return String(text.map { $0 == "‘" || $0 == "’" ? "'" : $0 == "“" || $0 == "”" ? "\"" : $0 })
     }
 
+    /// The composer's text before it is sent or saved (2026-10-06): the TextField's smart punctuation (which cannot be
+    /// turned off) curls ' and " into ‘ ’ “ ” and turns -- into — (and - into –). Inside code — inline spans and fenced
+    /// blocks, found as parseBlocks and the inline pattern find them — those go back to what was typed; the rest of the
+    /// text stays as it is. An unclosed backtick or fence is not code, so nothing changes there.
+    static func straightenCode(_ body: String) -> String {
+        guard body.contains(where: { "‘’“”—–".contains($0) }) else { return body }
+        let lines = body.components(separatedBy: "\n")
+        var out: [String] = []
+        var i = 0
+        while i < lines.count {
+            if firstMatch(fenceOpen, lines[i]) != nil,
+               let close = ((i + 1)..<lines.count).first(where: { firstMatch(fenceClose, lines[$0]) != nil }) {
+                out.append(lines[i])
+                out += lines[(i + 1)..<close].map(straightPunctuation)
+                out.append(lines[close])
+                i = close + 1
+                continue
+            }
+            let line = NSMutableString(string: lines[i])
+            for match in inlinePattern.matches(in: lines[i], range: NSRange(location: 0, length: line.length)).reversed() {
+                let code = match.range(at: 3)
+                guard code.location != NSNotFound else { continue }
+                line.replaceCharacters(in: code, with: straightPunctuation(line.substring(with: code)))
+            }
+            out.append(line as String)
+            i += 1
+        }
+        return out.joined(separator: "\n")
+    }
+
+    /// ‘ ’ “ ” — – as the keyboard had them before smart punctuation: ' " -- -.
+    static func straightPunctuation(_ text: String) -> String {
+        var out = ""
+        for ch in text {
+            switch ch {
+            case "‘", "’": out.append("'")
+            case "“", "”": out.append("\"")
+            case "—": out.append("--")
+            case "–": out.append("-")
+            default: out.append(ch)
+            }
+        }
+        return out
+    }
+
     /// A list line: its indent (a tab is 4 columns), its kind, the number written ("3." → 3) and its text.
     struct ListLine {
         let indent: Int

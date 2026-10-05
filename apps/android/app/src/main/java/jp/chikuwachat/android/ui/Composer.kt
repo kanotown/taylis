@@ -353,7 +353,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         val canSend = uploading == 0 && (draft.isNotBlank() || pendingUploads.isNotEmpty())
         val canSchedule = !scheduling && canSend
         fun schedule(at: ZonedDateTime) {
-            val body = Mentions.encode(draft.trim(), store.users.values, store.groups.values)
+            val body = Mentions.encode(straightenCode(draft.trim()), store.users.values, store.groups.values)
             val ids = pendingUploads.map { it.id }
             if (!canSchedule) return
             if (at.isBefore(ZonedDateTime.now().plusMinutes(1))) { controller.error = L10n.str(R.string.common_choose_a_time_at_least_1); return }
@@ -422,7 +422,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 controller.scope.launch { controller.runCommand(command, channelId, parentId) }
                 return
             }
-            val body = Mentions.encode(draft.trim(), store.users.values, store.groups.values)
+            val body = Mentions.encode(straightenCode(draft.trim()), store.users.values, store.groups.values)
             val ids = pendingUploads.map { it.id }
             if (uploading > 0 || (body.isEmpty() && ids.isEmpty())) return
             val maxLength = store.limits?.maxMessageLength ?: 20_000

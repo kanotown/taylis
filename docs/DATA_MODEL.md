@@ -1593,7 +1593,10 @@ CREATE INDEX messages_mention_all_idx     ON messages (created_at) WHERE mention
   中身の両端がどちらも空白なら 1 つずつ落とす。`` `` ` `` `` はバッククォート 1 文字。CommonMark と同じ）。コードの中の
   `\` はそのまま。キーボードが曲げた引用符（iOS のスマート句読点や日本語キーボードの ‘ ’ “ ”）は、インラインコードと
   コードブロックの中では表示のときにまっすぐな ' " に戻す（本文は変えない。通知の 1 行も同じ）。ケースは
-  `apps/shared/inline-format.json`（`code_blocks` も）。表示の書体：Desktop / Web は同梱の JetBrains Mono
+  `apps/shared/inline-format.json`（`code_blocks` も）。iOS と Android の入力欄は送信・編集の保存・予約送信の前に、
+  閉じたインラインコードと閉じたコードブロックの中の ‘ ’ → '、“ ” → "、— → --、– → - を戻す（iOS の TextField の
+  スマート句読点は切れない。コードの外と閉じていないバッククォートはそのまま。ケースは
+  `apps/shared/composer-code-punctuation.json`。ブラウザは置き換えないので Desktop / Web はしない）。表示の書体：Desktop / Web は同梱の JetBrains Mono
   （可変、合字なし。日本語は UI の Noto Sans JP に落ちる。「フォント」をシステムにすると OS の等幅）、iOS は
   システムの等幅（SF Mono）、Android は同梱の JetBrains Mono（Latin のみ、Regular / Bold）。
 - ブロック (行頭で判定): `# ` 〜 `### ` の見出し (3 段階。`####` 以上と `#` 直後に空白が無いものは文字どおり)、

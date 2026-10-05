@@ -1358,7 +1358,7 @@ struct EditMessageView: View {
         saving = true
         failure = nil
         Task {
-            let error = await onSave(trimmed)
+            let error = await onSave(BodyTokenizer.straightenCode(trimmed))  // smart punctuation out of code
             saving = false
             if let error { failure = error } else { dismiss() }
         }
@@ -1568,7 +1568,7 @@ struct ComposerView: View {
     private func schedule(_ at: Date) {
         guard canSend, let controller else { return }
         guard at.timeIntervalSinceNow >= 60 else { controller.error = tr("1 分以上先の時刻を選んでください"); return }
-        let body = Mentions.encode(trimmed, users: users, groups: Array(controller.store.groups.values))
+        let body = Mentions.encode(BodyTokenizer.straightenCode(trimmed), users: users, groups: Array(controller.store.groups.values))
         let ids = pending.map(\.id)
         Task {
             if await controller.scheduleMessage(channelId: channelId, parentId: parentId, body: body, attachmentIds: ids, sendAt: at) {
@@ -1636,7 +1636,8 @@ struct ComposerView: View {
             Task { _ = await controller.runCommand(command, channelId: channelId, parentId: parentId) }
             return
         }
-        let body = Mentions.encode(trimmed, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [])
+        // The TextField's smart punctuation (‘ ’ “ ” — –) goes back to what was typed inside code.
+        let body = Mentions.encode(BodyTokenizer.straightenCode(trimmed), users: users, groups: controller.map { Array($0.store.groups.values) } ?? [])
         guard canSend else { return }
         guard body.count <= 20_000, pending.count <= 10 else { controller?.error = tr("添付は10件、本文は20,000文字までです"); return }
         let ids = pending.map(\.id)
