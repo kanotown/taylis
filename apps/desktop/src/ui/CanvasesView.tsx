@@ -13,6 +13,7 @@ import { BackButton } from "./compact";
 import { sinceLabel } from "./format";
 import { channelTitle } from "./MainScreen";
 import { Badge, Button, Input } from "./primitives";
+import { t } from "../i18n";
 
 function fold(value: string): string {
   return value.normalize("NFKC").toLowerCase();
@@ -62,13 +63,13 @@ export function CanvasesView({ controller, onOpen, onSearch }: {
       <header className="flex h-[52px] items-center gap-3 border-b border-line px-4 max-md:h-auto max-md:flex-wrap max-md:gap-x-2 max-md:gap-y-2 max-md:py-2">
         <BackButton />
         <span className="text-muted max-md:hidden"><FileText size={18} /></span>
-        <strong className="shrink-0 whitespace-nowrap text-[15px]">キャンバス</strong>
+        <strong className="shrink-0 whitespace-nowrap text-[15px]">{t("nav.canvases")}</strong>
         <div className="relative ml-auto w-64 max-md:ml-0 max-md:w-full">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <Input
             value={query}
-            placeholder="題名で絞り込む"
-            aria-label="題名で絞り込む"
+            placeholder={t("canvases.filter")}
+            aria-label={t("canvases.filter")}
             className="h-8 pl-8 text-sm"
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -79,18 +80,18 @@ export function CanvasesView({ controller, onOpen, onSearch }: {
       </header>
       <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {items === null ? (
-          <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
+          <div className="py-8 text-center text-sm text-muted">{t("common.loading")}</div>
         ) : shown.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted">
-            {needle ? "題名に一致するキャンバスはありません。" : "まだキャンバスはありません。会話の「キャンバス」から作れます。"}
+            {needle ? t("canvases.noMatch") : t("canvases.none")}
             {needle && onSearch && (
               <div className="mt-3">
-                <Button variant="secondary" size="sm" onClick={() => onSearch(query.trim())}><Search size={14} /> 本文も検索する</Button>
+                <Button variant="secondary" size="sm" onClick={() => onSearch(query.trim())}><Search size={14} /> {t("canvases.searchBodies")}</Button>
               </div>
             )}
           </div>
         ) : (
-          <ul aria-label="キャンバス" className="mx-auto max-w-3xl divide-y divide-line rounded-xl border border-line">
+          <ul aria-label={t("nav.canvases")} className="mx-auto max-w-3xl divide-y divide-line rounded-xl border border-line">
             {shown.map((canvas) => {
               const channel = store.getChannel(canvas.channel_id);
               const progress = taskProgress(canvas.task_total, canvas.task_done);
@@ -101,27 +102,27 @@ export function CanvasesView({ controller, onOpen, onSearch }: {
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5">
                         <span className="truncate text-sm font-semibold">{canvas.title}</span>
-                        {canvas.is_channel_tab && <Badge tone="accent">タブ</Badge>}
+                        {canvas.is_channel_tab && <Badge tone="accent">{t("canvas.tab")}</Badge>}
                       </span>
                       <span className="block truncate text-xs text-muted">
-                        {channel ? channelTitle(channel, controller) : "会話"} · {store.users.get(canvas.updated_by)?.display_name ?? "メンバー"} · {sinceLabel(canvas.updated_at)}
+                        {channel ? channelTitle(channel, controller) : t("ask.conversation")} · {store.users.get(canvas.updated_by)?.display_name ?? t("common.member")} · {sinceLabel(canvas.updated_at)}
                       </span>
                     </span>
-                    {progress && <span className="shrink-0 text-xs text-muted" aria-label={`タスク ${progress}`}>{progress}</span>}
+                    {progress && <span className="shrink-0 text-xs text-muted" aria-label={t("canvases.tasks", { progress })}>{progress}</span>}
                   </button>
                 </li>
               );
             })}
             {cursor && !needle && (
               <li className="py-2 text-center">
-                <Button variant="secondary" size="sm" onClick={() => void load(true)}>さらに読み込む</Button>
+                <Button variant="secondary" size="sm" onClick={() => void load(true)}>{t("canvasHistory.loadMore")}</Button>
               </li>
             )}
           </ul>
         )}
         {needle && shown.length > 0 && onSearch && (
           <div className="mx-auto mt-3 max-w-3xl text-center">
-            <button type="button" className="text-xs text-accent hover:underline" onClick={() => onSearch(query.trim())}>「{query.trim()}」をキャンバスの本文からも検索</button>
+            <button type="button" className="text-xs text-accent hover:underline" onClick={() => onSearch(query.trim())}>{t("canvases.searchFor", { q: query.trim() })}</button>
           </div>
         )}
       </div>

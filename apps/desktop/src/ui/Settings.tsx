@@ -16,7 +16,7 @@ import { deviceLocale, getLocalePreference, tIn, type UiLocale, t } from "../i18
 import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
 import { MAX_QUICK_REACTIONS, quickReactions } from "./MessageActionsSheet";
 import { fullNavItems, moveNavItem, navLabel, reorderNavItems, setNavItemVisible, shownNavItems } from "./navItems";
-import { customPauseAt, DAY_LABELS, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
+import { customPauseAt, dayLabels, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
 import { fullTimestamp, sinceLabel } from "./format";
 import { useNow, useStoreUpdates } from "./hooks";
 import { modKeyName, type SendKey } from "./prefs";
@@ -366,7 +366,7 @@ function QuietHoursSection({ controller, onDone }: { controller: AppController; 
             <Input type="time" value={quiet.end} aria-label={t("common.end")} className="w-32" onChange={(e) => { setQuiet({ ...quiet, end: e.target.value }); setSaved(false); }} />
           </div>
           <div role="group" aria-label={t("settings.quiet.weekdays")} className="flex flex-wrap gap-1.5">
-            {DAY_LABELS.map((label, day) => (
+            {dayLabels().map((label, day) => (
               <button key={label} type="button" aria-pressed={quiet.days?.includes(day) ?? false} onClick={() => toggleDay(day)} className={cn("h-9 w-9 rounded-full border text-sm", quiet.days?.includes(day) ? "border-accent bg-accent-soft" : "border-line text-muted")}>
                 {label}
               </button>

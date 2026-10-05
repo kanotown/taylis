@@ -7,6 +7,7 @@ import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { type MessageActionKey, messageActions } from "./messageActions";
 import { cn } from "./primitives";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
+import { t } from "../i18n";
 
 /** The default quick reactions of the phone sheet, the same six as iOS and Android (M25). */
 export const SHEET_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
@@ -103,7 +104,7 @@ export function MessageActionsSheet({ controller, message, initialView = "action
     <div className="fixed inset-0 z-50 flex items-end bg-black/35" onClick={() => { if (settled()) onClose(); }} role="presentation">
       <div
         role="dialog"
-        aria-label="メッセージの操作"
+        aria-label={t("sheet.actions")}
         // Every item fits at once on a small phone (testers: ピン留め and 削除 were cut off on iOS); it scrolls only
         // with very large text.
         className="max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl bg-canvas pb-[max(env(safe-area-inset-bottom),12px)] shadow-2xl"
@@ -129,8 +130,8 @@ export function MessageActionsSheet({ controller, message, initialView = "action
             <input
               value={remindNote}
               maxLength={200}
-              placeholder="メモ (任意)"
-              aria-label="リマインドのメモ"
+              placeholder={t("timeline.remindNote")}
+              aria-label={t("timeline.remindNoteLabel")}
               className="mb-1 h-11 w-full rounded-xl border border-line bg-canvas px-3 text-[15px]"
               onChange={(event) => setRemindNote(event.target.value)}
             />
@@ -144,30 +145,30 @@ export function MessageActionsSheet({ controller, message, initialView = "action
               ))}
             </ul>
             <div className="mt-1 flex items-center gap-2 border-t border-line px-1 pt-2">
-              <input type="datetime-local" value={remindAt} aria-label="日時を指定" className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 text-[15px]" onChange={(event) => setRemindAt(event.target.value)} />
+              <input type="datetime-local" value={remindAt} aria-label={t("settings.pause.custom")} className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 text-[15px]" onChange={(event) => setRemindAt(event.target.value)} />
               <button
                 type="button"
                 className="h-11 shrink-0 rounded-xl border border-line px-4 text-[15px] active:bg-panel"
                 onClick={() => {
                   const at = new Date(remindAt);
                   if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() + 60_000) {
-                    controller.setError("1 分以上先の時刻を選んでください");
+                    controller.setError(t("composer.pickLater"));
                     return;
                   }
                   then(() => remind(at))();
                 }}
               >
-                設定
+                {t("timeline.set")}
               </button>
             </div>
           </div>
         ) : view === "delete" ? (
           <div className="space-y-3 px-4 pb-3 pt-1">
-            <div className="text-sm font-medium">このメッセージを削除しますか？</div>
-            <div className="text-xs text-muted">削除したメッセージは元に戻せません。</div>
+            <div className="text-sm font-medium">{t("timeline.deleteTitle")}</div>
+            <div className="text-xs text-muted">{t("timeline.deleteNote")}</div>
             <div className="flex gap-2">
-              <button type="button" className="h-11 flex-1 rounded-xl border border-line text-sm" onClick={() => setView("actions")}>キャンセル</button>
-              <button type="button" className="h-11 flex-1 rounded-xl bg-danger text-sm font-medium text-white" onClick={then(() => void controller.deleteMessage(message.id))}>削除する</button>
+              <button type="button" className="h-11 flex-1 rounded-xl border border-line text-sm" onClick={() => setView("actions")}>{t("common.cancel")}</button>
+              <button type="button" className="h-11 flex-1 rounded-xl bg-danger text-sm font-medium text-white" onClick={then(() => void controller.deleteMessage(message.id))}>{t("common.deleteConfirm")}</button>
             </div>
           </div>
         ) : (
@@ -177,14 +178,14 @@ export function MessageActionsSheet({ controller, message, initialView = "action
                 <button
                   key={emoji}
                   type="button"
-                  aria-label={`${emoji} でリアクション`}
+                  aria-label={t("timeline.reactWith", { emoji })}
                   className={cn("flex h-11 w-11 items-center justify-center rounded-full text-2xl", reacted.has(emoji) ? "bg-accent-soft ring-1 ring-accent" : "bg-panel")}
                   onClick={then(() => void controller.toggleReaction(message, emoji))}
                 >
                   {emoji}
                 </button>
               ))}
-              <button type="button" aria-label="その他のリアクション" className="flex h-11 w-11 items-center justify-center rounded-full bg-panel text-muted" onClick={() => { if (settled()) setView("emoji"); }}>
+              <button type="button" aria-label={t("sheet.moreReactions")} className="flex h-11 w-11 items-center justify-center rounded-full bg-panel text-muted" onClick={() => { if (settled()) setView("emoji"); }}>
                 <SmilePlus size={20} />
               </button>
             </div>
