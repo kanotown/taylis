@@ -198,6 +198,10 @@ Android を data-only にする理由: 通知の見た目・グルーピング�
 APNs `content-available: 1` / `apns-push-type: background` / priority 5、FCM data-only / priority NORMAL。
 v1 では使わない (§12)。
 
+**言語 (M115)**: 題と本文 (「グループ DM」「添付ファイル」「誰か」などの補いも) は端末ごとに `users.locale` → `devices.locale`
+(その端末がログイン・トークンの更新・`PUT /devices/current` で送った `Accept-Language`) → ja で作る。同じ通知でも端末ごとに
+言語が違いうるので、ペイロードは (受け手, 言語) ごとに作る。チャンネル名・送った人の名前・本文の抜粋は訳さない (docs/I18N.md §1)。
+
 ## 6. 送信・再試行
 
 | 項目 | 値 |
