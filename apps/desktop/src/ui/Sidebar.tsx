@@ -128,7 +128,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           onClick={() => onOpen(channel.id)}
           title={channelTitle(channel, controller)}
           className={cn(
-            "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+            "flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 transition-colors", SECTION_ROW_PAD,
             // Unread before active: on the active row its text colour wins (white on the accent of a light sidebar).
             unread && "font-semibold text-sidebar-strong",
             active ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
@@ -481,7 +481,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     aria-current={timesFeedActive ? "page" : undefined}
                     title="参加している times の新しい投稿"
                     className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      "flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 transition-colors", SECTION_ROW_PAD,
                       timesFeedActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
                     )}
                   >
@@ -524,7 +524,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                 aria-busy={creatingSelf}
                 data-self-notes-placeholder=""
                 title={myName}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors hover:bg-sidebar-hover hover:text-sidebar-strong disabled:opacity-60"
+                className={cn("flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 transition-colors hover:bg-sidebar-hover hover:text-sidebar-strong disabled:opacity-60", SECTION_ROW_PAD)}
               >
                 <Avatar id={me.id} name={myName} size={18} className="rounded-md text-[9px]" />
                 <span className="flex-1 truncate">{myName}</span>
@@ -546,7 +546,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                   onClick={() => onOpen(c.id)}
                   aria-current={c.id === currentId ? "page" : undefined}
                   className={cn(
-                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px]",
+                    "flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px]", SECTION_ROW_PAD,
                     c.id === currentId ? "bg-sidebar-active text-sidebar-active-fg" : "opacity-80 hover:bg-sidebar-hover hover:text-sidebar-strong hover:opacity-100",
                   )}
                 >
@@ -562,6 +562,12 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     </nav>
   );
 }
+
+/**
+ * The rows under a section header sit one step (10 px) in from its chevron (2026-10-05: the grouping was hard to see),
+ * every row's icon on the same line. Padding inside the row, so the selected and hover fill stays full width.
+ */
+export const SECTION_ROW_PAD = "pl-5 pr-2.5";
 
 const FOLDED_KEY = "chikuwa.sidebar.folded";
 
@@ -645,10 +651,10 @@ function Section({ title, icon, action, children, collapsed = false, onToggle, o
         onDropChannel?.(id);
       }}
     >
-      <h2 className="mb-1 flex h-6 items-center justify-between gap-1 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">
+      <h2 className="mb-1 flex h-7 items-center justify-between gap-1 px-2.5 text-[13px] font-semibold uppercase tracking-wider text-sidebar-muted">
         {onToggle ? (
           <button type="button" aria-expanded={!collapsed} onClick={onToggle} className="-ml-1 flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 text-left uppercase hover:text-sidebar-fg">
-            <ChevronDown size={12} className={cn("shrink-0 transition-transform duration-200", collapsed && "-rotate-90")} />
+            <ChevronDown size={14} className={cn("shrink-0 transition-transform duration-200", collapsed && "-rotate-90")} />
             {icon}
             <span className="truncate">{title}</span>
           </button>
@@ -663,7 +669,7 @@ function Section({ title, icon, action, children, collapsed = false, onToggle, o
 }
 
 function Hint({ children }: { children: React.ReactNode }) {
-  return <p className="px-2.5 py-1 text-xs opacity-60">{children}</p>;
+  return <p className={cn("py-1 text-xs opacity-60", SECTION_ROW_PAD)}>{children}</p>;
 }
 
 /** Short enough for the narrowest sidebar (the banner over the conversation says more). */
