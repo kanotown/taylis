@@ -109,6 +109,22 @@ export function durationChoices(pool: PoolOut, start: Date, now: Date): number[]
   return out;
 }
 
+export interface DurationDefault {
+  /** The longest that fits (0 when not even an hour does). */
+  hours: number;
+  /** Why it is shorter than the pool's max_hours: the slot is full from `at`, or the booking horizon ends there. */
+  limit: "max" | "full" | "horizon";
+  at: Date | null;
+}
+
+/** The dialog's default length: the pool's max_hours, or the longest that fits from `start` (and why it stops). */
+export function durationDefault(pool: PoolOut, start: Date, now: Date): DurationDefault {
+  const hours = durationChoices(pool, start, now).length;
+  if (hours >= pool.max_hours) return { hours, limit: "max", at: null };
+  const at = new Date(start.getTime() + hours * HOUR_MS);
+  return { hours, limit: at.getTime() + HOUR_MS > horizonEnd(pool, now).getTime() ? "horizon" : "full", at };
+}
+
 export interface TimelineBar {
   id: string;
   userId: string;
@@ -180,6 +196,24 @@ export function myReservations(pool: PoolOut, meId: string | undefined): Mine {
   const walkin = [...pool.holders, ...pool.waiting].find((r) => r.id === pool.my_reservation_id) ?? null;
   const bookings = liveBookings(pool).filter((b) => b.user_id === meId);
   return { walkin, bookings };
+}
+
+/**
+ * My one active reservation in the pool (one per person and pool, docs/RESERVATIONS.md §1): waiting, booked, on a seat
+ * or returned but not yet removed. While there is one, 「予約する」 and 「今すぐ」 are off (the server answers 409
+ * reservation_already_active). A server without `my_active_id` is read from the lists.
+ */
+export function myActive(pool: PoolOut, meId: string | undefined): ReservationOut | null {
+  const rows = [...pool.holders, ...pool.waiting, ...liveBookings(pool)];
+  if (pool.my_active_id !== undefined) return rows.find((r) => r.id === pool.my_active_id) ?? null;
+  return rows.find((r) => r.user_id === meId) ?? null;
+}
+
+/** 「予約 10/7 (水) 13:00〜16:00」, 「今すぐ · 順番待ち」, 「今すぐ · 利用中」 (the 「すでに予約があります」 line). */
+export function activeText(row: ReservationOut, now: Date): string {
+  const state = row.status === "waiting" ? t("reservations.waitingState") : row.status === "holding" ? t("reservations.holding") : row.status === "returning" ? t("reservations.returned") : "";
+  const head = row.kind === "booking" && row.start_at && row.end_at ? `${t("reservations.booking")} ${spanLabel(row.start_at, row.end_at, now)}` : t("reservations.walkin");
+  return state ? `${head} · ${state}` : head;
 }
 
 /** My bookings across the pools still counting (the page's 「自分の予約」). */

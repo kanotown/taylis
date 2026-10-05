@@ -15,6 +15,7 @@ import { Avatar } from "./Avatar";
 import { BackButton } from "./compact";
 import { Badge, Button, cn, Input, Modal } from "./primitives";
 import {
+  activeText,
   bookingDays,
   bookingText,
   dayLabel,
@@ -22,7 +23,9 @@ import {
   deviceZone,
   dueTodos,
   durationChoices,
+  durationDefault,
   hm,
+  myActive,
   myReservations,
   poolFormProblem,
   rowOf,
@@ -90,6 +93,10 @@ export function PoolSection({ controller, pool, onEdit }: { controller: AppContr
   const now = useNow();
   const me = controller.store.me?.id;
   const mine = myReservations(pool, me);
+  // One active reservation per person and pool: while I have one, both buttons are off and say why.
+  const active = myActive(pool, me);
+  const activeNote = active ? t("reservations.alreadyActive", { what: activeText(active, now) }) : undefined;
+  const mineRef = useRef<HTMLDivElement>(null);
   const [day, setDay] = useState(() => dayStart(new Date()));
   const [booking, setBooking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -116,19 +123,27 @@ export function PoolSection({ controller, pool, onEdit }: { controller: AppContr
           <Button size="sm" variant="ghost" onClick={onEdit} aria-label={t("reservations.poolSettingsOf", { name: pool.name })}><Pencil size={13} /></Button>
         )}
         <span className="ml-auto flex gap-2">
-          <Button size="sm" disabled={!pool.enabled || busy || mine.bookings.length >= 2} onClick={() => setBooking(true)} title={mine.bookings.length >= 2 ? t("reservations.twoMax") : undefined}>
+          <Button size="sm" disabled={!pool.enabled || busy || active !== null} onClick={() => setBooking(true)} title={activeNote}>
             <CalendarClock size={14} /> {t("reservations.book")}
           </Button>
           {!mine.walkin && (
-            <Button size="sm" variant="secondary" disabled={!pool.enabled || busy} onClick={() => void run(() => controller.reservePool(pool.id))}>
+            <Button size="sm" variant="secondary" disabled={!pool.enabled || busy || active !== null} onClick={() => void run(() => controller.reservePool(pool.id))} title={activeNote}>
               {t("reservations.walkinButton")}
             </Button>
           )}
         </span>
       </div>
+      {activeNote && (
+        <p className="-mt-2 text-xs text-muted" data-already-active>
+          {activeNote}{" "}
+          <button type="button" className="text-accent underline-offset-2 hover:underline" onClick={() => mineRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" })}>
+            {t("reservations.showMine")}
+          </button>
+        </p>
+      )}
 
       {(mine.walkin || mine.bookings.length > 0) && (
-        <div className="rounded-xl border border-line px-3 py-2" aria-label={t("reservations.mine")}>
+        <div ref={mineRef} className="rounded-xl border border-line px-3 py-2" aria-label={t("reservations.mine")}>
           <h3 className="text-xs font-semibold text-muted">{t("reservations.mine")}</h3>
           <ul className="divide-y divide-line">
             {mine.bookings.map((row) => (
@@ -381,8 +396,17 @@ export function BookingDialog({ controller, pool, initialDay, onClose }: { contr
   const [start, setStart] = useState<Date | null>(firstFree);
   const startOk = start && starts.some((s) => s.start.getTime() === start.getTime() && !s.full) ? start : firstFree;
   const durations = startOk ? durationChoices(pool, startOk, now) : [];
-  const [hours, setHours] = useState(1);
-  const chosenHours = durations.includes(hours) ? hours : (durations[durations.length - 1] ?? 1);
+  // The length defaults to the pool's maximum, or the longest that fits from the start (and the dialog says why); a
+  // length the person picked stays while it fits.
+  const [hours, setHours] = useState<number | null>(null);
+  const fit = startOk ? durationDefault(pool, startOk, now) : null;
+  const chosenHours = hours !== null && durations.includes(hours) ? hours : (durations[durations.length - 1] ?? 1);
+  const limitNote =
+    fit && fit.hours > 0 && fit.at && fit.limit !== "max"
+      ? fit.limit === "full"
+        ? t("reservations.limitFull", { at: dayStart(fit.at).getTime() === dayStart(startOk!).getTime() ? hm(fit.at) : whenLabel(fit.at.toISOString(), now), count: fit.hours })
+        : t("reservations.limitHorizon", { days: pool.horizon_days, count: fit.hours })
+      : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submit = async () => {
@@ -425,6 +449,7 @@ export function BookingDialog({ controller, pool, initialDay, onClose }: { contr
           </label>
         </div>
         {startOk && end ? <p className="text-sm">{spanLabel(startOk.toISOString(), end.toISOString(), now)}</p> : <p className="text-sm text-muted">{t("reservations.noFreeTime")}</p>}
+        {limitNote && <p className="text-xs text-muted" data-duration-limit>{limitNote}</p>}
         {error && <p role="alert" className="text-xs text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
