@@ -10,9 +10,10 @@ Windows・macOS・iOS・Android のアプリと、ブラウザから使います
 > **サポートの保証はありません。** Taylis は作者が自分たちで使うために開発し、そのままの形で公開しています。
 > Issue やプルリクエストは歓迎しますが、対応・修正・今後の予定はお約束できません。[CONTRIBUTING.md](CONTRIBUTING.md) をご覧ください。
 
-![Taylis のデスクトップ版: スレッドを開いたチャンネル (デモのデータ)](docs/images/desktop.png)
-
-<img src="docs/images/iphone.png" alt="iPhone の Taylis (デモのデータ)" width="220">
+<p>
+  <img src="docs/images/desktop.png" alt="Taylis のデスクトップ版: スレッドを開いたチャンネル (デモのデータ)" width="75%">
+  <img src="docs/images/iphone.png" alt="iPhone の Taylis (デモのデータ)" width="21.5%">
+</p>
 
 ## 主な機能
 
