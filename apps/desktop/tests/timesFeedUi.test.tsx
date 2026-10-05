@@ -145,7 +145,10 @@ it("the sidebar's 「フィード」 looks like the other rows: highlighted only
   const looksActive = (el: HTMLElement) => el.getAttribute("aria-current") === "page" || el.className.split(/\s+/).includes("bg-sidebar-active");
   // A channel is open: neither the feed row nor its header icon is highlighted, as 「スレッド」 is not.
   expect(looksActive(row())).toBe(false);
-  expect(row().className).toBe(threads().className.replace(/\s*font-semibold text-white/, ""));
+  // The same row, one step in (it sits under the Times header; 「スレッド」 is above the sections).
+  const classes = (el: HTMLElement) => el.className.split(/\s+/).filter((c) => !/^p[lrx]-/.test(c)).sort();
+  expect(classes(row())).toEqual(classes(threads()).filter((c) => c !== "font-semibold" && c !== "text-white"));
+  expect(row().className).toContain("pl-5 pr-2.5");
   expect(looksActive(screen.getByRole("button", { name: "Times フィード" }))).toBe(false);
   fireEvent.click(row());
   await settle(w);

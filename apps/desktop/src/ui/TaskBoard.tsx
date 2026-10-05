@@ -22,7 +22,7 @@ import type { TaskHub } from "../sync/tasks";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
 import { localZone, today as todayKey, type DayKey } from "./calendarDates";
-import { Button, cn, Field, Input, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Modal } from "./primitives";
+import { Button, cn, Field, HoverList, Input, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Modal } from "./primitives";
 import { TaskDialog } from "./TaskDialog";
 import {
   BOARD_DONE_LIMIT,
@@ -81,7 +81,8 @@ export function AssigneeStack({ controller, ids }: { controller: AppController; 
   const more = ids.length - shown.length;
   const names = ids.map((id) => users.get(id)?.display_name ?? "?").join("、");
   return (
-    <span className="flex shrink-0 items-center -space-x-1.5" title={`担当: ${names}`} aria-label={`担当: ${names}`} data-assignees={ids.length}>
+    <HoverList content={`担当: ${names}`}>
+    <span className="flex shrink-0 items-center -space-x-1.5" aria-label={`担当: ${names}`} data-assignees={ids.length}>
       {shown.map((id) => (
         <Avatar key={id} id={id} name={users.get(id)?.display_name ?? "?"} size={20} className="rounded-full ring-2 ring-canvas" />
       ))}
@@ -91,6 +92,7 @@ export function AssigneeStack({ controller, ids }: { controller: AppController; 
         </span>
       )}
     </span>
+    </HoverList>
   );
 }
 

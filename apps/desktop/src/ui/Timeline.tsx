@@ -1,4 +1,4 @@
-import { ArrowDown, AtSign, Bookmark, BookmarkCheck, CheckCheck, Hash, Lock, MessageSquare, MessagesSquare, MoreHorizontal, Pencil, Pin, SmilePlus } from "lucide-react";
+import { ArrowDown, AtSign, Bookmark, BookmarkCheck, Hash, Lock, MessageSquare, MessagesSquare, MoreHorizontal, Pencil, Pin, SmilePlus } from "lucide-react";
 import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiClient } from "../api/client";
@@ -8,11 +8,12 @@ import type { Store } from "../sync/store";
 import { caughtUp, covers, dividerMark, firstUnreadRow, jumpButtonShown, markUnreadOffered, nextAnchored, passedUnseen, readRangeReady } from "../sync/readGate";
 import type { ChannelState, MessageState } from "../sync/types";
 import { keyboardUp, tapClosesKeyboard } from "../platform/viewport";
+import { AckBar } from "./AckBar";
 import { AttachmentList } from "./Attachments";
 import { messageRowKey } from "./messageKeyboard";
 import { Avatar } from "./Avatar";
 import { linkFromPaste, replaceThroughBrowser } from "./composerEdit";
-import { ackLine, bannerText, buildTimeline, compactNames, dateLabel, fullTimestamp, lastReplyLabel, rowKey, timeLabel } from "./format";
+import { bannerText, buildTimeline, compactNames, dateLabel, fullTimestamp, lastReplyLabel, rowKey, timeLabel } from "./format";
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
 import { attachmentText, plainText } from "./markdown";
 import { AiBadge } from "./ai";
@@ -25,7 +26,7 @@ import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
 import { ReportDialog } from "./ModerationDialogs";
 import { isSendKey, sendKeyLabel } from "./prefs";
-import { Button, cn, IconButton, Input, Kbd, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
+import { Button, cn, HoverList, IconButton, Input, Kbd, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 import { hoverMenuGroups, type MessageActionKey, messageActions, rowFitsQuickReactions } from "./messageActions";
 import { EmojiText, StatusEmoji, UserPopover } from "./UserPopover";
 import { channelTitle, myDisplayName } from "./MainScreen";
@@ -40,7 +41,7 @@ import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 import { BOTTOM_SLACK_PX, ListAnchor, stillAtBottom } from "./scrollAnchor";
 import { conversationScrollKey, restoreDecision, scrollMemoryFor } from "./scrollMemory";
 import { READER_BACK } from "../platform/idle";
-import { AcksDialog, ReactionsDialog } from "./WhoDialogs";
+import { ReactionsDialog } from "./WhoDialogs";
 import { isSystemMessage, systemMessageText } from "./systemMessage";
 import { TaskDialog } from "./TaskDialog";
 import { MessageTaskChips } from "./MessageTaskChips";
@@ -809,12 +810,17 @@ function ThreadSummaryLine({ message, store, onOpen }: { message: MessageState; 
   const repliers = message.reply_user_ids ?? [];
   const nameOf = (id: string) => store.users.get(id)?.display_name ?? "?";
   const last = message.last_reply_at ? lastReplyLabel(message.last_reply_at) : "";
+  // Who replied and when last, above the line (HoverList), not a native title at the pointer.
+  const hover = [
+    repliers.length > 0 ? `返信した人: ${compactNames(repliers.map(nameOf))}` : "",
+    message.last_reply_at ? `最終返信 ${fullTimestamp(message.last_reply_at)}` : "",
+  ].filter(Boolean).join("\n");
   return (
+    <HoverList content={hover}>
     <button
       type="button"
       data-testid="thread-summary"
       className="group mt-1 flex max-w-full items-center gap-2 rounded-md text-left text-xs"
-      title={repliers.length > 0 ? `返信した人: ${compactNames(repliers.map(nameOf))}` : undefined}
       onClick={onOpen}
     >
       {repliers.length > 0 ? (
@@ -828,11 +834,10 @@ function ThreadSummaryLine({ message, store, onOpen }: { message: MessageState; 
       )}
       <span className="whitespace-nowrap font-semibold text-accent group-hover:underline">{message.reply_count} 件の返信</span>
       {last && (
-        <span className="truncate text-muted" title={message.last_reply_at ? fullTimestamp(message.last_reply_at) : undefined}>
-          {last}
-        </span>
+        <span className="truncate text-muted">{last}</span>
       )}
     </button>
+    </HoverList>
   );
 }
 
@@ -1088,7 +1093,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           <div className="mt-1.5 flex flex-wrap gap-1">
             {reactions.map((reaction) => {
               const reacted = !!me && reaction.user_ids.includes(me.id);
-              const names = reaction.user_ids.map((id) => store.users.get(id)?.display_name ?? "?").join(", ");
+              const names = reaction.user_ids.map((id) => store.users.get(id)?.display_name ?? "?").join("、");
               const chip = cn(
                 "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs transition-colors",
                 reacted ? "border-accent bg-accent-soft text-ink" : "border-line bg-panel text-ink",
@@ -1103,11 +1108,13 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               );
               // Read before joining: the names still show on hover, but nothing toggles.
               return readOnly ? (
-                <span key={reaction.emoji} title={names} className={chip}>{content}</span>
+                <HoverList key={reaction.emoji} content={names}><span tabIndex={0} data-reacted-by={names} className={chip}>{content}</span></HoverList>
               ) : (
-                <button key={reaction.emoji} type="button" title={names} onClick={() => void controller.toggleReaction(message, reaction.emoji)} className={chip}>
-                  {content}
-                </button>
+                <HoverList key={reaction.emoji} content={names}>
+                  <button type="button" data-reacted-by={names} onClick={() => void controller.toggleReaction(message, reaction.emoji)} className={chip}>
+                    {content}
+                  </button>
+                </HoverList>
               );
             })}
             {/* M25: add another reaction right there (the picker on a mouse, the sheet's picker on a phone). */}
@@ -1344,44 +1351,6 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
           <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> 保存 <Kbd>Esc</Kbd> 取り消し
         </span>
       </div>
-    </div>
-  );
-}
-
-/**
- * M15e: 「確認しました」 for readers, and who has acknowledged so far: a few names in the line (M27, 「山田、佐藤 が確認」),
- * all of them, oldest first, a click or a tap away. `readOnly` (a channel read before joining): the names only.
- */
-function AckBar({ controller, message, readOnly }: { controller: AppController; message: MessageState; readOnly: boolean }) {
-  const store = controller.store;
-  const me = store.me;
-  const acks = message.acks ?? [];
-  const mine = !!me && acks.some((a) => a.user_id === me.id);
-  const own = me?.id === message.sender_id;
-  const names = acks.map((a) => store.users.get(a.user_id)?.display_name ?? "?");
-  const [listOpen, setListOpen] = useState(false);
-  return (
-    <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs">
-      {!own && !readOnly && (
-        <button
-          type="button"
-          className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium", mine ? "border-accent/40 bg-accent-soft text-accent" : "border-line text-ink hover:bg-panel")}
-          onClick={() => void controller.toggleAck(message)}
-        >
-          <CheckCheck size={13} /> {mine ? "確認済み" : "確認しました"}
-        </button>
-      )}
-      {acks.length > 0 ? (
-        <button type="button" className="min-w-0 truncate text-left text-muted hover:text-ink hover:underline" title={names.join("、")} aria-label={`確認した人 (${acks.length} 人)`} onClick={() => setListOpen(true)}>
-          {ackLine(names)}
-        </button>
-      ) : readOnly ? (
-        <span className="text-muted">まだ誰も確認していません</span>
-      ) : (
-        // L4: the list still has who has not confirmed (and the reminder for the author).
-        <button type="button" className="text-muted hover:text-ink hover:underline" onClick={() => setListOpen(true)}>まだ誰も確認していません</button>
-      )}
-      {listOpen && <AcksDialog controller={controller} message={message} readOnly={readOnly} onClose={() => setListOpen(false)} />}
     </div>
   );
 }

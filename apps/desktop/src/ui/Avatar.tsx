@@ -1,7 +1,7 @@
 import type { PresenceStatus } from "../api/types";
 import { useAvatar } from "./avatars";
 import { avatarHue, initials } from "./format";
-import { cn } from "./primitives";
+import { cn, HoverList } from "./primitives";
 
 /**
  * The profile picture when the user has one (M14a), else initials on a colour derived from the id. A picture never loaded
@@ -28,11 +28,14 @@ export function Avatar({ id, name, size = 36, className, presence, presenceClass
         </span>
       )}
       {presence && presence !== "offline" && (
-        <span
-          className={cn("absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-canvas", presence === "online" ? "bg-success" : "bg-warning", presenceClassName)}
-          style={{ width: dot, height: dot }}
-          title={presenceLabel(presence)}
-        />
+        // Above the dot (HoverList), not a native title under the pointer.
+        <HoverList content={presenceLabel(presence)}>
+          <span
+            data-presence={presence}
+            className={cn("absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-canvas", presence === "online" ? "bg-success" : "bg-warning", presenceClassName)}
+            style={{ width: dot, height: dot }}
+          />
+        </HoverList>
       )}
     </span>
   );

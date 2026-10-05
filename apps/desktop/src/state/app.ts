@@ -2232,13 +2232,16 @@ export class AppController {
     }
   }
 
-  /** L4 (M31): who has not acknowledged yet (members only); null when it could not be loaded (the toast says why). */
-  async ackPending(message: MessageState): Promise<string[] | null> {
+  /**
+   * L4 (M31): who has not acknowledged yet (members only); null when it could not be loaded (the toast says why, unless
+   * `quiet`: the count in the message's own 確認 row, loaded unasked, then just leaves the total out).
+   */
+  async ackPending(message: MessageState, { quiet = false }: { quiet?: boolean } = {}): Promise<string[] | null> {
     if (!this.api) return null;
     try {
       return (await this.api.ackPending(message.id)).user_ids;
     } catch (error) {
-      this.setError(error);
+      if (!quiet) this.setError(error);
       return null;
     }
   }
