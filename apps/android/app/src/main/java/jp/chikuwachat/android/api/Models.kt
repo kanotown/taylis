@@ -298,6 +298,16 @@ data class LastMessageOut(
 @Serializable
 data class ReactionOut(val emoji: String, val count: Int, val userIds: List<String> = emptyList())
 
+/**
+ * M108 (docs/PREVIEWS.md §5): `pending` (the card says 「プレビューを作成中…」), `ready` (the first page at `/preview/thumbnail`,
+ * [width] × [height] pixels, every page at `/preview/pdf`) or `failed` (a plain file row).
+ */
+@Serializable
+data class AttachmentPreviewOut(val status: String, val pages: Int? = null, val width: Int? = null, val height: Int? = null) {
+    val isPending: Boolean get() = status == "pending"
+    val isReady: Boolean get() = status == "ready"
+}
+
 @Serializable
 data class AttachmentOut(
     val id: String,
@@ -315,6 +325,8 @@ data class AttachmentOut(
      */
     val hasPoster: Boolean = false,
     val durationMs: Long? = null,
+    /** M108 (docs/PREVIEWS.md): a PDF's or Office file's preview; null without one (or from an older server, or rows stored before). */
+    val preview: AttachmentPreviewOut? = null,
 ) {
     /** By the type the server sniffed (M82): a video is never a photo, whatever thumbnail flags it carries. */
     val isVideo: Boolean get() = contentType.startsWith("video/", ignoreCase = true)
