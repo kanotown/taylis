@@ -196,6 +196,12 @@ struct MainView: View {
             PushCenter.shared.pendingTasks = false
             nav.landList(MyTasksView.selectionId)
         }
+        .onChange(of: PushCenter.shared.pendingReservations, initial: true) { _, pending in
+            // M112: a tapped reservation notice: 「予約」, on the home tab.
+            guard pending else { return }
+            PushCenter.shared.pendingReservations = false
+            nav.landList(ReservationsView.selectionId)
+        }
         .onChange(of: pendingChannelReady, initial: true) { _, id in
             // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
             if let id {
@@ -370,6 +376,11 @@ struct MainView: View {
         ActivityView(controller: controller, onOpenMention: { message in
             Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: tab) } }
         }, onOpenItem: { item in
+            // M112: a reservation notice opens 「予約」 on this tab's stack.
+            if item.reservation != nil {
+                if nav.layout == .split { nav.landList(ReservationsView.selectionId) } else { nav.paths[tab, default: []].append(.list(ReservationsView.selectionId)) }
+                return
+            }
             // M77: a canvas, in its conversation's 「キャンバス」 tab on this tab's stack (Back: the activity), or its
             // own sheet for a conversation I am not in.
             if let canvas = item.canvas {
@@ -540,6 +551,8 @@ struct MainView: View {
             }
         case DeadlinesView.selectionId:
             DeadlinesView(controller: controller)  // M86: a row opens the deadline over the list, on this stack
+        case ReservationsView.selectionId:
+            ReservationsView(controller: controller)  // M112
         case FilesView.selectionId:
             FilesView(controller: controller) { messageId, channelId, parentId in
                 Task {
@@ -569,7 +582,7 @@ private extension String {
     var isListId: Bool {
         [DraftsView.selectionId, FilesView.selectionId, MentionsView.selectionId, RemindersView.selectionId,
          SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId, MyTasksView.selectionId,
-         TimesFeedView.selectionId, CanvasesView.selectionId, DeadlinesView.selectionId].contains(self)
+         TimesFeedView.selectionId, CanvasesView.selectionId, DeadlinesView.selectionId, ReservationsView.selectionId].contains(self)
     }
 }
 

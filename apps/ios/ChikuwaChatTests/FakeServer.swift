@@ -91,9 +91,10 @@ final class FakeServer {
             return server.links[channelId] ?? []
         }
 
-        func reservationPools(channelId: String) async throws -> [PoolOut] {
+        func reservationPools() async throws -> [PoolOut] {
             try maybeFail("reservationPools")
-            return server.pools[channelId] ?? []
+            server.poolReads += 1
+            return server.pools
         }
 
         unowned let server: FakeServer
@@ -522,16 +523,26 @@ final class FakeServer {
                                       "data": .object(["channel_id": .string(channelId), "links": try! JSONValue.from(rows)])]))
     }
 
-    /// M99: each channel's reservation pools; setPools announces a change like the server (no card in the event).
-    var pools: [String: [PoolOut]] = [:]
+    /// M112: the workspace's reservation pools; setPools announces a change like the server (to everyone, no pool in it).
+    var pools: [PoolOut] = []
+    /// How many times GET /reservation-pools was read.
+    var poolReads = 0
 
-    func setPools(_ channelId: String, _ rows: [PoolOut]) {
-        guard let record = channels[channelId] else { return }
-        pools[channelId] = rows
+    func setPools(_ rows: [PoolOut]) {
+        pools = rows
         eventId += 1
-        emit(record.members, .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("reservation.updated"), "ts": .string(now()),
-                                      "channel_id": .string(channelId), "seq": .null,
-                                      "data": .object(["channel_id": .string(channelId), "pool_id": .string(rows.first?.id ?? "p"), "deleted": .bool(false)])]))
+        emit(Set(users.keys), .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("reservation.updated"), "ts": .string(now()),
+                                       "channel_id": .null, "seq": .null,
+                                       "data": .object(["pool_id": .string(rows.first?.id ?? "p"), "deleted": .bool(false)])]))
+    }
+
+    /// M112: a reservation notice for one person (an activity item; the app shows a banner).
+    func noticeReservation(_ userId: String, text: String) {
+        eventId += 1
+        emit([userId], .object(["type": .string("event"), "id": .number(Double(eventId)), "event": .string("reservation.notice"), "ts": .string(now()),
+                                "channel_id": .null, "seq": .null,
+                                "data": .object(["item_id": .string("n\(eventId)"), "pool_id": .string("p1"), "reservation_id": .null,
+                                                 "text": .string(text), "operator": .bool(true), "at": .string(now())])]))
     }
 
     /// M15d: "user:channel:parent" → the saved draft.

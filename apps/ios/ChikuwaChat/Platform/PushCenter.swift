@@ -19,6 +19,8 @@ final class PushCenter {
     var pendingCalendar = false
     /// M56: a tapped notification of my own task: MainView opens 「自分のタスク」 (the task is AppController.taskOpen).
     var pendingTasks = false
+    /// M112: a tapped reservation notice: MainView opens 「予約」.
+    var pendingReservations = false
     @ObservationIgnored private weak var controller: AppController?
     /// A tap that arrived before the app finished starting; routed after startup.
     @ObservationIgnored private var pendingTap: PushPayload?
@@ -77,6 +79,7 @@ final class PushCenter {
         pendingChannelId = nil
         pendingCalendar = false
         pendingTasks = false
+        pendingReservations = false
         pendingTap = nil
         setBadge(0)
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()

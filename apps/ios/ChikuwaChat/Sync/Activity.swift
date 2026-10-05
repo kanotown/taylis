@@ -13,7 +13,7 @@ protocol ActivityApi: AnyObject {
 enum ActivityRules {
     /// The filters in the order the tab shows them (the GET /activity `filter` values).
     static let filters = ["all", "mentions", "threads", "reactions"]
-    static let kinds: Set<String> = ["mention", "reaction", "thread_reply", "canvas_mention"]
+    static let kinds: Set<String> = ["mention", "reaction", "thread_reply", "canvas_mention", "reservation"]
 
     static func filterLabel(_ filter: String) -> String {
         switch filter {
@@ -74,7 +74,8 @@ enum ActivityRules {
     static func append(_ held: [ActivityItem], _ page: [ActivityItem]) -> [ActivityItem] {
         var keys = Set(held.map(\.id))
         var rows = held
-        for item in page where kinds.contains(item.kind) && (item.message != nil || item.canvas != nil) && !keys.contains(item.id) {
+        for item in page where kinds.contains(item.kind) && (item.message != nil || item.canvas != nil || item.reservation != nil)
+            && !keys.contains(item.id) {
             keys.insert(item.id)
             rows.append(item)
         }
@@ -84,6 +85,10 @@ enum ActivityRules {
     /// Who did it, as the row's first line says it: 「〇〇 がメンション」, 「〇〇 がスレッドに返信」, and for reactions
     /// 「〇〇 が」 / 「〇〇 ほか N 人が」 followed by the emoji (drawn by the caller, custom emoji as pictures).
     static func headline(_ item: ActivityItem, nameOf: (String) -> String) -> (who: String, what: String) {
+        // M112: a reservation notice — the pool, and whether it is a to-do (an operator's) or news of my own reservation.
+        if let reservation = item.reservation {
+            return (reservation.poolName.isEmpty ? "予約" : reservation.poolName, reservation.operator ? " · 担当者の作業" : " · 予約")
+        }
         let name = item.actorIds.first.map(nameOf) ?? "誰か"
         switch item.kind {
         case "mention": return (name, " がメンション")
@@ -111,6 +116,7 @@ enum ActivityRules {
     /// server's copy of the line that mentions me).
     static func excerpt(_ item: ActivityItem, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
         if let canvas = item.canvas { return canvas.excerpt }
+        if let reservation = item.reservation { return reservation.text }  // M112
         guard let message = item.message else { return "" }
         return excerpt(message, users: users, groups: groups)
     }
@@ -128,6 +134,12 @@ enum ActivityRules {
     static func blankingExcerpts(_ items: [ActivityItem], itemIds: Set<String>) -> [ActivityItem] {
         guard !itemIds.isEmpty else { return items }
         return items.map { item in
+            // M112: a reservation to-do named here was handled (by another operator, or is no longer needed): done.
+            if let reservation = item.reservation, itemIds.contains(reservation.itemId), !reservation.done {
+                var next = item
+                next.reservation?.done = true
+                return next
+            }
             guard let canvas = item.canvas, itemIds.contains(canvas.itemId), !canvas.excerpt.isEmpty else { return item }
             var next = item
             next.canvas?.excerpt = ""

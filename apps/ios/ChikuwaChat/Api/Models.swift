@@ -927,25 +927,30 @@ struct ActivityItem: Codable, Equatable, Identifiable {
     var emojis: [String] = []
     /// A `canvas_mention` item's canvas (M77).
     var canvas: ActivityCanvas? = nil
+    /// M112: a `reservation` item's notice (asked for with `include=reservation`).
+    var reservation: ActivityReservation? = nil
 
-    /// One row per kind and message; a canvas item is its own (`canvas_mention:<item_id>`).
+    /// One row per kind and message; a canvas item is its own (`canvas_mention:<item_id>`), a reservation notice too.
     var id: String {
         if let canvas { return "canvas_mention:\(canvas.itemId)" }
+        if let reservation { return "reservation:\(reservation.itemId)" }
         return "\(kind):\(message?.id ?? "")"
     }
 
     /// The conversation the row is in.
     var channelId: String? { canvas?.channelId ?? message?.channelId }
 
-    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis, canvas }
+    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis, canvas, reservation }
 
-    init(kind: String, at: String, message: MessageOut?, actorIds: [String], emojis: [String] = [], canvas: ActivityCanvas? = nil) {
+    init(kind: String, at: String, message: MessageOut?, actorIds: [String], emojis: [String] = [], canvas: ActivityCanvas? = nil,
+         reservation: ActivityReservation? = nil) {
         self.kind = kind
         self.at = at
         self.message = message
         self.actorIds = actorIds
         self.emojis = emojis
         self.canvas = canvas
+        self.reservation = reservation
     }
 
     /// A canvas item needs its canvas, every other kind its message: an item with neither (a kind of a newer server,
@@ -956,6 +961,10 @@ struct ActivityItem: Codable, Equatable, Identifiable {
         at = try c.decode(String.self, forKey: .at)
         if kind == "canvas_mention" {
             canvas = try c.decode(ActivityCanvas.self, forKey: .canvas)
+            message = nil
+        } else if kind == "reservation" {
+            reservation = try c.decode(ActivityReservation.self, forKey: .reservation)
+            canvas = nil
             message = nil
         } else {
             message = try c.decode(MessageOut.self, forKey: .message)

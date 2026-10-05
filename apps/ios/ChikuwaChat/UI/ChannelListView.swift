@@ -230,7 +230,10 @@ struct ChannelListView: View {
     private var tiles: some View {
         let store = controller.store
         let row = HomeTile.tiles(threads: store.threadSummary, drafts: store.listDrafts().count + store.scheduled.count,
-                                 saved: store.bookmarks.count, firedReminders: store.firedReminderCount)
+                                 saved: store.bookmarks.count, firedReminders: store.firedReminderCount,
+                                 reservations: store.reservationPools.map {
+                                     HomeTile.ReservationTile(todos: ReservationRules.todoCount($0), operates: $0.contains { $0.canOperate })
+                                 })
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(row) { tile in

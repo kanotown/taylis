@@ -203,11 +203,24 @@ final class SyncEngine {
         if let links = try? await linksApi.channelLinks(channelId: channelId) { store.setChannelLinks(channelId, links) }
     }
 
-    /// M99 (docs/RESERVATIONS.md §6): the conversation's reservation pools; loaded when it opens, after reconnecting and
-    /// on reservation.updated (the event carries no card: it differs per person).
-    func loadReservationPools(_ channelId: String) async {
+    /// M112 (docs/RESERVATIONS.md §6): the workspace's reservation pools; read after every bootstrap (the home tile's
+    /// count) and on reservation.updated (the event carries no pool: what one shows differs per person). A server before
+    /// M112 answers 404 / 405: the pools stay nil (no page).
+    func loadReservationPools() async {
         guard let poolsApi = api as? ReservationsApi else { return }
-        if let pools = try? await poolsApi.reservationPools(channelId: channelId) { store.setReservationPools(channelId, pools) }
+        if let pools = try? await poolsApi.reservationPools() { store.setReservationPools(pools) }
+    }
+
+    /// reservation.updated comes once per change (and a press brings several): one read for a burst.
+    private var reservationReload: Task<Void, Never>?
+    private func scheduleReservationReload() {
+        guard reservationReload == nil else { return }
+        reservationReload = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let self else { return }
+            self.reservationReload = nil
+            await self.loadReservationPools()
+        }
     }
 
     /// Save edited drafts now instead of after the typing pause (tests, sign-out).
@@ -541,6 +554,7 @@ final class SyncEngine {
         drafts.applyBootstrap(bootstrap.drafts ?? [])
         Task { await self.loadScheduled() }
         Task { await self.loadReminders() }
+        Task { await self.loadReservationPools() }  // M112
         onBadge?(store.badgeCount)
     }
 
@@ -665,13 +679,14 @@ final class SyncEngine {
             struct Payload: Decodable { let channelId: String; let links: [ChannelLinkOut] }
             let payload = try frame.data.decode(Payload.self)
             store.setChannelLinks(payload.channelId, payload.links)
-        case "reservation.updated":  // M99: read the pools again where they are held
-            struct Payload: Decodable { let channelId: String; let poolId: String; var deleted: Bool? }
+        case "reservation.updated":  // M112: read the pools again (each shows differently per person)
+            struct Payload: Decodable { let poolId: String; var deleted: Bool? }
             let payload = try frame.data.decode(Payload.self)
-            if payload.deleted == true { store.dropReservationPool(payload.channelId, payload.poolId) }
-            if store.reservationPools[payload.channelId] != nil || payload.channelId == currentChannelId {
-                Task { await loadReservationPools(payload.channelId) }
-            }
+            if payload.deleted == true { store.dropReservationPool(payload.poolId) }
+            scheduleReservationReload()
+        case "reservation.notice":  // M112: an activity item for me (an operator's to-do, or news of my own reservation)
+            scheduleActivityRefresh()
+            if let notice = try? frame.data.decode(ReservationNotice.self) { onReservationNotice?(notice) }
         case "draft.updated":
             drafts.applyEvent(try frame.data.decode(DraftUpdated.self))
         case "canvas.created", "canvas.updated", "canvas.deleted":  // M45 (CANVAS.md §4.6)
@@ -736,8 +751,10 @@ final class SyncEngine {
         case "activity.updated":
             // Review v0.1.22 #3 (CANVAS.md §20.8): items I may hold changed in place (an erased canvas version blanked
             // their excerpts). The list on screen drops those excerpts and reads again (ActivityFeedView); no badge change.
+            // M112: a reservation to-do another operator handled is done (and leaves the badge).
             struct Payload: Decodable { let itemIds: [String] }
             store.activityItemsUpdated(try frame.data.decode(Payload.self).itemIds)
+            scheduleActivityRefresh()
         case "reaction.added":
             // M39: someone reacted to my message (the banner is the server's push, for those who turned it on).
             scheduleActivityRefresh()
@@ -882,6 +899,8 @@ final class SyncEngine {
     var onTaskNotice: ((TaskNotice) -> Void)?
     /// M73: canvas.mentioned while the app is open (likewise), when the conversation's level would push it.
     var onCanvasMention: ((CanvasMentioned, ChannelState) -> Void)?
+    /// M112: reservation.notice while the app is open (the server pushes to phones not on screen).
+    var onReservationNotice: ((ReservationNotice) -> Void)?
 
     /// M12d: the pending scheduled messages; refreshed after every bootstrap (a reconnect may have missed events).
     func loadScheduled() async {
@@ -1020,7 +1039,6 @@ final class SyncEngine {
         // A public channel I only browse has no timeline to catch up (its content needs membership).
         guard status == .online, store.channel(channelId)?.isMember == true else { return }
         Task { await loadLinks(channelId) }
-        Task { await loadReservationPools(channelId) } // M99
         Task { await canvases.loadList(channelId) } // M45 (CANVAS.md §4.6)
         if let type = store.channel(channelId)?.channel.type, type == "public" || type == "private" {
             Task { await calendar.loadUpcoming(channelId) } // M52: the 「予定」 tab's count (DMs have no shared calendar)
