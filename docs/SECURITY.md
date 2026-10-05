@@ -385,6 +385,34 @@ admin だけ。中の名前は作った時点の表示名で、メンバーに�
 - **backfill**: M79 より前の動画は `app.cli probe-videos` が 1 本ずつオブジェクトストアから一時ファイルに落として
   同じ手順で調べる (上限 `--limit` 件、`video_probed_at` で再開でき、何度流しても同じ)。
 
+### 文書のプレビュー (M108)
+
+PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送った文書を LibreOffice と PDFium に通すので閉じ込める。
+
+- **場所**: アップロードのリクエストの中では何もしない。app の preview loop (1 件ずつ) が後から作る。
+- **converter (Gotenberg + LibreOffice)**: 別のコンテナ。`internal: true` の Docker ネットワーク (`converter`) だけに
+  つなぎ、ホストにもインターネットにも出られない (ポートも公開しない)。届くのは app だけ。Gotenberg の
+  `downloadFrom` と webhook は無効、LibreOffice が文書の中の URL (リンクした画像など) を取りに行くのは公開・非公開の
+  アドレスとも拒否 (`--libreoffice-deny-public-ips` / `--libreoffice-deny-private-ips`)。1 リクエスト 90 秒、本文 55 MB、
+  待ち行列 4、メモリ 1 GB、CPU 1、プロセス 512、`no-new-privileges`。LibreOffice は 10 回ごとに起動し直す。
+  イメージはダイジェストで固定。
+- **入力**: 送るのはプレビューの対象の型 (先頭バイトで判定、ZIP / OLE と判定されたものだけ Office の拡張子で補う) で
+  `PREVIEW_MAX_INPUT_BYTES` (既定 50 MB) 以下のファイルだけ。名前は `document.<拡張子>` (利用者のファイル名は渡さない)。
+  変換後の PDF は `PREVIEW_MAX_OUTPUT_BYTES` (既定 100 MB) を超えたら捨てる。app の HTTP は 100 秒で打ち切る。
+- **PDF の解析 (PDFium、pypdfium2)**: app のプロセスではなく子プロセスで行い、30 秒で kill する。引数の配列で起動、
+  シェルなし、stdin なし、環境変数は `PATH` と `LC_ALL` だけ、出力は JSON 1 行 (4 KB まで)。描画は幅 800 px、
+  高さは幅の 2 倍まで、出力は Pillow が作り直した WebP (メタデータを持ち越さない)。読めない PDF (壊れている、
+  パスワード付き、時間切れ) は `failed`。
+- **生成物**: キーは `attachments/{id}.preview.pdf` / `.preview.webp` で利用者が決められる部分は無い。
+- **再試行**: 一時的な失敗は 3 回まで (1 分・10 分・1 時間の間隔)、恒久的な失敗はその場で `failed`。処理中に
+  止まった行はリースが切れてから取り直し、試行回数が上限ならもう変換しない (同じ文書でサーバを落とし続けない)。
+- **配信**: `GET /attachments/{id}/preview/thumbnail` (`image/webp`) と `/preview/pdf` (`application/pdf`)。権限は元の
+  ファイルと同じ (`get_for_access`)。PDF のプレビューだけは `Content-Disposition: inline` (変換した PDF、PDF の
+  アップロードでは元のファイル) で、`Content-Security-Policy: sandbox` (直接開いたブラウザでスクリプト・フォーム・
+  同一オリジンの扱いを与えない) と `nosniff` を付ける。クライアントはどれもバイト列を取ってアプリの中で描く
+  (Desktop / Web は PDF.js の canvas、iOS は PDFKit、Android は PdfRenderer)。元のファイルの `/content` は今までどおり
+  常に attachment。
+
 ### ダウンロード
 
 - `GET /attachments/{id}/content`: `status = attached` なら `channel_id` のメンバーのみ。
@@ -392,7 +420,8 @@ admin だけ。中の名前は作った時点の表示名で、メンバーに�
 - 応答ヘッダ: `Content-Disposition: attachment; filename*=UTF-8''...`、`X-Content-Type-Options: nosniff`、
   `Cache-Control: private, max-age=3600`。
 - `?inline=1` は `image/png`、`image/jpeg`、`image/gif`、`image/webp` のみ許可。SVG / HTML / PDF は
-  常に attachment (スクリプト実行の余地を残さない)。
+  常に attachment (スクリプト実行の余地を残さない)。例外は M108 の `/preview/pdf` (上の「文書のプレビュー」、
+  CSP sandbox 付き)。
 - メッセージが削除されると添付は即座に `deleted` になりアクセス不能。バイト列は GC が削除する。
 - キャンバスの画像 (`canvas_id` あり、M42) は会話のメンバーだけ (`require_member`。公開チャンネルでも未参加は 403)。
   キャンバスの完全削除 (ゴミ箱で 30 日) と、どの版からも参照されなくなってから (bind から 24 時間後) の整理で `deleted` になる。

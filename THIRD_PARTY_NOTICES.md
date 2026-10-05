@@ -208,6 +208,28 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 ```
 
+## PDF.js (desktop / web document viewer)
+
+Files: the `pdfjs-dist` npm package (version in `apps/desktop/package-lock.json`), its legacy build imported by
+`apps/desktop/src/ui/pdfLoader.ts`; Vite emits `pdf.mjs` and the worker `pdf.worker.min.mjs` as chunks of the build
+(loaded only when a document preview is opened), so they are inside the desktop app and the web image. The CMaps,
+standard fonts and wasm decoders of the package are not bundled.
+
+Source: PDF.js (<https://github.com/mozilla/pdf.js>), Mozilla Foundation. License: Apache License 2.0 (the same text as
+[LICENSE](LICENSE)). Used unmodified.
+
+## Document preview components that are not bundled (M108, docs/PREVIEWS.md)
+
+Listed for reference; nothing of these is copied into this repository.
+
+| Component | Where it runs | License |
+| --- | --- | --- |
+| pypdfium2 (<https://github.com/pypdfium2-team/pypdfium2>) and the PDFium binary its wheel carries | the server image, installed by `uv` (`server/uv.lock`); renders the first page of a PDF in a child process | pypdfium2: Apache-2.0 or BSD-3-Clause; PDFium: BSD-3-Clause / Apache-2.0; the wheel ships the licenses of PDFium's own dependencies (FreeType, ICU, Little CMS, libjpeg-turbo, OpenJPEG, zlib, ...) in its `dist-info/licenses` |
+| Gotenberg (<https://github.com/gotenberg/gotenberg>), image `gotenberg/gotenberg:8.37.0-libreoffice` | the separate `converter` container (`infra/docker-compose.yml`), pulled from Docker Hub; the app talks to it over HTTP only | MIT |
+| LibreOffice, inside the Gotenberg image | the same container; converts Office files to PDF | MPL-2.0 (with parts under other free licenses, as listed in the image) |
+
+PyMuPDF was not used because it is AGPL-licensed.
+
 ## Brand assets
 
 The Taylis name, icon and logo are not third-party material, but they are not under the Apache License either; see

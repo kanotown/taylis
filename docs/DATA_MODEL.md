@@ -1688,12 +1688,22 @@ CREATE TABLE attachments (
   thumbnail_key  text,                              -- 'attachments/{id}.thumb.jpg' (画像のサムネイル、動画のポスター)
   duration_ms    integer,                           -- M79: 動画の長さ
   video_probed_at timestamptz,                      -- M79: サーバが動画を調べた時刻 (結果の有無によらず)。NULL は未調査
+  preview_status text NOT NULL DEFAULT 'none',      -- M108: 'none' | 'pending' | 'ready' | 'failed' (文書のプレビュー)
+  preview_pages  integer,                           -- M108: ページ数
+  preview_pdf_key text,                             -- M108: 'attachments/{id}.preview.pdf' (Office を変換した PDF。PDF のアップロードは NULL = 元のファイル)
+  preview_thumb_key text,                           -- M108: 'attachments/{id}.preview.webp' (1 ページ目、幅 800 px)
+  preview_width  integer,                           -- M108: サムネイルの縦横 (画素)
+  preview_height integer,
+  preview_attempts integer NOT NULL DEFAULT 0,      -- M108: 試行回数 (claim ごとに +1、上限 PREVIEW_MAX_ATTEMPTS)
+  preview_next_at timestamptz,                      -- M108: 次に取ってよい時刻 (再試行の待ち、処理中のリース)
+  preview_error  text,                              -- M108: 最後の失敗の理由 (300 文字まで)
   created_at     timestamptz NOT NULL DEFAULT now(),
   attached_at    timestamptz,
   deleted_at     timestamptz
 );
 CREATE INDEX attachments_message_idx ON attachments (message_id);
 CREATE INDEX attachments_gc_idx      ON attachments (status, created_at);
+CREATE INDEX attachments_preview_queue_idx ON attachments (preview_next_at) WHERE preview_status = 'pending';  -- M108
 ```
 
 メタデータは PostgreSQL、バイト列はオブジェクトストレージ (versitygw)。
@@ -1738,6 +1748,15 @@ M82 Android: 動画の判定は `content_type` (`video/`) で、写真の判定�
 今までどおりのファイル行で、端末で動画からフレームや縦横を読むことはしない。送信前のタイルとファイル一覧にも
 ポスター (と長さ)。`message.updated` は `change` で分岐せずメッセージを置き換えるだけなので、`"attachments"` も
 知らない値もそのまま効く (`VideoAttachmentsTest`)。
+
+M108 (migration 0082): **文書のプレビュー** (docs/PREVIEWS.md)。PDF と Office の文書 (doc / docx / xls / xlsx / ppt / pptx /
+odt / ods / odp / rtf) のアップロードは `preview_status = 'pending'` で保存し、app の preview loop が converter
+(Gotenberg) で PDF にして (PDF はそのまま) 1 ページ目を WebP にし、`preview_*` を埋めて `ready` にする。失敗は
+`failed` と `preview_error`。メッセージに付いていればそのメッセージの `updated_seq` を進めて `message.updated`
+(`change = "attachments"`)。GC と `verify-attachments` はプレビューのオブジェクトも扱う。既存の行は `none` のまま
+(列の追加だけ)、`app.cli generate-previews` が作る。`AttachmentOut.preview` = `{status, pages, width, height}`
+(`none` は null)。送信 (bind) は自分の pending の添付を `FOR UPDATE` で読む (プレビューの記録と順序をそろえる、
+PREVIEWS.md §3)。
 
 ### outbox_events
 
