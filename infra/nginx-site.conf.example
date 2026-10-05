@@ -14,7 +14,8 @@ server {
     listen 80;
     server_name chat.example.com;
 
-    # Attachments up to 100 MB (ATTACHMENT_MAX_BYTES); Caddy applies the exact limit per path.
+    # Attachments up to 100 MB (ATTACHMENT_MAX_BYTES); Caddy applies the exact limit per path
+    # (emoji pack imports 70 MB, profile pictures 6 MB, the rest of /api/* 1 MB).
     client_max_body_size 110m;
 
     location / {

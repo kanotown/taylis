@@ -8,7 +8,7 @@
 | `docker-compose.prod.yml` | 本番用の上書き (ホストへのポート公開を打ち消す) |
 | `Dockerfile` | server のイメージ (uv ベース) |
 | `web.Dockerfile` | Caddy + ブラウザクライアント (apps/desktop を `vite build` して `/srv/web` に置く。M12j) |
-| `Caddyfile` | TLS 終端、`/api/*` を app へ、本文サイズ制限、それ以外は SPA (index.html) |
+| `Caddyfile` | TLS 終端、`/api/*` を app へ、本文サイズ制限（パスごと。下の「既存の nginx の後ろで動かす」）、それ以外は SPA (index.html) |
 | `.env.example` | 必要な環境変数の一覧 (SECRET_KEY、DATABASE_URL、S3_*、PUSH_*)。秘密の実値は置かない |
 
 ## 使い方
@@ -416,7 +416,10 @@ CHIKUWA_SERVER_IMAGE=$REGISTRY/chikuwachat-server:$(cat .release) CHIKUWA_WEB_IM
 
   nginx は `X-Forwarded-For` を接続元のアドレスで置き換え、`X-Forwarded-Proto` を渡す。Caddy はこの構成でだけ
   プライベートアドレス (nginx) からの転送ヘッダを信用する (SECURITY.md §6)。WebSocket のため `Upgrade` を通し、
-  読み取りのタイムアウトを 1 時間にしている。
+  読み取りのタイムアウトを 1 時間にしている。nginx の本文の上限（`client_max_body_size 110m`）は一番大きい添付に
+  合わせたもので、パスごとの正確な上限は Caddy が持つ：添付 110 MB、プロフィール画像とワークスペースのアイコン 6 MB、
+  絵文字セットの取り込み（`/api/v1/emoji/packs/import`、ZIP かフォルダーの合計 64 MiB）70 MB、それ以外の `/api/*` は
+  1 MB（レビュー v0.1.37 #8）。
 - 手で compose を動かすときも `-f docker-compose.behind-proxy.yml` を付ける (付けずに Caddy を起動すると
   80 / 443 を取りに行き、nginx とぶつかって起動しない)。
 

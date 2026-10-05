@@ -79,7 +79,8 @@ URL (`/messages/{id}/reactions/:name:`) にもそのまま入る。日本語は 
 
   ファイル名は NFC にそろえて比べる (macOS は日本語のファイル名を分解形 (NFD) で渡す)。
 - 検査はアップロードと同じ: 画像は PNG / GIF / JPEG / WebP、`EMOJI_MAX_BYTES` (256 KB) 以下、512px 以下。
-  `pack.json` は 1 MB まで、items は 300 個まで、ZIP は 1000 項目・展開後 64 MB まで、送信全体 64 MB まで。
+  `pack.json` は 1 MB まで、items は 300 個まで、ZIP は 1000 項目・展開後 64 MB まで、送信全体 64 MB まで
+  （フォルダーはファイルの合計で数える。Caddy はこのパスだけ本文を 70 MB まで通す。レビュー v0.1.37 #8）。
 - **全部か何もしないか**: 先に全部を検査し、どれか 1 つでも駄目なら何も書かない。
   - `400 emoji_pack_manifest_invalid` (pack.json がない・JSON でない・形が違う・ショートコードかファイルの重複)、
     `400 emoji_name_invalid` (ショートコードの形)、`400 emoji_pack_file_missing` (pack.json にあるファイルがない)、

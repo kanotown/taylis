@@ -1731,11 +1731,12 @@ CREATE TABLE attachments (
   video_probed_at timestamptz,                      -- M79: サーバが動画を調べた時刻 (結果の有無によらず)。NULL は未調査
   preview_status text NOT NULL DEFAULT 'none',      -- M108: 'none' | 'pending' | 'ready' | 'failed' (文書のプレビュー)
   preview_pages  integer,                           -- M108: ページ数
-  preview_pdf_key text,                             -- M108: 'attachments/{id}.preview.pdf' (Office を変換した PDF。PDF のアップロードは NULL = 元のファイル)
-  preview_thumb_key text,                           -- M108: 'attachments/{id}.preview.webp' (1 ページ目、幅 800 px)
+  preview_pdf_key text,                             -- M108: 'attachments/{id}.preview.{n}.pdf' (Office を変換した PDF。PDF のアップロードは NULL = 元のファイル。0086 より前は番号なし)
+  preview_thumb_key text,                           -- M108: 'attachments/{id}.preview.{n}.webp' (1 ページ目、幅 800 px)
   preview_width  integer,                           -- M108: サムネイルの縦横 (画素)
   preview_height integer,
   preview_attempts integer NOT NULL DEFAULT 0,      -- M108: 試行回数 (claim ごとに +1、上限 PREVIEW_MAX_ATTEMPTS)
+  preview_generation integer NOT NULL DEFAULT 0,    -- 0086: claim 番号 n (claim のたびに +1。結果を書けるのは n の試行だけ、生成物のキーにも n。レビュー v0.1.37 #4・#9)
   preview_next_at timestamptz,                      -- M108: 次に取ってよい時刻 (再試行の待ち、処理中のリース)
   preview_error  text,                              -- M108: 最後の失敗の理由 (300 文字まで)
   created_at     timestamptz NOT NULL DEFAULT now(),

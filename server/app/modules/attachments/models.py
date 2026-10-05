@@ -61,6 +61,9 @@ class Attachment(Base):
     preview_width: Mapped[int | None] = mapped_column(Integer)
     preview_height: Mapped[int | None] = mapped_column(Integer)
     preview_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Review v0.1.37 #4 / #9: +1 at every claim of a try. The try owns the row only while this is
+    # still its number, and stores its objects under keys with the number (preview_kinds.pdf_key).
+    preview_generation: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # When the loop may take it (again): after a failed try, or once a claimed try's lease runs out.
     preview_next_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     preview_error: Mapped[str | None] = mapped_column(Text)
