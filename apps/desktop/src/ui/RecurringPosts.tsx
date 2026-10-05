@@ -31,8 +31,10 @@ import {
   shortDateTime,
   targetsSummary,
   updateBody,
+  monthDayLabel,
   WEEKDAY_LABELS,
 } from "./recurring";
+import { t, weekdayName } from "../i18n";
 
 const SELECT =
   "rounded-lg border border-line bg-canvas px-2.5 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-60";
@@ -86,12 +88,12 @@ export function RecurringPostList({ controller, channel }: { controller: AppCont
   return (
     <div className="space-y-2" data-recurring-list>
       {rows === null ? (
-        <p className="py-2 text-sm text-muted">読み込み中…</p>
+        <p className="py-2 text-sm text-muted">{t("common.loading")}</p>
       ) : rows === "failed" ? (
-        <p className="py-2 text-sm text-danger">読み込めませんでした</p>
+        <p className="py-2 text-sm text-danger">{t("common.loadFailed")}</p>
       ) : rows.length === 0 ? (
         <p className="py-1 text-sm text-muted">
-          定期投稿はありません。{manage ? "毎週のスレッド (週報など) をボットが立て、返信で提出を集められます。" : ""}
+          {t("recurring.none")}{manage ? t("recurring.noneManage") : ""}
         </p>
       ) : (
         <ul className="divide-y divide-line rounded-lg border border-line">
@@ -100,42 +102,42 @@ export function RecurringPostList({ controller, channel }: { controller: AppCont
               <div className="flex items-center gap-2">
                 <CalendarClock size={15} className="shrink-0 text-muted" />
                 <strong className="min-w-0 flex-1 truncate text-sm">{post.name}</strong>
-                {!post.enabled && <span className="shrink-0 rounded bg-panel-2 px-1.5 text-[11px] font-medium text-muted">停止中</span>}
+                {!post.enabled && <span className="shrink-0 rounded bg-panel-2 px-1.5 text-[11px] font-medium text-muted">{t("workflow.paused")}</span>}
               </div>
               <div className="text-xs text-muted">
                 {scheduleSummary(post.schedule, post.tz, localTz)}
-                {post.enabled && <> · 次回 {shortDateTime(post.next_run_at)}</>}
+                {post.enabled && <>{t("recurring.next", { at: shortDateTime(post.next_run_at) })}</>}
               </div>
               <div className="text-xs text-muted">
-                {post.collect ? `回収: ${targetsSummary(post.collect, groupName, userName)} · ${dueSummary(post.collect.due)}` : "回収なし"}
+                {post.collect ? t("recurring.collects", { targets: targetsSummary(post.collect, groupName, userName), due: dueSummary(post.collect.due) }) : t("recurring.noCollect")}
               </div>
               {manage && api && (
                 confirmDelete === post.id ? (
                   <div className="flex items-center justify-end gap-2 rounded-lg bg-danger/10 px-2 py-1.5">
-                    <span className="mr-auto text-xs">「{post.name}」を削除しますか？ これまでの投稿は残ります</span>
-                    <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(null)}>キャンセル</Button>
-                    <Button variant="danger" size="sm" disabled={busy === post.id} onClick={() => void act(post, () => api.deleteRecurringPost(post.id), "削除しました")}>
-                      削除する
+                    <span className="mr-auto text-xs">{t("recurring.deleteConfirm", { name: post.name })}</span>
+                    <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(null)}>{t("common.cancel")}</Button>
+                    <Button variant="danger" size="sm" disabled={busy === post.id} onClick={() => void act(post, () => api.deleteRecurringPost(post.id), t("common.deleted"))}>
+                      {t("common.deleteConfirm")}
                     </Button>
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-1.5 pt-1">
-                    <Button variant="secondary" size="sm" disabled={busy === post.id} onClick={() => void act(post, () => api.runRecurringPost(post.id), "投稿しました")}>
-                      <Send size={13} /> 今すぐ投稿
+                    <Button variant="secondary" size="sm" disabled={busy === post.id} onClick={() => void act(post, () => api.runRecurringPost(post.id), t("recurring.postedNow"))}>
+                      <Send size={13} /> {t("recurring.postNow")}
                     </Button>
                     <Button
                       variant="secondary"
                       size="sm"
                       disabled={busy === post.id}
-                      onClick={() => void act(post, () => api.updateRecurringPost(post.id, { enabled: !post.enabled }), post.enabled ? "止めました" : "再開しました")}
+                      onClick={() => void act(post, () => api.updateRecurringPost(post.id, { enabled: !post.enabled }), post.enabled ? t("workflow.pausedNotice") : t("workflow.resumedNotice"))}
                     >
-                      {post.enabled ? <><Pause size={13} /> 止める</> : <><Play size={13} /> 再開</>}
+                      {post.enabled ? <><Pause size={13} /> {t("settings.pause.pause")}</> : <><Play size={13} /> {t("settings.pause.resume")}</>}
                     </Button>
                     <Button variant="secondary" size="sm" onClick={() => setEditing(post)}>
-                      <Pencil size={13} /> 編集
+                      <Pencil size={13} /> {t("canvas.edit")}
                     </Button>
                     <Button variant="ghost" size="sm" className="text-danger" onClick={() => setConfirmDelete(post.id)}>
-                      <Trash2 size={13} /> 削除
+                      <Trash2 size={13} /> {t("common.delete")}
                     </Button>
                   </div>
                 )
@@ -147,7 +149,7 @@ export function RecurringPostList({ controller, channel }: { controller: AppCont
       {result && <p role={result.ok ? "status" : "alert"} className={cn("text-xs", result.ok ? "text-muted" : "text-danger")}>{result.text}</p>}
       {manage && (
         <Button size="sm" variant="secondary" onClick={() => setEditing("new")} disabled={rows === "failed" || (Array.isArray(rows) && rows.length >= 20)}>
-          <Plus size={14} /> 定期投稿を追加
+          <Plus size={14} /> {t("recurring.add")}
         </Button>
       )}
       {editing && (
@@ -158,7 +160,7 @@ export function RecurringPostList({ controller, channel }: { controller: AppCont
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
-            setResult({ ok: true, text: "保存しました" });
+            setResult({ ok: true, text: t("common.saved") });
             setReload((n) => n + 1);
           }}
         />
@@ -170,7 +172,7 @@ export function RecurringPostList({ controller, channel }: { controller: AppCont
 /** The wide window's way in: ⋯ → 「定期投稿…」. */
 export function RecurringPostsDialog({ controller, channel, onClose }: { controller: AppController; channel: ChannelState; onClose: () => void }) {
   return (
-    <Modal onClose={onClose} title="定期投稿" description={`#${channel.name ?? ""} にボットが決まった日時に投稿します`} className="w-[520px]">
+    <Modal onClose={onClose} title={t("recurring.title")} description={t("recurring.description", { name: channel.name ?? "" })} className="w-[520px]">
       <div className="mt-3">
         <RecurringPostList controller={controller} channel={channel} />
       </div>
@@ -214,7 +216,7 @@ export function RecurringPostDialog({ controller, channel, post, onClose, onSave
       setBusy(false);
     }
   };
-  const title = post ? "定期投稿を編集" : "定期投稿を追加";
+  const title = post ? t("recurring.edit") : t("recurring.add");
   return (
     <Modal onClose={onClose} title={title} className="w-[560px]">
       <form
@@ -226,15 +228,15 @@ export function RecurringPostDialog({ controller, channel, post, onClose, onSave
           void save();
         }}
       >
-        <Field label="名前 (ボットの表示名)">
-          <Input autoFocus value={draft.name} maxLength={80} placeholder="週報" onChange={(e) => set({ name: e.target.value })} />
+        <Field label={t("recurring.nameLabel")}>
+          <Input autoFocus value={draft.name} maxLength={80} placeholder={t("recurring.namePlaceholder")} onChange={(e) => set({ name: e.target.value })} />
         </Field>
-        <Field label="本文" hint={placeholderHint()}>
-          <Textarea rows={4} value={draft.body} maxLength={MAX_RECURRING_BODY} placeholder={"**週報 {date}**\nこのスレッドに今週の進捗を返信してください"} onChange={(e) => set({ body: e.target.value })} />
+        <Field label={t("recurring.body")} hint={placeholderHint()}>
+          <Textarea rows={4} value={draft.body} maxLength={MAX_RECURRING_BODY} placeholder={t("recurring.bodyPlaceholder")} onChange={(e) => set({ body: e.target.value })} />
         </Field>
         <div className="space-y-1.5">
-          <span className="text-xs font-medium text-muted">繰り返し</span>
-          <div role="radiogroup" aria-label="繰り返し" className="flex w-full rounded-lg bg-panel-2 p-0.5 text-sm font-medium">
+          <span className="text-xs font-medium text-muted">{t("tasks.repeat")}</span>
+          <div role="radiogroup" aria-label={t("tasks.repeat")} className="flex w-full rounded-lg bg-panel-2 p-0.5 text-sm font-medium">
             {(["weekly", "monthly"] as const).map((kind) => (
               <button
                 key={kind}
@@ -244,13 +246,13 @@ export function RecurringPostDialog({ controller, channel, post, onClose, onSave
                 onClick={() => set({ kind })}
                 className={cn("flex-1 rounded-md px-2.5 py-1.5 transition-colors", draft.kind === kind ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
               >
-                {kind === "weekly" ? "毎週" : "毎月"}
+                {kind === "weekly" ? t("recurring.everyWeek") : t("recurring.everyMonth")}
               </button>
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {draft.kind === "weekly" ? (
-              <div role="group" aria-label="曜日" className="flex gap-1">
+              <div role="group" aria-label={t("settings.quiet.weekdays")} className="flex gap-1">
                 {WEEKDAY_LABELS.map((label, day) => {
                   const on = draft.weekdays.includes(day);
                   return (
@@ -258,7 +260,7 @@ export function RecurringPostDialog({ controller, channel, post, onClose, onSave
                       key={label}
                       type="button"
                       aria-pressed={on}
-                      aria-label={`${label}曜日`}
+                      aria-label={weekdayName(day, "long")}
                       onClick={() => set({ weekdays: on ? draft.weekdays.filter((d) => d !== day) : [...draft.weekdays, day].sort((a, b) => a - b) })}
                       className={cn("h-8 w-8 rounded-full border text-sm font-medium transition-colors", on ? "border-accent bg-accent-solid text-white" : "border-line text-ink hover:bg-panel")}
                     >
@@ -268,35 +270,35 @@ export function RecurringPostDialog({ controller, channel, post, onClose, onSave
                 })}
               </div>
             ) : (
-              <select aria-label="日" className={SELECT} value={draft.day} onChange={(e) => set({ day: Number(e.target.value) })}>
+              <select aria-label={t("recurring.dayLabel")} className={SELECT} value={draft.day} onChange={(e) => set({ day: Number(e.target.value) })}>
                 {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                  <option key={day} value={day}>{day === 31 ? "末日" : day >= 29 ? `${day} 日 (ない月は末日)` : `${day} 日`}</option>
+                  <option key={day} value={day}>{monthDayLabel(day)}</option>
                 ))}
               </select>
             )}
-            <Input type="time" aria-label="時刻" className="w-32" value={draft.time} onChange={(e) => set({ time: e.target.value })} />
+            <Input type="time" aria-label={t("recurring.time")} className="w-32" value={draft.time} onChange={(e) => set({ time: e.target.value })} />
           </div>
-          {zone !== localTz && <p className="text-xs text-muted">時刻は {zone} の時刻です</p>}
+          {zone !== localTz && <p className="text-xs text-muted">{t("recurring.zoneNote", { zone })}</p>}
         </div>
 
         <label className="flex cursor-pointer items-center gap-2.5 pt-1 text-sm">
           <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={draft.collect} onChange={(e) => set({ collect: e.target.checked })} />
           <span>
-            返信で提出を集める <span className="ml-1 text-xs text-muted">スレッドに返信した人が提出済みになり、締切を過ぎたら未提出の人にだけリマインドします</span>
+            {t("recurring.collect")} <span className="ml-1 text-xs text-muted">{t("recurring.collectNote")}</span>
           </span>
         </label>
         {draft.collect && (
           <div className="space-y-3 rounded-lg border border-line p-3" data-collect-fields>
             <TargetPicker controller={controller} channel={channel} draft={draft} onChange={set} />
             <div className="space-y-1">
-              <span className="text-xs font-medium text-muted">締切</span>
+              <span className="text-xs font-medium text-muted">{t("nav.deadlines")}</span>
               <div className="flex items-center gap-2">
-                <select aria-label="締切の日" className={SELECT} value={draft.afterDays} onChange={(e) => set({ afterDays: Number(e.target.value) })}>
+                <select aria-label={t("recurring.dueDay")} className={SELECT} value={draft.afterDays} onChange={(e) => set({ afterDays: Number(e.target.value) })}>
                   {Array.from({ length: MAX_AFTER_DAYS + 1 }, (_, i) => i).map((n) => (
-                    <option key={n} value={n}>{n === 0 ? "投稿した日" : `${n} 日後`}</option>
+                    <option key={n} value={n}>{n === 0 ? t("recurring.postDay") : t("recurring.daysAfter", { count: n })}</option>
                   ))}
                 </select>
-                <Input type="time" aria-label="締切の時刻" className="w-32" value={draft.dueTime} onChange={(e) => set({ dueTime: e.target.value })} />
+                <Input type="time" aria-label={t("recurring.dueTime")} className="w-32" value={draft.dueTime} onChange={(e) => set({ dueTime: e.target.value })} />
               </div>
             </div>
           </div>
@@ -304,8 +306,8 @@ export function RecurringPostDialog({ controller, channel, post, onClose, onSave
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         {!error && touched && problem && <p role="alert" className="text-sm text-danger">{problem}</p>}
         <div className="flex items-center justify-end gap-2 pt-1">
-          <Button variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" disabled={busy}>{post ? "保存" : "追加"}</Button>
+          <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" disabled={busy}>{post ? t("common.save") : t("common.add")}</Button>
         </div>
       </form>
     </Modal>
@@ -332,15 +334,15 @@ function TargetPicker({ controller, channel, draft, onChange }: {
   const toggle = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   return (
     <div className="space-y-2">
-      <span className="text-xs font-medium text-muted">提出する人</span>
+      <span className="text-xs font-medium text-muted">{t("recurring.targets")}</span>
       <label className="flex cursor-pointer items-center gap-2 text-sm">
         <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={draft.allMembers} onChange={(e) => onChange({ allMembers: e.target.checked })} />
-        チャンネルの全員 <span className="text-xs text-muted">(投稿の時点のメンバー)</span>
+        {t("recurring.allMembers")} <span className="text-xs text-muted">{t("recurring.atPostTime")}</span>
       </label>
       {!draft.allMembers && (
         <>
           {groups.length > 0 && (
-            <div role="group" aria-label="グループ" className="flex flex-wrap gap-1.5">
+            <div role="group" aria-label={t("composer.group")} className="flex flex-wrap gap-1.5">
               {groups.map((group) => {
                 const on = draft.groupIds.includes(group.id);
                 return (
@@ -358,11 +360,11 @@ function TargetPicker({ controller, channel, draft, onChange }: {
             </div>
           )}
           {members === null ? (
-            <p className="text-sm text-muted">読み込み中…</p>
+            <p className="text-sm text-muted">{t("common.loading")}</p>
           ) : (
             <>
-              {people.length > 8 && <Input value={query} aria-label="メンバーを絞り込む" placeholder="名前で絞り込む" className="h-8 text-sm" onChange={(e) => setQuery(e.target.value)} />}
-              <ul role="group" aria-label="メンバー" className="max-h-40 divide-y divide-line overflow-y-auto rounded-lg border border-line">
+              {people.length > 8 && <Input value={query} aria-label={t("recurring.filterMembers")} placeholder={t("tasks.dialog.filterPlaceholder")} className="h-8 text-sm" onChange={(e) => setQuery(e.target.value)} />}
+              <ul role="group" aria-label={t("channel.members")} className="max-h-40 divide-y divide-line overflow-y-auto rounded-lg border border-line">
                 {shown.map((person) => (
                   <li key={person.id}>
                     <label className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-sm hover:bg-panel">
@@ -375,7 +377,7 @@ function TargetPicker({ controller, channel, draft, onChange }: {
               </ul>
             </>
           )}
-          <p className="text-xs text-muted">グループと選んだ人を合わせた、投稿の時点のチャンネルのメンバーが対象です</p>
+          <p className="text-xs text-muted">{t("recurring.targetsNote")}</p>
         </>
       )}
     </div>
@@ -397,12 +399,12 @@ export function CollectionChip({ controller, message }: { controller: AppControl
           "inline-flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 font-medium transition-colors",
           chip.mine === "pending" ? "border-warning/60 bg-warning/10 text-ink hover:bg-warning/20" : "border-line text-ink hover:bg-panel",
         )}
-        aria-label={`${chip.label}${chip.mine === "pending" ? " (未提出)" : chip.mine === "submitted" ? " (提出済み)" : ""}`}
+        aria-label={`${chip.label}${chip.mine === "pending" ? ` (${t("recurring.pending")})` : chip.mine === "submitted" ? ` (${t("recurring.submitted")})` : ""}`}
       >
         <ClipboardCheck size={13} className={cn("shrink-0", chip.complete ? "text-success" : "text-muted")} />
         <span className="truncate">{chip.label}</span>
-        {chip.mine === "pending" && <span className={cn("shrink-0 rounded px-1 text-[10px] font-bold text-white", chip.overdue ? "bg-danger" : "bg-warning")}>未提出</span>}
-        {chip.mine === "submitted" && <span className="shrink-0 rounded bg-accent-soft px-1 text-[10px] font-bold text-accent">提出済み</span>}
+        {chip.mine === "pending" && <span className={cn("shrink-0 rounded px-1 text-[10px] font-bold text-white", chip.overdue ? "bg-danger" : "bg-warning")}>{t("recurring.pending")}</span>}
+        {chip.mine === "submitted" && <span className="shrink-0 rounded bg-accent-soft px-1 text-[10px] font-bold text-accent">{t("recurring.submitted")}</span>}
       </button>
       {open && <CollectionDialog controller={controller} message={message} onClose={() => setOpen(false)} />}
     </div>
@@ -422,21 +424,21 @@ export function CollectionDialog({ controller, message, onClose }: { controller:
       <li key={id} className="flex items-center gap-2.5 rounded-lg px-1 py-1.5">
         <Avatar id={id} name={name} size={26} />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
-        {id === store.me?.id && <span className="shrink-0 text-xs text-muted">(自分)</span>}
+        {id === store.me?.id && <span className="shrink-0 text-xs text-muted">{t("tasks.dialog.me")}</span>}
       </li>
     );
   };
   return (
-    <Modal onClose={onClose} title="提出状況" description={`${chip.label}${chip.overdue ? " (締切を過ぎました)" : ""}`} className="w-[380px]">
-      <section aria-label="提出済み" className="mt-3">
-        <h3 className="text-xs font-semibold text-muted">提出済み {submitted.length} 人</h3>
-        {submitted.length === 0 ? <p className="py-2 text-sm text-muted">まだいません</p> : <ul className="mt-1 max-h-60 space-y-1 overflow-y-auto">{submitted.map(row)}</ul>}
+    <Modal onClose={onClose} title={t("recurring.status")} description={`${chip.label}${chip.overdue ? t("recurring.overdue") : ""}`} className="w-[380px]">
+      <section aria-label={t("recurring.submitted")} className="mt-3">
+        <h3 className="text-xs font-semibold text-muted">{t("recurring.submittedCount", { count: submitted.length })}</h3>
+        {submitted.length === 0 ? <p className="py-2 text-sm text-muted">{t("recurring.nobodyYet")}</p> : <ul className="mt-1 max-h-60 space-y-1 overflow-y-auto">{submitted.map(row)}</ul>}
       </section>
-      <section aria-label="未提出" className="mt-4 border-t border-line pt-3">
-        <h3 className="text-xs font-semibold text-muted">未提出 {missing.length} 人</h3>
-        {missing.length === 0 ? <p className="py-2 text-sm text-muted">全員が提出しました</p> : <ul className="mt-1 max-h-60 space-y-1 overflow-y-auto">{missing.map(row)}</ul>}
+      <section aria-label={t("recurring.pending")} className="mt-4 border-t border-line pt-3">
+        <h3 className="text-xs font-semibold text-muted">{t("recurring.pendingCount", { count: missing.length })}</h3>
+        {missing.length === 0 ? <p className="py-2 text-sm text-muted">{t("recurring.allSubmitted")}</p> : <ul className="mt-1 max-h-60 space-y-1 overflow-y-auto">{missing.map(row)}</ul>}
       </section>
-      <p className="mt-3 text-xs text-muted">スレッドに返信すると提出済みになります。{collection.reminded_at ? "締切後、未提出の人にリマインドしました。" : "締切を過ぎると、未提出の人にだけリマインドが届きます。"}</p>
+      <p className="mt-3 text-xs text-muted">{t("recurring.replyToSubmit")}{collection.reminded_at ? t("recurring.reminded") : t("recurring.willRemind")}</p>
     </Modal>
   );
 }

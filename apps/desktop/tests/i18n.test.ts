@@ -21,7 +21,7 @@ describe("dictionaries", () => {
     expect(Object.keys(en).sort()).toEqual(keys);
     expect(Object.keys(zhHans).sort()).toEqual(keys);
     for (const dict of [ja, en, zhHans] as const) {
-      for (const [key, text] of Object.entries(dict)) expect(text, key).not.toBe("");
+      for (const [key, text] of Object.entries(dict)) if (!/(Prefix|Suffix)$/.test(key)) expect(text, key).not.toBe("");
     }
   });
 
