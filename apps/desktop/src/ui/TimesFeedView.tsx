@@ -8,8 +8,11 @@ import { BackButton } from "./compact";
 import { channelTitle } from "./MainScreen";
 import { Button, IconButton } from "./primitives";
 import { MessageRow } from "./Timeline";
+import { t } from "../i18n";
 
-export const TIMES_FEED_EMPTY = "参加している times がありません。チャンネル一覧から times に参加すると、ここに新しい投稿が並びます";
+export function timesFeedEmpty(): string {
+  return t("timesFeed.empty");
+}
 
 function useTimesFeed(controller: AppController): TimesFeedHub | null {
   const hub = controller.engine?.timesFeed ?? null;
@@ -81,21 +84,21 @@ export function TimesFeedView({ controller, onReveal, onOpenThread, onOpenChanne
 
   let body: ReactNode;
   if (!hub || hub.status === "unsupported") {
-    body = <Notice title="このサーバは Times フィードに対応していません" text="サーバを更新すると使えるようになります。" />;
+    body = <Notice title={t("timesFeed.unsupported")} text={t("canvas.serverTooOldText")} />;
   } else if (!state?.loaded) {
     body =
       hub.status === "failed" ? (
-        <Notice title="読み込めませんでした" text="接続を確かめて、もう一度試してください。" action={<Button variant="secondary" size="sm" onClick={() => void hub.refresh()}>再読み込み</Button>} />
+        <Notice title={t("common.loadFailed")} text={t("timesFeed.checkConnection")} action={<Button variant="secondary" size="sm" onClick={() => void hub.refresh()}>{t("common.reload")}</Button>} />
       ) : !online && hub.status !== "loading" ? (
-        <Notice title="オフラインです" text="接続が戻ると読み込みます。" />
+        <Notice title={t("timesFeed.offline")} text={t("timesFeed.offlineText")} />
       ) : (
-        <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
+        <div className="py-8 text-center text-sm text-muted">{t("common.loading")}</div>
       );
   } else if (rows.length === 0) {
-    body = <Notice title="まだ投稿がありません" text={TIMES_FEED_EMPTY} />;
+    body = <Notice title={t("timesFeed.noPosts")} text={timesFeedEmpty()} />;
   } else {
     body = (
-      <div className="mx-auto max-w-3xl pb-4" role="feed" aria-busy={loadingMore || undefined} aria-label="Times フィード">
+      <div className="mx-auto max-w-3xl pb-4" role="feed" aria-busy={loadingMore || undefined} aria-label={t("sidebar.timesFeed")}>
         {rows.map((message) => {
           const channel = store.getChannel(message.channel_id);
           return (
@@ -117,9 +120,9 @@ export function TimesFeedView({ controller, onReveal, onOpenThread, onOpenChanne
         {hasMore && (
           <div className="py-3 text-center">
             {loadingMore ? (
-              <span className="text-sm text-muted">続きを読み込んでいます…</span>
+              <span className="text-sm text-muted">{t("search.loadingMore")}</span>
             ) : (
-              <Button variant="secondary" size="sm" onClick={() => void hub.loadMore()}>さらに読み込む</Button>
+              <Button variant="secondary" size="sm" onClick={() => void hub.loadMore()}>{t("canvasHistory.loadMore")}</Button>
             )}
           </div>
         )}
@@ -134,26 +137,26 @@ export function TimesFeedView({ controller, onReveal, onOpenThread, onOpenChanne
         <span className="text-muted max-md:hidden">
           <Newspaper size={18} />
         </span>
-        <strong className="min-w-0 flex-1 truncate whitespace-nowrap text-[15px]">Times フィード</strong>
+        <strong className="min-w-0 flex-1 truncate whitespace-nowrap text-[15px]">{t("sidebar.timesFeed")}</strong>
         {hub && hub.status !== "unsupported" && (
-          <IconButton label="再読み込み" className="shrink-0 text-muted" disabled={hub.status === "loading" || !online} onClick={() => void hub.refresh()}>
+          <IconButton label={t("common.reload")} className="shrink-0 text-muted" disabled={hub.status === "loading" || !online} onClick={() => void hub.refresh()}>
             <RotateCw size={16} />
           </IconButton>
         )}
-        <Button variant="secondary" size="sm" className="shrink-0" title="Times フィードの times を末尾まで既読にする" aria-label="すべて既読にする" disabled={!anyNew} onClick={() => void controller.markAllRead("times")}>
+        <Button variant="secondary" size="sm" className="shrink-0" title={t("timesFeed.markReadTitle")} aria-label={t("sidebar.markAllRead")} disabled={!anyNew} onClick={() => void controller.markAllRead("times")}>
           <CheckCheck size={14} />
-          <span className="max-md:hidden">すべて既読にする</span>
+          <span className="max-md:hidden">{t("sidebar.markAllRead")}</span>
         </Button>
         {myTimes ? (
-          <Button size="sm" className="shrink-0" aria-label="自分の times に書く" onClick={() => onOpenChannel(myTimes.id)}>
+          <Button size="sm" className="shrink-0" aria-label={t("timesFeed.writeMine")} onClick={() => onOpenChannel(myTimes.id)}>
             <PenLine size={14} />
-            <span className="max-md:hidden">自分の times に書く</span>
+            <span className="max-md:hidden">{t("timesFeed.writeMine")}</span>
           </Button>
         ) : (
           !controller.isGuest && (
-            <Button size="sm" className="shrink-0" aria-label="自分の times を作る" onClick={onCreateTimes}>
+            <Button size="sm" className="shrink-0" aria-label={t("sidebar.createTimes")} onClick={onCreateTimes}>
               <Plus size={14} />
-              <span className="max-md:hidden">自分の times を作る</span>
+              <span className="max-md:hidden">{t("sidebar.createTimes")}</span>
             </Button>
           )
         )}

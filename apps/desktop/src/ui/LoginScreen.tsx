@@ -8,6 +8,7 @@ import { isServerInfo, normalizeServerUrl } from "../state/workspaces";
 import { Button, Field, Input } from "./primitives";
 import { type GoogleButtonText, googleButtonText } from "./sso";
 import { WorkspaceIcon } from "./workspaceIcons";
+import { t } from "../i18n";
 
 export function LoginScreen({ controller, onDone, onInvite }: { controller: AppController; onDone: () => void; onInvite?: () => void }) {
   const [server, setServer] = useState(controller.serverUrl);
@@ -95,27 +96,27 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
             </span>
           )}
           <div>
-            <h1 className="text-xl font-bold tracking-tight">{adding ? "ワークスペースを追加" : entry ? entry.name : "Taylis"}</h1>
-            <p className="text-xs text-muted">{adding ? "別の Taylis サーバにログインします" : entry?.signedOut ? "もう一度ログインしてください" : "チームのチャットにログイン"}</p>
+            <h1 className="text-xl font-bold tracking-tight">{adding ? t("settings.workspaces.add") : entry ? entry.name : "Taylis"}</h1>
+            <p className="text-xs text-muted">{adding ? t("login.addingNote") : entry?.signedOut ? t("login.again") : t("login.subtitle")}</p>
           </div>
         </div>
         {isWeb() ? (
-          <p className="text-xs text-muted">サーバ: {server}</p>
+          <p className="text-xs text-muted">{t("login.server", { server })}</p>
         ) : (
-          <Field label="サーバ URL">
+          <Field label={t("login.serverUrl")}>
             <Input value={server} onChange={(e) => setServer(e.target.value)} placeholder="https://chat.example.com" required autoCapitalize="off" autoFocus={adding} />
           </Field>
         )}
-        <Field label="ユーザー名">
+        <Field label={t("admin.users.sort.username")}>
           <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required autoCapitalize="off" />
         </Field>
-        <Field label="パスワード">
+        <Field label={t("login.password")}>
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
         </Field>
         {needsCode && (
           <div className="space-y-2 rounded-xl border border-accent/40 bg-accent-soft/50 p-3">
-            <div className="flex items-center gap-2 text-sm font-medium"><ShieldCheck size={16} className="text-accent" /> 2 要素認証</div>
-            <Field label="認証アプリの 6 桁のコード (または回復コード)">
+            <div className="flex items-center gap-2 text-sm font-medium"><ShieldCheck size={16} className="text-accent" /> {t("settings.account.totp")}</div>
+            <Field label={t("login.code")}>
               <Input value={totpCode} onChange={(e) => setTotpCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" autoFocus required autoCapitalize="off" />
             </Field>
           </div>
@@ -123,13 +124,13 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
         {controller.error && <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{controller.error}</p>}
         <Button type="submit" disabled={busy || (needsCode && !totpCode.trim())} className="w-full">
           {busy && <Loader2 size={16} className="animate-spin" />}
-          {busy ? "ログイン中…" : needsCode ? "コードを確認してログイン" : "ログイン"}
+          {busy ? t("login.loggingIn") : needsCode ? t("login.verifyAndLogin") : t("login.login")}
         </Button>
         {google && !(adding && isWeb()) && (
           <>
             <div className="flex items-center gap-3 text-xs text-muted" role="separator">
               <span className="h-px flex-1 bg-line" />
-              または
+              {t("login.or")}
               <span className="h-px flex-1 bg-line" />
             </div>
             <Button
@@ -155,15 +156,15 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
         )}
         {adding && (
           <Button type="button" variant="secondary" className="w-full" onClick={() => controller.cancelAddWorkspace()}>
-            キャンセル
+            {t("common.cancel")}
           </Button>
         )}
         {!adding && entry && controller.workspaces.length > 1 && (
-          <p className="text-center text-xs text-muted">左の一覧から別のワークスペースに切り替えられます</p>
+          <p className="text-center text-xs text-muted">{t("login.switchHint")}</p>
         )}
         {onInvite && !adding && (
           <button type="button" onClick={onInvite} className="block w-full text-center text-xs text-muted hover:text-ink hover:underline">
-            招待リンクをお持ちの方はこちら
+            {t("login.haveInvite")}
           </button>
         )}
       </form>
@@ -180,12 +181,12 @@ function SsoWaiting({ controller }: { controller: AppController }) {
         <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-line bg-panel">
           {waiting ? <GoogleMark /> : <Loader2 size={20} className="animate-spin text-muted" />}
         </span>
-        <h1 className="text-lg font-bold tracking-tight">{waiting ? "ブラウザでログインを続けてください" : "ログイン中…"}</h1>
+        <h1 className="text-lg font-bold tracking-tight">{waiting ? t("login.continueInBrowser") : t("login.loggingIn")}</h1>
         {waiting && (
           <>
-            <p className="text-sm text-muted">Google でのログインが終わると、このアプリに戻ります。</p>
+            <p className="text-sm text-muted">{t("login.googleReturns")}</p>
             <Button type="button" variant="secondary" className="w-full" onClick={() => controller.cancelGoogleSignIn()}>
-              キャンセル
+              {t("common.cancel")}
             </Button>
           </>
         )}
