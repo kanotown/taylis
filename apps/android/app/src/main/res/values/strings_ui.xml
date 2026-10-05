@@ -1690,6 +1690,7 @@
     <string name="you_screens_empty_slot">空き</string>
     <string name="main_tabs_dm">DM</string>
     <string name="notification_channel_messages">メッセージ</string>
+    <string name="notification_me">自分</string>
     <string name="you_language">言語</string>
     <string name="you_language_hint">ほかの端末とサーバーからの通知も、この言語になります</string>
     <plurals name="composer_message_max_length">

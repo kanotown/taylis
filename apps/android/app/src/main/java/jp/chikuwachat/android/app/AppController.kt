@@ -85,6 +85,7 @@ import jp.chikuwachat.android.ui.openCachedFile
 import jp.chikuwachat.android.ui.DownloadCache
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.UserMe
+import jp.chikuwachat.android.platform.ConversationNote
 import jp.chikuwachat.android.platform.Notifier
 import jp.chikuwachat.android.platform.PushCenter
 import jp.chikuwachat.android.platform.PushMessage
@@ -336,6 +337,8 @@ class AppController(private val app: Application) {
     /** M48: the Google sign-in waiting for the browser, encrypted like the refresh tokens (it survives process death). */
     private val ssoPending = PendingSsoStore({ secrets.secret(SSO_PENDING_KEY) }, { secrets.putSecret(SSO_PENDING_KEY, it) })
     private val notifier = Notifier(app)
+    /** §16: conversation notifications are posted one at a time (each may wait up to 3 s for a picture). */
+    private val conversationPosts = Mutex()
     /** Plain settings on this device: the workspace list (M16c) and recent searches (M16b). */
     val prefs: KeyValueStore = SharedPrefsStore(app)
     /** M40: 「表示」 (端末に合わせる / ライト / ダーク), kept on this device for every workspace. */
@@ -1126,9 +1129,15 @@ class AppController(private val app: Application) {
             if (!dndActive(store)) {
                 val sender = store.users[message.senderId]?.displayName ?: "?"
                 val title = if (channel.channel.isDm) sender else channelTitle(channel, store) + " · " + sender
+                // §16: shown as a conversation with the sender's picture, like the push.
+                val group = ConversationNote.isGroup(channel.channel.type)
+                val note = ConversationNote(
+                    senderId = message.senderId, senderName = sender, senderAvatar = store.users[message.senderId]?.avatarUpdatedAt,
+                    isGroup = group, conversationTitle = if (group) channelTitle(channel, store) else null,
+                )
                 notify(
                     workspace(), channel.id, title, messageLine(message.body, message.attachments, store).ifEmpty { L10n.str(R.string.common_new_message) },
-                    messageId = message.id, parentId = message.parentId,
+                    messageId = message.id, parentId = message.parentId, conversation = note,
                 )
             }
         }
@@ -1194,8 +1203,26 @@ class AppController(private val app: Application) {
     private fun notify(
         entry: Workspace?, channelId: String?, title: String, body: String, key: String = channelId ?: "", messageId: String? = null, parentId: String? = null,
         reveal: Boolean = false, eventId: String? = null, taskId: String? = null, canvasId: String? = null, reservations: Boolean = false,
+        conversation: ConversationNote? = null,
     ) {
         val named = workspaces.size >= 2
+        if (conversation != null && channelId != null) {
+            // §16: the sender's picture loads through the workspace's own signed-in client (at most 3 s, else initials).
+            // One at a time, so a quick second message never lands before the first.
+            val server = entry?.serverUrl
+            val client = if (server != null && server == activeKey) api else server?.let { clients[it] }
+            val fetch: (suspend (String) -> ByteArray)? = client?.let { c -> { path: String -> c.fetchBytes(path) } }
+            scope.launch {
+                conversationPosts.withLock {
+                    val avatar = notifier.avatars.bitmap(server, conversation, fetch)
+                    notifier.notifyConversation(
+                        channelId, title, body, conversation, avatar, key = key, workspace = server,
+                        subText = if (named) entry?.name else null, messageId = messageId, parentId = parentId, badge = totalBadge(),
+                    )
+                }
+            }
+            return
+        }
         notifier.notifyMessage(
             channelId, title, body, key = key, workspace = entry?.serverUrl, subText = if (named) entry?.name else null,
             messageId = messageId, parentId = parentId, reveal = reveal, badge = totalBadge(), eventId = eventId, taskId = taskId,
@@ -1249,7 +1276,7 @@ class AppController(private val app: Application) {
                 // M52: a calendar alarm's push is shown the same way (while live, the socket's calendar.alarm.updated says it).
                 // §15: a test push is what the reader just asked for: shown even with the app open and the socket live.
                 if (message.shown && (message.isTest || (!live && !reading)) && key != null) {
-                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation)
+                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation)
                 }
                 // M28c: the push's own conversation catches up too (the socket may be stale), not only the open one.
                 engine?.pushReceived(message.channelId, message.messageId)
@@ -1258,7 +1285,7 @@ class AppController(private val app: Application) {
             // The mark first: the notification's number counts this workspace's badge with the others'.
             if (message.kind == "message") updateWorkspace(target.serverUrl) { it.copy(hasUnread = true, badge = message.badge ?: it.badge) }
             if (message.shown && key != null) {
-                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation)
+                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation)
             }
         }
     }

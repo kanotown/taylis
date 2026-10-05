@@ -8,8 +8,14 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
+import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
 import jp.chikuwachat.android.MainActivity
 import jp.chikuwachat.android.L10n
 import jp.chikuwachat.android.R
@@ -57,21 +63,7 @@ class Notifier(private val context: Context) {
         reservations: Boolean = false,
     ) {
         if (!permitted) return
-        // M16c: the tap opens the notification's workspace first (WORKSPACES.md §7).
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-            if (channelId != null) putExtra(EXTRA_CHANNEL_ID, channelId)
-            if (eventId != null) putExtra(EXTRA_EVENT_ID, eventId)
-            if (taskId != null) putExtra(EXTRA_TASK_ID, taskId)
-            if (canvasId != null) putExtra(EXTRA_CANVAS_ID, canvasId)
-            if (reservations) putExtra(EXTRA_RESERVATIONS, true)
-            if (workspace != null) putExtra(EXTRA_WORKSPACE, workspace)
-            if (messageId != null) putExtra(EXTRA_MESSAGE_ID, messageId)
-            if (parentId != null) putExtra(EXTRA_PARENT_ID, parentId)
-            if (reveal) putExtra(EXTRA_REVEAL, true)
-        }
-        val request = ((workspace ?: "") + "|" + key).hashCode()
-        val pending = PendingIntent.getActivity(context, request, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val pending = contentIntent(channelId, key, workspace, messageId, parentId, reveal, eventId, taskId, canvasId, reservations)
         val builder = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -89,11 +81,119 @@ class Notifier(private val context: Context) {
         manager.notify(key, NOTIFICATION_ID, builder.build())
     }
 
+    /** The messages each conversation's notification lists while it is on screen ("workspace|key" → lines, pictures). */
+    private val lines = HashMap<String, List<ConversationLine>>()
+    private val icons = HashMap<String, MutableMap<String, IconCompat?>>()
+
+    /**
+     * PUSH_NOTIFICATIONS.md §16: a person's message as a conversation: MessagingStyle with the sender as a Person and
+     * their picture ([avatar], already a circle), on a long-lived conversation shortcut, so Android shows the picture as
+     * the main image and the app's small icon in its corner. The newest few messages of the conversation stay listed
+     * while the notification is on screen; the same message from the socket and from FCM is listed once.
+     */
+    fun notifyConversation(
+        channelId: String, title: String, body: String, note: ConversationNote, avatar: Bitmap?,
+        key: String = channelId, workspace: String? = null, subText: String? = null,
+        messageId: String? = null, parentId: String? = null, badge: Int? = null,
+    ) {
+        if (!permitted) return
+        val slot = (workspace ?: "") + "|" + key
+        val shown = runCatching { manager.activeNotifications.any { it.tag == key && it.id == NOTIFICATION_ID } }.getOrDefault(false)
+        val previous = if (shown) lines[slot].orEmpty() else emptyList()
+        val updated = ConversationStyle.append(previous, ConversationLine(messageId, note.senderId, note.senderName, body, System.currentTimeMillis()))
+        if (shown && updated === previous) return // already listed (the socket's copy, then FCM's)
+        lines[slot] = updated
+        val icon = avatar?.let { IconCompat.createWithBitmap(it) }
+        val people = (if (shown) icons[slot] else null) ?: HashMap()
+        people[note.senderId] = icon
+        icons[slot] = people
+        val me = Person.Builder().setKey("me").setName(L10n.str(R.string.notification_me)).build()
+        val sender = ConversationStyle.person(note.senderId, note.senderName, icon)
+        val label = (if (note.isGroup) note.conversationTitle else null) ?: note.senderName
+        val shortcut = ShortcutInfoCompat.Builder(context, ConversationStyle.shortcutId(workspace, channelId))
+            .setShortLabel(label.take(SHORTCUT_LABEL_MAX).ifBlank { "?" })
+            .setLongLived(true)
+            .setPerson(sender)
+            .setIcon(icon ?: IconCompat.createWithResource(context, R.mipmap.ic_launcher))
+            .setIntent(
+                Intent(context, MainActivity::class.java).apply {
+                    action = ACTION_CONVERSATION
+                    putExtra(EXTRA_CHANNEL_ID, channelId)
+                    if (workspace != null) putExtra(EXTRA_WORKSPACE, workspace)
+                },
+            )
+            .build()
+        // The notification never depends on the shortcut (a launcher's limit, a work profile's policy…).
+        val withShortcut = runCatching { ShortcutManagerCompat.pushDynamicShortcut(context, shortcut) }.isSuccess
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(ConversationStyle.style(me, updated, people, note.isGroup, note.conversationTitle))
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setContentIntent(contentIntent(channelId, key, workspace, messageId, parentId))
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+        if (withShortcut) builder.setShortcutInfo(shortcut)
+        // Before Android 11 there are no conversation notifications: the picture is the large icon instead.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R && avatar != null) builder.setLargeIcon(avatar)
+        if (subText != null) builder.setSubText(subText)
+        if (workspace != null) builder.addExtras(Bundle().apply { putString(EXTRA_WORKSPACE, workspace) })
+        if (badge != null && badge > 0) builder.setNumber(badge)
+        manager.notify(key, NOTIFICATION_ID, builder.build())
+    }
+
+    private fun contentIntent(
+        channelId: String?, key: String, workspace: String?, messageId: String?, parentId: String?, reveal: Boolean = false,
+        eventId: String? = null, taskId: String? = null, canvasId: String? = null, reservations: Boolean = false,
+    ): PendingIntent {
+        // M16c: the tap opens the notification's workspace first (WORKSPACES.md §7).
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+            if (channelId != null) putExtra(EXTRA_CHANNEL_ID, channelId)
+            if (eventId != null) putExtra(EXTRA_EVENT_ID, eventId)
+            if (taskId != null) putExtra(EXTRA_TASK_ID, taskId)
+            if (canvasId != null) putExtra(EXTRA_CANVAS_ID, canvasId)
+            if (reservations) putExtra(EXTRA_RESERVATIONS, true)
+            if (workspace != null) putExtra(EXTRA_WORKSPACE, workspace)
+            if (messageId != null) putExtra(EXTRA_MESSAGE_ID, messageId)
+            if (parentId != null) putExtra(EXTRA_PARENT_ID, parentId)
+            if (reveal) putExtra(EXTRA_REVEAL, true)
+        }
+        val request = ((workspace ?: "") + "|" + key).hashCode()
+        return PendingIntent.getActivity(context, request, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
     /** The conversation was read (here or elsewhere): its message notification goes; reminders stay. */
-    fun clear(channelId: String) = manager.cancel(channelId, NOTIFICATION_ID)
+    fun clear(channelId: String) {
+        manager.cancel(channelId, NOTIFICATION_ID)
+        lines.keys.filter { it.endsWith("|$channelId") }.forEach { lines.remove(it); icons.remove(it) }
+    }
 
     /** Signed out (SYNC_PROTOCOL.md §11): nothing of the old account stays on screen. */
-    fun clearAll() = manager.cancelAll()
+    fun clearAll() {
+        manager.cancelAll()
+        forgetConversations(null)
+        avatars.clear()
+    }
+
+    /** §16: the senders' pictures for [notifyConversation] (a disk cache dropped with the last sign-out). */
+    val avatars = NotificationAvatars(context)
+
+    /** §16: a workspace's (null: every) conversation shortcuts and listed messages go with its sign-out. */
+    private fun forgetConversations(workspace: String?) {
+        val prefix = workspace?.let { "$it|" }
+        lines.keys.filter { prefix == null || it.startsWith(prefix) }.forEach { lines.remove(it); icons.remove(it) }
+        runCatching {
+            val flags = ShortcutManagerCompat.FLAG_MATCH_DYNAMIC or ShortcutManagerCompat.FLAG_MATCH_CACHED
+            val mine = workspace?.let { ConversationStyle.shortcutId(it, "") } ?: "conv:"
+            val ids = ShortcutManagerCompat.getShortcuts(context, flags).map { it.id }.filter { it.startsWith(mine) }
+            if (ids.isNotEmpty()) {
+                ShortcutManagerCompat.removeDynamicShortcuts(context, ids)
+                ShortcutManagerCompat.removeLongLivedShortcuts(context, ids)
+            }
+        }
+    }
 
     /**
      * One workspace signed out (WORKSPACES.md §5.3): its notifications go, the others' stay. `everything` when it was
@@ -101,9 +201,10 @@ class Notifier(private val context: Context) {
      */
     fun clearWorkspace(workspace: String, everything: Boolean) {
         if (everything) {
-            manager.cancelAll()
+            clearAll()
             return
         }
+        forgetConversations(workspace)
         runCatching { manager.activeNotifications }.getOrNull()?.forEach { shown ->
             if (shown.notification.extras?.getString(EXTRA_WORKSPACE) == workspace) manager.cancel(shown.tag, shown.id)
         }
@@ -111,6 +212,9 @@ class Notifier(private val context: Context) {
 
     companion object {
         const val CHANNEL_ID = "messages"
+        /** §16: a conversation shortcut (the launcher's long-press list, the conversation settings) opens its channel. */
+        const val ACTION_CONVERSATION = "jp.chikuwachat.android.OPEN_CONVERSATION"
+        private const val SHORTCUT_LABEL_MAX = 40
         const val EXTRA_CHANNEL_ID = "channel_id"
         /** M28c: the message the notification is about and, for a reply, its thread's parent. */
         const val EXTRA_MESSAGE_ID = "message_id"

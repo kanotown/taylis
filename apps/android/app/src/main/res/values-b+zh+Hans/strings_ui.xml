@@ -1690,6 +1690,7 @@
     <string name="you_screens_empty_slot">空</string>
     <string name="main_tabs_dm">私信</string>
     <string name="notification_channel_messages">消息</string>
+    <string name="notification_me">我</string>
     <string name="you_language">语言</string>
     <string name="you_language_hint">你的其他设备和服务器发出的通知也将使用此语言</string>
     <plurals name="composer_message_max_length">
