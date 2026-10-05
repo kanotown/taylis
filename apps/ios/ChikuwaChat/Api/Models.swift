@@ -68,6 +68,10 @@ struct UserMe: Codable, Equatable {
     /// M50: the long-press quick reactions I chose, the same on every device. A server before M50 leaves the key out
     /// (`.unsupported`: the setting is hidden); null is `.unset` (the recent-first rule).
     var quickReactions: QuickReactionsSetting = .unsupported
+    /// M111: my home tiles (the desktop's sidebar items) in order, the same on every device (apps/shared/nav-items.json).
+    /// A server before M111 leaves the key out (`.unsupported`: the setting is hidden, the tiles are the defaults); null
+    /// is `.unset` (the defaults).
+    var navItems: NavItemsSetting = .unsupported
     /// M56 (TASKS.md §5): task assignments and due dates as pushes (and in-app notices). nil from a server before M55
     /// (no tasks there: the switch is hidden, and so is 「タスクにする」); on when absent.
     var notifyTasks: Bool? = nil
@@ -122,6 +126,59 @@ extension KeyedEncodingContainer {
     mutating func encode(_ value: QuickReactionsSetting, forKey key: Key) throws {
         switch value {
         case .unsupported: break  // left out, as the older server did
+        case .unset: try encodeNil(forKey: key)
+        case .chosen(let list): try encode(list, forKey: key)
+        }
+    }
+}
+
+/// M111: one sidebar item / home tile and whether it shows (UserMe.nav_items).
+struct NavItem: Codable, Equatable, Hashable {
+    var key: String
+    var visible: Bool
+}
+
+/// M111: `UserMe.nav_items`; a missing key (a server before M111) differs from null (not customised), as M50's
+/// QuickReactionsSetting.
+enum NavItemsSetting: Codable, Equatable {
+    case unsupported
+    case unset
+    case chosen([NavItem])
+
+    /// My list as saved; nil when not customised (or the server has no such setting).
+    var chosen: [NavItem]? {
+        if case .chosen(let list) = self { return list }
+        return nil
+    }
+
+    var isSupported: Bool { self != .unsupported }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self = container.decodeNil() ? .unset : .chosen(try container.decode([NavItem].self))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .unsupported, .unset: try container.encodeNil()
+        case .chosen(let list): try container.encode(list)
+        }
+    }
+}
+
+extension KeyedDecodingContainer {
+    func decode(_ type: NavItemsSetting.Type, forKey key: Key) throws -> NavItemsSetting {
+        guard contains(key) else { return .unsupported }
+        if try decodeNil(forKey: key) { return .unset }
+        return .chosen(try decode([NavItem].self, forKey: key))
+    }
+}
+
+extension KeyedEncodingContainer {
+    mutating func encode(_ value: NavItemsSetting, forKey key: Key) throws {
+        switch value {
+        case .unsupported: break
         case .unset: try encodeNil(forKey: key)
         case .chosen(let list): try encode(list, forKey: key)
         }

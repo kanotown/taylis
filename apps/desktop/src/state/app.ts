@@ -41,6 +41,7 @@ import { attachmentText, plainText } from "../ui/markdown";
 import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
 import { readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
+import type { NavItem } from "../ui/navItems";
 
 export type Screen = "boot" | "login" | "change_password" | "main";
 
@@ -918,8 +919,20 @@ export class AppController {
     return this.sidebarChange((api) => api.updateSidebarSection(sectionId, { collapsed }));
   }
 
-  moveSection(sectionId: string, position: number): Promise<boolean> {
-    return this.sidebarChange((api) => api.updateSidebarSection(sectionId, { position }));
+  /**
+   * A section to another place among mine (the menu's 上へ / 下へ, or dragging its header). Moves at once here; the server's
+   * list (sidebar.updated on my other devices) confirms, and a failure puts the old order back.
+   */
+  async moveSection(sectionId: string, position: number): Promise<boolean> {
+    const before = this.store.sidebarSections;
+    const moved = before.find((s) => s.id === sectionId);
+    if (!moved) return false;
+    const rows = before.filter((s) => s.id !== sectionId);
+    rows.splice(Math.max(0, Math.min(position, rows.length)), 0, moved);
+    this.store.replaceSidebar(rows.map((s, index) => ({ ...s, position: index })));
+    const ok = await this.sidebarChange((api) => api.updateSidebarSection(sectionId, { position }));
+    if (!ok) this.store.replaceSidebar(before);
+    return ok;
   }
 
   deleteSection(sectionId: string): Promise<boolean> {
@@ -1236,6 +1249,19 @@ export class AppController {
     this.store.setMe({ ...before, quick_reactions: list });
     const ok = await this.updateProfile({ quick_reactions: list });
     if (!ok && this.store.me?.quick_reactions === list) this.store.setMe({ ...this.store.me, quick_reactions: before.quick_reactions ?? null });
+    return ok;
+  }
+
+  /**
+   * M111: 「サイドバーの項目」 (users.nav_items, apps/shared/nav-items.json), null = back to the defaults. Shown at once; a
+   * refused or failed save puts the previous list back. My other devices follow as with the quick reactions (user.updated).
+   */
+  async setNavItems(list: NavItem[] | null): Promise<boolean> {
+    const before = this.store.me;
+    if (!this.api || !before) return false;
+    this.store.setMe({ ...before, nav_items: list });
+    const ok = await this.updateProfile({ nav_items: list });
+    if (!ok && this.store.me?.nav_items === list) this.store.setMe({ ...this.store.me, nav_items: before.nav_items ?? null });
     return ok;
   }
 
@@ -2257,13 +2283,16 @@ export class AppController {
     }
   }
 
-  /** L4 (M31): who has not acknowledged yet (members only); null when it could not be loaded (the toast says why). */
-  async ackPending(message: MessageState): Promise<string[] | null> {
+  /**
+   * L4 (M31): who has not acknowledged yet (members only); null when it could not be loaded (the toast says why, unless
+   * `quiet`: the count in the message's own 確認 row, loaded unasked, then just leaves the total out).
+   */
+  async ackPending(message: MessageState, { quiet = false }: { quiet?: boolean } = {}): Promise<string[] | null> {
     if (!this.api) return null;
     try {
       return (await this.api.ackPending(message.id)).user_ids;
     } catch (error) {
-      this.setError(error);
+      if (!quiet) this.setError(error);
       return null;
     }
   }

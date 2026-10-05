@@ -1,0 +1,1152 @@
+{
+  "_comment": "M111 (MOBILE_UI.md §14): the sidebar's menu items (desktop / Web, platform \"desktop\") and the home's tiles (iOS / Android, platform \"mobile\", also the iPad's sidebar and the Android tablet's home list). `items`: the catalogue (key, label, mobile_label when the tile's name differs, default visibility, platforms). `order`: each platform's default order, every key. The preference is UserMe.nav_items (PATCH /users/me {nav_items: [{key, visible}] | null}); null = not customised. Rule, `cases`: full(stored, platform) = stored null → the platform's order with the default visibility; else the stored items in their order (a repeated key counts once, unknown keys kept), then every catalogue key not in it, in the platform's order, with its default visibility. shown(full, platform, implemented) = the items of `full` that are in the catalogue, on this platform and implemented by this client (the settings list them with their switch; the sidebar / tiles draw the visible ones). `reorder`: the settings reorder the shown items only: the slots of `full` they occupy get them in the new order, everything else stays. A client saves `full` (so other platforms' and newer clients' keys survive); 「元に戻す」 sends null. Not hideable on purpose: the phones' アクティビティ tab and the iPad sidebar's アクティビティ row (activity is desktop only here). The desktop's 下書き and リマインダー still show only while there is something in them.",
+  "items": [
+    {
+      "key": "threads",
+      "label": "スレッド",
+      "visible": true,
+      "platforms": [
+        "desktop",
+        "mobile"
+      ]
+    },
+    {
+      "key": "activity",
+      "label": "アクティビティ",
+      "visible": true,
+      "platforms": [
+        "desktop"
+      ]
+    },
+    {
+      "key": "times-feed",
+      "label": "Times",
+      "visible": true,
+      "platforms": [
+        "mobile"
+      ]
+    },
+    {
+      "key": "drafts",
+      "label": "下書き",
+      "visible": true,
+      "platforms": [
+        "desktop",
+        "mobile"
+      ]
+    },
+    {
+      "key": "saved",
+      "label": "保存済み",
+      "mobile_label": "保存",
+      "visible": true,
+      "platforms": [
+        "desktop",
+        "mobile"
+      ]
+    },
+    {
+      "key": "reminders",
+      "label": "リマインダー",
+      "visible": true,
+      "platforms": [
+        "desktop",
+        "mobile"
+      ]
+    },
+    {
+      "key": "files",
+      "label": "ファイル",
+      "visible": true,
+      "platforms": [
+        "desktop",
+        "mobile"
+      ]
+    },
+    {
+      "key": "canvases",
+      "label": "キャンバス",
+      "visible": true,
+      "platforms": [
+        "desktop",
+        "mobile"
+      ]
+    },
+    {
+      "key": "calendar",
+      "label": "カレンダー",
+      "visible": true,
+      "platforms": [
+        "desktop",
+        "mobile"
+      ]
+    },
+    {
+      "key": "tasks",
+      "label": "タスク",
+      "visible": true,
+      "platforms": [
+        "desktop",
+        "mobile"
+      ]
+    },
+    {
+      "key": "deadlines",
+      "label": "締切",
+      "visible": true,
+      "platforms": [
+        "desktop",
+        "mobile"
+      ]
+    },
+    {
+      "key": "reservations",
+      "label": "予約",
+      "visible": true,
+      "platforms": [
+        "desktop",
+        "mobile"
+      ]
+    }
+  ],
+  "order": {
+    "desktop": [
+      "threads",
+      "activity",
+      "drafts",
+      "reminders",
+      "files",
+      "canvases",
+      "calendar",
+      "tasks",
+      "deadlines",
+      "reservations",
+      "saved",
+      "times-feed"
+    ],
+    "mobile": [
+      "threads",
+      "times-feed",
+      "drafts",
+      "saved",
+      "reminders",
+      "calendar",
+      "tasks",
+      "deadlines",
+      "reservations",
+      "files",
+      "canvases",
+      "activity"
+    ]
+  },
+  "cases": [
+    {
+      "name": "not set: the platform's default order and visibility",
+      "stored": null,
+      "platform": "desktop",
+      "implemented": [
+        "threads",
+        "activity",
+        "drafts",
+        "reminders",
+        "files",
+        "canvases",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "saved"
+      ],
+      "full": [
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        }
+      ],
+      "shown": [
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "not set, phones: their own order",
+      "stored": null,
+      "platform": "mobile",
+      "implemented": [
+        "threads",
+        "times-feed",
+        "drafts",
+        "saved",
+        "reminders",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "files",
+        "canvases"
+      ],
+      "full": [
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        }
+      ],
+      "shown": [
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "not set: an implemented reservations page shows",
+      "stored": null,
+      "platform": "mobile",
+      "implemented": [
+        "threads",
+        "times-feed",
+        "drafts",
+        "saved",
+        "reminders",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "files",
+        "canvases",
+        "reservations"
+      ],
+      "full": [
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        }
+      ],
+      "shown": [
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "set: my order and visibility; catalogue items I never saved come after, in the default order, with their default visibility",
+      "stored": [
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "threads",
+          "visible": false
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        }
+      ],
+      "platform": "desktop",
+      "implemented": [
+        "threads",
+        "activity",
+        "drafts",
+        "reminders",
+        "files",
+        "canvases",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "saved"
+      ],
+      "full": [
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "threads",
+          "visible": false
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        }
+      ],
+      "shown": [
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "threads",
+          "visible": false
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "set: unknown keys and the ones not implemented are kept in the list but not shown; a repeated key counts once",
+      "stored": [
+        {
+          "key": "polls",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": false
+        },
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": false
+        }
+      ],
+      "platform": "desktop",
+      "implemented": [
+        "threads",
+        "activity",
+        "drafts",
+        "reminders",
+        "files",
+        "canvases",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "saved"
+      ],
+      "full": [
+        {
+          "key": "polls",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": false
+        },
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": false
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        }
+      ],
+      "shown": [
+        {
+          "key": "files",
+          "visible": false
+        },
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "set: an item of another platform is kept in the list but not shown (activity is the phones' tab)",
+      "stored": [
+        {
+          "key": "activity",
+          "visible": false
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": false
+        },
+        {
+          "key": "threads",
+          "visible": true
+        }
+      ],
+      "platform": "mobile",
+      "implemented": [
+        "threads",
+        "times-feed",
+        "drafts",
+        "saved",
+        "reminders",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "files",
+        "canvases"
+      ],
+      "full": [
+        {
+          "key": "activity",
+          "visible": false
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": false
+        },
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        }
+      ],
+      "shown": [
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": false
+        },
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "set to an empty list: as the defaults' visibility, in the default order",
+      "stored": [],
+      "platform": "mobile",
+      "implemented": [
+        "threads",
+        "times-feed",
+        "drafts",
+        "saved",
+        "reminders",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "files",
+        "canvases"
+      ],
+      "full": [
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        }
+      ],
+      "shown": [
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        }
+      ]
+    }
+  ],
+  "reorder": [
+    {
+      "name": "phones: moving ファイル first keeps the desktop-only and unknown items where they were",
+      "stored": [
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "polls",
+          "visible": false
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": false
+        }
+      ],
+      "platform": "mobile",
+      "implemented": [
+        "threads",
+        "times-feed",
+        "drafts",
+        "saved",
+        "reminders",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "files",
+        "canvases"
+      ],
+      "order": [
+        "files",
+        "threads",
+        "drafts",
+        "times-feed",
+        "saved",
+        "reminders",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "canvases"
+      ],
+      "full": [
+        {
+          "key": "files",
+          "visible": false
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "polls",
+          "visible": false
+        },
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        },
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "desktop: saved to the top from the defaults (reservations not implemented stays in its slot)",
+      "stored": null,
+      "platform": "desktop",
+      "implemented": [
+        "threads",
+        "activity",
+        "drafts",
+        "reminders",
+        "files",
+        "canvases",
+        "calendar",
+        "tasks",
+        "deadlines",
+        "saved"
+      ],
+      "order": [
+        "saved",
+        "threads",
+        "activity",
+        "drafts",
+        "reminders",
+        "files",
+        "canvases",
+        "calendar",
+        "tasks",
+        "deadlines"
+      ],
+      "full": [
+        {
+          "key": "saved",
+          "visible": true
+        },
+        {
+          "key": "threads",
+          "visible": true
+        },
+        {
+          "key": "activity",
+          "visible": true
+        },
+        {
+          "key": "drafts",
+          "visible": true
+        },
+        {
+          "key": "reminders",
+          "visible": true
+        },
+        {
+          "key": "files",
+          "visible": true
+        },
+        {
+          "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "calendar",
+          "visible": true
+        },
+        {
+          "key": "tasks",
+          "visible": true
+        },
+        {
+          "key": "reservations",
+          "visible": true
+        },
+        {
+          "key": "deadlines",
+          "visible": true
+        },
+        {
+          "key": "times-feed",
+          "visible": true
+        }
+      ]
+    }
+  ]
+}

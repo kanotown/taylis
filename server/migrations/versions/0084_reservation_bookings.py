@@ -1,7 +1,7 @@
 """Reservation pools become the workspace's, with hourly bookings and notices (M112)
 
-Revision ID: 0083
-Revises: 0082
+Revision ID: 0084
+Revises: 0083
 Create Date: 2026-10-05
 
 docs/RESERVATIONS.md §2. `reservation_pools` lose their channel: `log_channel_id` (optional, the
@@ -22,8 +22,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0083"
-down_revision: str | None = "0082"
+revision: str = "0084"
+down_revision: str | None = "0083"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

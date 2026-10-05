@@ -139,7 +139,8 @@ fun HomeScreen(
         MainTabs.showsSelfNotesInDmSection(store.channels.values, meId, myName, collapsed = dmsFolded)
     }
     val tiles = remember(version) {
-        HomeTiles.tiles(store.threadSummary, drafts = store.listDrafts().size + store.scheduled.size, saved = store.bookmarks.size, firedReminders = store.firedReminderCount())
+        HomeTiles.tiles(store.threadSummary, drafts = store.listDrafts().size + store.scheduled.size, saved = store.bookmarks.size, firedReminders = store.firedReminderCount(),
+            navItems = store.me?.navItems)
     }
     // M24: offer to make my times until I have one (joined or not: a times I left is in the channel browser).
     val canCreateTimes = remember(version, isGuest, meId) { !isGuest && meId != null && store.channels.values.none { it.channel.timesOwnerId == meId } }

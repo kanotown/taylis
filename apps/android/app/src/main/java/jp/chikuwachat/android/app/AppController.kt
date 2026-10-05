@@ -42,6 +42,7 @@ import androidx.core.net.toUri
 import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.PoolOut
+import jp.chikuwachat.android.api.NavItem
 import jp.chikuwachat.android.api.ErrorMessages
 import jp.chikuwachat.android.api.InvitePreviewOut
 import jp.chikuwachat.android.ui.Invite
@@ -589,6 +590,12 @@ class AppController(private val app: Application) {
         pendingChannelId = null
         pendingReply = null
         openWorkspace(entry)
+    }
+
+    /** M114 (WORKSPACES.md §5.4): the switcher's order, kept on this device only (each workspace is its own server). */
+    fun moveWorkspace(serverUrl: String, by: Int) {
+        val next = Workspaces.moved(workspaces, serverUrl, by)
+        if (next != workspaces) replaceWorkspaces(next)
     }
 
     /** 「ワークスペースを追加」: the login form for another server; cancelling returns to this one (§5.1). */
@@ -2268,6 +2275,20 @@ class AppController(private val app: Application) {
     suspend fun setQuickReactions(emoji: List<String>?): Boolean = updateProfileJson(buildJsonObject {
         if (emoji == null) put("quick_reactions", JsonNull) else put("quick_reactions", JsonArray(emoji.map { JsonPrimitive(it) }))
     })
+
+    /**
+     * M111: 「ホームのタイル」 (the whole list, apps/shared/nav-items.json), or null for 「元に戻す」 (the defaults). Shown at
+     * once and taken back when the server refuses (the reason is shown); my other devices read it again on user.updated.
+     */
+    suspend fun setNavItems(items: List<NavItem>?): Boolean {
+        val before = store.me ?: return false
+        val json = items?.let { list -> JsonArray(list.map { buildJsonObject { put("key", it.key); put("visible", it.visible) } }) } ?: JsonNull
+        val shown = before.copy(navItemsJson = json)
+        store.setMe(shown)
+        if (updateProfileJson(buildJsonObject { put("nav_items", json) })) return true
+        if (store.me == shown) store.setMe(before)
+        return false
+    }
 
     /** M11d: title / custom status. Pass null for a field to clear it; absent keys keep their value. */
     suspend fun updateProfile(fields: Map<String, String?>): Boolean =

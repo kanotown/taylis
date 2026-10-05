@@ -4,7 +4,7 @@ import type { PollOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { MessageState } from "../sync/types";
 import { compactNames } from "./format";
-import { Button, cn } from "./primitives";
+import { Button, cn, HoverList } from "./primitives";
 import { ScheduleCard } from "./ScheduleCard";
 
 /**
@@ -66,11 +66,12 @@ export function PollCard({ poll, message, controller, readOnly = false }: { poll
           const share = total === 0 ? 0 : count / total;
           const voters = poll.anonymous ? [] : names(poll.votes[index] ?? []);
           return (
-            <li key={index}>
+            // Every voter above the option (HoverList), on the item: a closed poll's button is disabled and hears no pointer.
+            <HoverList key={index} content={voters.join("、")}>
+            <li>
               <button
                 type="button"
                 disabled={readOnly || closed || !!message.pending}
-                title={voters.length > 0 ? voters.join("、") : undefined}
                 onClick={() => void controller.vote(message, index, !chosen)}
                 className={cn("block w-full rounded-lg border px-2.5 py-1.5 text-left transition-colors", chosen ? "border-accent bg-accent-soft/60" : "border-line bg-canvas hover:border-accent/50", (readOnly || closed) && "cursor-default opacity-90 hover:border-line")}
               >
@@ -85,6 +86,7 @@ export function PollCard({ poll, message, controller, readOnly = false }: { poll
                 {voters.length > 0 && <div className="mt-1 truncate text-[11px] text-muted">{compactNames(voters)}</div>}
               </button>
             </li>
+            </HoverList>
           );
         })}
       </ul>

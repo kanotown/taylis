@@ -231,6 +231,7 @@ struct ChannelListView: View {
         let store = controller.store
         let row = HomeTile.tiles(threads: store.threadSummary, drafts: store.listDrafts().count + store.scheduled.count,
                                  saved: store.bookmarks.count, firedReminders: store.firedReminderCount,
+                                 navItems: (store.me ?? controller.me)?.navItems.chosen,
                                  reservations: store.reservationPools.map {
                                      HomeTile.ReservationTile(todos: ReservationRules.todoCount($0), operates: $0.contains { $0.canOperate })
                                  })
@@ -314,8 +315,9 @@ struct ChannelListView: View {
         }
         Menu("セクションに移動", systemImage: "folder") {
             ForEach(controller.store.sidebarSections) { section in
-                // A menu shows text only: a plain emoji icon goes before the name, a custom one is left out.
-                let icon = section.emoji.flatMap { CustomEmoji.name(of: $0) == nil ? "\($0) " : nil } ?? ""
+                // A menu shows text only: a plain emoji icon goes before the name, a custom one (and a letter badge,
+                // M114) is left out.
+                let icon = section.emoji.flatMap { CustomEmoji.name(of: $0) == nil && !$0.hasPrefix(SectionLetterIcon.prefix) ? "\($0) " : nil } ?? ""
                 Button(icon + section.name) { Task { _ = await controller.moveToSection(channel.id, sectionId: section.id) } }
                     .disabled(current == section.id)
             }

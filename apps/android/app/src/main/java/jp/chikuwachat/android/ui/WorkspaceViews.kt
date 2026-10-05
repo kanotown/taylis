@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -28,6 +28,7 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -132,9 +133,9 @@ fun WorkspaceSheet(controller: AppController, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Text("ワークスペース", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
         LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding()) {
-            items(controller.workspaces, key = { it.serverUrl }) { entry ->
+            itemsIndexed(controller.workspaces, key = { _, it -> it.serverUrl }) { index, entry ->
                 WorkspaceRow(
-                    controller, entry,
+                    controller, entry, index, controller.workspaces.size,
                     onOpen = { close { controller.switchWorkspace(entry.serverUrl) } },
                     onLeave = { leaving = entry },
                 )
@@ -154,9 +155,9 @@ fun WorkspacesPane(controller: AppController) {
     var leaving by remember { mutableStateOf<Workspace?>(null) }
     LaunchedEffect(Unit) { controller.refreshSummaries() }
     LazyColumn(Modifier.fillMaxSize()) {
-        items(controller.workspaces, key = { it.serverUrl }) { entry ->
+        itemsIndexed(controller.workspaces, key = { _, it -> it.serverUrl }) { index, entry ->
             WorkspaceRow(
-                controller, entry,
+                controller, entry, index, controller.workspaces.size,
                 onOpen = { if (entry.serverUrl != controller.activeKey) controller.switchWorkspace(entry.serverUrl) },
                 onLeave = { leaving = entry },
             )
@@ -204,7 +205,7 @@ private fun SignOutWorkspaceDialog(controller: AppController, entry: Workspace, 
 }
 
 @Composable
-private fun WorkspaceRow(controller: AppController, entry: Workspace, onOpen: () -> Unit, onLeave: () -> Unit) {
+private fun WorkspaceRow(controller: AppController, entry: Workspace, index: Int, count: Int, onOpen: () -> Unit, onLeave: () -> Unit) {
     val active = entry.serverUrl == controller.activeKey
     val scope = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
@@ -231,6 +232,12 @@ private fun WorkspaceRow(controller: AppController, entry: Workspace, onOpen: ()
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "${entry.name} のメニュー") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        // M114 (WORKSPACES.md §5.4): the order of this list, kept on this device.
+                        if (count > 1) {
+                            DropdownMenuItem(text = { Text("上へ移動") }, enabled = index > 0, onClick = { menu = false; controller.moveWorkspace(entry.serverUrl, -1) })
+                            DropdownMenuItem(text = { Text("下へ移動") }, enabled = index < count - 1, onClick = { menu = false; controller.moveWorkspace(entry.serverUrl, 1) })
+                            HorizontalDivider()
+                        }
                         if (entry.signedOut && !active) {
                             DropdownMenuItem(text = { Text("一覧から外す") }, onClick = { menu = false; scope.launch { controller.signOutWorkspace(entry.serverUrl) } })
                         } else {

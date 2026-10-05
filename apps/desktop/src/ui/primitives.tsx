@@ -2,7 +2,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { X } from "lucide-react";
 import { Dialog, DropdownMenu, Popover, Tooltip } from "radix-ui";
-import { type ButtonHTMLAttributes, type ComponentProps, forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes, useCallback, useRef } from "react";
+import { type ButtonHTMLAttributes, type ComponentProps, forwardRef, type InputHTMLAttributes, type ReactElement, type ReactNode, type TextareaHTMLAttributes, useCallback, useRef } from "react";
 import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]): string {
@@ -95,6 +95,41 @@ export function IconButton({ label, children, className, tone, ...props }: Butto
         <Tooltip.Portal>
           <Tooltip.Content sideOffset={6} className="z-50 rounded-md bg-ink px-2 py-1 text-xs text-canvas shadow-md">
             {label}
+            <Tooltip.Arrow className="fill-ink" />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
+  );
+}
+
+/**
+ * Where a hover list opens (2026-10-05): above its trigger, 8 px off the trigger's edge, never on the pointer (a native
+ * `title` opened at the cursor, which then covered the names). Flips below when there is no room above.
+ */
+export const HOVER_LIST = { side: "top", sideOffset: 8, delayDuration: 300, collisionPadding: 8 } as const;
+
+/**
+ * Who reacted, who replied, who voted or confirmed, a presence: a short list shown while the pointer rests on the
+ * trigger (or it has focus). Not hoverable and not interactive (`pointer-events-none`), so it never takes the hover from
+ * the trigger or the row; nothing on a touch screen (Radix ignores touch). Without `content` the trigger stands alone.
+ */
+export function HoverList({ content, children, side = HOVER_LIST.side }: { content: ReactNode; children: ReactElement; side?: "top" | "bottom" }) {
+  if (content === null || content === undefined || content === "") return children;
+  return (
+    <Tooltip.Provider delayDuration={HOVER_LIST.delayDuration} disableHoverableContent>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content
+            data-hover-list=""
+            side={side}
+            sideOffset={HOVER_LIST.sideOffset}
+            collisionPadding={HOVER_LIST.collisionPadding}
+            avoidCollisions
+            className="pointer-events-none z-50 max-w-xs whitespace-pre-line break-words rounded-md bg-ink px-2 py-1 text-xs leading-snug text-canvas shadow-md"
+          >
+            {content}
             <Tooltip.Arrow className="fill-ink" />
           </Tooltip.Content>
         </Tooltip.Portal>

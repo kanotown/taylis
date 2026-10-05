@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, SmallInteger, String, Text, func, text
-from sqlalchemy.dialects.postgresql import ARRAY, CITEXT
+from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.base import Base
@@ -54,6 +54,9 @@ class User(Base):
     # M50: my long-press quick reactions, in order (1-6 plain emoji); NULL = the clients' rule
     # (the ones I used last, then the defaults).
     quick_reactions: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+    # M111: my sidebar items / home tiles in order, [{"key", "visible"}]; NULL = the defaults
+    # (apps/shared/nav-items.json).
+    nav_items: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
     # Profile picture (M14a): the object key and its version (null = initials only).
     avatar_key: Mapped[str | None] = mapped_column(Text)
     avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

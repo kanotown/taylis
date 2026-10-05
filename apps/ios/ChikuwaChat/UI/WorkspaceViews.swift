@@ -135,6 +135,10 @@ struct WorkspaceListView: View {
     var onSwitch: () -> Void = {}
     @State private var adding = false
     @State private var leaving: Workspace?
+    /// M114 (§5.4): 「並べ替え」 shows the drag handles; the order stays on this device.
+    @State private var editMode: EditMode = .inactive
+
+    private var reordering: Bool { editMode.isEditing }
 
     var body: some View {
         List {
@@ -142,6 +146,7 @@ struct WorkspaceListView: View {
                 ForEach(controller.workspaces) { workspace in
                     let active = workspace.serverUrl == controller.activeServerUrl
                     Button {
+                        guard !reordering else { return }
                         onSwitch()
                         if !active || controller.screen != .main { Task { await controller.switchTo(workspace.serverUrl) } }
                     } label: {
@@ -151,14 +156,37 @@ struct WorkspaceListView: View {
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(workspace.isSignedIn ? "サインアウト" : "一覧から外す", role: .destructive) { leave(workspace) }
                     }
+                    .contextMenu {
+                        if controller.workspaces.count > 1 {
+                            Button("上へ移動", systemImage: "arrow.up") { move(workspace, by: -1) }
+                                .disabled(controller.workspaces.first?.serverUrl == workspace.serverUrl)
+                            Button("下へ移動", systemImage: "arrow.down") { move(workspace, by: 1) }
+                                .disabled(controller.workspaces.last?.serverUrl == workspace.serverUrl)
+                        }
+                    }
+                }
+                .onMove { source, destination in
+                    controller.reorderWorkspaces(Workspaces.moved(controller.workspaces, fromOffsets: source, toOffset: destination))
+                }
+            } header: {
+                if controller.workspaces.count > 1 {
+                    HStack {
+                        Spacer()
+                        Button(reordering ? "完了" : "並べ替え") {
+                            withAnimation { editMode = reordering ? .inactive : .active }
+                        }
+                        .font(.subheadline.weight(reordering ? .semibold : .regular))
+                        .textCase(nil)
+                    }
                 }
             } footer: {
-                Text("通知はサインインしているすべてのワークスペースから届きます。左にスワイプするとサインアウトできます。")
+                Text("通知はサインインしているすべてのワークスペースから届きます。左にスワイプするとサインアウトできます。並べ替えた順はこの端末だけに保存されます。")
             }
             Section {
                 Button { adding = true } label: { Label("ワークスペースを追加", systemImage: "plus") }
             }
         }
+        .environment(\.editMode, $editMode)
         .alert(leaving.map { "\($0.name) からサインアウトしますか？" } ?? "",
                isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } }),
                presenting: leaving) { workspace in
@@ -171,6 +199,10 @@ struct WorkspaceListView: View {
             LoginView(controller: controller, mode: .add) { adding = false }
         }
         .task { await controller.refreshSummaries() }
+    }
+
+    private func move(_ workspace: Workspace, by delta: Int) {
+        withAnimation { controller.reorderWorkspaces(Workspaces.moved(controller.workspaces, workspace.serverUrl, by: delta)) }
     }
 
     /// A signed-in workspace asks first; one already signed out just leaves the list.

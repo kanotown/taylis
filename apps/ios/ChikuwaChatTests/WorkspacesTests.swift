@@ -155,6 +155,31 @@ final class WorkspacesTests: XCTestCase {
         XCTAssertEqual(list.map(\.hasNews), [true, true, false, false])
     }
 
+    // MARK: M114 reorder on the phone (WORKSPACES.md §5.4)
+
+    func testReordersLikeAListMoveAndAStepUpOrDown() {
+        let list = ["a", "b", "c", "d"].map { Workspace(serverUrl: "https://\($0)", username: "u") }
+        func hosts(_ moved: [Workspace]) -> String { moved.map { Workspaces.host($0.serverUrl) }.joined() }
+        // List.onMove's offsets: the destination counts the rows before the move.
+        XCTAssertEqual(hosts(Workspaces.moved(list, fromOffsets: [0], toOffset: 3)), "bcad")
+        XCTAssertEqual(hosts(Workspaces.moved(list, fromOffsets: [3], toOffset: 0)), "dabc")
+        XCTAssertEqual(hosts(Workspaces.moved(list, fromOffsets: [1], toOffset: 4)), "acdb")
+        XCTAssertEqual(hosts(Workspaces.moved(list, fromOffsets: [2], toOffset: 2)), "abcd")
+        XCTAssertEqual(hosts(Workspaces.moved(list, "https://c", by: -1)), "acbd")
+        XCTAssertEqual(hosts(Workspaces.moved(list, "https://a", by: -1)), "abcd") // the top stays
+        XCTAssertEqual(hosts(Workspaces.moved(list, "https://d", by: 1)), "abcd")
+        XCTAssertEqual(hosts(Workspaces.moved(list, "https://x", by: 1)), "abcd")
+    }
+
+    func testTheReorderedListIsWhatTheNextStartLoads() {
+        let store = defaults()
+        let list = ["a", "b", "c"].map { Workspace(serverUrl: "https://\($0)", username: "u") }
+        Workspaces.save(Workspaces.Saved(list: Workspaces.moved(list, "https://c", by: -1), active: "https://a"), to: store)
+        let saved = Workspaces.load(store, hasCredentials: { _ in true })
+        XCTAssertEqual(saved.list.map(\.serverUrl), ["https://a", "https://c", "https://b"])
+        XCTAssertEqual(saved.active, "https://a")
+    }
+
     // MARK: M93 workspace icon (WORKSPACES.md §3.4.1)
 
     func testServerInfoTellsAMissingIconVersionFromNone() throws {

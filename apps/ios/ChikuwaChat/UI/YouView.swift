@@ -432,6 +432,14 @@ struct AppearanceView: View {
         Form {
             // M50: a server before M50 leaves `quick_reactions` out of UserMe; it could not keep the choice, so no section.
             themeAndMessages
+            // M111: a server before M111 has no `nav_items`: no such row (the tiles stay the defaults).
+            if me?.navItems.isSupported == true {
+                Section {
+                    NavigationLink("ホームのタイル") { HomeTilesSettingsView(controller: controller) }
+                } footer: {
+                    Text("ホームに並べるタイルとその順番。すべての端末で同じです。")
+                }
+            }
             if let setting = me?.quickReactions, setting.isSupported { quickReactionsSection(setting) }
         }
         .navigationTitle("表示")

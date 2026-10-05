@@ -1,0 +1,89 @@
+package jp.chikuwachat.android.ui
+
+import jp.chikuwachat.android.api.NavItem
+
+/**
+ * M111 (MOBILE_UI.md §14): which home tiles show and in what order, mine on every device (UserMe.nav_items). The
+ * catalogue, the default orders and the rule are apps/shared/nav-items.json (NavItemsTest checks this copy against it).
+ */
+object NavItems {
+    enum class Platform(val key: String) { DESKTOP("desktop"), MOBILE("mobile") }
+
+    data class Entry(val key: String, val label: String, val mobileLabel: String? = null, val visible: Boolean, val platforms: List<Platform>)
+
+    private val BOTH = listOf(Platform.DESKTOP, Platform.MOBILE)
+
+    val catalogue: List<Entry> = listOf(
+        Entry("threads", "スレッド", visible = true, platforms = BOTH),
+        Entry("activity", "アクティビティ", visible = true, platforms = listOf(Platform.DESKTOP)),
+        Entry("times-feed", "Times", visible = true, platforms = listOf(Platform.MOBILE)),
+        Entry("drafts", "下書き", visible = true, platforms = BOTH),
+        Entry("saved", "保存済み", mobileLabel = "保存", visible = true, platforms = BOTH),
+        Entry("reminders", "リマインダー", visible = true, platforms = BOTH),
+        Entry("files", "ファイル", visible = true, platforms = BOTH),
+        Entry("canvases", "キャンバス", visible = true, platforms = BOTH),
+        Entry("calendar", "カレンダー", visible = true, platforms = BOTH),
+        Entry("tasks", "タスク", visible = true, platforms = BOTH),
+        Entry("deadlines", "締切", visible = true, platforms = BOTH),
+        Entry("reservations", "予約", visible = true, platforms = BOTH),
+    )
+
+    val order: Map<Platform, List<String>> = mapOf(
+        Platform.DESKTOP to listOf("threads", "activity", "drafts", "reminders", "files", "canvases", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed"),
+        Platform.MOBILE to listOf("threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "activity"),
+    )
+
+    /**
+     * The tiles this app has (「予約」 joins when its page exists). アクティビティ is the bottom tab (and the tablet rail's),
+     * never a tile, so it cannot be hidden here.
+     */
+    val implemented: List<String> get() = HomeTile.entries.map { it.navKey }
+
+    private val byKey = catalogue.associateBy { it.key }
+
+    /** The tile's name (the phones' shorter one where it differs). */
+    fun label(key: String): String = byKey[key]?.let { it.mobileLabel ?: it.label } ?: key
+
+    /**
+     * Everything I have, in my order: not customised (null), the platform's default order and visibility; else my items (a
+     * repeated key counts once, unknown keys kept), then each catalogue item I never saved, in the default order, with its
+     * default visibility. What a change saves, so the desktop's and newer clients' items survive.
+     */
+    fun full(stored: List<NavItem>?, platform: Platform = Platform.MOBILE): List<NavItem> {
+        val keys = order[platform].orEmpty()
+        fun defaults(list: List<String>) = list.map { NavItem(it, byKey[it]?.visible ?: true) }
+        if (stored == null) return defaults(keys)
+        val seen = mutableSetOf<String>()
+        val out = stored.filter { seen.add(it.key) }
+        return out + defaults(keys.filter { it !in seen })
+    }
+
+    /** The items of [full] this app lists (in the catalogue, on the platform, implemented here), with their switch. */
+    fun shown(full: List<NavItem>, platform: Platform = Platform.MOBILE, implemented: List<String> = this.implemented): List<NavItem> =
+        full.filter { byKey[it.key]?.platforms?.contains(platform) == true && it.key in implemented }
+
+    /** The settings' new order of the shown items: they take the slots of [full] they had, in that order. */
+    fun reorder(full: List<NavItem>, keys: List<String>, platform: Platform = Platform.MOBILE, implemented: List<String> = this.implemented): List<NavItem> {
+        val editable = shown(full, platform, implemented).map { it.key }.toSet()
+        val items = full.associateBy { it.key }
+        val queue = keys.filter { it in editable }.iterator()
+        return full.map { item -> if (item.key in editable && queue.hasNext()) items.getValue(queue.next()) else item }
+    }
+
+    fun setVisible(full: List<NavItem>, key: String, visible: Boolean): List<NavItem> =
+        full.map { if (it.key == key) it.copy(visible = visible) else it }
+
+    /** Moves one shown item [by] places (−1 up, +1 down) among the shown ones. */
+    fun move(full: List<NavItem>, key: String, by: Int): List<NavItem> {
+        val keys = shown(full).map { it.key }.toMutableList()
+        val from = keys.indexOf(key)
+        val to = from + by
+        if (from < 0 || to !in keys.indices) return full
+        keys.removeAt(from)
+        keys.add(to, key)
+        return reorder(full, keys)
+    }
+
+    /** The tiles to draw, in my order. */
+    fun tileKeys(stored: List<NavItem>?): List<String> = shown(full(stored)).filter { it.visible }.map { it.key }
+}

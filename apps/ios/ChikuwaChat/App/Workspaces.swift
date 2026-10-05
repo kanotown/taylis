@@ -190,7 +190,24 @@ enum Workspaces {
         var active: String?
     }
 
-    /// The saved list in the order added. The first run after the update builds it from the single server an older
+    /// §5.4 (M114): the list with the entries at `source` moved before `destination` (the offsets `List.onMove` gives).
+    static func moved(_ list: [Workspace], fromOffsets source: IndexSet, toOffset destination: Int) -> [Workspace] {
+        let moving = source.filter { list.indices.contains($0) }.map { list[$0] }
+        var rest = list.enumerated().filter { !source.contains($0.offset) }.map(\.element)
+        let at = destination - source.filter { $0 < destination }.count
+        rest.insert(contentsOf: moving, at: min(max(at, 0), rest.count))
+        return rest
+    }
+
+    /// §5.4 (M114): one workspace a step up (`by: -1`) or down (`by: 1`); at an end the list stays as it is.
+    static func moved(_ list: [Workspace], _ serverUrl: String, by delta: Int) -> [Workspace] {
+        guard let index = list.firstIndex(where: { $0.serverUrl == serverUrl }), list.indices.contains(index + delta) else { return list }
+        var next = list
+        next.swapAt(index, index + delta)
+        return next
+    }
+
+    /// The saved list in the order the person left it (§5.4; new ones last). The first run after the update builds it from the single server an older
     /// build kept (keeping its exact spelling), when that account still has its refresh token.
     static func load(_ defaults: UserDefaults, hasCredentials: (String) -> Bool) -> Saved {
         var list: [Workspace] = []
