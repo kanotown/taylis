@@ -156,6 +156,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/analytics/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Members
+         * @description People (no bots) with the last sign-in, the last activity, posts in the last 30 days and
+         *     the signed-in devices. `inactive_days`: active accounts not used for that many days (or
+         *     never).
+         */
+        get: operations["members_api_v1_admin_analytics_members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/analytics/members.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Members Csv
+         * @description The same rows as /members with the same filters, all of them, as CSV (UTF-8 with BOM).
+         */
+        get: operations["members_csv_api_v1_admin_analytics_members_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/analytics/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview
+         * @description Totals, a daily series (messages, active members, new members) of the last `days` days in
+         *     the time zone `tz` (IANA), the busiest channels and posters. Private channels the
+         *     administrator is not in and DMs appear only as totals.
+         */
+        get: operations["overview_api_v1_admin_analytics_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/canvas-templates": {
         parameters: {
             query?: never;
@@ -4321,6 +4385,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Last Active At */
+            last_active_at?: string | null;
+            /** Last Login At */
+            last_login_at?: string | null;
             /** Must Change Password */
             must_change_password: boolean;
             /** Role */
@@ -4715,6 +4783,86 @@ export interface components {
             total_cost_usd: number;
             /** Total Runs */
             total_runs: number;
+        };
+        /** AnalyticsMemberOut */
+        AnalyticsMemberOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deactivated At */
+            deactivated_at: string | null;
+            /** Devices */
+            devices: number;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Active At */
+            last_active_at: string | null;
+            /** Last Login At */
+            last_login_at: string | null;
+            /** Messages 30D */
+            messages_30d: number;
+            /** Platforms */
+            platforms: string[];
+            /** Role */
+            role: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "deactivated";
+            /** Username */
+            username: string;
+        };
+        /** AnalyticsMembersOut */
+        AnalyticsMembersOut: {
+            /** Items */
+            items: components["schemas"]["AnalyticsMemberOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** AnalyticsOverviewOut */
+        AnalyticsOverviewOut: {
+            /** Days */
+            days: number;
+            direct_messages: components["schemas"]["HiddenConversationsOut"];
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            members: components["schemas"]["MemberTotalsOut"];
+            /** Messages In Period */
+            messages_in_period: number;
+            other_private_channels: components["schemas"]["HiddenConversationsOut"];
+            /** Series */
+            series: components["schemas"]["DayOut"][];
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /** Top Channels */
+            top_channels: components["schemas"]["ChannelStatOut"][];
+            /** Top Posters */
+            top_posters: components["schemas"]["PosterOut"][];
+            /** Tz */
+            tz: string;
         };
         /** AttachmentOut */
         AttachmentOut: {
@@ -5580,6 +5728,30 @@ export interface components {
             /** Unread Count */
             unread_count: number;
         };
+        /**
+         * ChannelStatOut
+         * @description A public channel, or a private one the asking administrator is a member of.
+         */
+        ChannelStatOut: {
+            /** Archived */
+            archived: boolean;
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Messages */
+            messages: number;
+            /** Name */
+            name: string;
+            /** Posters */
+            posters: number;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "public" | "private";
+        };
         /** ChannelUpdate */
         ChannelUpdate: {
             /** Name */
@@ -5751,6 +5923,23 @@ export interface components {
             pack_id?: string | null;
             /** Position */
             position?: number | null;
+        };
+        /**
+         * DayOut
+         * @description One day of the period in the requested time zone.
+         */
+        DayOut: {
+            /** Active Members */
+            active_members: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Messages */
+            messages: number;
+            /** New Members */
+            new_members: number;
         };
         /** DefaultChannelApplied */
         DefaultChannelApplied: {
@@ -6231,6 +6420,16 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HiddenConversationsOut
+         * @description Conversations shown only as a total: how many had posts and how many posts.
+         */
+        HiddenConversationsOut: {
+            /** Conversations */
+            conversations: number;
+            /** Messages */
+            messages: number;
+        };
         /** HistoryOut */
         HistoryOut: {
             /** Channel Last Seq */
@@ -6564,6 +6763,30 @@ export interface components {
              * @enum {string}
              */
             role: "owner" | "member";
+        };
+        /**
+         * MemberTotalsOut
+         * @description People (bots never count). `accounts`: not deactivated.
+         */
+        MemberTotalsOut: {
+            /** Accounts */
+            accounts: number;
+            /** Active 1D */
+            active_1d: number;
+            /** Active 30D */
+            active_30d: number;
+            /** Active 7D */
+            active_7d: number;
+            /** Admins */
+            admins: number;
+            /** Deactivated */
+            deactivated: number;
+            /** Guests */
+            guests: number;
+            /** Never Signed In */
+            never_signed_in: number;
+            /** New In Period */
+            new_in_period: number;
         };
         /**
          * MembersAdd
@@ -7204,6 +7427,20 @@ export interface components {
             visibility_channel_id?: string | null;
             /** Visibility Group Id */
             visibility_group_id?: string | null;
+        };
+        /** PosterOut */
+        PosterOut: {
+            /** Display Name */
+            display_name: string;
+            /** Messages */
+            messages: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Username */
+            username: string;
         };
         /** PresenceEntry */
         PresenceEntry: {
@@ -9427,6 +9664,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AiUsageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    members_api_v1_admin_analytics_members_get: {
+        parameters: {
+            query?: {
+                sort?: "name" | "role" | "status" | "created_at" | "last_login_at" | "last_active_at" | "messages_30d";
+                order?: "asc" | "desc";
+                status?: ("active" | "deactivated") | null;
+                inactive_days?: number | null;
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsMembersOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    members_csv_api_v1_admin_analytics_members_csv_get: {
+        parameters: {
+            query?: {
+                sort?: "name" | "role" | "status" | "created_at" | "last_login_at" | "last_active_at" | "messages_30d";
+                order?: "asc" | "desc";
+                status?: ("active" | "deactivated") | null;
+                inactive_days?: number | null;
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The members table as CSV */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overview_api_v1_admin_analytics_overview_get: {
+        parameters: {
+            query?: {
+                days?: number;
+                tz?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsOverviewOut"];
                 };
             };
             /** @description Validation Error */

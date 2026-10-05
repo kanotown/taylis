@@ -5,6 +5,7 @@ import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTarget
 import type { SendOptions } from "../sync/types";
 import type { TestNotificationOut } from "./types";
 import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, ReportAck, ReportCreate } from "./types";
+import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
 
 /**
  * M76 (CANVAS.md §20): the activity kinds this client shows beyond M39's (the server sends canvas_mention items, and
@@ -854,6 +855,24 @@ export class ApiClient {
     return this.request("POST", `/api/v1/admin/users/${userId}/anonymize`);
   }
 
+  // --- analytics (M116, docs/ANALYTICS.md §4): admin role only --------------------------------
+
+  /** The last `days` days (1-90) in the IANA time zone `tz` (the device's own). */
+  adminAnalyticsOverview(days: number, tz: string): Promise<AnalyticsOverviewOut> {
+    const params = new URLSearchParams({ days: String(days), tz });
+    return this.request("GET", `/api/v1/admin/analytics/overview?${params}`);
+  }
+
+  adminAnalyticsMembers(query: AnalyticsMembersQuery): Promise<AnalyticsMembersOut> {
+    return this.request("GET", `/api/v1/admin/analytics/members?${analyticsParams(query)}`);
+  }
+
+  /** The members table with the same filters, all rows, as CSV (UTF-8 with a BOM). */
+  adminAnalyticsMembersCsv(query: AnalyticsMembersQuery): Promise<Blob> {
+    const { limit: _limit, offset: _offset, ...rest } = query;
+    return this.fetchBlob(`/api/v1/admin/analytics/members.csv?${analyticsParams(rest)}`);
+  }
+
   // --- moderation (M104, docs/MODERATION.md) ------------------------------------------------
 
   blockUser(userId: string): Promise<BlockStateOut> {
@@ -1643,6 +1662,16 @@ export class ApiClient {
       if (timer) clearTimeout(timer);
     }
   }
+}
+
+/** M116: the members table's query string (unset values left out). */
+export function analyticsParams(query: AnalyticsMembersQuery): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === "") continue;
+    params.set(key, String(value));
+  }
+  return params;
 }
 
 function defaultSleep(ms: number): Promise<void> {
