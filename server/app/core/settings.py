@@ -153,7 +153,9 @@ class Settings(BaseSettings):
     canvas_trash_retention_days: int = 30
     ws_max_connections_per_user: int = 10
     ws_connect_rate_limit_per_ip: int = 30
-    link_preview_timeout_seconds: float = 5.0
+    link_preview_timeout_seconds: float = 5.0  # each connect / read
+    # The whole fetch (DNS, redirects, body): a server dripping bytes cannot hold it longer.
+    link_preview_deadline_seconds: float = 10.0
     link_preview_max_bytes: int = 512 * 1024
     link_preview_ttl_hours: int = 168
     link_preview_negative_ttl_hours: int = 24
@@ -161,7 +163,8 @@ class Settings(BaseSettings):
     # Channel feeds (docs/FEEDS.md, M97): RSS / Atom fetched with the previews' SSRF guard.
     feed_poll_interval_minutes: int = 30
     feed_check_interval_seconds: float = 60.0
-    feed_timeout_seconds: float = 10.0
+    feed_timeout_seconds: float = 10.0  # each connect / read
+    feed_deadline_seconds: float = 30.0  # the whole fetch (Review v0.1.37 #3)
     feed_max_bytes: int = 2 * 1024 * 1024
     feed_max_posts_per_fetch: int = 5
     feed_failure_notify_after: int = 6

@@ -580,7 +580,10 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
   multicast / reserved、IPv4-mapped IPv6 を含む) を要求する。IP リテラルも同じ判定。`localhost` / `*.localhost` /
   `*.local` は解決せずに拒否。クラウドのメタデータ (169.254.169.254) もこれで弾く。
 - リダイレクトは 3 回まで、**各ホップで同じ判定**をやり直す (公開ホストから内部へ飛ばす攻撃への対策)。
-- タイムアウト 5 秒、本文は先頭 512 KB まで (`<head>` があれば十分)、Content-Type が HTML 以外は捨てる。
+- タイムアウトは接続・読み取りごとに 5 秒、それとは別に取得全体（DNS 解決・リダイレクト・本文）を 10 秒
+  （`LINK_PREVIEW_DEADLINE_SECONDS`。フィードは `FEED_DEADLINE_SECONDS` 30 秒）で打ち切る。少しずつ送り続けるサーバーが
+  読み取りのタイムアウトをすり抜けて取得を長く止めないため（レビュー v0.1.37 #3）。本文は先頭 512 KB まで (`<head>` が
+  あれば十分)、Content-Type が HTML 以外は捨てる。
   HTML は標準ライブラリの `HTMLParser` で `<head>` だけ読む。
 - 結果 (失敗も) は `link_previews` にキャッシュし (成功 7 日、失敗 1 日)、ユーザーごとに 1 分 60 回に制限する。
   拒否 (400 `url_not_allowed`) はキャッシュしない。

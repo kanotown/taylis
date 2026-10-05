@@ -485,11 +485,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.preview_wake = asyncio.Event()
     app.state.link_fetcher = build_fetcher(
         timeout_seconds=settings.link_preview_timeout_seconds,
+        deadline_seconds=settings.link_preview_deadline_seconds,
         max_bytes=settings.link_preview_max_bytes,
         user_agent=settings.link_preview_user_agent,
     )
     app.state.feed_fetcher = build_feed_fetcher(
         timeout_seconds=settings.feed_timeout_seconds,
+        deadline_seconds=settings.feed_deadline_seconds,
         max_bytes=settings.feed_max_bytes,
         user_agent=settings.feed_user_agent,
     )

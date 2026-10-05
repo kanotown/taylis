@@ -1,5 +1,6 @@
 """SSRF-safe page fetch (SECURITY.md §14): public http(s) hosts only, every redirect re-checked,
-bounded time and size, HTML only. The feed fetcher (docs/FEEDS.md, M97) shares the checks: any
+bounded time (per I/O and an overall deadline over DNS, redirects and the body) and size, HTML
+only. The feed fetcher (docs/FEEDS.md, M97) shares the checks: any
 content type, a conditional GET (ETag / Last-Modified), and a body over the cap is an error."""
 
 import asyncio
@@ -29,6 +30,17 @@ class PreviewError(Exception):
 
 class UrlNotAllowed(PreviewError):
     """Rejected before any request (scheme, private address, ...): reported as 400, never cached."""
+
+
+def _deadline(timeout_seconds: float, deadline_seconds: float | None) -> float:
+    """The overall budget of one fetch. httpx's timeout bounds each read, so a server dripping a
+    few bytes just inside it could hold a fetch (and the feed poller behind it) for as long as it
+    likes (Review v0.1.37 #3); the deadline bounds the whole fetch."""
+    return deadline_seconds if deadline_seconds is not None else timeout_seconds * 3
+
+
+def _deadline_error(seconds: float) -> PreviewError:
+    return PreviewError("timeout", f"The site did not finish answering within {seconds:g} s")
 
 
 def _is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -83,10 +95,26 @@ async def validate_public_url(url: str) -> str:
     return url
 
 
-def build_fetcher(*, timeout_seconds: float, max_bytes: int, user_agent: str) -> Fetcher:
-    """The production fetcher; tests inject a fake with the same signature."""
+def build_fetcher(
+    *,
+    timeout_seconds: float,
+    max_bytes: int,
+    user_agent: str,
+    deadline_seconds: float | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> Fetcher:
+    """The production fetcher; tests inject a fake with the same signature. A fetch that has not
+    finished within the deadline (default: 3 timeouts) raises PreviewError("timeout")."""
+    deadline = _deadline(timeout_seconds, deadline_seconds)
 
     async def fetch(url: str) -> tuple[str, str]:
+        try:
+            async with asyncio.timeout(deadline):
+                return await _fetch(url)
+        except TimeoutError as exc:
+            raise _deadline_error(deadline) from exc
+
+    async def _fetch(url: str) -> tuple[str, str]:
         current = await validate_public_url(url)
         headers = {
             "User-Agent": user_agent,
@@ -94,7 +122,7 @@ def build_fetcher(*, timeout_seconds: float, max_bytes: int, user_agent: str) ->
         }
         timeout = httpx.Timeout(timeout_seconds)
         async with httpx.AsyncClient(
-            follow_redirects=False, timeout=timeout, headers=headers
+            follow_redirects=False, timeout=timeout, headers=headers, transport=transport
         ) as client:
             for _ in range(MAX_REDIRECTS + 1):
                 async with client.stream("GET", current) as response:
@@ -140,13 +168,23 @@ def build_feed_fetcher(
     timeout_seconds: float,
     max_bytes: int,
     user_agent: str,
+    deadline_seconds: float | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> FeedFetcher:
     """RSS / Atom fetches (docs/FEEDS.md §4) with the same guard as the previews: every hop is
-    checked by validate_public_url, at most MAX_REDIRECTS, bounded time; a body larger than
-    max_bytes raises `too_large` (a cut XML document would not parse anyway)."""
+    checked by validate_public_url, at most MAX_REDIRECTS, bounded time (each I/O, and the whole
+    fetch by the deadline: PreviewError("timeout")); a body larger than max_bytes raises
+    `too_large` (a cut XML document would not parse anyway)."""
+    deadline = _deadline(timeout_seconds, deadline_seconds)
 
     async def fetch(url: str, etag: str | None, last_modified: str | None) -> FeedResponse:
+        try:
+            async with asyncio.timeout(deadline):
+                return await _fetch(url, etag, last_modified)
+        except TimeoutError as exc:
+            raise _deadline_error(deadline) from exc
+
+    async def _fetch(url: str, etag: str | None, last_modified: str | None) -> FeedResponse:
         current = await validate_public_url(url)
         headers = {
             "User-Agent": user_agent,
