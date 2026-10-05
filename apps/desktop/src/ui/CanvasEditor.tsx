@@ -14,7 +14,7 @@ import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, type React
 import { ApiError } from "../api/errors";
 import type { CanvasSaver } from "../sync/canvasSave";
 import type { AppController } from "../state/app";
-import { anchorLine, findTable, insertTable, lineOf, lineStart, NEW_TABLE, parseTable, sameTable, type Table, type TableOrigin, writeBackTable } from "./canvasTable";
+import { anchorLine, findTable, insertTable, lineOf, lineStart, newTable, parseTable, sameTable, type Table, type TableOrigin, writeBackTable } from "./canvasTable";
 import { CanvasTableDialog } from "./CanvasTableDialog";
 import { CANVAS_PRESENCE_REFRESH_MS } from "../sync/canvasPresence";
 import { attachmentRefs, insertImageLine, insertRule, MAX_CANVAS_IMAGES, preserveCaret, sectionAt, setHeading, toggleTasks } from "./canvasText";
@@ -238,8 +238,9 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
       tableSession.current = { table, place: { origin: { range, lines } }, outcome: null };
       setTableEdit({ table, isNew: false });
     } else {
-      tableSession.current = { table: NEW_TABLE, place: { line, content: value.split("\n")[line] ?? "" }, outcome: null };
-      setTableEdit({ table: NEW_TABLE, isNew: true });
+      const fresh = newTable();
+      tableSession.current = { table: fresh, place: { line, content: value.split("\n")[line] ?? "" }, outcome: null };
+      setTableEdit({ table: fresh, isNew: true });
     }
   };
   /** After the dialog has gone (the focus handed back): the table written in, the caret at its first line. */

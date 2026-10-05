@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import type { AppController } from "../state/app";
 import { activityBadge, dmBadge, homeDot, MOBILE_TAB_LABELS, MOBILE_TABS, type MobileTab } from "./mobileTabs";
 import { cn } from "./primitives";
+import { t } from "../i18n";
 
 const ICONS: Record<MobileTab, LucideIcon> = { home: House, dm: MessageCircle, activity: Bell, you: CircleUserRound };
 
@@ -20,13 +21,13 @@ export function MobileTabBar({ controller, tab, onTab }: { controller: AppContro
   const activity = activityBadge(channels, store.threadSummary, store.activity);
   const dot = homeDot(channels, meId);
   return (
-    <nav aria-label="タブ" className="flex shrink-0 border-t border-line bg-canvas pb-[env(safe-area-inset-bottom)]">
+    <nav aria-label={t("mobileTabs.label")} className="flex shrink-0 border-t border-line bg-canvas pb-[env(safe-area-inset-bottom)]">
       {MOBILE_TABS.map((value) => {
         const Icon = ICONS[value];
         const selected = value === tab;
         const count = value === "dm" ? dms : value === "activity" ? activity.count : 0;
         const label = MOBILE_TAB_LABELS[value];
-        const described = count > 0 ? `${label} (未読 ${count})` : value === "home" && dot ? `${label} (未読あり)` : label;
+        const described = count > 0 ? t("mobileTabs.unreadCount", { label, count }) : value === "home" && dot ? t("mobileTabs.hasUnread", { label }) : label;
         return (
           <button
             key={value}

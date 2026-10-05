@@ -9,6 +9,7 @@ import { CanvasImage } from "./CanvasImage";
 import { parseBlocks } from "./markdown";
 import { BlockView, inline, type InlineOptions } from "./MessageBody";
 import { cn } from "./primitives";
+import { t } from "../i18n";
 
 export const headingAnchor = (line: number) => `canvas-h-${line}`;
 
@@ -49,7 +50,7 @@ export function CanvasBody({ body, controller, onToggleTask, onMakeTask = null, 
                     type="checkbox"
                     checked={item.done}
                     disabled={!onToggleTask}
-                    aria-label={item.done ? "完了を取り消す" : "完了にする"}
+                    aria-label={item.done ? t("canvasBody.undone") : t("tasks.dialog.complete")}
                     onChange={(event) => onToggleTask?.(item.line, event.target.checked)}
                     className="mt-[7px] h-4 w-4 shrink-0 accent-[var(--accent)]"
                   />
@@ -57,14 +58,14 @@ export function CanvasBody({ body, controller, onToggleTask, onMakeTask = null, 
                   {onMakeTask && !item.done && (
                     <button
                       type="button"
-                      title="この項目をタスクにする"
-                      aria-label="タスクにする"
+                      title={t("canvasBody.makeTaskTitle")}
+                      aria-label={t("actions.task")}
                       data-make-task={item.line}
                       onClick={() => onMakeTask(item.line)}
                       className="ml-auto mt-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs text-muted opacity-0 transition-opacity hover:bg-ink/6 hover:text-ink focus-visible:opacity-100 group-hover/task:opacity-100 pointer-coarse:opacity-70"
                     >
                       <ListTodo size={14} />
-                      <span className="max-md:sr-only">タスクにする</span>
+                      <span className="max-md:sr-only">{t("actions.task")}</span>
                     </button>
                   )}
                 </li>
