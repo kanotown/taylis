@@ -67,7 +67,8 @@ fun formatSize(bytes: Long): String = when {
 }
 
 /**
- * Images show their thumbnail; videos a tile with the server's poster (M82, [VideoAttachment]); other files show a row
+ * Images show their thumbnail; videos a tile with the server's poster (M82, [VideoAttachment]); PDFs and Office files
+ * with a preview a card with the first page (M108, [DocumentCard]); other files show a row
  * that downloads and opens them. A video is told by its `content_type`, never by its thumbnail flags. Several photos sit side by side
  * as square tiles (testers, 2026-09-29: they came one under another), two in a row for two or four, three otherwise.
  */
@@ -90,6 +91,8 @@ fun AttachmentList(attachments: List<AttachmentOut>, controller: AppController) 
             when {
                 attachment.isImage -> if (photos.size == 1) ThumbnailImage(attachment, controller)
                 attachment.isVideo -> VideoAttachment(attachment, controller)
+                // M108: a PDF / Office file with a preview (being made, or ready).
+                DocumentCards.showsCard(attachment) -> DocumentCard(attachment, controller)
                 else -> FileRow(attachment, controller)
             }
         }
