@@ -3,6 +3,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { canEditLinks, ChannelLinkChips } from "./ChannelLinks";
 import { cn, useSidewaysWheel } from "./primitives";
+import { t, labelled } from "../i18n";
 
 /**
  * M29: what a conversation shows on a phone, switched by the tab row under its header. M43: 「キャンバス」 (CANVAS.md
@@ -12,17 +13,17 @@ import { cn, useSidewaysWheel } from "./primitives";
 export type ConversationTab = "messages" | "canvas" | "events" | "tasks" | "pins" | "files";
 
 const TABS: ReadonlyArray<readonly [ConversationTab, string]> = [
-  ["messages", "メッセージ"],
-  ["canvas", "キャンバス"],
-  ["events", "予定"],
-  ["tasks", "タスク"],
-  ["pins", "ピン留め"],
-  ["files", "ファイル"],
+  labelled("messages", "main.tab.messages"),
+  labelled("canvas", "main.tab.canvas"),
+  labelled("events", "main.tab.events"),
+  labelled("tasks", "main.tab.tasks"),
+  labelled("pins", "main.pins"),
+  labelled("files", "nav.files"),
 ];
 
 /** M51: 「予定」 with a subtle count of today's and tomorrow's events, when there are some. */
 export function eventsTabLabel(count: number): string {
-  return count > 0 ? `予定 ${count}` : "予定";
+  return count > 0 ? `${t("main.tab.events")} ${count}` : t("main.tab.events");
 }
 
 /**
@@ -43,7 +44,7 @@ export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, o
   const wheel = useSidewaysWheel<HTMLDivElement>();
   return (
     <div ref={wheel} className="flex shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-2 [scrollbar-width:none]">
-      <div role="tablist" aria-label="会話の表示" className="flex shrink-0 items-center">
+      <div role="tablist" aria-label={t("main.view")} className="flex shrink-0 items-center">
         {TABS.filter(([value]) => (value !== "events" && value !== "tasks") || channel.type === "public" || channel.type === "private").map(([value, label]) => (
           <button
             key={value}
@@ -61,7 +62,7 @@ export function ConversationTabs({ controller, channel, tab, onTab, onAddLink, o
         ))}
       </div>
       {hasLinks && <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-line" />}
-      <div aria-label="リンク" className="flex shrink-0 items-center gap-1">
+      <div aria-label={t("links.label")} className="flex shrink-0 items-center gap-1">
         <ChannelLinkChips controller={controller} channel={channel} onAdd={onAddLink} onEdit={onEditLink} />
       </div>
     </div>
