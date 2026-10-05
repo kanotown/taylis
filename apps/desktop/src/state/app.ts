@@ -15,7 +15,7 @@ import { findDmWith } from "../ui/mobileTabs";
 import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
-import { orderTemplates, readSchedule, SCHEDULE_USAGE } from "../ui/templates";
+import { orderTemplates, readSchedule, scheduleUsage } from "../ui/templates";
 import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, describeFeatureError, NetworkError, UserMessageError } from "../api/errors";
@@ -2698,7 +2698,7 @@ export class AppController {
         const read = readSchedule(command.args);
         const slots = read ? slotsFromEntries(read.entries) : [];
         if (!read || slots.length < 2 || slots.length > 20) {
-          this.setError(SCHEDULE_USAGE);
+          this.setError(scheduleUsage());
           return false;
         }
         return this.createSchedulePoll(channel.id, parentId, read.question, slots.map(slotToIn), localZone());
