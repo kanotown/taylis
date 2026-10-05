@@ -11,6 +11,7 @@ import { expiryLabel } from "./users";
 import { dndActive, quietHoursLabel } from "./dnd";
 import { activeStatus } from "./users";
 import { Button, cn, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { t } from "../i18n";
 
 /**
  * The profile card (M11d) behind an avatar or a name: display name, @username, title, custom status,
@@ -42,7 +43,7 @@ export function UserPopover({ controller, userId, children, className }: { contr
   return (
     <PopoverRoot open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" className={cn("rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/40", className)} aria-label={me ? `自分のプロフィール (${user?.display_name ?? ""})` : `${user?.display_name ?? "?"} のプロフィール`}>
+        <button type="button" className={cn("rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/40", className)} aria-label={me ? t("popover.myProfile", { name: user?.display_name ?? "" }) : t("popover.profileOf", { name: user?.display_name ?? "?" })}>
           {children}
         </button>
       </PopoverTrigger>
@@ -52,18 +53,18 @@ export function UserPopover({ controller, userId, children, className }: { contr
           <div className="min-w-0">
             <div className="truncate text-base font-semibold">{user?.display_name ?? "?"}</div>
             <div className="truncate text-xs text-muted">@{user?.username ?? ""}{title ? ` · ${title}` : ""}</div>
-            {user?.role === "guest" && <div className="mt-0.5 text-xs text-muted">ゲスト (参加したチャンネルだけ見えます)</div>}
-            {user?.role === "bot" && <div className="mt-0.5 text-xs text-muted">{controller.store.aiAgentOf(userId) ? "AI のボット (メンションすると返事をします)" : "受信 Webhook の bot"}</div>}
+            {user?.role === "guest" && <div className="mt-0.5 text-xs text-muted">{t("popover.guest")}</div>}
+            {user?.role === "bot" && <div className="mt-0.5 text-xs text-muted">{controller.store.aiAgentOf(userId) ? t("ai.badgeTitle") : t("popover.webhookBot")}</div>}
             <div className="mt-0.5 text-xs text-muted">{presenceLabel(presence)}</div>
             {dndActive(user) && (
-              <div className="mt-0.5 text-xs text-muted" title={user?.quiet_hours ? `おやすみ時間 ${quietHoursLabel(user.quiet_hours)}` : undefined}>🔕 通知を一時停止中</div>
+              <div className="mt-0.5 text-xs text-muted" title={user?.quiet_hours ? t("popover.quietHours", { hours: quietHoursLabel(user.quiet_hours) }) : undefined}>🔕 {t("popover.paused")}</div>
             )}
           </div>
         </div>
         {line && (supervisor || line.research_topic) && (
           <div className="space-y-0.5 border-b border-line px-4 py-2.5 text-xs">
             {supervisor && <div className="font-medium text-ink">{supervisor}</div>}
-            {line.research_topic && <div className="text-muted">研究テーマ: {line.research_topic}</div>}
+            {line.research_topic && <div className="text-muted">{t("popover.topic", { topic: line.research_topic })}</div>}
           </div>
         )}
         {status && (
@@ -73,33 +74,33 @@ export function UserPopover({ controller, userId, children, className }: { contr
             {expiryLabel(user?.status_expires_at) && <span className="ml-2 text-xs text-muted">{expiryLabel(user?.status_expires_at)}</span>}
           </div>
         )}
-        {user?.deactivated_at && <div className="border-b border-line px-4 py-2 text-xs text-muted">無効化されたアカウント</div>}
-        {blocked && <div className="border-b border-line px-4 py-2 text-xs text-muted">ブロック中 (メッセージは折りたたまれ、通知されません)</div>}
+        {user?.deactivated_at && <div className="border-b border-line px-4 py-2 text-xs text-muted">{t("popover.deactivated")}</div>}
+        {blocked && <div className="border-b border-line px-4 py-2 text-xs text-muted">{t("popover.blocked")}</div>}
         {/* My own card has two actions: stacked full width (side by side they overflowed the 288 px card). */}
         <div className={cn("flex gap-2 p-3", me && "flex-col")}>
           {me ? (
             <>
               <Button size="sm" variant="secondary" className="w-full justify-center" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("chikuwa:open-status")); }}>
-                <Pencil size={14} /> ステータスを設定
+                <Pencil size={14} /> {t("popover.setStatus")}
               </Button>
               <Button size="sm" variant="secondary" className="w-full justify-center" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("chikuwa:open-profile")); }}>
-                <UserRoundPen size={14} /> プロフィールを編集
+                <UserRoundPen size={14} /> {t("settings.section.profile")}
               </Button>
             </>
           ) : (
             <>
               <Button size="sm" className="flex-1" onClick={() => void openDm()} disabled={!!user?.deactivated_at}>
-                <MessageSquare size={14} /> メッセージを送る
+                <MessageSquare size={14} /> {t("popover.sendMessage")}
               </Button>
               {/* M104 (docs/MODERATION.md §4): private; the person is not told. */}
               {user && (
                 <Button
                   size="sm"
                   variant="secondary"
-                  title={blocked ? "ブロックを解除" : "このユーザーのメッセージを隠し、通知と DM を受け取らない"}
+                  title={blocked ? t("popover.unblock") : t("popover.blockTitle")}
                   onClick={() => void controller.setUserBlocked(userId, !blocked)}
                 >
-                  <Ban size={14} /> {blocked ? "ブロックを解除" : "ブロック"}
+                  <Ban size={14} /> {blocked ? t("popover.unblock") : t("popover.block")}
                 </Button>
               )}
             </>
@@ -115,7 +116,7 @@ export function StatusEmoji({ controller, userId, className }: { controller: App
   const status = activeStatus(controller.store.users.get(userId));
   const quiet = dndActive(controller.store.users.get(userId));
   if (!status?.emoji && !quiet) return null;
-  const label = [status?.text, quiet ? "通知を一時停止中" : null].filter(Boolean).join(" · ");
+  const label = [status?.text, quiet ? t("popover.paused") : null].filter(Boolean).join(" · ");
   return (
     <span className={cn("text-[13px] leading-none", className)} title={label} aria-label={label}>
       {status?.emoji && <StatusGlyph controller={controller} emoji={status.emoji} size={14} />}

@@ -1,4 +1,5 @@
 import type { UserPublic } from "../api/types";
+import { t, intlLocale, labelled } from "../i18n";
 
 /** A custom status (M11d) that has not expired; null otherwise. */
 export function activeStatus(user: UserPublic | undefined | null, now = Date.now()): { emoji: string; text: string } | null {
@@ -12,23 +13,23 @@ export function activeStatus(user: UserPublic | undefined | null, now = Date.now
 
 /** Quick picks in the status editor (Slack-like). */
 export const STATUS_PRESETS: Array<{ emoji: string; text: string }> = [
-  { emoji: "📅", text: "会議中" },
-  { emoji: "🚌", text: "移動中" },
-  { emoji: "🤒", text: "体調不良" },
-  { emoji: "🌴", text: "休暇中" },
-  { emoji: "🏠", text: "在宅勤務" },
-  { emoji: "🍱", text: "昼休み" },
+  { emoji: "📅", get text() { return t("status.preset.meeting"); } },
+  { emoji: "🚌", get text() { return t("status.preset.commuting"); } },
+  { emoji: "🤒", get text() { return t("status.preset.sick"); } },
+  { emoji: "🌴", get text() { return t("status.preset.vacation"); } },
+  { emoji: "🏠", get text() { return t("status.preset.home"); } },
+  { emoji: "🍱", get text() { return t("status.preset.lunch"); } },
 ];
 
 export type StatusExpiry = "never" | "30m" | "1h" | "4h" | "today" | "week";
 
 export const EXPIRY_OPTIONS: Array<[StatusExpiry, string]> = [
-  ["never", "消さない"],
-  ["30m", "30 分後"],
-  ["1h", "1 時間後"],
-  ["4h", "4 時間後"],
-  ["today", "今日の終わり"],
-  ["week", "今週の終わり"],
+  labelled("never", "status.expiry.never"),
+  labelled("30m", "status.expiry.30m"),
+  labelled("1h", "status.expiry.1h"),
+  labelled("4h", "status.expiry.4h"),
+  labelled("today", "status.expiry.today"),
+  labelled("week", "status.expiry.week"),
 ];
 
 /** ISO time when a status with this expiry should disappear; null = never. */
@@ -65,5 +66,5 @@ export function expiryLabel(iso: string | null | undefined): string | null {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return null;
   const sameDay = at.toDateString() === new Date().toDateString();
-  return sameDay ? `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")} まで` : `${at.getMonth() + 1}月${at.getDate()}日まで`;
+  return sameDay ? t("status.until", { when: `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}` }) : t("status.until", { when: at.toLocaleDateString(intlLocale(), { month: "long", day: "numeric" }) });
 }

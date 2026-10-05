@@ -6,13 +6,14 @@ import type { AppController } from "../state/app";
 import { fullTimestamp } from "./format";
 import { REPORT_REASONS } from "./ModerationDialogs";
 import { Badge, Button, cn } from "./primitives";
+import { t, labelled } from "../i18n";
 
 type Filter = "open" | "resolved" | "all";
 
 const FILTERS: ReadonlyArray<[Filter, string]> = [
-  ["open", "未対応"],
-  ["resolved", "対応済み"],
-  ["all", "すべて"],
+  labelled("open", "reports.open"),
+  labelled("resolved", "activity.done"),
+  labelled("all", "admin.users.filter.all"),
 ];
 
 export function reportReasonLabel(reason: string): string {
@@ -50,11 +51,11 @@ export function ReportsTab({ controller }: { controller: AppController }) {
       setBusy(false);
     }
   };
-  const name = (id: string) => store.users.get(id)?.display_name ?? "不明なユーザー";
-  const where = (report: AdminReportOut) => (report.channel_name ? `#${report.channel_name}` : report.channel_type === "group_dm" ? "グループ DM" : "DM");
+  const name = (id: string) => store.users.get(id)?.display_name ?? t("common.unknownUser");
+  const where = (report: AdminReportOut) => (report.channel_name ? `#${report.channel_name}` : report.channel_type === "group_dm" ? t("common.groupDm") : "DM");
   return (
     <div className="space-y-3 py-3">
-      <div className="flex gap-1" role="radiogroup" aria-label="表示">
+      <div className="flex gap-1" role="radiogroup" aria-label={t("activity.show")}>
         {FILTERS.map(([value, label]) => (
           <button
             key={value}
@@ -69,34 +70,34 @@ export function ReportsTab({ controller }: { controller: AppController }) {
         ))}
       </div>
       {reports === null ? (
-        <p className="text-sm text-muted">読み込み中…</p>
+        <p className="text-sm text-muted">{t("common.loading")}</p>
       ) : reports.length === 0 ? (
-        <p className="flex items-center gap-2 text-sm text-muted"><Flag size={14} /> {filter === "open" ? "未対応の報告はありません" : "報告はありません"}</p>
+        <p className="flex items-center gap-2 text-sm text-muted"><Flag size={14} /> {filter === "open" ? t("reports.noneOpen") : t("reports.none")}</p>
       ) : (
-        <ul aria-label="報告" className="space-y-2">
+        <ul aria-label={t("admin.tab.reports")} className="space-y-2">
           {reports.map((report) => (
             <li key={report.id} data-report={report.id} className="space-y-1.5 rounded-xl border border-line p-3 text-sm">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={report.status === "open" ? "danger" : "neutral"}>{report.status === "open" ? "未対応" : "対応済み"}</Badge>
+                <Badge tone={report.status === "open" ? "danger" : "neutral"}>{report.status === "open" ? t("reports.open") : t("activity.done")}</Badge>
                 <span className="font-medium">{reportReasonLabel(report.reason)}</span>
                 <span className="text-xs text-muted">{fullTimestamp(report.created_at)} · {where(report)}</span>
               </div>
               <div className="text-xs text-muted">
-                投稿者: <span className="text-ink">{name(report.reported_user_id)}</span> · 報告者: <span className="text-ink">{name(report.reporter_id)}</span>
+                {t("reports.author")} <span className="text-ink">{name(report.reported_user_id)}</span> · {t("reports.reporter")} <span className="text-ink">{name(report.reporter_id)}</span>
               </div>
               <blockquote className="whitespace-pre-wrap break-words rounded-lg bg-panel px-3 py-2 text-[13px]">
-                {report.body_snapshot || "(本文なし)"}
-                {report.message_deleted && <span className="mt-1 block text-xs text-muted">(メッセージはその後削除されました)</span>}
+                {report.body_snapshot || t("drafts.noText")}
+                {report.message_deleted && <span className="mt-1 block text-xs text-muted">{t("reports.deletedSince")}</span>}
               </blockquote>
-              {report.note && <p className="text-xs text-muted">補足: {report.note}</p>}
+              {report.note && <p className="text-xs text-muted">{t("reports.note", { note: report.note })}</p>}
               <div className="flex flex-wrap justify-end gap-2">
                 {!report.message_deleted && (
                   <Button size="sm" variant="ghost" onClick={() => void controller.copyPermalink(report.message_id)}>
-                    <Link size={13} /> リンクをコピー
+                    <Link size={13} /> {t("canvas.copyLink")}
                   </Button>
                 )}
                 <Button size="sm" variant={report.status === "open" ? "primary" : "secondary"} disabled={busy} onClick={() => void setStatus(report, report.status === "open")}>
-                  {report.status === "open" ? "対応済みにする" : "未対応に戻す"}
+                  {report.status === "open" ? t("reports.resolve") : t("reports.reopen")}
                 </Button>
               </div>
             </li>
