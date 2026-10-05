@@ -512,10 +512,10 @@ export function EmojiAdminTab({ controller }: { controller: AppController }) {
   };
   const row = (emoji: CustomEmojiOut) => (
     <li key={emoji.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-      <span className="flex w-16 shrink-0 justify-center"><CustomEmojiImage controller={controller} emoji={emoji} size={24} /></span>
+      <span className="flex w-20 shrink-0 justify-center overflow-hidden"><CustomEmojiImage controller={controller} emoji={emoji} size={24} square /></span>
       <span className="font-mono text-[13px]">:{emoji.name}:</span>
       <span className="flex-1 truncate text-xs text-muted">
-        {emoji.label && emoji.kind !== "text" ? `${emoji.label} · ` : ""}
+        {emoji.label ? `${emoji.label} · ` : ""}
         {(emoji.keywords ?? []).length ? `${(emoji.keywords ?? []).join("、")} · ` : ""}
         {store.users.get(emoji.created_by)?.display_name ?? "?"}{emoji.kind === "text" ? " · 文字" : ` · ${emoji.width}×${emoji.height}`}
       </span>
