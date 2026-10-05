@@ -24,12 +24,19 @@ struct RootView: View {
     @Bindable var controller: AppController
     /// M40: 端末に合わせる / ライト / ダーク (自分 → 表示), for every screen of the app on this device.
     @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .system
-    /// The look in effect (the setting or the device's): text emoji pills are drawn for it (M100).
+    /// The look in effect (the setting or the device's): text emoji pills are drawn for it (M100), while the scene is
+    /// active (`AppController.appearanceChanged`: the app-switcher snapshot flips it in the background).
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         screen.preferredColorScheme(theme.colorScheme)
-            .onChange(of: colorScheme, initial: true) { _, scheme in controller.textEmojiDark = scheme == .dark }
+            .onChange(of: colorScheme, initial: true) { reportAppearance() }
+            .onChange(of: scenePhase) { reportAppearance() }
+    }
+
+    private func reportAppearance() {
+        controller.appearanceChanged(dark: colorScheme == .dark, active: scenePhase == .active)
     }
 
     @ViewBuilder

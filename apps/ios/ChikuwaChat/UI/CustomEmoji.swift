@@ -195,8 +195,19 @@ enum CustomEmoji {
         return CGSize(width: max(height, (textWidth + height * 0.56).rounded(.up)), height: height)
     }
 
-    /// The pill drawn at `storedHeight`, so `sized(_:height:)` shows it sharp at any height like an image emoji.
+    private static let pills = NSCache<NSString, UIImage>()
+
+    /// The pill drawn at `storedHeight`, so `sized(_:height:)` shows it sharp at any height like an image emoji. Each
+    /// label / colour / look is drawn once: a change of look swaps the cached pills at once (`AppController`).
     static func textPill(_ emoji: CustomEmojiOut, dark: Bool) -> UIImage {
+        let key = "\(emoji.color ?? "gray")|\(dark)|\(emoji.label ?? emoji.name)" as NSString
+        if let cached = pills.object(forKey: key) { return cached }
+        let pill = drawTextPill(emoji, dark: dark)
+        pills.setObject(pill, forKey: key)
+        return pill
+    }
+
+    private static func drawTextPill(_ emoji: CustomEmojiOut, dark: Bool) -> UIImage {
         let label = emoji.label ?? emoji.name
         let height = storedHeight
         let size = textPillSize(label, height: height)

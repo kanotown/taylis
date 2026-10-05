@@ -859,12 +859,25 @@ final class AppController {
 
     private var emojiLoads: Set<String> = []
 
-    /// M100: text emoji pills follow the app's light / dark look (RootView sets it); a change draws them again.
-    var textEmojiDark = false {
+    /// M100: text emoji pills follow the app's light / dark look (RootView reports it through `appearanceChanged`).
+    /// A change swaps the cached pills for the other look at once (both looks are drawn once and kept, see
+    /// `CustomEmoji.textPill`), so no pill is left in the old look: build 95 cleared them and redrew them in a deferred
+    /// task with the look captured before it, so a pill drawn across a change kept the old palette (2026-10-05).
+    private(set) var textEmojiDark = false {
         didSet {
             guard textEmojiDark != oldValue else { return }
-            for emoji in store.customEmoji.values where emoji.isText { store.emojiImages.removeValue(forKey: emoji.id) }
+            for emoji in store.customEmoji.values where emoji.isText && store.emojiImages[emoji.id] != nil {
+                store.emojiImages[emoji.id] = CustomEmoji.textPill(emoji, dark: textEmojiDark)
+            }
         }
+    }
+
+    /// The look in effect (`dark`) and whether the scene is in the foreground. iOS draws a backgrounded app's
+    /// app-switcher snapshot in the other look too, flipping the scene to it for a moment: the pills followed that
+    /// flip and could stay dark in light mode (2026-10-05). Only an active scene's look counts; RootView reports again
+    /// when the scene becomes active, so a change made while away (Control Center, the evening switch) is taken then.
+    func appearanceChanged(dark: Bool, active: Bool) {
+        if active { textEmojiDark = dark }
     }
 
     /// Fetches an emoji image once (scaled for inline text) into the store's cache. M100: a text emoji's pill is drawn
@@ -873,11 +886,12 @@ final class AppController {
         if emoji.isText {
             guard store.emojiImages[emoji.id] == nil, !emojiLoads.contains(emoji.id) else { return }
             emojiLoads.insert(emoji.id)
-            let dark = textEmojiDark
-            // Not while a view is being drawn (onNeed is called from body): the next turn of the main loop.
+            // Not while a view is being drawn (onNeed is called from body): the next turn of the main loop. The look
+            // is read then, not now: it may change in between.
             Task { @MainActor in
                 defer { emojiLoads.remove(emoji.id) }
-                store.emojiImages[emoji.id] = CustomEmoji.textPill(emoji, dark: dark)
+                guard let current = store.customEmoji[emoji.name], current.id == emoji.id else { return }
+                store.emojiImages[emoji.id] = CustomEmoji.textPill(current, dark: textEmojiDark)
             }
             return
         }
