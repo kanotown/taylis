@@ -2,9 +2,13 @@ import SwiftUI
 
 struct MainView: View {
     @Bindable var controller: AppController
-    /// M34 (MOBILE_UI.md §5): four tabs, each with its own stack of screens (the app is iPhone only: always tabs).
-    @State private var tab: MainTab = .home
-    @State private var paths: [MainTab: [MainRoute]] = [:]
+    /// M34 (MOBILE_UI.md §5): four tabs, each with its own stack of screens, at a compact width; the iPad's sidebar and
+    /// conversation at a regular one (§12). One state for both, carried across a change of size class.
+    @State private var nav = MainNavigation()
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.scenePhase) private var scenePhase
+    /// The split's sidebar, shown or hidden (the conversation full width).
+    @State private var columns: NavigationSplitViewVisibility = .all
     /// M40: the 自分 tab's screens (settings), apart from the conversation routes.
     @State private var youPath: [YouRoute] = []
     /// The home list's tap (ChannelListView's selection), turned into a screen on the home stack.
@@ -12,19 +16,11 @@ struct MainView: View {
     /// A permalink into a channel I have not joined (M27): the preview opens around this message.
     @State private var previewMessageId: String?
     @State private var sheet: Sheet?
-    /// A thread to open over a conversation once it shows (a reply's notification, a revealed reply…); only that
-    /// conversation takes it, not another one lower on a stack.
-    @State private var pendingThread: PendingThread?
     /// M37: 「移動・検索」 over the whole screen.
     @State private var jumpShown = false
     /// M37: the home's ⋯ 「すべて既読にする」 asks first.
     @State private var confirmMarkAll = false
     @AppStorage(ChannelListView.groupUnreadKey) private var groupUnread = false
-
-    struct PendingThread: Equatable {
-        let channelId: String
-        let parentId: String
-    }
 
     enum Sheet: Identifiable, Equatable {
         case newDm, newChannel, search, browse, directory, workspaces, newSection, compose
@@ -59,80 +55,60 @@ struct MainView: View {
         TabBadges.activity(Array(store.channels.values), threads: store.threadSummary, activity: store.activity)
     }
 
-    /// The conversation on screen: the top of the selected tab's stack (M34 (8): only it reads and is "open").
-    private var frontChannelId: String? {
-        if case .channel(let id)? = paths[tab]?.last { return id }
-        return nil
-    }
+    /// The conversation on screen: the top of the selected tab's stack, or the detail column's (M34 (8): only it reads
+    /// and is "open").
+    private var frontChannelId: String? { nav.frontChannelId }
 
-    /// L8: the Times feed is on a tab's stack.
+    /// L8: the Times feed is on a stack.
     private var timesFeedShown: Bool {
-        paths.values.contains { $0.contains(.list(TimesFeedView.selectionId)) }
+        nav.allStacks.contains { $0.contains(.list(TimesFeedView.selectionId)) }
     }
 
     /// A conversation left the store (I left it or was removed, it went private while previewed, a bootstrap dropped it).
     private var goneChannel: Bool {
-        paths.values.contains { path in path.contains { if case .channel(let id) = $0 { store.channel(id) == nil } else { false } } }
+        nav.allStacks.contains { path in path.contains { if case .channel(let id) = $0 { store.channel(id) == nil } else { false } } }
     }
 
     private func path(_ tab: MainTab) -> Binding<[MainRoute]> {
-        Binding(get: { paths[tab] ?? [] }, set: { paths[tab] = $0 })
+        Binding(get: { nav.paths[tab] ?? [] }, set: { nav.paths[tab] = $0 })
     }
 
-    /// A screen on this tab's stack.
-    private func push(_ route: MainRoute, on tab: MainTab) {
-        paths[tab, default: []].append(route)
-    }
+    private func isDm(_ channelId: String) -> Bool { store.channel(channelId)?.channel.isDm == true }
+
+    /// A screen on this tab's stack (the detail column's in the split).
+    private func push(_ route: MainRoute, on tab: MainTab) { nav.push(route, on: tab) }
 
     /// From a notification, a permalink, a search result, a new DM: a DM on the DM tab, a channel on the home tab, its
-    /// stack replaced (M34 (7)).
+    /// stack replaced (M34 (7)); alone in the detail column in the split.
     private func land(_ channelId: String, parentId: String? = nil) {
-        let target: MainTab = store.channel(channelId)?.channel.isDm == true ? .dms : .home
-        paths[target] = [.channel(channelId)]
-        tab = target
-        if let parentId { pendingThread = PendingThread(channelId: channelId, parentId: parentId) }
+        nav.land(channelId, isDm: isDm(channelId), parentId: parentId)
     }
 
     /// A revealed message (a list row): its conversation on this tab's stack, into its thread if a reply.
     private func show(_ channelId: String, parentId: String?, on tab: MainTab) {
         push(.channel(channelId), on: tab)
-        if let parentId { pendingThread = PendingThread(channelId: channelId, parentId: parentId) }
+        if let parentId { nav.pendingThread = ThreadRef(channelId: channelId, parentId: parentId) }
+    }
+
+    /// The layout for the window's width. Not while in the background: the app-switcher snapshots are taken at other
+    /// sizes, and each flip would rebuild the open conversation (RootView's look waits for the same reason).
+    private func applyLayout() {
+        guard scenePhase != .background else { return }
+        nav.setLayout(MainLayout.of(sizeClass), isDm: isDm)
     }
 
     var body: some View {
-        TabView(selection: Binding(get: { tab }, set: { selected in
-            // Tapping the open tab again: back to its first screen.
-            if selected == tab {
-                paths[selected] = []
-                if selected == .you { youPath = [] }
-            }
-            tab = selected
-        })) {
-            homeTab
-                .tabItem { Label("ホーム", systemImage: "house") }
-                .badge(TabBadges.homeDot(Array(store.channels.values), meId: store.me?.id) ? " " : nil) // a dot, no number
-                .tag(MainTab.home)
-            dmTab
-                .tabItem { Label("DM", systemImage: "bubble.left.and.bubble.right") }
-                .badge(TabBadges.dms(Array(store.channels.values), meId: store.me?.id))
-                .tag(MainTab.dms)
-            activityTab
-                .tabItem { Label("アクティビティ", systemImage: "bell") }
-                .badge(activityBadge.count)
-                .tag(MainTab.activity)
-            YouView(controller: controller, path: $youPath)
-                .tabItem { Label("自分", systemImage: "person.crop.circle") }
-                .tag(MainTab.you)
+        Group {
+            if nav.layout == .split { splitView } else { tabView }
         }
-        // M39: the activity badge is red only with a mention among its items.
-        .background(TabBadgeTint(index: 2, count: activityBadge.count, mention: activityBadge.mention))
         .safeAreaInset(edge: .top, spacing: 0) { ConnectionBanner(status: status) }
         .overlay(alignment: .bottom) {
             VStack(spacing: 6) {
                 NoticeToast(controller: controller)
                 ErrorToast(controller: controller)
             }
-            .padding(.bottom, frontChannelId == nil ? 52 : 0) // above the tab bar where it shows
+            .frame(maxWidth: nav.layout == .split ? 560 : nil)
+            .padding(.bottom, nav.layout == .tabs && frontChannelId == nil ? 52 : 0) // above the tab bar where it shows
         }
         .sheet(item: $sheet) { which in
             switch which {
@@ -165,16 +141,19 @@ struct MainView: View {
         .fullScreenCover(item: $controller.workflowRun) { target in
             WorkflowFormView(controller: controller, target: target)
         }
+        .onChange(of: sizeClass, initial: true) { _, _ in applyLayout() }
+        .onChange(of: scenePhase) { _, _ in applyLayout() }
         .onChange(of: homeSelection) { _, id in
             guard let id else { return }
             homeSelection = nil
-            push(id.isListId ? .list(id) : .channel(id), on: .home)
+            nav.select(id.isListId ? .list(id) : .channel(id))
         }
         .onChange(of: timesFeedShown, initial: true) { _, shown in
             // L8 (TIMES_FEED.md §5 feedVisible): live events add rows while the feed is on a stack (a thread over it too).
             controller.timesFeed.visible = shown
         }
         .onChange(of: frontChannelId, initial: true) { _, id in
+            nav.frontChanged()
             if controller.messageFocus?.channelId != id { controller.messageFocus = nil }
             // M37: 「最近の会話」 of 移動・検索, whichever tab it opened on.
             if let id { RecentConversations.push(id, key: controller.recentConversationKey) }
@@ -193,27 +172,25 @@ struct MainView: View {
                 land(id, parentId: note.userInfo?["parentId"] as? String)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: KeyCommand.notification)) { note in
+            guard let raw = note.userInfo?["command"] as? String, let command = KeyCommand(rawValue: raw) else { return }
+            keyCommand(command)
+        }
         .onChange(of: goneChannel) { _, gone in
             guard gone else { return }
-            for (key, path) in paths {
-                if let index = path.firstIndex(where: { if case .channel(let id) = $0 { store.channel(id) == nil } else { false } }) {
-                    paths[key] = Array(path[..<index])
-                }
-            }
+            nav.dropChannels { store.channel($0) == nil }
         }
         .onChange(of: PushCenter.shared.pendingCalendar, initial: true) { _, pending in
             // M52: a tapped alarm of my own calendar: the calendar, on the home tab, shows the event.
             guard pending else { return }
             PushCenter.shared.pendingCalendar = false
-            paths[.home] = [.list(CalendarView.selectionId)]
-            tab = .home
+            nav.landList(CalendarView.selectionId)
         }
         .onChange(of: PushCenter.shared.pendingTasks, initial: true) { _, pending in
             // M56: a tapped notification of my own task: 「タスク」, on the home tab, shows it.
             guard pending else { return }
             PushCenter.shared.pendingTasks = false
-            paths[.home] = [.list(MyTasksView.selectionId)]
-            tab = .home
+            nav.landList(MyTasksView.selectionId)
         }
         .onChange(of: pendingChannelReady, initial: true) { _, id in
             // A tapped notification opens its channel once the store knows it (after bootstrap / catch_up).
@@ -225,41 +202,109 @@ struct MainView: View {
         }
     }
 
+    /// The hardware keyboard's shortcuts (KeyCommand), only with nothing presented over the screen.
+    private func keyCommand(_ command: KeyCommand) {
+        guard sheet == nil, !jumpShown, !nav.youSheet else { return }
+        switch command {
+        case .jump: jumpShown = true
+        case .compose: sheet = .compose
+        case .search: sheet = .search
+        case .back: nav.back()
+        case .closeThread: if nav.layout == .split { nav.openThread = nil }
+        }
+    }
+
+    // MARK: the phone's tabs
+
+    private var tabView: some View {
+        TabView(selection: Binding(get: { nav.tab }, set: { selected in
+            // Tapping the open tab again: back to its first screen.
+            if selected == nav.tab {
+                nav.paths[selected] = []
+                if selected == .you { youPath = [] }
+            }
+            nav.tab = selected
+        })) {
+            homeTab
+                .tabItem { Label("ホーム", systemImage: "house") }
+                .badge(TabBadges.homeDot(Array(store.channels.values), meId: store.me?.id) ? " " : nil) // a dot, no number
+                .tag(MainTab.home)
+            dmTab
+                .tabItem { Label("DM", systemImage: "bubble.left.and.bubble.right") }
+                .badge(TabBadges.dms(Array(store.channels.values), meId: store.me?.id))
+                .tag(MainTab.dms)
+            activityTab
+                .tabItem { Label("アクティビティ", systemImage: "bell") }
+                .badge(activityBadge.count)
+                .tag(MainTab.activity)
+            YouView(controller: controller, path: $youPath)
+                .tabItem { Label("自分", systemImage: "person.crop.circle") }
+                .tag(MainTab.you)
+        }
+        // M39: the activity badge is red only with a mention among its items.
+        .background(TabBadgeTint(index: 2, count: activityBadge.count, mention: activityBadge.mention))
+    }
+
     private var homeTab: some View {
         NavigationStack(path: path(.home)) {
-            ChannelListView(controller: controller, selection: $homeSelection, onJump: { jumpShown = true }, onAllDms: {
-                paths[.dms] = []
-                tab = .dms
-            })
-            .overlay(alignment: .bottomTrailing) { composeButton }
-            .navigationTitle(controller.workspaceName)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // M16c / M37: the workspace on screen; with two or more, a tap opens the switcher.
-                ToolbarItem(placement: .principal) { WorkspaceTitle(controller: controller) { sheet = .workspaces } }
-                // M38: my picture (to the 自分 tab) with my presence, and the connection while it is down. Without the
-                // glass circle iOS 26 puts behind a bar item: a rounded-square picture in a circle looked odd, and the
-                // glass washed the badge's colour out (testers, 2026-09-30).
-                if #available(iOS 26.0, *) {
-                    ToolbarItem(placement: .topBarLeading) {
-                        HomeAvatarButton(controller: controller, status: status) { tab = .you }
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                } else {
-                    ToolbarItem(placement: .topBarLeading) {
-                        HomeAvatarButton(controller: controller, status: status) { tab = .you }
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) { homeMenu }
-            }
-            .alert("すべて既読にしますか？", isPresented: $confirmMarkAll) {
-                Button("既読にする") { Task { await controller.markAllRead() } }
-                Button("キャンセル", role: .cancel) {}
-            } message: {
-                Text("すべてのチャンネルと DM の未読がなくなります。")
-            }
-            .navigationDestination(for: MainRoute.self) { route in screen(route, on: .home) }
+            homeList(sidebar: false)
+                .navigationDestination(for: MainRoute.self) { route in screen(route, on: .home) }
         }
+    }
+
+    /// The home's list: the home tab's first screen, or the split's sidebar.
+    private func homeList(sidebar: Bool) -> some View {
+        ChannelListView(controller: controller, selection: $homeSelection, onJump: { jumpShown = true }, onAllDms: {
+            if sidebar {
+                nav.select(.list(MainNavigation.dmsId))
+            } else {
+                nav.paths[.dms] = []
+                nav.tab = .dms
+            }
+        }, current: sidebar ? sidebarCurrent : nil,
+           activity: sidebar ? .init(count: activityBadge.count, mention: activityBadge.mention, selected: nav.sidebarSelection == .list(MainNavigation.activityId),
+                                     open: { nav.select(.list(MainNavigation.activityId)) }) : nil)
+        .overlay(alignment: .bottomTrailing) { composeButton }
+        .navigationTitle(controller.workspaceName)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // M16c / M37: the workspace on screen; with two or more, a tap opens the switcher.
+            ToolbarItem(placement: .principal) { WorkspaceTitle(controller: controller) { sheet = .workspaces } }
+            // M38: my picture (to the 自分 tab) with my presence, and the connection while it is down. Without the
+            // glass circle iOS 26 puts behind a bar item: a rounded-square picture in a circle looked odd, and the
+            // glass washed the badge's colour out (testers, 2026-09-30).
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .topBarLeading) {
+                    HomeAvatarButton(controller: controller, status: status) { openYou() }
+                }
+                .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .topBarLeading) {
+                    HomeAvatarButton(controller: controller, status: status) { openYou() }
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) { homeMenu }
+        }
+        .alert("すべて既読にしますか？", isPresented: $confirmMarkAll) {
+            Button("既読にする") { Task { await controller.markAllRead() } }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("すべてのチャンネルと DM の未読がなくなります。")
+        }
+    }
+
+    /// The sidebar row of the detail column's first screen (a conversation, or one of the lists).
+    private var sidebarCurrent: String? {
+        switch nav.sidebarSelection {
+        case .channel(let id)?: id
+        case .list(let id)?: id
+        case nil: nil
+        }
+    }
+
+    /// My picture at the home's top left: the 自分 tab, or 自分 as a sheet over the split.
+    private func openYou() {
+        if nav.layout == .split { nav.youSheet = true } else { nav.tab = .you }
     }
 
     /// M37 (1): the home's ⋯ (MOBILE_UI.md §6.1), with what the old ＋ menu had.
@@ -293,6 +338,7 @@ struct MainView: View {
                 .shadow(color: .black.opacity(0.22), radius: 6, y: 3)
         }
         .buttonStyle(.plain)
+        .hoverEffect(.lift)
         .padding(.trailing, 16)
         .padding(.bottom, 16)
         .accessibilityLabel("新しいメッセージ")
@@ -300,31 +346,111 @@ struct MainView: View {
 
     private var dmTab: some View {
         NavigationStack(path: path(.dms)) {
-            DMListView(controller: controller, onOpen: { push(.channel($0), on: .dms) }, onNew: { sheet = .newDm })
+            dmList(on: .dms)
                 .navigationDestination(for: MainRoute.self) { route in screen(route, on: .dms) }
         }
     }
 
+    private func dmList(on tab: MainTab) -> some View {
+        DMListView(controller: controller, onOpen: { push(.channel($0), on: tab) }, onNew: { sheet = .newDm })
+    }
+
     private var activityTab: some View {
         NavigationStack(path: path(.activity)) {
-            ActivityView(controller: controller, onOpenMention: { message in
-                Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: .activity) } }
-            }, onOpenItem: { item in
-                // M77: a canvas, in its conversation's 「キャンバス」 tab on this tab's stack (Back: the activity), or its
-                // own sheet for a conversation I am not in.
-                if let canvas = item.canvas {
-                    Task { if await controller.openActivityCanvas(item) { show(canvas.channelId, parentId: nil, on: .activity) } }
-                    return
-                }
-                // M39: the message in its conversation, a reply in its thread, on this tab's stack.
-                guard let message = item.message else { return }
-                Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: .activity) } }
-            })
-            .navigationDestination(for: MainRoute.self) { route in screen(route, on: .activity) }
+            activityList(on: .activity)
+                .navigationDestination(for: MainRoute.self) { route in screen(route, on: .activity) }
         }
     }
 
-    /// A screen of a tab's stack: a list, or a conversation (or its preview) without the tab bar.
+    private func activityList(on tab: MainTab) -> some View {
+        ActivityView(controller: controller, onOpenMention: { message in
+            Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: tab) } }
+        }, onOpenItem: { item in
+            // M77: a canvas, in its conversation's 「キャンバス」 tab on this tab's stack (Back: the activity), or its
+            // own sheet for a conversation I am not in.
+            if let canvas = item.canvas {
+                Task { if await controller.openActivityCanvas(item) { show(canvas.channelId, parentId: nil, on: tab) } }
+                return
+            }
+            // M39: the message in its conversation, a reply in its thread, on this tab's stack.
+            guard let message = item.message else { return }
+            Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: tab) } }
+        })
+    }
+
+    // MARK: the iPad's split (MOBILE_UI.md §12)
+
+    private var splitView: some View {
+        NavigationSplitView(columnVisibility: $columns) {
+            homeList(sidebar: true)
+                .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
+        } detail: {
+            NavigationStack(path: Binding(get: { Array(nav.split.dropFirst()) }, set: { tail in
+                nav.split = Array(nav.split.prefix(1)) + tail
+            })) {
+                Group {
+                    if let root = nav.split.first {
+                        screen(root, on: .home).id(root)
+                    } else {
+                        ContentUnavailableView("会話を選んでください", systemImage: "bubble.left.and.bubble.right",
+                                               description: Text("左の一覧からチャンネルや DM を開きます。⌘K で移動・検索、⌘N で新しいメッセージ。"))
+                    }
+                }
+                .navigationDestination(for: MainRoute.self) { route in screen(route, on: .home) }
+            }
+            .environment(\.threadInPane, true)
+            // The front conversation's thread, in a pane beside it (Slack's right panel); the conversation stays read.
+            .inspector(isPresented: Binding(get: { paneThread != nil }, set: { if !$0 { nav.openThread = nil } })) {
+                threadPane
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .sheet(isPresented: $nav.youSheet) {
+            YouView(controller: controller, path: $youPath) { nav.youSheet = false }
+        }
+    }
+
+    /// The thread the split's pane shows: the one open in the conversation in front, while that conversation is there.
+    private var paneThread: ThreadRef? {
+        guard nav.layout == .split, let open = nav.openThread, open.channelId == nav.frontChannelId,
+              store.channel(open.channelId) != nil else { return nil }
+        return open
+    }
+
+    /// The split's thread pane (MOBILE_UI.md §12). The inspector shares the detail column's bar (the thread's follow
+    /// and ⋯ go to its end, over the pane), so the pane says what it is and closes from a header row of its own.
+    @ViewBuilder
+    private var threadPane: some View {
+        if let thread = paneThread {
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("スレッド").font(.headline)
+                        if let channel = store.channel(thread.channelId) {
+                            Text(channelTitle(channel, store: store)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Button { nav.openThread = nil } label: {
+                        Image(systemName: "xmark").font(.body.weight(.semibold)).frame(width: 36, height: 36).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .hoverEffect(.highlight)
+                    .accessibilityLabel("スレッドを閉じる")
+                }
+                .padding(.leading, 16)
+                .padding(.trailing, 8)
+                .padding(.vertical, 6)
+                Divider()
+                ThreadView(controller: controller, channelId: thread.channelId, parentId: thread.parentId)
+            }
+            .id(thread.parentId)
+            .inspectorColumnWidth(min: 340, ideal: 400, max: 520)
+        }
+    }
+
+    /// A screen of a tab's stack (or the detail column's): a list, or a conversation (or its preview) without the tab bar.
     @ViewBuilder
     private func screen(_ route: MainRoute, on tab: MainTab) -> some View {
         switch route {
@@ -338,8 +464,13 @@ struct MainView: View {
                     } else {
                         // View state resets; conversation drafts live in the persistent Store.
                         ChannelView(controller: controller, channelId: channel.id, pendingThreadId: Binding(
-                            get: { pendingThread?.channelId == id ? pendingThread?.parentId : nil },
-                            set: { value in if value == nil, pendingThread?.channelId == id { pendingThread = nil } }))
+                            get: { nav.pendingThread?.channelId == id ? nav.pendingThread?.parentId : nil },
+                            set: { value in if value == nil, nav.pendingThread?.channelId == id { nav.pendingThread = nil } }),
+                            onThreadChange: { parentId in
+                                // Only the front conversation's thread is carried across a change of layout.
+                                guard nav.frontChannelId == id else { return }
+                                nav.openThread = parentId.map { ThreadRef(channelId: id, parentId: $0) }
+                            })
                             .id(channel.id)
                     }
                 }
@@ -354,6 +485,8 @@ struct MainView: View {
     @ViewBuilder
     private func list(_ id: String, on tab: MainTab) -> some View {
         switch id {
+        case MainNavigation.dmsId: dmList(on: tab)
+        case MainNavigation.activityId: activityList(on: tab)
         case ThreadsListView.selectionId: ThreadsListView(controller: controller)
         case TimesFeedView.selectionId:
             // L8: a row shows its message in the channel (a reply shared there too, as the channel's row), on this stack.
@@ -577,3 +710,4 @@ func channelTitle(_ channel: ChannelState, store: Store) -> String {
 /// Muted when the level is "none" or a timed mute is active.
 @MainActor
 func isMuted(_ channel: ChannelState) -> Bool { channel.isMuted }
+
