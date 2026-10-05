@@ -1,6 +1,8 @@
 package jp.chikuwachat.android.ui
 
 import java.time.ZonedDateTime
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** Slash commands (M13b): a few Slack-style shortcuts that map onto existing actions, client-side only. */
 object SlashCommands {
@@ -8,20 +10,20 @@ object SlashCommands {
     data class Parsed(val name: String, val args: String, val known: Boolean)
 
     val all = listOf(
-        Command("status", "/status [絵文字] 文", "ステータスを設定 (/status clear で消す)"),
-        Command("dnd", "/dnd 30m | 1h | 2h | 4h | tomorrow | off", "通知を一時停止"),
-        Command("topic", "/topic 文", "チャンネルのトピックを変更", channelOnly = true),
-        Command("invite", "/invite @名前 …", "メンバーを追加", channelOnly = true),
-        Command("leave", "/leave", "チャンネルから退出", channelOnly = true),
-        Command("join", "/join #チャンネル", "公開チャンネルに参加"),
-        Command("dm", "/dm @名前", "ダイレクトメッセージを開く"),
-        Command("mute", "/mute [1h | 8h | tomorrow]", "この会話の通知を止める"),
-        Command("unmute", "/unmute", "この会話の通知を再開"),
-        Command("me", "/me 文", "動作を斜体で投稿"),
-        Command("shrug", "/shrug [文]", "¯\\_(ツ)_/¯ を添えて投稿"),
-        Command("poll", "/poll 質問 | 選択肢 | 選択肢 …", "アンケートを作る (/poll だけでフォームを開く)"),
-        Command(SCHEDULE, "/日程 [題名] 日付 …", "日程調整を作る (候補に ○ △ × で答える。日付を続けるとフォームに入る)"),
-        Command("help", "/help", "コマンド一覧"),
+        Command("status", L10n.str(R.string.commands_status_emoji_text), L10n.str(R.string.commands_set_your_status_status_clear_to)),
+        Command("dnd", "/dnd 30m | 1h | 2h | 4h | tomorrow | off", L10n.str(R.string.common_pause_notifications)),
+        Command("topic", L10n.str(R.string.commands_topic_text), L10n.str(R.string.commands_change_the_channel_topic), channelOnly = true),
+        Command("invite", L10n.str(R.string.commands_invite_name), L10n.str(R.string.common_add_members), channelOnly = true),
+        Command("leave", "/leave", L10n.str(R.string.commands_leave_the_channel), channelOnly = true),
+        Command("join", L10n.str(R.string.commands_join_channel), L10n.str(R.string.commands_join_a_public_channel)),
+        Command("dm", L10n.str(R.string.common_dm_name), L10n.str(R.string.commands_open_a_direct_message)),
+        Command("mute", "/mute [1h | 8h | tomorrow]", L10n.str(R.string.commands_mute_this_conversation)),
+        Command("unmute", "/unmute", L10n.str(R.string.commands_unmute_this_conversation)),
+        Command("me", L10n.str(R.string.commands_me_text), L10n.str(R.string.commands_post_an_action_in_italics)),
+        Command("shrug", L10n.str(R.string.commands_shrug_text), L10n.str(R.string.commands_post_with)),
+        Command("poll", L10n.str(R.string.common_poll_question_option_option), L10n.str(R.string.commands_create_a_poll_poll_alone_opens)),
+        Command(SCHEDULE, L10n.str(R.string.commands_title_dates), L10n.str(R.string.commands_create_a_scheduling_poll_answer_the)),
+        Command("help", "/help", L10n.str(R.string.commands_list_of_commands)),
     )
 
     /** M30: the date poll; M54: the scheduling poll's form (ui/Templates.kt readSchedule, SchedulePollForm). */

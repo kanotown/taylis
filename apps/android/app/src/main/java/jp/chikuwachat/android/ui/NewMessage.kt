@@ -65,6 +65,8 @@ import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /** The server allows nine members in a DM including me, so at most eight recipients (as the new-DM dialog). */
 private const val MAX_RECIPIENTS = 8
@@ -117,9 +119,9 @@ fun NewMessageDialog(controller: AppController, version: Int, onDismiss: () -> U
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "閉じる") }
-                    Text("新しいメッセージ", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-                    TextButton(enabled = !busy && selected.isNotEmpty(), onClick = { start(selected) }) { Text(if (busy) "開始中…" else "開始") }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close)) }
+                    Text(stringResource(R.string.common_new_message), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+                    TextButton(enabled = !busy && selected.isNotEmpty(), onClick = { start(selected) }) { Text(if (busy) stringResource(R.string.common_starting) else stringResource(R.string.common_start)) }
                 }
                 if (selected.isNotEmpty()) {
                     Row(
@@ -132,7 +134,7 @@ fun NewMessageDialog(controller: AppController, version: Int, onDismiss: () -> U
                                 selected = true,
                                 onClick = { selected = selected - id },
                                 label = { Text(name, maxLines = 1) },
-                                trailingIcon = { Icon(Icons.Default.Close, contentDescription = "$name を外す", modifier = Modifier.size(InputChipDefaults.IconSize)) },
+                                trailingIcon = { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_remove_2, name), modifier = Modifier.size(InputChipDefaults.IconSize)) },
                             )
                         }
                     }
@@ -140,9 +142,9 @@ fun NewMessageDialog(controller: AppController, version: Int, onDismiss: () -> U
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it.take(80) },
-                    placeholder = { Text("宛先: チャンネルか人の名前") },
+                    placeholder = { Text(stringResource(R.string.new_message_to_a_channel_or_persons_name)) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    trailingIcon = if (query.isEmpty()) null else { { IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, contentDescription = "入力を消す") } } },
+                    trailingIcon = if (query.isEmpty()) null else { { IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_clear)) } } },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).focusRequester(focus),
@@ -150,15 +152,15 @@ fun NewMessageDialog(controller: AppController, version: Int, onDismiss: () -> U
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                     if (destinations.channels.isNotEmpty()) {
-                        item(key = "h:channels") { PickerHeader("チャンネル") }
+                        item(key = "h:channels") { PickerHeader(stringResource(R.string.common_channels)) }
                         items(destinations.channels, key = { "c:" + it.id }) { channel -> PickerChannelRow(channel, enabled = !busy) { onOpen(channel.id) } }
                     }
                     if (destinations.joinable.isNotEmpty()) {
-                        item(key = "h:joinable") { PickerHeader("参加できるチャンネル") }
+                        item(key = "h:joinable") { PickerHeader(stringResource(R.string.new_message_channels_you_can_join)) }
                         items(destinations.joinable, key = { "j:" + it.id }) { channel -> PickerChannelRow(channel, enabled = !busy) { onOpen(channel.id) } }
                     }
                     if (destinations.people.isNotEmpty()) {
-                        item(key = "h:people") { PickerHeader("人 (複数選ぶとグループ DM、相手は $MAX_RECIPIENTS 人まで)") }
+                        item(key = "h:people") { PickerHeader(stringResource(R.string.new_message_people_pick_several_for_a_group, MAX_RECIPIENTS)) }
                         items(destinations.people, key = { "u:" + it.id }) { user ->
                             if (user.id == meId) {
                                 PickerPersonRow(user, subtitle = MainTabs.SELF_NOTES_HINT, checked = null, enabled = !busy) { start(listOf(user.id)) }
@@ -172,7 +174,7 @@ fun NewMessageDialog(controller: AppController, version: Int, onDismiss: () -> U
                     }
                     if (destinations.channels.isEmpty() && destinations.joinable.isEmpty() && destinations.people.isEmpty()) {
                         item(key = "empty") {
-                            Text("一致するチャンネルや人はいません", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp))
+                            Text(stringResource(R.string.new_message_no_matching_channels_or_people), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp))
                         }
                     }
                 }

@@ -93,6 +93,9 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.util.Locale
 import java.util.UUID
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** The form's fields across a rotation (the form itself stays open: the controller holds it). */
 private val TaskDraftSaver = listSaver<TaskDraft, String>(
@@ -177,7 +180,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
         error = null
     }
     fun boardName(id: String?): String {
-        if (id == null) return "自分のタスク"
+        if (id == null) return L10n.str(R.string.common_my_tasks)
         val held = store.channel(id)
         // A DM has no board (L9): its shared tasks are named after the other people.
         if (held?.channel?.isDm == true || (held == null && task?.channelId == id && task?.channelName == null)) {
@@ -207,7 +210,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                         }
                     }
                     hub.create(TaskRules.taskCreateBody(draft, channelId, init, clientId, zone, kind = kind))
-                    controller.notice = if (review) "レビューを依頼しました" else if (deadline) "締切を追加しました" else "タスクを作成しました"
+                    controller.notice = if (review) L10n.str(R.string.common_review_requested) else if (deadline) L10n.str(R.string.task_form_screen_deadline_added) else L10n.str(R.string.task_form_screen_task_created)
                 } else {
                     val patch = TaskRules.taskPatch(task, draft, zone)
                     if (!patch.isEmpty) hub.update(task.id, patch)
@@ -266,13 +269,13 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
     }
 
     val title = when {
-        task == null -> if (review) "レビューを依頼" else if (deadline) "締切を追加" else "タスクを追加"
-        review -> "レビュー依頼"
-        editable -> if (deadline) "締切を編集" else "タスクを編集"
-        else -> if (deadline) "締切" else "タスク"
+        task == null -> if (review) stringResource(R.string.common_request_review) else if (deadline) stringResource(R.string.common_add_deadline) else stringResource(R.string.common_add_task)
+        review -> stringResource(R.string.common_review_request)
+        editable -> if (deadline) stringResource(R.string.task_form_screen_edit_deadline) else stringResource(R.string.task_form_screen_edit_task)
+        else -> if (deadline) stringResource(R.string.common_deadlines) else stringResource(R.string.common_tasks)
     }
-    val dueName = if (review) "希望日" else if (deadline) "締切日" else "期限"
-    val assigneeName = if (review) "依頼先" else "担当者"
+    val dueName = if (review) stringResource(R.string.task_form_screen_preferred_date) else if (deadline) stringResource(R.string.task_form_screen_deadline) else stringResource(R.string.common_due)
+    val assigneeName = if (review) stringResource(R.string.task_form_screen_reviewer) else stringResource(R.string.task_form_screen_assignee)
     // L9: an assignee's big buttons (the form saved with that state).
     val quick = if (task != null && editable && available) TaskRules.quickStatuses(task, store.me?.id) else emptyList()
     val source = when {
@@ -300,10 +303,10 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "閉じる") }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close)) }
                     Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
                     if (editable) {
-                        TextButton(enabled = !busy && available, onClick = ::save) { Text(if (busy) "保存中…" else if (task == null) (if (review) "依頼" else "追加") else "保存") }
+                        TextButton(enabled = !busy && available, onClick = ::save) { Text(if (busy) stringResource(R.string.common_saving) else if (task == null) (if (review) stringResource(R.string.task_form_screen_request) else stringResource(R.string.common_add)) else stringResource(R.string.common_save)) }
                     }
                 }
                 HorizontalDivider()
@@ -339,12 +342,12 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                     if (task == null && (review || init?.dmChannelId != null)) {
                         // Review: the message's conversation. DM 「タスクにする」: shared there once someone is assigned.
                         Column(Modifier.fillMaxWidth()) {
-                            FieldLabel(if (review) "依頼する場所" else "追加先")
+                            FieldLabel(if (review) stringResource(R.string.task_form_screen_where_to_request) else stringResource(R.string.task_form_screen_add_to))
                             Text(
                                 when {
                                     review -> boardName(channelId)
-                                    channelId != null -> boardName(channelId) + " (メンバーに表示)"
-                                    else -> "自分のタスク (担当者を選ぶと、この DM のメンバーにも表示)"
+                                    channelId != null -> boardName(channelId) + stringResource(R.string.task_form_screen_shown_to_members)
+                                    else -> stringResource(R.string.task_form_screen_my_tasks_also_shown_to_this)
                                 },
                                 style = MaterialTheme.typography.bodyLarge,
                             )
@@ -362,8 +365,8 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             })
                         }
                         BoardChoice(
-                            value = if (board == MINE) "自分のタスク (自分だけに表示)" else boardName(board),
-                            options = boards.map { it to boardName(it) } + if (deadline) emptyList() else listOf(MINE to "自分のタスク (自分だけに表示)"),
+                            value = if (board == MINE) stringResource(R.string.task_form_screen_my_tasks_only_shown_to_me) else boardName(board),
+                            options = boards.map { it to boardName(it) } + if (deadline) emptyList() else listOf(MINE to stringResource(R.string.task_form_screen_my_tasks_only_shown_to_me)),
                             enabled = boards.isNotEmpty(),
                             onPick = { picked -> board = picked; change(draft.copy(assigneeIds = emptyList())) },
                         )
@@ -373,14 +376,14 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                     if (editable) {
                         OutlinedTextField(
                             value = draft.title, onValueChange = { change(draft.copy(title = it.take(TaskRules.MAX_TITLE))) },
-                            label = { Text("題名") }, placeholder = { Text("資料をまとめる") }, modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.common_title)) }, placeholder = { Text(stringResource(R.string.task_form_screen_put_the_materials_together)) }, modifier = Modifier.fillMaxWidth(),
                         )
                         OutlinedTextField(
                             value = draft.notes, onValueChange = { change(draft.copy(notes = it.take(TaskRules.MAX_NOTES))) },
-                            label = { Text("メモ") }, placeholder = { Text("Markdown で書けます") }, minLines = 3, modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.task_form_screen_notes)) }, placeholder = { Text(stringResource(R.string.task_form_screen_markdown_is_supported)) }, minLines = 3, modifier = Modifier.fillMaxWidth(),
                         )
                         Column {
-                            FieldLabel("状態")
+                            FieldLabel(stringResource(R.string.task_form_screen_status))
                             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                                 TaskStatus.all.forEachIndexed { index, status ->
                                     SegmentedButton(
@@ -394,18 +397,18 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             FieldLabel(dueName)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = { picking = TaskPicker.DATE }, modifier = Modifier.weight(1f)) {
-                                    Text(draft.dueOn.takeIf { it.isNotEmpty() }?.let { dueText(it) } ?: if (deadline) "日付を選ぶ" else "なし", maxLines = 1)
+                                    Text(draft.dueOn.takeIf { it.isNotEmpty() }?.let { dueText(it) } ?: if (deadline) stringResource(R.string.common_pick_a_date) else stringResource(R.string.common_none), maxLines = 1)
                                 }
                                 // M84: the time beside the date (none: the whole day).
                                 if (draft.dueOn.isNotEmpty()) {
                                     OutlinedButton(onClick = { picking = TaskPicker.TIME }) {
-                                        Text(draft.dueTime.takeIf { it.isNotEmpty() }?.let { clockText(it) } ?: "時刻なし", maxLines = 1)
+                                        Text(draft.dueTime.takeIf { it.isNotEmpty() }?.let { clockText(it) } ?: stringResource(R.string.task_form_screen_no_time), maxLines = 1)
                                     }
                                 }
                             }
                             if (draft.dueOn.isNotEmpty()) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    if (draft.dueTime.isNotEmpty()) TextButton(onClick = { change(draft.copy(dueTime = "")) }) { Text("時刻をなくす") }
+                                    if (draft.dueTime.isNotEmpty()) TextButton(onClick = { change(draft.copy(dueTime = "")) }) { Text(stringResource(R.string.task_form_screen_remove_time)) }
                                     // Without a due date nothing repeats: the save sends `rrule: null` with it. M86: a deadline keeps its date.
                                     if (!deadline) TextButton(onClick = { change(TaskRules.withDueOn(draft, "")) }) { Text(dueName + "をなくす") }
                                 }
@@ -417,7 +420,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 RepeatSection(draft.repeat, dueDate, onChange = { change(draft.copy(repeat = it)) }, onPickUntil = { picking = TaskPicker.UNTIL })
                                 if (draft.repeat.kind != RepeatKind.NONE) {
-                                    Text("完了にすると、次の回のタスクができます", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(stringResource(R.string.task_form_screen_completing_it_creates_the_next_task), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -440,18 +443,18 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text("元のメッセージ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.common_original_message), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 source.excerpt?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis) }
                             }
                             if (task != null) {
                                 TextButton(onClick = {
                                     onDismiss()
                                     controller.scope.launch { controller.openPermalink(source.messageId) }
-                                }) { Text("メッセージを開く") }
+                                }) { Text(stringResource(R.string.task_form_screen_open_message)) }
                             }
                         }
                         TaskSource.Deleted -> Text(
-                            "元のメッセージは削除されました", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            stringResource(R.string.task_form_screen_the_original_message_was_deleted), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(10.dp)).padding(12.dp),
                         )
                         TaskSource.None -> Unit
@@ -462,12 +465,12 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                             controller.scope.launch { controller.openCanvasLink(id) }
                         }) else null)
                     }
-                    if (!available) Text("このサーバはタスクに対応していません", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!available) Text(stringResource(R.string.common_this_server_doesnt_support_tasks), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
                     if (task?.canDelete == true) {
                         TextButton(enabled = !busy, onClick = { confirmDelete = true }) {
                             Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                            Text(if (deadline) " 締切を削除" else " タスクを削除", color = MaterialTheme.colorScheme.error)
+                            Text(if (deadline) stringResource(R.string.task_form_screen_delete_deadline) else stringResource(R.string.task_form_screen_delete_task), color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -488,9 +491,9 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                                 change(if (until) draft.copy(repeat = draft.repeat.copy(until = day)) else TaskRules.withDueOn(draft, day.toString()))
                             }
                             picking = null
-                        }) { Text("決定") }
+                        }) { Text(stringResource(R.string.common_done)) }
                     },
-                    dismissButton = { TextButton(onClick = { picking = null }) { Text("キャンセル") } },
+                    dismissButton = { TextButton(onClick = { picking = null }) { Text(stringResource(R.string.common_cancel)) } },
                 ) { DatePicker(state = state) }
             }
             TaskPicker.TIME -> {
@@ -506,10 +509,10 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
         if (confirmDelete && task != null) {
             AlertDialog(
                 onDismissRequest = { confirmDelete = false },
-                title = { Text(if (deadline) "この締切を削除しますか？ (前もっての通知も止まります)" else "タスクを削除しますか？") },
-                text = { Text("「${task.title}」を削除します。" + if (task.channelId != null) "ボードのメンバー全員から消えます。" else "") },
-                confirmButton = { TextButton(onClick = { confirmDelete = false; remove() }) { Text("削除", color = MaterialTheme.colorScheme.error) } },
-                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("キャンセル") } },
+                title = { Text(if (deadline) stringResource(R.string.task_form_screen_delete_this_deadline_advance_notices) else stringResource(R.string.common_delete_this_task)) },
+                text = { Text(stringResource(R.string.common_will_be_deleted, task.title) + if (task.channelId != null) stringResource(R.string.common_it_will_disappear_for_all_members) else "") },
+                confirmButton = { TextButton(onClick = { confirmDelete = false; remove() }) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) } },
+                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.common_cancel)) } },
             )
         }
     }
@@ -537,16 +540,16 @@ private fun CanvasSourceBox(controller: AppController, source: CanvasTaskSource,
         Column(Modifier.weight(1f)) {
             Text(
                 when {
-                    link == null -> "元のキャンバスは削除されました"
-                    title != null -> "元のキャンバス: $title"
-                    else -> "元のキャンバス"
+                    link == null -> stringResource(R.string.task_form_screen_the_original_canvas_was_deleted)
+                    title != null -> stringResource(R.string.task_form_screen_original_canvas, title)
+                    else -> stringResource(R.string.task_form_screen_original_canvas_2)
                 },
                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             excerpt?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis) }
         }
         if (link != null && onOpen != null) {
-            TextButton(onClick = { onOpen(link.canvasId) }) { Text("キャンバスを開く") }
+            TextButton(onClick = { onOpen(link.canvasId) }) { Text(stringResource(R.string.common_open_canvas)) }
         }
     }
 }
@@ -554,7 +557,7 @@ private fun CanvasSourceBox(controller: AppController, source: CanvasTaskSource,
 /** 「10月5日 (月)」, with 「(今日)」 on today. */
 private fun dueText(dueOn: String): String {
     val day = runCatching { LocalDate.parse(dueOn) }.getOrNull() ?: return dueOn
-    return CalendarDates.dayLabel(day) + if (day == CalendarDates.today()) " (今日)" else ""
+    return CalendarDates.dayLabel(day) + if (day == CalendarDates.today()) L10n.str(R.string.task_form_screen_today) else ""
 }
 
 /** "14:30" → 「14:30」, "09:00" → 「9:00」 (the calendar's clock). */
@@ -568,35 +571,35 @@ private fun clockText(hhmm: String): String = runCatching { CalendarDates.clock(
 private fun SubtaskEditor(items: List<SubtaskDraft>, enabled: Boolean, onChange: (List<SubtaskDraft>) -> Unit, onTick: (SubtaskDraft, Boolean) -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         val doneCount = items.count { it.done }
-        FieldLabel("サブタスク" + if (items.isNotEmpty()) " ($doneCount/${items.size})" else "")
+        FieldLabel(stringResource(R.string.task_form_screen_subtasks) + if (items.isNotEmpty()) " ($doneCount/${items.size})" else "")
         items.forEachIndexed { index, item ->
             key(item.key) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(
                     checked = item.done, enabled = enabled, onCheckedChange = { onTick(item, it) },
-                    modifier = Modifier.semantics { contentDescription = "「${item.title}」" + if (item.done) "を未完了に戻す" else "を完了にする" },
+                    modifier = Modifier.semantics { contentDescription = L10n.str(R.string.common_fmt_2, item.title) + if (item.done) "を未完了に戻す" else "を完了にする" },
                 )
                 OutlinedTextField(
-                    value = item.title, singleLine = true, enabled = enabled, placeholder = { Text("サブタスク") },
+                    value = item.title, singleLine = true, enabled = enabled, placeholder = { Text(stringResource(R.string.task_form_screen_subtasks)) },
                     onValueChange = { text -> onChange(items.map { if (it.key == item.key) it.copy(title = text.take(TaskRules.MAX_TITLE)) else it }) },
                     textStyle = MaterialTheme.typography.bodyLarge.copy(textDecoration = if (item.done) TextDecoration.LineThrough else null),
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(enabled = enabled && index > 0, onClick = { onChange(TaskRules.moveSubtask(items, index, -1)) }) {
-                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "上へ")
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.common_move_up))
                 }
                 IconButton(enabled = enabled && index < items.size - 1, onClick = { onChange(TaskRules.moveSubtask(items, index, 1)) }) {
-                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "下へ")
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.common_move_down))
                 }
                 IconButton(enabled = enabled, onClick = { onChange(items.filter { it.key != item.key }) }) {
-                    Icon(Icons.Default.Close, contentDescription = "削除")
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_delete))
                 }
             }
             }
         }
         TextButton(enabled = enabled && items.size < TaskRules.MAX_SUBTASKS, onClick = { onChange(items + SubtaskDraft(null, "")) }) {
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(" サブタスクを追加")
+            Text(stringResource(R.string.task_form_screen_add_subtask))
         }
     }
 }
@@ -605,9 +608,9 @@ private fun SubtaskEditor(items: List<SubtaskDraft>, enabled: Boolean, onChange:
 @Composable
 private fun KindSwitch(deadline: Boolean, onPick: (String) -> Unit) {
     Column(Modifier.fillMaxWidth()) {
-        FieldLabel("種類")
+        FieldLabel(stringResource(R.string.common_type))
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            listOf(TaskKind.TASK to "タスク", TaskKind.DEADLINE to "⏰ 締切").forEachIndexed { index, (value, label) ->
+            listOf(TaskKind.TASK to stringResource(R.string.common_tasks), TaskKind.DEADLINE to stringResource(R.string.task_form_screen_deadline_2)).forEachIndexed { index, (value, label) ->
                 SegmentedButton(
                     selected = deadline == (value == TaskKind.DEADLINE), onClick = { onPick(value) },
                     shape = SegmentedButtonDefaults.itemShape(index, 2),
@@ -624,7 +627,7 @@ private fun KindSwitch(deadline: Boolean, onPick: (String) -> Unit) {
 @Composable
 private fun NoticeDaysPicker(days: List<Int>, enabled: Boolean, onChange: (List<Int>) -> Unit) {
     Column(Modifier.fillMaxWidth()) {
-        FieldLabel("事前の通知")
+        FieldLabel(stringResource(R.string.task_form_screen_advance_notice))
         DeadlineRules.noticeChoices(days).forEach { day ->
             val checked = day in days
             Row(
@@ -637,7 +640,7 @@ private fun NoticeDaysPicker(days: List<Int>, enabled: Boolean, onChange: (List<
             }
         }
         Text(
-            "『締切』のボットがこのチャンネルに、その日の 9:00 に投稿します", style = MaterialTheme.typography.bodySmall,
+            stringResource(R.string.task_form_screen_the_deadlines_bot_posts_in_this), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -653,7 +656,7 @@ private fun FieldLabel(text: String) {
 private fun BoardChoice(value: String, options: List<Pair<String, String>>, enabled: Boolean, onPick: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth()) {
-        FieldLabel("追加先")
+        FieldLabel(stringResource(R.string.task_form_screen_add_to))
         Box {
             OutlinedButton(onClick = { open = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
                 Text(value, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -669,7 +672,7 @@ private fun BoardChoice(value: String, options: List<Pair<String, String>>, enab
 /** 担当者: the channel's members (me first, then by name), each a checkbox; a filter field once there are more than 8. */
 @Composable
 private fun AssigneePicker(
-    controller: AppController, channelId: String, version: Int, selected: List<String>, label: String = "担当者", excludeMe: Boolean = false,
+    controller: AppController, channelId: String, version: Int, selected: List<String>, label: String = L10n.str(R.string.task_form_screen_assignee), excludeMe: Boolean = false,
     onChange: (List<String>) -> Unit,
 ) {
     var members by remember(channelId) { mutableStateOf<List<MemberOut>?>(null) }
@@ -692,14 +695,14 @@ private fun AssigneePicker(
     val q = query.trim().lowercase()
     val shown = if (q.isEmpty()) rows else rows.filter { it.second.lowercase().contains(q) || it.third.lowercase().contains(q) }
     Column(Modifier.fillMaxWidth()) {
-        FieldLabel(label + if (selected.isNotEmpty()) " (${selected.size} 人)" else "")
+        FieldLabel(label + if (selected.isNotEmpty()) stringResource(R.string.task_form_screen_fmt, selected.size) else "")
         when {
-            failed -> Text("メンバーを読み込めませんでした", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-            members == null -> Text("読み込み中…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            failed -> Text(stringResource(R.string.common_couldnt_load_members), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            members == null -> Text(stringResource(R.string.common_loading), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             else -> {
                 if (rows.size > 8) {
                     OutlinedTextField(
-                        query, { query = it }, placeholder = { Text("名前で絞り込む") }, singleLine = true,
+                        query, { query = it }, placeholder = { Text(stringResource(R.string.common_filter_by_name)) }, singleLine = true,
                         modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
                     )
                 }
@@ -713,7 +716,7 @@ private fun AssigneePicker(
                         Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.padding(horizontal = 8.dp))
                         Avatar(id, name, size = 24.dp)
                         Spacer(Modifier.width(8.dp))
-                        Text(name + if (id == me) " (自分)" else "", style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(name + if (id == me) stringResource(R.string.common_you_2) else "", style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -734,21 +737,21 @@ private fun ReadOnlyTask(controller: AppController, task: TaskOut, version: Int)
             )
         }
         val review = task.kind == TaskKind.REVIEW
-        Text("状態: " + TaskRules.label(task.kind, task.status), style = MaterialTheme.typography.bodyLarge)
+        Text(stringResource(R.string.task_form_screen_status_2) + TaskRules.label(task.kind, task.status), style = MaterialTheme.typography.bodyLarge)
         // M84: with its time (this device's clock), the rule and the checklist.
         val dueDay = TaskRules.dueDay(task.dueOn, task.dueAt)
         val time = TaskRules.dueTimeOf(task.dueAt).takeIf { it.isNotEmpty() }?.let { " " + clockText(it) } ?: ""
         val deadline = task.kind == TaskKind.DEADLINE
-        Text((if (review) "希望日: " else if (deadline) "締切日: " else "期限: ") + (dueDay?.let { dueText(it) + time } ?: "なし"), style = MaterialTheme.typography.bodyLarge)
+        Text((if (review) stringResource(R.string.task_form_screen_preferred_date_2) else if (deadline) stringResource(R.string.task_form_screen_deadline_3) else stringResource(R.string.task_form_screen_due)) + (dueDay?.let { dueText(it) + time } ?: stringResource(R.string.common_none)), style = MaterialTheme.typography.bodyLarge)
         // M86: who hears of it beforehand.
-        if (deadline) Text("事前の通知: " + DeadlineRules.noticeSummary(task.noticeDays), style = MaterialTheme.typography.bodyLarge)
+        if (deadline) Text(stringResource(R.string.task_form_screen_advance_notice_2) + DeadlineRules.noticeSummary(task.noticeDays), style = MaterialTheme.typography.bodyLarge)
         if (task.rrule != null) {
             val start = dueDay?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: CalendarDates.today()
             Text("🔁 " + CalendarRecurrence.describeRrule(task.rrule, start), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (task.subtasks.isNotEmpty()) {
             Column {
-                Text("サブタスク (${task.subtasks.count { it.done }}/${task.subtasks.size})", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.task_form_screen_subtasks_2, task.subtasks.count { it.done }, task.subtasks.size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 task.subtasks.forEach { item ->
                     Text(
                         (if (item.done) "☑ " else "☐ ") + item.title, style = MaterialTheme.typography.bodyLarge,
@@ -759,7 +762,7 @@ private fun ReadOnlyTask(controller: AppController, task: TaskOut, version: Int)
         }
         if (task.channelId != null) {
             Text(
-                (if (review) "依頼先: " else "担当者: ") + task.assigneeIds.joinToString("、") { users[it]?.displayName ?: "?" }.ifEmpty { "なし" },
+                (if (review) stringResource(R.string.task_form_screen_reviewer_2) else stringResource(R.string.task_form_screen_assignee_2)) + task.assigneeIds.joinToString(stringResource(R.string.common_fmt_6)) { users[it]?.displayName ?: "?" }.ifEmpty { stringResource(R.string.common_none) },
                 style = MaterialTheme.typography.bodyLarge,
             )
         }
@@ -771,7 +774,7 @@ private fun ReadOnlyTask(controller: AppController, task: TaskOut, version: Int)
                 )
             }
         }
-        Text("このボードを変更できるのは、チャンネルに投稿できるメンバーです。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.task_form_screen_members_who_can_post_in_the), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider(Modifier.padding(top = 4.dp))
     }
 }

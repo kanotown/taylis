@@ -48,11 +48,14 @@ import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.TaskListState
 import java.text.Collator
 import java.util.Locale
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** M86: the note over 「締切」 — a server before M85, or a read that failed (null: nothing to say). */
 fun deadlinesNote(state: TaskListState?, available: Boolean): String? = when {
-    !available || state == TaskListState.UNSUPPORTED -> "このサーバは締切に対応していません"
-    state == TaskListState.FAILED -> "締切を読み込めませんでした。再接続すると読み直します"
+    !available || state == TaskListState.UNSUPPORTED -> L10n.str(R.string.deadline_screens_this_server_doesnt_support_deadlines)
+    state == TaskListState.FAILED -> L10n.str(R.string.deadline_screens_couldnt_load_deadlines_they_will_reload)
     else -> null
 }
 
@@ -89,8 +92,8 @@ fun DeadlineChipRow(controller: AppController, channel: ChannelState) {
         Surface(
             shape = RoundedCornerShape(50), color = background,
             modifier = Modifier.heightIn(min = 32.dp)
-                .clickable(role = Role.Button, onClickLabel = "締切を開く") { controller.taskForm = TaskForm(next, null) }
-                .semantics(mergeDescendants = true) { contentDescription = "次の締切、$label" },
+                .clickable(role = Role.Button, onClickLabel = stringResource(R.string.deadline_screens_open_deadline)) { controller.taskForm = TaskForm(next, null) }
+                .semantics(mergeDescendants = true) { contentDescription = L10n.str(R.string.deadline_screens_next_deadline, label) },
         ) {
             Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Alarm, contentDescription = null, tint = text, modifier = Modifier.size(16.dp))
@@ -133,7 +136,7 @@ fun DeadlinesPane(controller: AppController, version: Int) {
                 if (groups.isEmpty() && list?.state != TaskListState.UNSUPPORTED && available) {
                     item(key = "empty") {
                         Text(
-                            if (loading) "読み込み中…" else "締切はありません", style = MaterialTheme.typography.bodyMedium,
+                            if (loading) stringResource(R.string.common_loading) else stringResource(R.string.deadline_screens_no_deadlines), style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp),
                         )
                     }
@@ -156,7 +159,7 @@ fun DeadlinesPane(controller: AppController, version: Int) {
             FloatingActionButton(
                 onClick = { controller.taskForm = TaskForm(null, DeadlineRules.createInit(boards.first(), boards)) },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-            ) { Icon(Icons.Outlined.AlarmAdd, contentDescription = "締切を追加") }
+            ) { Icon(Icons.Outlined.AlarmAdd, contentDescription = stringResource(R.string.common_add_deadline)) }
         }
     }
 }
@@ -170,15 +173,15 @@ private fun DeadlineRow(controller: AppController, task: TaskOut, today: String,
     val place = TaskRules.placeLabel(task)
     val detail = buildList {
         add(place)
-        if (names.isNotEmpty()) add("担当: " + names.joinToString("、"))
-        if (done) add("完了")
+        if (names.isNotEmpty()) add(stringResource(R.string.deadline_screens_assigned) + names.joinToString(stringResource(R.string.common_fmt_6)))
+        if (done) add(stringResource(R.string.common_done_2))
     }.joinToString(" · ")
     val soon = !done && !past && DeadlineRules.tone(task, today) == DeadlineTone.SOON
     Row(
         Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN)
-            .clickable(onClickLabel = "開く") { controller.taskForm = TaskForm(task, null) }
+            .clickable(onClickLabel = stringResource(R.string.common_open)) { controller.taskForm = TaskForm(task, null) }
             .padding(horizontal = 16.dp, vertical = 10.dp)
-            .semantics(mergeDescendants = true) { contentDescription = "$whenText、${task.title}、$detail" },
+            .semantics(mergeDescendants = true) { contentDescription = L10n.str(R.string.deadline_screens_fmt, whenText, task.title, detail) },
         verticalAlignment = Alignment.Top,
     ) {
         Text(

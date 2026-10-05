@@ -131,9 +131,9 @@ class MainActivity : ComponentActivity() {
         data += KeyboardShortcutGroup(
             getString(R.string.app_name),
             listOf(
-                KeyboardShortcutInfo("移動・検索", KeyEvent.KEYCODE_K, KeyEvent.META_CTRL_ON),
-                KeyboardShortcutInfo("送信", KeyEvent.KEYCODE_ENTER, 0),
-                KeyboardShortcutInfo("改行", KeyEvent.KEYCODE_ENTER, KeyEvent.META_SHIFT_ON),
+                KeyboardShortcutInfo(L10n.str(R.string.common_jump_or_search), KeyEvent.KEYCODE_K, KeyEvent.META_CTRL_ON),
+                KeyboardShortcutInfo(L10n.str(R.string.common_send), KeyEvent.KEYCODE_ENTER, 0),
+                KeyboardShortcutInfo(L10n.str(R.string.main_activity_new_line), KeyEvent.KEYCODE_ENTER, KeyEvent.META_SHIFT_ON),
             ),
         )
     }

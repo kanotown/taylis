@@ -31,6 +31,8 @@ import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /** 「保存済み」 (M11c): my bookmarked messages, newest saved first; a row reveals the message. */
 @Composable
@@ -51,11 +53,11 @@ fun SavedPane(controller: AppController, version: Int, onOpen: (MessageOut) -> U
     val list = items
     LazyColumn(Modifier.fillMaxSize()) {
         when {
-            list == null -> item { Text("読み込み中…", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            list == null -> item { Text(stringResource(R.string.common_loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             list.isEmpty() -> item {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("保存したメッセージはありません", style = MaterialTheme.typography.titleSmall)
-                    Text("メッセージを長押しして「あとで見る」を選ぶと、ここに集まります。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+                    Text(stringResource(R.string.saved_pane_no_saved_messages), style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.saved_pane_long_press_a_message_and_choose), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
                 }
             }
             else -> {
@@ -63,7 +65,7 @@ fun SavedPane(controller: AppController, version: Int, onOpen: (MessageOut) -> U
                     MessageCard(item.message, store, version, { controller.loadEmojiImage(it) }, onClick = { onOpen(item.message) })
                     HorizontalDivider()
                 }
-                if (hasMore) item { TextButton(onClick = { controller.scope.launch { load(more = true) } }, modifier = Modifier.fillMaxWidth()) { Text("さらに読み込む") } }
+                if (hasMore) item { TextButton(onClick = { controller.scope.launch { load(more = true) } }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_load_more)) } }
             }
         }
     }

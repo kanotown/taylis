@@ -52,6 +52,9 @@ import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.NotificationLevels
 import kotlinx.coroutines.launch
 import java.time.Instant
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** D1 (MOBILE_POLISH.md, MOBILE_UI.md §6.8): the round buttons under the name on the details page. */
 enum class DetailsButton { FAVORITE, NOTIFICATIONS, SEARCH, ADD_MEMBER }
@@ -69,13 +72,13 @@ object ChannelDetailsHeader {
 
     /** The one 「通知」 row's value on the right (the choices open from it): mute first, then the timed mute, then the level. */
     fun notificationSummary(level: String, mutedOn: Boolean, timedMute: String?): String = when {
-        mutedOn -> "ミュート中"
+        mutedOn -> L10n.str(R.string.channel_details_header_muted)
         timedMute != null -> timedMute
         else -> NotificationLabels.shortLabel(level)
     }
 
     /** 「メンバー 12 人」; empty while the count is unknown. */
-    fun memberLine(count: Int?): String = count?.let { "メンバー $it 人" } ?: ""
+    fun memberLine(count: Int?): String = count?.let { L10n.plural(R.plurals.common_member_members, it, it) } ?: ""
 }
 
 /**
@@ -100,14 +103,14 @@ fun ChannelNotificationMenu(controller: AppController, channel: ChannelState, ex
             }
         HorizontalDivider()
         DropdownMenuItem(
-            text = { Text("ミュート") },
+            text = { Text(stringResource(R.string.channel_details_header_mute)) },
             trailingIcon = { Switch(checked = mutedOn, onCheckedChange = null) },
             onClick = { onDismiss(); scope.launch { controller.setChannelMuted(channel.id, !mutedOn) } },
         )
         if (mute != null) {
-            DropdownMenuItem(text = { Text("ミュート解除 ($mute)") }, onClick = { onDismiss(); scope.launch { controller.setChannelTimedMute(channel.id, null) } })
+            DropdownMenuItem(text = { Text(stringResource(R.string.channel_details_header_unmute, mute)) }, onClick = { onDismiss(); scope.launch { controller.setChannelTimedMute(channel.id, null) } })
         } else {
-            DropdownMenuItem(text = { Text("8 時間ミュート") }, onClick = {
+            DropdownMenuItem(text = { Text(stringResource(R.string.channel_details_header_mute_for_8_hours)) }, onClick = {
                 onDismiss()
                 scope.launch { controller.setChannelTimedMute(channel.id, Instant.now().plusSeconds(8 * 3600).toString()) }
             })
@@ -174,7 +177,7 @@ fun ChannelDetailsHeader(
                     DetailsButton.FAVORITE -> {
                         val starred = store.isFavorite(channel.id)
                         RoundButton(
-                            if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, if (starred) "お気に入り済み" else "お気に入り", selected = starred,
+                            if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, if (starred) stringResource(R.string.channel_details_header_starred) else stringResource(R.string.common_star), selected = starred,
                         ) { scope.launch { controller.toggleFavorite(channel.id) } }
                     }
                     DetailsButton.NOTIFICATIONS -> {
@@ -182,12 +185,12 @@ fun ChannelDetailsHeader(
                         val level = NotificationLevels.resolved(channel, store.me?.notificationDefault ?: NotificationLevels.MENTIONS, meId)
                         val quiet = level == NotificationLevels.NONE || NotificationLevels.mutedUntilUnmuted(channel) || Timeline.muteLabel(channel.channel.notification?.mutedUntil) != null
                         Box {
-                            RoundButton(if (quiet) Icons.Filled.NotificationsOff else Icons.Filled.Notifications, "通知") { open = true }
+                            RoundButton(if (quiet) Icons.Filled.NotificationsOff else Icons.Filled.Notifications, stringResource(R.string.common_notifications)) { open = true }
                             ChannelNotificationMenu(controller, channel, open, onDismiss = { open = false })
                         }
                     }
-                    DetailsButton.SEARCH -> RoundButton(Icons.Filled.Search, "検索", onClick = onSearch)
-                    DetailsButton.ADD_MEMBER -> RoundButton(Icons.Filled.PersonAdd, "追加", onClick = onAddMember)
+                    DetailsButton.SEARCH -> RoundButton(Icons.Filled.Search, stringResource(R.string.common_search), onClick = onSearch)
+                    DetailsButton.ADD_MEMBER -> RoundButton(Icons.Filled.PersonAdd, stringResource(R.string.common_add), onClick = onAddMember)
                 }
             }
         }
@@ -220,7 +223,7 @@ fun ChannelNotificationRow(controller: AppController, channel: ChannelState) {
     val mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil)
     Box {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(role = Role.Button, onClickLabel = "通知の設定を開く") { open = true }.padding(vertical = 8.dp),
+            Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(role = Role.Button, onClickLabel = stringResource(R.string.channel_details_header_open_notification_settings)) { open = true }.padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -228,7 +231,7 @@ fun ChannelNotificationRow(controller: AppController, channel: ChannelState) {
                 contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.width(16.dp))
-            Text("通知", modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.common_notifications), modifier = Modifier.weight(1f))
             Text(ChannelDetailsHeader.notificationSummary(level, mutedOn, mute), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }

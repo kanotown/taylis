@@ -1,4 +1,6 @@
 package jp.chikuwachat.android.sync
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /*
  * M73 (CANVAS.md §18.2 / §18.5): 「編集中」 on a canvas — the volatile `canvas_presence` frames, a port of the desktop's
@@ -96,8 +98,8 @@ class CanvasEditors {
         /** 「〇〇 が編集中」, 「〇〇、△△ が編集中」, 「〇〇 ほか N 人が編集中」. */
         fun label(names: List<String>): String = when {
             names.isEmpty() -> ""
-            names.size <= 2 -> names.joinToString("、") + " が編集中"
-            else -> "${names[0]} ほか ${names.size - 1} 人が編集中"
+            names.size <= 2 -> names.joinToString(L10n.str(R.string.common_fmt_6)) + L10n.str(R.string.canvas_presence_editing)
+            else -> L10n.str(R.string.canvas_presence_and_others_editing, names[0], names.size - 1)
         }
     }
 }

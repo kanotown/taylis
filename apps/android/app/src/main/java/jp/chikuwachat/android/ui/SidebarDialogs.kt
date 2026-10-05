@@ -54,6 +54,8 @@ import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
 import java.text.Collator
 import java.util.Locale
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * Long-press on a conversation (M14f): star it, or move it into one of my sections (M26: or a new one, made with it).
@@ -72,10 +74,10 @@ fun ChannelSectionDialog(controller: AppController, channelId: String, version: 
         text = {
             Column {
                 TextButton(onClick = { scope.launch { controller.toggleFavorite(channelId); onDismiss() } }) {
-                    Text(if (starred) "お気に入りから外す" else "お気に入りに追加")
+                    Text(if (starred) stringResource(R.string.common_remove_from_favorites) else stringResource(R.string.common_add_to_favorites))
                 }
                 HorizontalDivider()
-                Text("セクションに移動", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                Text(stringResource(R.string.sidebar_dialogs_move_to_section), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                 store.sidebarSections.forEach { section ->
                     Row(
                         Modifier.fillMaxWidth().clickable(enabled = section.id != current) { scope.launch { if (controller.moveToSection(channelId, section.id)) onDismiss() } }.padding(vertical = 4.dp),
@@ -87,13 +89,13 @@ fun ChannelSectionDialog(controller: AppController, channelId: String, version: 
                         Text(section.name, modifier = Modifier.padding(start = if (section.emoji != null) 6.dp else 0.dp))
                     }
                 }
-                TextButton(onClick = onNewSection) { Text("新しいセクション…") }
+                TextButton(onClick = onNewSection) { Text(stringResource(R.string.sidebar_dialogs_new_section)) }
                 if (current != null) {
-                    TextButton(onClick = { scope.launch { if (controller.moveToSection(channelId, null)) onDismiss() } }) { Text("セクションから外す") }
+                    TextButton(onClick = { scope.launch { if (controller.moveToSection(channelId, null)) onDismiss() } }) { Text(stringResource(R.string.sidebar_dialogs_remove_from_section)) }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }
 
@@ -114,19 +116,19 @@ fun SectionActionsDialog(
         },
         text = {
             Column {
-                TextButton(onClick = onEdit) { Text("名前とアイコンを変更…") }
+                TextButton(onClick = onEdit) { Text(stringResource(R.string.sidebar_dialogs_change_name_and_icon)) }
                 Row {
-                    TextButton(enabled = index > 0, onClick = { scope.launch { if (controller.moveSection(section.id, index - 1)) onDismiss() } }) { Text("上へ") }
-                    TextButton(enabled = index < count - 1, onClick = { scope.launch { if (controller.moveSection(section.id, index + 1)) onDismiss() } }) { Text("下へ") }
+                    TextButton(enabled = index > 0, onClick = { scope.launch { if (controller.moveSection(section.id, index - 1)) onDismiss() } }) { Text(stringResource(R.string.common_move_up)) }
+                    TextButton(enabled = index < count - 1, onClick = { scope.launch { if (controller.moveSection(section.id, index + 1)) onDismiss() } }) { Text(stringResource(R.string.common_move_down)) }
                 }
-                TextButton(onClick = onNewSection) { Text("新しいセクション…") }
+                TextButton(onClick = onNewSection) { Text(stringResource(R.string.sidebar_dialogs_new_section)) }
                 HorizontalDivider()
                 TextButton(onClick = { scope.launch { if (controller.deleteSection(section.id)) onDismiss() } }) {
-                    Text("セクションを削除 (会話は元の場所へ)", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.sidebar_dialogs_delete_section_conversations_go_back), color = MaterialTheme.colorScheme.error)
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }
 
@@ -193,7 +195,7 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
     }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(if (creating) "新しいセクション" else "セクションを編集") },
+        title = { Text(if (creating) stringResource(R.string.common_new_section) else stringResource(R.string.common_edit_section)) },
         text = {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -202,25 +204,25 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
                         contentAlignment = Alignment.Center,
                     ) {
                         if (emoji != null) SectionIcon(controller, emoji, version, size = 26.dp)
-                        else Icon(Icons.Outlined.AddReaction, contentDescription = "アイコンを選ぶ", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        else Icon(Icons.Outlined.AddReaction, contentDescription = stringResource(R.string.sidebar_dialogs_choose_an_icon), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.width(8.dp))
                     OutlinedTextField(
-                        name, { name = it.take(40) }, label = { Text("セクション名") }, placeholder = { Text("例: 研究、授業") }, singleLine = true,
+                        name, { name = it.take(40) }, label = { Text(stringResource(R.string.sidebar_dialogs_section_name)) }, placeholder = { Text(stringResource(R.string.sidebar_dialogs_e_g_research_classes)) }, singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
                 }
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(selected = !letters, onClick = { letters = false; picking = true }, label = { Text("絵文字") })
-                    FilterChip(selected = letters, onClick = { letters = true; applyLetter(letterRaw, letterColor) }, label = { Text("文字") })
+                    FilterChip(selected = !letters, onClick = { letters = false; picking = true }, label = { Text(stringResource(R.string.common_emoji)) })
+                    FilterChip(selected = letters, onClick = { letters = true; applyLetter(letterRaw, letterColor) }, label = { Text(stringResource(R.string.sidebar_dialogs_letter)) })
                     Spacer(Modifier.weight(1f))
-                    if (emoji != null) TextButton(onClick = { emoji = null }) { Text("アイコンを外す") }
+                    if (emoji != null) TextButton(onClick = { emoji = null }) { Text(stringResource(R.string.sidebar_dialogs_remove_icon)) }
                 }
                 if (letters) {
                     OutlinedTextField(
-                        letterRaw, { applyLetter(it, letterColor) }, label = { Text("アイコンの文字") }, placeholder = { Text("例: M、B、修") },
+                        letterRaw, { applyLetter(it, letterColor) }, label = { Text(stringResource(R.string.sidebar_dialogs_icon_letters)) }, placeholder = { Text(stringResource(R.string.sidebar_dialogs_e_g_m_b_r)) },
                         singleLine = true, isError = letterText.isNotEmpty() && !letterValid,
-                        supportingText = { Text("英数字 2 文字まで、または日本語 1 文字") },
+                        supportingText = { Text(stringResource(R.string.sidebar_dialogs_up_to_2_letters_or_digits)) },
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false),
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -239,10 +241,10 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
                 }
                 if (creating) {
                     Text(
-                        "入れる会話 (${chosen.size})", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        stringResource(R.string.sidebar_dialogs_conversations_in_it, chosen.size), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                     )
-                    OutlinedTextField(query, { query = it }, placeholder = { Text("チャンネルや DM を絞り込む") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(query, { query = it }, placeholder = { Text(stringResource(R.string.sidebar_dialogs_filter_channels_and_dms)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 260.dp).padding(top = 4.dp)) {
                         items(conversations, key = { it.first.id }) { (channel, title) ->
                             val current = sectionOf[channel.id]
@@ -254,13 +256,13 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
                                 Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                 if (current != null) {
                                     Text(
-                                        "${current.name} から移動", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        stringResource(R.string.sidebar_dialogs_move_from, current.name), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1, modifier = Modifier.padding(start = 6.dp),
                                     )
                                 }
                             }
                         }
-                        if (conversations.isEmpty()) item { Text("該当する会話がありません", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp)) }
+                        if (conversations.isEmpty()) item { Text(stringResource(R.string.sidebar_dialogs_no_matching_conversations), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp)) }
                     }
                 }
             }
@@ -274,9 +276,9 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
                     busy = false
                     if (done) onDismiss()
                 }
-            }) { Text(if (busy) "保存中…" else if (creating) "作成" else "保存") }
+            }) { Text(if (busy) stringResource(R.string.common_saving) else if (creating) stringResource(R.string.common_create) else stringResource(R.string.common_save)) }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
     if (picking) {
         EmojiPickerSheet(

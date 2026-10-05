@@ -7,6 +7,8 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** One candidate in the form: a day, and its start and length (or the whole day). Times are the device's local time. */
 data class SlotDraft(val day: LocalDate, val allDay: Boolean, val start: LocalTime = SchedulePolls.DEFAULT_START, val minutes: Int = SchedulePolls.DEFAULT_MINUTES)
@@ -47,10 +49,10 @@ object SchedulePolls {
     }
 
     fun answerName(answer: String?): String = when (answer) {
-        YES -> "参加できる"
-        MAYBE -> "未定"
-        NO -> "参加できない"
-        else -> "未回答"
+        YES -> L10n.str(R.string.schedule_polls_can_attend)
+        MAYBE -> L10n.str(R.string.schedule_polls_maybe)
+        NO -> L10n.str(R.string.schedule_polls_cant_attend)
+        else -> L10n.str(R.string.schedule_polls_no_answer)
     }
 
     /** 「30 分」「1 時間」「1 時間半」「2 時間 15 分」. */
@@ -58,10 +60,10 @@ object SchedulePolls {
         val hours = minutes / 60
         val rest = minutes % 60
         return when {
-            hours == 0 -> "$rest 分"
-            rest == 0 -> "$hours 時間"
-            rest == 30 -> "$hours 時間半"
-            else -> "$hours 時間 $rest 分"
+            hours == 0 -> L10n.str(R.string.schedule_polls_min, rest)
+            rest == 0 -> L10n.str(R.string.common_h, hours)
+            rest == 30 -> L10n.str(R.string.schedule_polls_5_h, hours)
+            else -> L10n.str(R.string.schedule_polls_h_min, hours, rest)
         }
     }
 
@@ -79,16 +81,16 @@ object SchedulePolls {
 
     /** 「10/3 (土) 14:00〜15:00」, 「10/5 (月) 終日」, past midnight 「22:00〜24:00」 / 「23:00〜翌1:30」 (the server's rule). */
     fun slotLabel(slot: SlotDraft, zone: ZoneId = CalendarDates.zone()): String {
-        if (slot.allDay) return "${shortDay(slot.day)} 終日"
+        if (slot.allDay) return L10n.str(R.string.common_all_day_2, shortDay(slot.day))
         val start = startOf(slot, zone)
         val end = endOf(slot, zone)
         val endDay = end.toLocalDate()
         val until = when {
             endDay == slot.day -> clock(end)
             endDay == slot.day.plusDays(1) && end.hour == 0 && end.minute == 0 -> "24:00"
-            else -> "翌" + clock(end)
+            else -> L10n.str(R.string.schedule_polls_next_day) + clock(end)
         }
-        return "${shortDay(slot.day)} ${clock(start)}〜$until"
+        return L10n.str(R.string.schedule_polls_fmt, shortDay(slot.day), clock(start), until)
     }
 
     /** Earliest first; a day's all-day candidate before its times. */
@@ -100,12 +102,12 @@ object SchedulePolls {
 
     /** What stops the form from being sent (the server's rules, said first here), or null. */
     fun problem(question: String, slots: List<SlotDraft>, zone: ZoneId = CalendarDates.zone()): String? {
-        if (question.isBlank()) return "題名を入れてください"
-        if (question.trim().length > MAX_QUESTION) return "題名は $MAX_QUESTION 文字までです"
-        if (slots.size < MIN_SLOTS) return "候補を $MIN_SLOTS つ以上選んでください"
-        if (slots.size > MAX_SLOTS) return "候補は $MAX_SLOTS 個までです"
-        if (slots.any { !it.allDay && (it.minutes < MIN_MINUTES || it.minutes > MAX_MINUTES) }) return "時間の長さは 15 分〜12 時間にしてください"
-        if (slots.map { slotKey(it, zone) }.toSet().size != slots.size) return "同じ候補が複数あります"
+        if (question.isBlank()) return L10n.str(R.string.common_enter_a_title)
+        if (question.trim().length > MAX_QUESTION) return L10n.str(R.string.common_the_title_can_be_up_to, MAX_QUESTION)
+        if (slots.size < MIN_SLOTS) return L10n.str(R.string.schedule_polls_choose_at_least_candidates, MIN_SLOTS)
+        if (slots.size > MAX_SLOTS) return L10n.str(R.string.schedule_polls_up_to_candidates, MAX_SLOTS)
+        if (slots.any { !it.allDay && (it.minutes < MIN_MINUTES || it.minutes > MAX_MINUTES) }) return L10n.str(R.string.schedule_polls_the_length_must_be_between_15)
+        if (slots.map { slotKey(it, zone) }.toSet().size != slots.size) return L10n.str(R.string.schedule_polls_some_candidates_are_the_same)
         return null
     }
 
@@ -227,10 +229,10 @@ object SchedulePolls {
 
     /** The footer: 「3 人が回答」, after the decision or the close 「決定済み · …」 / 「締め切りました · …」. */
     fun footer(poll: PollOut): String {
-        val count = "${respondentCount(poll)} 人が回答"
+        val count = L10n.str(R.string.schedule_polls_answered, respondentCount(poll))
         return when {
-            poll.decided != null -> "決定済み · $count"
-            poll.closedAt != null -> "締め切りました · $count"
+            poll.decided != null -> L10n.str(R.string.schedule_polls_decided, count)
+            poll.closedAt != null -> L10n.str(R.string.schedule_polls_closed, count)
             else -> count
         }
     }

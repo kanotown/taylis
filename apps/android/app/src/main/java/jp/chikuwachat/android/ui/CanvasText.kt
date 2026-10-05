@@ -5,6 +5,8 @@ import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.ChannelState
 import kotlin.math.abs
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M46: pure text helpers of the canvas screen (CANVAS.md §4.4 / §5), the desktop's src/ui/canvasText.ts: ticking a task
@@ -171,7 +173,7 @@ object CanvasText {
 
     /** A Markdown link around the selection (or 「リンク」), the url part selected. */
     fun insertLink(state: Edit, url: String = "https://"): Edit {
-        val selected = state.text.substring(state.start, state.end).ifEmpty { "リンク" }
+        val selected = state.text.substring(state.start, state.end).ifEmpty { L10n.str(R.string.common_link) }
         val inserted = "[$selected]($url)"
         val urlStart = state.start + selected.length + 3
         return Edit(state.text.substring(0, state.start) + inserted + state.text.substring(state.end), urlStart, urlStart + url.length)
@@ -295,7 +297,7 @@ object CanvasText {
     fun readableSnippet(snippet: String): String =
         snippet.replace(Regex("""!\[([^\]\n]*)\]\(attachment:[0-9a-fA-F-]*\)?""")) { match ->
             val alt = match.groupValues[1]
-            if (alt.isNotEmpty()) "[画像: $alt]" else "[画像]"
+            if (alt.isNotEmpty()) L10n.str(R.string.canvas_text_image, alt) else L10n.str(R.string.canvas_text_image_2)
         }
 }
 

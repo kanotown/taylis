@@ -48,6 +48,8 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.AiAskState
 import jp.chikuwachat.android.sync.AiSummaryPhase
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * M71 (docs/AI.md §13): 「AI に聞く」 at the top of the search's message results. The words and the filter chips (as
@@ -75,13 +77,13 @@ fun AskBar(controller: AppController, version: Int, params: SearchParams, onHist
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Button(onClick = { controller.startAsk(question, channelId) }, enabled = canAsk) { Text("AI に聞く") }
+                Button(onClick = { controller.startAsk(question, channelId) }, enabled = canAsk) { Text(stringResource(R.string.ask_views_ask_ai)) }
                 Spacer(Modifier.weight(1f))
-                if (session != null && !controller.aiAskShown) TextButton(onClick = { controller.aiAskShown = true }) { Text("答え") }
+                if (session != null && !controller.aiAskShown) TextButton(onClick = { controller.aiAskShown = true }) { Text(stringResource(R.string.ask_views_answer)) }
                 TextButton(onClick = onHistory) {
                     Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("履歴")
+                    Text(stringResource(R.string.common_history))
                 }
             }
             if (line != null) {
@@ -147,8 +149,8 @@ private fun AskAnswerSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                 Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                    Text("AI に聞く", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    if (state.question.isNotBlank()) Text("「${state.question}」", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.ask_views_ask_ai), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    if (state.question.isNotBlank()) Text(stringResource(R.string.common_fmt_2, state.question), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(vertical = 12.dp)) {
@@ -162,7 +164,7 @@ private fun AskAnswerSheet(
                     failure != null -> Text(failure, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
                     else -> {
                         val base = controller.serverBase
-                        val output = run?.output?.takeIf { it.isNotBlank() } ?: "(答えがありませんでした)"
+                        val output = run?.output?.takeIf { it.isNotBlank() } ?: stringResource(R.string.ask_views_no_answer)
                         val body = remember(output, sources, base) { if (base != null) AiTexts.linkCitations(output, sources, base) else output }
                         SelectionContainer {
                             MessageBody(
@@ -184,8 +186,8 @@ private fun AskAnswerSheet(
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
             }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
-                if (state.phase == AiSummaryPhase.FAILED) TextButton(onClick = { controller.retryAsk() }) { Text("もう一度") }
-                TextButton(onClick = ::close) { Text("閉じる") }
+                if (state.phase == AiSummaryPhase.FAILED) TextButton(onClick = { controller.retryAsk() }) { Text(stringResource(R.string.common_try_again)) }
+                TextButton(onClick = ::close) { Text(stringResource(R.string.common_close)) }
             }
         }
     }
@@ -196,13 +198,13 @@ private fun AskAnswerSheet(
 private fun AskSources(controller: AppController, sources: List<AiSourceOut>, onOpen: (AiSourceOut) -> Unit) {
     val store = controller.store
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Text("出典", style = MaterialTheme.typography.labelLarge, color = muted, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+    Text(stringResource(R.string.ask_views_sources), style = MaterialTheme.typography.labelLarge, color = muted, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
     sources.forEach { source ->
         val sender = store.users[source.senderId]?.displayName ?: "?"
-        val conversation = store.channel(source.channelId)?.let { channelTitle(it, store) } ?: "会話"
+        val conversation = store.channel(source.channelId)?.let { channelTitle(it, store) } ?: stringResource(R.string.common_conversation)
         Row(
             Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN)
-                .clickable(onClickLabel = if (source.parentId != null) "スレッドで表示" else "会話で表示") { onOpen(source) }
+                .clickable(onClickLabel = if (source.parentId != null) stringResource(R.string.common_view_in_thread) else stringResource(R.string.common_view_in_conversation)) { onOpen(source) }
                 .padding(vertical = 6.dp),
         ) {
             Text("[${source.n}]", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.width(36.dp))
@@ -229,21 +231,21 @@ private fun AskHistorySheet(controller: AppController, onDismiss: () -> Unit, on
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState()) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) {
-            Text("過去の質問", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+            Text(stringResource(R.string.ask_views_past_questions), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             val list = runs
             val muted = MaterialTheme.colorScheme.onSurfaceVariant
             when {
-                failed -> Text("読み込めませんでした", color = muted, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+                failed -> Text(stringResource(R.string.common_couldnt_load), color = muted, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
                 list == null -> Row(Modifier.padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text("読み込んでいます…", color = muted)
+                    Text(stringResource(R.string.common_loading_2), color = muted)
                 }
-                list.isEmpty() -> Text("まだ質問していません", color = muted, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+                list.isEmpty() -> Text(stringResource(R.string.ask_views_no_questions_yet), color = muted, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
                 else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
                     items(list, key = { it.id }) { run ->
                         Column(Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable { onPick(run) }.padding(horizontal = 24.dp, vertical = 10.dp)) {
-                            Text(run.question?.takeIf { it.isNotBlank() } ?: "(質問)", style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(run.question?.takeIf { it.isNotBlank() } ?: stringResource(R.string.ask_views_question), style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(
                                 listOfNotNull(Timeline.fullLabel(run.createdAt).takeIf { it.isNotBlank() }, AiTexts.historyStatus(run)).joinToString(" · "),
                                 style = MaterialTheme.typography.labelSmall, color = muted,

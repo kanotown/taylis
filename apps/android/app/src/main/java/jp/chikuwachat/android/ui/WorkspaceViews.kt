@@ -61,6 +61,8 @@ import jp.chikuwachat.android.app.Workspace
 import jp.chikuwachat.android.app.Workspaces
 import jp.chikuwachat.android.platform.WorkspaceIconCache
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 // M16c: the workspace switcher (WORKSPACES.md §5): the active workspace over the channel list, a bottom sheet with
 // every registered workspace (unread marks, sign-out) and 「ワークスペースを追加」.
@@ -95,7 +97,7 @@ fun WorkspaceTitle(controller: AppController, switchable: Boolean = true) {
     val entry = controller.activeWorkspace
     val name = controller.workspaceName
     val othersUnread = controller.workspaces.any { it.serverUrl != controller.activeKey && !it.signedOut && (it.hasUnread || it.badge > 0) }
-    val tap = if (switchable) Modifier.clickable(onClickLabel = "ワークスペースを切り替える") { controller.openSwitcher() } else Modifier
+    val tap = if (switchable) Modifier.clickable(onClickLabel = stringResource(R.string.workspace_views_switch_workspace)) { controller.openSwitcher() } else Modifier
     Row(
         Modifier.clip(RoundedCornerShape(8.dp)).then(tap).padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -112,7 +114,7 @@ fun WorkspaceTitle(controller: AppController, switchable: Boolean = true) {
         }
         Spacer(Modifier.width(10.dp))
         Text(name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-        if (switchable) Icon(Icons.Default.ExpandMore, contentDescription = "ワークスペースを切り替える", modifier = Modifier.padding(start = 2.dp))
+        if (switchable) Icon(Icons.Default.ExpandMore, contentDescription = stringResource(R.string.workspace_views_switch_workspace), modifier = Modifier.padding(start = 2.dp))
     }
 }
 
@@ -131,7 +133,7 @@ fun WorkspaceSheet(controller: AppController, onDismiss: () -> Unit) {
         scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss(); then() }
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
-        Text("ワークスペース", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
+        Text(stringResource(R.string.common_workspaces), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
         LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding()) {
             itemsIndexed(controller.workspaces, key = { _, it -> it.serverUrl }) { index, entry ->
                 WorkspaceRow(
@@ -170,7 +172,7 @@ fun WorkspacesPane(controller: AppController) {
 @Composable
 private fun AddWorkspaceItem(onClick: () -> Unit) {
     ListItem(
-        headlineContent = { Text("ワークスペースを追加") },
+        headlineContent = { Text(stringResource(R.string.common_add_workspace)) },
         leadingContent = {
             Box(
                 Modifier.size(40.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp)),
@@ -187,10 +189,10 @@ private fun AddWorkspaceItem(onClick: () -> Unit) {
 private fun SignOutWorkspaceDialog(controller: AppController, entry: Workspace, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("${entry.name} からサインアウトしますか？") },
+        title = { Text(stringResource(R.string.workspace_views_sign_out_of, entry.name)) },
         text = {
             Text(
-                "${entry.signInName} @ ${Workspaces.hostLabel(entry.serverUrl)}\n\nこの端末に保存したこのワークスペースのメッセージと下書きを消し、一覧から外します。サーバ上のデータは消えません。",
+                stringResource(R.string.workspace_views_n_nthis_workspaces_messages_and_drafts, entry.signInName, Workspaces.hostLabel(entry.serverUrl)),
             )
         },
         confirmButton = {
@@ -198,9 +200,9 @@ private fun SignOutWorkspaceDialog(controller: AppController, entry: Workspace, 
                 onDismiss()
                 // In the controller's scope: the dialog (and the screen under it) goes away before the work is done.
                 controller.scope.launch { controller.signOutWorkspace(entry.serverUrl) }
-            }) { Text("サインアウト", color = MaterialTheme.colorScheme.error) }
+            }) { Text(stringResource(R.string.workspace_views_sign_out), color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -216,7 +218,7 @@ private fun WorkspaceRow(controller: AppController, entry: Workspace, index: Int
         headlineContent = { Text(entry.name, fontWeight = if (unread || badge > 0) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
             Text(
-                if (entry.signedOut) "サインインが必要です" else "${entry.signInName} @ ${Workspaces.hostLabel(entry.serverUrl)}",
+                if (entry.signedOut) stringResource(R.string.workspace_views_sign_in_required) else "${entry.signInName} @ ${Workspaces.hostLabel(entry.serverUrl)}",
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                 color = if (entry.signedOut) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -228,20 +230,20 @@ private fun WorkspaceRow(controller: AppController, entry: Workspace, index: Int
                     badge > 0 -> Badge { Text(if (badge > 99) "99+" else badge.toString()) }
                     unread -> Box(Modifier.size(10.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
                 }
-                if (active) Icon(Icons.Default.Check, contentDescription = "表示中", tint = MaterialTheme.colorScheme.primary)
+                if (active) Icon(Icons.Default.Check, contentDescription = stringResource(R.string.workspace_views_showing), tint = MaterialTheme.colorScheme.primary)
                 Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "${entry.name} のメニュー") }
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.common_menu_for, entry.name)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         // M114 (WORKSPACES.md §5.4): the order of this list, kept on this device.
                         if (count > 1) {
-                            DropdownMenuItem(text = { Text("上へ移動") }, enabled = index > 0, onClick = { menu = false; controller.moveWorkspace(entry.serverUrl, -1) })
-                            DropdownMenuItem(text = { Text("下へ移動") }, enabled = index < count - 1, onClick = { menu = false; controller.moveWorkspace(entry.serverUrl, 1) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.workspace_views_move_up)) }, enabled = index > 0, onClick = { menu = false; controller.moveWorkspace(entry.serverUrl, -1) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.workspace_views_move_down)) }, enabled = index < count - 1, onClick = { menu = false; controller.moveWorkspace(entry.serverUrl, 1) })
                             HorizontalDivider()
                         }
                         if (entry.signedOut && !active) {
-                            DropdownMenuItem(text = { Text("一覧から外す") }, onClick = { menu = false; scope.launch { controller.signOutWorkspace(entry.serverUrl) } })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.workspace_views_remove_from_list)) }, onClick = { menu = false; scope.launch { controller.signOutWorkspace(entry.serverUrl) } })
                         } else {
-                            DropdownMenuItem(text = { Text("サインアウト…", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onLeave() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.workspace_views_sign_out_2), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onLeave() })
                         }
                     }
                 }

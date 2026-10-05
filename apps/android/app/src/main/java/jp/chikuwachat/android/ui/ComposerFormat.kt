@@ -1,4 +1,6 @@
 package jp.chikuwachat.android.ui
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * The composer's 「書式」 menu (仕上げ B, MOBILE_POLISH C2 / MUI-5; the same marks as iOS ComposerFormat.swift and the
@@ -6,16 +8,16 @@ package jp.chikuwachat.android.ui
  * style goes at the start of each line the selection touches. Offsets are the text field's (UTF-16).
  */
 enum class ComposerFormat(val label: String) {
-    BOLD("太字"),
-    ITALIC("斜体"),
-    STRIKE("取り消し線"),
-    CODE("コード"),
-    CODE_BLOCK("コードブロック"),
-    HEADING("見出し"),
-    QUOTE("引用"),
-    BULLET("箇条書き"),
-    NUMBERED("番号付きリスト"),
-    LINK("リンク");
+    BOLD(L10n.str(R.string.common_bold)),
+    ITALIC(L10n.str(R.string.composer_format_italic)),
+    STRIKE(L10n.str(R.string.composer_format_strikethrough)),
+    CODE(L10n.str(R.string.composer_format_code)),
+    CODE_BLOCK(L10n.str(R.string.composer_format_code_block)),
+    HEADING(L10n.str(R.string.common_heading)),
+    QUOTE(L10n.str(R.string.common_quote)),
+    BULLET(L10n.str(R.string.common_bulleted_list)),
+    NUMBERED(L10n.str(R.string.common_numbered_list)),
+    LINK(L10n.str(R.string.common_link));
 
     /** A text and its selection (`start == end`: the cursor). */
     data class Result(val text: String, val start: Int, val end: Int)
@@ -74,9 +76,9 @@ object ComposerText {
      * title, [channelTitle]), a thread 「スレッドに返信」.
      */
     fun placeholder(title: String?, inThread: Boolean): String = when {
-        inThread -> "スレッドに返信"
-        title.isNullOrBlank() || title == "#" -> "メッセージ"
-        else -> "$title へのメッセージ"
+        inThread -> L10n.str(R.string.composer_format_reply_in_thread)
+        title.isNullOrBlank() || title == "#" -> L10n.str(R.string.common_message)
+        else -> L10n.str(R.string.composer_format_message, title)
     }
 
     /**

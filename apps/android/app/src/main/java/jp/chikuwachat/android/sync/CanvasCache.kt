@@ -5,6 +5,8 @@ import kotlinx.serialization.Serializable
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M74 (CANVAS.md §5 「ストア: SQLite に canvases (オフライン閲覧)」, §19.2): the last copy of a canvas the server gave this
@@ -26,7 +28,7 @@ object CanvasOffline {
      * year shows when it is not this year's.
      */
     fun notice(fetchedAt: Long, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): String =
-        "オフライン — 最後に読み込んだ時点 (${stamp(fetchedAt, now, zone)}) の内容です"
+        L10n.str(R.string.canvas_cache_offline_showing_the_content_as_last, stamp(fetchedAt, now, zone))
 
     fun stamp(at: Long, now: Long, zone: ZoneId): String {
         val time = ZonedDateTime.ofInstant(Instant.ofEpochMilli(at), zone)

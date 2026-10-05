@@ -4,6 +4,8 @@ import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.Store
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * Message body format (DATA_MODEL.md "本文の形式"): plain text plus a light markdown subset shared with the other clients.
@@ -365,9 +367,9 @@ fun attachmentSummary(contentTypes: List<String>): String {
     if (count == 0) return ""
     fun every(prefix: String) = contentTypes.all { it.trim().lowercase().startsWith(prefix) }
     return when {
-        every("image/") -> if (count == 1) "画像を送信しました" else "画像を $count 枚送信しました"
-        every("video/") -> if (count == 1) "動画を送信しました" else "動画を $count 本送信しました"
-        else -> if (count == 1) "ファイルを送信しました" else "ファイルを $count 件送信しました"
+        every("image/") -> if (count == 1) L10n.str(R.string.body_tokenizer_sent_an_image) else L10n.str(R.string.body_tokenizer_sent_images, count)
+        every("video/") -> if (count == 1) L10n.str(R.string.body_tokenizer_sent_a_video) else L10n.str(R.string.body_tokenizer_sent_videos, count)
+        else -> if (count == 1) L10n.str(R.string.body_tokenizer_sent_a_file) else L10n.str(R.string.body_tokenizer_sent_files, count)
     }
 }
 

@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.TotpSetupOut
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /** Turning 2FA on (M12i): password → scan the QR and confirm a code → keep the recovery codes. */
 @Composable
@@ -53,36 +55,36 @@ fun TotpSetupDialog(controller: AppController, onDismiss: () -> Unit, onEnabled:
 
     AlertDialog(
         onDismissRequest = { if (codes == null) onDismiss() },
-        title = { Text("2 要素認証を有効にする") },
+        title = { Text(stringResource(R.string.totp_dialog_turn_on_two_factor_authentication)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 when {
                     codes != null -> {
-                        Text("有効になりました。次回のログインから認証アプリのコードが必要です。", color = MaterialTheme.colorScheme.primary)
-                        Text("回復コードを安全な場所に保存してください。認証アプリが使えないとき、各コードは 1 回だけログインに使えます。この画面を閉じると再表示できません。",
+                        Text(stringResource(R.string.totp_dialog_its_on_from_your_next_sign), color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.totp_dialog_keep_the_recovery_codes_somewhere_safe),
                             style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                         SelectionContainer { Column(Modifier.padding(top = 8.dp)) { codes.forEach { Text(it, fontFamily = FontFamily.Monospace) } } }
                         TextButton(onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newPlainText("recovery codes", Totp.recoveryCodesText(codes)))
                             copied = true
-                        }) { Text(if (copied) "コピーしました" else "回復コードをコピー") }
+                        }) { Text(if (copied) stringResource(R.string.totp_dialog_copied) else stringResource(R.string.totp_dialog_copy_recovery_codes)) }
                     }
                     started != null -> {
-                        Text("認証アプリ (Google Authenticator など) で QR コードを読み取るか、キーを手で入力してください。", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.totp_dialog_scan_the_qr_code_with_an), style = MaterialTheme.typography.bodySmall)
                         Totp.qrBitmap(started.qrPngBase64)?.let { bitmap ->
-                            Image(bitmap, contentDescription = "認証アプリ用の QR コード", contentScale = ContentScale.Fit,
+                            Image(bitmap, contentDescription = stringResource(R.string.totp_dialog_qr_code_for_the_authenticator_app), contentScale = ContentScale.Fit,
                                 modifier = Modifier.padding(vertical = 8.dp).size(200.dp).align(Alignment.CenterHorizontally))
                         }
-                        Text("手入力用のキー", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.totp_dialog_key_for_manual_entry), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         SelectionContainer { Text(started.secret, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
-                        Text("種類: 時間ベース (TOTP)、6 桁、30 秒", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OutlinedTextField(code, { code = it }, label = { Text("アプリに表示された 6 桁のコード") }, singleLine = true,
+                        Text(stringResource(R.string.totp_dialog_type_time_based_totp_6_digits), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OutlinedTextField(code, { code = it }, label = { Text(stringResource(R.string.totp_dialog_6_digit_code_shown_in_the)) }, singleLine = true,
                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     else -> {
-                        Text("ログイン時にパスワードに加えて認証アプリの 6 桁のコードを求めます。始めるにはパスワードを入力してください。", style = MaterialTheme.typography.bodySmall)
-                        OutlinedTextField(password, { password = it }, label = { Text("現在のパスワード") }, singleLine = true,
+                        Text(stringResource(R.string.totp_dialog_signing_in_will_ask_for_the), style = MaterialTheme.typography.bodySmall)
+                        OutlinedTextField(password, { password = it }, label = { Text(stringResource(R.string.common_current_password)) }, singleLine = true,
                             visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                     }
                 }
@@ -92,24 +94,24 @@ fun TotpSetupDialog(controller: AppController, onDismiss: () -> Unit, onEnabled:
         },
         confirmButton = {
             when {
-                codes != null -> TextButton(onClick = onEnabled) { Text("保存しました、閉じる") }
+                codes != null -> TextButton(onClick = onEnabled) { Text(stringResource(R.string.totp_dialog_saved_them_close)) }
                 started != null -> TextButton(enabled = !busy && Totp.isCode(code), onClick = {
                     scope.launch {
                         busy = true; error = null
                         controller.enableTotp(code).fold({ recovery = it.recoveryCodes }, { error = controller.totpFailure(it) })
                         busy = false
                     }
-                }) { Text("確認して有効にする") }
+                }) { Text(stringResource(R.string.totp_dialog_verify_and_turn_on)) }
                 else -> TextButton(enabled = !busy && password.isNotEmpty(), onClick = {
                     scope.launch {
                         busy = true; error = null
                         controller.beginTotpSetup(password).fold({ setup = it }, { error = controller.totpFailure(it) })
                         busy = false
                     }
-                }) { Text("次へ") }
+                }) { Text(stringResource(R.string.common_next)) }
             }
         },
-        dismissButton = { if (codes == null) TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { if (codes == null) TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -122,11 +124,11 @@ fun TotpDisableDialog(controller: AppController, onDismiss: () -> Unit, onDisabl
     var busy by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("2 要素認証を無効にする") },
+        title = { Text(stringResource(R.string.totp_dialog_turn_off_two_factor_authentication)) },
         text = {
             Column {
-                Text("以後はパスワードだけでログインできるようになります。回復コードも無効になります。", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(password, { password = it }, label = { Text("現在のパスワード") }, singleLine = true,
+                Text(stringResource(R.string.totp_dialog_from_now_on_you_can_sign), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(password, { password = it }, label = { Text(stringResource(R.string.common_current_password)) }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
             }
@@ -139,8 +141,8 @@ fun TotpDisableDialog(controller: AppController, onDismiss: () -> Unit, onDisabl
                     busy = false
                     if (failure == null) onDisabled() else error = failure
                 }
-            }) { Text("無効にする", color = MaterialTheme.colorScheme.error) }
+            }) { Text(stringResource(R.string.common_turn_off), color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

@@ -31,6 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
+import jp.chikuwachat.android.L10n
 
 private val REPLIER_SIZE = 20.dp
 private val REPLIER_STEP = 17.dp
@@ -44,8 +48,8 @@ private val REPLIER_STEP = 17.dp
 fun ThreadSummaryLine(message: MessageState, store: Store, onOpen: () -> Unit) {
     val repliers = Timeline.replierAvatars(message.replyUserIds)
     val last = message.lastReplyAt?.let { Timeline.lastReplyLabel(it) } ?: ""
-    val count = "${message.replyCount} 件の返信"
-    val spoken = listOf(count, last).filter { it.isNotEmpty() }.joinToString("、")
+    val count = pluralStringResource(R.plurals.common_reply_replies, message.replyCount, message.replyCount)
+    val spoken = listOf(count, last).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.common_fmt_6))
     Row(
         Modifier
             .heightIn(min = 36.dp)
@@ -54,7 +58,7 @@ fun ThreadSummaryLine(message: MessageState, store: Store, onOpen: () -> Unit) {
             .clearAndSetSemantics {
                 contentDescription = spoken
                 role = Role.Button
-                onClick(label = "スレッドを開く") { onOpen(); true }
+                onClick(label = L10n.str(R.string.common_open_thread)) { onOpen(); true }
             }
             .padding(end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,

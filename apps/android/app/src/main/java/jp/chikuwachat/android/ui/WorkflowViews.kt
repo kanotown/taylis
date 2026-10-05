@@ -79,6 +79,9 @@ import jp.chikuwachat.android.sync.ChannelState
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /*
  * Workflows on the phone (M95, WORKFLOWS.md §8): the 「⚡ name」 label above a message a workflow posted, the list of a
@@ -94,7 +97,7 @@ fun workflowEmoji(workflow: WorkflowOut): String = workflow.emoji?.let { Emoji.r
 fun WorkflowLabel(workflow: MessageWorkflowOut, onOpen: () -> Unit) {
     Row(
         Modifier.padding(bottom = 2.dp).touchTarget { source ->
-            Modifier.clickable(interactionSource = source, indication = null, onClickLabel = "このワークフローを使う", onClick = onOpen)
+            Modifier.clickable(interactionSource = source, indication = null, onClickLabel = L10n.str(R.string.workflow_views_use_this_workflow), onClick = onOpen)
         },
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -115,7 +118,7 @@ fun WorkflowRows(controller: AppController, here: String, workflows: List<Workfl
     workflows.forEachIndexed { index, workflow ->
         if (index > 0) HorizontalDivider()
         val target = controller.workflowTarget(workflow.channelId)
-        val blocked = Workflows.runBlockedText(workflow.runBlocked, target) ?: if (!workflow.canRun) "このワークフローは使えません" else null
+        val blocked = Workflows.runBlockedText(workflow.runBlocked, target) ?: if (!workflow.canRun) stringResource(R.string.common_this_workflow_cant_be_used) else null
         Row(
             Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(enabled = blocked == null) { onRun(workflow) }
                 .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -127,7 +130,7 @@ fun WorkflowRows(controller: AppController, here: String, workflows: List<Workfl
                 if (workflow.description.isNotBlank()) {
                     Text(workflow.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                if (workflow.channelId != here) Text("→ $target に投稿", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (workflow.channelId != here) Text(stringResource(R.string.workflow_views_posts_to, target), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (blocked != null) Text(blocked, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
@@ -151,12 +154,12 @@ fun ChannelWorkflowList(controller: AppController, channelId: String, onRun: (Wo
     val list = rows
     when {
         list == null && failed -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp)) {
-            Text("読み込めませんでした", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            TextButton(onClick = { reload += 1 }) { Text("再読み込み") }
+            Text(stringResource(R.string.common_couldnt_load), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = { reload += 1 }) { Text(stringResource(R.string.common_reload)) }
         }
-        list == null -> Text("読み込み中…", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+        list == null -> Text(stringResource(R.string.common_loading), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
         list.isEmpty() -> Text(
-            "このチャンネルにはワークフローがありません (デスクトップ・Web で作れます)", style = MaterialTheme.typography.bodyMedium,
+            stringResource(R.string.workflow_views_this_channel_has_no_workflows_create), style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp),
         )
         else -> WorkflowRows(controller, channelId, list, onRun)
@@ -167,7 +170,7 @@ fun ChannelWorkflowList(controller: AppController, channelId: String, onRun: (Wo
 @Composable
 fun ChannelWorkflowsSection(controller: AppController, channel: ChannelState) {
     Text(
-        "ワークフロー", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        stringResource(R.string.common_workflow), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp).semantics { heading() },
     )
     Column(Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))) {
@@ -211,12 +214,12 @@ fun WorkflowFormScreen(controller: AppController, session: WorkflowSession, vers
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(enabled = !session.busy, onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "閉じる") }
+                    IconButton(enabled = !session.busy, onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close)) }
                     Text(
                         workflowEmoji(workflow) + " " + workflow.name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).semantics { heading() },
                     )
-                    TextButton(enabled = !session.busy && workflow.canRun, onClick = ::submit) { Text(if (session.busy) "投稿中…" else "投稿") }
+                    TextButton(enabled = !session.busy && workflow.canRun, onClick = ::submit) { Text(if (session.busy) stringResource(R.string.workflow_views_posting) else stringResource(R.string.workflow_views_post)) }
                 }
                 HorizontalDivider()
                 Column(
@@ -224,7 +227,7 @@ fun WorkflowFormScreen(controller: AppController, session: WorkflowSession, vers
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     Text(
-                        workflow.description.ifBlank { "$target に投稿します" }, style = MaterialTheme.typography.bodyMedium,
+                        workflow.description.ifBlank { stringResource(R.string.workflow_views_posts_to_2, target) }, style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     workflow.fields.forEach { field ->
@@ -236,12 +239,12 @@ fun WorkflowFormScreen(controller: AppController, session: WorkflowSession, vers
                     }
                     Column(
                         Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)).padding(12.dp)
-                            .semantics { contentDescription = "プレビュー" },
+                            .semantics { contentDescription = L10n.str(R.string.common_preview) },
                     ) {
-                        Text("プレビュー ($target に、あなたの投稿として)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.workflow_views_preview_in_posted_as_you, target), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.size(6.dp))
                         if (preview.isEmpty()) {
-                            Text("(空です)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.workflow_views_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             MessageBody(
                                 preview, store.users, groups = store.groups, internalBase = controller.serverBase,
@@ -277,9 +280,9 @@ fun WorkflowFormScreen(controller: AppController, session: WorkflowSession, vers
                                 session.set(field.key, FieldValue.Text(chosen.toString()))
                             }
                             picking = null
-                        }) { Text(if (field.type == "datetime") "次へ" else "決定") }
+                        }) { Text(if (field.type == "datetime") stringResource(R.string.common_next) else stringResource(R.string.common_done)) }
                     },
-                    dismissButton = { TextButton(onClick = { picking = null }) { Text("キャンセル") } },
+                    dismissButton = { TextButton(onClick = { picking = null }) { Text(stringResource(R.string.common_cancel)) } },
                 ) { DatePicker(state = state) }
             } else {
                 val time = runCatching { LocalTime.parse(timePart) }.getOrNull() ?: LocalTime.of(9, 0)
@@ -296,7 +299,7 @@ fun WorkflowFormScreen(controller: AppController, session: WorkflowSession, vers
 
 /** 「2026年7月28日 (火)」 / 「13:00」 / both for a datetime; "選んでください" when empty. */
 private fun pickedLabel(field: WorkflowField, value: String): String {
-    if (value.isEmpty()) return "選んでください"
+    if (value.isEmpty()) return L10n.str(R.string.workflow_views_choose_one)
     return when (field.type) {
         "date" -> Workflows.dateLabel(value).ifEmpty { value }
         "datetime" -> Workflows.formatValue(field, FieldValue.Text(value)).ifEmpty { value }
@@ -322,7 +325,7 @@ private fun WorkflowFieldInput(
         Text(
             field.label + if (field.required) " *" else "", style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = if (field.required) Modifier.semantics { contentDescription = field.label + " (必須)" } else Modifier,
+            modifier = if (field.required) Modifier.semantics { contentDescription = field.label + L10n.str(R.string.workflow_views_required) } else Modifier,
         )
     }
     @Composable
@@ -349,14 +352,14 @@ private fun WorkflowFieldInput(
                     if (field.type == "datetime") {
                         val date = text.substringBefore('T')
                         val time = text.substringAfter('T', "")
-                        OutlinedButton(onClick = { onPick(false) }) { Text(if (date.isEmpty()) "日付を選ぶ" else Workflows.dateLabel(date).ifEmpty { date }) }
-                        OutlinedButton(onClick = { onPick(true) }) { Text(time.ifEmpty { "時刻を選ぶ" }) }
+                        OutlinedButton(onClick = { onPick(false) }) { Text(if (date.isEmpty()) stringResource(R.string.common_pick_a_date) else Workflows.dateLabel(date).ifEmpty { date }) }
+                        OutlinedButton(onClick = { onPick(true) }) { Text(time.ifEmpty { stringResource(R.string.workflow_views_pick_a_time) }) }
                     } else {
                         OutlinedButton(onClick = { onPick(field.type == "time") }, modifier = Modifier.semantics { contentDescription = field.label + " " + pickedLabel(field, text) }) {
                             Text(pickedLabel(field, text))
                         }
                     }
-                    if (text.isNotEmpty() && !field.required) TextButton(onClick = { onChange(FieldValue.Text("")) }) { Text("消す") }
+                    if (text.isNotEmpty() && !field.required) TextButton(onClick = { onChange(FieldValue.Text("")) }) { Text(stringResource(R.string.workflow_views_clear)) }
                 }
                 Under()
             }
@@ -364,12 +367,12 @@ private fun WorkflowFieldInput(
                 Label()
                 var open by remember { mutableStateOf(false) }
                 Box {
-                    OutlinedButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = field.label + " " + text.ifEmpty { "未選択" } }) {
-                        Text(text.ifEmpty { "選んでください" })
+                    OutlinedButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = field.label + " " + text.ifEmpty { L10n.str(R.string.workflow_views_not_selected) } }) {
+                        Text(text.ifEmpty { stringResource(R.string.workflow_views_choose_one) })
                         Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                     }
                     DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.heightIn(max = 360.dp)) {
-                        if (!field.required) DropdownMenuItem(text = { Text("(選ばない)") }, onClick = { open = false; onChange(FieldValue.Text("")) })
+                        if (!field.required) DropdownMenuItem(text = { Text(stringResource(R.string.workflow_views_none)) }, onClick = { open = false; onChange(FieldValue.Text("")) })
                         field.options.forEach { option ->
                             DropdownMenuItem(text = { Text(option) }, onClick = { open = false; onChange(FieldValue.Text(option)) })
                         }
@@ -395,7 +398,7 @@ private fun WorkflowFieldInput(
             }
             else -> {
                 Label()
-                Text("この項目はこのアプリでは入力できません", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.workflow_views_this_field_cant_be_filled_in), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -417,18 +420,18 @@ private fun PeoplePicker(controller: AppController, multiple: Boolean, chosen: L
                 InputChip(
                     selected = true, onClick = { onChange(chosen - id) }, label = { Text(name) },
                     avatar = { Avatar(id, name, size = 20.dp) },
-                    trailingIcon = { Icon(Icons.Default.Close, contentDescription = "$name を外す", modifier = Modifier.size(16.dp)) },
+                    trailingIcon = { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_remove_2, name), modifier = Modifier.size(16.dp)) },
                 )
             }
         }
     }
     if (!multiple && chosen.isNotEmpty()) return
-    OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text("名前で探す") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text(stringResource(R.string.workflow_views_search_by_name)) }, modifier = Modifier.fillMaxWidth())
     val q = query.trim().lowercase()
     if (q.isEmpty()) return
     val shown = people.filter { it.id !in chosen && (it.displayName.lowercase().contains(q) || it.username.lowercase().contains(q)) }.take(30)
     Column(Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))) {
-        if (shown.isEmpty()) Text("見つかりません", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp))
+        if (shown.isEmpty()) Text(stringResource(R.string.common_nothing_found), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp))
         shown.forEachIndexed { index, user ->
             if (index > 0) HorizontalDivider()
             Row(

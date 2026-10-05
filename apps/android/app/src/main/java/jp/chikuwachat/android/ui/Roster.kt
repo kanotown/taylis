@@ -10,6 +10,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.LabProfileOut
 import jp.chikuwachat.android.api.UserPublic
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * The lab roster (M23, DATA_MODEL.md lab_profiles): labels and the roster order, the same as the server's
@@ -17,12 +19,12 @@ import jp.chikuwachat.android.api.UserPublic
  * An affiliation, rank or grade a newer server adds sorts after the known ones of its step.
  */
 object Roster {
-    val AFFILIATIONS = listOf("faculty" to "教員", "student" to "学生", "other" to "その他", "alumni" to "卒業生")
-    val RANKS = listOf("professor" to "教授", "associate_professor" to "准教授", "lecturer" to "講師", "assistant_professor" to "助教")
+    val AFFILIATIONS = listOf("faculty" to L10n.str(R.string.roster_faculty), "student" to L10n.str(R.string.roster_student), "other" to L10n.str(R.string.common_other), "alumni" to L10n.str(R.string.roster_alumni))
+    val RANKS = listOf("professor" to L10n.str(R.string.roster_professor), "associate_professor" to L10n.str(R.string.roster_associate_professor), "lecturer" to L10n.str(R.string.roster_lecturer), "assistant_professor" to L10n.str(R.string.roster_assistant_professor))
     /** Roster order: from D3 down to B3. */
     val GRADES = listOf("D3", "D2", "D1", "M2", "M1", "B4", "B3")
     /** The heading of the people off the roster, after everyone on it. */
-    const val OFF_ROSTER = "その他のメンバー"
+    val OFF_ROSTER: String get() = L10n.str(R.string.roster_other_members)
 
     private val AFFILIATION_ORDER = AFFILIATIONS.map { it.first }
     private val RANK_ORDER = RANKS.map { it.first }
@@ -82,7 +84,7 @@ object Roster {
     /** The heading a person's line sits under in a roster-ordered list (教員, D3 … B3, 学生, その他, 卒業生); null off the roster. */
     fun section(profile: LabProfileOut?): String? {
         if (profile == null) return null
-        if (profile.affiliation == "student") return profile.grade ?: "学生"
+        if (profile.affiliation == "student") return profile.grade ?: L10n.str(R.string.roster_student)
         return AFFILIATIONS.firstOrNull { it.first == profile.affiliation }?.second
     }
 
@@ -98,14 +100,14 @@ object Roster {
 
     /** The short label for a line: 教授, M1, 卒業生 … ("" for an affiliation this app does not know). */
     fun label(profile: LabProfileOut): String = when (profile.affiliation) {
-        "faculty" -> RANKS.firstOrNull { it.first == profile.rank }?.second ?: "教員"
-        "student" -> profile.grade ?: "学生"
+        "faculty" -> RANKS.firstOrNull { it.first == profile.rank }?.second ?: L10n.str(R.string.roster_faculty)
+        "student" -> profile.grade ?: L10n.str(R.string.roster_student)
         else -> AFFILIATIONS.firstOrNull { it.first == profile.affiliation }?.second ?: ""
     }
 
     /** 「指導教員: 加納」, or null without one. */
     fun supervisorLabel(profile: LabProfileOut, users: Map<String, UserPublic>): String? =
-        profile.supervisorId?.let { users[it]?.displayName }?.let { "指導教員: $it" }
+        profile.supervisorId?.let { users[it]?.displayName }?.let { L10n.str(R.string.roster_supervisor, it) }
 
     /** How two titles compare: after NFKC, trimming and lower-casing (「ｄ１」 is 「D1」). */
     private fun titleKey(text: String): String = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKC).trim().lowercase()

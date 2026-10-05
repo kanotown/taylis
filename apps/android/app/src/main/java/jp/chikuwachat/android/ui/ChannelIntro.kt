@@ -25,6 +25,8 @@ import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.Store
 import java.time.OffsetDateTime
 import java.time.ZoneId
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * The start of a conversation (M11h): what the channel is for, who made it and how many are in it. `version`: the
@@ -60,7 +62,7 @@ fun introSummary(channel: ChannelState, store: Store, zone: ZoneId = ZoneId.syst
     val out = channel.channel
     if (MainTabs.isSelfNotes(channel, store.me?.id)) return MainTabs.SELF_NOTES_INTRO
     val title = channelTitle(channel, store)
-    if (out.isDm) return "$title との会話の始まりです。"
+    if (out.isDm) return L10n.str(R.string.channel_intro_this_is_the_beginning_of_your, title)
     val creator = out.createdBy?.let { store.users[it]?.displayName }
     val date = runCatching { OffsetDateTime.parse(out.createdAt).atZoneSameInstant(zone) }.getOrNull()
     return buildString {

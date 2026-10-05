@@ -44,6 +44,9 @@ import java.io.File
 import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.CancellationException
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 /**
  * M82: a video played in the app (the platform's VideoView and MediaController, no player library). The clip is
@@ -74,9 +77,9 @@ fun VideoViewer(attachment: AttachmentOut, controller: AppController, poster: Im
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "動画を閉じる", tint = Color.White) }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.video_viewer_close_video), tint = Color.White) }
                     Text(attachment.filename, Modifier.weight(1f), color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, "他のアプリで開く", tint = Color.White) }
+                    IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app), tint = Color.White) }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val clip = file
@@ -96,7 +99,7 @@ fun VideoViewer(attachment: AttachmentOut, controller: AppController, poster: Im
                                         if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) playing = true
                                         false
                                     }
-                                    setOnErrorListener { _, _, _ -> error = "この動画を再生できませんでした"; true }
+                                    setOnErrorListener { _, _, _ -> error = L10n.str(R.string.video_viewer_couldnt_play_this_video); true }
                                     setVideoPath(clip.path)
                                 }
                             },
@@ -106,9 +109,9 @@ fun VideoViewer(attachment: AttachmentOut, controller: AppController, poster: Im
                     }
                     if (error != null) {
                         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("動画を読み込めませんでした", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.video_viewer_couldnt_load_the_video), color = Color.White, style = MaterialTheme.typography.titleMedium)
                             Text(error!!, Modifier.padding(vertical = 12.dp), color = Color.White)
-                            Button(onClick = { file = null; playing = false; attempt += 1 }) { Text("再試行") }
+                            Button(onClick = { file = null; playing = false; attempt += 1 }) { Text(stringResource(R.string.common_retry)) }
                         }
                     } else if (!playing) {
                         // The poster over the player until its first frame (M79 spec item 5).

@@ -69,6 +69,9 @@ import jp.chikuwachat.android.sync.MessageState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 private val YES_TONE = Color(0xFF16A34A)
 private val MAYBE_TONE = Color(0xFFD97706)
@@ -137,8 +140,8 @@ fun ScheduleCard(poll: PollOut, message: MessageState, controller: AppController
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("📅 " + poll.question, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f, fill = false))
             Spacer(Modifier.width(6.dp))
-            Tag("日程調整")
-            if (poll.anonymous) { Spacer(Modifier.width(6.dp)); Tag("匿名") }
+            Tag(stringResource(R.string.common_scheduling_poll))
+            if (poll.anonymous) { Spacer(Modifier.width(6.dp)); Tag(stringResource(R.string.common_anonymous)) }
         }
 
         if (decided != null) {
@@ -148,7 +151,7 @@ fun ScheduleCard(poll: PollOut, message: MessageState, controller: AppController
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.EventAvailable, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                    Text(" 決定", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.schedule_card_decided), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 }
                 Text(
                     poll.options.getOrNull(decided.index) ?: "", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
@@ -159,11 +162,11 @@ fun ScheduleCard(poll: PollOut, message: MessageState, controller: AppController
                     decided.eventId?.let { eventId ->
                         TextButton(onClick = { controller.scope.launch { controller.openDecidedEvent(eventId) } }) {
                             Icon(Icons.Outlined.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Text(" 予定を開く")
+                            Text(stringResource(R.string.schedule_card_open_event))
                         }
                     }
                     Spacer(Modifier.weight(1f))
-                    if (decider) TextButton(onClick = { controller.scope.launch { controller.undecideSchedule(message) } }) { Text("決定を取り消す") }
+                    if (decider) TextButton(onClick = { controller.scope.launch { controller.undecideSchedule(message) } }) { Text(stringResource(R.string.schedule_card_undo_decision)) }
                 }
             }
         }
@@ -179,7 +182,7 @@ fun ScheduleCard(poll: PollOut, message: MessageState, controller: AppController
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (index in best) {
-                        Icon(Icons.Filled.Star, contentDescription = "○ がいちばん多い", tint = STAR, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Filled.Star, contentDescription = stringResource(R.string.schedule_card_most_answers), tint = STAR, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(3.dp))
                     }
                     Text(label, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -194,7 +197,7 @@ fun ScheduleCard(poll: PollOut, message: MessageState, controller: AppController
                     }
                     Spacer(Modifier.weight(1f))
                     if (decider && decided == null) {
-                        TextButton(onClick = { confirm = index }, modifier = Modifier.semantics { contentDescription = "$label に決める" }) { Text("決める") }
+                        TextButton(onClick = { confirm = index }, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.schedule_card_decide_on, label) }) { Text(stringResource(R.string.schedule_card_decide)) }
                     }
                 }
             }
@@ -209,7 +212,7 @@ fun ScheduleCard(poll: PollOut, message: MessageState, controller: AppController
             Text(SchedulePolls.footer(poll), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             TextButton(onClick = { table = true }) {
                 Icon(Icons.Outlined.TableChart, contentDescription = null, modifier = Modifier.size(16.dp))
-                Text(" 表で見る")
+                Text(stringResource(R.string.schedule_card_view_as_table))
             }
         }
     }
@@ -218,18 +221,18 @@ fun ScheduleCard(poll: PollOut, message: MessageState, controller: AppController
     confirm?.let { index ->
         AlertDialog(
             onDismissRequest = { confirm = null },
-            title = { Text("この日に決めますか？") },
+            title = { Text(stringResource(R.string.schedule_card_decide_on_this_date)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(poll.options.getOrNull(index) ?: "", fontWeight = FontWeight.SemiBold)
                     Text(
-                        (if (isDm) "スレッドで回答した人に知らせます。" else "チャンネルのカレンダーに予定を作り、スレッドで回答した人に知らせます。") +
-                            "回答は締め切られます (取り消すと再開します)。",
+                        (if (isDm) stringResource(R.string.schedule_card_people_who_answered_in_the_thread) else stringResource(R.string.schedule_card_an_event_is_created_in_the)) +
+                            stringResource(R.string.schedule_card_answers_will_be_closed_undoing_reopens),
                     )
                 }
             },
-            confirmButton = { TextButton(onClick = { confirm = null; decide(index, createEvent = true) }) { Text("決定") } },
-            dismissButton = { TextButton(onClick = { confirm = null }) { Text("キャンセル") } },
+            confirmButton = { TextButton(onClick = { confirm = null; decide(index, createEvent = true) }) { Text(stringResource(R.string.common_done)) } },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     // SCHEDULING.md §7 3.: I may not add to this channel's calendar (posting is restricted to its owners): the decision can
@@ -237,12 +240,12 @@ fun ScheduleCard(poll: PollOut, message: MessageState, controller: AppController
     withoutEvent?.let { index ->
         AlertDialog(
             onDismissRequest = { withoutEvent = null },
-            title = { Text("予定を作れません") },
+            title = { Text(stringResource(R.string.schedule_card_cant_create_the_event)) },
             text = {
-                Text("このチャンネルのカレンダーには予定を追加できません (投稿はオーナーだけに制限されています)。予定を作らずに「${poll.options.getOrNull(index) ?: ""}」に決めますか？")
+                Text(stringResource(R.string.schedule_card_you_cant_add_events_to_this, poll.options.getOrNull(index) ?: ""))
             },
-            confirmButton = { TextButton(onClick = { withoutEvent = null; decide(index, createEvent = false) }) { Text("予定を作らずに決める") } },
-            dismissButton = { TextButton(onClick = { withoutEvent = null }) { Text("キャンセル") } },
+            confirmButton = { TextButton(onClick = { withoutEvent = null; decide(index, createEvent = false) }) { Text(stringResource(R.string.schedule_card_decide_without_an_event)) } },
+            dismissButton = { TextButton(onClick = { withoutEvent = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 }
@@ -258,7 +261,7 @@ private fun Tag(text: String) {
 /** 「○ 2 · △ 0 · × 1」, read as 「○ 2 人、△ 0 人、× 1 人」. */
 @Composable
 private fun CountLine(counts: SlotCounts, modifier: Modifier = Modifier) {
-    Row(modifier.clearAndSetSemantics { contentDescription = "○ ${counts.yes} 人、△ ${counts.maybe} 人、× ${counts.no} 人" }) {
+    Row(modifier.clearAndSetSemantics { contentDescription = L10n.str(R.string.schedule_card_fmt, counts.yes, counts.maybe, counts.no) }) {
         val muted = MaterialTheme.colorScheme.onSurfaceVariant
         val style = MaterialTheme.typography.labelMedium
         Text("○", style = style, color = YES_TONE)
@@ -300,9 +303,9 @@ private fun CommentField(value: String, enabled: Boolean, modifier: Modifier = M
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
             value = text, onValueChange = { text = it.replace('\n', ' ').take(SchedulePolls.MAX_COMMENT) }, enabled = enabled, singleLine = true,
-            label = { Text("ひとこと") }, placeholder = { Text("例: 午後なら参加できます") }, modifier = Modifier.weight(1f),
+            label = { Text(stringResource(R.string.schedule_card_comment)) }, placeholder = { Text(stringResource(R.string.schedule_card_e_g_i_can_make_it)) }, modifier = Modifier.weight(1f),
         )
-        if (changed && enabled) TextButton(onClick = { onSave(text.trim()) }) { Text("保存") }
+        if (changed && enabled) TextButton(onClick = { onSave(text.trim()) }) { Text(stringResource(R.string.common_save)) }
     }
 }
 
@@ -345,10 +348,10 @@ private fun ScheduleTable(
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "閉じる") }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close)) }
                     Column(Modifier.weight(1f)) {
                         Text(poll.question, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
-                        Text("回答の一覧", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.schedule_card_all_answers), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 HorizontalDivider()
@@ -356,9 +359,9 @@ private fun ScheduleTable(
                     Row(Modifier.fillMaxWidth()) {
                         // The names (fixed).
                         Column(Modifier.width(NAME_WIDTH)) {
-                            NameCell("名前", HEAD_HEIGHT, muted = true)
-                            NameCell("集計", ROW_HEIGHT, muted = true)
-                            if (me != null) NameCell("自分", ROW_HEIGHT, bold = true)
+                            NameCell(stringResource(R.string.common_name), HEAD_HEIGHT, muted = true)
+                            NameCell(stringResource(R.string.schedule_card_totals), ROW_HEIGHT, muted = true)
+                            if (me != null) NameCell(stringResource(R.string.common_you), ROW_HEIGHT, bold = true)
                             people.forEach { NameCell(name(it), ROW_HEIGHT) }
                         }
                         // The candidates and the comments (scrolled sideways).
@@ -372,11 +375,11 @@ private fun ScheduleTable(
                                             .padding(horizontal = 4.dp),
                                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
                                     ) {
-                                        if (index in best) Icon(Icons.Filled.Star, contentDescription = "○ がいちばん多い", tint = STAR, modifier = Modifier.size(12.dp))
+                                        if (index in best) Icon(Icons.Filled.Star, contentDescription = stringResource(R.string.schedule_card_most_answers), tint = STAR, modifier = Modifier.size(12.dp))
                                         Text(label, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
-                                TableText("コメント", COMMENT_WIDTH, HEAD_HEIGHT, muted = true)
+                                TableText(stringResource(R.string.schedule_card_comments), COMMENT_WIDTH, HEAD_HEIGHT, muted = true)
                             }
                             HorizontalDivider(Modifier.width(CELL_WIDTH * poll.options.size + COMMENT_WIDTH))
                             Row {
@@ -395,7 +398,7 @@ private fun ScheduleTable(
                                                     Modifier.size(width = 44.dp, height = 36.dp)
                                                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
                                                         .clickable { onAnswer(mine.mapIndexed { i, v -> if (i == index) SchedulePolls.nextAnswer(v) else v }) }
-                                                        .semantics { contentDescription = "自分の $label: ${SchedulePolls.answerName(answer)} (押すと変わります)"; role = Role.Button },
+                                                        .semantics { contentDescription = L10n.str(R.string.schedule_card_your_tap_to_change, label, SchedulePolls.answerName(answer)); role = Role.Button },
                                                     contentAlignment = Alignment.Center,
                                                 ) { Mark(answer) }
                                             } else {
@@ -418,15 +421,15 @@ private fun ScheduleTable(
                     }
                     Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (editable && me != null) {
-                            Text("押すと ○ → △ → × → 未回答 と変わります", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.schedule_card_tap_to_cycle_no_answer), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             CommentField(myComment, enabled = true, onSave = onComment)
                         }
                         if (poll.anonymous && poll.comments.isNotEmpty()) {
-                            Text("コメント (匿名)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            poll.comments.forEach { Text("・" + it.text, style = MaterialTheme.typography.bodyMedium) }
+                            Text(stringResource(R.string.schedule_card_comments_anonymous), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            poll.comments.forEach { Text(stringResource(R.string.common_fmt_5) + it.text, style = MaterialTheme.typography.bodyMedium) }
                         }
                         if (!poll.anonymous && people.isEmpty()) {
-                            Text("まだ誰も答えていません", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.schedule_card_no_one_has_answered_yet), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

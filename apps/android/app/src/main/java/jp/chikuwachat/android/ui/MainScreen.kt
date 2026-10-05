@@ -90,6 +90,9 @@ import jp.chikuwachat.android.sync.NotificationLevels
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 /** M34: the settings are the 自分 tab's page now, not a dialog. */
 enum class MainDialog { NEW_DM, NEW_CHANNEL, ADD_MEMBER, BROWSE, DIRECTORY }
@@ -528,7 +531,7 @@ fun MainScreen(controller: AppController) {
                 },
                 onSearch = ::runSearch,
                 onBack = ::goBack,
-                placeholder = if (jumping) "移動・検索" else "${controller.workspaceName} を検索",
+                placeholder = if (jumping) stringResource(R.string.common_jump_or_search) else stringResource(R.string.main_screen_search, controller.workspaceName),
                 jump = if (!jumping) null else JumpTargets(
                     recent = RecentConversations.shown(recentConversations) { store.channel(it) },
                     onOpenConversation = { openPicked(it) },
@@ -541,34 +544,34 @@ fun MainScreen(controller: AppController) {
             TopAppBar(
                 title = { WorkspaceTitle(controller, switchable = controller.workspaces.size >= 2) },
                 actions = {
-                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
+                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.common_menu)) }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; confirmReadAll = true })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.main_screen_mark_all_as_read)) }, onClick = { menuOpen = false; confirmReadAll = true })
                         DropdownMenuItem(
-                            text = { Text("未読をまとめる") },
+                            text = { Text(stringResource(R.string.main_screen_group_unread)) },
                             trailingIcon = { Checkbox(checked = groupUnread, onCheckedChange = null) },
                             onClick = {
                                 menuOpen = false
                                 groupUnread = !groupUnread
                                 GroupUnread.write(controller.prefs, groupUnread)
                             },
-                            modifier = Modifier.semantics { stateDescription = if (groupUnread) "オン" else "オフ" },
+                            modifier = Modifier.semantics { stateDescription = if (groupUnread) L10n.str(R.string.main_screen_on) else L10n.str(R.string.common_off) },
                         )
                         if (!controller.isGuest) {
-                            DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
-                            DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.common_browse_channels)) }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.common_create_channel)) }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
                         }
-                        DropdownMenuItem(text = { Text("メンバー一覧") }, onClick = { menuOpen = false; dialog = MainDialog.DIRECTORY })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.main_screen_member_directory)) }, onClick = { menuOpen = false; dialog = MainDialog.DIRECTORY })
                         HorizontalDivider()
-                        DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
-                        DropdownMenuItem(text = { Text("新しいセクション") }, onClick = { menuOpen = false; sectionForm = null to emptyList() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.common_direct_message)) }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.common_new_section)) }, onClick = { menuOpen = false; sectionForm = null to emptyList() })
                         // With one workspace the title does not open the switcher, which is where another is added.
                         if (controller.workspaces.size < 2) {
-                            DropdownMenuItem(text = { Text("ワークスペースを追加") }, onClick = { menuOpen = false; controller.beginAddWorkspace() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.common_add_workspace)) }, onClick = { menuOpen = false; controller.beginAddWorkspace() })
                         }
                         HorizontalDivider()
-                        DropdownMenuItem(text = { Text("設定") }, onClick = { menuOpen = false; selectMainTab(MainTab.YOU) })
-                        val logoutLabel = if (controller.workspaces.size > 1) "${controller.workspaceName} からログアウト" else "ログアウト"
+                        DropdownMenuItem(text = { Text(stringResource(R.string.common_settings)) }, onClick = { menuOpen = false; selectMainTab(MainTab.YOU) })
+                        val logoutLabel = if (controller.workspaces.size > 1) stringResource(R.string.common_sign_out_of, controller.workspaceName) else stringResource(R.string.common_sign_out)
                         DropdownMenuItem(text = { Text(logoutLabel) }, onClick = { menuOpen = false; confirmLogout = true })
                     }
                 },
@@ -578,33 +581,33 @@ fun MainScreen(controller: AppController) {
                 title = {
                     when {
                         // D1: the page's own header shows the name large.
-                        detailsOpen -> Text(if (isChannel) "チャンネル情報" else "詳細", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        threadId != null -> TwoLineTitle("スレッド", selectedChannel?.let { channelTitle(it, store) })
-                        selectedChannel != null && previewing -> TwoLineTitle(channelTitle(selectedChannel, store), "プレビュー (未参加)")
+                        detailsOpen -> Text(if (isChannel) stringResource(R.string.main_screen_channel_details) else stringResource(R.string.main_screen_details), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        threadId != null -> TwoLineTitle(stringResource(R.string.common_thread), selectedChannel?.let { channelTitle(it, store) })
+                        selectedChannel != null && previewing -> TwoLineTitle(channelTitle(selectedChannel, store), stringResource(R.string.main_screen_preview_not_joined))
                         // M29: the title opens the details page.
-                        selectedChannel != null -> Column(Modifier.clickable(onClickLabel = "チャンネル情報") { openDetails() }) {
+                        selectedChannel != null -> Column(Modifier.clickable(onClickLabel = stringResource(R.string.main_screen_channel_details)) { openDetails() }) {
                             TwoLineTitle(
                                 channelTitle(selectedChannel, store),
-                                selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) "トピックを設定" else dmPresenceSubtitle(selectedChannel, store),
+                                selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) stringResource(R.string.main_screen_set_a_topic) else dmPresenceSubtitle(selectedChannel, store),
                                 emoji = controller to version, // a custom status emoji in a DM's subtitle as its image
                             )
                         }
-                        pane == Route.Threads -> Text("スレッド")
-                        pane == Route.TimesFeed -> Text("Times フィード")
-                        pane == Route.Saved -> Text("保存済み")
-                        pane == Route.Mentions -> Text("メンション")
-                        pane == Route.Drafts -> Text("下書き")
-                        pane is Route.Files -> Text("ファイル")
-                        pane == Route.Canvases -> Text("キャンバス")
-                        pane == Route.Reminders -> Text("リマインダー")
-                        pane == Route.Calendar -> Text("カレンダー")
-                        pane == Route.Tasks -> Text("タスク")
-                        pane == Route.Deadlines -> Text("締切")
-                        pane == Route.Reservations -> Text("予約")
+                        pane == Route.Threads -> Text(stringResource(R.string.common_thread))
+                        pane == Route.TimesFeed -> Text(stringResource(R.string.main_screen_times_feed))
+                        pane == Route.Saved -> Text(stringResource(R.string.common_saved))
+                        pane == Route.Mentions -> Text(stringResource(R.string.common_mention))
+                        pane == Route.Drafts -> Text(stringResource(R.string.common_drafts))
+                        pane is Route.Files -> Text(stringResource(R.string.common_files))
+                        pane == Route.Canvases -> Text(stringResource(R.string.common_canvas))
+                        pane == Route.Reminders -> Text(stringResource(R.string.common_reminders))
+                        pane == Route.Calendar -> Text(stringResource(R.string.common_calendar))
+                        pane == Route.Tasks -> Text(stringResource(R.string.common_tasks))
+                        pane == Route.Deadlines -> Text(stringResource(R.string.common_deadlines))
+                        pane == Route.Reservations -> Text(stringResource(R.string.common_reservations))
                         // 仕上げ A (MOBILE_POLISH.md C5): 「DM」 as on iOS and on the tab (「ダイレクトメッセ…」 was cut).
                         top == Route.DmList -> Text("DM", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        top is Route.Activity -> Text("アクティビティ", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        top == Route.You -> Text("自分", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        top is Route.Activity -> Text(stringResource(R.string.common_activity), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        top == Route.You -> Text(stringResource(R.string.common_you), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         top is Route.Settings -> Text(top.page.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         else -> WorkspaceTitle(controller) // M16c: tap to switch workspaces
                     }
@@ -612,13 +615,13 @@ fun MainScreen(controller: AppController) {
                 navigationIcon = {
                     when {
                         back != null && closes -> IconButton(onClick = back) {
-                            Icon(Icons.Default.Close, contentDescription = "スレッドを閉じる")
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.main_screen_close_thread))
                         }
                         back != null -> IconButton(onClick = back) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                         }
                         // M34: my avatar opens the 自分 tab (the settings were a dialog). T1: wide, the rail has it.
-                        me != null && top != Route.You && layout == PaneLayout.PHONE -> IconButton(onClick = { selectMainTab(MainTab.YOU) }, modifier = Modifier.semantics { contentDescription = "自分" }) {
+                        me != null && top != Route.You && layout == PaneLayout.PHONE -> IconButton(onClick = { selectMainTab(MainTab.YOU) }, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.common_you) }) {
                             Avatar(me.id, me.displayName, size = 32.dp)
                         }
                     }
@@ -651,8 +654,8 @@ fun MainScreen(controller: AppController) {
                         val labelled = with(density) {
                             ConversationBar.followLabelFits(
                                 barWidth = barWidth,
-                                title = measurer.measure("スレッド", MaterialTheme.typography.titleMedium).size.width.toDp().value,
-                                label = measurer.measure("フォロー中", MaterialTheme.typography.labelLarge).size.width.toDp().value,
+                                title = measurer.measure(stringResource(R.string.common_thread), MaterialTheme.typography.titleMedium).size.width.toDp().value,
+                                label = measurer.measure(stringResource(R.string.main_screen_following), MaterialTheme.typography.labelLarge).size.width.toDp().value,
                                 menu = barButtons && menuItems.isNotEmpty(),
                             )
                         }
@@ -663,14 +666,14 @@ fun MainScreen(controller: AppController) {
                             FilterChip(
                                 selected = threadState.following,
                                 onClick = { toggle() },
-                                label = { Text(if (threadState.following) "フォロー中" else "フォロー") },
+                                label = { Text(if (threadState.following) stringResource(R.string.main_screen_following) else stringResource(R.string.main_screen_follow)) },
                                 leadingIcon = { Icon(bell, contentDescription = null, modifier = Modifier.size(16.dp)) },
                                 modifier = Modifier.padding(end = 4.dp),
                             )
                         } else {
                             // A toggle: TalkBack says 「スレッドをフォロー」 with on / off.
                             IconToggleButton(checked = threadState.following, onCheckedChange = { toggle() }) {
-                                Icon(bell, contentDescription = "スレッドをフォロー")
+                                Icon(bell, contentDescription = stringResource(R.string.main_screen_follow_thread))
                             }
                         }
                     }
@@ -682,9 +685,9 @@ fun MainScreen(controller: AppController) {
                     }
                     // The 自分 tab is the settings page: no search or menu over it.
                     if (barButtons) {
-                        IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = "検索") }
+                        IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = stringResource(R.string.common_search)) }
                         if (menuItems.isNotEmpty()) {
-                            IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
+                            IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.common_menu)) }
                         }
                     }
                     DropdownMenu(expanded = menuOpen && menuItems.isNotEmpty(), onDismissRequest = { menuOpen = false }) {
@@ -692,14 +695,14 @@ fun MainScreen(controller: AppController) {
                             when (item) {
                                 // M39: the activity tab's own 「すべて既読」 (MOBILE_UI.md §6.4).
                                 BarMenuItem.READ_ALL_ACTIVITY -> DropdownMenuItem(
-                                    text = { Text("すべて既読") }, leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
+                                    text = { Text(stringResource(R.string.main_screen_mark_all_read)) }, leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
                                     onClick = { menuOpen = false; activityReadAll = true },
                                 )
                                 // M29: the pins and files are tabs under the app bar now; the details page does not list itself.
                                 BarMenuItem.FAVORITE -> selectedChannel?.let { open ->
                                     val starred = store.isFavorite(open.id)
                                     DropdownMenuItem(
-                                        text = { Text(if (starred) "お気に入りから外す" else "お気に入りに追加") },
+                                        text = { Text(if (starred) stringResource(R.string.common_remove_from_favorites) else stringResource(R.string.common_add_to_favorites)) },
                                         leadingIcon = { Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = null) },
                                         onClick = { menuOpen = false; scope.launch { controller.toggleFavorite(open.id) } },
                                     )
@@ -713,9 +716,9 @@ fun MainScreen(controller: AppController) {
                                         text = {
                                             Text(
                                                 when {
-                                                    mutedOn -> "通知 (ミュート中)"
-                                                    mute != null -> "通知 ($mute)"
-                                                    else -> "通知: " + NotificationLabels.shortLabel(level)
+                                                    mutedOn -> stringResource(R.string.main_screen_notifications_muted)
+                                                    mute != null -> stringResource(R.string.main_screen_notifications, mute)
+                                                    else -> stringResource(R.string.main_screen_notifications_2) + NotificationLabels.shortLabel(level)
                                                 },
                                             )
                                         },
@@ -724,18 +727,18 @@ fun MainScreen(controller: AppController) {
                                     )
                                 }
                                 BarMenuItem.DETAILS -> DropdownMenuItem(
-                                    text = { Text("チャンネル情報") }, leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                                    text = { Text(stringResource(R.string.main_screen_channel_details)) }, leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
                                     onClick = { menuOpen = false; openDetails() },
                                 )
                                 // L8 (TIMES_FEED.md §4, §7): the feed's channels only, asked first like the home's.
                                 BarMenuItem.READ_ALL_TIMES -> DropdownMenuItem(
-                                    text = { Text("すべて既読にする") }, leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
+                                    text = { Text(stringResource(R.string.main_screen_mark_all_as_read)) }, leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
                                     onClick = { menuOpen = false; confirmReadTimes = true },
                                 )
                                 BarMenuItem.MY_TIMES -> {
                                     val mine = TimesFeed.myTimes(store.channels.values, me?.id)
                                     DropdownMenuItem(
-                                        text = { Text(if (mine != null) "自分の times に書く" else "自分の times を作る") },
+                                        text = { Text(if (mine != null) stringResource(R.string.main_screen_write_in_your_times) else stringResource(R.string.common_create_your_times)) },
                                         leadingIcon = { Icon(if (mine != null) Icons.Default.Edit else Icons.Default.Add, contentDescription = null) },
                                         onClick = {
                                             menuOpen = false
@@ -752,7 +755,7 @@ fun MainScreen(controller: AppController) {
                                 // M66 (docs/AI.md §6): the choices open as a sheet; the result shows in its own sheet.
                                 BarMenuItem.SUMMARIZE -> selectedChannel?.let { open ->
                                     DropdownMenuItem(
-                                        text = { Text("要約") }, leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                                        text = { Text(stringResource(R.string.common_summary)) }, leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
                                         onClick = { menuOpen = false; controller.aiSummaryChooser = open.id },
                                     )
                                 }
@@ -762,7 +765,7 @@ fun MainScreen(controller: AppController) {
                                         LaunchedEffect(open.id) { controller.loadSummaryTarget(open.id) }
                                         val target = controller.aiSummaryTargets[open.id]
                                         DropdownMenuItem(
-                                            text = { Text("このスレッドを要約") }, leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                                            text = { Text(stringResource(R.string.main_screen_summarize_this_thread)) }, leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
                                             enabled = !AiTexts.choicesDisabled(target),
                                             onClick = { menuOpen = false; controller.requestSummary(AiTexts.threadRequest(open.id, parentId)) },
                                         )
@@ -770,11 +773,11 @@ fun MainScreen(controller: AppController) {
                                     }
                                 }
                                 BarMenuItem.CALENDAR_FEEDS -> DropdownMenuItem(
-                                    text = { Text("カレンダーを購読 (iCal)") }, leadingIcon = { Icon(Icons.Default.RssFeed, contentDescription = null) },
+                                    text = { Text(stringResource(R.string.common_subscribe_to_the_calendar_ical)) }, leadingIcon = { Icon(Icons.Default.RssFeed, contentDescription = null) },
                                     onClick = { menuOpen = false; controller.openCalendarFeeds() },
                                 )
                                 BarMenuItem.ADD_MEMBER -> DropdownMenuItem(
-                                    text = { Text("メンバーを追加") }, leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
+                                    text = { Text(stringResource(R.string.common_add_members)) }, leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
                                     onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER },
                                 )
                             }
@@ -1063,7 +1066,7 @@ fun MainScreen(controller: AppController) {
             floatingActionButton = {
                 if (top == Route.ChannelList) {
                     FloatingActionButton(onClick = { focusManager.clearFocus(); composing = true }) {
-                        Icon(Icons.Default.Edit, contentDescription = "新しいメッセージ")
+                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_new_message))
                     }
                 }
             },
@@ -1131,19 +1134,19 @@ fun MainScreen(controller: AppController) {
     if (confirmReadTimes) {
         AlertDialog(
             onDismissRequest = { confirmReadTimes = false },
-            title = { Text("すべて既読にしますか？") },
-            text = { Text("フィードに出ている times (参加中でミュートしていないもの) を既読にします。") },
-            confirmButton = { TextButton(onClick = { confirmReadTimes = false; scope.launch { controller.markAllRead(TimesFeed.READ_ALL_SCOPE) } }) { Text("既読にする") } },
-            dismissButton = { TextButton(onClick = { confirmReadTimes = false }) { Text("キャンセル") } },
+            title = { Text(stringResource(R.string.main_screen_mark_everything_as_read)) },
+            text = { Text(stringResource(R.string.main_screen_marks_the_times_in_the_feed)) },
+            confirmButton = { TextButton(onClick = { confirmReadTimes = false; scope.launch { controller.markAllRead(TimesFeed.READ_ALL_SCOPE) } }) { Text(stringResource(R.string.common_mark_as_read)) } },
+            dismissButton = { TextButton(onClick = { confirmReadTimes = false }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     if (confirmReadAll) {
         AlertDialog(
             onDismissRequest = { confirmReadAll = false },
-            title = { Text("すべて既読にしますか？") },
-            text = { Text("参加中のすべてのチャンネルと DM を既読にします。") },
-            confirmButton = { TextButton(onClick = { confirmReadAll = false; scope.launch { controller.markAllRead() } }) { Text("既読にする") } },
-            dismissButton = { TextButton(onClick = { confirmReadAll = false }) { Text("キャンセル") } },
+            title = { Text(stringResource(R.string.main_screen_mark_everything_as_read)) },
+            text = { Text(stringResource(R.string.main_screen_marks_all_your_channels_and_dms)) },
+            confirmButton = { TextButton(onClick = { confirmReadAll = false; scope.launch { controller.markAllRead() } }) { Text(stringResource(R.string.common_mark_as_read)) } },
+            dismissButton = { TextButton(onClick = { confirmReadAll = false }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 
@@ -1239,9 +1242,9 @@ private fun EmptyMainPane(tab: MainTab) {
     Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
         Text(
             when (tab) {
-                MainTab.DM -> "左の一覧から DM を選んでください"
-                MainTab.ACTIVITY -> "左の一覧から項目を選んでください"
-                else -> "左の一覧からチャンネルを選んでください"
+                MainTab.DM -> stringResource(R.string.main_screen_choose_a_dm_from_the_list)
+                MainTab.ACTIVITY -> stringResource(R.string.common_choose_an_item_from_the_list)
+                else -> stringResource(R.string.main_screen_choose_a_channel_from_the_list)
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1291,8 +1294,8 @@ fun ConnectionBanner(status: EngineStatus) {
         shown = status
     }
     val (text, color) = when (shown) {
-        EngineStatus.CONNECTING -> "サーバに接続しています…" to MaterialTheme.colorScheme.primaryContainer
-        EngineStatus.OFFLINE -> "オフラインです。再接続を待っています…" to MaterialTheme.colorScheme.errorContainer
+        EngineStatus.CONNECTING -> stringResource(R.string.main_screen_connecting_to_the_server) to MaterialTheme.colorScheme.primaryContainer
+        EngineStatus.OFFLINE -> stringResource(R.string.main_screen_offline_waiting_to_reconnect) to MaterialTheme.colorScheme.errorContainer
         else -> return
     }
     Text(text, style = MaterialTheme.typography.labelMedium, modifier = Modifier.fillMaxWidth().background(color).padding(horizontal = 16.dp, vertical = 4.dp))

@@ -9,6 +9,8 @@ import jp.chikuwachat.android.sync.TimelineEvent
 import jp.chikuwachat.android.sync.NotificationLevels
 import java.time.Instant
 import java.time.OffsetDateTime
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * L8 (docs/TIMES_FEED.md): the Times feed's rows as this device holds them. `loaded`: a first page arrived (an empty
@@ -38,7 +40,7 @@ object TimesFeed {
     const val READ_ALL_SCOPE = "times"
 
     /** §7. */
-    const val EMPTY_TEXT = "参加している times がありません。チャンネル一覧から times に参加すると、ここに新しい投稿が並びます"
+    val EMPTY_TEXT: String get() = L10n.str(R.string.times_feed_you_havent_joined_any_times_join)
 
     /** A channel the feed reads (§2): a times I am a member of and have not muted (§10.5's muted(c)); archived ones too. */
     fun isFeedChannel(channel: ChannelState?, now: Instant = Instant.now()): Boolean =

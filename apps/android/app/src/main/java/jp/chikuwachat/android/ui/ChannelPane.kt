@@ -109,6 +109,9 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /**
  * One conversation's timeline and composer. `onScreen` (M29): false while the 「ピン留め」 / 「ファイル」 tab or the details
@@ -293,9 +296,9 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
     Column(Modifier.fillMaxSize().imePadding().then(if (onScreen) Modifier else Modifier.clearAndSetSemantics {})) {
         if (focus != null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("検索位置の前後の会話", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                Text(L10n.str(R.string.channel_pane_conversation_around_the_search_result), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                 // Like a fresh open (§10.1 rule 4): the divider at the read position of now, then the open position.
-                TextButton(onClick = { controller.messageFocus = null }) { Text("最新の会話へ") }
+                TextButton(onClick = { controller.messageFocus = null }) { Text(L10n.str(R.string.common_go_to_latest)) }
             }
         }
         val awaitingFirstUnread = ReadGate.awaitingFirstUnread(controller.engineStatus, shown, messages, me)
@@ -304,13 +307,13 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(Timeline.bannerText(channel.unreadCount, channel.firstUnreadAt, ZonedDateTime.now()), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                 if (jumping) {
-                    Text("読み込み中…", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp))
+                    Text(L10n.str(R.string.common_loading), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp))
                 } else {
                     // Above 500 unread only 「既読にする」: the rows a device holds at once stay bounded (scrolling up still works).
                     if (ReadGate.jumpButtonShown(ReadGate.readRangeReady(channel), channel.unreadCount)) {
-                        TextButton(onClick = { jumpToFirstUnread() }, enabled = online) { Text("最初の未読へ") }
+                        TextButton(onClick = { jumpToFirstUnread() }, enabled = online) { Text(L10n.str(R.string.channel_pane_go_to_first_unread)) }
                     }
-                    TextButton(onClick = { controller.engine?.markRead(channelId, channel.lastSeq, force = true) }, enabled = online) { Text("既読にする") }
+                    TextButton(onClick = { controller.engine?.markRead(channelId, channel.lastSeq, force = true) }, enabled = online) { Text(L10n.str(R.string.common_mark_as_read)) }
                 }
             }
         }
@@ -352,7 +355,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
                             catch (e: Exception) { controller.report(e); olderFailed = true }
                             finally { loadingOlder = false }
                         }
-                        if (olderFailed) LoadFailedRow("以前のメッセージを読み込めませんでした") { olderFailed = false; olderAttempt += 1 }
+                        if (olderFailed) LoadFailedRow(L10n.str(R.string.common_couldnt_load_earlier_messages)) { olderFailed = false; olderAttempt += 1 }
                         else Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
                     }
                 } else if (messages.isEmpty()) {
@@ -362,8 +365,8 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
                         when (Timeline.firstPage(channel.syncedSeq, controller.engineStatus)) {
                             Timeline.FirstPage.LOADING -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(24.dp), strokeWidth = 2.dp) }
                             Timeline.FirstPage.OFFLINE -> Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("オフラインのため読み込めません", style = MaterialTheme.typography.titleMedium)
-                                Text("接続が戻ると読み込みます。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(L10n.str(R.string.channel_pane_cant_load_while_offline), style = MaterialTheme.typography.titleMedium)
+                                Text(L10n.str(R.string.common_it_will_load_when_the_connection), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Timeline.FirstPage.EMPTY -> Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 // My own DM (a DM with only me) says what it is for, under my name.
@@ -371,8 +374,8 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
                                     Text(myDisplayName(store), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
                                     Text(MainTabs.SELF_NOTES_INTRO, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                                 } else {
-                                    Text("まだメッセージはありません", style = MaterialTheme.typography.titleMedium)
-                                    Text("最初のメッセージを送ってみましょう。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(L10n.str(R.string.common_no_messages_yet), style = MaterialTheme.typography.titleMedium)
+                                    Text(L10n.str(R.string.channel_pane_send_the_first_message), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -388,26 +391,26 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
                     ExtendedFloatingActionButton(
                         onClick = { scope.launch { listState.animateScrollToItem(0) } },
                         icon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
-                        text = { Text("新着 $unseenBelow 件") },
+                        text = { Text(L10n.str(R.string.common_new, unseenBelow)) },
                         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
                     )
                 } else {
                     SmallFloatingActionButton(
                         onClick = { scope.launch { listState.animateScrollToItem(0) } },
                         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                    ) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = "最新のメッセージへ") }
+                    ) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = L10n.str(R.string.channel_pane_go_to_the_latest_message)) }
                 }
             }
         }
         HorizontalDivider()
         // A channel I am not in never reaches this pane: MainScreen opens it as a preview (PreviewPane, §7.6.1).
         if (channel.channel.archived) {
-            Text("このチャンネルはアーカイブされています", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(L10n.str(R.string.channel_pane_this_channel_is_archived), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else if (!channel.canPostTopLevel(isAdmin = controller.store.me?.role == "admin")) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Campaign, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    "このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。",
+                    L10n.str(R.string.channel_pane_only_owners_and_administrators_can_post),
                     color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp),
                 )
             }
@@ -443,7 +446,7 @@ internal val ReadAnchorSaver = Saver<ReadAnchor, String>(
 internal fun LoadFailedRow(text: String, onRetry: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-        TextButton(onClick = onRetry) { Text("再読み込み") }
+        TextButton(onClick = onRetry) { Text(stringResource(R.string.common_reload)) }
     }
 }
 
@@ -498,7 +501,7 @@ private fun UnreadSeparator() {
     val color = MaterialTheme.colorScheme.error
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         HorizontalDivider(Modifier.weight(1f), color = color)
-        Text("新着メッセージ", style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp))
+        Text(stringResource(R.string.channel_pane_new_messages), style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp))
         HorizontalDivider(Modifier.weight(1f), color = color)
     }
 }
@@ -513,11 +516,11 @@ private fun ReplyLine(message: MessageState, store: Store, version: Int, onNeedE
         val excerpt = parent?.let { p -> messageLine(p.body, p.attachments, store, 80) }
         // M28c: a 48 dp touch target around the one-line link.
         EmojiLineText(
-            "スレッドに返信: " + (excerpt ?: "元のメッセージ"), store, onNeedEmojiImage, version, style, color,
-            modifier = Modifier.touchTarget { source -> Modifier.clickable(interactionSource = source, indication = null, onClickLabel = "スレッドを開く") { onOpenThread() } },
+            stringResource(R.string.channel_pane_replied_to_a_thread) + (excerpt ?: stringResource(R.string.common_original_message)), store, onNeedEmojiImage, version, style, color,
+            modifier = Modifier.touchTarget { source -> Modifier.clickable(interactionSource = source, indication = null, onClickLabel = L10n.str(R.string.common_open_thread)) { onOpenThread() } },
         )
     } else if (message.alsoInChannel) {
-        Text("チャンネルにも送信済み", style = style, color = color)
+        Text(stringResource(R.string.channel_pane_also_sent_to_the_channel), style = style, color = color)
     }
 }
 
@@ -582,8 +585,8 @@ fun MessageRow(
     // M25: TalkBack names the long press (its actions menu, double-tap and hold) after the sheet it opens; a pending
     // row has no sheet, so no long press is offered. Links and buttons inside stay their own nodes.
     val rowClick = Modifier.combinedClickable(
-        onClickLabel = if (onTap != null) "チャンネルで表示" else if (onOpenThread != null) "スレッドを開く" else null,
-        onLongClickLabel = "メッセージの操作",
+        onClickLabel = if (onTap != null) stringResource(R.string.channel_pane_view_in_channel) else if (onOpenThread != null) stringResource(R.string.common_open_thread) else null,
+        onLongClickLabel = stringResource(R.string.channel_pane_message_actions),
         onLongClick = if (message.pending || readOnly) null else ({ menuOpen = true }),
         // A tap on a message in the channel opens its thread, to read or to reply (Slack; testers, 2026-09-29; a grouped
         // row showed its time before, which its gutter shows now). With the keyboard up the tap only closes it
@@ -597,7 +600,7 @@ fun MessageRow(
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
             if (newDot != null) {
                 Box(Modifier.width(12.dp).padding(top = 14.dp), contentAlignment = Alignment.TopStart) {
-                    if (newDot) Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = "新しい投稿" })
+                    if (newDot) Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = L10n.str(R.string.channel_pane_new_post) })
                 }
             }
             // Grouped under the previous message: its time where the avatar would be, so where one message ends and the
@@ -623,11 +626,11 @@ fun MessageRow(
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (pinnedBy != null) {
                             Icon(Icons.Default.PushPin, contentDescription = null, tint = Color(0xFFFF9500), modifier = Modifier.size(12.dp))
-                            Text("$pinnedBy がピン留め", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFF9500))
+                            Text(stringResource(R.string.channel_pane_pinned_by, pinnedBy), style = MaterialTheme.typography.labelSmall, color = Color(0xFFFF9500))
                         }
                         if (saved) {
                             Icon(Icons.Default.Bookmark, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
-                            Text("保存済み", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.common_saved), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -656,17 +659,17 @@ fun MessageRow(
                             val own = message.senderId == store.me?.id
                             // M28c: my own 「(編集済み)」 opens the revisions from a 48 dp touch target; others' is plain text.
                             Text(
-                                "(編集済み)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                stringResource(R.string.channel_pane_edited), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textDecoration = if (own) androidx.compose.ui.text.style.TextDecoration.Underline else null,
                                 modifier = if (!own) Modifier else Modifier.touchTarget { source ->
-                                    Modifier.clickable(interactionSource = source, indication = null, onClickLabel = "編集履歴") { showingRevisions = true }
+                                    Modifier.clickable(interactionSource = source, indication = null, onClickLabel = L10n.str(R.string.common_edit_history)) { showingRevisions = true }
                                 },
                             )
                         }
                     }
                 } else if (message.editedAt != null) {
                     Text(
-                        Timeline.fullLabel(message.createdAt) + if (message.editedAt != null) " (編集済み)" else "",
+                        Timeline.fullLabel(message.createdAt) + if (message.editedAt != null) stringResource(R.string.channel_pane_edited_2) else "",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -697,9 +700,9 @@ fun MessageRow(
                 if (message.replyCount > 0 && onOpenThread != null) ThreadSummaryLine(message, store, onOpenThread)  // C3
                 if (message.failed) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("送信に失敗しました", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
-                        TextButton(onClick = onRetry) { Text("再送") }
-                        TextButton(onClick = onDiscard) { Text("破棄") }
+                        Text(stringResource(R.string.channel_pane_failed_to_send), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                        TextButton(onClick = onRetry) { Text(stringResource(R.string.channel_pane_resend)) }
+                        TextButton(onClick = onDiscard) { Text(stringResource(R.string.common_discard)) }
                     }
                 }
             }

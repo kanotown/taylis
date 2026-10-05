@@ -36,6 +36,9 @@ import jp.chikuwachat.android.api.InvitePreviewOut
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** Joining with an invite link (M12h): paste the link, see who invites, choose a name and a password. */
 @Composable
@@ -52,15 +55,15 @@ fun InviteScreen(controller: AppController, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val minLength = preview?.passwordMinLength ?: PASSWORD_MIN_LENGTH
     val hint = when {
-        password.isNotEmpty() && password.length < minLength -> "パスワードは $minLength 文字以上にしてください"
-        confirm.isNotEmpty() && confirm != password -> "確認用パスワードが一致しません"
+        password.isNotEmpty() && password.length < minLength -> stringResource(R.string.common_passwords_must_be_at_least_characters, minLength)
+        confirm.isNotEmpty() && confirm != password -> stringResource(R.string.common_the_passwords_dont_match)
         else -> null
     }
     val canJoin = !busy && !controller.busy && username.length >= 3 && displayName.isNotBlank() && password.length >= minLength && confirm == password
 
     fun check() {
         val parsed = Invite.parse(link)
-        if (parsed == null) { error = "招待リンクの形式が正しくありません (https://サーバ/invite/… の形です)"; return }
+        if (parsed == null) { error = L10n.str(R.string.invite_screen_the_invite_link_is_not_in); return }
         scope.launch {
             busy = true; error = null
             try {
@@ -88,45 +91,45 @@ fun InviteScreen(controller: AppController, onBack: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("招待リンクで参加", style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.invite_screen_join_with_an_invite_link), style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(16.dp))
         val shown = preview
         val chosen = target
         if (chosen == null || shown == null) {
-            Text("管理者から受け取ったリンクを貼り付けると、ユーザー名とパスワードを自分で決めて参加できます。", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.invite_screen_paste_the_link_you_got_from), style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(16.dp))
-            OutlinedTextField(link, { link = it }, label = { Text("招待リンク") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            OutlinedTextField(link, { link = it }, label = { Text(stringResource(R.string.invite_screen_invite_link)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("https://chat.example.com/invite/…") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done))
             Spacer(Modifier.height(16.dp))
             error?.let { Text(it, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(8.dp)) }
-            if (busy) CircularProgressIndicator() else Button(onClick = ::check, enabled = link.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("リンクを確認") }
-            TextButton(onClick = onBack) { Text("ログイン画面に戻る") }
+            if (busy) CircularProgressIndicator() else Button(onClick = ::check, enabled = link.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.invite_screen_check_link)) }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.invite_screen_back_to_sign_in)) }
         } else {
-            Text("${shown.invitedBy} さんから招待されています", style = MaterialTheme.typography.titleMedium)
-            if (shown.role == "admin") Text("管理者として参加します", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.invite_screen_invited_you, shown.invitedBy), style = MaterialTheme.typography.titleMedium)
+            if (shown.role == "admin") Text(stringResource(R.string.invite_screen_you_will_join_as_an_administrator), style = MaterialTheme.typography.bodySmall)
             shown.lab?.let { Text(Invite.labText(it), style = MaterialTheme.typography.bodySmall) }
-            if (shown.channels.isNotEmpty()) Text("参加するチャンネル: " + shown.channels.joinToString(" ") { "#$it" }, style = MaterialTheme.typography.bodySmall)
-            Text("サーバ ${chosen.server}", style = MaterialTheme.typography.bodySmall)
+            if (shown.channels.isNotEmpty()) Text(stringResource(R.string.invite_screen_channels_youll_join) + shown.channels.joinToString(" ") { "#$it" }, style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.invite_screen_server, chosen.server), style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(16.dp))
-            OutlinedTextField(username, { username = it.lowercase() }, label = { Text("ユーザー名 (3〜32 文字、a-z 0-9 . _ -)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            OutlinedTextField(username, { username = it.lowercase() }, label = { Text(stringResource(R.string.common_username_3_32_characters_a_z)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next))
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(displayName, { displayName = it }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            OutlinedTextField(displayName, { displayName = it }, label = { Text(stringResource(R.string.common_display_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next))
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(password, { password = it }, label = { Text("パスワード ($minLength 文字以上)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            OutlinedTextField(password, { password = it }, label = { Text(stringResource(R.string.invite_screen_password_at_least_characters, minLength)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next))
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(confirm, { confirm = it }, label = { Text("パスワード (確認)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            OutlinedTextField(confirm, { confirm = it }, label = { Text(stringResource(R.string.invite_screen_password_confirm)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done))
             Spacer(Modifier.height(16.dp))
             (hint ?: error)?.let { Text(it, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(8.dp)) }
             if (busy || controller.busy) CircularProgressIndicator() else {
-                Button(onClick = ::join, enabled = canJoin, modifier = Modifier.fillMaxWidth()) { Text("参加する") }
-                TextButton(onClick = { target = null; preview = null; error = null }) { Text("別のリンクを使う") }
+                Button(onClick = ::join, enabled = canJoin, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.invite_screen_join)) }
+                TextButton(onClick = { target = null; preview = null; error = null }) { Text(stringResource(R.string.invite_screen_use_another_link)) }
             }
         }
     }

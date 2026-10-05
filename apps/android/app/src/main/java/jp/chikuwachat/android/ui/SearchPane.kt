@@ -121,6 +121,9 @@ import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.time.LocalDate
 import java.time.ZoneOffset
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 // M16b: the search screen. A Material 3 search bar whose expanded state offers suggestions (recent searches and
 // quick filters, or while typing: the words, people and conversations), and the results under it: count, the
@@ -374,9 +377,9 @@ fun SearchTopBar(
                     expanded = expanded,
                     onExpandedChange = onExpandedChange,
                     placeholder = { Text(placeholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る") } },
+                    leadingIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back)) } },
                     trailingIcon = {
-                        if (text.isNotEmpty()) IconButton(onClick = { onTextChange(""); onExpandedChange(true) }) { Icon(Icons.Default.Close, contentDescription = "入力を消す") }
+                        if (text.isNotEmpty()) IconButton(onClick = { onTextChange(""); onExpandedChange(true) }) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_clear)) }
                     },
                 )
             },
@@ -428,32 +431,32 @@ private fun ColumnScope.JumpList(
     LazyColumn(Modifier.fillMaxWidth().weight(1f).imePadding(), contentPadding = WindowInsets.navigationBars.asPaddingValues()) {
         if (query.isEmpty()) {
             if (jump.recent.isNotEmpty()) {
-                item(key = "h:recent-conversations") { SuggestionHeader("最近の会話") }
+                item(key = "h:recent-conversations") { SuggestionHeader(stringResource(R.string.search_pane_recent_conversations)) }
                 items(jump.recent, key = { "rc:" + it.id }) { channel -> JumpConversationRow(store, channel) { jump.onOpenConversation(channel.id) } }
             }
             itemsIndexed(rows, key = { index, row -> "s:" + suggestionKey(row, index) }) { index, row ->
                 val here = if (row is Suggestion.Recent) "recent" else "filter"
                 val before = rows.getOrNull(index - 1)?.let { if (it is Suggestion.Recent) "recent" else "filter" }
                 if (here != before) {
-                    if (here == "recent") SuggestionHeader("最近の検索", action = "履歴を消去" to onClearRecent) else SuggestionHeader("絞り込み")
+                    if (here == "recent") SuggestionHeader(stringResource(R.string.search_pane_recent_searches), action = stringResource(R.string.search_pane_clear_history) to onClearRecent) else SuggestionHeader(stringResource(R.string.search_pane_filters))
                 }
                 SuggestionRow(store, row, onClick = { onSearch(row.toParams()) }, onRemove = (row as? Suggestion.Recent)?.let { { onRemoveRecent(it.params) } })
             }
         } else {
             if (conversations.isNotEmpty()) {
-                item(key = "h:conversations") { SuggestionHeader("会話") }
+                item(key = "h:conversations") { SuggestionHeader(stringResource(R.string.common_conversation)) }
                 items(conversations, key = { "c:" + it.id }) { channel -> JumpConversationRow(store, channel) { jump.onOpenConversation(channel.id) } }
             }
             if (people.isNotEmpty()) {
-                item(key = "h:people") { SuggestionHeader("人") }
+                item(key = "h:people") { SuggestionHeader(stringResource(R.string.search_pane_people)) }
                 items(people, key = { "u:" + it.id }) { user ->
                     val mine = user.id == meId
                     ListItem(
-                        headlineContent = { Text(user.displayName + if (mine) " (自分)" else "", fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        headlineContent = { Text(user.displayName + if (mine) stringResource(R.string.common_you_2) else "", fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         supportingContent = { Text(if (mine) MainTabs.SELF_NOTES_HINT else "@" + user.username, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingContent = { Avatar(user.id, user.displayName, size = 28.dp, presence = store.presenceOf(user.id)) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = "DM を開く") { jump.onOpenPerson(user.id) },
+                        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.search_pane_open_dm)) { jump.onOpenPerson(user.id) },
                     )
                 }
             }
@@ -464,7 +467,7 @@ private fun ColumnScope.JumpList(
                             buildAnnotatedString {
                                 append("\"")
                                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(query) }
-                                append("\" をメッセージ検索")
+                                append(stringResource(R.string.search_pane_search_messages))
                             },
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
@@ -487,7 +490,7 @@ private fun JumpConversationRow(store: Store, channel: ChannelState, onClick: ()
     val title = channelTitle(channel, store).removePrefix("#")
     ListItem(
         headlineContent = { Text(title, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        supportingContent = if (channel.isMember) null else { { Text("未参加 (プレビュー)", color = MaterialTheme.colorScheme.onSurfaceVariant) } },
+        supportingContent = if (channel.isMember) null else { { Text(stringResource(R.string.search_pane_not_joined_preview), color = MaterialTheme.colorScheme.onSurfaceVariant) } },
         leadingContent = {
             when {
                 !channel.channel.isDm -> Icon(conversationIcon(channel), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -495,7 +498,7 @@ private fun JumpConversationRow(store: Store, channel: ChannelState, onClick: ()
                 else -> (others.firstOrNull() ?: meId ?: channel.id).let { id -> Avatar(id, store.users[id]?.displayName ?: title, size = 28.dp, presence = store.presenceOf(id)) }
             }
         },
-        trailingContent = if (unread) { { Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape).semantics { contentDescription = "未読" }) } } else null,
+        trailingContent = if (unread) { { Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape).semantics { contentDescription = L10n.str(R.string.common_unread) }) } } else null,
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     )
@@ -523,10 +526,10 @@ private fun ColumnScope.SuggestionList(
             val here = group(row)
             if (here != group(rows.getOrNull(index - 1))) {
                 when (here) {
-                    "recent" -> SuggestionHeader("最近の検索", action = if (text.isBlank()) ("履歴を消去" to onClearRecent) else null)
-                    "filter" -> SuggestionHeader("絞り込み")
-                    "person" -> SuggestionHeader("人 (この人の投稿)")
-                    "conversation" -> SuggestionHeader("チャンネル (この中を検索)")
+                    "recent" -> SuggestionHeader(stringResource(R.string.search_pane_recent_searches), action = if (text.isBlank()) (stringResource(R.string.search_pane_clear_history) to onClearRecent) else null)
+                    "filter" -> SuggestionHeader(stringResource(R.string.search_pane_filters))
+                    "person" -> SuggestionHeader(stringResource(R.string.search_pane_people_their_posts))
+                    "conversation" -> SuggestionHeader(stringResource(R.string.search_pane_channels_search_within))
                 }
             }
             SuggestionRow(store, row, onClick = { onPick(row.toParams()) }, onRemove = (row as? Suggestion.Recent)?.let { { onRemoveRecent(it.params) } })
@@ -557,18 +560,18 @@ private fun SuggestionRow(store: Store, row: Suggestion, onClick: () -> Unit, on
             when (row) {
                 is Suggestion.Words -> Text(
                     buildAnnotatedString {
-                        append("「")
+                        append(stringResource(R.string.search_pane_search_for))
                         withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(row.q) }
-                        append("」を検索")
+                        append(stringResource(R.string.search_pane_fmt))
                     },
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 is Suggestion.Recent -> Text(describeSearch(store, row.params), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 is Suggestion.Person -> Text(row.user.displayName, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 is Suggestion.Conversation -> Text(channelTitle(row.channel, store).removePrefix("#"), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                is Suggestion.Kind -> Text((Search.HAS_LABELS[row.flag] ?: row.flag) + "のメッセージ")
-                Suggestion.Thread -> Text("スレッド内のメッセージ")
-                Suggestion.Times -> Text("Times の投稿 (is:times)")
+                is Suggestion.Kind -> Text((Search.HAS_LABELS[row.flag] ?: row.flag) + stringResource(R.string.search_pane_messages))
+                Suggestion.Thread -> Text(stringResource(R.string.search_pane_messages_in_threads))
+                Suggestion.Times -> Text(stringResource(R.string.search_pane_times_posts_is_times))
             }
         },
         supportingContent = (row as? Suggestion.Person)?.let { { Text("@" + it.user.username, color = muted) } },
@@ -583,7 +586,7 @@ private fun SuggestionRow(store: Store, row: Suggestion, onClick: () -> Unit, on
                 Suggestion.Times -> Icon(Icons.Default.DynamicFeed, contentDescription = null, tint = muted)
             }
         },
-        trailingContent = onRemove?.let { remove -> { IconButton(onClick = remove) { Icon(Icons.Default.Close, contentDescription = "履歴から消す", tint = muted) } } },
+        trailingContent = onRemove?.let { remove -> { IconButton(onClick = remove) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.search_pane_remove_from_history), tint = muted) } } },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     )
@@ -617,7 +620,7 @@ fun BackToSearchStrip(description: String, onClick: () -> Unit) {
     ) {
         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
-        Text("検索結果に戻る", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
+        Text(stringResource(R.string.search_pane_back_to_results), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
         Spacer(Modifier.width(8.dp))
         Text(description, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -654,9 +657,9 @@ fun SearchResultsPane(
 ) {
     Column(Modifier.fillMaxSize()) {
         PrimaryTabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { onTabChange(0) }, text = { Text("メッセージ") })
-            Tab(selected = tab == SEARCH_TAB_FILES, onClick = { onTabChange(SEARCH_TAB_FILES) }, text = { Text("ファイル") })
-            Tab(selected = tab == SEARCH_TAB_CANVASES, onClick = { onTabChange(SEARCH_TAB_CANVASES) }, text = { Text("キャンバス") })
+            Tab(selected = tab == 0, onClick = { onTabChange(0) }, text = { Text(L10n.str(R.string.common_message)) })
+            Tab(selected = tab == SEARCH_TAB_FILES, onClick = { onTabChange(SEARCH_TAB_FILES) }, text = { Text(L10n.str(R.string.common_files)) })
+            Tab(selected = tab == SEARCH_TAB_CANVASES, onClick = { onTabChange(SEARCH_TAB_CANVASES) }, text = { Text(L10n.str(R.string.common_canvas)) })
         }
         FilterRow(controller, version, params, onChange, tab)
         when (tab) {
@@ -695,7 +698,7 @@ private fun CanvasResults(
     }
     if (Search.canvasEmpty(params)) {
         Text(
-            "語を入れると、キャンバスの題名と本文から探します。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            stringResource(R.string.search_pane_type_words_to_search_canvas_titles), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
         )
         return
@@ -714,7 +717,7 @@ private fun CanvasResults(
         ) {
             Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("キャンバスには使えない条件があります: " + results.canvasUnresolved.joinToString(" "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+            Text(stringResource(R.string.search_pane_some_filters_dont_apply_to_canvases) + results.canvasUnresolved.joinToString(" "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
         }
     }
     LazyColumn(Modifier.fillMaxSize(), state = state) {
@@ -722,9 +725,9 @@ private fun CanvasResults(
             results.canvasLoaded && results.canvasHits.isEmpty() -> item(key = "empty") {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.SearchOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
-                    Text("キャンバスは見つかりませんでした", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+                    Text(stringResource(R.string.search_pane_no_canvases_found), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
                     Text(
-                        "自分が参加している会話のキャンバスを、題名と本文から探します。", style = MaterialTheme.typography.bodyMedium,
+                        stringResource(R.string.search_pane_searches_the_titles_and_text_of), style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp),
                     )
                 }
@@ -739,13 +742,13 @@ private fun CanvasResults(
                 Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (results.canvasHits.isEmpty()) "検索しています…" else "続きを読み込んでいます…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (results.canvasHits.isEmpty()) stringResource(R.string.search_pane_searching) else stringResource(R.string.search_pane_loading_more), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else if (results.canvasFailed) {
             item(key = "retry") {
                 Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    OutlinedButton(onClick = onRetry) { Text("もう一度読み込む") }
+                    OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.common_load_again)) }
                 }
             }
         }
@@ -757,14 +760,14 @@ private fun CanvasResultRow(controller: AppController, version: Int, hit: Canvas
     val store = controller.store
     val canvas = hit.canvas
     val channel = store.channel(canvas.channelId)
-    val who = store.users[canvas.updatedBy]?.displayName ?: "メンバー"
+    val who = store.users[canvas.updatedBy]?.displayName ?: stringResource(R.string.common_member)
     val progress = CanvasText.taskProgress(canvas.taskTotal, canvas.taskDone)
     val snippet = remember(hit.snippet, version) { CanvasText.readableSnippet(Mentions.toNames(hit.snippet, store.users, store.groups)) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(Modifier.fillMaxWidth().clickable(onClickLabel = "キャンバスを開く", onClick = onOpen).padding(horizontal = 16.dp, vertical = 10.dp)) {
+    Column(Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.common_open_canvas), onClick = onOpen).padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                (channel?.let { channelTitle(it, store) } ?: "会話") + " · " + who,
+                (channel?.let { channelTitle(it, store) } ?: stringResource(R.string.common_conversation)) + " · " + who,
                 style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = muted,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
@@ -828,7 +831,7 @@ private fun MessageResults(
         ) {
             Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("見つからない条件があります: " + results.unresolved.joinToString(" "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+            Text(stringResource(R.string.search_pane_some_filters_matched_nothing) + results.unresolved.joinToString(" "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
         }
     }
     LazyColumn(Modifier.fillMaxSize(), state = listState) {
@@ -850,13 +853,13 @@ private fun MessageResults(
                 Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (results.hits.isEmpty()) "検索しています…" else "続きを読み込んでいます…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (results.hits.isEmpty()) stringResource(R.string.search_pane_searching) else stringResource(R.string.search_pane_loading_more), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else if (results.failed) {
             item(key = "retry") {
                 Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    OutlinedButton(onClick = onRetry) { Text("もう一度読み込む") }
+                    OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.common_load_again)) }
                 }
             }
         }
@@ -870,10 +873,10 @@ private fun SortMenu(sort: String, enabled: Boolean, onChange: (String) -> Unit)
         TextButton(onClick = { open = true }, enabled = enabled) {
             Icon(Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(4.dp))
-            Text(if (sort == Search.RELEVANCE) "関連度順" else "新しい順")
+            Text(if (sort == Search.RELEVANCE) stringResource(R.string.search_pane_most_relevant) else stringResource(R.string.search_pane_newest))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            listOf(Search.RELEVANCE to "関連度順", Search.NEWEST to "新しい順").forEach { (value, label) ->
+            listOf(Search.RELEVANCE to stringResource(R.string.search_pane_most_relevant), Search.NEWEST to stringResource(R.string.search_pane_newest)).forEach { (value, label) ->
                 DropdownMenuItem(
                     text = { Text(label) },
                     leadingIcon = { if (sort == value) Icon(Icons.Default.Check, contentDescription = null) else Spacer(Modifier.size(24.dp)) },
@@ -888,12 +891,12 @@ private fun SortMenu(sort: String, enabled: Boolean, onChange: (String) -> Unit)
 private fun EmptyResults(filtered: Boolean, onClear: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(Icons.Default.SearchOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
-        Text("見つかりませんでした", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+        Text(stringResource(R.string.search_pane_nothing_found), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
         Text(
-            if (filtered) "条件を減らすと見つかるかもしれません。" else "別の言葉や、より短い言葉で試してください。",
+            if (filtered) stringResource(R.string.search_pane_try_fewer_filters) else stringResource(R.string.search_pane_try_different_or_shorter_words),
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp),
         )
-        if (filtered) Button(onClick = onClear, modifier = Modifier.padding(top = 16.dp)) { Text("条件をクリアして検索") }
+        if (filtered) Button(onClick = onClear, modifier = Modifier.padding(top = 16.dp)) { Text(stringResource(R.string.search_pane_clear_filters_and_search)) }
     }
 }
 
@@ -912,7 +915,7 @@ private fun ResultRow(
     // attachments are listed below it by name, so no 「画像を送信しました」 stands in for an empty body.
     val text = remember(message.id, message.body, version) { messageLine(message.body, emptyList(), store.users, store.groups, maxLength = 400) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(Modifier.fillMaxWidth().clickable(onClickLabel = if (message.parentId != null) "スレッドで表示" else "会話で表示", onClick = onOpen).padding(horizontal = 16.dp, vertical = 10.dp)) {
+    Column(Modifier.fillMaxWidth().clickable(onClickLabel = if (message.parentId != null) stringResource(R.string.common_view_in_thread) else stringResource(R.string.common_view_in_conversation), onClick = onOpen).padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Icon(conversationIcon(channel), contentDescription = null, tint = muted, modifier = Modifier.size(14.dp))
@@ -925,7 +928,7 @@ private fun ResultRow(
                 if (message.parentId != null) {
                     Spacer(Modifier.width(6.dp))
                     Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-                        Text("スレッドの返信", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
+                        Text(stringResource(R.string.search_pane_thread_reply), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
                     }
                 }
             }
@@ -950,7 +953,7 @@ private fun ResultRow(
                         Text(highlighted(attachment.filename, keywords), style = MaterialTheme.typography.labelMedium, color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                if (message.attachments.size > 3) Text("ほか ${message.attachments.size - 3} 件のファイル", style = MaterialTheme.typography.labelSmall, color = muted)
+                if (message.attachments.size > 3) Text(stringResource(R.string.search_pane_more_files, message.attachments.size - 3), style = MaterialTheme.typography.labelSmall, color = muted)
             }
         }
     }
@@ -973,8 +976,8 @@ private fun FileResults(controller: AppController, results: SearchResults, state
             files.isEmpty() -> item(key = "empty") {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.SearchOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
-                    Text("ファイルは見つかりませんでした", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
-                    Text("ファイル名で探します。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                    Text(stringResource(R.string.search_pane_no_files_found), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+                    Text(stringResource(R.string.search_pane_searches_file_names), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                 }
             }
             else -> items(files, key = { it.attachment.id }) { item ->
@@ -1001,7 +1004,7 @@ private fun FilterRow(controller: AppController, version: Int, params: SearchPar
     val filesOnly = tab == SEARCH_TAB_FILES
     // M58: a canvas's person is whoever made it or changed it last; its kinds and 「スレッド内」 do not apply.
     val canvases = tab == SEARCH_TAB_CANVASES
-    val personLabel = if (canvases) "作成・更新した人" else "送信者"
+    val personLabel = if (canvases) stringResource(R.string.search_pane_created_or_updated_by) else stringResource(R.string.search_pane_from)
     // Per tab: the row keeps its place by the first chip's key, which would hide 送信者 after the files tab.
     key(tab) { LazyRow(
         Modifier.fillMaxWidth(),
@@ -1020,7 +1023,7 @@ private fun FilterRow(controller: AppController, version: Int, params: SearchPar
         }
         item(key = "in") {
             FilterPill(
-                label = if (params.channelId != null) channel?.let { channelTitle(it, store) } ?: "?" else "チャンネル",
+                label = if (params.channelId != null) channel?.let { channelTitle(it, store) } ?: "?" else stringResource(R.string.common_channels),
                 icon = Icons.Default.Tag,
                 selected = params.channelId != null,
                 onClick = { picker = "in" },
@@ -1035,7 +1038,7 @@ private fun FilterRow(controller: AppController, version: Int, params: SearchPar
                 FilterChip(
                     selected = params.isThread,
                     onClick = { onChange(params.copy(isThread = !params.isThread)) },
-                    label = { Text("スレッド内") },
+                    label = { Text(stringResource(R.string.common_in_threads)) },
                     leadingIcon = { Icon(if (params.isThread) Icons.Default.Check else Icons.Default.Forum, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
                 )
             }
@@ -1055,7 +1058,7 @@ private fun FilterRow(controller: AppController, version: Int, params: SearchPar
             else -> Search.hasFilters(params)
         }
         if (clearable) item(key = "clear") {
-            TextButton(onClick = { onChange(Search.cleared(params)) }) { Text("条件をクリア") }
+            TextButton(onClick = { onChange(Search.cleared(params)) }) { Text(stringResource(R.string.search_pane_clear_filters)) }
         }
     } }
     when (picker) {
@@ -1080,7 +1083,7 @@ private fun FilterPill(label: String, icon: ImageVector, selected: Boolean, onCl
         leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
         trailingIcon = {
             if (selected) {
-                Icon(Icons.Default.Close, contentDescription = "この条件を外す", modifier = Modifier.size(FilterChipDefaults.IconSize).clickable(onClick = onClear))
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.search_pane_remove_this_filter), modifier = Modifier.size(FilterChipDefaults.IconSize).clickable(onClick = onClear))
             } else {
                 Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize))
             }
@@ -1094,7 +1097,7 @@ private fun DateFilter(params: SearchParams, onChange: (SearchParams) -> Unit) {
     var custom by remember { mutableStateOf(false) }
     val label = Search.dateLabel(params.date)
     Box {
-        FilterPill(label = label ?: "期間", icon = Icons.Default.DateRange, selected = params.date != null, onClick = { menu = true }, onClear = { onChange(params.copy(date = null)) })
+        FilterPill(label = label ?: stringResource(R.string.search_pane_date), icon = Icons.Default.DateRange, selected = params.date != null, onClick = { menu = true }, onClear = { onChange(params.copy(date = null)) })
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             Search.DATE_PRESETS.forEach { (preset, text) ->
                 DropdownMenuItem(
@@ -1105,7 +1108,7 @@ private fun DateFilter(params: SearchParams, onChange: (SearchParams) -> Unit) {
             }
             HorizontalDivider()
             DropdownMenuItem(
-                text = { Text("日付を指定…") },
+                text = { Text(stringResource(R.string.search_pane_pick_dates)) },
                 leadingIcon = { if (params.date != null && params.date.preset == null) Icon(Icons.Default.Check, contentDescription = null) else Spacer(Modifier.size(24.dp)) },
                 onClick = { menu = false; custom = true },
             )
@@ -1142,13 +1145,13 @@ private fun DateRangeDialog(current: SearchDate?, onDismiss: () -> Unit, onPick:
                     val from = day(state.selectedStartDateMillis)
                     onPick(from, day(state.selectedEndDateMillis) ?: from)
                 },
-            ) { Text("この期間で絞り込む") }
+            ) { Text(stringResource(R.string.search_pane_apply_these_dates)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     ) {
         DateRangePicker(
             state = state,
-            title = { Text("期間を指定", modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp)) },
+            title = { Text(stringResource(R.string.search_pane_choose_dates), modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp)) },
             modifier = Modifier.weight(1f),
         )
     }
@@ -1160,7 +1163,7 @@ private fun KindFilter(params: SearchParams, onChange: (SearchParams) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Box {
         FilterPill(
-            label = if (params.has.isEmpty()) "種類" else params.has.joinToString("・") { Search.HAS_LABELS[it] ?: it },
+            label = if (params.has.isEmpty()) stringResource(R.string.common_type) else params.has.joinToString(stringResource(R.string.common_fmt_5)) { Search.HAS_LABELS[it] ?: it },
             icon = Icons.Default.AttachFile,
             selected = params.has.isNotEmpty(),
             onClick = { menu = true },
@@ -1194,10 +1197,10 @@ private fun PersonPicker(controller: AppController, version: Int, selected: Stri
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("送信者") },
+        title = { Text(stringResource(R.string.search_pane_from)) },
         text = {
             Column {
-                OutlinedTextField(query, { query = it }, placeholder = { Text("名前で絞り込む") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(query, { query = it }, placeholder = { Text(stringResource(R.string.common_filter_by_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 LazyColumn(Modifier.heightIn(max = 380.dp).padding(top = 8.dp)) {
                     items(people, key = { it.id }) { user ->
                         Row(Modifier.fillMaxWidth().clickable { onPick(user.id) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1206,14 +1209,14 @@ private fun PersonPicker(controller: AppController, version: Int, selected: Stri
                             Text(user.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                             Spacer(Modifier.width(6.dp))
                             Text("@" + user.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.weight(1f))
-                            if (user.id == selected) Icon(Icons.Default.Check, contentDescription = "選択中", tint = MaterialTheme.colorScheme.primary)
+                            if (user.id == selected) Icon(Icons.Default.Check, contentDescription = stringResource(R.string.search_pane_selected), tint = MaterialTheme.colorScheme.primary)
                         }
                     }
-                    if (people.isEmpty()) item { Text("見つかりません", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp)) }
+                    if (people.isEmpty()) item { Text(stringResource(R.string.common_nothing_found), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp)) }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }
 
@@ -1231,24 +1234,24 @@ private fun ConversationPicker(controller: AppController, version: Int, selected
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("チャンネル") },
+        title = { Text(stringResource(R.string.common_channels)) },
         text = {
             Column {
-                OutlinedTextField(query, { query = it }, placeholder = { Text("会話の名前で絞り込む") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(query, { query = it }, placeholder = { Text(stringResource(R.string.search_pane_filter_by_conversation_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 LazyColumn(Modifier.heightIn(max = 380.dp).padding(top = 8.dp)) {
                     items(list, key = { it.id }) { channel ->
                         Row(Modifier.fillMaxWidth().clickable { onPick(channel.id) }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(conversationIcon(channel), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(10.dp))
                             Text(channelTitle(channel, store).removePrefix("#"), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            if (channel.id == selected) Icon(Icons.Default.Check, contentDescription = "選択中", tint = MaterialTheme.colorScheme.primary)
+                            if (channel.id == selected) Icon(Icons.Default.Check, contentDescription = stringResource(R.string.search_pane_selected), tint = MaterialTheme.colorScheme.primary)
                         }
                     }
-                    if (list.isEmpty()) item { Text("見つかりません", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp)) }
+                    if (list.isEmpty()) item { Text(stringResource(R.string.common_nothing_found), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp)) }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }
 

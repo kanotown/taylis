@@ -44,34 +44,37 @@ import jp.chikuwachat.android.sync.AiSummaryPhase
 import jp.chikuwachat.android.sync.AiSummaryRequest
 import jp.chikuwachat.android.sync.AiSummaryState
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** M66 (docs/AI.md §4, §6): the words of the AI screens, kept apart from the views for the unit tests. */
 object AiTexts {
     /** The three choices of a conversation's 「要約」, in order. */
     fun choices(channelId: String): List<Pair<String, AiSummaryRequest>> = listOf(
-        "未読を要約" to AiSummaryRequest(channelId, "unread"),
-        "直近 1 日を要約" to AiSummaryRequest(channelId, "recent", days = 1),
-        "直近 7 日を要約" to AiSummaryRequest(channelId, "recent", days = 7),
+        L10n.str(R.string.ai_views_summarize_unread) to AiSummaryRequest(channelId, "unread"),
+        L10n.str(R.string.ai_views_summarize_the_last_day) to AiSummaryRequest(channelId, "recent", days = 1),
+        L10n.str(R.string.ai_views_summarize_the_last_7_days) to AiSummaryRequest(channelId, "recent", days = 7),
     )
 
     fun threadRequest(channelId: String, parentId: String) = AiSummaryRequest(channelId, "thread", threadId = parentId)
 
     fun title(request: AiSummaryRequest): String = when (request.scope) {
-        "unread" -> "未読の要約"
-        "thread" -> "スレッドの要約"
-        "recent" -> "直近 ${request.days ?: 1} 日の要約"
-        else -> "要約"
+        "unread" -> L10n.str(R.string.ai_views_summary_of_unread)
+        "thread" -> L10n.str(R.string.ai_views_thread_summary)
+        "recent" -> L10n.str(R.string.ai_views_summary_of_the_last_days, request.days ?: 1)
+        else -> L10n.str(R.string.common_summary)
     }
 
     /** While the sheet waits: asked, queued at the server, or being written. */
     fun progress(state: AiSummaryState): String? = when (state.phase) {
-        AiSummaryPhase.REQUESTING -> "依頼しています…"
-        AiSummaryPhase.RUNNING -> if (state.run?.status == "running") "要約を作成しています…" else "順番を待っています…"
+        AiSummaryPhase.REQUESTING -> L10n.str(R.string.ai_views_requesting)
+        AiSummaryPhase.RUNNING -> if (state.run?.status == "running") L10n.str(R.string.ai_views_writing_the_summary) else L10n.str(R.string.ai_views_waiting_in_line)
         else -> null
     }
 
     /** §2.3: the oldest messages beyond what fits were left out. */
-    fun omittedNote(count: Int): String? = if (count > 0) "古い $count 件は省きました" else null
+    fun omittedNote(count: Int): String? = if (count > 0) L10n.str(R.string.ai_views_left_out_older_messages, count) else null
 
     /** §4: shown on a channel's details while an AI bot is a member; null otherwise. */
     fun memberNotice(agents: List<AiAgentPublic>, memberIds: Collection<String>): String? {
@@ -82,11 +85,11 @@ object AiTexts {
         val where = listOfNotNull(
             "Anthropic".takeIf { present.any { !it.model.startsWith("gpt-") } },
             "OpenAI".takeIf { present.any { it.model.startsWith("gpt-") } },
-        ).joinToString(" と ")
+        ).joinToString(L10n.str(R.string.ai_views_and))
         return "AI (${names.joinToString("、")}) が参加しています。メンションしたときと要約のときに、会話の一部が $where の API に送られます"
     }
 
-    const val PRIVATE_NOTE = "要約はあなたにだけ表示されます"
+    val PRIVATE_NOTE: String get() = L10n.str(R.string.ai_views_only_you_can_see_this_summary)
 
     private fun providerLabel(provider: String): String = when (provider) {
         "openai" -> "OpenAI"
@@ -100,10 +103,10 @@ object AiTexts {
      */
     fun targetLine(target: AiSummaryTargetOut?): String? {
         target ?: return null
-        if (!target.available) return target.reason?.let { ErrorMessages.byCode[it] } ?: "今は要約できません"
+        if (!target.available) return target.reason?.let { ErrorMessages.byCode[it] } ?: L10n.str(R.string.ai_views_cant_summarize_right_now)
         val provider = target.provider?.takeIf { it.isNotBlank() } ?: return null
         val name = target.agentName?.takeIf { it.isNotBlank() }
-        return if (name != null) "要約は $name (${providerLabel(provider)}) に送られます" else "要約は ${providerLabel(provider)} に送られます"
+        return if (name != null) L10n.str(R.string.ai_views_the_summary_is_sent_to, name, providerLabel(provider)) else L10n.str(R.string.ai_views_the_summary_is_sent_to_2, providerLabel(provider))
     }
 
     /** The choices are disabled while the server says no; an unknown target (an older server) leaves them as before. */
@@ -119,20 +122,20 @@ object AiTexts {
 
     // --- 「AI に聞く」 (M71, docs/AI.md §13) ----------------------------------------------------------------------
 
-    const val ASK_NOTE = "この答えはあなたにだけ表示されます。AI が書いた答えです。間違いがあるかもしれません。"
+    val ASK_NOTE: String get() = L10n.str(R.string.ai_views_only_you_can_see_this_answer)
 
     /** The line beside 「AI に聞く」: where the question goes, or why it cannot be asked (null: nothing to say). */
     fun askTargetLine(target: AiAskTargetOut?): String? {
         target ?: return null
         if (!target.available) return when (val reason = target.reason.orEmpty()) {
-            "ai_private_not_allowed" -> "この会話のボットは非公開の会話を読めないため、ここでは聞けません"
-            "ai_budget_exceeded" -> "今月の AI の利用上限に達しました"
-            else -> ErrorMessages.byCode[reason] ?: AiHub.texts[reason] ?: "今は AI に聞けません"
+            "ai_private_not_allowed" -> L10n.str(R.string.ai_views_this_conversations_bot_cant_read_private)
+            "ai_budget_exceeded" -> L10n.str(R.string.ai_views_this_months_ai_usage_limit_has)
+            else -> ErrorMessages.byCode[reason] ?: AiHub.texts[reason] ?: L10n.str(R.string.ai_views_cant_ask_ai_right_now)
         }
         val provider = target.provider?.takeIf { it.isNotBlank() } ?: return null
         val name = target.agentName?.takeIf { it.isNotBlank() }
         val where = if (name != null) "$name (${providerLabel(provider)})" else providerLabel(provider)
-        return "質問と見つかったメッセージは $where に送られます" // AI.md §13.6, the same words on the three clients
+        return L10n.str(R.string.ai_views_your_question_and_the_messages_found, where) // AI.md §13.6, the same words on the three clients
     }
 
     /** Too long for the server (1〜200 字, counted in characters): not asked (the entry stays hidden, as on the web). */
@@ -140,13 +143,13 @@ object AiTexts {
 
     /** While the question waits: the server searches (asked, queued), then the model writes. */
     fun askProgress(state: AiAskState): String? = when (state.phase) {
-        AiSummaryPhase.REQUESTING -> "メッセージを探しています…"
-        AiSummaryPhase.RUNNING -> if (state.run?.status == "running") "答えを書いています…" else "メッセージを探しています…"
+        AiSummaryPhase.REQUESTING -> L10n.str(R.string.ai_views_searching_messages)
+        AiSummaryPhase.RUNNING -> if (state.run?.status == "running") L10n.str(R.string.ai_views_writing_the_answer) else L10n.str(R.string.ai_views_searching_messages)
         else -> null
     }
 
     /** §13.2 5: the private conversations' hits left out for a bot without allow_private. */
-    fun askOmittedNote(count: Int): String? = if (count > 0) "非公開の会話の $count 件は、このボットに送れないため除きました" else null
+    fun askOmittedNote(count: Int): String? = if (count > 0) L10n.str(R.string.ai_views_left_out_messages_from_private, count) else null
 
     /** An answer's citations: [3], [1][4], [1, 4], [1、4] (not a Markdown link's label already). */
     private val CITATION = Regex("""\[(\d+(?:\s*[,、]\s*\d+)*)](?!\()""")
@@ -171,13 +174,13 @@ object AiTexts {
     /** A past question that has no answer to show (yet): said beside its date in the history. */
     fun historyStatus(run: AiRunOut): String? = when (run.status) {
         "done" -> null
-        "failed" -> "失敗"
-        else -> "作成中"
+        "failed" -> L10n.str(R.string.ai_views_failed)
+        else -> L10n.str(R.string.ai_views_in_progress)
     }
 
     /** A cited message's line: 「送り手 · 会話 · スレッド · 日時」. */
     fun sourceLine(sender: String, conversation: String, reply: Boolean, time: String): String =
-        listOfNotNull(sender, conversation, "スレッド".takeIf { reply }, time.takeIf { it.isNotBlank() }).joinToString(" · ")
+        listOfNotNull(sender, conversation, L10n.str(R.string.common_thread).takeIf { reply }, time.takeIf { it.isNotBlank() }).joinToString(" · ")
 }
 
 /** 「AI」 beside an AI bot's name (instead of 「BOT」) and on its mention candidate. */
@@ -219,7 +222,7 @@ private fun AiSummaryChooser(controller: AppController, channelId: String) {
     val disabled = AiTexts.choicesDisabled(target)
     ModalBottomSheet(onDismissRequest = { controller.aiSummaryChooser = null }, sheetState = sheet) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) {
-            Text("要約", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+            Text(stringResource(R.string.common_summary), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             AiTexts.choices(channelId).forEach { (label, request) ->
                 Text(
                     label,
@@ -280,7 +283,7 @@ private fun AiSummarySheet(controller: AppController, state: AiSummaryState) {
                         }
                         SelectionContainer {
                             MessageBody(
-                                output?.takeIf { it.isNotBlank() } ?: "(要約する内容がありませんでした)", store.users, groups = store.groups,
+                                output?.takeIf { it.isNotBlank() } ?: stringResource(R.string.ai_views_nothing_to_summarize), store.users, groups = store.groups,
                                 internalBase = controller.serverBase,
                                 onOpenMessage = { id -> close(); scope.launch { controller.openPermalink(id) } },
                                 customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations,
@@ -295,8 +298,8 @@ private fun AiSummarySheet(controller: AppController, state: AiSummaryState) {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
             }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
-                if (state.phase == AiSummaryPhase.FAILED) TextButton(onClick = { controller.retrySummary() }) { Text("もう一度") }
-                TextButton(onClick = ::close) { Text("閉じる") }
+                if (state.phase == AiSummaryPhase.FAILED) TextButton(onClick = { controller.retrySummary() }) { Text(stringResource(R.string.common_try_again)) }
+                TextButton(onClick = ::close) { Text(stringResource(R.string.common_close)) }
             }
         }
     }

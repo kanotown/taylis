@@ -2,6 +2,8 @@ package jp.chikuwachat.android.ui
 
 import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.UserPublic
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * The composer shows `@username`; the wire format is `<@uuid>` / `<!channel>` (DATA_MODEL.md).
@@ -35,8 +37,8 @@ object Mentions {
 
     /** Mention tokens as display names, for notifications and previews. */
     fun toNames(text: String, users: Map<String, UserPublic>, groups: Map<String, GroupOut> = emptyMap()): String {
-        val people = USER_TOKEN.replace(text) { m -> users[m.groupValues[1]]?.let { "@" + it.displayName } ?: "@メンバー" }
-        val teams = GROUP_TOKEN.replace(people) { m -> "@" + (groups[m.groupValues[1]]?.name ?: "グループ") }
+        val people = USER_TOKEN.replace(text) { m -> users[m.groupValues[1]]?.let { "@" + it.displayName } ?: L10n.str(R.string.mentions_member) }
+        val teams = GROUP_TOKEN.replace(people) { m -> "@" + (groups[m.groupValues[1]]?.name ?: L10n.str(R.string.common_group)) }
         return ALL_TOKEN.replace(teams) { "@" + it.groupValues[1] }
     }
 
@@ -58,8 +60,8 @@ object Mentions {
             .map { Candidate(it.username, it.displayName, ai = it.id in aiBotIds) }
         val teams = groups.filter { it.name.lowercase().startsWith(q) || (it.description ?: "").lowercase().contains(q) }
             .sortedBy { it.name }
-            .map { Candidate(it.name, "グループ · ${it.memberIds.size} 人" + (it.description?.let { d -> " · $d" } ?: ""), kind = "group") }
-        val special = listOf(Candidate("channel", "全員に通知", kind = "all"), Candidate("here", "全員に通知", kind = "all")).filter { it.username.startsWith(q) }
+            .map { Candidate(it.name, L10n.str(R.string.mentions_group_people, it.memberIds.size) + (it.description?.let { d -> " · $d" } ?: ""), kind = "group") }
+        val special = listOf(Candidate("channel", L10n.str(R.string.mentions_notify_everyone), kind = "all"), Candidate("here", L10n.str(R.string.mentions_notify_everyone), kind = "all")).filter { it.username.startsWith(q) }
         return (people + teams + special).take(limit)
     }
 

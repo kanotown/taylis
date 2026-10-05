@@ -60,6 +60,9 @@ import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.ThreadEntry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /**
  * M39: what an activity row says (MOBILE_UI.md §6.4), as pure functions (tested in ActivityTest). `name` gives a user's
@@ -68,20 +71,20 @@ import kotlinx.coroutines.launch
 object ActivityText {
     /** Who did it: 「佐藤」, or 「佐藤 ほか 2 人」 when several reacted. */
     fun actors(ids: List<String>, name: (String) -> String?): String {
-        val first = ids.firstOrNull()?.let(name) ?: "誰か"
-        return if (ids.size > 1) "$first ほか ${ids.size - 1} 人" else first
+        val first = ids.firstOrNull()?.let(name) ?: L10n.str(R.string.activity_screen_someone)
+        return if (ids.size > 1) L10n.str(R.string.activity_screen_and_others, first, ids.size - 1) else first
     }
 
     /** The headline before a reaction's emoji (which the row draws, a custom one as its picture). */
     fun lead(item: ActivityItem, name: (String) -> String?): String {
         // 「佐藤 が」 but 「佐藤 ほか 2 人が」 (MOBILE_UI.md §6.4).
         // M112: a reservation notice — the pool, and whether it is a to-do (an operator's) or news of my own reservation.
-        item.reservation?.let { return it.poolName.ifEmpty { "予約" } + if (it.operator) " · 担当者の作業" else " · 予約" }
+        item.reservation?.let { return it.poolName.ifEmpty { L10n.str(R.string.common_reservations) } + if (it.operator) L10n.str(R.string.activity_screen_operator_task) else L10n.str(R.string.activity_screen_reservation) }
         val who = actors(item.actorIds, name) + if (item.actorIds.size > 1) "" else " "
         return when (item.kind) {
-            "mention" -> "${who}がメンション"
-            "thread_reply" -> "${who}がスレッドに返信"
-            "reaction" -> "${who}が"
+            "mention" -> L10n.str(R.string.activity_screen_mentioned_you, who)
+            "thread_reply" -> L10n.str(R.string.activity_screen_replied_in_a_thread, who)
+            "reaction" -> L10n.str(R.string.activity_screen_reacted, who)
             "canvas_mention" -> "${who}が「${item.canvas?.title ?: "キャンバス"}」であなたをメンションしました"
             else -> who.trim()
         }
@@ -93,13 +96,13 @@ object ActivityText {
     /** The second line: the conversation (「#一般」 / a DM's names), 「#一般 のキャンバス」 for a canvas item (M77). */
     fun where(item: ActivityItem, conversation: String): String = when {
         conversation.isEmpty() -> ""
-        item.kind == "canvas_mention" -> "$conversation のキャンバス"
+        item.kind == "canvas_mention" -> L10n.str(R.string.activity_screen_canvas_in, conversation)
         else -> conversation
     }
 
     /** TalkBack for a canvas row (CANVAS.md §20.5): 「未読 佐藤 が「題名」であなたをメンションしました、#一般」. */
     fun spokenCanvas(item: ActivityItem, name: (String) -> String?, conversation: String, unread: Boolean): String =
-        (if (unread) "未読 " else "") + lead(item, name) + (if (conversation.isNotEmpty()) "、$conversation" else "")
+        (if (unread) L10n.str(R.string.activity_screen_unread) else "") + lead(item, name) + (if (conversation.isNotEmpty()) L10n.str(R.string.common_fmt, conversation) else "")
 
     /** Where a tapped row goes: its message (a reply in its thread), or a canvas item's canvas (M77). */
     fun target(item: ActivityItem): ActivityTarget? {
@@ -317,11 +320,11 @@ fun ActivityScreen(
                 when {
                     list == null && feed.failed -> item(key = "failed") {
                         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("読み込めませんでした", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            TextButton(onClick = { scope.launch { feed.load(controller, segment.filter) } }) { Text("再読み込み") }
+                            Text(L10n.str(R.string.common_couldnt_load), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextButton(onClick = { scope.launch { feed.load(controller, segment.filter) } }) { Text(L10n.str(R.string.common_reload)) }
                         }
                     }
-                    list == null -> item(key = "loading") { Text("読み込み中…", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    list == null -> item(key = "loading") { Text(L10n.str(R.string.common_loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     list.isEmpty() -> item(key = "empty") { EmptyActivity(segment) }
                     else -> {
                         items(list, key = { it.key }) { item ->
@@ -341,7 +344,7 @@ fun ActivityScreen(
                             HorizontalDivider()
                         }
                         if (feed.cursor != null) item(key = "more") {
-                            Text("読み込み中…", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(L10n.str(R.string.common_loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -353,10 +356,10 @@ fun ActivityScreen(
 @Composable
 private fun EmptyActivity(segment: ActivitySegment) {
     val (title, hint) = when (segment) {
-        ActivitySegment.ALL -> "まだアクティビティはありません" to "メンション、自分の投稿へのリアクション、フォロー中のスレッドへの返信がここに集まります。"
-        ActivitySegment.MENTIONS -> "まだメンションはありません" to "自分宛てと @channel のメッセージがここに集まります。"
-        ActivitySegment.THREADS -> "スレッドへの返信はありません" to "フォロー中のスレッドにほかの人が返信すると、ここに出ます。"
-        ActivitySegment.REACTIONS -> "まだリアクションはありません" to "自分の投稿にほかの人がリアクションすると、ここに出ます。"
+        ActivitySegment.ALL -> stringResource(R.string.activity_screen_no_activity_yet) to stringResource(R.string.activity_screen_mentions_reactions_to_your_posts_and)
+        ActivitySegment.MENTIONS -> stringResource(R.string.common_no_mentions_yet) to stringResource(R.string.common_messages_to_you_and_channel_show)
+        ActivitySegment.THREADS -> stringResource(R.string.activity_screen_no_thread_replies) to stringResource(R.string.activity_screen_when_someone_replies_in_a_thread)
+        ActivitySegment.REACTIONS -> stringResource(R.string.activity_screen_no_reactions_yet) to stringResource(R.string.activity_screen_when_someone_reacts_to_your_post)
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(title, style = MaterialTheme.typography.titleSmall)
@@ -399,7 +402,7 @@ private fun ActivityRow(
         verticalAlignment = Alignment.Top,
     ) {
         Box(Modifier.width(14.dp).padding(top = 14.dp), contentAlignment = Alignment.Center) {
-            if (unread && !done) Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = "未読" })
+            if (unread && !done) Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = L10n.str(R.string.common_unread) })
         }
         Box {
             if (reservation != null) {
@@ -428,7 +431,7 @@ private fun ActivityRow(
                     )
                     if (item.kind == "reaction") item.emojis.forEach { emoji -> ReactionGlyph(emoji, store, onNeedEmojiImage) }
                 }
-                if (done) Text("対応済み", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
+                if (done) Text(stringResource(R.string.activity_screen_done), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
                 Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
             }
             if (where.isNotEmpty()) {

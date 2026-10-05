@@ -33,26 +33,29 @@ import jp.chikuwachat.android.api.TestNotificationDevice
 import jp.chikuwachat.android.api.TestNotificationOut
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** The words for 「テスト通知を送る」's result (PUSH_NOTIFICATIONS.md §15), the same as the desktop's and iOS's. */
 object TestNotificationText {
     enum class Tone { OK, PROBLEM, NONE }
 
-    private val platformNames = mapOf("ios" to "iPhone / iPad", "android" to "Android", "desktop" to "デスクトップ", "web" to "ブラウザ")
+    private val platformNames = mapOf("ios" to "iPhone / iPad", "android" to "Android", "desktop" to L10n.str(R.string.common_desktop), "web" to L10n.str(R.string.test_notification_browser))
 
     /** The device's name as its owner knows it, with 「(この端末)」 on the one that asked. */
     fun deviceName(device: TestNotificationDevice): String {
         val name = device.deviceName?.trim()?.takeIf { it.isNotEmpty() } ?: platformNames[device.platform] ?: device.platform
-        return if (device.current) "$name (この端末)" else name
+        return if (device.current) L10n.str(R.string.test_notification_this_device, name) else name
     }
 
     fun status(device: TestNotificationDevice): Pair<String, Tone> = when (device.status) {
-        "sent" -> "送信しました" to Tone.OK
-        "failed" -> (device.detail?.let { "送れませんでした ($it)" } ?: "送れませんでした") to Tone.PROBLEM
-        "no_token" -> "プッシュ未登録 (端末の通知がオフか、アプリをまだ開き直していません)" to Tone.PROBLEM
-        "not_configured" -> (if (device.pushProvider == "fcm") "このサーバでは Android のプッシュが無効です" else "このサーバでは iOS のプッシュが無効です") to Tone.PROBLEM
-        "in_app" -> "アプリの起動中に表示 (プッシュは使いません)" to Tone.NONE
-        "disabled" -> (if (device.detail == "session_expired") "ログインの期限切れ" else "ログアウト済み") to Tone.NONE
+        "sent" -> L10n.str(R.string.test_notification_sent) to Tone.OK
+        "failed" -> (device.detail?.let { L10n.str(R.string.test_notification_couldnt_send, it) } ?: L10n.str(R.string.test_notification_couldnt_send_2)) to Tone.PROBLEM
+        "no_token" -> L10n.str(R.string.test_notification_push_not_registered_notifications_are) to Tone.PROBLEM
+        "not_configured" -> (if (device.pushProvider == "fcm") L10n.str(R.string.test_notification_android_push_is_disabled_on_this) else L10n.str(R.string.test_notification_ios_push_is_disabled_on_this)) to Tone.PROBLEM
+        "in_app" -> L10n.str(R.string.test_notification_shown_while_the_app_is_open) to Tone.NONE
+        "disabled" -> (if (device.detail == "session_expired") L10n.str(R.string.test_notification_sign_in_expired) else L10n.str(R.string.test_notification_signed_out)) to Tone.NONE
         else -> device.status to Tone.NONE
     }
 
@@ -60,14 +63,14 @@ object TestNotificationText {
     fun notes(out: TestNotificationOut): List<String> = buildList {
         when {
             !out.apnsConfigured && !out.fcmConfigured ->
-                add("このサーバはプッシュ通知が設定されていません (iPhone・Android のアプリには、開いている間だけ通知が出ます)")
-            !out.apnsConfigured -> add("iOS のプッシュ (APNs) はこのサーバでは無効です")
-            !out.fcmConfigured -> add("Android のプッシュ (FCM) はこのサーバでは無効です")
+                add(L10n.str(R.string.test_notification_this_server_has_no_push_notifications))
+            !out.apnsConfigured -> add(L10n.str(R.string.test_notification_ios_push_apns_is_disabled_on))
+            !out.fcmConfigured -> add(L10n.str(R.string.test_notification_android_push_fcm_is_disabled_on))
         }
         if (out.devices.none { it.status != "disabled" && (it.platform == "ios" || it.platform == "android") }) {
-            add("プッシュ通知を受け取れる端末 (iPhone・Android のアプリ) はありません")
+            add(L10n.str(R.string.test_notification_no_devices_can_receive_push))
         }
-        if (out.dndActive) add("通知を一時停止中ですが、テスト通知は送りました")
+        if (out.dndActive) add(L10n.str(R.string.test_notification_notifications_are_paused_but_the_test))
     }
 }
 
@@ -82,7 +85,7 @@ fun TestNotificationSection(controller: AppController, permitted: Boolean) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val danger = MaterialTheme.colorScheme.error
     Text(
-        "テスト通知", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+        stringResource(R.string.test_notification_test_notification), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(top = 16.dp, bottom = 6.dp).semantics { heading() },
     )
     OutlinedButton(enabled = !busy, onClick = {
@@ -97,15 +100,15 @@ fun TestNotificationSection(controller: AppController, permitted: Boolean) {
     }) {
         Icon(Icons.Outlined.NotificationsActive, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
-        Text("テスト通知を送る")
+        Text(stringResource(R.string.test_notification_send_a_test_notification))
         if (busy) {
             Spacer(Modifier.width(8.dp))
             CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
         }
     }
     Text(
-        if (permitted) "この端末と、ほかの端末 (スマートフォンのアプリ・開いているデスクトップ版) に送ります"
-        else "この端末では通知が許可されていないため、送っても表示されません。上のボタンから許可してください",
+        if (permitted) stringResource(R.string.test_notification_sends_to_this_device_and_your)
+        else stringResource(R.string.test_notification_notifications_arent_allowed_on_this),
         style = hint, color = if (permitted) muted else danger, modifier = Modifier.padding(top = 4.dp),
     )
     error?.let { Text(it, style = hint, color = danger, modifier = Modifier.padding(top = 4.dp)) }

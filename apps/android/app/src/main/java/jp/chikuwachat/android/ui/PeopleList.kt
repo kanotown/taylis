@@ -24,6 +24,9 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** Someone in a list of who voted, reacted or acknowledged (M27). */
 data class Person(val id: String, val name: String)
@@ -37,13 +40,13 @@ object PeopleText {
 
     /** 「山田、佐藤」, 「山田、佐藤、鈴木 ほか 2 人」; empty for nobody. */
     fun compact(names: List<String>, shown: Int = SHOWN): String {
-        if (names.size <= shown) return names.joinToString("、")
-        return names.take(shown).joinToString("、") + " ほか ${names.size - shown} 人"
+        if (names.size <= shown) return names.joinToString(L10n.str(R.string.common_fmt_6))
+        return names.take(shown).joinToString(L10n.str(R.string.common_fmt_6)) + L10n.str(R.string.common_and_others, names.size - shown)
     }
 
     /** M15e acknowledgements: 「山田、佐藤 が確認」, 「山田、佐藤、鈴木 ほか 2 人が確認」. */
     fun acknowledged(names: List<String>): String =
-        if (names.size <= SHOWN) compact(names) + " が確認" else compact(names) + "が確認"
+        if (names.size <= SHOWN) compact(names) + L10n.str(R.string.people_list_acknowledged) else compact(names) + L10n.str(R.string.people_list_acknowledged_2)
 
     /** A user's name for these lists; someone no longer known reads as 「?」 like elsewhere. */
     fun name(store: Store, userId: String): String =
@@ -63,7 +66,7 @@ fun PeopleDialog(title: String, people: List<Person>, onDismiss: () -> Unit) {
                 people.forEach { PersonRow(it) }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }
 
@@ -85,7 +88,7 @@ fun ReactorsDialog(message: MessageState, store: Store, version: Int, onNeedEmoj
     val groups = remember(version, message.reactions) { message.reactions.map { it to PeopleText.people(store, it.userIds) } }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("リアクションした人") },
+        title = { Text(stringResource(R.string.common_people_who_reacted)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 groups.forEachIndexed { index, (reaction, people) ->
@@ -93,7 +96,7 @@ fun ReactorsDialog(message: MessageState, store: Store, version: Int, onNeedEmoj
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ReactionEmoji(reaction.emoji, store, onNeedEmojiImage, 24.dp, MaterialTheme.typography.titleLarge)
                         Spacer(Modifier.width(8.dp))
-                        Text("${reaction.count} 人", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.common_people, reaction.count), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Column(Modifier.fillMaxWidth().padding(start = 4.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         people.forEach { PersonRow(it) }
@@ -101,6 +104,6 @@ fun ReactorsDialog(message: MessageState, store: Store, version: Int, onNeedEmoj
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }

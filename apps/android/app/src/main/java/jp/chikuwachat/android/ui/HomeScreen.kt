@@ -80,6 +80,9 @@ import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** The home's rows are at least this tall (MOBILE_UI.md §6.1: 44 pt / 48 dp). */
 private val ROW_MIN = 48.dp
@@ -178,12 +181,12 @@ fun HomeScreen(
                 item(key = "tiles") { TileRow(tiles, onTile) }
                 // 仕上げ A (MOBILE_POLISH.md H3): with nothing unread there is no 「未読」 section (as on iOS), not an empty one.
                 if (sections.unreadShown) {
-                    item(key = "header:unread") { Box(Modifier.folding(this)) { PlainSectionHeader("未読") } }
+                    item(key = "header:unread") { Box(Modifier.folding(this)) { PlainSectionHeader(stringResource(R.string.common_unread)) } }
                     items(sections.unread, key = { "unread:" + it.id }) { row(it) }
                 }
                 if (sections.favorites.isNotEmpty()) {
                     val fold = FoldedSections.FAVORITES in folded
-                    item(key = "header:favorites") { Box(Modifier.folding(this)) { SectionHeader("お気に入り", fold) { onToggleFolded(FoldedSections.FAVORITES) } } }
+                    item(key = "header:favorites") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_star), fold) { onToggleFolded(FoldedSections.FAVORITES) } } }
                     items(Channels.shown(sections.favorites, fold, meId), key = { "fav:" + it.id }) { row(it) }
                 }
                 sections.custom.forEachIndexed { index, (section, members) ->
@@ -195,17 +198,17 @@ fun HomeScreen(
                     }
                     items(Channels.shown(members, section.collapsed, meId), key = { "sec:" + section.id + ":" + it.id }) { row(it) }
                     if (members.isEmpty() && !section.collapsed && !groupUnread) {
-                        item(key = "section-empty:" + section.id) { Box(Modifier.folding(this)) { EmptyHint("会話を長押し →「セクションに移動」で追加できます") } }
+                        item(key = "section-empty:" + section.id) { Box(Modifier.folding(this)) { EmptyHint(stringResource(R.string.home_screen_long_press_a_conversation_move_to)) } }
                     }
                 }
                 val channelsFolded = FoldedSections.CHANNELS in folded
-                item(key = "header:channels") { Box(Modifier.folding(this)) { SectionHeader("チャンネル", channelsFolded) { onToggleFolded(FoldedSections.CHANNELS) } } }
+                item(key = "header:channels") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_channels), channelsFolded) { onToggleFolded(FoldedSections.CHANNELS) } } }
                 items(Channels.shown(sections.channels, channelsFolded, meId), key = { it.id }) { row(it) }
                 if (!channelsFolded) {
                     if (sections.channels.isEmpty() && !groupUnread) {
-                        item(key = "channels-empty") { Box(Modifier.folding(this)) { EmptyHint("参加中のチャンネルはありません") } }
+                        item(key = "channels-empty") { Box(Modifier.folding(this)) { EmptyHint(stringResource(R.string.home_screen_you_havent_joined_any_channels)) } }
                     }
-                    if (!isGuest) item(key = "channels-add") { ActionRow(Icons.Default.Add, "チャンネルを追加", onClick = onAddChannel, modifier = Modifier.folding(this)) }
+                    if (!isGuest) item(key = "channels-add") { ActionRow(Icons.Default.Add, stringResource(R.string.home_screen_add_channels), onClick = onAddChannel, modifier = Modifier.folding(this)) }
                 }
                 // M24: everyone's work logs, after the channels; someone else's are quiet unread (SYNC_PROTOCOL.md §10.5).
                 if (sections.times.isNotEmpty() || canCreateTimes) {
@@ -218,24 +221,24 @@ fun HomeScreen(
                                 TextButton(onClick = onTimesFeed, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)) {
                                     Icon(Icons.Default.DynamicFeed, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("フィード", style = MaterialTheme.typography.labelLarge)
+                                    Text(stringResource(R.string.home_screen_feed), style = MaterialTheme.typography.labelLarge)
                                 }
                             }) { onToggleFolded(FoldedSections.TIMES) }
                         }
                     }
                     items(Channels.shown(sections.times, timesFolded, meId), key = { "times:" + it.id }) { row(it) }
-                    if (canCreateTimes && !timesFolded) item(key = "times-create") { ActionRow(Icons.Default.Add, "自分の times を作る", onClick = onCreateTimes, modifier = Modifier.folding(this)) }
+                    if (canCreateTimes && !timesFolded) item(key = "times-create") { ActionRow(Icons.Default.Add, stringResource(R.string.common_create_your_times), onClick = onCreateTimes, modifier = Modifier.folding(this)) }
                 }
-                item(key = "header:dms") { Box(Modifier.folding(this)) { SectionHeader("ダイレクトメッセージ", dmsFolded) { onToggleFolded(FoldedSections.DMS) } } }
+                item(key = "header:dms") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_direct_message), dmsFolded) { onToggleFolded(FoldedSections.DMS) } } }
                 if (selfPlaceholder && meId != null) {
                     item(key = "dms-self-placeholder") { HomeSelfNotesRow(meId, myName, busy = creatingSelf, onClick = onSelfPlaceholder, modifier = Modifier.folding(this)) }
                 }
                 items(Channels.shown(dmSection.rows, dmsFolded, meId), key = { it.id }) { row(it) }
                 if (!dmsFolded) {
                     if (dmSection.rows.isEmpty() && !selfPlaceholder && !groupUnread) {
-                        item(key = "dms-empty") { Box(Modifier.folding(this)) { EmptyHint("右下の ✏️ から相手を選べます") } }
+                        item(key = "dms-empty") { Box(Modifier.folding(this)) { EmptyHint(stringResource(R.string.home_screen_pick_someone_from_at_the_bottom)) } }
                     }
-                    if (dmSection.more) item(key = "dms-all") { ActionRow(Icons.AutoMirrored.Filled.ArrowForward, "すべての DM", onClick = onAllDms, modifier = Modifier.folding(this)) }
+                    if (dmSection.more) item(key = "dms-all") { ActionRow(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.home_screen_all_dms), onClick = onAllDms, modifier = Modifier.folding(this)) }
                 }
             }
         }
@@ -249,13 +252,13 @@ private fun JumpBar(onClick: () -> Unit) {
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).heightIn(min = ROW_MIN)
-            .clickable(role = Role.Button, onClickLabel = "開く", onClick = onClick)
-            .clearAndSetSemantics { contentDescription = "移動・検索"; role = Role.Button },
+            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.common_open), onClick = onClick)
+            .clearAndSetSemantics { contentDescription = L10n.str(R.string.common_jump_or_search); role = Role.Button },
     ) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(12.dp))
-            Text("移動・検索…", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.home_screen_jump_or_search), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
@@ -353,7 +356,7 @@ private fun CustomSectionHeader(title: String, collapsed: Boolean, icon: @Compos
             icon()
             Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
         }
-        IconButton(onClick = onMenu) { Icon(Icons.Default.MoreHoriz, contentDescription = "$title のメニュー") }
+        IconButton(onClick = onMenu) { Icon(Icons.Default.MoreHoriz, contentDescription = stringResource(R.string.common_menu_for, title)) }
     }
 }
 
@@ -387,8 +390,8 @@ private fun PlainSectionHeader(title: String) {
 
 /** A section header that folds: TalkBack reads its name as a heading with 「折りたたみ中」 / 「展開中」 and offers the action by name. */
 private fun Modifier.foldable(title: String, collapsed: Boolean, onToggle: () -> Unit): Modifier =
-    clickable(onClickLabel = if (collapsed) "開く" else "折りたたむ", onClick = onToggle)
-        .semantics(mergeDescendants = true) { heading(); contentDescription = title; stateDescription = if (collapsed) "折りたたみ中" else "展開中" }
+    clickable(onClickLabel = if (collapsed) L10n.str(R.string.common_open) else L10n.str(R.string.home_screen_collapse), onClick = onToggle)
+        .semantics(mergeDescendants = true) { heading(); contentDescription = title; stateDescription = if (collapsed) L10n.str(R.string.home_screen_collapsed) else L10n.str(R.string.home_screen_expanded) }
 
 @Composable
 private fun FoldChevron(collapsed: Boolean) {
@@ -431,7 +434,7 @@ private fun HomeChannelRow(channel: ChannelState, controller: AppController, ver
     val badge = Channels.badgeCount(channel)
     val others = (channel.channel.dmUserIds ?: emptyList()).filter { it != meId }
     Row(
-        modifier.fillMaxWidth().heightIn(min = ROW_MIN).selectedRow(selected).combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "メニュー")
+        modifier.fillMaxWidth().heightIn(min = ROW_MIN).selectedRow(selected).combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = stringResource(R.string.common_menu))
             .padding(horizontal = 16.dp, vertical = 4.dp).alpha(if (muted && !unread) 0.6f else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -451,17 +454,17 @@ private fun HomeChannelRow(channel: ChannelState, controller: AppController, ver
             Text(title, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             if (channel.channel.isDm && others.size == 1) StatusEmoji(store.users[others[0]], controller, version, modifier = Modifier.padding(start = 4.dp))
         }
-        if (muted) Icon(Icons.Default.NotificationsOff, contentDescription = "通知オフ", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 6.dp).size(14.dp))
+        if (muted) Icon(Icons.Default.NotificationsOff, contentDescription = stringResource(R.string.common_notifications_off), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 6.dp).size(14.dp))
         if (unread && badge > 0) {
             Text(
                 badge.toString(),
                 color = MaterialTheme.colorScheme.onPrimary,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.background(MaterialTheme.colorScheme.primary, CircleShape).padding(horizontal = 7.dp, vertical = 2.dp)
-                    .semantics { contentDescription = "未読 $badge 件" },
+                    .semantics { contentDescription = L10n.str(R.string.common_unread_2, badge) },
             )
         } else if (unread) {
-            Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = "未読" })
+            Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = L10n.str(R.string.common_unread) })
         } else if (quietDot) {
             Box(Modifier.size(6.dp).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), CircleShape))
         }

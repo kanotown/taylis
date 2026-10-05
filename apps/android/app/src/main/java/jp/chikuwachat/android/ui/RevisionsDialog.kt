@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.MessageRevisionOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.MessageState
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** 「編集履歴」(M14c): the bodies my edits replaced, oldest first, then the current one. Author only. */
 @Composable
@@ -37,29 +40,29 @@ fun RevisionsDialog(controller: AppController, message: MessageState, onDismiss:
     fun text(body: String) = Mentions.toNames(body, store.users, store.groups)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("編集履歴") },
+        title = { Text(L10n.str(R.string.common_edit_history)) },
         text = {
             Column {
-                Text("以前の版は自分にだけ表示されます。メッセージを削除すると履歴も消えます。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.revisions_dialog_only_you_can_see_earlier_versions), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val list = rows
                 when {
-                    failed -> Text("編集履歴を読み込めませんでした", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+                    failed -> Text(stringResource(R.string.revisions_dialog_couldnt_load_the_edit_history), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
                     list == null -> CircularProgressIndicator(Modifier.padding(top = 8.dp))
                     else -> LazyColumn(Modifier.heightIn(max = 420.dp).padding(top = 8.dp)) {
-                        if (list.isEmpty()) item { Text("以前の版は記録されていません (履歴の記録を始める前の編集です)。", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        if (list.isEmpty()) item { Text(stringResource(R.string.revisions_dialog_no_earlier_versions_were_recorded_edited), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         itemsIndexed(list) { _, row ->
                             Text(Timeline.fullLabel(row.writtenAt) + " の版 · " + Timeline.fullLabel(row.replacedAt) + " に編集", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                             SelectionContainer { Text(text(row.body), style = MaterialTheme.typography.bodyMedium) }
                             HorizontalDivider(Modifier.padding(top = 8.dp))
                         }
                         item {
-                            Text("現在の版" + (message.editedAt?.let { " · " + Timeline.fullLabel(it) } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
+                            Text(stringResource(R.string.common_current_version) + (message.editedAt?.let { " · " + Timeline.fullLabel(it) } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
                             SelectionContainer { Text(text(message.body), style = MaterialTheme.typography.bodyMedium) }
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }

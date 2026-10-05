@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.SystemEventOut
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M89 (MEMBERSHIP.md §5 items 2 and 3): a system row (`type != "user"`: the join / leave lines of M88). The line is written
@@ -29,7 +31,7 @@ import jp.chikuwachat.android.sync.Store
  */
 object SystemMessages {
     /** 「A、B」 as the server writes the list (the Japanese comma, no 「と」). */
-    fun joinNames(names: List<String>): String = names.joinToString("、")
+    fun joinNames(names: List<String>): String = names.joinToString(L10n.str(R.string.common_fmt_6))
 
     fun text(body: String, event: SystemEventOut?, nameOf: (String) -> String?): String {
         if (event == null) return body
@@ -37,10 +39,10 @@ object SystemMessages {
         val others = event.userIds.map { nameOf(it) ?: return body }
         val list = joinNames(others)
         return when (event.kind) {
-            "member_joined" -> "$actor が参加しました"
-            "member_left" -> "$actor が退出しました"
-            "members_added" -> "$actor が $list を追加しました"
-            "member_removed" -> "$actor が $list を外しました"
+            "member_joined" -> L10n.str(R.string.system_messages_joined, actor)
+            "member_left" -> L10n.str(R.string.system_messages_left, actor)
+            "members_added" -> L10n.str(R.string.system_messages_added, actor, list)
+            "member_removed" -> L10n.str(R.string.system_messages_removed, actor, list)
             else -> body
         }
     }

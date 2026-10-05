@@ -5,6 +5,8 @@ import jp.chikuwachat.android.ui.CalendarDates
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** The 「カレンダーを購読 (iCal)」 screen's state. */
 data class CalendarFeedsState(
@@ -71,19 +73,19 @@ class CalendarFeeds(private val api: CalendarFeedApi?) {
         const val SCOPE_PERSONAL = "personal"
         const val MAX_FEEDS = 5
 
-        fun scopeLabel(scope: String): String = if (scope == SCOPE_PERSONAL) "自分のカレンダーだけ" else "すべて"
+        fun scopeLabel(scope: String): String = if (scope == SCOPE_PERSONAL) L10n.str(R.string.calendar_feeds_only_my_calendar) else L10n.str(R.string.common_all)
 
         private fun shortDate(iso: String): String =
             runCatching { CalendarDates.localDay(iso).let { "${it.year}/${it.monthValue}/${it.dayOfMonth}" } }.getOrDefault("")
 
         /** A row's second line: 「2026/10/2 に作成 ・ 2026/10/3 に読まれました」 (or 「まだ読まれていません」). */
         fun feedLine(feed: CalendarFeedOut): String =
-            "${shortDate(feed.createdAt)} に作成 ・ " + (feed.lastUsedAt?.let { "${shortDate(it)} に読まれました" } ?: "まだ読まれていません")
+            L10n.str(R.string.calendar_feeds_created, shortDate(feed.createdAt)) + (feed.lastUsedAt?.let { L10n.str(R.string.calendar_feeds_read, shortDate(it)) } ?: L10n.str(R.string.calendar_feeds_not_read_yet))
 
         /** The choices when making one. */
         val SCOPE_CHOICES = listOf(
-            SCOPE_ALL to "すべて (自分のカレンダーと参加しているチャンネル)",
-            SCOPE_PERSONAL to "自分のカレンダーだけ",
+            SCOPE_ALL to L10n.str(R.string.calendar_feeds_all_my_calendar_and_channels_im),
+            SCOPE_PERSONAL to L10n.str(R.string.calendar_feeds_only_my_calendar),
         )
     }
 }

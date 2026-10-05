@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** M66: the AI endpoints everyone may call (docs/AI.md §5), apart from SyncApi like TaskApi (ApiClient and the test fakes). */
 interface AiApi {
@@ -46,7 +48,7 @@ data class AiAskState(val question: String, val channelId: String?, val run: AiR
     /** What the sheet says when it failed: the refusal, else the run's own error. */
     val failureText: String? get() = when {
         error != null -> error
-        run?.status == "failed" -> "答えられませんでした" + (run.error?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
+        run?.status == "failed" -> L10n.str(R.string.ai_couldnt_answer) + (run.error?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
         else -> null
     }
 }
@@ -72,7 +74,7 @@ data class AiSummaryState(val request: AiSummaryRequest, val run: AiRunOut? = nu
     /** What the sheet says when it failed: the refusal, else the run's own error. */
     val failureText: String? get() = when {
         error != null -> error
-        run?.status == "failed" -> "要約できませんでした" + (run.error?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
+        run?.status == "failed" -> L10n.str(R.string.ai_couldnt_summarize) + (run.error?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
         else -> null
     }
 }
@@ -384,10 +386,10 @@ class AiHub(
 
         /** Japanese words for the AI codes (docs/AI.md §5); the shared table wins once it has them. */
         val texts: Map<String, String> = mapOf(
-            "ai_unavailable" to "AI は今使えません。管理者に確認してください",
-            "ai_budget_exceeded" to "今月の AI の予算の上限に達しました。来月まで要約は使えません",
-            "ai_daily_limit" to "今日の AI の利用回数の上限に達しました。明日またお試しください",
-            "ai_run_not_found" to "要約が見つかりません",
+            "ai_unavailable" to L10n.str(R.string.ai_ai_is_not_available_right_now),
+            "ai_budget_exceeded" to L10n.str(R.string.ai_this_months_ai_budget_has_been),
+            "ai_daily_limit" to L10n.str(R.string.ai_youve_reached_todays_ai_usage_limit),
+            "ai_run_not_found" to L10n.str(R.string.ai_summary_not_found),
         )
 
         fun describe(e: Throwable): String = when (e) {

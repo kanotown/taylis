@@ -13,6 +13,8 @@ import java.time.LocalDate
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M16b: what a search looks for: the words (typed modifiers such as from:@ in:# stay in them, the server reads
@@ -67,10 +69,10 @@ object Search {
     const val NEWEST = "newest"
 
     val HAS_FLAGS = listOf("file", "link", "pin", "reaction", "poll")
-    val HAS_LABELS = mapOf("file" to "ファイルあり", "link" to "リンクあり", "pin" to "ピン留め", "reaction" to "リアクションあり", "poll" to "投票")
+    val HAS_LABELS = mapOf("file" to L10n.str(R.string.search_has_files), "link" to L10n.str(R.string.search_has_links), "pin" to L10n.str(R.string.common_pinned), "reaction" to L10n.str(R.string.search_has_reactions), "poll" to L10n.str(R.string.search_polls))
 
     /** 期間 presets: how many days before today the range starts. */
-    val DATE_PRESETS = listOf("today" to "今日", "yesterday" to "昨日", "week" to "過去 7 日間", "month" to "過去 30 日間", "year" to "過去 1 年間")
+    val DATE_PRESETS = listOf("today" to L10n.str(R.string.common_today), "yesterday" to L10n.str(R.string.common_yesterday), "week" to L10n.str(R.string.search_last_7_days), "month" to L10n.str(R.string.search_last_30_days), "year" to L10n.str(R.string.search_last_year))
     private val DAYS_BACK = mapOf("today" to 0L, "yesterday" to 1L, "week" to 6L, "month" to 29L, "year" to 364L)
 
     private val ISO: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
@@ -112,9 +114,9 @@ object Search {
         val from = date.from?.replace("-", "/")
         val to = date.to?.replace("-", "/")
         return when {
-            from != null && to != null -> if (from == to) from else "$from 〜 $to"
-            from != null -> "$from 以降"
-            to != null -> "$to まで"
+            from != null && to != null -> if (from == to) from else L10n.str(R.string.search_fmt, from, to)
+            from != null -> L10n.str(R.string.search_from, from)
+            to != null -> L10n.str(R.string.common_until, to)
             else -> null
         }
     }
@@ -189,17 +191,17 @@ object Search {
     const val ASK_MAX = 200
 
     /** 「123 件」, or 「1,000 件以上」 when the server stopped counting. */
-    fun totalLabel(total: Int, capped: Boolean): String = String.format(Locale.JAPAN, "%,d 件", total) + if (capped) "以上" else ""
+    fun totalLabel(total: Int, capped: Boolean): String = String.format(Locale.JAPAN, L10n.str(R.string.search_d_results), total) + if (capped) L10n.str(R.string.search_or_more) else ""
 
     /** One line for a search: the words, then the filters (「設計」 · 送信者: 田中 · #general · 過去 7 日間). */
     fun describe(params: SearchParams, userName: (String) -> String?, channelName: (String) -> String?): String {
         val parts = ArrayList<String>()
         params.q.trim().takeIf { it.isNotEmpty() }?.let(parts::add)
-        params.fromUserId?.let { parts.add("送信者: " + (userName(it) ?: "?")) }
+        params.fromUserId?.let { parts.add(L10n.str(R.string.search_from_2) + (userName(it) ?: "?")) }
         params.channelId?.let { parts.add(channelName(it) ?: "?") }
         dateLabel(params.date)?.let(parts::add)
         params.has.forEach { flag -> HAS_LABELS[flag]?.let(parts::add) }
-        if (params.isThread) parts.add("スレッド内")
+        if (params.isThread) parts.add(L10n.str(R.string.common_in_threads))
         if (params.isTimes) parts.add("Times")
         return parts.joinToString(" · ")
     }

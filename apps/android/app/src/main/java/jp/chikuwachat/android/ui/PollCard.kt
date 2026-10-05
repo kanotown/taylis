@@ -29,6 +29,9 @@ import jp.chikuwachat.android.api.PollOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.MessageState
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 /**
  * The server makes a poll's text 「📊 質問」 for previews, pushes and search (DATA_MODEL.md); under it the card shows the
@@ -64,8 +67,8 @@ fun PollCard(poll: PollOut, message: MessageState, controller: AppController, ve
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("📊 " + poll.question, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f, fill = false))
-            if (poll.anonymous) { Spacer(Modifier.width(6.dp)); PollTag("匿名") }
-            if (poll.multiple) { Spacer(Modifier.width(6.dp)); PollTag("複数選択可") }
+            if (poll.anonymous) { Spacer(Modifier.width(6.dp)); PollTag(stringResource(R.string.common_anonymous)) }
+            if (poll.multiple) { Spacer(Modifier.width(6.dp)); PollTag(stringResource(R.string.poll_card_multiple_choice)) }
         }
         poll.options.forEachIndexed { index, option ->
             val count = poll.count(index)
@@ -92,15 +95,15 @@ fun PollCard(poll: PollOut, message: MessageState, controller: AppController, ve
                         PeopleText.compact(people.map { it.name }), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 4.dp).touchTarget(min = 40.dp) { source ->
-                            Modifier.clickable(interactionSource = source, indication = null, onClickLabel = "投票した人") { listing = index }
+                            Modifier.clickable(interactionSource = source, indication = null, onClickLabel = L10n.str(R.string.poll_card_voters)) { listing = index }
                         },
                     )
                 }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-            Text(if (closed) "締め切りました · $total 票" else "$total 票", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            if (canClose) TextButton(onClick = { controller.scope.launch { controller.closePoll(message) } }) { Text("締め切る") }
+            Text(if (closed) stringResource(R.string.poll_card_closed_votes, total) else stringResource(R.string.poll_card_votes, total), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            if (canClose) TextButton(onClick = { controller.scope.launch { controller.closePoll(message) } }) { Text(stringResource(R.string.poll_card_close_poll)) }
         }
     }
     listing?.let { index ->

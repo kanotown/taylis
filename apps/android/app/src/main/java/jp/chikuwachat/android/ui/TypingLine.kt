@@ -20,6 +20,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.delay
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /** "Alice が入力中…" above the composer; volatile (SYNC_PROTOCOL.md §5.2), re-checked every second so entries expire. */
 @Composable
@@ -38,7 +40,7 @@ fun TypingLine(controller: AppController, channelId: String, parentId: String? =
     Row(Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         if (users.isEmpty()) return@Row
         val names = users.map { store.users[it]?.displayName ?: "…" }
-        val label = if (names.size <= 2) names.joinToString("、") + " が入力中…" else "${names.first()} ほか ${names.size - 1} 人が入力中…"
+        val label = if (names.size <= 2) names.joinToString(stringResource(R.string.common_fmt_6)) + stringResource(R.string.typing_line_typing) else stringResource(R.string.typing_line_and_others_are_typing, names.first(), names.size - 1)
         CircularProgressIndicator(Modifier.size(10.dp), strokeWidth = 1.5.dp)
         Text(
             label,

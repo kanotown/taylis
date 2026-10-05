@@ -38,6 +38,9 @@ import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 /** M15f: rules shared by the link bar and its editor. */
 object ChannelLinks {
@@ -83,7 +86,7 @@ fun ChannelLinkChip(
                 Modifier.combinedClickable(
                     interactionSource = source, indication = null,
                     onClick = { runCatching { uriHandler.openUri(link.url) } },
-                    onLongClickLabel = if (editable) "リンクの操作" else null,
+                    onLongClickLabel = if (editable) L10n.str(R.string.channel_links_link_actions) else null,
                     onLongClick = if (editable) ({ menu = true }) else null,
                 )
             },
@@ -94,11 +97,11 @@ fun ChannelLinkChip(
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text("編集") }, onClick = { menu = false; onEdit(link) })
-            DropdownMenuItem(text = { Text("左へ移動") }, enabled = index > 0, onClick = { menu = false; scope.launch { controller.updateChannelLink(channelId, link.id, position = index - 1) } })
-            DropdownMenuItem(text = { Text("右へ移動") }, enabled = index < count - 1, onClick = { menu = false; scope.launch { controller.updateChannelLink(channelId, link.id, position = index + 1) } })
+            DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menu = false; onEdit(link) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.channel_links_move_left)) }, enabled = index > 0, onClick = { menu = false; scope.launch { controller.updateChannelLink(channelId, link.id, position = index - 1) } })
+            DropdownMenuItem(text = { Text(stringResource(R.string.channel_links_move_right)) }, enabled = index < count - 1, onClick = { menu = false; scope.launch { controller.updateChannelLink(channelId, link.id, position = index + 1) } })
             HorizontalDivider()
-            DropdownMenuItem(text = { Text("削除", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; scope.launch { controller.deleteChannelLink(channelId, link.id) } })
+            DropdownMenuItem(text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; scope.launch { controller.deleteChannelLink(channelId, link.id) } })
         }
     }
 }
@@ -113,12 +116,12 @@ fun ChannelLinkDialog(controller: AppController, channelId: String, link: Channe
     val urlOk = ChannelLinks.validUrl(url)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (link == null) "リンクを追加" else "リンクを編集") },
+        title = { Text(if (link == null) stringResource(R.string.common_add_link) else stringResource(R.string.channel_links_edit_link)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(url, { url = it }, singleLine = true, label = { Text("URL") }, placeholder = { Text("https://") }, modifier = Modifier.fillMaxWidth())
-                if (url.isNotBlank() && !urlOk) Text("http:// か https:// で始まる URL を入れてください", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(title, { title = it.take(80) }, singleLine = true, label = { Text("名前") }, placeholder = { Text("例: デザイン資料") }, modifier = Modifier.fillMaxWidth())
+                if (url.isNotBlank() && !urlOk) Text(stringResource(R.string.channel_links_enter_a_url_starting_with_http), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(title, { title = it.take(80) }, singleLine = true, label = { Text(stringResource(R.string.common_name)) }, placeholder = { Text(stringResource(R.string.channel_links_e_g_design_documents)) }, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
@@ -130,8 +133,8 @@ fun ChannelLinkDialog(controller: AppController, channelId: String, link: Channe
                     busy = false
                     if (ok) onDismiss()
                 }
-            }) { Text(if (link == null) "追加" else "保存") }
+            }) { Text(if (link == null) stringResource(R.string.common_add) else stringResource(R.string.common_save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

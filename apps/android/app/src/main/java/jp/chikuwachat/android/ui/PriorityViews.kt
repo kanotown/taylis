@@ -37,6 +37,9 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 /** M15e: 「重要」 / 「緊急」 above a message and in the composer. */
 @Composable
@@ -48,7 +51,7 @@ fun PriorityLabel(priority: String, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(if (urgent) Icons.Outlined.Warning else Icons.Outlined.Info, contentDescription = null, tint = color, modifier = Modifier.size(12.dp))
-        Text(if (urgent) " 緊急" else " 重要", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = color)
+        Text(if (urgent) stringResource(R.string.priority_views_urgent) else stringResource(R.string.priority_views_important), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = color)
     }
 }
 
@@ -68,22 +71,22 @@ fun AckBar(message: MessageState, store: Store, controller: AppController, versi
         if (!own && !readOnly) {
             OutlinedButton(onClick = { controller.scope.launch { controller.toggleAck(message) } }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp)) {
                 Icon(Icons.Outlined.DoneAll, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(if (mine) " 確認済み" else " 確認しました", style = MaterialTheme.typography.labelMedium)
+                Text(if (mine) stringResource(R.string.priority_views_acknowledged) else stringResource(R.string.priority_views_acknowledge), style = MaterialTheme.typography.labelMedium)
             }
         }
         // M28c: a 48 dp touch target around the names line (the row's layout is unchanged).
         Text(
-            if (people.isEmpty()) "まだ誰も確認していません" else PeopleText.acknowledged(people.map { it.name }),
+            if (people.isEmpty()) stringResource(R.string.priority_views_no_one_has_acknowledged_yet) else PeopleText.acknowledged(people.map { it.name }),
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false).padding(start = if (!own && !readOnly) 8.dp else 0.dp).touchTarget { source ->
                 // M31: members open it with nobody listed too, for 「未確認」 and the reminder.
-                Modifier.clickable(interactionSource = source, indication = null, enabled = people.isNotEmpty() || !readOnly, onClickLabel = "確認した人") { showNames = true }
+                Modifier.clickable(interactionSource = source, indication = null, enabled = people.isNotEmpty() || !readOnly, onClickLabel = L10n.str(R.string.priority_views_acknowledged_by)) { showNames = true }
             },
         )
     }
     if (showNames) {
-        if (readOnly) PeopleDialog("確認した人", people, onDismiss = { showNames = false })
+        if (readOnly) PeopleDialog(stringResource(R.string.priority_views_acknowledged_by), people, onDismiss = { showNames = false })
         else AckPeopleDialog(message, people, store, controller, version, onDismiss = { showNames = false })
     }
 }
@@ -110,20 +113,20 @@ private fun AckPeopleDialog(message: MessageState, people: List<Person>, store: 
     val me = remember(version) { store.me }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("確認した人") },
+        title = { Text(stringResource(R.string.priority_views_acknowledged_by)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (people.isEmpty()) Text("まだ誰も確認していません", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (people.isEmpty()) Text(stringResource(R.string.priority_views_no_one_has_acknowledged_yet), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 people.forEach { PersonRow(it) }
                 Text(
-                    "未確認" + (pending?.let { " ${it.size} 人" } ?: ""),
+                    stringResource(R.string.priority_views_pending) + (pending?.let { stringResource(R.string.common_members, it.size) } ?: ""),
                     style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
                 )
                 val failure = loadError
                 when {
                     pending == null && failure != null -> Text(failure, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-                    pending == null -> Text("読み込み中…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    pending.isEmpty() -> Text("全員が確認しました", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    pending == null -> Text(stringResource(R.string.common_loading), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    pending.isEmpty() -> Text(stringResource(R.string.priority_views_everyone_has_acknowledged), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     else -> pending.forEach { PersonRow(it) }
                 }
                 if (AckReminders.canRemind(message, me, pending?.size ?: 0)) {
@@ -141,7 +144,7 @@ private fun AckPeopleDialog(message: MessageState, people: List<Person>, store: 
                             }
                         },
                         modifier = Modifier.heightIn(min = TouchTarget.MIN),
-                    ) { Text("未確認の人にリマインド") }
+                    ) { Text(stringResource(R.string.priority_views_remind_those_who_havent_acknowledged)) }
                 }
                 // Stays after the pending list empties (the button goes then, the result should not).
                 outcome?.let {
@@ -152,6 +155,6 @@ private fun AckPeopleDialog(message: MessageState, people: List<Person>, store: 
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }

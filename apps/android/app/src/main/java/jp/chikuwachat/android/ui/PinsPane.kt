@@ -21,6 +21,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /** Messages pinned in a channel (M11c), most recently pinned first; a row reveals the message. */
 @Composable
@@ -35,11 +37,11 @@ fun PinsPane(controller: AppController, channelId: String, version: Int, onOpen:
     val list = pins
     LazyColumn(Modifier.fillMaxSize()) {
         when {
-            list == null -> item { Text("読み込み中…", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            list == null -> item { Text(stringResource(R.string.common_loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             list.isEmpty() -> item {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("ピン留めされたメッセージはありません", style = MaterialTheme.typography.titleSmall)
-                    Text("メッセージを長押しして「チャンネルにピン留め」を選ぶと、ここに集まります。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+                    Text(stringResource(R.string.pins_pane_no_pinned_messages), style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.pins_pane_long_press_a_message_and_choose), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
                 }
             }
             else -> items(list, key = { it.id }) { message ->

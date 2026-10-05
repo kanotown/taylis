@@ -72,6 +72,9 @@ import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 val REACTION_PALETTE = listOf("👍", "❤️", "😂", "🎉", "👀", "✅")
 
@@ -178,7 +181,7 @@ fun MessageMenu(
                 Box(
                     Modifier.size(46.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable { close(onMoreReactions) },
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Outlined.AddReaction, contentDescription = "その他のリアクション") }
+                ) { Icon(Icons.Outlined.AddReaction, contentDescription = stringResource(R.string.message_actions_more_reactions)) }
             }
         }
         Column(Modifier.fillMaxWidth().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 8.dp)) {
@@ -196,20 +199,20 @@ fun MessageMenu(
                 }
             }
             // 「リアクションした人」 right after the reactions, as on the web (M28c).
-            if (onShowReactors != null) item("リアクションした人", Icons.Outlined.People, action = onShowReactors)
-            if (onReply != null) item("スレッドで返信", Icons.Outlined.ChatBubbleOutline, action = onReply)
-            if (canEdit) item("編集", Icons.Outlined.Edit, action = onEdit)
-            if (onCopyText != null) item("テキストをコピー", Icons.Outlined.ContentCopy, action = onCopyText)
-            if (onBookmark != null) item(if (bookmarked) "保存を解除" else "あとで見る (保存)", if (bookmarked) Icons.Outlined.BookmarkRemove else Icons.Outlined.BookmarkBorder, action = onBookmark)
-            if (onRemind != null) item("リマインド…", Icons.Outlined.Alarm, action = onRemind)
-            if (onMakeTask != null) item("タスクにする", Icons.Outlined.AddTask, action = onMakeTask)
-            if (onRequestReview != null) item("レビューを依頼", Icons.Outlined.RateReview, action = onRequestReview)
-            if (onMarkUnread != null) item("ここから未読にする", Icons.Outlined.MarkEmailUnread, action = onMarkUnread)
-            if (onCopyLink != null) item("リンクをコピー", Icons.Outlined.Link, action = onCopyLink)
-            if (onShare != null) item("別のチャンネルに共有…", Icons.Outlined.Share, action = onShare)
-            if (onPin != null) item(if (pinned) "ピン留めを外す" else "チャンネルにピン留め", Icons.Outlined.PushPin, action = onPin)
-            if (onReport != null) item("報告する", Icons.Outlined.Flag, action = onReport)
-            if (canDelete) item("削除", Icons.Outlined.Delete, danger = true, action = onDelete)
+            if (onShowReactors != null) item(stringResource(R.string.common_people_who_reacted), Icons.Outlined.People, action = onShowReactors)
+            if (onReply != null) item(stringResource(R.string.message_actions_reply_in_thread), Icons.Outlined.ChatBubbleOutline, action = onReply)
+            if (canEdit) item(stringResource(R.string.common_edit), Icons.Outlined.Edit, action = onEdit)
+            if (onCopyText != null) item(stringResource(R.string.message_actions_copy_text), Icons.Outlined.ContentCopy, action = onCopyText)
+            if (onBookmark != null) item(if (bookmarked) stringResource(R.string.message_actions_remove_from_saved) else stringResource(R.string.message_actions_save_for_later), if (bookmarked) Icons.Outlined.BookmarkRemove else Icons.Outlined.BookmarkBorder, action = onBookmark)
+            if (onRemind != null) item(stringResource(R.string.message_actions_remind_me), Icons.Outlined.Alarm, action = onRemind)
+            if (onMakeTask != null) item(stringResource(R.string.common_make_a_task), Icons.Outlined.AddTask, action = onMakeTask)
+            if (onRequestReview != null) item(stringResource(R.string.common_request_review), Icons.Outlined.RateReview, action = onRequestReview)
+            if (onMarkUnread != null) item(stringResource(R.string.message_actions_mark_unread_from_here), Icons.Outlined.MarkEmailUnread, action = onMarkUnread)
+            if (onCopyLink != null) item(stringResource(R.string.message_actions_copy_link), Icons.Outlined.Link, action = onCopyLink)
+            if (onShare != null) item(stringResource(R.string.message_actions_share_to_another_channel), Icons.Outlined.Share, action = onShare)
+            if (onPin != null) item(if (pinned) stringResource(R.string.message_actions_unpin) else stringResource(R.string.message_actions_pin_to_channel), Icons.Outlined.PushPin, action = onPin)
+            if (onReport != null) item(stringResource(R.string.common_report), Icons.Outlined.Flag, action = onReport)
+            if (canDelete) item(stringResource(R.string.common_delete), Icons.Outlined.Delete, danger = true, action = onDelete)
         }
     }
 }
@@ -280,7 +283,7 @@ fun ReactionChips(
                         Modifier.combinedClickable(
                             interactionSource = source, indication = null,
                             enabled = onToggle != null || onShowReactors != null,
-                            onLongClickLabel = "リアクションした人",
+                            onLongClickLabel = L10n.str(R.string.common_people_who_reacted),
                             onLongClick = onShowReactors,
                             onClick = { onToggle?.invoke(reaction.emoji) },
                         )
@@ -315,7 +318,7 @@ fun ReactionChips(
                     .clip(shape)
                     .padding(horizontal = 8.dp),
             ) {
-                Icon(Icons.Outlined.AddReaction, contentDescription = "リアクションを追加", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                Icon(Icons.Outlined.AddReaction, contentDescription = stringResource(R.string.message_actions_add_reaction), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -330,10 +333,10 @@ fun EditMessageDialog(initial: String, saving: Boolean = false, onDismiss: () ->
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("メッセージを編集") },
+        title = { Text(stringResource(R.string.message_actions_edit_message)) },
         text = { OutlinedTextField(field, { field = it }, maxLines = 8, enabled = !saving, modifier = Modifier.focusRequester(focus)) },
-        confirmButton = { TextButton(enabled = field.text.isNotBlank() && !saving, onClick = { onSave(field.text.trim()) }) { Text(if (saving) "保存中…" else "保存") } },
-        dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("キャンセル") } },
+        confirmButton = { TextButton(enabled = field.text.isNotBlank() && !saving, onClick = { onSave(field.text.trim()) }) { Text(if (saving) stringResource(R.string.common_saving) else stringResource(R.string.common_save)) } },
+        dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -341,9 +344,9 @@ fun EditMessageDialog(initial: String, saving: Boolean = false, onDismiss: () ->
 fun ConfirmDeleteDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("メッセージを削除") },
-        text = { Column { Text("削除したメッセージは元に戻せません。") } },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("削除", color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        title = { Text(stringResource(R.string.message_actions_delete_message)) },
+        text = { Column { Text(stringResource(R.string.message_actions_deleted_messages_cant_be_restored)) } },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

@@ -5,6 +5,8 @@ import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.LastMessageOut
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.MessageState
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /*
  * M49, the DM list's preview line (MOBILE_UI.md §6.3 / §7.1, SYNC_PROTOCOL.md §7.8). The rule and its cases are shared
@@ -44,10 +46,10 @@ fun previewLine(type: String, dmUserIds: List<String>?, last: LastMessageOut?, m
     if (last.type != "user") return last.excerpt
     if (meId != null && last.senderId == meId) {
         val selfNotes = type == "dm" && (dmUserIds ?: emptyList()).all { it == meId }
-        return if (selfNotes) last.excerpt else "あなた: ${last.excerpt}"
+        return if (selfNotes) last.excerpt else L10n.str(R.string.dm_preview_you, last.excerpt)
     }
     if (type == "dm") return last.excerpt
-    val name = users[last.senderId]?.displayName?.trim()?.ifEmpty { null } ?: "メンバー"
+    val name = users[last.senderId]?.displayName?.trim()?.ifEmpty { null } ?: L10n.str(R.string.common_member)
     return "$name: ${last.excerpt}"
 }
 

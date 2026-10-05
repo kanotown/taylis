@@ -52,6 +52,8 @@ import jp.chikuwachat.android.api.FileItem
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /** 「ファイル」 (M11i): attachments in my channels (or one channel), newest first; a row reveals its message. */
 @Composable
@@ -83,13 +85,13 @@ fun FilesPane(
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(
             query, { query = it }, singleLine = true,
-            placeholder = { Text("ファイル名で絞り込む") },
+            placeholder = { Text(stringResource(R.string.files_pane_filter_by_file_name)) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         )
         if (onScopeChange != null) {
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                item { FilterChip(selected = channelId == null, onClick = { onScopeChange(null) }, label = { Text("すべて") }, modifier = Modifier.padding(horizontal = 4.dp)) }
+                item { FilterChip(selected = channelId == null, onClick = { onScopeChange(null) }, label = { Text(stringResource(R.string.common_all)) }, modifier = Modifier.padding(horizontal = 4.dp)) }
                 items(channels, key = { it.id }) { channel ->
                     FilterChip(selected = channelId == channel.id, onClick = { onScopeChange(channel.id) }, label = { Text(channelTitle(channel, store)) }, modifier = Modifier.padding(horizontal = 4.dp))
                 }
@@ -98,11 +100,11 @@ fun FilesPane(
         val list = items
         LazyColumn(Modifier.weight(1f)) {
             when {
-                list == null -> item { Text("読み込み中…", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                list == null -> item { Text(stringResource(R.string.common_loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 list.isEmpty() -> item {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(if (query.isEmpty()) "まだファイルはありません" else "見つかりません", style = MaterialTheme.typography.titleSmall)
-                        Text("メッセージに添付したファイルがここに集まります。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+                        Text(if (query.isEmpty()) stringResource(R.string.files_pane_no_files_yet) else stringResource(R.string.common_nothing_found), style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.files_pane_files_attached_to_messages_show_up), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
                 else -> {
@@ -110,7 +112,7 @@ fun FilesPane(
                         FileRow(item, controller, onClick = { onOpen(item.messageId, item.channelId, item.parentId) })
                         HorizontalDivider()
                     }
-                    if (cursor != null) item { TextButton(onClick = { controller.scope.launch { load(more = true) } }, modifier = Modifier.fillMaxWidth()) { Text("さらに読み込む") } }
+                    if (cursor != null) item { TextButton(onClick = { controller.scope.launch { load(more = true) } }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_load_more)) } }
                 }
             }
         }
@@ -149,6 +151,6 @@ fun FileRow(item: FileItem, controller: AppController, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
-        IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Default.Download, contentDescription = "ダウンロード") }
+        IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Default.Download, contentDescription = stringResource(R.string.files_pane_download)) }
     }
 }

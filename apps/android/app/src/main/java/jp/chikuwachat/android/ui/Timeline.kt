@@ -13,6 +13,8 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** Rows of a channel timeline: date separators, one 「新着メッセージ」 divider and grouped messages. */
 sealed class TimelineItem {
@@ -41,7 +43,7 @@ object Timeline {
     private const val GROUP_WINDOW_SECONDS = 5 * 60
     private val WEEKDAYS = listOf("月", "火", "水", "木", "金", "土", "日")
     private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-    private val FULL: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm")
+    private val FULL: DateTimeFormatter = DateTimeFormatter.ofPattern(L10n.str(R.string.timeline_mmm_d_yyyy_hh_mm))
 
     fun parse(iso: String, zone: ZoneId = ZoneId.systemDefault()): ZonedDateTime? =
         runCatching { Instant.parse(iso).atZone(zone) }.getOrNull()
@@ -64,17 +66,17 @@ object Timeline {
      * as the web's lastReplyLabel; empty for a time it cannot read.
      */
     fun lastReplyLabel(iso: String, now: ZonedDateTime = ZonedDateTime.now()): String =
-        stampLabel(iso, now).takeIf { it.isNotEmpty() }?.let { "最終返信 $it" } ?: ""
+        stampLabel(iso, now).takeIf { it.isNotEmpty() }?.let { L10n.str(R.string.timeline_last_reply, it) } ?: ""
 
     /** C3: the first three repliers shown as avatars (the list is most recent first, without repeats). */
     fun replierAvatars(ids: List<String>): List<String> = ids.distinct().take(3)
 
     /** 今日 / 昨日 / 9月26日 (金) / 2025年12月31日 (水). */
     fun dateLabel(day: LocalDate, today: LocalDate): String {
-        if (day == today) return "今日"
-        if (day == today.minusDays(1)) return "昨日"
+        if (day == today) return L10n.str(R.string.common_today)
+        if (day == today.minusDays(1)) return L10n.str(R.string.common_yesterday)
         val weekday = WEEKDAYS[day.dayOfWeek.value - 1]
-        val md = "${day.monthValue}月${day.dayOfMonth}日 ($weekday)"
+        val md = L10n.str(R.string.common_fmt_3, day.monthValue, day.dayOfMonth, weekday)
         return if (day.year == today.year) md else "${day.year}年$md"
     }
 
@@ -227,7 +229,7 @@ object Timeline {
         val today = now.toLocalDate()
         return when (day) {
             today -> time
-            today.minusDays(1) -> "昨日 $time"
+            today.minusDays(1) -> L10n.str(R.string.timeline_yesterday, time)
             else -> dateLabel(day, today) + " " + time
         }
     }
@@ -235,7 +237,7 @@ object Timeline {
     /** 「未読 2,000 件 · 10:23 以降」; the count alone when the server did not say when (§10.1 rule 5). */
     fun bannerText(count: Int, firstUnreadAt: String?, now: ZonedDateTime): String {
         val since = firstUnreadAt?.let { sinceLabel(it, now) }
-        return "未読 ${group3(count)} 件" + if (since != null) " · $since 以降" else ""
+        return L10n.str(R.string.common_unread_2, group3(count)) + if (since != null) L10n.str(R.string.timeline_since, since) else ""
     }
 
     /** "HH:mm までミュート" while a mute is active, otherwise null. */

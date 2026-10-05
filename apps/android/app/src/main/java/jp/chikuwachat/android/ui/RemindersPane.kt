@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.ReminderOut
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /** 「リマインダー」 (M12e): fired nudges wait for 完了 on top; pending ones list their time. */
 @Composable
@@ -37,18 +39,18 @@ fun RemindersPane(controller: AppController, version: Int, onOpen: (ReminderOut)
         if (rows.isEmpty()) {
             item {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("リマインダーはありません", style = MaterialTheme.typography.titleSmall)
-                    Text("メッセージを長押しして「リマインド」を選ぶと、ここに集まります。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+                    Text(stringResource(R.string.reminders_pane_no_reminders), style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.reminders_pane_long_press_a_message_and_choose), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         }
         if (fired.isNotEmpty()) {
-            item { Text("届いたリマインド", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-            items(fired, key = { "f:" + it.id }) { row -> ReminderRow(row, controller, "完了", onOpen) }
+            item { Text(stringResource(R.string.reminders_pane_delivered_reminders), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            items(fired, key = { "f:" + it.id }) { row -> ReminderRow(row, controller, stringResource(R.string.common_done_2), onOpen) }
         }
         if (pending.isNotEmpty()) {
-            item { Text("予定", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-            items(pending, key = { "p:" + it.id }) { row -> ReminderRow(row, controller, "取り消し", onOpen) }
+            item { Text(stringResource(R.string.common_event), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            items(pending, key = { "p:" + it.id }) { row -> ReminderRow(row, controller, stringResource(R.string.common_cancel_2), onOpen) }
         }
     }
 }

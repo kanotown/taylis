@@ -47,6 +47,8 @@ import androidx.compose.ui.window.DialogProperties
 import jp.chikuwachat.android.api.ChannelOut
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * 「チャンネルを探す」 (M11h): every public channel plus my private ones, with member counts; join, leave or
@@ -78,20 +80,20 @@ fun ChannelBrowserDialog(controller: AppController, version: Int, onDismiss: () 
         Surface(Modifier.fillMaxWidth().fillMaxHeight(0.9f).padding(12.dp), shape = RoundedCornerShape(20.dp), tonalElevation = 2.dp) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("チャンネルを探す", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { onDismiss(); onCreate() }) { Text("作成") }
-                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "閉じる") }
+                    Text(stringResource(R.string.common_browse_channels), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { onDismiss(); onCreate() }) { Text(stringResource(R.string.common_create)) }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close)) }
                 }
                 OutlinedTextField(
                     query, { query = it }, singleLine = true,
-                    placeholder = { Text("名前やトピックで絞り込む") },
+                    placeholder = { Text(stringResource(R.string.channel_browser_dialog_filter_by_name_or_topic)) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 )
                 LazyColumn(Modifier.weight(1f)) {
                     when {
-                        listed == null -> item { Text("読み込み中…", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        rows.isEmpty() -> item { Text("見つかりません", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        listed == null -> item { Text(stringResource(R.string.common_loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        rows.isEmpty() -> item { Text(stringResource(R.string.common_nothing_found), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         else -> items(rows, key = { it.id }) { channel ->
                             // `version` keeps membership current after a join / leave elsewhere.
                             val mine = remember(version, channel.id) { store.channel(channel.id)?.isMember ?: (channel.membership != null) }
@@ -117,14 +119,14 @@ fun ChannelBrowserDialog(controller: AppController, version: Int, onDismiss: () 
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(channel.name ?: "", fontWeight = FontWeight.Medium)
                                         when {
-                                            channel.archived -> Text("アーカイブ済み", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp))
-                                            mine -> Text("参加中", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 6.dp))
+                                            channel.archived -> Text(stringResource(R.string.channel_browser_dialog_archived), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp))
+                                            mine -> Text(stringResource(R.string.channel_browser_dialog_joined), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 6.dp))
                                         }
                                     }
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Default.People, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
                                         Text(
-                                            " ${channel.memberCount ?: 0} 人" + ((channel.purpose ?: channel.topic)?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                                            stringResource(R.string.common_members, channel.memberCount ?: 0) + ((channel.purpose ?: channel.topic)?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
                                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         )
@@ -134,11 +136,11 @@ fun ChannelBrowserDialog(controller: AppController, version: Int, onDismiss: () 
                                     if (mine) {
                                         TextButton(enabled = busy != channel.id, onClick = {
                                             scope.launch { busy = channel.id; if (controller.leaveChannel(channel.id)) load(); busy = null }
-                                        }) { Text("退出") }
+                                        }) { Text(stringResource(R.string.common_leave)) }
                                     } else {
                                         Button(enabled = busy != channel.id, contentPadding = PaddingValues(horizontal = 14.dp), onClick = {
                                             scope.launch { busy = channel.id; if (controller.joinChannel(channel.id)) { onOpen(channel.id); onDismiss() }; busy = null }
-                                        }) { Text("参加") }
+                                        }) { Text(stringResource(R.string.common_join)) }
                                     }
                                 }
                             }

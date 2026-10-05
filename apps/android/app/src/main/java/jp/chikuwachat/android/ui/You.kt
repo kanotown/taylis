@@ -9,21 +9,23 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M40 (MOBILE_UI.md §6.5): a screen of the 自分 tab, pushed over its list ([Route.Settings]). The list's order is
  * [listed]; [PASSWORD] opens from [ACCOUNT].
  */
 enum class SettingsPage(val title: String) {
-    STATUS("ステータスを更新"),
-    QUIET_HOURS("おやすみ時間"),
-    NOTIFICATIONS("通知"),
-    APPEARANCE("表示"),
-    PROFILE("プロフィールを編集"),
-    ACCOUNT("アカウント"),
-    PASSWORD("パスワードの変更"),
-    WORKSPACES("ワークスペース"),
-    ADMIN("管理"),
+    STATUS(L10n.str(R.string.common_update_status)),
+    QUIET_HOURS(L10n.str(R.string.common_quiet_hours)),
+    NOTIFICATIONS(L10n.str(R.string.common_notifications)),
+    APPEARANCE(L10n.str(R.string.common_show)),
+    PROFILE(L10n.str(R.string.common_edit_profile)),
+    ACCOUNT(L10n.str(R.string.you_account)),
+    PASSWORD(L10n.str(R.string.common_change_password)),
+    WORKSPACES(L10n.str(R.string.common_workspaces)),
+    ADMIN(L10n.str(R.string.common_admin)),
     ;
 
     companion object {
@@ -35,19 +37,19 @@ enum class SettingsPage(val title: String) {
 
 /** 「通知を一時停止」's choices (MOBILE_UI.md §6.5); [RESUME] only while paused. */
 enum class PauseChoice(val label: String) {
-    MINUTES_30("30 分"),
-    HOUR_1("1 時間"),
-    HOURS_2("2 時間"),
-    TOMORROW_8("明日 8:00"),
-    CUSTOM("日時を指定"),
-    RESUME("再開"),
+    MINUTES_30(L10n.str(R.string.common_30_minutes)),
+    HOUR_1(L10n.str(R.string.common_1_hour)),
+    HOURS_2(L10n.str(R.string.common_2_hours)),
+    TOMORROW_8(L10n.str(R.string.you_tomorrow_8_00)),
+    CUSTOM(L10n.str(R.string.you_pick_date_and_time)),
+    RESUME(L10n.str(R.string.common_resume)),
 }
 
 /** M40: the appearance, kept on this device (not on the server): the system's, or always light / dark. */
 enum class Appearance(val label: String, val stored: String?) {
-    SYSTEM("端末に合わせる", null),
-    LIGHT("ライト", "light"),
-    DARK("ダーク", "dark"),
+    SYSTEM(L10n.str(R.string.you_follow_device), null),
+    LIGHT(L10n.str(R.string.you_light), "light"),
+    DARK(L10n.str(R.string.you_dark), "dark"),
     ;
 
     /** Whether the app is dark, given the system's own setting. */
@@ -110,13 +112,13 @@ object YouSettings {
 
     /** The list row's value: 「オフ」, or 「15:30 まで」 / 「明日 08:00 まで」 / 「10/2 09:00 まで」. */
     fun pauseSummary(dndUntil: String?, now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault()): String {
-        val until = parse(dndUntil)?.takeIf { it.isAfter(now) } ?: return "オフ"
+        val until = parse(dndUntil)?.takeIf { it.isAfter(now) } ?: return L10n.str(R.string.common_off)
         val end = until.atZone(zone)
         val today = now.atZone(zone).toLocalDate()
         val time = end.format(HHMM)
         return when (end.toLocalDate()) {
-            today -> "$time まで"
-            today.plusDays(1) -> "明日 $time まで"
+            today -> L10n.str(R.string.common_until, time)
+            today.plusDays(1) -> L10n.str(R.string.you_until_tomorrow, time)
             else -> end.format(DateTimeFormatter.ofPattern("M/d")) + " $time まで"
         }
     }
@@ -124,14 +126,14 @@ object YouSettings {
     // --- おやすみ時間 ---
 
     /** The list row's value: 「22:00〜07:00」 (with its days when not every day), or 「オフ」. */
-    fun quietSummary(hours: QuietHours?): String = hours?.let(Dnd::label) ?: "オフ"
+    fun quietSummary(hours: QuietHours?): String = hours?.let(Dnd::label) ?: L10n.str(R.string.common_off)
 
     /** Why the quiet-hours form cannot be saved; null when it can. */
     fun quietHoursProblem(on: Boolean, start: String, end: String, days: Set<Int>): String? = when {
         !on -> null
-        !TIME.matches(start) || !TIME.matches(end) -> "時刻は HH:mm で指定してください"
-        start == end -> "開始と終了を別の時刻にしてください"
-        days.isEmpty() -> "曜日を 1 つ以上選んでください"
+        !TIME.matches(start) || !TIME.matches(end) -> L10n.str(R.string.you_enter_times_as_hh_mm)
+        start == end -> L10n.str(R.string.you_the_start_and_end_must_be)
+        days.isEmpty() -> L10n.str(R.string.common_choose_at_least_one_day_of)
         else -> null
     }
 
@@ -160,8 +162,8 @@ object YouSettings {
         session.device.deviceName?.trim()?.takeIf { it.isNotEmpty() } ?: when (session.device.platform) {
             "ios" -> "iPhone / iPad"
             "android" -> "Android"
-            "desktop" -> "デスクトップ"
-            "web" -> "Web ブラウザ"
+            "desktop" -> L10n.str(R.string.common_desktop)
+            "web" -> L10n.str(R.string.you_web_browser)
             else -> session.device.platform
         }
 
@@ -169,15 +171,15 @@ object YouSettings {
     fun lastUsedLabel(iso: String?, now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault()): String {
         val at = parse(iso) ?: return ""
         val minutes = ChronoUnit.MINUTES.between(at, now)
-        if (minutes < 1) return "たった今"
-        if (minutes < 60) return "$minutes 分前"
+        if (minutes < 1) return L10n.str(R.string.you_just_now)
+        if (minutes < 60) return L10n.str(R.string.you_min_ago, minutes)
         val local = at.atZone(zone)
         val today = now.atZone(zone).toLocalDate()
         return when {
-            local.toLocalDate() == today -> "今日 " + local.format(HHMM)
-            local.toLocalDate() == today.minusDays(1) -> "昨日 " + local.format(HHMM)
+            local.toLocalDate() == today -> L10n.str(R.string.you_today) + local.format(HHMM)
+            local.toLocalDate() == today.minusDays(1) -> L10n.str(R.string.you_yesterday) + local.format(HHMM)
             local.year == today.year -> local.format(DateTimeFormatter.ofPattern("M月d日"))
-            else -> local.format(DateTimeFormatter.ofPattern("yyyy年M月d日"))
+            else -> local.format(DateTimeFormatter.ofPattern(L10n.str(R.string.common_mmm_d_yyyy)))
         }
     }
 

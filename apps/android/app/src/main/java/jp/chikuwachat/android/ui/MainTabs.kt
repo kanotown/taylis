@@ -10,13 +10,15 @@ import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
 import kotlinx.serialization.Serializable
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** M34 (MOBILE_UI.md §5): the phone's bottom tabs, in the bar's order. */
 enum class MainTab(val label: String) {
-    HOME("ホーム"),
+    HOME(L10n.str(R.string.main_tabs_home)),
     DM("DM"),
-    ACTIVITY("アクティビティ"),
-    YOU("自分"),
+    ACTIVITY(L10n.str(R.string.common_activity)),
+    YOU(L10n.str(R.string.common_you)),
 }
 
 /**
@@ -228,10 +230,10 @@ object MainTabs {
         meId != null && channel.channel.type == "dm" && (channel.channel.dmUserIds ?: emptyList()).all { it == meId }
 
     /** What my own DM says where its conversation starts (empty, or at the start of its history). */
-    const val SELF_NOTES_INTRO = "ここはあなただけのスペースです。メモや下書き、あとで見返したいリンクやファイルを置いておけます。ほかの人には見えません。"
+    val SELF_NOTES_INTRO: String get() = L10n.str(R.string.main_tabs_this_is_your_own_space_keep)
 
     /** The new-DM picker's words after my name. */
-    const val SELF_NOTES_HINT = "メモや下書きに使える、自分だけの DM"
+    val SELF_NOTES_HINT: String get() = L10n.str(R.string.main_tabs_your_own_dm_for_notes_and)
 
     /** My name as the lists show it: my display name, else my username, else 「…」 (not loaded yet). */
     fun myName(displayName: String?, username: String?): String =
@@ -281,8 +283,8 @@ object MainTabs {
     private fun parse(iso: String?): Instant? = iso?.let { runCatching { Instant.parse(it) }.getOrNull() }
 
     private val weekdays = mapOf(
-        DayOfWeek.MONDAY to "月曜日", DayOfWeek.TUESDAY to "火曜日", DayOfWeek.WEDNESDAY to "水曜日", DayOfWeek.THURSDAY to "木曜日",
-        DayOfWeek.FRIDAY to "金曜日", DayOfWeek.SATURDAY to "土曜日", DayOfWeek.SUNDAY to "日曜日",
+        DayOfWeek.MONDAY to L10n.str(R.string.main_tabs_monday), DayOfWeek.TUESDAY to L10n.str(R.string.main_tabs_tuesday), DayOfWeek.WEDNESDAY to L10n.str(R.string.main_tabs_wednesday), DayOfWeek.THURSDAY to L10n.str(R.string.main_tabs_thursday),
+        DayOfWeek.FRIDAY to L10n.str(R.string.main_tabs_friday), DayOfWeek.SATURDAY to L10n.str(R.string.main_tabs_saturday), DayOfWeek.SUNDAY to L10n.str(R.string.main_tabs_sunday),
     )
 
     /**
@@ -294,7 +296,7 @@ object MainTabs {
         val days = ChronoUnit.DAYS.between(at.toLocalDate(), now.toLocalDate())
         return when {
             days == 0L -> "${at.hour}:${at.minute.toString().padStart(2, '0')}"
-            days == 1L -> "昨日"
+            days == 1L -> L10n.str(R.string.common_yesterday)
             days in 2..6 -> weekdays.getValue(at.dayOfWeek)
             at.year != now.year -> "${at.year}/${at.monthValue}/${at.dayOfMonth}"
             else -> "${at.monthValue}/${at.dayOfMonth}"

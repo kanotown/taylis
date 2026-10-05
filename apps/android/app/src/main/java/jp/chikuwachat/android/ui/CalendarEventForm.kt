@@ -74,6 +74,9 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.util.UUID
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** The form's fields across a rotation (the form itself stays open: the controller holds it). */
 val EventDraftSaver = listSaver<EventDraft, String>(
@@ -190,9 +193,9 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
     }
 
     val formTitle = when {
-        event == null -> "予定を追加"
-        editable -> "予定を編集"
-        else -> "予定"
+        event == null -> stringResource(R.string.common_add_event)
+        editable -> stringResource(R.string.calendar_event_form_edit_event)
+        else -> stringResource(R.string.common_event)
     }
     val canSave = !busy && hub != null && (editable || alarmChanged)
     // Full screen, edge to edge like the app's pages (as 新しいメッセージ).
@@ -210,10 +213,10 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "閉じる") }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close)) }
                     Text(formTitle, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
                     if (editable || event != null) {
-                        TextButton(enabled = canSave, onClick = ::save) { Text(if (busy) "保存中…" else "保存") }
+                        TextButton(enabled = canSave, onClick = ::save) { Text(if (busy) stringResource(R.string.common_saving) else stringResource(R.string.common_save)) }
                     }
                 }
                 HorizontalDivider()
@@ -224,49 +227,49 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
                     if (editable) {
                         OutlinedTextField(
                             value = draft.title, onValueChange = { change(draft.copy(title = it.take(CalendarDates.MAX_TITLE))) },
-                            label = { Text("題名") }, placeholder = { Text("ゼミ") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.common_title)) }, placeholder = { Text(stringResource(R.string.calendar_event_form_seminar)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                         )
                         // The whole row switches (the label too), read as one switch.
                         Row(
                             Modifier.fillMaxWidth().toggleable(value = draft.allDay, role = Role.Switch, onValueChange = { change(CalendarDates.withAllDay(draft, it)) }),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("終日", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.common_all_day), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                             Switch(checked = draft.allDay, onCheckedChange = null)
                         }
-                        WhenRow("開始", draft.startDay, draft.startTime.takeIf { !draft.allDay }, onDay = { picker = FormPicker.START_DAY }, onTime = { picker = FormPicker.START_TIME })
-                        WhenRow("終了", draft.endDay, draft.endTime.takeIf { !draft.allDay }, onDay = { picker = FormPicker.END_DAY }, onTime = { picker = FormPicker.END_TIME })
+                        WhenRow(stringResource(R.string.common_start), draft.startDay, draft.startTime.takeIf { !draft.allDay }, onDay = { picker = FormPicker.START_DAY }, onTime = { picker = FormPicker.START_TIME })
+                        WhenRow(stringResource(R.string.calendar_event_form_end), draft.endDay, draft.endTime.takeIf { !draft.allDay }, onDay = { picker = FormPicker.END_DAY }, onTime = { picker = FormPicker.END_TIME })
                         RepeatSection(draft.repeat, draft.startDay, onChange = { change(draft.copy(repeat = it)) }, onPickUntil = { picker = FormPicker.UNTIL })
                         val calendarName = calendarName(controller, draft.calendar, event?.channelName)
                         if (event == null) {
                             ChoiceField(
-                                "カレンダー", calendarName, dot = draft.calendar ?: OWN,
-                                options = listOf<Pair<String?, String>>(null to "自分") + calendars.map { it.id to "#" + (it.channel.name ?: "") },
+                                stringResource(R.string.common_calendar), calendarName, dot = draft.calendar ?: OWN,
+                                options = listOf<Pair<String?, String>>(null to stringResource(R.string.common_you)) + calendars.map { it.id to "#" + (it.channel.name ?: "") },
                                 onPick = { change(draft.copy(calendar = it)) },
                             )
                         } else {
                             // An event cannot move to another calendar (PATCH has no channel_id).
-                            ChoiceField<String?>("カレンダー", calendarName, dot = draft.calendar ?: OWN, options = emptyList(), enabled = false, onPick = {})
+                            ChoiceField<String?>(stringResource(R.string.common_calendar), calendarName, dot = draft.calendar ?: OWN, options = emptyList(), enabled = false, onPick = {})
                         }
                         OutlinedTextField(
                             value = draft.location, onValueChange = { change(draft.copy(location = it.take(CalendarDates.MAX_LOCATION))) },
-                            label = { Text("場所") }, placeholder = { Text("5 号館 301 または URL") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.calendar_event_form_location)) }, placeholder = { Text(stringResource(R.string.calendar_event_form_room_301_building_5_or_a)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                         )
                         OutlinedTextField(
                             value = draft.description, onValueChange = { change(draft.copy(description = it.take(CalendarDates.MAX_DESCRIPTION))) },
-                            label = { Text("説明") }, minLines = 3, modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.common_description)) }, minLines = 3, modifier = Modifier.fillMaxWidth(),
                         )
                     } else if (event != null) {
                         ReadOnlyEvent(controller, event)
                     }
                     ChoiceField(
-                        "通知", CalendarDates.alarmLabel(draft.alarm, draft.allDay),
+                        stringResource(R.string.common_notifications), CalendarDates.alarmLabel(draft.alarm, draft.allDay),
                         options = CalendarDates.alarmChoices(draft.allDay).map { it.value to it.label },
                         enabled = hub != null,
                         onPick = { change(draft.copy(alarm = it)) },
                     )
                     Text(
-                        if (draft.allDay) "終日の予定の通知は 8:00 に届きます (タイムゾーン: ${ZoneId.systemDefault().id})" else "タイムゾーン: ${ZoneId.systemDefault().id}",
+                        if (draft.allDay) stringResource(R.string.calendar_event_form_notifications_for_all_day_events_arrive, ZoneId.systemDefault().id) else stringResource(R.string.common_time_zone, ZoneId.systemDefault().id),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
@@ -276,7 +279,7 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
                             if (recurring) askScope = ScopeAsk(deleting = true, scopes = OccurrenceScope.entries) else confirmDelete = true
                         }) {
                             Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                            Text(" 予定を削除", color = MaterialTheme.colorScheme.error)
+                            Text(stringResource(R.string.calendar_event_form_delete_event), color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -306,15 +309,15 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
                                 )
                             }
                             picker = null
-                        }) { Text("決定") }
+                        }) { Text(stringResource(R.string.common_done)) }
                     },
-                    dismissButton = { TextButton(onClick = { picker = null }) { Text("キャンセル") } },
+                    dismissButton = { TextButton(onClick = { picker = null }) { Text(stringResource(R.string.common_cancel)) } },
                 ) { DatePicker(state = state) }
             }
             FormPicker.START_TIME, FormPicker.END_TIME -> {
                 val start = picker == FormPicker.START_TIME
                 val time = if (start) draft.startTime else draft.endTime
-                TimePickDialog(time.hour, time.minute, title = if (start) "開始時刻" else "終了時刻", onDismiss = { picker = null }) { h, m ->
+                TimePickDialog(time.hour, time.minute, title = if (start) stringResource(R.string.common_start_time) else stringResource(R.string.common_end_time), onDismiss = { picker = null }) { h, m ->
                     val picked = LocalTime.of(h, m)
                     change(if (start) CalendarDates.withStart(draft, draft.startDay, picked) else draft.copy(endTime = picked))
                     picker = null
@@ -325,21 +328,21 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
         if (confirmDelete && event != null) {
             AlertDialog(
                 onDismissRequest = { confirmDelete = false },
-                title = { Text("予定を削除しますか？") },
+                title = { Text(stringResource(R.string.calendar_event_form_delete_this_event)) },
                 text = {
                     Text(
-                        "「${event.title}」を削除します。" + if (event.channelId != null) "チャンネルのメンバー全員のカレンダーから消えます。" else "",
+                        stringResource(R.string.common_will_be_deleted, event.title) + if (event.channelId != null) stringResource(R.string.calendar_event_form_it_will_disappear_from_the_calendars) else "",
                     )
                 },
-                confirmButton = { TextButton(onClick = { confirmDelete = false; remove() }) { Text("削除", color = MaterialTheme.colorScheme.error) } },
-                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("キャンセル") } },
+                confirmButton = { TextButton(onClick = { confirmDelete = false; remove() }) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) } },
+                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.common_cancel)) } },
             )
         }
         askScope?.let { ask ->
             // M69 (CALENDAR.md §10.7): 「この予定」「これ以降すべて」「すべての予定」 (「この予定」 only when the change fits one occurrence).
             AlertDialog(
                 onDismissRequest = { askScope = null },
-                title = { Text(if (ask.deleting) "繰り返しの予定の削除" else "繰り返しの予定の変更") },
+                title = { Text(if (ask.deleting) stringResource(R.string.calendar_event_form_delete_recurring_event) else stringResource(R.string.calendar_event_form_change_recurring_event)) },
                 text = {
                     Column(Modifier.fillMaxWidth()) {
                         ask.scopes.forEach { scope ->
@@ -353,7 +356,7 @@ fun CalendarEventForm(controller: AppController, form: CalendarForm, onDismiss: 
                     }
                 },
                 confirmButton = {},
-                dismissButton = { TextButton(onClick = { askScope = null }) { Text("キャンセル") } },
+                dismissButton = { TextButton(onClick = { askScope = null }) { Text(stringResource(R.string.common_cancel)) } },
             )
         }
     }
@@ -371,7 +374,7 @@ internal fun RepeatSection(repeat: RepeatDraft, start: LocalDate, onChange: (Rep
     val rrule = CalendarRecurrence.repeatToRrule(repeat, start)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ChoiceField(
-            "繰り返し", repeat.kind.label, options = RepeatKind.entries.map { it to it.label },
+            stringResource(R.string.common_repeat), repeat.kind.label, options = RepeatKind.entries.map { it to it.label },
             onPick = { kind ->
                 var next = repeat.copy(kind = kind)
                 if (kind == RepeatKind.CUSTOM && repeat.kind != RepeatKind.CUSTOM) next = next.copy(freq = freq ?: RepeatFreq.WEEKLY)
@@ -381,19 +384,19 @@ internal fun RepeatSection(repeat: RepeatDraft, start: LocalDate, onChange: (Rep
         )
         if (repeat.kind == RepeatKind.CUSTOM) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NumberField(repeat.interval, label = "間隔", onValue = { onChange(repeat.copy(interval = it)) })
+                NumberField(repeat.interval, label = stringResource(R.string.calendar_event_form_every), onValue = { onChange(repeat.copy(interval = it)) })
                 Box(Modifier.width(120.dp)) {
-                    ChoiceField("単位", repeat.freq.label, options = REPEAT_UNITS.map { it to it.label }, onPick = { unit ->
+                    ChoiceField(stringResource(R.string.calendar_event_form_unit), repeat.freq.label, options = REPEAT_UNITS.map { it to it.label }, onPick = { unit ->
                         var next = repeat.copy(freq = unit)
                         if (unit == RepeatFreq.WEEKLY && next.weekdays.isEmpty()) next = next.copy(weekdays = CalendarRecurrence.noRepeat(start).weekdays)
                         onChange(next)
                     })
                 }
-                Text("ごと", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.calendar_event_form_fmt), style = MaterialTheme.typography.bodyLarge)
             }
         }
         if (freq == RepeatFreq.WEEKLY) {
-            Row(Modifier.fillMaxWidth().semantics { contentDescription = "曜日" }, horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(Modifier.fillMaxWidth().semantics { contentDescription = L10n.str(R.string.common_days_of_the_week) }, horizontalArrangement = Arrangement.SpaceBetween) {
                 CalendarRecurrence.WEEKDAY_NAMES.forEachIndexed { day, name ->
                     val on = day in repeat.weekdays
                     Box(
@@ -403,7 +406,7 @@ internal fun RepeatSection(repeat: RepeatDraft, start: LocalDate, onChange: (Rep
                             .toggleable(value = on, role = Role.Checkbox, onValueChange = { checked ->
                                 onChange(repeat.copy(weekdays = if (checked) repeat.weekdays + day else repeat.weekdays - day))
                             })
-                            .semantics { contentDescription = "${name}曜日" },
+                            .semantics { contentDescription = L10n.str(R.string.common_fmt_4, name) },
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(name, color = if (on) MaterialTheme.colorScheme.onPrimary else weekdayColor(day) ?: MaterialTheme.colorScheme.onSurface)
@@ -414,23 +417,23 @@ internal fun RepeatSection(repeat: RepeatDraft, start: LocalDate, onChange: (Rep
         if (freq == RepeatFreq.MONTHLY) {
             val choices = CalendarRecurrence.monthlyChoices(start)
             val current = choices.firstOrNull { it.value == repeat.monthly }?.label ?: CalendarRecurrence.describeRrule(rrule, start)
-            ChoiceField("毎月の日", current, options = choices.map { it.value to it.label }, onPick = { onChange(repeat.copy(monthly = it)) })
+            ChoiceField(stringResource(R.string.calendar_event_form_day_of_the_month), current, options = choices.map { it.value to it.label }, onPick = { onChange(repeat.copy(monthly = it)) })
         }
         if (repeat.kind != RepeatKind.NONE) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.width(120.dp)) {
-                    ChoiceField("終了", repeat.end.label, options = RepeatEnd.entries.map { it to it.label }, onPick = { end ->
+                    ChoiceField(stringResource(R.string.calendar_event_form_end), repeat.end.label, options = RepeatEnd.entries.map { it to it.label }, onPick = { end ->
                         // A last day to start from: a month after the start (the picker changes it).
                         onChange(repeat.copy(end = end, until = repeat.until ?: if (end == RepeatEnd.UNTIL) start.plusMonths(1) else null))
                     })
                 }
                 when (repeat.end) {
                     RepeatEnd.UNTIL -> OutlinedButton(onClick = onPickUntil, modifier = Modifier.weight(1f).padding(top = 20.dp)) {
-                        Text(repeat.until?.let { CalendarDates.dayLabel(it) + " まで" } ?: "終了日", maxLines = 1)
+                        Text(repeat.until?.let { CalendarDates.dayLabel(it) + " まで" } ?: stringResource(R.string.calendar_event_form_end_date), maxLines = 1)
                     }
                     RepeatEnd.COUNT -> Row(Modifier.padding(top = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                        NumberField(repeat.count, label = "回数", onValue = { onChange(repeat.copy(count = it)) })
-                        Text(" 回", style = MaterialTheme.typography.bodyLarge)
+                        NumberField(repeat.count, label = stringResource(R.string.common_times), onValue = { onChange(repeat.copy(count = it)) })
+                        Text(stringResource(R.string.calendar_event_form_times), style = MaterialTheme.typography.bodyLarge)
                     }
                     RepeatEnd.NEVER -> Unit
                 }
@@ -465,7 +468,7 @@ private fun NumberField(value: Int, label: String, onValue: (Int) -> Unit) {
 private const val OWN = ""
 
 private fun calendarName(controller: AppController, calendar: String?, knownName: String?): String =
-    if (calendar == null) "自分" else "#" + (controller.store.channel(calendar)?.channel?.name ?: knownName ?: "?")
+    if (calendar == null) L10n.str(R.string.common_you) else "#" + (controller.store.channel(calendar)?.channel?.name ?: knownName ?: "?")
 
 /** 開始 / 終了: the day, and the time for a timed event, each a button that opens its picker. */
 @Composable
@@ -515,14 +518,14 @@ private fun ReadOnlyEvent(controller: AppController, event: jp.chikuwachat.andro
         }
         event.location?.takeIf { it.isNotBlank() }?.let { place ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Place, contentDescription = "場所", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Default.Place, contentDescription = stringResource(R.string.calendar_event_form_location), modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(6.dp))
                 SelectionContainer { Text(place, style = MaterialTheme.typography.bodyMedium) }
             }
         }
         event.description?.takeIf { it.isNotBlank() }?.let { SelectionContainer { Text(it, style = MaterialTheme.typography.bodyMedium) } }
         Text(
-            "この予定を変更できるのは作成者・チャンネルのオーナー・管理者だけです。自分の通知は付けられます。",
+            stringResource(R.string.calendar_event_form_only_the_creator_channel_owners_and),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         HorizontalDivider(Modifier.padding(top = 4.dp))

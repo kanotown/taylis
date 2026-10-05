@@ -48,6 +48,10 @@ import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 
 @Composable
 fun NewChannelDialog(controller: AppController, onDismiss: () -> Unit, onOpened: (String) -> Unit) {
@@ -58,13 +62,13 @@ fun NewChannelDialog(controller: AppController, onDismiss: () -> Unit, onOpened:
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("チャンネルを作成") },
+        title = { Text(stringResource(R.string.common_create_channel)) },
         text = {
             Column {
-                OutlinedTextField(name, { name = it }, label = { Text("名前") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.common_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                     Switch(checked = isPrivate, onCheckedChange = { isPrivate = it })
-                    Text("プライベート", modifier = Modifier.padding(start = 8.dp))
+                    Text(stringResource(R.string.dialogs_private), modifier = Modifier.padding(start = 8.dp))
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
             }
@@ -76,9 +80,9 @@ fun NewChannelDialog(controller: AppController, onDismiss: () -> Unit, onOpened:
                         .onSuccess { onOpened(it); onDismiss() }
                         .onFailure { error = controller.describe(it) }
                 }
-            }) { Text("作成") }
+            }) { Text(stringResource(R.string.common_create)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -108,17 +112,17 @@ fun NewDmDialog(controller: AppController, onDismiss: () -> Unit, onOpened: (Str
     val recipients = selected.filter { id -> users.any { it.id == id } }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("ダイレクトメッセージ") },
+        title = { Text(stringResource(R.string.common_direct_message)) },
         text = {
             Column {
-                Text("複数選ぶとグループ DM になります (相手は8人まで)", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.dialogs_pick_several_for_a_group_dm), style = MaterialTheme.typography.bodySmall)
                 // A DM with only myself, titled with my name (as in Slack / Mattermost).
                 store.me?.id?.let { me ->
                     TextButton(enabled = !busy, onClick = { start(listOf(me)) }) { Text("${myDisplayName(store)} (${MainTabs.SELF_NOTES_HINT})") }
                 }
-                OutlinedTextField(query, { query = it }, label = { Text("名前で検索") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                if (users.isEmpty()) Text("相手になるユーザーがいません")
-                else if (visible.isEmpty()) Text("一致するユーザーがいません")
+                OutlinedTextField(query, { query = it }, label = { Text(stringResource(R.string.dialogs_search_by_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (users.isEmpty()) Text(stringResource(R.string.dialogs_there_are_no_users_to_message))
+                else if (visible.isEmpty()) Text(stringResource(R.string.dialogs_no_matching_users))
                 LazyColumn(Modifier.heightIn(max = 280.dp)) {
                     items(visible, key = { it.id }) { user ->
                         val checked = user.id in selected
@@ -137,12 +141,12 @@ fun NewDmDialog(controller: AppController, onDismiss: () -> Unit, onOpened: (Str
                         }
                     }
                 }
-                Text("${recipients.size} / $maxRecipients 人を選択", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.dialogs_selected, recipients.size, maxRecipients), style = MaterialTheme.typography.bodySmall)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton(enabled = !busy && recipients.isNotEmpty(), onClick = { start(recipients) }) { Text(if (busy) "開始中…" else "開始") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        confirmButton = { TextButton(enabled = !busy && recipients.isNotEmpty(), onClick = { start(recipients) }) { Text(if (busy) stringResource(R.string.common_starting) else stringResource(R.string.common_start)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -162,12 +166,12 @@ fun AddMemberDialog(controller: AppController, channelId: String, onDismiss: () 
     val picked = selected.filter { id -> candidates.any { it.id == id } }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("メンバーを追加") },
+        title = { Text(stringResource(R.string.common_add_members)) },
         text = {
             Column {
                 when {
-                    memberIds == null && error == null -> Text("読み込み中…")
-                    candidates.isEmpty() && error == null -> Text("追加できるユーザーはいません")
+                    memberIds == null && error == null -> Text(stringResource(R.string.common_loading))
+                    candidates.isEmpty() && error == null -> Text(stringResource(R.string.dialogs_no_users_to_add))
                     else -> UserPicker(candidates, selected, enabled = !busy) { user ->
                         selected = if (user.id in selected) selected - user.id else selected + user.id
                     }
@@ -184,9 +188,9 @@ fun AddMemberDialog(controller: AppController, channelId: String, onDismiss: () 
                         controller.addMembers(channelId, picked).onSuccess { onDismiss() }.onFailure { error = controller.describe(it) }
                     } finally { busy = false }
                 }
-            }) { Text(if (busy) "追加中…" else if (picked.isEmpty()) "追加" else "${picked.size} 人を追加") }
+            }) { Text(if (busy) stringResource(R.string.dialogs_adding) else if (picked.isEmpty()) stringResource(R.string.common_add) else pluralStringResource(R.plurals.dialogs_add_person_add_people, picked.size, picked.size)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -266,45 +270,45 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
         val editable = channel.isMember && !channel.channel.archived
         if (isChannel) {
             if (editingTopic) {
-                SectionLabel("トピック")
-                OutlinedTextField(topic, { topic = it.take(250) }, singleLine = true, modifier = Modifier.fillMaxWidth(), placeholder = { Text("例: 週次の進捗共有") })
+                SectionLabel(L10n.str(R.string.dialogs_topic))
+                OutlinedTextField(topic, { topic = it.take(250) }, singleLine = true, modifier = Modifier.fillMaxWidth(), placeholder = { Text(L10n.str(R.string.dialogs_e_g_weekly_progress_updates)) })
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = { scope.launch { if (controller.updateTopic(channel.id, topic)) editingTopic = false } }) { Text("保存") }
-                    TextButton(onClick = { editingTopic = false; topic = channel.channel.topic ?: "" }) { Text("キャンセル") }
+                    TextButton(onClick = { scope.launch { if (controller.updateTopic(channel.id, topic)) editingTopic = false } }) { Text(L10n.str(R.string.common_save)) }
+                    TextButton(onClick = { editingTopic = false; topic = channel.channel.topic ?: "" }) { Text(L10n.str(R.string.common_cancel)) }
                 }
             } else {
-                EditableRow("トピック", channel.channel.topic, editable) { topic = channel.channel.topic ?: ""; editingTopic = true }
+                EditableRow(L10n.str(R.string.dialogs_topic), channel.channel.topic, editable) { topic = channel.channel.topic ?: ""; editingTopic = true }
             }
             if (editingPurpose) {
-                SectionLabel("説明")
-                OutlinedTextField(purpose, { purpose = it.take(250) }, singleLine = true, modifier = Modifier.fillMaxWidth(), placeholder = { Text("例: デザインレビューの依頼と結果を共有する") })
+                SectionLabel(L10n.str(R.string.common_description))
+                OutlinedTextField(purpose, { purpose = it.take(250) }, singleLine = true, modifier = Modifier.fillMaxWidth(), placeholder = { Text(L10n.str(R.string.dialogs_e_g_share_design_review_requests)) })
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = { scope.launch { if (controller.updatePurpose(channel.id, purpose)) editingPurpose = false } }) { Text("保存") }
-                    TextButton(onClick = { editingPurpose = false; purpose = channel.channel.purpose ?: "" }) { Text("キャンセル") }
+                    TextButton(onClick = { scope.launch { if (controller.updatePurpose(channel.id, purpose)) editingPurpose = false } }) { Text(L10n.str(R.string.common_save)) }
+                    TextButton(onClick = { editingPurpose = false; purpose = channel.channel.purpose ?: "" }) { Text(L10n.str(R.string.common_cancel)) }
                 }
             } else {
-                EditableRow("説明", channel.channel.purpose, editable) { purpose = channel.channel.purpose ?: ""; editingPurpose = true }
+                EditableRow(L10n.str(R.string.common_description), channel.channel.purpose, editable) { purpose = channel.channel.purpose ?: ""; editingPurpose = true }
             }
         }
         // D1: the level, the mute and the timed mute were six rows here; one row now, the choices open from it.
         if (channel.isMember) ChannelNotificationRow(controller, channel)
         // M66 (docs/AI.md §6): 「要約」 (未読 / 直近 1 日 / 直近 7 日), only to me.
         if (channel.isMember && controller.aiSummaryAvailable) {
-            TextButton(onClick = { controller.aiSummaryChooser = channel.id }, contentPadding = PaddingValues(0.dp)) { Text("要約 (未読 / 直近 1 日 / 直近 7 日)") }
+            TextButton(onClick = { controller.aiSummaryChooser = channel.id }, contentPadding = PaddingValues(0.dp)) { Text(L10n.str(R.string.dialogs_summarize_unread_last_day_last_7)) }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) { SectionLabel("メンバー" + (members?.let { " (${it.size})" } ?: "")) }
+            Box(Modifier.weight(1f)) { SectionLabel(L10n.str(R.string.common_member) + (members?.let { " (${it.size})" } ?: "")) }
             if (isChannel && channel.isMember && !channel.channel.archived) {
-                TextButton(onClick = { addingMember = true }) { Text("メンバーを追加") }
+                TextButton(onClick = { addingMember = true }) { Text(L10n.str(R.string.common_add_members)) }
             }
         }
         when (val list = sortedMembers) {
-            null -> Text("読み込み中…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            null -> Text(L10n.str(R.string.common_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
             else -> list.forEach { member ->
                 val user = store.users[member.userId]
                 // The whole row opens the profile (48 dp high).
                 Row(
-                    Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = "プロフィールを開く") { profileUserId = member.userId }.padding(vertical = 4.dp),
+                    Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = L10n.str(R.string.common_open_profile)) { profileUserId = member.userId }.padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val presence = store.presenceOf(member.userId)
@@ -318,13 +322,13 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                         Text("@" + (user?.username ?: "") + (Roster.titleExtra(user?.title, store.roster[member.userId])?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (presence != "offline") Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
-                    if (member.role == "owner") Text("オーナー", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (member.role == "owner") Text(L10n.str(R.string.dialogs_owner), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     // M31: 「オーナーにする」 / 「オーナーから外す」 behind a 48 dp menu button (a text button leaves no room for
                     // the name at 360 dp).
                     ChannelOwners.action(channel, myRole, member, user, ownerCount)?.let { action ->
                         var menu by remember { mutableStateOf(false) }
                         Box {
-                            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "メンバーの操作") }
+                            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = L10n.str(R.string.dialogs_member_actions)) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(
                                     text = { Text(ChannelOwners.actionLabel(action)) },
@@ -341,57 +345,57 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
         // M95 (WORKFLOWS.md §8 2.): the workflows this channel offers; a tap opens the form (managing them is the desktop's).
         if (isChannel && channel.isMember) ChannelWorkflowsSection(controller, channel)
         if (isChannel && channel.isMember) {
-            SectionLabel("管理")
+            SectionLabel(L10n.str(R.string.common_admin))
             if (renaming) {
-                OutlinedTextField(newName, { newName = it }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text("新しい名前") })
+                OutlinedTextField(newName, { newName = it }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(L10n.str(R.string.dialogs_new_name)) })
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(enabled = newName.isNotBlank(), onClick = { scope.launch { if (controller.renameChannel(channel.id, newName)) renaming = false } }) { Text("変更") }
-                    TextButton(onClick = { renaming = false }) { Text("キャンセル") }
+                    TextButton(enabled = newName.isNotBlank(), onClick = { scope.launch { if (controller.renameChannel(channel.id, newName)) renaming = false } }) { Text(L10n.str(R.string.common_change)) }
+                    TextButton(onClick = { renaming = false }) { Text(L10n.str(R.string.common_cancel)) }
                 }
             }
             when (confirm) {
                 "leave" -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("このチャンネルを退出しますか？", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { scope.launch { if (controller.leaveChannel(channel.id)) onClose() } }) { Text("退出", color = MaterialTheme.colorScheme.error) }
-                    TextButton(onClick = { confirm = null }) { Text("キャンセル") }
+                    Text(L10n.str(R.string.dialogs_leave_this_channel), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { scope.launch { if (controller.leaveChannel(channel.id)) onClose() } }) { Text(L10n.str(R.string.common_leave), color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { confirm = null }) { Text(L10n.str(R.string.common_cancel)) }
                 }
                 "archive" -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("アーカイブすると読み取り専用になります。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { scope.launch { if (controller.archiveChannel(channel.id)) onClose() } }) { Text("アーカイブ", color = MaterialTheme.colorScheme.error) }
-                    TextButton(onClick = { confirm = null }) { Text("キャンセル") }
+                    Text(L10n.str(R.string.dialogs_archiving_makes_it_read_only), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { scope.launch { if (controller.archiveChannel(channel.id)) onClose() } }) { Text(L10n.str(R.string.dialogs_archive), color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { confirm = null }) { Text(L10n.str(R.string.common_cancel)) }
                 }
                 // M15b: making a channel public shows its whole history, so that direction is for admins only.
                 "convert" -> Column {
                     Text(
-                        if (toPrivate) "非公開にすると、メンバー以外はこのチャンネルを見つけられず、これまでのメッセージもメンバーだけが読めます。" + (if (isAdmin) "" else "公開に戻せるのは管理者だけです。")
-                        else "公開すると、ゲスト以外の全員が参加でき、これまでのメッセージも読めるようになります。",
+                        if (toPrivate) L10n.str(R.string.dialogs_once_private_non_members_cant_find) + (if (isAdmin) "" else L10n.str(R.string.dialogs_only_administrators_can_make_it_public))
+                        else L10n.str(R.string.dialogs_once_public_everyone_except_guests_can),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Row {
                         TextButton(onClick = { scope.launch { if (controller.convertChannel(channel.id, if (toPrivate) "private" else "public")) confirm = null } }) {
-                            Text(if (toPrivate) "非公開にする" else "公開にする", color = MaterialTheme.colorScheme.error)
+                            Text(if (toPrivate) L10n.str(R.string.dialogs_make_private) else L10n.str(R.string.dialogs_make_public), color = MaterialTheme.colorScheme.error)
                         }
-                        TextButton(onClick = { confirm = null }) { Text("キャンセル") }
+                        TextButton(onClick = { confirm = null }) { Text(L10n.str(R.string.common_cancel)) }
                     }
                 }
             }
             if (confirm == null && !renaming) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (canManage && !channel.channel.archived) {
-                        TextButton(onClick = { newName = channel.channel.name ?: ""; renaming = true }, contentPadding = PaddingValues(0.dp)) { Text("名前を変更") }
-                        TextButton(onClick = { confirm = "archive" }, contentPadding = PaddingValues(0.dp)) { Text("アーカイブ") }
+                        TextButton(onClick = { newName = channel.channel.name ?: ""; renaming = true }, contentPadding = PaddingValues(0.dp)) { Text(L10n.str(R.string.dialogs_rename)) }
+                        TextButton(onClick = { confirm = "archive" }, contentPadding = PaddingValues(0.dp)) { Text(L10n.str(R.string.dialogs_archive)) }
                     }
                     if (canManage && channel.channel.archived) {
-                        TextButton(onClick = { scope.launch { if (controller.unarchiveChannel(channel.id)) onClose() } }, contentPadding = PaddingValues(0.dp)) { Text("アーカイブを解除") }
+                        TextButton(onClick = { scope.launch { if (controller.unarchiveChannel(channel.id)) onClose() } }, contentPadding = PaddingValues(0.dp)) { Text(L10n.str(R.string.dialogs_unarchive)) }
                     }
-                    TextButton(onClick = { confirm = "leave" }, contentPadding = PaddingValues(0.dp)) { Text("退出", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { confirm = "leave" }, contentPadding = PaddingValues(0.dp)) { Text(L10n.str(R.string.common_leave), color = MaterialTheme.colorScheme.error) }
                 }
                 if (canManage && !channel.channel.archived) {
                     // M15a: an announcement channel; thread replies stay open to everyone. In a times (M24) the same
                     // policy reads as the owner's choice: others answer in threads only.
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            if (channel.channel.isTimes) "他の人はスレッドでだけ返信できるようにする" else "投稿をオーナーと管理者に限る",
+                            if (channel.channel.isTimes) L10n.str(R.string.dialogs_others_can_only_reply_in_threads) else L10n.str(R.string.dialogs_only_owners_and_administrators_can_post),
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f),
                         )
@@ -402,11 +406,11 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                     }
                 }
                 if (ChannelLinks.canEdit(channel, store.me?.role)) {
-                    TextButton(onClick = { addingLink = true }, contentPadding = PaddingValues(0.dp)) { Text("リンクを追加") }
+                    TextButton(onClick = { addingLink = true }, contentPadding = PaddingValues(0.dp)) { Text(L10n.str(R.string.common_add_link)) }
                 }
                 if (ChannelOwners.canConvert(channel, myRole)) {
                     TextButton(onClick = { confirm = "convert" }, contentPadding = PaddingValues(0.dp)) {
-                        Text(if (toPrivate) "非公開チャンネルに変換" else "公開チャンネルに変換")
+                        Text(if (toPrivate) L10n.str(R.string.dialogs_convert_to_private_channel) else L10n.str(R.string.dialogs_convert_to_public_channel))
                     }
                 }
             }
@@ -424,12 +428,12 @@ private fun EditableRow(label: String, value: String?, editable: Boolean, onEdit
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                value?.takeIf { it.isNotBlank() } ?: "未設定",
+                value?.takeIf { it.isNotBlank() } ?: stringResource(R.string.dialogs_not_set),
                 color = if (value.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
-        if (editable) TextButton(onClick = onEdit) { Text("編集") }
+        if (editable) TextButton(onClick = onEdit) { Text(stringResource(R.string.common_edit)) }
     }
 }
 

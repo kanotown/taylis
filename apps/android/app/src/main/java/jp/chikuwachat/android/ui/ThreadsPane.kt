@@ -39,6 +39,9 @@ import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.ThreadEntry
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 
 /** Followed threads (THREADS.md §5): newest reply first, an all / unread filter; a row opens the thread. */
 @Composable
@@ -66,8 +69,8 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
     LazyColumn(Modifier.fillMaxSize(), state = listState) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = filter == "all", onClick = { load("all") }, label = { Text("すべて") })
-                FilterChip(selected = filter == "unread", onClick = { load("unread") }, label = { Text("未読") })
+                FilterChip(selected = filter == "all", onClick = { load("all") }, label = { Text(stringResource(R.string.common_all)) })
+                FilterChip(selected = filter == "unread", onClick = { load("unread") }, label = { Text(stringResource(R.string.common_unread)) })
             }
         }
         if (rows.isEmpty()) {
@@ -75,22 +78,22 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         when {
-                            !store.threadsLoaded && offline -> "オフラインのためスレッドを読み込めません"
-                            !store.threadsLoaded && failed -> "スレッドを読み込めませんでした"
-                            !store.threadsLoaded -> "読み込んでいます…"
-                            filter == "unread" -> "未読のスレッドはありません"
-                            else -> "フォロー中のスレッドはありません"
+                            !store.threadsLoaded && offline -> stringResource(R.string.threads_pane_cant_load_threads_while_offline)
+                            !store.threadsLoaded && failed -> stringResource(R.string.threads_pane_couldnt_load_threads)
+                            !store.threadsLoaded -> stringResource(R.string.common_loading_2)
+                            filter == "unread" -> stringResource(R.string.threads_pane_no_unread_threads)
+                            else -> stringResource(R.string.threads_pane_no_followed_threads)
                         },
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
-                        if (!store.threadsLoaded && offline) "接続が戻ると読み込みます。" else "自分が投稿・返信・メンションされたスレッドはここに集まります。",
+                        if (!store.threadsLoaded && offline) stringResource(R.string.common_it_will_load_when_the_connection) else stringResource(R.string.threads_pane_threads_you_posted_in_replied_to),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 4.dp),
                     )
-                    if (!store.threadsLoaded && failed && !offline) TextButton(onClick = { attempt += 1 }) { Text("再読み込み") }
+                    if (!store.threadsLoaded && failed && !offline) TextButton(onClick = { attempt += 1 }) { Text(stringResource(R.string.common_reload)) }
                 }
             }
         } else {
@@ -99,7 +102,7 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
                 HorizontalDivider()
             }
             if (store.threadsHasMore) {
-                item { TextButton(onClick = { load(filter, more = true) }, modifier = Modifier.fillMaxWidth()) { Text("さらに表示") } }
+                item { TextButton(onClick = { load(filter, more = true) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.threads_pane_show_more)) } }
             }
         }
     }
@@ -141,12 +144,12 @@ private fun ThreadRow(entry: ThreadEntry, store: Store, version: Int, onNeedEmoj
             )
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "${state.replyCount} 件の返信",
+                    pluralStringResource(R.plurals.common_reply_replies, state.replyCount, state.replyCount),
                     style = MaterialTheme.typography.labelMedium,
                     color = if (unread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal,
                 )
-                if (unread) Text(" · 未読 ${state.unreadCount} 件", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (unread) Text(stringResource(R.string.threads_pane_unread, state.unreadCount), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.weight(1f))
                 if (unread) {
                     Text(

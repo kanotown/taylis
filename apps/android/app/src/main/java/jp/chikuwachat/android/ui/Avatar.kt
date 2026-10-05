@@ -23,6 +23,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /**
  * The profile picture when the user has one (M14a), else initials on a colour derived from the user id; `presence` adds
@@ -33,7 +36,7 @@ import androidx.compose.ui.unit.sp
 fun Avatar(id: String, name: String, modifier: Modifier = Modifier, size: Dp = 36.dp, presence: String? = null, onClick: (() -> Unit)? = null) {
     val color = Color.hsl(Timeline.hue(id).toFloat(), 0.55f, 0.45f)
     val tappable = if (onClick == null) modifier else modifier.touchTarget { source ->
-        Modifier.semantics { contentDescription = name }.clickable(interactionSource = source, indication = null, onClickLabel = "プロフィールを開く", onClick = onClick)
+        Modifier.semantics { contentDescription = name }.clickable(interactionSource = source, indication = null, onClickLabel = L10n.str(R.string.common_open_profile), onClick = onClick)
     }
     Box(tappable.size(size)) {
         val picture = AvatarCache.image(id)  // M14a
@@ -58,7 +61,7 @@ fun Avatar(id: String, name: String, modifier: Modifier = Modifier, size: Dp = 3
 }
 
 fun presenceLabel(status: String): String = when (status) {
-    "online" -> "オンライン"
-    "away" -> "離席中"
-    else -> "オフライン"
+    "online" -> L10n.str(R.string.common_online)
+    "away" -> L10n.str(R.string.common_away)
+    else -> L10n.str(R.string.common_offline)
 }
