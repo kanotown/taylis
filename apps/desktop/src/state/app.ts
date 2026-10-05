@@ -919,8 +919,20 @@ export class AppController {
     return this.sidebarChange((api) => api.updateSidebarSection(sectionId, { collapsed }));
   }
 
-  moveSection(sectionId: string, position: number): Promise<boolean> {
-    return this.sidebarChange((api) => api.updateSidebarSection(sectionId, { position }));
+  /**
+   * A section to another place among mine (the menu's 上へ / 下へ, or dragging its header). Moves at once here; the server's
+   * list (sidebar.updated on my other devices) confirms, and a failure puts the old order back.
+   */
+  async moveSection(sectionId: string, position: number): Promise<boolean> {
+    const before = this.store.sidebarSections;
+    const moved = before.find((s) => s.id === sectionId);
+    if (!moved) return false;
+    const rows = before.filter((s) => s.id !== sectionId);
+    rows.splice(Math.max(0, Math.min(position, rows.length)), 0, moved);
+    this.store.replaceSidebar(rows.map((s, index) => ({ ...s, position: index })));
+    const ok = await this.sidebarChange((api) => api.updateSidebarSection(sectionId, { position }));
+    if (!ok) this.store.replaceSidebar(before);
+    return ok;
   }
 
   deleteSection(sectionId: string): Promise<boolean> {

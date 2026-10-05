@@ -104,6 +104,15 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     if (store.sidebarSections.some((section) => section.channel_ids.includes(channelId))) void controller.moveToSection(channelId, null);
   };
   const status = controller.engine?.status ?? "idle";
+  // My own sections reorder by dragging a header onto another (before or after it, by the pointer's half); the ⋯ menu's
+  // 上へ / 下へ is the keyboard's way. The default sections stay where they are (they have no place on the server).
+  const dropSection = (draggedId: string, targetIndex: number, after: boolean) => {
+    const from = sections.custom.findIndex(({ section }) => section.id === draggedId);
+    if (from < 0) return;
+    let to = targetIndex + (after ? 1 : 0);
+    if (from < to) to -= 1;
+    if (to !== from) void controller.moveSection(draggedId, to);
+  };
   // M111: the menu items I chose to show, in my order (UserMe.nav_items; null = all, the default order).
   const navKeys = sidebarNavKeys(me?.nav_items);
 
@@ -433,6 +442,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           collapsed={section.collapsed}
           onToggle={() => void controller.setSectionCollapsed(section.id, !section.collapsed)}
           onDropChannel={(id) => { if (!section.channel_ids.includes(id)) void controller.moveToSection(id, section.id); }}
+          sectionId={section.id}
+          onDropSection={(dragged, after) => dropSection(dragged, index, after)}
           action={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} />}
         >
           <ul className="space-y-px">{shown(members, section.collapsed)}</ul>
@@ -619,6 +630,8 @@ export function useFoldedDefaults(): [ReadonlySet<string>, (key: string) => void
 
 /** The data type a dragged conversation row carries (M26); files dragged in from outside have none of it. */
 const CHANNEL_DRAG = "application/x-chikuwa-channel";
+/** The data type a dragged section header carries (my own sections only); never taken as a conversation. */
+export const SECTION_DRAG = "application/x-chikuwa-section";
 
 /** The pinned header's picture, name and connection state (inside the button that opens my profile card). */
 function SidebarIdentity({ controller, meId, name, status }: { controller: AppController; meId: string | null; name: string; status: string }) {
@@ -643,7 +656,7 @@ function SidebarIdentity({ controller, meId, name, status }: { controller: AppCo
  * A sidebar section. M26 (Slack): the header folds it (`onToggle`), with an icon before the title; a conversation row
  * dropped on it goes to `onDropChannel`.
  */
-function Section({ title, icon, action, children, collapsed = false, onToggle, onDropChannel }: {
+function Section({ title, icon, action, children, collapsed = false, onToggle, onDropChannel, sectionId, onDropSection }: {
   title: string;
   icon?: ReactNode;
   action?: ReactNode;
@@ -651,28 +664,70 @@ function Section({ title, icon, action, children, collapsed = false, onToggle, o
   collapsed?: boolean;
   onToggle?: () => void;
   onDropChannel?: (channelId: string) => void;
+  /** One of my own sections: its header drags (SECTION_DRAG), and a header dropped on it lands before or after it. */
+  sectionId?: string;
+  onDropSection?: (draggedId: string, after: boolean) => void;
 }) {
   const [over, setOver] = useState(false);
+  // Where a dragged section header would land: the line above or below this section.
+  const [edge, setEdge] = useState<"before" | "after" | null>(null);
   const accepts = (event: React.DragEvent) => !!onDropChannel && event.dataTransfer.types.includes(CHANNEL_DRAG);
+  const acceptsSection = (event: React.DragEvent) => !!onDropSection && event.dataTransfer.types.includes(SECTION_DRAG);
+  const half = (event: React.DragEvent): "before" | "after" => {
+    const box = event.currentTarget.getBoundingClientRect();
+    return box.height > 0 && event.clientY > box.top + box.height / 2 ? "after" : "before";
+  };
   return (
     <section
-      className={cn("mt-3 rounded-lg transition-colors", over && "bg-sidebar-strong/10 ring-1 ring-sidebar-strong/25")}
+      data-section={sectionId}
+      data-drop-edge={edge ?? undefined}
+      className={cn(
+        "relative mt-3 rounded-lg transition-colors",
+        over && "bg-sidebar-strong/10 ring-1 ring-sidebar-strong/25",
+        edge === "before" && "before:absolute before:inset-x-1 before:-top-1.5 before:h-0.5 before:rounded-full before:bg-accent-solid",
+        edge === "after" && "after:absolute after:inset-x-1 after:-bottom-1.5 after:h-0.5 after:rounded-full after:bg-accent-solid",
+      )}
       onDragOver={(event) => {
+        if (acceptsSection(event)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          const next = half(event);
+          if (edge !== next) setEdge(next);
+          return;
+        }
         if (!accepts(event)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = "move";
         if (!over) setOver(true);
       }}
-      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false); }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setOver(false);
+        setEdge(null);
+      }}
       onDrop={(event) => {
         setOver(false);
+        setEdge(null);
+        if (acceptsSection(event)) {
+          const dragged = event.dataTransfer.getData(SECTION_DRAG);
+          event.preventDefault();
+          if (dragged && dragged !== sectionId) onDropSection?.(dragged, half(event) === "after");
+          return;
+        }
         const id = accepts(event) ? event.dataTransfer.getData(CHANNEL_DRAG) : "";
         if (!id) return;
         event.preventDefault();
         onDropChannel?.(id);
       }}
     >
-      <h2 className="mb-1 flex h-7 items-center justify-between gap-1 px-2.5 text-[13px] font-semibold uppercase tracking-wider text-sidebar-muted">
+      <h2
+        draggable={sectionId ? true : undefined}
+        title={sectionId ? "ドラッグで並べ替え" : undefined}
+        onDragStart={sectionId ? (event) => {
+          event.dataTransfer.setData(SECTION_DRAG, sectionId);
+          event.dataTransfer.effectAllowed = "move";
+        } : undefined}
+        className="mb-1 flex h-7 items-center justify-between gap-1 px-2.5 text-[13px] font-semibold uppercase tracking-wider text-sidebar-muted">
         {onToggle ? (
           <button type="button" aria-expanded={!collapsed} onClick={onToggle} className="-ml-1 flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 text-left uppercase hover:text-sidebar-fg">
             <ChevronDown size={14} className={cn("shrink-0 transition-transform duration-200", collapsed && "-rotate-90")} />
