@@ -42,6 +42,7 @@ import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
 import { readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
 import type { NavItem } from "../ui/navItems";
+import { setLocalePreference, type UiLocale } from "../i18n";
 
 export type Screen = "boot" | "login" | "change_password" | "main";
 
@@ -1262,6 +1263,26 @@ export class AppController {
     this.store.setMe({ ...before, nav_items: list });
     const ok = await this.updateProfile({ nav_items: list });
     if (!ok && this.store.me?.nav_items === list) this.store.setMe({ ...this.store.me, nav_items: before.nav_items ?? null });
+    return ok;
+  }
+
+  /**
+   * M115 (docs/I18N.md): my UI language (users.locale), null = follow the device / browser. Applied at once (the app
+   * redraws in it); a refused or failed save puts the previous choice back. My other devices follow (user.updated).
+   */
+  async setUiLocale(locale: UiLocale | null): Promise<boolean> {
+    const before = this.store.me;
+    if (!this.api || !before) {
+      setLocalePreference(locale);
+      return false;
+    }
+    this.store.setMe({ ...before, locale });
+    setLocalePreference(locale);
+    const ok = await this.updateProfile({ locale });
+    if (!ok && this.store.me?.locale === locale) {
+      this.store.setMe({ ...this.store.me, locale: before.locale ?? null });
+      setLocalePreference(before.locale ?? null);
+    }
     return ok;
   }
 
