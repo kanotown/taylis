@@ -103,6 +103,57 @@ enum ReservationRules {
         return out
     }
 
+    /// The sheet's default length: the pool's max_hours, or the longest that fits from `start`, and why it stops
+    /// (`full`: the slot is full from `at`; `horizon`: the two weeks end at `at`).
+    struct DurationDefault: Equatable {
+        enum Limit: Equatable { case max, full, horizon }
+        let hours: Int
+        let limit: Limit
+        let at: Date?
+    }
+
+    static func durationDefault(_ pool: PoolOut, start: Date, now: Date, calendar: Calendar = .current) -> DurationDefault {
+        let hours = durations(pool, start: start, now: now, calendar: calendar).count
+        if hours >= pool.maxHours { return DurationDefault(hours: hours, limit: .max, at: nil) }
+        let at = start.addingTimeInterval(Double(hours) * hour)
+        let pastHorizon = at.addingTimeInterval(hour) > horizonEnd(pool, now: now, calendar: calendar)
+        return DurationDefault(hours: hours, limit: pastHorizon ? .horizon : .full, at: at)
+    }
+
+    /// Why the default is shorter than the maximum (nil when it is the maximum).
+    static func limitText(_ fit: DurationDefault, pool: PoolOut, start: Date, calendar: Calendar = .current) -> String? {
+        guard fit.hours > 0, let at = fit.at else { return nil }
+        switch fit.limit {
+        case .max: return nil
+        case .full:
+            let when = calendar.isDate(at, inSameDayAs: start) ? hm(at, calendar: calendar)
+                : "\(dayLabel(at, now: start, calendar: calendar)) \(hm(at, calendar: calendar))"
+            return tr("\(when) から埋まっているため、最長 \(fit.hours) 時間です")
+        case .horizon: return tr("予約は \(pool.horizonDays) 日先までのため、最長 \(fit.hours) 時間です")
+        }
+    }
+
+    /// My one active reservation in the pool (one per person and pool, docs/RESERVATIONS.md §1): while there is one,
+    /// 「予約する」 and 「今すぐ」 are off (the server answers 409 reservation_already_active). Read from the lists when
+    /// the server does not name it.
+    static func active(_ pool: PoolOut, me: String?) -> ReservationOut? {
+        let rows = pool.holders + pool.waiting + live(pool)
+        if let id = pool.myActiveId { return rows.first { $0.id == id } }
+        return rows.first { $0.userId == me }
+    }
+
+    /// 「予約 10/7 (水) 13:00〜16:00」, 「今すぐ · 順番待ち」, 「今すぐ · 利用中」.
+    static func activeText(_ row: ReservationOut, now: Date) -> String {
+        let head = row.kind == "booking" && row.startAt != nil ? tr("予約 \(span(row.startAt, row.endAt, now: now))") : tr("今すぐ")
+        let state: String? = switch row.status {
+        case "waiting": tr("順番待ち")
+        case "holding": tr("利用中")
+        case "returning": tr("返却済み")
+        default: nil
+        }
+        return state.map { "\(head) · \($0)" } ?? head
+    }
+
     /// One hour of the phone's day list: who is booked or on a seat then.
     struct HourRow: Equatable, Identifiable {
         let start: Date
@@ -210,10 +261,16 @@ struct ReservationsView: View {
                     ContentUnavailableView("予約の枠はありません", systemImage: "ticket",
                                            description: Text("枠は管理者が Desktop / Web で作ります"))
                 } else {
-                    List {
-                        ForEach(pools) { pool in PoolSection(controller: controller, pool: pool) }
+                    ScrollViewReader { proxy in
+                        List {
+                            ForEach(pools) { pool in
+                                PoolSection(controller: controller, pool: pool) { id in
+                                    withAnimation { proxy.scrollTo(id, anchor: .center) }
+                                }
+                            }
+                        }
+                        .listStyle(.insetGrouped)
                     }
-                    .listStyle(.insetGrouped)
                 }
             } else {
                 ProgressView()
@@ -230,6 +287,8 @@ struct ReservationsView: View {
 struct PoolSection: View {
     @Bindable var controller: AppController
     let pool: PoolOut
+    /// Scrolls the page to one of my rows (「自分の予約を見る」).
+    var showMine: (String) -> Void = { _ in }
     @State private var day = ReservationRules.dayStart(Date())
     @State private var booking = false
     @State private var busy = false
@@ -257,15 +316,25 @@ struct PoolSection: View {
     var body: some View {
         let now = Date()
         let mine = ReservationRules.mine(pool, me: controller.store.me?.id)
+        // One active reservation per person and pool: while I have one, both buttons are off and say why.
+        let active = ReservationRules.active(pool, me: controller.store.me?.id)
         Section {
             HStack(spacing: 8) {
                 Button { booking = true } label: { Label("予約する", systemImage: "calendar.badge.plus") }
                     .buttonStyle(.borderedProminent)
-                    .disabled(!pool.enabled || busy || mine.bookings.count >= 2 || controller.isGuest)
+                    .disabled(!pool.enabled || busy || active != nil || controller.isGuest)
                 if mine.walkin == nil {
                     Button("今すぐ (順番待ち)") { run { _ = await controller.reservePool(pool.id) } }
                         .buttonStyle(.bordered)
-                        .disabled(!pool.enabled || busy || controller.isGuest)
+                        .disabled(!pool.enabled || busy || active != nil || controller.isGuest)
+                }
+            }
+            if let active {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(tr("すでに予約があります（\(ReservationRules.activeText(active, now: now))）"))
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Button("自分の予約を見る") { showMine(active.id) }
+                        .font(.footnote).buttonStyle(.borderless)
                 }
             }
             ForEach(mine.bookings) { row in
@@ -289,6 +358,7 @@ struct PoolSection: View {
                     }
                 }
                 .accessibilityElement(children: .contain)
+                .id(row.id)
             }
             if let walkin = mine.walkin {
                 HStack {
@@ -303,6 +373,7 @@ struct PoolSection: View {
                         }.buttonStyle(.bordered)
                     }
                 }
+                .id(walkin.id)
             }
         } header: {
             HStack {
@@ -311,7 +382,7 @@ struct PoolSection: View {
                 if !pool.enabled { Text("停止中").foregroundStyle(.secondary) }
             }
         } footer: {
-            Text("毎時 0 分から \(pool.maxHours) 時間まで、2 週間先まで、1 人 2 件まで。「今すぐ」は空いている枠を次の予約が始まるまで使えます。")
+            Text("毎時 0 分から \(pool.maxHours) 時間まで、2 週間先まで。予約・順番待ち・利用中は 1 つの枠で 1 人 1 つまで。「今すぐ」は空いている枠を次の予約が始まるまで使えます。")
         }
         .disabled(busy)
         .sheet(isPresented: $booking) { BookingSheet(controller: controller, pool: pool, initialDay: day) }
@@ -398,7 +469,8 @@ struct BookingSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var day: Date?
     @State private var start: Date?
-    @State private var hours = 1
+    /// A length picked by hand (kept while it fits); nil = the default (the maximum, or the longest that fits).
+    @State private var hours: Int?
     @State private var busy = false
     @State private var error: String?
 
@@ -409,7 +481,10 @@ struct BookingSheet: View {
         let firstFree = starts.first { !$0.full }?.start
         let chosenStart = start.flatMap { s in starts.contains { $0.start == s && !$0.full } ? s : nil } ?? firstFree
         let durations = chosenStart.map { ReservationRules.durations(pool, start: $0, now: now) } ?? []
-        let chosenHours = durations.contains(hours) ? hours : (durations.last ?? 1)
+        let chosenHours = hours.flatMap { durations.contains($0) ? $0 : nil } ?? (durations.last ?? 1)
+        let limit = chosenStart.flatMap { s in
+            ReservationRules.limitText(ReservationRules.durationDefault(pool, start: s, now: now), pool: pool, start: s)
+        }
         NavigationStack {
             Form {
                 Picker("日付", selection: Binding(get: { chosenDay }, set: { day = $0; start = nil })) {
@@ -429,6 +504,7 @@ struct BookingSheet: View {
                     Picker("時間", selection: Binding(get: { chosenHours }, set: { hours = $0 })) {
                         ForEach(durations, id: \.self) { h in Text("\(h) 時間").tag(h) }
                     }
+                    if let limit { Text(limit).font(.footnote).foregroundStyle(.secondary) }
                 }
                 if let error { Text(error).foregroundStyle(.red).font(.footnote) }
             }
