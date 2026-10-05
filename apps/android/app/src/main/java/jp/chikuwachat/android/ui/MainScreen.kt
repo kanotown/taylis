@@ -9,6 +9,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,6 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -43,6 +47,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
@@ -157,7 +162,6 @@ fun MainScreen(controller: AppController) {
     var sectionForm by remember { mutableStateOf<Pair<jp.chikuwachat.android.api.SidebarSectionOut?, List<String>>?>(null) }
     // M26: the default sections folded on this device.
     var folded by remember { mutableStateOf(FoldedSections.read(controller.prefs)) }
-    var menuOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
     // M37: 「未読をまとめる」 as it was left on this device (like the folded sections); it replaced M28c's 「未読のみ」.
     var groupUnread by remember { mutableStateOf(GroupUnread.read(controller.prefs)) }
@@ -167,6 +171,12 @@ fun MainScreen(controller: AppController) {
     var confirmLogout by rememberSaveable { mutableStateOf(false) }
     // M40: from this width the 自分 tab shows its list and the chosen screen side by side.
     val youTwoPane = with(LocalDensity.current) { YouSettings.twoPane(LocalWindowInfo.current.containerSize.width.toDp().value) }
+    // T1 (MOBILE_UI.md §12): the phone's pages, or a tablet's panes; read again whenever the window changes size (a
+    // rotation, a freeform window, a foldable), the stacks staying as they are.
+    val layout = with(LocalDensity.current) {
+        val size = LocalWindowInfo.current.containerSize
+        AdaptiveLayout.of(size.width.toDp().value, size.height.toDp().value)
+    }
     var composing by rememberSaveable { mutableStateOf(false) }
     // M37 (MOBILE_UI.md §6.2): the conversations last opened on this device, for the jump screen.
     val recentConversationsKey = controller.accountKey?.let { RecentConversations.key(it) }
@@ -371,10 +381,23 @@ fun MainScreen(controller: AppController) {
         tabs = MainTabs.back(tabs)
         if (fromSearch) searchText = (MainNav.top(stack) as? Route.Search)?.params?.q ?: ""
     }
+    /** T1: the main pane's ← (wide): back from the page it shows, a thread in the pane beside it closing too. */
+    fun goBackIn(view: List<Route>) {
+        val fromSearch = MainNav.top(view) is Route.Search
+        stack = MainNav.back(view)
+        if (fromSearch) searchText = (MainNav.top(stack) as? Route.Search)?.params?.q ?: ""
+    }
+    /** A change of the conversation's own state; wide, a thread beside it closes first (AdaptiveLayout.surfaceConversation). */
+    fun changeConversation(change: (List<Route>) -> List<Route>) {
+        stack = change(if (layout == PaneLayout.PHONE) stack else AdaptiveLayout.surfaceConversation(stack))
+    }
     /** The keyboard goes with the composer when a page or tab covers the timeline. */
-    fun openDetails() { focusManager.clearFocus(); stack = MainNav.openDetails(stack) }
-    fun selectTab(tab: ConversationTab) { focusManager.clearFocus(); stack = MainNav.selectTab(stack, tab) }
-    fun openThread(parentId: String) { stack = MainNav.openThread(stack, parentId) }
+    fun openDetails() { focusManager.clearFocus(); changeConversation(MainNav::openDetails) }
+    fun selectTab(tab: ConversationTab) { focusManager.clearFocus(); changeConversation { MainNav.selectTab(it, tab) } }
+    // T1: wide, the timeline stays usable beside an open thread: another thread replaces it.
+    fun openThread(parentId: String) {
+        stack = if (layout == PaneLayout.PHONE) MainNav.openThread(stack, parentId) else AdaptiveLayout.openThread(stack, parentId)
+    }
     // The suggestions fold through the search bar's own back handling (SearchBar → collapseSearch).
     BackHandler(enabled = MainTabs.canGoBack(tabs) && !searchExpanded) { goBack() }
     /** A card in the pins pane / saved list: show the message in its conversation. */
@@ -396,6 +419,16 @@ fun MainScreen(controller: AppController) {
         controller.pendingSettings = null
         focusManager.clearFocus()
         tabs = MainTabs.openSettings(tabs, page)
+    }
+    // T1: Ctrl+K (MainActivity): 「移動・検索」 over the home tab (a pick lands like the home's, MainTabs.landFromHome).
+    LaunchedEffect(controller.pendingJump) {
+        if (!controller.pendingJump) return@LaunchedEffect
+        controller.pendingJump = false
+        focusManager.clearFocus()
+        if (!(tabs.selected == MainTab.HOME && jumping)) {
+            tabs = MainTabs.update(tabs.copy(selected = MainTab.HOME), MainNav::openJump)
+            searchText = ""
+        }
     }
     LaunchedEffect(controller.pendingReveal) {
         val message = controller.pendingReveal ?: return@LaunchedEffect
@@ -462,293 +495,292 @@ fun MainScreen(controller: AppController) {
     // M95 (WORKFLOWS.md §8 4.): a workflow's form, from the ＋ menu, channel details, `/name` or a 「⚡ name」 label.
     controller.workflowForm?.let { session -> WorkflowFormScreen(controller, session, version, onDismiss = { controller.workflowForm = null }) }
     AiSheets(controller) // M66: the 「要約」 choices and the summary sheet (docs/AI.md §6)
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) },
-        // M34: the bottom tabs, on the roots and the lists pushed on them; hidden in a conversation, a thread or details.
-        // M40: wide, the 自分 tab's list stays beside its screens, and so does the bar.
-        bottomBar = {
-            if (MainTabs.barShown(stack) || (youTwoPane && top is Route.Settings)) MainTabBar(store, version, tabs.selected, onTab = ::selectMainTab)
-        },
-        // M37 (MOBILE_UI.md §6.1): ✏️ 新しいメッセージ, bottom right over the tab bar, on the home's list.
-        floatingActionButton = {
-            if (top == Route.ChannelList) {
-                FloatingActionButton(onClick = { focusManager.clearFocus(); composing = true }) {
-                    Icon(Icons.Default.Edit, contentDescription = "新しいメッセージ")
-                }
-            }
-        },
-        topBar = {
-            if (searching) {
-                SearchTopBar(
-                    controller, version,
-                    text = searchText,
-                    onTextChange = { searchText = it },
-                    expanded = searchExpanded,
-                    onExpandedChange = { open -> if (open) stack = MainNav.expandSearch(stack) else collapseSearch() },
-                    recent = recentSearches,
-                    onRemoveRecent = { params -> recentKey?.let { recentSearches = RecentSearches.remove(controller.prefs, it, params) } },
-                    onClearRecent = {
-                        recentKey?.let { RecentSearches.clear(controller.prefs, it) }
-                        recentSearches = emptyList()
-                    },
-                    onSearch = ::runSearch,
-                    onBack = ::goBack,
-                    placeholder = if (jumping) "移動・検索" else "${controller.workspaceName} を検索",
-                    jump = if (!jumping) null else JumpTargets(
-                        recent = RecentConversations.shown(recentConversations) { store.channel(it) },
-                        onOpenConversation = { openPicked(it) },
-                        // Made when there is none; a failure is the app's error (openDmWith sets it).
-                        onOpenPerson = { userId -> scope.launch { controller.openDmWith(userId)?.let { openPicked(it) } } },
-                    ),
-                )
-            } else if (top == Route.ChannelList) {
-                // M37 (MOBILE_UI.md §6.1): the home's own bar: the workspace (a switcher with two or more) and ⋮.
-                TopAppBar(
-                    title = { WorkspaceTitle(controller, switchable = controller.workspaces.size >= 2) },
-                    actions = {
-                        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; confirmReadAll = true })
-                            DropdownMenuItem(
-                                text = { Text("未読をまとめる") },
-                                trailingIcon = { Checkbox(checked = groupUnread, onCheckedChange = null) },
-                                onClick = {
-                                    menuOpen = false
-                                    groupUnread = !groupUnread
-                                    GroupUnread.write(controller.prefs, groupUnread)
-                                },
-                                modifier = Modifier.semantics { stateDescription = if (groupUnread) "オン" else "オフ" },
-                            )
-                            if (!controller.isGuest) {
-                                DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
-                                DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
-                            }
-                            DropdownMenuItem(text = { Text("メンバー一覧") }, onClick = { menuOpen = false; dialog = MainDialog.DIRECTORY })
-                            HorizontalDivider()
-                            DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
-                            DropdownMenuItem(text = { Text("新しいセクション") }, onClick = { menuOpen = false; sectionForm = null to emptyList() })
-                            // With one workspace the title does not open the switcher, which is where another is added.
-                            if (controller.workspaces.size < 2) {
-                                DropdownMenuItem(text = { Text("ワークスペースを追加") }, onClick = { menuOpen = false; controller.beginAddWorkspace() })
-                            }
-                            HorizontalDivider()
-                            DropdownMenuItem(text = { Text("設定") }, onClick = { menuOpen = false; selectMainTab(MainTab.YOU) })
-                            val logoutLabel = if (controller.workspaces.size > 1) "${controller.workspaceName} からログアウト" else "ログアウト"
-                            DropdownMenuItem(text = { Text(logoutLabel) }, onClick = { menuOpen = false; confirmLogout = true })
-                        }
-                    },
-                )
-            } else {
-                TopAppBar(
-                    title = {
-                        when {
-                            // D1: the page's own header shows the name large.
-                            detailsOpen -> Text(if (isChannel) "チャンネル情報" else "詳細", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            threadId != null -> TwoLineTitle("スレッド", selectedChannel?.let { channelTitle(it, store) })
-                            selectedChannel != null && previewing -> TwoLineTitle(channelTitle(selectedChannel, store), "プレビュー (未参加)")
-                            // M29: the title opens the details page.
-                            selectedChannel != null -> Column(Modifier.clickable(onClickLabel = "チャンネル情報") { openDetails() }) {
-                                TwoLineTitle(
-                                    channelTitle(selectedChannel, store),
-                                    selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) "トピックを設定" else dmPresenceSubtitle(selectedChannel, store),
-                                    emoji = controller to version, // a custom status emoji in a DM's subtitle as its image
-                                )
-                            }
-                            pane == Route.Threads -> Text("スレッド")
-                            pane == Route.TimesFeed -> Text("Times フィード")
-                            pane == Route.Saved -> Text("保存済み")
-                            pane == Route.Mentions -> Text("メンション")
-                            pane == Route.Drafts -> Text("下書き")
-                            pane is Route.Files -> Text("ファイル")
-                            pane == Route.Canvases -> Text("キャンバス")
-                            pane == Route.Reminders -> Text("リマインダー")
-                            pane == Route.Calendar -> Text("カレンダー")
-                            pane == Route.Tasks -> Text("タスク")
-                            pane == Route.Deadlines -> Text("締切")
-                            // 仕上げ A (MOBILE_POLISH.md C5): 「DM」 as on iOS and on the tab (「ダイレクトメッセ…」 was cut).
-                            top == Route.DmList -> Text("DM", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            top is Route.Activity -> Text("アクティビティ", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            top == Route.You -> Text("自分", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            top is Route.Settings -> Text(top.page.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            else -> WorkspaceTitle(controller) // M16c: tap to switch workspaces
-                        }
-                    },
-                    navigationIcon = {
-                        when {
-                            MainNav.canGoBack(stack) -> IconButton(onClick = ::goBack) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
-                            }
-                            // M34: my avatar opens the 自分 tab (the settings were a dialog).
-                            me != null && top != Route.You -> IconButton(onClick = { selectMainTab(MainTab.YOU) }, modifier = Modifier.semantics { contentDescription = "自分" }) {
-                                Avatar(me.id, me.displayName, size = 32.dp)
-                            }
-                        }
-                    },
-                    actions = {
-                        // 仕上げ A (MOBILE_POLISH.md C5): no connection dot here; ConnectionBanner says when the socket is down.
-                        // C6: the ⋮ holds this screen's own actions only (BarMenu), and is not shown without any.
-                        val conversationPage = selectedChannel != null && selectedChannel.isMember && threadId == null && !detailsOpen
-                        val menuItems = BarMenu.items(
-                            conversation = conversationPage,
-                            channel = isChannel,
-                            archived = selectedChannel?.channel?.archived == true,
-                            activityFeed = top is Route.Activity && store.activity != null,
-                            timesFeed = top == Route.TimesFeed,
-                            myTimes = TimesFeed.myTimes(store.channels.values, me?.id) != null || !controller.isGuest,
-                            // M66: a joined conversation's thread; summaries while the server takes them (GET /ai/status).
-                            thread = selectedChannel != null && selectedChannel.isMember && threadId != null && !detailsOpen,
-                            summaries = controller.aiSummaryAvailable,
-                            // M69: 「カレンダーを購読 (iCal)」 on the calendar's own page.
-                            calendar = pane == Route.Calendar && !searching && controller.calendar?.available == true,
+    val openChannel = selectedChannel
+
+    /**
+     * The app bar of the page `view` is the top of (T1: one per pane when wide, [pageView]). `back`: the ← (or, with
+     * `closes`, the ✕ of the thread's pane); `barWidth`: the bar's width in dp (whether the follow chip keeps its label).
+     */
+    @Composable
+    fun Bar(view: List<Route>, back: (() -> Unit)?, barWidth: Float, closes: Boolean = false) {
+        val (top, searching, searchExpanded, jumping, pane, selectedChannel, threadId, detailsOpen, isChannel, previewing) = pageView(view, openChannel)
+        var menuOpen by remember { mutableStateOf(false) }
+        if (searching) {
+            SearchTopBar(
+                controller, version,
+                text = searchText,
+                onTextChange = { searchText = it },
+                expanded = searchExpanded,
+                onExpandedChange = { open -> if (open) stack = MainNav.expandSearch(stack) else collapseSearch() },
+                recent = recentSearches,
+                onRemoveRecent = { params -> recentKey?.let { recentSearches = RecentSearches.remove(controller.prefs, it, params) } },
+                onClearRecent = {
+                    recentKey?.let { RecentSearches.clear(controller.prefs, it) }
+                    recentSearches = emptyList()
+                },
+                onSearch = ::runSearch,
+                onBack = ::goBack,
+                placeholder = if (jumping) "移動・検索" else "${controller.workspaceName} を検索",
+                jump = if (!jumping) null else JumpTargets(
+                    recent = RecentConversations.shown(recentConversations) { store.channel(it) },
+                    onOpenConversation = { openPicked(it) },
+                    // Made when there is none; a failure is the app's error (openDmWith sets it).
+                    onOpenPerson = { userId -> scope.launch { controller.openDmWith(userId)?.let { openPicked(it) } } },
+                ),
+            )
+        } else if (top == Route.ChannelList) {
+            // M37 (MOBILE_UI.md §6.1): the home's own bar: the workspace (a switcher with two or more) and ⋮.
+            TopAppBar(
+                title = { WorkspaceTitle(controller, switchable = controller.workspaces.size >= 2) },
+                actions = {
+                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(text = { Text("すべて既読にする") }, onClick = { menuOpen = false; confirmReadAll = true })
+                        DropdownMenuItem(
+                            text = { Text("未読をまとめる") },
+                            trailingIcon = { Checkbox(checked = groupUnread, onCheckedChange = null) },
+                            onClick = {
+                                menuOpen = false
+                                groupUnread = !groupUnread
+                                GroupUnread.write(controller.prefs, groupUnread)
+                            },
+                            modifier = Modifier.semantics { stateDescription = if (groupUnread) "オン" else "オフ" },
                         )
-                        val barButtons = top != Route.You && top !is Route.Settings
-                        // THREADS.md §5: follow / unfollow the open thread.
-                        val openId = threadId
-                        val threadState = openId?.let { store.threads[it]?.state }
-                        if (openId != null && threadState != null && selectedChannel?.isMember == true) {
-                            // M25: the labelled chip only where 「スレッド」 still fits beside it (ConversationBar), else the bell alone.
-                            val measurer = rememberTextMeasurer()
-                            val density = LocalDensity.current
-                            val labelled = with(density) {
-                                ConversationBar.followLabelFits(
-                                    barWidth = LocalWindowInfo.current.containerSize.width.toDp().value,
-                                    title = measurer.measure("スレッド", MaterialTheme.typography.titleMedium).size.width.toDp().value,
-                                    label = measurer.measure("フォロー中", MaterialTheme.typography.labelLarge).size.width.toDp().value,
-                                    menu = barButtons && menuItems.isNotEmpty(),
-                                )
+                        if (!controller.isGuest) {
+                            DropdownMenuItem(text = { Text("チャンネルを探す") }, onClick = { menuOpen = false; dialog = MainDialog.BROWSE })
+                            DropdownMenuItem(text = { Text("チャンネルを作成") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_CHANNEL })
+                        }
+                        DropdownMenuItem(text = { Text("メンバー一覧") }, onClick = { menuOpen = false; dialog = MainDialog.DIRECTORY })
+                        HorizontalDivider()
+                        DropdownMenuItem(text = { Text("ダイレクトメッセージ") }, onClick = { menuOpen = false; dialog = MainDialog.NEW_DM })
+                        DropdownMenuItem(text = { Text("新しいセクション") }, onClick = { menuOpen = false; sectionForm = null to emptyList() })
+                        // With one workspace the title does not open the switcher, which is where another is added.
+                        if (controller.workspaces.size < 2) {
+                            DropdownMenuItem(text = { Text("ワークスペースを追加") }, onClick = { menuOpen = false; controller.beginAddWorkspace() })
+                        }
+                        HorizontalDivider()
+                        DropdownMenuItem(text = { Text("設定") }, onClick = { menuOpen = false; selectMainTab(MainTab.YOU) })
+                        val logoutLabel = if (controller.workspaces.size > 1) "${controller.workspaceName} からログアウト" else "ログアウト"
+                        DropdownMenuItem(text = { Text(logoutLabel) }, onClick = { menuOpen = false; confirmLogout = true })
+                    }
+                },
+            )
+        } else {
+            TopAppBar(
+                title = {
+                    when {
+                        // D1: the page's own header shows the name large.
+                        detailsOpen -> Text(if (isChannel) "チャンネル情報" else "詳細", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        threadId != null -> TwoLineTitle("スレッド", selectedChannel?.let { channelTitle(it, store) })
+                        selectedChannel != null && previewing -> TwoLineTitle(channelTitle(selectedChannel, store), "プレビュー (未参加)")
+                        // M29: the title opens the details page.
+                        selectedChannel != null -> Column(Modifier.clickable(onClickLabel = "チャンネル情報") { openDetails() }) {
+                            TwoLineTitle(
+                                channelTitle(selectedChannel, store),
+                                selectedChannel.channel.topic?.takeIf { it.isNotBlank() } ?: if (isChannel) "トピックを設定" else dmPresenceSubtitle(selectedChannel, store),
+                                emoji = controller to version, // a custom status emoji in a DM's subtitle as its image
+                            )
+                        }
+                        pane == Route.Threads -> Text("スレッド")
+                        pane == Route.TimesFeed -> Text("Times フィード")
+                        pane == Route.Saved -> Text("保存済み")
+                        pane == Route.Mentions -> Text("メンション")
+                        pane == Route.Drafts -> Text("下書き")
+                        pane is Route.Files -> Text("ファイル")
+                        pane == Route.Canvases -> Text("キャンバス")
+                        pane == Route.Reminders -> Text("リマインダー")
+                        pane == Route.Calendar -> Text("カレンダー")
+                        pane == Route.Tasks -> Text("タスク")
+                        pane == Route.Deadlines -> Text("締切")
+                        // 仕上げ A (MOBILE_POLISH.md C5): 「DM」 as on iOS and on the tab (「ダイレクトメッセ…」 was cut).
+                        top == Route.DmList -> Text("DM", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        top is Route.Activity -> Text("アクティビティ", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        top == Route.You -> Text("自分", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        top is Route.Settings -> Text(top.page.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        else -> WorkspaceTitle(controller) // M16c: tap to switch workspaces
+                    }
+                },
+                navigationIcon = {
+                    when {
+                        back != null && closes -> IconButton(onClick = back) {
+                            Icon(Icons.Default.Close, contentDescription = "スレッドを閉じる")
+                        }
+                        back != null -> IconButton(onClick = back) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
+                        }
+                        // M34: my avatar opens the 自分 tab (the settings were a dialog). T1: wide, the rail has it.
+                        me != null && top != Route.You && layout == PaneLayout.PHONE -> IconButton(onClick = { selectMainTab(MainTab.YOU) }, modifier = Modifier.semantics { contentDescription = "自分" }) {
+                            Avatar(me.id, me.displayName, size = 32.dp)
+                        }
+                    }
+                },
+                actions = {
+                    // 仕上げ A (MOBILE_POLISH.md C5): no connection dot here; ConnectionBanner says when the socket is down.
+                    // C6: the ⋮ holds this screen's own actions only (BarMenu), and is not shown without any.
+                    val conversationPage = selectedChannel != null && selectedChannel.isMember && threadId == null && !detailsOpen
+                    val menuItems = BarMenu.items(
+                        conversation = conversationPage,
+                        channel = isChannel,
+                        archived = selectedChannel?.channel?.archived == true,
+                        activityFeed = top is Route.Activity && store.activity != null,
+                        timesFeed = top == Route.TimesFeed,
+                        myTimes = TimesFeed.myTimes(store.channels.values, me?.id) != null || !controller.isGuest,
+                        // M66: a joined conversation's thread; summaries while the server takes them (GET /ai/status).
+                        thread = selectedChannel != null && selectedChannel.isMember && threadId != null && !detailsOpen,
+                        summaries = controller.aiSummaryAvailable,
+                        // M69: 「カレンダーを購読 (iCal)」 on the calendar's own page.
+                        calendar = pane == Route.Calendar && !searching && controller.calendar?.available == true,
+                    )
+                    val barButtons = top != Route.You && top !is Route.Settings
+                    // THREADS.md §5: follow / unfollow the open thread.
+                    val openId = threadId
+                    val threadState = openId?.let { store.threads[it]?.state }
+                    if (openId != null && threadState != null && selectedChannel?.isMember == true) {
+                        // M25: the labelled chip only where 「スレッド」 still fits beside it (ConversationBar), else the bell alone.
+                        val measurer = rememberTextMeasurer()
+                        val density = LocalDensity.current
+                        val labelled = with(density) {
+                            ConversationBar.followLabelFits(
+                                barWidth = barWidth,
+                                title = measurer.measure("スレッド", MaterialTheme.typography.titleMedium).size.width.toDp().value,
+                                label = measurer.measure("フォロー中", MaterialTheme.typography.labelLarge).size.width.toDp().value,
+                                menu = barButtons && menuItems.isNotEmpty(),
+                            )
+                        }
+                        val bell = if (threadState.following) Icons.Default.Notifications else Icons.Default.NotificationsNone
+                        // Through the controller (M28c): offline it says so instead of silently doing nothing.
+                        val toggle = { scope.launch { controller.setThreadFollow(openId, !threadState.following) } }
+                        if (labelled) {
+                            FilterChip(
+                                selected = threadState.following,
+                                onClick = { toggle() },
+                                label = { Text(if (threadState.following) "フォロー中" else "フォロー") },
+                                leadingIcon = { Icon(bell, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                modifier = Modifier.padding(end = 4.dp),
+                            )
+                        } else {
+                            // A toggle: TalkBack says 「スレッドをフォロー」 with on / off.
+                            IconToggleButton(checked = threadState.following, onCheckedChange = { toggle() }) {
+                                Icon(bell, contentDescription = "スレッドをフォロー")
                             }
-                            val bell = if (threadState.following) Icons.Default.Notifications else Icons.Default.NotificationsNone
-                            // Through the controller (M28c): offline it says so instead of silently doing nothing.
-                            val toggle = { scope.launch { controller.setThreadFollow(openId, !threadState.following) } }
-                            if (labelled) {
-                                FilterChip(
-                                    selected = threadState.following,
-                                    onClick = { toggle() },
-                                    label = { Text(if (threadState.following) "フォロー中" else "フォロー") },
-                                    leadingIcon = { Icon(bell, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                    modifier = Modifier.padding(end = 4.dp),
+                        }
+                    }
+                    // In a channel the icons were star, pin, files, bell and info: they left the channel's name no room (testers,
+                    // 2026-09-28), so they are at the top of ⋮; the notification level still opens its own menu from there.
+                    if (conversationPage && selectedChannel != null) {
+                        // M35 (D1: the same menu as the details page's 「通知」).
+                        ChannelNotificationMenu(controller, selectedChannel, bellOpen, onDismiss = { bellOpen = false })
+                    }
+                    // The 自分 tab is the settings page: no search or menu over it.
+                    if (barButtons) {
+                        IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = "検索") }
+                        if (menuItems.isNotEmpty()) {
+                            IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
+                        }
+                    }
+                    DropdownMenu(expanded = menuOpen && menuItems.isNotEmpty(), onDismissRequest = { menuOpen = false }) {
+                        menuItems.forEach { item ->
+                            when (item) {
+                                // M39: the activity tab's own 「すべて既読」 (MOBILE_UI.md §6.4).
+                                BarMenuItem.READ_ALL_ACTIVITY -> DropdownMenuItem(
+                                    text = { Text("すべて既読") }, leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
+                                    onClick = { menuOpen = false; activityReadAll = true },
                                 )
-                            } else {
-                                // A toggle: TalkBack says 「スレッドをフォロー」 with on / off.
-                                IconToggleButton(checked = threadState.following, onCheckedChange = { toggle() }) {
-                                    Icon(bell, contentDescription = "スレッドをフォロー")
+                                // M29: the pins and files are tabs under the app bar now; the details page does not list itself.
+                                BarMenuItem.FAVORITE -> selectedChannel?.let { open ->
+                                    val starred = store.isFavorite(open.id)
+                                    DropdownMenuItem(
+                                        text = { Text(if (starred) "お気に入りから外す" else "お気に入りに追加") },
+                                        leadingIcon = { Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = null) },
+                                        onClick = { menuOpen = false; scope.launch { controller.toggleFavorite(open.id) } },
+                                    )
                                 }
-                            }
-                        }
-                        // In a channel the icons were star, pin, files, bell and info: they left the channel's name no room (testers,
-                        // 2026-09-28), so they are at the top of ⋮; the notification level still opens its own menu from there.
-                        if (conversationPage && selectedChannel != null) {
-                            // M35 (D1: the same menu as the details page's 「通知」).
-                            ChannelNotificationMenu(controller, selectedChannel, bellOpen, onDismiss = { bellOpen = false })
-                        }
-                        // The 自分 tab is the settings page: no search or menu over it.
-                        if (barButtons) {
-                            IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = "検索") }
-                            if (menuItems.isNotEmpty()) {
-                                IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "メニュー") }
-                            }
-                        }
-                        DropdownMenu(expanded = menuOpen && menuItems.isNotEmpty(), onDismissRequest = { menuOpen = false }) {
-                            menuItems.forEach { item ->
-                                when (item) {
-                                    // M39: the activity tab's own 「すべて既読」 (MOBILE_UI.md §6.4).
-                                    BarMenuItem.READ_ALL_ACTIVITY -> DropdownMenuItem(
-                                        text = { Text("すべて既読") }, leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
-                                        onClick = { menuOpen = false; activityReadAll = true },
-                                    )
-                                    // M29: the pins and files are tabs under the app bar now; the details page does not list itself.
-                                    BarMenuItem.FAVORITE -> selectedChannel?.let { open ->
-                                        val starred = store.isFavorite(open.id)
-                                        DropdownMenuItem(
-                                            text = { Text(if (starred) "お気に入りから外す" else "お気に入りに追加") },
-                                            leadingIcon = { Icon(if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = null) },
-                                            onClick = { menuOpen = false; scope.launch { controller.toggleFavorite(open.id) } },
-                                        )
-                                    }
-                                    BarMenuItem.NOTIFICATIONS -> selectedChannel?.let { open ->
-                                        // M35: the level resolved with my overall setting as it is now (a change shows at once).
-                                        val level = NotificationLevels.resolved(open, store.me?.notificationDefault ?: NotificationLevels.MENTIONS, store.me?.id)
-                                        val mute = Timeline.muteLabel(open.channel.notification?.mutedUntil)
-                                        val mutedOn = NotificationLevels.mutedUntilUnmuted(open)
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    when {
-                                                        mutedOn -> "通知 (ミュート中)"
-                                                        mute != null -> "通知 ($mute)"
-                                                        else -> "通知: " + NotificationLabels.shortLabel(level)
-                                                    },
-                                                )
-                                            },
-                                            leadingIcon = { Icon(if (level == NotificationLevels.NONE || mutedOn || mute != null) Icons.Default.NotificationsOff else Icons.Default.Notifications, contentDescription = null) },
-                                            onClick = { menuOpen = false; bellOpen = true },
-                                        )
-                                    }
-                                    BarMenuItem.DETAILS -> DropdownMenuItem(
-                                        text = { Text("チャンネル情報") }, leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
-                                        onClick = { menuOpen = false; openDetails() },
-                                    )
-                                    // L8 (TIMES_FEED.md §4, §7): the feed's channels only, asked first like the home's.
-                                    BarMenuItem.READ_ALL_TIMES -> DropdownMenuItem(
-                                        text = { Text("すべて既読にする") }, leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
-                                        onClick = { menuOpen = false; confirmReadTimes = true },
-                                    )
-                                    BarMenuItem.MY_TIMES -> {
-                                        val mine = TimesFeed.myTimes(store.channels.values, me?.id)
-                                        DropdownMenuItem(
-                                            text = { Text(if (mine != null) "自分の times に書く" else "自分の times を作る") },
-                                            leadingIcon = { Icon(if (mine != null) Icons.Default.Edit else Icons.Default.Add, contentDescription = null) },
-                                            onClick = {
-                                                menuOpen = false
-                                                scope.launch {
-                                                    // The server makes it on the first call (M24); either way its composer takes the cursor.
-                                                    val id = mine?.id ?: controller.ensureTimes() ?: return@launch
-                                                    controller.messageFocus = null
-                                                    controller.composerFocus = id
-                                                    openConversation(id)
-                                                }
-                                            },
-                                        )
-                                    }
-                                    // M66 (docs/AI.md §6): the choices open as a sheet; the result shows in its own sheet.
-                                    BarMenuItem.SUMMARIZE -> selectedChannel?.let { open ->
-                                        DropdownMenuItem(
-                                            text = { Text("要約") }, leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
-                                            onClick = { menuOpen = false; controller.aiSummaryChooser = open.id },
-                                        )
-                                    }
-                                    BarMenuItem.SUMMARIZE_THREAD -> selectedChannel?.let { open ->
-                                        threadId?.let { parentId ->
-                                            // Review v0.1.18 #2: the menu's content composes as it opens: read where the summary would go.
-                                            LaunchedEffect(open.id) { controller.loadSummaryTarget(open.id) }
-                                            val target = controller.aiSummaryTargets[open.id]
-                                            DropdownMenuItem(
-                                                text = { Text("このスレッドを要約") }, leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
-                                                enabled = !AiTexts.choicesDisabled(target),
-                                                onClick = { menuOpen = false; controller.requestSummary(AiTexts.threadRequest(open.id, parentId)) },
+                                BarMenuItem.NOTIFICATIONS -> selectedChannel?.let { open ->
+                                    // M35: the level resolved with my overall setting as it is now (a change shows at once).
+                                    val level = NotificationLevels.resolved(open, store.me?.notificationDefault ?: NotificationLevels.MENTIONS, store.me?.id)
+                                    val mute = Timeline.muteLabel(open.channel.notification?.mutedUntil)
+                                    val mutedOn = NotificationLevels.mutedUntilUnmuted(open)
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                when {
+                                                    mutedOn -> "通知 (ミュート中)"
+                                                    mute != null -> "通知 ($mute)"
+                                                    else -> "通知: " + NotificationLabels.shortLabel(level)
+                                                },
                                             )
-                                            AiSummaryTargetLine(target, Modifier.widthIn(max = 280.dp).padding(horizontal = 12.dp, vertical = 4.dp))
-                                        }
-                                    }
-                                    BarMenuItem.CALENDAR_FEEDS -> DropdownMenuItem(
-                                        text = { Text("カレンダーを購読 (iCal)") }, leadingIcon = { Icon(Icons.Default.RssFeed, contentDescription = null) },
-                                        onClick = { menuOpen = false; controller.openCalendarFeeds() },
-                                    )
-                                    BarMenuItem.ADD_MEMBER -> DropdownMenuItem(
-                                        text = { Text("メンバーを追加") }, leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
-                                        onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER },
+                                        },
+                                        leadingIcon = { Icon(if (level == NotificationLevels.NONE || mutedOn || mute != null) Icons.Default.NotificationsOff else Icons.Default.Notifications, contentDescription = null) },
+                                        onClick = { menuOpen = false; bellOpen = true },
                                     )
                                 }
+                                BarMenuItem.DETAILS -> DropdownMenuItem(
+                                    text = { Text("チャンネル情報") }, leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                                    onClick = { menuOpen = false; openDetails() },
+                                )
+                                // L8 (TIMES_FEED.md §4, §7): the feed's channels only, asked first like the home's.
+                                BarMenuItem.READ_ALL_TIMES -> DropdownMenuItem(
+                                    text = { Text("すべて既読にする") }, leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
+                                    onClick = { menuOpen = false; confirmReadTimes = true },
+                                )
+                                BarMenuItem.MY_TIMES -> {
+                                    val mine = TimesFeed.myTimes(store.channels.values, me?.id)
+                                    DropdownMenuItem(
+                                        text = { Text(if (mine != null) "自分の times に書く" else "自分の times を作る") },
+                                        leadingIcon = { Icon(if (mine != null) Icons.Default.Edit else Icons.Default.Add, contentDescription = null) },
+                                        onClick = {
+                                            menuOpen = false
+                                            scope.launch {
+                                                // The server makes it on the first call (M24); either way its composer takes the cursor.
+                                                val id = mine?.id ?: controller.ensureTimes() ?: return@launch
+                                                controller.messageFocus = null
+                                                controller.composerFocus = id
+                                                openConversation(id)
+                                            }
+                                        },
+                                    )
+                                }
+                                // M66 (docs/AI.md §6): the choices open as a sheet; the result shows in its own sheet.
+                                BarMenuItem.SUMMARIZE -> selectedChannel?.let { open ->
+                                    DropdownMenuItem(
+                                        text = { Text("要約") }, leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                                        onClick = { menuOpen = false; controller.aiSummaryChooser = open.id },
+                                    )
+                                }
+                                BarMenuItem.SUMMARIZE_THREAD -> selectedChannel?.let { open ->
+                                    threadId?.let { parentId ->
+                                        // Review v0.1.18 #2: the menu's content composes as it opens: read where the summary would go.
+                                        LaunchedEffect(open.id) { controller.loadSummaryTarget(open.id) }
+                                        val target = controller.aiSummaryTargets[open.id]
+                                        DropdownMenuItem(
+                                            text = { Text("このスレッドを要約") }, leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                                            enabled = !AiTexts.choicesDisabled(target),
+                                            onClick = { menuOpen = false; controller.requestSummary(AiTexts.threadRequest(open.id, parentId)) },
+                                        )
+                                        AiSummaryTargetLine(target, Modifier.widthIn(max = 280.dp).padding(horizontal = 12.dp, vertical = 4.dp))
+                                    }
+                                }
+                                BarMenuItem.CALENDAR_FEEDS -> DropdownMenuItem(
+                                    text = { Text("カレンダーを購読 (iCal)") }, leadingIcon = { Icon(Icons.Default.RssFeed, contentDescription = null) },
+                                    onClick = { menuOpen = false; controller.openCalendarFeeds() },
+                                )
+                                BarMenuItem.ADD_MEMBER -> DropdownMenuItem(
+                                    text = { Text("メンバーを追加") }, leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
+                                    onClick = { menuOpen = false; dialog = MainDialog.ADD_MEMBER },
+                                )
                             }
                         }
-                    },
-                )
-            }
-        },
-    ) { padding ->
-        // The scaffold's insets are consumed here (M28c): the panes below add `imePadding()`, which otherwise counted the
-        // navigation bar a second time and left a blank band of its height between the composer and the keyboard.
-        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+                    }
+                },
+            )
+        }
+    }
+
+    /** The page `view` is the top of, under its bar (T1: the list pane's root, the main pane's page; [pageView]). */
+    @Composable
+    fun Page(view: List<Route>, modifier: Modifier, banner: Boolean = true) {
+        val (top, searching, _, _, pane, selectedChannel, threadId, detailsOpen, _, previewing, backToSearch, conversationTab) = pageView(view, openChannel)
+        Column(modifier) {
             // M29: the tab row sits directly under the app bar of a joined conversation's timeline.
             if (selectedChannel != null && ConversationNav.tabRowShown(true, selectedChannel.isMember, threadId != null, searching, detailsOpen)) {
                 // M86 (DEADLINES.md §8 2.): the channel's next deadline, a line of its own over the tabs.
@@ -757,7 +789,7 @@ fun MainScreen(controller: AppController) {
                 DeadlineChipRow(controller, selectedChannel)
                 ConversationTabRow(controller, selectedChannel, version, conversationTab, onTab = ::selectTab, upcoming = upcomingEvents)
             }
-            ConnectionBanner(status)
+            if (banner) ConnectionBanner(status)
             val shownSearch = searchParams
             if (!searching && backToSearch && shownSearch != null && selectedChannel != null) {
                 BackToSearchStrip(describeSearch(store, shownSearch), onClick = ::returnToSearch)
@@ -805,13 +837,13 @@ fun MainScreen(controller: AppController) {
                         // M34: only the selected tab's top screen is composed at all; another tab's conversation is not.
                         ChannelPane(
                             controller, selectedChannel.id, version,
-                            onScreen = MainTabs.conversationOnScreen(tabs, tabs.selected),
+                            onScreen = AdaptiveLayout.conversationOnScreen(tabs, layout),
                             onOpenThread = ::openThread,
                         )
                         when {
                             detailsOpen -> CoveringPage {
                                 ChannelDetailsPane(
-                                    controller, selectedChannel, version, onClose = { stack = MainNav.closeDetails(stack) },
+                                    controller, selectedChannel, version, onClose = { changeConversation(MainNav::closeDetails) },
                                     // D1: 「検索」 searches this conversation (newest first; words can be added), back returns here.
                                     onSearch = { openSearch(); runSearch(SearchParams(channelId = selectedChannel.id, sort = Search.NEWEST)) },
                                 )
@@ -821,9 +853,9 @@ fun MainScreen(controller: AppController) {
                             conversationTab == ConversationTab.PINS -> CoveringPage { PinsPane(controller, selectedChannel.id, version, onOpen = ::reveal) }
                             // M46 (CANVAS.md §4.1): the conversation's canvas (or the one picked from its list / a /c/ link).
                             conversationTab == ConversationTab.CANVAS -> CoveringPage {
-                                CanvasPane(controller, selectedChannel, version, conversation.canvasId, onSelect = { id ->
+                                CanvasPane(controller, selectedChannel, version, conversation?.canvasId, onSelect = { id ->
                                     focusManager.clearFocus()
-                                    stack = MainNav.selectCanvas(stack, id)
+                                    changeConversation { MainNav.selectCanvas(it, id) }
                                 }, onOpenThread = { parentId ->
                                     // M58 「コメント」: the shared message's thread over the canvas (back returns to it).
                                     focusManager.clearFocus()
@@ -910,6 +942,7 @@ fun MainScreen(controller: AppController) {
                         controller, version, dmListState,
                         onOpen = { controller.messageFocus = null; openConversation(it) },
                         onNew = { dialog = MainDialog.NEW_DM },
+                        selectedId = selection.takeIf { layout != PaneLayout.PHONE },
                     )
                 } else if (top is Route.Activity) {
                     // Rows push their conversation / thread on this tab's stack (back returns here).
@@ -960,7 +993,7 @@ fun MainScreen(controller: AppController) {
                         onJump = ::openJump,
                         onSelect = { controller.messageFocus = null; openConversation(it) },
                         onTile = { tile ->
-                            stack = MainNav.open(
+                            stack = AdaptiveLayout.openFromList(
                                 stack,
                                 when (tile) {
                                     HomeTile.THREADS -> Route.Threads
@@ -979,10 +1012,11 @@ fun MainScreen(controller: AppController) {
                                         Route.Canvases
                                     }
                                 },
+                                layout,
                             )
                         },
                         onAddChannel = { dialog = MainDialog.BROWSE },
-                        onTimesFeed = { stack = MainNav.open(stack, Route.TimesFeed) },
+                        onTimesFeed = { stack = AdaptiveLayout.openFromList(stack, Route.TimesFeed, layout) },
                         onAllDms = { selectMainTab(MainTab.DM) },
                         onCreateTimes = {
                             scope.launch {
@@ -997,7 +1031,79 @@ fun MainScreen(controller: AppController) {
                         onToggleFolded = { folded = FoldedSections.toggle(controller.prefs, it) },
                         onToggleSection = { section -> scope.launch { controller.setSectionCollapsed(section.id, !section.collapsed) } },
                         sectionIcon = { emoji -> SectionIcon(controller, emoji, version) },
+                        selectedId = selection.takeIf { layout != PaneLayout.PHONE },
                     )
+                }
+            }
+        }
+    }
+
+    val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
+    if (layout == PaneLayout.PHONE) {
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbar) },
+            // M34: the bottom tabs, on the roots and the lists pushed on them; hidden in a conversation, a thread or details.
+            // M40: wide, the 自分 tab's list stays beside its screens, and so does the bar.
+            bottomBar = {
+                if (MainTabs.barShown(stack) || (youTwoPane && top is Route.Settings)) MainTabBar(store, version, tabs.selected, onTab = ::selectMainTab)
+            },
+            // M37 (MOBILE_UI.md §6.1): ✏️ 新しいメッセージ, bottom right over the tab bar, on the home's list.
+            floatingActionButton = {
+                if (top == Route.ChannelList) {
+                    FloatingActionButton(onClick = { focusManager.clearFocus(); composing = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "新しいメッセージ")
+                    }
+                }
+            },
+            topBar = { Bar(stack, back = if (MainNav.canGoBack(stack)) ({ goBack() }) else null, barWidth = windowWidth) },
+        ) { padding ->
+            // The scaffold's insets are consumed here (M28c): the panes below add `imePadding()`, which otherwise counted the
+            // navigation bar a second time and left a blank band of its height between the composer and the keyboard.
+            Page(stack, Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding))
+        }
+    } else {
+        // T1 (MOBILE_UI.md §12): the rail, the tab's list, the page opened from it and (three panes) the thread. The
+        // stacks are the phone's: only where their routes are drawn differs (AdaptiveLayout).
+        val listPane = AdaptiveLayout.listPane(layout, tabs.selected)
+        val listWidth = AdaptiveLayout.listWidth(windowWidth)
+        val threadRoute = AdaptiveLayout.threadPane(stack, layout)
+        val view = AdaptiveLayout.mainView(stack, layout)
+        val mainWidth = windowWidth - AdaptiveLayout.RAIL_WIDTH - (if (listPane) listWidth else 0f) - (if (threadRoute != null) AdaptiveLayout.THREAD_WIDTH else 0f)
+        Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+            Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+                MainTabRail(store, version, tabs.selected, onTab = ::selectMainTab, onCompose = { focusManager.clearFocus(); composing = true })
+                if (listPane) {
+                    val root = listOf(MainNav.rootOf(stack))
+                    Column(Modifier.width(listWidth.dp).fillMaxHeight()) {
+                        Bar(root, back = null, barWidth = listWidth)
+                        Page(root, Modifier.weight(1f).fillMaxWidth(), banner = false)
+                    }
+                    VerticalDivider()
+                }
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                    if (listPane && AdaptiveLayout.placeholder(view)) {
+                        ConnectionBanner(status)
+                        EmptyMainPane(tabs.selected)
+                    } else {
+                        // The ← of a page with something of its own under it (the list beside it is the way to the rest).
+                        val back: (() -> Unit)? = when {
+                            !listPane -> if (MainNav.canGoBack(stack)) ({ goBack() }) else null
+                            AdaptiveLayout.backShown(view) -> ({ goBackIn(view) })
+                            else -> null
+                        }
+                        Bar(view, back = back, barWidth = mainWidth)
+                        Page(view, Modifier.weight(1f).fillMaxWidth())
+                    }
+                }
+                if (threadRoute != null && openChannel != null) {
+                    VerticalDivider()
+                    Column(Modifier.width(AdaptiveLayout.THREAD_WIDTH.dp).fillMaxHeight()) {
+                        Bar(stack, back = { focusManager.clearFocus(); stack = AdaptiveLayout.closeThread(stack) }, barWidth = AdaptiveLayout.THREAD_WIDTH, closes = true)
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            if (openChannel.isMember) ThreadPane(controller, openChannel.id, threadRoute.parentId, version)
+                            else PreviewThreadPane(controller, openChannel.id, threadRoute.parentId, version)
+                        }
+                    }
                 }
             }
         }
@@ -1073,6 +1179,63 @@ object ConversationBar {
 
     fun followLabelFits(barWidth: Float, title: Float, label: Float, menu: Boolean = false): Boolean =
         barWidth - START - END - (if (menu) MENU else 0f) - CHIP - label >= title
+}
+
+/**
+ * T1: what one pane draws, read from the stack it shows the top of ([AdaptiveLayout]): the whole stack on the phone; wide,
+ * the root alone in the list pane, the stack less a thread with a pane of its own in the main pane, the whole stack in
+ * the thread's pane. [selectedChannel] is the open conversation only where the view holds it.
+ */
+private data class PageView(
+    val top: Route,
+    val searching: Boolean,
+    val searchExpanded: Boolean,
+    val jumping: Boolean,
+    val pane: Route.Pane?,
+    val selectedChannel: ChannelState?,
+    val threadId: String?,
+    val detailsOpen: Boolean,
+    val isChannel: Boolean,
+    val previewing: Boolean,
+    val backToSearch: Boolean,
+    val conversationTab: ConversationTab,
+)
+
+private fun pageView(view: List<Route>, open: ChannelState?): PageView {
+    val top = MainNav.top(view)
+    val conversation = MainNav.conversation(view)
+    val channel = open?.takeIf { conversation?.id == it.id }
+    return PageView(
+        top = top,
+        searching = top is Route.Search,
+        searchExpanded = (top as? Route.Search)?.expanded == true,
+        jumping = (top as? Route.Search)?.jump == true,
+        pane = top as? Route.Pane,
+        selectedChannel = channel,
+        threadId = if (channel != null) MainNav.thread(view)?.parentId else null,
+        detailsOpen = channel != null && conversation?.detailsOpen == true,
+        isChannel = channel != null && !channel.channel.isDm,
+        previewing = channel?.isMember == false,
+        backToSearch = MainNav.backToSearch(view),
+        conversationTab = if (channel != null && conversation != null) conversation.tab else ConversationTab.MESSAGES,
+    )
+}
+
+/** T1: the main pane with nothing open beside a list (wide). */
+@Composable
+private fun EmptyMainPane(tab: MainTab) {
+    Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+        Text(
+            when (tab) {
+                MainTab.DM -> "左の一覧から DM を選んでください"
+                MainTab.ACTIVITY -> "左の一覧から項目を選んでください"
+                else -> "左の一覧からチャンネルを選んでください"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(24.dp),
+        )
+    }
 }
 
 /**
