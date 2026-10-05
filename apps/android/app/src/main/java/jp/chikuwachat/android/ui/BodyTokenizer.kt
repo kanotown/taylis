@@ -252,6 +252,32 @@ fun parseBlocks(body: String, canvas: Boolean = false): List<BodyBlock> {
     return blocks
 }
 
+/**
+ * How a paragraph block is drawn (apps/shared/body-paragraphs.json, the same in the three clients): [gapBefore] /
+ * [gapAfter] = blank lines at its start / end (a gap toward the block before / after); [groups] = the runs of lines
+ * between blank lines, empty when the paragraph is only blank lines (then it is one gap).
+ */
+data class ParagraphLayout(val gapBefore: Boolean, val gapAfter: Boolean, val groups: List<List<List<BodyToken>>>)
+
+/**
+ * 2026-10-05: one newline is a line break; one or more blank lines are a paragraph gap (about 0.4 of a line) rather
+ * than empty lines, several blank lines collapsing into one gap (as in Slack and markdown). A line of spaces is blank.
+ */
+fun paragraphLayout(lines: List<List<BodyToken>>): ParagraphLayout {
+    fun blank(tokens: List<BodyToken>) = tokens.all { it is BodyToken.Text && it.text.isBlank() }
+    val groups = mutableListOf<List<List<BodyToken>>>()
+    var current = mutableListOf<List<BodyToken>>()
+    for (row in lines) {
+        if (blank(row)) {
+            if (current.isNotEmpty()) groups.add(current)
+            current = mutableListOf()
+        } else current.add(row)
+    }
+    if (current.isNotEmpty()) groups.add(current)
+    if (groups.isEmpty()) return ParagraphLayout(gapBefore = false, gapAfter = false, groups = emptyList())
+    return ParagraphLayout(gapBefore = blank(lines.first()), gapAfter = blank(lines.last()), groups = groups)
+}
+
 /** What a reader sees of inline tokens as text: a link shows its label, emphasis markers are gone (tests, the outline). */
 fun visibleText(tokens: List<BodyToken>): String = buildString {
     for (token in tokens) {

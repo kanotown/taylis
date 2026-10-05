@@ -1,0 +1,31 @@
+{
+  "_comment": "Paragraph gaps in message bodies (DATA_MODEL.md 「本文の形式」, 2026-10-05), the same in the three clients: markdown.ts paragraphLayout, MessageBodyView.swift BodyTokenizer.paragraphLayout, BodyTokenizer.kt paragraphLayout. One newline is a line break; one or more blank lines (a line of only spaces counts) are one paragraph gap of about 0.4 of a line, not empty lines. `paragraphs` lists the body's paragraph blocks in order (other blocks are left out): gap_before / gap_after = blank lines at its start / end (a gap to the block before / after), groups = the runs of lines between blank lines (as text). A paragraph of only blank lines has no groups and is drawn as one gap.",
+  "cases": [
+    { "name": "a blank line between two lines is a gap", "body": "あ\n\nあ",
+      "paragraphs": [{ "gap_before": false, "gap_after": false, "groups": [["あ"], ["あ"]] }] },
+    { "name": "one newline stays a line break", "body": "あ\nい",
+      "paragraphs": [{ "gap_before": false, "gap_after": false, "groups": [["あ", "い"]] }] },
+    { "name": "several blank lines collapse into one gap", "body": "a\n\n\n\nb",
+      "paragraphs": [{ "gap_before": false, "gap_after": false, "groups": [["a"], ["b"]] }] },
+    { "name": "a line of spaces is blank", "body": "a\n   \nb",
+      "paragraphs": [{ "gap_before": false, "gap_after": false, "groups": [["a"], ["b"]] }] },
+    { "name": "breaks and gaps mixed", "body": "a\n\nb\nc\n\n\nd",
+      "paragraphs": [{ "gap_before": false, "gap_after": false, "groups": [["a"], ["b", "c"], ["d"]] }] },
+    { "name": "blank lines around a heading are gaps on both sides", "body": "text\n\n# Heading\n\ntext",
+      "paragraphs": [
+        { "gap_before": false, "gap_after": true, "groups": [["text"]] },
+        { "gap_before": true, "gap_after": false, "groups": [["text"]] }
+      ] },
+    { "name": "no blank lines, no gaps", "body": "one\n# H\ntwo\n\nthree",
+      "paragraphs": [
+        { "gap_before": false, "gap_after": false, "groups": [["one"]] },
+        { "gap_before": false, "gap_after": false, "groups": [["two"], ["three"]] }
+      ] },
+    { "name": "only blank lines between two blocks: one gap", "body": "# A\n\n\n- item",
+      "paragraphs": [{ "gap_before": false, "gap_after": false, "groups": [] }] },
+    { "name": "before a list and after a quote", "body": "> q\n\nmiddle\n\n- item",
+      "paragraphs": [{ "gap_before": true, "gap_after": true, "groups": [["middle"]] }] },
+    { "name": "a code block keeps its blank lines", "body": "a\n\n```\nx\n\ny\n```",
+      "paragraphs": [{ "gap_before": false, "gap_after": true, "groups": [["a"]] }] }
+  ]
+}

@@ -1,6 +1,32 @@
 import XCTest
 @testable import ChikuwaChat
 
+/// 2026-10-05: blank lines are one paragraph gap, not empty lines (apps/shared/body-paragraphs.json, as the desktop's
+/// bodySpacing.test.tsx and Android's BodyParagraphsTest read it).
+final class BodyParagraphsFixtureTests: XCTestCase {
+    private struct Fixture: Decodable {
+        struct Paragraph: Decodable, Equatable { let gap_before: Bool; let gap_after: Bool; let groups: [[String]] }
+        struct Case: Decodable { let name: String; let body: String; let paragraphs: [Paragraph] }
+        let cases: [Case]
+    }
+
+    func testTheSharedCases() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/body-paragraphs.json")
+        let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+        XCTAssertFalse(fixture.cases.isEmpty)
+        for c in fixture.cases {
+            let paragraphs = BodyTokenizer.parseBlocks(c.body).compactMap { block -> Fixture.Paragraph? in
+                guard case .paragraph(let lines) = block else { return nil }
+                let layout = BodyTokenizer.paragraphLayout(lines)
+                return Fixture.Paragraph(gap_before: layout.gapBefore, gap_after: layout.gapAfter,
+                                         groups: layout.groups.map { $0.map(CanvasMarkdownFixtureTests.plain) })
+            }
+            XCTAssertEqual(paragraphs, c.paragraphs, c.name)
+        }
+    }
+}
+
 final class BodyTokenizerTests: XCTestCase {
     func testInlineSubsetMentionsLinksAndNewlines() {
         let body = "hi *bold* and _it_ `code` <@00000000-0000-7000-8000-000000000001> <!channel>\nhttps://example.com/x?y=1 done"
