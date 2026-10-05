@@ -33,6 +33,10 @@
 	<string>撮った写真をメッセージに添付するために使います</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>メッセージの写真や動画を写真ライブラリに保存するために使います</string>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
