@@ -87,7 +87,9 @@ trap 'docker logout "${REGISTRY%%/*}" >/dev/null 2>&1 || true' EXIT
 
 use_release "$TAG"
 log "pull $TAG"
-"${COMPOSE[@]}" pull app caddy
+# converter (M108, docs/PREVIEWS.md): a public image pinned by digest in docker-compose.yml; pulled here so a
+# new pin (about 450 MB to download) is fetched before the backup and the restart, not during them.
+"${COMPOSE[@]}" pull app caddy converter
 
 if [ -n "$("${COMPOSE[@]}" ps -q db 2>/dev/null)" ]; then
   log "backup before $TAG (migrations run when the app starts)"
