@@ -39,6 +39,7 @@ async def get_auth_context(
     context = await service.authenticate(db, credentials.credentials, settings)
     request.state.user_id = str(context.user.id)
     request.state.session_id = str(context.session.id)
+    request.state.user_locale = context.user.locale  # M115: errors in the chosen language
     return context
 
 

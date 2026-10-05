@@ -4,6 +4,8 @@ import re
 import uuid
 from collections.abc import Callable, Sequence
 
+from app import i18n
+
 MENTION_USER = re.compile(r"<@([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})>")
 MENTION_ALL = re.compile(r"<!(channel|here)>")
 MENTION_GROUP = re.compile(
@@ -85,7 +87,9 @@ def _table_cells(match: re.Match[str]) -> str:
     return " ".join(cell.strip().replace("\x00", "|") for cell in cells)
 
 
-def notification_text(body: str, names: dict[uuid.UUID, str], max_length: int = 200) -> str:
+def notification_text(
+    body: str, names: dict[uuid.UUID, str], max_length: int = 200, locale: str = "ja"
+) -> str:
     """One-line plain text for push and local notifications: mention tokens become display
     names (never raw ids; `names` maps user and group ids), light markdown markers are dropped,
     newlines collapse."""
@@ -100,9 +104,9 @@ def notification_text(body: str, names: dict[uuid.UUID, str], max_length: int = 
 
         return name_of
 
-    text = MENTION_USER.sub(named("メンバー"), body)
+    text = MENTION_USER.sub(named(i18n.t("member_fallback", locale)), body)
     # Group ids share the names map (M12k); an unknown one reads 「@グループ」 as on the clients.
-    text = MENTION_GROUP.sub(named("グループ"), text)
+    text = MENTION_GROUP.sub(named(i18n.t("group_fallback", locale)), text)
     text = MENTION_ALL.sub(lambda m: "@" + m.group(1), text)
     text = _TABLE_SEPARATOR.sub("", text)
     text = _TABLE_ROW.sub(_table_cells, text)
@@ -115,7 +119,7 @@ def notification_text(body: str, names: dict[uuid.UUID, str], max_length: int = 
     return text[: max_length - 1] + "…" if len(text) > max_length else text
 
 
-def attachment_text(attachments: Sequence[object]) -> str:
+def attachment_text(attachments: Sequence[object], locale: str = "ja") -> str:
     """What a message without text sent, for notifications and one-line previews
     (tester, 2026-09-30: 「画像を送信」 rather than 「新しいメッセージ」). The clients use the
     same words: all images, all videos, or files; one, or how many. "" without attachments."""
@@ -127,7 +131,11 @@ def attachment_text(attachments: Sequence[object]) -> str:
     if n == 0:
         return ""
     if all(t.startswith("image/") for t in types):
-        return "画像を送信しました" if n == 1 else f"画像を {n} 枚送信しました"
-    if all(t.startswith("video/") for t in types):
-        return "動画を送信しました" if n == 1 else f"動画を {n} 本送信しました"
-    return "ファイルを送信しました" if n == 1 else f"ファイルを {n} 件送信しました"
+        kind = "image"
+    elif all(t.startswith("video/") for t in types):
+        kind = "video"
+    else:
+        kind = "file"
+    if n == 1:
+        return i18n.t(f"push.attachment.{kind}", locale)
+    return i18n.t(f"push.attachment.{kind}s", locale, n=n)

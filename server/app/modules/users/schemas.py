@@ -137,6 +137,9 @@ class UserMe(UserPublic):
     # M111: my sidebar items (desktop / Web) and home tiles (phones) in order; null = default,
     # the clients' defaults. Keys a client does not implement are ignored there, kept when it saves.
     nav_items: list[NavItem] | None = None
+    # M115: my UI language; null = follow the device / browser (docs/I18N.md). The server writes
+    # my error messages, pushes and notices in it (else in the request's Accept-Language).
+    locale: Literal["ja", "en", "zh-Hans"] | None = None
 
 
 class UserUpdate(BaseModel):
@@ -172,6 +175,8 @@ class UserUpdate(BaseModel):
 
     # M111: up to 64 distinct keys in order (unknown keys are kept); null resets to the defaults.
     nav_items: list[NavItem] | None = Field(default=None, max_length=MAX_NAV_ITEMS)
+    # M115: my UI language; null = follow each device.
+    locale: Literal["ja", "en", "zh-Hans"] | None = None
 
     @field_validator("nav_items")
     @classmethod
@@ -264,6 +269,7 @@ def to_user_me(user: User) -> UserMe:
         has_password=user.password_hash is not None,
         quick_reactions=list(user.quick_reactions) if user.quick_reactions else None,
         nav_items=nav_items_of(user),
+        locale=user.locale if user.locale in ("ja", "en", "zh-Hans") else None,  # type: ignore[arg-type]
     )
 
 

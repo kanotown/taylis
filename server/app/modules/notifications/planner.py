@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import i18n
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.events.envelope import Audience
@@ -46,7 +47,7 @@ from app.modules.users.models import User
 from app.modules.workspace import service as workspace
 
 # A fired reminder's push title by kind (L4 ack, L6 collect); a personal one is リマインダー.
-REMINDER_TITLES = {"ack": "確認のお願い", "collect": "提出のお願い"}
+REMINDER_TITLES = {"ack": "push.reminder.title_ack", "collect": "push.reminder.title_collect"}
 
 log = logging.getLogger("app.push")
 
@@ -60,6 +61,19 @@ def reaction_text(emoji: str, label: str | None) -> str:
     `:name:` (2026-10-05: 「:ckw-yay:」); a standard one, or one without a label, as it is."""
     label = (label or "").strip()
     return f"【{label}】" if label and CUSTOM_EMOJI_REACTION.match(emoji) else emoji
+
+
+class _ByLocale:
+    """M115 (docs/I18N.md): one payload per language among a person's devices, built once."""
+
+    def __init__(self, build: Callable[[str], dict[str, Any]]) -> None:
+        self.build = build
+        self.made: dict[str, dict[str, Any]] = {}
+
+    def __call__(self, locale: str) -> dict[str, Any]:
+        if locale not in self.made:
+            self.made[locale] = self.build(locale)
+        return self.made[locale]
 
 
 class PushPlanner:
@@ -123,6 +137,7 @@ class PushPlanner:
         if not devices:
             return
         sender = await users.get_user(db, sender_id)
+        people = await users.get_users(db, list({d.user_id for d in devices}))
         # Display names for the mentioned users, so the notification text never shows raw ids.
         names: dict[uuid.UUID, str] = {}
         for raw in message.get("mentioned_user_ids", []) or []:
@@ -133,22 +148,27 @@ class PushPlanner:
         expires_at = utcnow() + timedelta(seconds=self.settings.push_alert_ttl_seconds)
         workspace_id = await workspace.workspace_id(db)
         planned = 0
-        payloads: dict[uuid.UUID, dict[str, Any]] = {}
+        payloads: dict[tuple[uuid.UUID, str], dict[str, Any]] = {}
+        badges: dict[uuid.UUID, int] = {}
         for device in devices:
-            if device.user_id not in payloads:
-                badge = await self.badge_for(db, device.user_id)
+            locale = i18n.device_locale(people.get(device.user_id), device)
+            key = (device.user_id, locale)
+            if key not in payloads:
+                if device.user_id not in badges:
+                    badges[device.user_id] = await self.badge_for(db, device.user_id)
                 payload = self.build_payload(
                     channel,
                     sender,
                     message,
                     event.seq,
-                    badge=badge,
+                    badge=badges[device.user_id],
                     names=names,
                     workspace_id=workspace_id,
+                    locale=locale,
                 )
                 # parent_id is for the sender's last check (a reply is read by its thread's
                 # position), kept beside the payload like expires_at.
-                payloads[device.user_id] = payload.model_dump(mode="json") | {
+                payloads[key] = payload.model_dump(mode="json") | {
                     "expires_at": expires_at.isoformat(),
                     "parent_id": str(parent_id) if parent_id is not None else None,
                 }
@@ -161,7 +181,7 @@ class PushPlanner:
                 channel_id=channel.id,
                 message_id=uuid.UUID(str(message["id"])),
                 message_seq=event.seq,
-                payload=payloads[device.user_id],
+                payload=payloads[key],
                 expires_at=expires_at,
             ):
                 planned += 1
@@ -185,23 +205,32 @@ class PushPlanner:
         expires_at = utcnow() + timedelta(seconds=self.settings.push_alert_ttl_seconds)
         channel_id = uuid.UUID(str(reminder["channel_id"]))
         message_id = uuid.UUID(str(reminder["message_id"]))
-        payload = PushPayload(
-            kind="reminder",
-            workspace_id=await workspace.workspace_id(db),
-            channel_id=channel_id,
-            message_id=message_id,
-            seq=None,
-            # L4: a request from the author to acknowledge reads as such.
-            # L6: a nudge to submit to a collection reads as such too.
-            title=REMINDER_TITLES.get(str(reminder.get("kind")), "リマインダー"),
-            subtitle=None,
-            body=(body if self.settings.push_include_content else "リマインダーの時間です")[:240]
-            or "リマインダーの時間です",
-            badge=max(await self.badge_for(db, user_id), 1),
-            collapse_key=f"reminder:{reminder.get('id')}",
-            sent_at=utcnow(),
-        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        workspace_id = await workspace.workspace_id(db)
+        badge = max(await self.badge_for(db, user_id), 1)
+
+        def build(lc: str) -> dict[str, Any]:
+            hidden = i18n.t("push.reminder.hidden", lc)
+            return PushPayload(
+                kind="reminder",
+                workspace_id=workspace_id,
+                channel_id=channel_id,
+                message_id=message_id,
+                seq=None,
+                # L4: a request from the author to acknowledge reads as such.
+                # L6: a nudge to submit to a collection reads as such too.
+                title=i18n.t(
+                    REMINDER_TITLES.get(str(reminder.get("kind")), "push.reminder.title"), lc
+                ),
+                subtitle=None,
+                body=(body if self.settings.push_include_content else hidden)[:240] or hidden,
+                badge=badge,
+                collapse_key=f"reminder:{reminder.get('id')}",
+                sent_at=utcnow(),
+            ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+
+        payloads = _ByLocale(build)
         for device in devices:
+            payload = payloads(i18n.device_locale(user, device))
             await repo.add_delivery(
                 db,
                 event_id=event.id,
@@ -240,20 +269,28 @@ class PushPlanner:
         if not devices:
             return
         expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
-        payload = PushPayload(
-            kind="calendar",
-            workspace_id=await workspace.workspace_id(db),
-            channel_id=notice.channel_id,
-            event_id=notice.event_id,
-            seq=None,
-            title="予定",
-            subtitle=None,
-            body=(notice.body if self.settings.push_include_content else "予定の時間です")[:240],
-            badge=max(await self.badge_for(db, user_id), 1),
-            collapse_key=f"calendar:{notice.event_id}",
-            sent_at=now,
-        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        workspace_id = await workspace.workspace_id(db)
+        badge = max(await self.badge_for(db, user_id), 1)
+
+        def build(lc: str) -> dict[str, Any]:
+            hidden = i18n.t("push.calendar.hidden", lc)
+            return PushPayload(
+                kind="calendar",
+                workspace_id=workspace_id,
+                channel_id=notice.channel_id,
+                event_id=notice.event_id,
+                seq=None,
+                title=i18n.t("push.calendar.title", lc),
+                subtitle=None,
+                body=(notice.text(lc) if self.settings.push_include_content else hidden)[:240],
+                badge=badge,
+                collapse_key=f"calendar:{notice.event_id}",
+                sent_at=now,
+            ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+
+        payloads = _ByLocale(build)
         for device in devices:
+            payload = payloads(i18n.device_locale(user, device))
             await repo.add_delivery(
                 db,
                 event_id=event.id,
@@ -302,43 +339,52 @@ class PushPlanner:
             if level == "none" or is_muted(pref, now):
                 return
             actor = await users.get_user(db, uuid.UUID(str(data["by_user_id"])))
-            who = actor.display_name if actor else "誰か"
+            who = actor.display_name if actor else None
             if event.event_type == TASK_REVIEW_DONE:  # L9 (REVIEWS.md §4)
-                body = f"{who} がレビューを完了しました: {title}{where}"
-                hidden = "レビューが完了しました"
+                key = "push.task.review_done"
             elif data.get("kind") == "review":
-                body = f"{who} がレビューを依頼しました: {title}{where}"
-                hidden = "レビューを依頼されました"
+                key = "push.task.review_requested"
             else:
-                body = f"{who} がタスクを割り当てました: {title}{where}"
-                hidden = "タスクが割り当てられました"
+                key = "push.task.assigned"
+            params: dict[str, object] = {"title": title, "where": where}
         elif data.get("due_at"):
             # M81 (TASKS.md §11): a due time — the notification goes out at it.
             zone = str(data.get("tz") or calendar.zone_for(None, user))
             at = datetime.fromisoformat(str(data["due_at"])).astimezone(ZoneInfo(zone))
-            body = f"{at:%H:%M} が期限: {title}{where}"
-            hidden = "期限のタスクがあります"
+            key, who = "push.task.due_at", None
+            params = {"time": f"{at:%H:%M}", "title": title, "where": where}
         else:
-            body = f"今日が期限: {title}{where}"
-            hidden = "今日が期限のタスクがあります"
+            key, who = "push.task.due_today", None
+            params = {"title": title, "where": where}
         devices = await repo.push_devices_for_users(db, [user_id])
         if not devices:
             return
         expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
-        payload = PushPayload(
-            kind="task",
-            workspace_id=await workspace.workspace_id(db),
-            channel_id=channel_id,
-            task_id=task_id,
-            seq=None,
-            title="タスク",
-            subtitle=None,
-            body=(body if self.settings.push_include_content else hidden)[:240],
-            badge=max(await self.badge_for(db, user_id), 1),
-            collapse_key=f"task:{task_id}",
-            sent_at=now,
-        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        workspace_id = await workspace.workspace_id(db)
+        badge = max(await self.badge_for(db, user_id), 1)
+
+        def build(lc: str) -> dict[str, Any]:
+            extra = {"who": who or i18n.t("someone", lc)} if "{who}" in i18n.t(key, "ja") else {}
+            body = i18n.t(key, lc, **params, **extra)
+            return PushPayload(
+                kind="task",
+                workspace_id=workspace_id,
+                channel_id=channel_id,
+                task_id=task_id,
+                seq=None,
+                title=i18n.t("push.task.title", lc),
+                subtitle=None,
+                body=(body if self.settings.push_include_content else i18n.t(f"{key}_hidden", lc))[
+                    :240
+                ],
+                badge=badge,
+                collapse_key=f"task:{task_id}",
+                sent_at=now,
+            ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+
+        payloads = _ByLocale(build)
         for device in devices:
+            payload = payloads(i18n.device_locale(user, device))
             await repo.add_delivery(
                 db,
                 event_id=event.id,
@@ -388,25 +434,35 @@ class PushPlanner:
         if not devices:
             return
         actor = await users.get_user(db, uuid.UUID(str(data["by_user_id"])))
-        who = actor.display_name if actor else "誰か"
-        body = f"{who} が「{canvas.title}」であなたをメンションしました"
         expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
-        payload = PushPayload(
-            kind="canvas",
-            workspace_id=await workspace.workspace_id(db),
-            channel_id=channel_id,
-            canvas_id=canvas_id,
-            seq=None,
-            title="キャンバス",
-            subtitle=None if channel.is_dm else f"#{channel.name}",
-            body=(
-                body if self.settings.push_include_content else "キャンバスでメンションされました"
-            )[:240],
-            badge=max(await self.badge_for(db, user_id), 1),
-            collapse_key=f"canvas:{canvas_id}",
-            sent_at=now,
-        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        workspace_id = await workspace.workspace_id(db)
+        badge = max(await self.badge_for(db, user_id), 1)
+        canvas_title = canvas.title
+
+        def build(lc: str) -> dict[str, Any]:
+            who = actor.display_name if actor else i18n.t("someone", lc)
+            body = i18n.t("push.canvas.mention", lc, who=who, title=canvas_title)
+            return PushPayload(
+                kind="canvas",
+                workspace_id=workspace_id,
+                channel_id=channel_id,
+                canvas_id=canvas_id,
+                seq=None,
+                title=i18n.t("push.canvas.title", lc),
+                subtitle=None if channel.is_dm else f"#{channel.name}",
+                body=(
+                    body
+                    if self.settings.push_include_content
+                    else i18n.t("push.canvas.mention_hidden", lc)
+                )[:240],
+                badge=badge,
+                collapse_key=f"canvas:{canvas_id}",
+                sent_at=now,
+            ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+
+        payloads = _ByLocale(build)
         for device in devices:
+            payload = payloads(i18n.device_locale(user, device))
             await repo.add_delivery(
                 db,
                 event_id=event.id,
@@ -440,21 +496,28 @@ class PushPlanner:
         if not devices:
             return
         expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
-        payload = PushPayload(
-            kind="reservation",
-            workspace_id=await workspace.workspace_id(db),
-            pool_id=item.pool_id,
-            seq=None,
-            title="予約",
-            subtitle=None,
-            body=(item.text if self.settings.push_include_content else "予約のお知らせがあります")[
-                :240
-            ],
-            badge=max(await self.badge_for(db, user_id), 1),
-            collapse_key=f"reservation:{item.id}",
-            sent_at=now,
-        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        workspace_id = await workspace.workspace_id(db)
+        badge = max(await self.badge_for(db, user_id), 1)
+
+        def build(lc: str) -> dict[str, Any]:
+            # The item's text is written in the person's language already (docs/I18N.md).
+            hidden = i18n.t("push.reservation.hidden", lc)
+            return PushPayload(
+                kind="reservation",
+                workspace_id=workspace_id,
+                pool_id=item.pool_id,
+                seq=None,
+                title=i18n.t("push.reservation.title", lc),
+                subtitle=None,
+                body=(item.text if self.settings.push_include_content else hidden)[:240],
+                badge=badge,
+                collapse_key=f"reservation:{item.id}",
+                sent_at=now,
+            ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+
+        payloads = _ByLocale(build)
         for device in devices:
+            payload = payloads(i18n.device_locale(user, device))
             await repo.add_delivery(
                 db,
                 event_id=event.id,
@@ -512,20 +575,29 @@ class PushPlanner:
         )
         where = None if channel.is_dm else f"#{channel.name}"
         expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
-        payload = PushPayload(
-            kind="reaction",
-            workspace_id=await workspace.workspace_id(db),
-            channel_id=channel_id,
-            message_id=message_id,
-            seq=None,
-            title=f"{actor.display_name if actor else '誰か'} がリアクションしました",
-            subtitle=where,
-            body=(f"{emoji} 「{excerpt}」" if excerpt else emoji)[:240] or "リアクション",
-            badge=max(await self.badge_for(db, user_id), 1),
-            collapse_key=f"reaction:{message_id}",
-            sent_at=now,
-        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        workspace_id = await workspace.workspace_id(db)
+        badge = max(await self.badge_for(db, user_id), 1)
+
+        def build(lc: str) -> dict[str, Any]:
+            who = actor.display_name if actor else i18n.t("someone", lc)
+            quoted = i18n.t("push.reaction.quote", lc, emoji=emoji, excerpt=excerpt)
+            return PushPayload(
+                kind="reaction",
+                workspace_id=workspace_id,
+                channel_id=channel_id,
+                message_id=message_id,
+                seq=None,
+                title=i18n.t("push.reaction.title", lc, who=who),
+                subtitle=where,
+                body=(quoted if excerpt else emoji)[:240] or i18n.t("push.reaction.fallback", lc),
+                badge=badge,
+                collapse_key=f"reaction:{message_id}",
+                sent_at=now,
+            ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+
+        payloads = _ByLocale(build)
         for device in devices:
+            payload = payloads(i18n.device_locale(user, device))
             await repo.add_delivery(
                 db,
                 event_id=event.id,
@@ -637,23 +709,31 @@ class PushPlanner:
         badge: int = 1,
         names: dict[uuid.UUID, str] | None = None,
         workspace_id: uuid.UUID | None = None,
+        locale: str = "ja",
     ) -> PushPayload:
-        sender_name = sender.display_name if sender else "Someone"
+        """The message push in `locale` (M115: the recipient's device's language)."""
+        sender_name = sender.display_name if sender else i18n.t("someone", locale)
+        new_message = i18n.t("push.new_message", locale)
         if channel.type == "dm":
             title, subtitle = sender_name, None
         elif channel.type == "group_dm":
-            title, subtitle = "グループ DM", sender_name
+            title, subtitle = i18n.t("push.group_dm", locale), sender_name
         else:
             title, subtitle = f"#{channel.name}", sender_name
         attachments = message.get("attachments")
         body = (
-            notification_text(str(message.get("body", "")), names or {})
-            or attachment_text(attachments if isinstance(attachments, list) else [])
+            notification_text(str(message.get("body", "")), names or {}, locale=locale)
+            or attachment_text(attachments if isinstance(attachments, list) else [], locale)
             if self.settings.push_include_content
-            else "新しいメッセージ"
+            else new_message
         )
-        label = {"important": "[重要] ", "urgent": "[緊急] "}.get(str(message.get("priority")), "")
-        body = label + (body or "新しいメッセージ")  # M15e
+        priority = str(message.get("priority"))
+        label = (
+            i18n.t(f"push.priority.{priority}", locale)
+            if priority in ("important", "urgent")
+            else ""
+        )
+        body = label + (body or new_message)  # M15e
         return PushPayload(
             kind="message",
             workspace_id=workspace_id,
@@ -662,7 +742,7 @@ class PushPlanner:
             seq=seq,
             title=title,
             subtitle=subtitle,
-            body=body or "新しいメッセージ",
+            body=body or new_message,
             badge=max(badge, 1),
             collapse_key=str(channel.id),
             sent_at=utcnow(),

@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Request
 
 from app.core.db import Db
-from app.core.errors import AppError
+from app.core.errors import AppError, request_locale
 from app.modules.auth.deps import CurrentUser
 from app.modules.auth.models import UserSession
 from app.modules.notifications import push_test, service
@@ -55,4 +55,5 @@ async def send_test_notification(
         current_device_id=current_device_id,
         providers=state.push_providers,
         settings=state.settings,
+        locale=request_locale(request),
     )

@@ -19,6 +19,9 @@ class Device(Base):
     platform: Mapped[str] = mapped_column(String(16))
     device_name: Mapped[str | None] = mapped_column(String(80))
     app_version: Mapped[str | None] = mapped_column(String(40))
+    # M115: the UI language this app last asked for (Accept-Language, as ja / en / zh-Hans);
+    # pushes to it use it when the person chose none (docs/I18N.md).
+    locale: Mapped[str | None] = mapped_column(String(16))
     push_provider: Mapped[str] = mapped_column(
         String(8), default="none", server_default="none"
     )  # apns | fcm | none

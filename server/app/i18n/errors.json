@@ -1,0 +1,1287 @@
+{
+ "_comment": "Generated from apps/shared/errors.json by apps/shared/gen_errors.py; do not edit by hand.",
+ "locales": [
+  "ja",
+  "en",
+  "zh-Hans"
+ ],
+ "codes": {
+  "account_disabled": {
+   "ja": "このアカウントは無効化されています。管理者に連絡してください",
+   "en": "This account has been disabled. Contact an admin.",
+   "zh-Hans": "此账号已被停用。请联系管理员。"
+  },
+  "ack_not_requested": {
+   "ja": "この投稿は確認を求めていません",
+   "en": "This message does not ask for acknowledgement.",
+   "zh-Hans": "此消息未请求确认。"
+  },
+  "ack_own_message": {
+   "ja": "自分の投稿は確認できません",
+   "en": "You can't acknowledge your own message.",
+   "zh-Hans": "不能确认自己的消息。"
+  },
+  "ack_remind_forbidden": {
+   "ja": "リマインドできるのは投稿者と管理者だけです",
+   "en": "Only the sender and admins can send a reminder.",
+   "zh-Hans": "只有发送者和管理员可以发送提醒。"
+  },
+  "ack_remind_too_soon": {
+   "ja": "リマインドは 1 時間に 1 回までです。しばらくしてからお試しください",
+   "en": "You can send a reminder once an hour. Try again later.",
+   "zh-Hans": "每小时只能提醒一次。请稍后再试。"
+  },
+  "admin_not_member": {
+   "ja": "公開に変換できるのは、このチャンネルのメンバーである管理者だけです",
+   "en": "Only an admin who is a member of this channel can make it public.",
+   "zh-Hans": "只有身为此频道成员的管理员才能将其转为公开。"
+  },
+  "admin_required": {
+   "ja": "管理者だけが行える操作です",
+   "en": "Only admins can do this.",
+   "zh-Hans": "只有管理员可以执行此操作。"
+  },
+  "ai_agent_not_found": {
+   "ja": "AI のボットが見つかりません",
+   "en": "AI bot not found.",
+   "zh-Hans": "找不到 AI 机器人。"
+  },
+  "ai_budget_exceeded": {
+   "ja": "今月の AI の利用上限に達しました",
+   "en": "This month's AI usage limit has been reached.",
+   "zh-Hans": "已达到本月的 AI 使用上限。"
+  },
+  "ai_daily_limit": {
+   "ja": "今日の AI の利用回数の上限に達しました。明日またお試しください",
+   "en": "Today's AI usage limit has been reached. Try again tomorrow.",
+   "zh-Hans": "已达到今天的 AI 使用次数上限。请明天再试。"
+  },
+  "ai_private_not_allowed": {
+   "ja": "この AI のボットは公開チャンネルでだけ使えます (非公開チャンネルと DM には参加・要約できません)",
+   "en": "This AI bot works in public channels only (it can't join or summarize private channels and DMs).",
+   "zh-Hans": "此 AI 机器人只能在公开频道中使用（不能加入或摘要私有频道和私信）。"
+  },
+  "ai_run_not_found": {
+   "ja": "AI の結果が見つかりません",
+   "en": "AI result not found.",
+   "zh-Hans": "找不到 AI 结果。"
+  },
+  "ai_unavailable": {
+   "ja": "このサーバーでは AI を使えません",
+   "en": "AI is not available on this server.",
+   "zh-Hans": "此服务器不支持 AI。"
+  },
+  "already_authenticated": {
+   "ja": "すでにログインしています",
+   "en": "You are already logged in.",
+   "zh-Hans": "你已登录。"
+  },
+  "attachment_empty": {
+   "ja": "空のファイルは添付できません",
+   "en": "You can't attach an empty file.",
+   "zh-Hans": "不能附加空文件。"
+  },
+  "attachment_invalid": {
+   "ja": "添付ファイルが無効です。アップロードし直してください",
+   "en": "The attachment is invalid. Upload it again.",
+   "zh-Hans": "附件无效。请重新上传。"
+  },
+  "attachment_not_found": {
+   "ja": "添付ファイルが見つかりません",
+   "en": "Attachment not found.",
+   "zh-Hans": "找不到附件。"
+  },
+  "attachment_too_large": {
+   "ja": "ファイルが大きすぎます",
+   "en": "The file is too large.",
+   "zh-Hans": "文件太大。"
+  },
+  "avatar_empty": {
+   "ja": "画像が空です",
+   "en": "The image is empty.",
+   "zh-Hans": "图片为空。"
+  },
+  "avatar_not_found": {
+   "ja": "プロフィール写真がありません",
+   "en": "No profile photo.",
+   "zh-Hans": "没有头像。"
+  },
+  "avatar_not_image": {
+   "ja": "PNG・JPEG・GIF・WebP の画像を選んでください",
+   "en": "Choose a PNG, JPEG, GIF or WebP image.",
+   "zh-Hans": "请选择 PNG、JPEG、GIF 或 WebP 图片。"
+  },
+  "avatar_too_large": {
+   "ja": "画像が大きすぎます",
+   "en": "The image is too large.",
+   "zh-Hans": "图片太大。"
+  },
+  "calendar_channel_unsupported": {
+   "ja": "ダイレクトメッセージには予定を追加できません",
+   "en": "You can't add events to a direct message.",
+   "zh-Hans": "不能在私信中添加日程。"
+  },
+  "calendar_edit_restricted": {
+   "ja": "この予定を変更できるのは作成者・チャンネルのオーナー・管理者だけです",
+   "en": "Only the creator, channel owners and admins can change this event.",
+   "zh-Hans": "只有创建者、频道所有者和管理员可以修改此日程。"
+  },
+  "calendar_event_not_found": {
+   "ja": "予定が見つかりません",
+   "en": "Event not found.",
+   "zh-Hans": "找不到日程。"
+  },
+  "calendar_event_too_long": {
+   "ja": "予定が長すぎます (時刻の予定は 14 日、終日の予定は 60 日まで)",
+   "en": "The event is too long (up to 14 days for timed events, 60 days for all-day events).",
+   "zh-Hans": "日程太长（定时日程最长 14 天，全天日程最长 60 天）。"
+  },
+  "calendar_feed_limit": {
+   "ja": "購読 URL は 5 個までです。使っていないものを削除してください",
+   "en": "You can have up to 5 subscription URLs. Delete ones you don't use.",
+   "zh-Hans": "订阅 URL 最多 5 个。请删除不用的。"
+  },
+  "calendar_feed_not_found": {
+   "ja": "購読 URL が見つかりません",
+   "en": "Subscription URL not found.",
+   "zh-Hans": "找不到订阅 URL。"
+  },
+  "calendar_invalid_alarm": {
+   "ja": "この予定には選べない通知です",
+   "en": "This notification can't be chosen for this event.",
+   "zh-Hans": "此日程不能选择该通知。"
+  },
+  "calendar_invalid_range": {
+   "ja": "表示する期間の指定が正しくありません (100 日まで)",
+   "en": "The date range is invalid (up to 100 days).",
+   "zh-Hans": "显示的期间无效（最多 100 天）。"
+  },
+  "calendar_invalid_rrule": {
+   "ja": "繰り返しの指定が正しくありません",
+   "en": "The repeat setting is invalid.",
+   "zh-Hans": "重复设置无效。"
+  },
+  "calendar_invalid_time": {
+   "ja": "日時の指定が正しくありません。終わりは始まりより後にしてください",
+   "en": "The date or time is invalid. The end must be after the start.",
+   "zh-Hans": "日期或时间无效。结束时间必须晚于开始时间。"
+  },
+  "calendar_not_recurring": {
+   "ja": "繰り返しの予定ではありません",
+   "en": "This is not a recurring event.",
+   "zh-Hans": "这不是重复日程。"
+  },
+  "calendar_occurrence_not_found": {
+   "ja": "繰り返しのその回が見つかりません (変更・削除されたかもしれません)",
+   "en": "That occurrence was not found (it may have been changed or deleted).",
+   "zh-Hans": "找不到该次重复（可能已被修改或删除）。"
+  },
+  "cancelled": {
+   "ja": "Google でのログインを取り消しました",
+   "en": "Google sign-in was cancelled.",
+   "zh-Hans": "已取消 Google 登录。"
+  },
+  "cannot_block_self": {
+   "ja": "自分自身はブロックできません",
+   "en": "You can't block yourself.",
+   "zh-Hans": "不能屏蔽自己。"
+  },
+  "cannot_modify_self": {
+   "ja": "自分自身には行えない操作です",
+   "en": "You can't do this to yourself.",
+   "zh-Hans": "不能对自己执行此操作。"
+  },
+  "cannot_report_own": {
+   "ja": "自分のメッセージは報告できません",
+   "en": "You can't report your own message.",
+   "zh-Hans": "不能举报自己的消息。"
+  },
+  "canvas_base_expired": {
+   "ja": "編集の元にした版がなくなりました。今の版と見比べてください",
+   "en": "The version you edited from is gone. Compare with the current version.",
+   "zh-Hans": "你编辑时所基于的版本已不存在。请与当前版本进行比较。"
+  },
+  "canvas_conflict": {
+   "ja": "ほかの人が同じ箇所を変更しました。どちらを残すか選んでください",
+   "en": "Someone else changed the same part. Choose which to keep.",
+   "zh-Hans": "其他人修改了同一处。请选择保留哪一个。"
+  },
+  "canvas_edit_restricted": {
+   "ja": "このキャンバスを変更できるのは作成者・オーナー・管理者だけです",
+   "en": "Only the creator, owners and admins can change this canvas.",
+   "zh-Hans": "只有创建者、所有者和管理员可以修改此画布。"
+  },
+  "canvas_not_found": {
+   "ja": "キャンバスが見つかりません",
+   "en": "Canvas not found.",
+   "zh-Hans": "找不到画布。"
+  },
+  "canvas_revision_erased": {
+   "ja": "この版の本文は消去されています",
+   "en": "The text of this version has been erased.",
+   "zh-Hans": "此版本的内容已被清除。"
+  },
+  "canvas_revision_is_head": {
+   "ja": "現在の版は消去できません。先に本文を直してください",
+   "en": "The current version can't be erased. Fix the text first.",
+   "zh-Hans": "不能清除当前版本。请先修改内容。"
+  },
+  "canvas_revision_not_found": {
+   "ja": "版が見つかりません",
+   "en": "Version not found.",
+   "zh-Hans": "找不到版本。"
+  },
+  "canvas_tab_taken": {
+   "ja": "この会話にはすでにキャンバスのタブがあります",
+   "en": "This conversation already has a canvas tab.",
+   "zh-Hans": "此对话已有画布标签页。"
+  },
+  "canvas_too_large": {
+   "ja": "キャンバスが長すぎます (100,000 文字まで)",
+   "en": "The canvas is too long (up to 100,000 characters).",
+   "zh-Hans": "画布太长（最多 100,000 个字符）。"
+  },
+  "channel_archived": {
+   "ja": "アーカイブされたチャンネルです",
+   "en": "This channel is archived.",
+   "zh-Hans": "此频道已归档。"
+  },
+  "channel_not_found": {
+   "ja": "チャンネルが見つかりません",
+   "en": "Channel not found.",
+   "zh-Hans": "找不到频道。"
+  },
+  "csrf_required": {
+   "ja": "ページを再読み込みしてください",
+   "en": "Reload the page.",
+   "zh-Hans": "请重新加载页面。"
+  },
+  "default_channel_archived": {
+   "ja": "アーカイブ済みのチャンネルは既定のチャンネルにできません",
+   "en": "An archived channel can't be a default channel.",
+   "zh-Hans": "已归档的频道不能设为默认频道。"
+  },
+  "default_channel_not_found": {
+   "ja": "既定のチャンネルに選んだチャンネルが見つかりません (削除されたかもしれません)",
+   "en": "A channel chosen as a default channel was not found (it may have been deleted).",
+   "zh-Hans": "找不到被选为默认频道的频道（可能已被删除）。"
+  },
+  "default_channel_not_public": {
+   "ja": "既定のチャンネルにできるのは公開チャンネルだけです",
+   "en": "Only public channels can be default channels.",
+   "zh-Hans": "只有公开频道可以设为默认频道。"
+  },
+  "dm_immutable": {
+   "ja": "ダイレクトメッセージでは行えない操作です",
+   "en": "This can't be done in a direct message.",
+   "zh-Hans": "私信中不能执行此操作。"
+  },
+  "dm_unavailable": {
+   "ja": "このユーザーにはメッセージを送れません",
+   "en": "You can't send messages to this user.",
+   "zh-Hans": "无法向此用户发送消息。"
+  },
+  "domain_not_allowed": {
+   "ja": "このサーバでは、許可された大学・組織の Google アカウントだけでログインできます",
+   "en": "This server only allows sign-in with Google accounts of approved universities and organizations.",
+   "zh-Hans": "此服务器只允许使用获准的大学或组织的 Google 账号登录。"
+  },
+  "email_domain_reserved": {
+   "ja": "このドメインのメールアドレスは Google でのログインで登録されます。自分では設定できません",
+   "en": "Email addresses of this domain are registered through Google sign-in. You can't set one yourself.",
+   "zh-Hans": "此域名的邮箱地址通过 Google 登录注册，不能自行设置。"
+  },
+  "email_not_verified": {
+   "ja": "Google アカウントのメールアドレスが確認されていません",
+   "en": "The Google account's email address is not verified.",
+   "zh-Hans": "Google 账号的邮箱地址未经验证。"
+  },
+  "email_taken": {
+   "ja": "このメールアドレスはすでに使われています",
+   "en": "This email address is already in use.",
+   "zh-Hans": "此邮箱地址已被使用。"
+  },
+  "emoji_empty": {
+   "ja": "画像が空です",
+   "en": "The image is empty.",
+   "zh-Hans": "图片为空。"
+  },
+  "emoji_forbidden": {
+   "ja": "この絵文字を変更・削除する権限がありません",
+   "en": "You don't have permission to change or delete this emoji.",
+   "zh-Hans": "你没有修改或删除此表情的权限。"
+  },
+  "emoji_keywords_invalid": {
+   "ja": "検索キーワードが正しくありません (20 個まで、1 つ 32 文字まで)",
+   "en": "The search keywords are invalid (up to 20, each up to 32 characters).",
+   "zh-Hans": "搜索关键词无效（最多 20 个，每个最多 32 个字符）。"
+  },
+  "emoji_label_invalid": {
+   "ja": "絵文字の表示名が正しくありません (文字の絵文字は 12 文字まで)",
+   "en": "The emoji's display name is invalid (up to 12 characters for a text emoji).",
+   "zh-Hans": "表情的显示名称无效（文字表情最多 12 个字符）。"
+  },
+  "emoji_name_invalid": {
+   "ja": "絵文字の名前は英小文字・数字・_ と - で付けてください",
+   "en": "Emoji names may use lowercase letters, digits, _ and -.",
+   "zh-Hans": "表情名称只能使用小写字母、数字、_ 和 -。"
+  },
+  "emoji_name_taken": {
+   "ja": "この名前の絵文字はすでにあります",
+   "en": "An emoji with this name already exists.",
+   "zh-Hans": "已有同名的表情。"
+  },
+  "emoji_not_found": {
+   "ja": "絵文字が見つかりません",
+   "en": "Emoji not found.",
+   "zh-Hans": "找不到表情。"
+  },
+  "emoji_not_image": {
+   "ja": "PNG・JPEG・GIF・WebP の画像を選んでください",
+   "en": "Choose a PNG, JPEG, GIF or WebP image.",
+   "zh-Hans": "请选择 PNG、JPEG、GIF 或 WebP 图片。"
+  },
+  "emoji_pack_archive_invalid": {
+   "ja": "フォルダ (ZIP) を読めません",
+   "en": "The folder (ZIP) can't be read.",
+   "zh-Hans": "无法读取文件夹（ZIP）。"
+  },
+  "emoji_pack_file_missing": {
+   "ja": "pack.json にある画像がフォルダ (ZIP) にありません",
+   "en": "An image listed in pack.json is missing from the folder (ZIP).",
+   "zh-Hans": "pack.json 中列出的图片不在文件夹（ZIP）中。"
+  },
+  "emoji_pack_manifest_invalid": {
+   "ja": "pack.json が正しくありません",
+   "en": "pack.json is invalid.",
+   "zh-Hans": "pack.json 无效。"
+  },
+  "emoji_pack_name_invalid": {
+   "ja": "セットの名前は 1〜64 文字で付けてください",
+   "en": "A set name must be 1–64 characters.",
+   "zh-Hans": "表情集名称须为 1–64 个字符。"
+  },
+  "emoji_pack_name_taken": {
+   "ja": "この名前のセットはすでにあります",
+   "en": "A set with this name already exists.",
+   "zh-Hans": "已有同名的表情集。"
+  },
+  "emoji_pack_not_found": {
+   "ja": "絵文字のセットが見つかりません",
+   "en": "Emoji set not found.",
+   "zh-Hans": "找不到表情集。"
+  },
+  "emoji_too_big": {
+   "ja": "画像が大きすぎます",
+   "en": "The image is too large.",
+   "zh-Hans": "图片太大。"
+  },
+  "emoji_too_large": {
+   "ja": "画像のファイルが大きすぎます",
+   "en": "The image file is too large.",
+   "zh-Hans": "图片文件太大。"
+  },
+  "empty_query": {
+   "ja": "検索する言葉か条件を入れてください",
+   "en": "Enter words or filters to search for.",
+   "zh-Hans": "请输入要搜索的词语或条件。"
+  },
+  "expired": {
+   "ja": "ログインの手続きの期限が切れました。もう一度「Google でログイン」からやり直してください",
+   "en": "The sign-in has expired. Start again from “Sign in with Google”.",
+   "zh-Hans": "登录流程已过期。请从“使用 Google 登录”重新开始。"
+  },
+  "feed_bot_not_found": {
+   "ja": "このチャンネルにはまだフィードのボットがありません。先にフィードを追加してください",
+   "en": "This channel has no feed bot yet. Add a feed first.",
+   "zh-Hans": "此频道还没有订阅源机器人。请先添加订阅源。"
+  },
+  "feed_bot_rename_restricted": {
+   "ja": "フィードのボットの名前を変えられるのは、チャンネルのオーナーと管理者だけです",
+   "en": "Only channel owners and admins can rename the feed bot.",
+   "zh-Hans": "只有频道所有者和管理员可以重命名订阅源机器人。"
+  },
+  "feed_bot_unavailable": {
+   "ja": "このボットはフィードのボットにできません (このチャンネルのボットで、ほかの機能が使っていないものだけ)",
+   "en": "This bot can't be the feed bot (only a bot of this channel not used by another feature).",
+   "zh-Hans": "此机器人不能作为订阅源机器人（只能使用本频道中未被其他功能使用的机器人）。"
+  },
+  "feed_channel_unsupported": {
+   "ja": "ダイレクトメッセージにはフィードを追加できません",
+   "en": "You can't add feeds to a direct message.",
+   "zh-Hans": "不能在私信中添加订阅源。"
+  },
+  "feed_exists": {
+   "ja": "このフィードはすでにこのチャンネルに追加されています",
+   "en": "This feed has already been added to this channel.",
+   "zh-Hans": "此订阅源已添加到本频道。"
+  },
+  "feed_invalid": {
+   "ja": "フィードを読み込めませんでした。RSS または Atom の URL か確かめてください",
+   "en": "The feed couldn't be loaded. Check that it is an RSS or Atom URL.",
+   "zh-Hans": "无法加载订阅源。请确认它是 RSS 或 Atom 的 URL。"
+  },
+  "feed_manage_restricted": {
+   "ja": "フィードを止める・削除できるのは、追加した人、チャンネルのオーナー、管理者だけです",
+   "en": "Only the person who added the feed, channel owners and admins can pause or delete it.",
+   "zh-Hans": "只有添加者、频道所有者和管理员可以暂停或删除订阅源。"
+  },
+  "feed_not_found": {
+   "ja": "フィードが見つかりません",
+   "en": "Feed not found.",
+   "zh-Hans": "找不到订阅源。"
+  },
+  "forbidden": {
+   "ja": "この操作の権限がありません",
+   "en": "You don't have permission to do this.",
+   "zh-Hans": "你没有执行此操作的权限。"
+  },
+  "group_managed": {
+   "ja": "このグループは名簿から自動で保たれます。名簿を変更してください",
+   "en": "This group is kept in sync with the roster automatically. Change the roster instead.",
+   "zh-Hans": "此用户组根据名册自动维护。请修改名册。"
+  },
+  "group_not_found": {
+   "ja": "グループが見つかりません",
+   "en": "Group not found.",
+   "zh-Hans": "找不到用户组。"
+  },
+  "guest_restricted": {
+   "ja": "ゲストは行えない操作です",
+   "en": "Guests can't do this.",
+   "zh-Hans": "访客不能执行此操作。"
+  },
+  "idempotency_conflict": {
+   "ja": "送信に失敗しました。もう一度お試しください",
+   "en": "Sending failed. Try again.",
+   "zh-Hans": "发送失败。请重试。"
+  },
+  "image_too_large": {
+   "ja": "画像の画素数が多すぎます",
+   "en": "The image has too many pixels.",
+   "zh-Hans": "图片像素过多。"
+  },
+  "invalid_alumni_channel": {
+   "ja": "卒業生のチャンネルには、アーカイブされていない公開・非公開チャンネルを選んでください",
+   "en": "Choose a public or private channel that is not archived as the alumni channel.",
+   "zh-Hans": "请为校友频道选择未归档的公开或私有频道。"
+  },
+  "invalid_body": {
+   "ja": "この本文は投稿できません",
+   "en": "This message can't be sent.",
+   "zh-Hans": "无法发送此内容。"
+  },
+  "invalid_channel": {
+   "ja": "チャンネルの指定が正しくありません",
+   "en": "The channel is invalid.",
+   "zh-Hans": "频道指定无效。"
+  },
+  "invalid_confirmation": {
+   "ja": "入力したユーザー名が違います",
+   "en": "The username you entered doesn't match.",
+   "zh-Hans": "输入的用户名不正确。"
+  },
+  "invalid_credentials": {
+   "ja": "ユーザー名またはパスワードが違います",
+   "en": "Wrong username or password.",
+   "zh-Hans": "用户名或密码错误。"
+  },
+  "invalid_cursor": {
+   "ja": "一覧を読み直してください",
+   "en": "Reload the list.",
+   "zh-Hans": "请重新加载列表。"
+  },
+  "invalid_parent": {
+   "ja": "スレッドの元のメッセージが正しくありません",
+   "en": "The thread's parent message is invalid.",
+   "zh-Hans": "话题的原消息无效。"
+  },
+  "invalid_password": {
+   "ja": "現在のパスワードが違います",
+   "en": "The current password is wrong.",
+   "zh-Hans": "当前密码错误。"
+  },
+  "invalid_supervisor": {
+   "ja": "指導教員には名簿で教員になっている人を選んでください",
+   "en": "Choose a person listed as faculty in the roster as the supervisor.",
+   "zh-Hans": "请选择名册中登记为教员的人作为指导教员。"
+  },
+  "invalid_ticket": {
+   "ja": "ログインの手続きが無効か、期限が切れています。もう一度「Google でログイン」からやり直してください",
+   "en": "The sign-in is invalid or has expired. Start again from “Sign in with Google”.",
+   "zh-Hans": "登录流程无效或已过期。请从“使用 Google 登录”重新开始。"
+  },
+  "invalid_token": {
+   "ja": "ログインし直してください",
+   "en": "Log in again.",
+   "zh-Hans": "请重新登录。"
+  },
+  "invalid_totp": {
+   "ja": "確認コードが違います",
+   "en": "Wrong verification code.",
+   "zh-Hans": "验证码错误。"
+  },
+  "invite_exhausted": {
+   "ja": "この招待リンクは使用回数の上限に達しています",
+   "en": "This invite link has reached its usage limit.",
+   "zh-Hans": "此邀请链接已达到使用次数上限。"
+  },
+  "invite_expired": {
+   "ja": "招待リンクの期限が切れています",
+   "en": "This invite link has expired.",
+   "zh-Hans": "此邀请链接已过期。"
+  },
+  "invite_not_found": {
+   "ja": "招待リンクが無効か、期限が切れています",
+   "en": "This invite link is invalid or has expired.",
+   "zh-Hans": "邀请链接无效或已过期。"
+  },
+  "invite_revoked": {
+   "ja": "この招待リンクは取り消されました",
+   "en": "This invite link has been revoked.",
+   "zh-Hans": "此邀请链接已被撤销。"
+  },
+  "last_admin": {
+   "ja": "最後の管理者はアカウントを削除できません。先にほかの人を管理者にしてください",
+   "en": "The last admin can't delete their account. Make someone else an admin first.",
+   "zh-Hans": "最后一位管理员不能删除账号。请先将其他人设为管理员。"
+  },
+  "last_owner": {
+   "ja": "オーナーが 1 人もいなくなるため変更できません",
+   "en": "This can't be changed because no owner would be left.",
+   "zh-Hans": "无法更改，因为将没有任何所有者。"
+  },
+  "link_not_found": {
+   "ja": "リンクが見つかりません",
+   "en": "Link not found.",
+   "zh-Hans": "找不到链接。"
+  },
+  "member_not_found": {
+   "ja": "メンバーが見つかりません",
+   "en": "Member not found.",
+   "zh-Hans": "找不到成员。"
+  },
+  "message_not_found": {
+   "ja": "メッセージが見つかりません (削除された可能性があります)",
+   "en": "Message not found (it may have been deleted).",
+   "zh-Hans": "找不到消息（可能已被删除）。"
+  },
+  "missing_token": {
+   "ja": "ログインしてください",
+   "en": "Log in.",
+   "zh-Hans": "请登录。"
+  },
+  "name_taken": {
+   "ja": "この名前はすでに使われています",
+   "en": "This name is already in use.",
+   "zh-Hans": "此名称已被使用。"
+  },
+  "not_a_member": {
+   "ja": "このチャンネルのメンバーではありません",
+   "en": "You are not a member of this channel.",
+   "zh-Hans": "你不是此频道的成员。"
+  },
+  "not_found": {
+   "ja": "見つかりませんでした",
+   "en": "Not found.",
+   "zh-Hans": "未找到。"
+  },
+  "not_message_owner": {
+   "ja": "自分のメッセージだけが対象です",
+   "en": "This only works on your own messages.",
+   "zh-Hans": "只能对自己的消息执行此操作。"
+  },
+  "not_registered": {
+   "ja": "このメールアドレスのアカウントはありません。管理者に登録を依頼してください",
+   "en": "There is no account for this email address. Ask an admin to register you.",
+   "zh-Hans": "没有使用此邮箱地址的账号。请联系管理员注册。"
+  },
+  "not_uploader": {
+   "ja": "自分がアップロードしたファイルだけを添付できます",
+   "en": "You can only attach files you uploaded.",
+   "zh-Hans": "只能附加自己上传的文件。"
+  },
+  "owner_not_allowed": {
+   "ja": "ゲストとボットはオーナーにできません",
+   "en": "Guests and bots can't be owners.",
+   "zh-Hans": "访客和机器人不能成为所有者。"
+  },
+  "password_change_required": {
+   "ja": "パスワードを変更してください",
+   "en": "Change your password.",
+   "zh-Hans": "请修改密码。"
+  },
+  "password_not_set": {
+   "ja": "このアカウントは Google でログインするため、パスワードはありません",
+   "en": "This account signs in with Google, so it has no password.",
+   "zh-Hans": "此账号使用 Google 登录，没有密码。"
+  },
+  "password_too_short": {
+   "ja": "パスワードが短すぎます",
+   "en": "The password is too short.",
+   "zh-Hans": "密码太短。"
+  },
+  "payload_too_large": {
+   "ja": "データが大きすぎます",
+   "en": "The data is too large.",
+   "zh-Hans": "数据太大。"
+  },
+  "poll_closed": {
+   "ja": "この投票は締め切られています",
+   "en": "This poll is closed.",
+   "zh-Hans": "此投票已截止。"
+  },
+  "poll_decide_restricted": {
+   "ja": "日程を決められるのは作成者・チャンネルのオーナー・管理者です",
+   "en": "Only the creator, channel owners and admins can decide the date.",
+   "zh-Hans": "只有创建者、频道所有者和管理员可以确定日程。"
+  },
+  "poll_decided": {
+   "ja": "日程はもう決まっています",
+   "en": "The date has already been decided.",
+   "zh-Hans": "日程已经确定。"
+  },
+  "poll_not_found": {
+   "ja": "投票が見つかりません",
+   "en": "Poll not found.",
+   "zh-Hans": "找不到投票。"
+  },
+  "poll_not_schedule": {
+   "ja": "日程調整のアンケートではありません",
+   "en": "This is not a scheduling poll.",
+   "zh-Hans": "这不是日程调整投票。"
+  },
+  "poll_option_invalid": {
+   "ja": "選択肢が正しくありません",
+   "en": "The option is invalid.",
+   "zh-Hans": "选项无效。"
+  },
+  "posting_restricted": {
+   "ja": "このチャンネルに投稿できるのはオーナーと管理者だけです",
+   "en": "Only owners and admins can post in this channel.",
+   "zh-Hans": "只有所有者和管理员可以在此频道发布消息。"
+  },
+  "preview_disabled": {
+   "ja": "参加するとメッセージを読めます",
+   "en": "Join to read the messages.",
+   "zh-Hans": "加入后即可阅读消息。"
+  },
+  "preview_not_found": {
+   "ja": "このファイルのプレビューはありません",
+   "en": "This file has no preview.",
+   "zh-Hans": "此文件没有预览。"
+  },
+  "provider_error": {
+   "ja": "Google との通信に失敗しました。しばらくしてからもう一度お試しください",
+   "en": "Couldn't reach Google. Try again later.",
+   "zh-Hans": "与 Google 通信失败。请稍后再试。"
+  },
+  "rate_limited": {
+   "ja": "操作が多すぎます。少し待ってからお試しください",
+   "en": "Too many requests. Wait a moment and try again.",
+   "zh-Hans": "操作过于频繁。请稍候再试。"
+  },
+  "recurring_channel_unsupported": {
+   "ja": "ダイレクトメッセージには定期投稿を作れません",
+   "en": "You can't create recurring posts in a direct message.",
+   "zh-Hans": "不能在私信中创建定期消息。"
+  },
+  "recurring_manage_restricted": {
+   "ja": "定期投稿を管理できるのは、チャンネルのオーナーと管理者だけです",
+   "en": "Only channel owners and admins can manage recurring posts.",
+   "zh-Hans": "只有频道所有者和管理员可以管理定期消息。"
+  },
+  "recurring_post_not_found": {
+   "ja": "定期投稿が見つかりません",
+   "en": "Recurring post not found.",
+   "zh-Hans": "找不到定期消息。"
+  },
+  "remind_at_too_far": {
+   "ja": "リマインダーは 1 年以内で設定してください",
+   "en": "Set the reminder within a year.",
+   "zh-Hans": "请将提醒设在一年以内。"
+  },
+  "remind_at_too_soon": {
+   "ja": "リマインダーは 1 分以上先に設定してください",
+   "en": "Set the reminder at least a minute ahead.",
+   "zh-Hans": "请将提醒设在至少一分钟之后。"
+  },
+  "reminder_not_found": {
+   "ja": "リマインダーが見つかりません",
+   "en": "Reminder not found.",
+   "zh-Hans": "找不到提醒。"
+  },
+  "reply_depth": {
+   "ja": "返信への返信はできません",
+   "en": "You can't reply to a reply.",
+   "zh-Hans": "不能回复一条回复。"
+  },
+  "report_not_found": {
+   "ja": "報告が見つかりません",
+   "en": "Report not found.",
+   "zh-Hans": "找不到举报。"
+  },
+  "reservation_booking_invalid": {
+   "ja": "その時間は予約できません (開始は毎時 0 分、長さは枠の上限まで、2 週間先まで)",
+   "en": "That time can't be booked (start on the hour, no longer than the slot's limit, up to 2 weeks ahead).",
+   "zh-Hans": "该时间无法预约（须整点开始，时长不超过名额上限，最多提前 2 周）。"
+  },
+  "reservation_channel_unsupported": {
+   "ja": "記録先にできるのはチャンネルだけです (ダイレクトメッセージは不可)",
+   "en": "Only a channel can be the log channel (not a direct message).",
+   "zh-Hans": "只有频道可以作为记录频道（不能是私信）。"
+  },
+  "reservation_manage_restricted": {
+   "ja": "予約の枠を作る・変えるのは、管理者 (と枠を作った人) だけです",
+   "en": "Only admins (and the person who created the slot) can create or change reservation slots.",
+   "zh-Hans": "只有管理员（以及创建该名额的人）可以创建或修改预约名额。"
+  },
+  "reservation_not_found": {
+   "ja": "予約が見つかりません",
+   "en": "Booking not found.",
+   "zh-Hans": "找不到预约。"
+  },
+  "reservation_not_yours": {
+   "ja": "返却できるのは、枠を使っている本人だけです",
+   "en": "Only the person using the slot can return it.",
+   "zh-Hans": "只有正在使用该名额的本人可以归还。"
+  },
+  "reservation_operator_invalid": {
+   "ja": "担当者にできるのは、メンバー (ゲスト・ボットを除く) だけです",
+   "en": "Only members (not guests or bots) can be operators.",
+   "zh-Hans": "只有成员（访客和机器人除外）可以担任负责人。"
+  },
+  "reservation_operator_required": {
+   "ja": "この操作ができるのは、枠の担当者、枠を作った人、管理者だけです",
+   "en": "Only the slot's operators, the person who created it and admins can do this.",
+   "zh-Hans": "只有该名额的负责人、创建者和管理员可以执行此操作。"
+  },
+  "reservation_overlap": {
+   "ja": "同じ時間にもう予約があります",
+   "en": "There is already a booking at the same time.",
+   "zh-Hans": "同一时间已有预约。"
+  },
+  "reservation_pool_disabled": {
+   "ja": "この枠は今は予約を受け付けていません",
+   "en": "This slot is not accepting bookings right now.",
+   "zh-Hans": "此名额目前不接受预约。"
+  },
+  "reservation_pool_full": {
+   "ja": "枠が埋まっています。先に誰かを外すか、「入れ替えた」を使ってください",
+   "en": "The slot is full. Remove someone first, or use “Swapped”.",
+   "zh-Hans": "名额已满。请先移除某人，或使用“已替换”。"
+  },
+  "reservation_pool_not_found": {
+   "ja": "予約の枠が見つかりません",
+   "en": "Reservation slot not found.",
+   "zh-Hans": "找不到预约名额。"
+  },
+  "reservation_slot_full": {
+   "ja": "その時間は埋まっています。別の時間を選んでください",
+   "en": "That time is full. Choose another time.",
+   "zh-Hans": "该时间已满。请选择其他时间。"
+  },
+  "reservation_state_conflict": {
+   "ja": "予約の状態が変わっています。表示を更新してください",
+   "en": "The booking has changed. Refresh the view.",
+   "zh-Hans": "预约状态已变化。请刷新显示。"
+  },
+  "reservation_too_early": {
+   "ja": "予約の割り当ては開始の 10 分前からです",
+   "en": "Bookings are assigned from 10 minutes before the start.",
+   "zh-Hans": "预约从开始前 10 分钟起分配。"
+  },
+  "reservation_visibility_invalid": {
+   "ja": "見える人を絞るチャンネルかグループを選んでください",
+   "en": "Choose a channel or group to limit who can see it.",
+   "zh-Hans": "请选择用于限定可见范围的频道或用户组。"
+  },
+  "reuse_detected": {
+   "ja": "安全のためログアウトしました。もう一度ログインしてください",
+   "en": "You were logged out for security. Log in again.",
+   "zh-Hans": "为了安全已退出登录。请重新登录。"
+  },
+  "rollover_applied": {
+   "ja": "この年度の年度更新はすでに適用されています。やり直すには先に取り消してください",
+   "en": "This year's rollover has already been applied. Undo it first to redo it.",
+   "zh-Hans": "本年度的年度更新已应用。如需重做，请先撤销。"
+  },
+  "rollover_cannot_advance": {
+   "ja": "D3 より上の学年はありません。修了か据え置きを選んでください",
+   "en": "There is no year above D3. Choose graduated or stay.",
+   "zh-Hans": "D3 以上没有年级。请选择结业或保留。"
+  },
+  "rollover_duplicate": {
+   "ja": "同じ人が 2 回含まれています",
+   "en": "The same person is included twice.",
+   "zh-Hans": "同一人被包含了两次。"
+  },
+  "rollover_not_found": {
+   "ja": "この年度の年度更新はありません",
+   "en": "There is no rollover for this year.",
+   "zh-Hans": "本年度没有年度更新。"
+  },
+  "rollover_not_student": {
+   "ja": "年度更新の対象は名簿の学生だけです",
+   "en": "Only students in the roster can be rolled over.",
+   "zh-Hans": "年度更新只适用于名册中的学生。"
+  },
+  "rollover_undone": {
+   "ja": "この年度更新はすでに取り消されています",
+   "en": "This rollover has already been undone.",
+   "zh-Hans": "此年度更新已撤销。"
+  },
+  "roster_entry_not_found": {
+   "ja": "名簿に載っていません",
+   "en": "Not in the roster.",
+   "zh-Hans": "不在名册中。"
+  },
+  "scheduled_not_found": {
+   "ja": "予約送信が見つかりません",
+   "en": "Scheduled message not found.",
+   "zh-Hans": "找不到定时消息。"
+  },
+  "search_busy": {
+   "ja": "検索が混み合っています。少し待ってからお試しください",
+   "en": "Search is busy. Wait a moment and try again.",
+   "zh-Hans": "搜索繁忙。请稍候再试。"
+  },
+  "search_timeout": {
+   "ja": "検索に時間がかかりすぎました。語を増やすか、期間や人で絞ってお試しください",
+   "en": "The search took too long. Add words, or narrow it by date or person.",
+   "zh-Hans": "搜索耗时过长。请增加关键词，或按期间、人员缩小范围后重试。"
+  },
+  "section_not_found": {
+   "ja": "セクションが見つかりません",
+   "en": "Section not found.",
+   "zh-Hans": "找不到分组。"
+  },
+  "send_at_too_far": {
+   "ja": "予約送信は 1 年以内で設定してください",
+   "en": "Schedule the message within a year.",
+   "zh-Hans": "请将定时消息设在一年以内。"
+  },
+  "send_at_too_soon": {
+   "ja": "予約送信は 1 分以上先に設定してください",
+   "en": "Schedule the message at least a minute ahead.",
+   "zh-Hans": "请将定时消息设在至少一分钟之后。"
+  },
+  "server_error": {
+   "ja": "サーバーで問題が発生しました。しばらくしてからお試しください",
+   "en": "Something went wrong on the server. Try again later.",
+   "zh-Hans": "服务器出现问题。请稍后再试。"
+  },
+  "session_expired": {
+   "ja": "ログインの有効期限が切れました。もう一度ログインしてください",
+   "en": "Your login has expired. Log in again.",
+   "zh-Hans": "登录已过期。请重新登录。"
+  },
+  "session_not_found": {
+   "ja": "セッションが見つかりません",
+   "en": "Session not found.",
+   "zh-Hans": "找不到会话。"
+  },
+  "session_revoked": {
+   "ja": "ログアウトされました。もう一度ログインしてください",
+   "en": "You were logged out. Log in again.",
+   "zh-Hans": "你已被退出登录。请重新登录。"
+  },
+  "sso_disabled": {
+   "ja": "このサーバでは Google でのログインを使えません",
+   "en": "Google sign-in is not available on this server.",
+   "zh-Hans": "此服务器不支持 Google 登录。"
+  },
+  "system_message_readonly": {
+   "ja": "参加・退出の表示は変更できません",
+   "en": "Join and leave notices can't be changed.",
+   "zh-Hans": "加入和退出的提示不能修改。"
+  },
+  "task_channel_unsupported": {
+   "ja": "ダイレクトメッセージにはタスクのボードがありません (自分のタスクにしてください)",
+   "en": "Direct messages have no task board (make it your own task instead).",
+   "zh-Hans": "私信没有任务看板（请改为自己的任务）。"
+  },
+  "task_column_builtin": {
+   "ja": "最初からある 3 つの列 (未着手・進行中・完了) は削除できません",
+   "en": "The three built-in columns (To do, In progress, Done) can't be deleted.",
+   "zh-Hans": "不能删除默认的三列（未开始、进行中、已完成）。"
+  },
+  "task_column_limit": {
+   "ja": "列が多すぎます (1 つのボードに 20 列まで)",
+   "en": "Too many columns (up to 20 per board).",
+   "zh-Hans": "列太多（每个看板最多 20 列）。"
+  },
+  "task_column_not_found": {
+   "ja": "列が見つかりません",
+   "en": "Column not found.",
+   "zh-Hans": "找不到列。"
+  },
+  "task_delete_restricted": {
+   "ja": "このタスクを削除できるのは作成者・担当者・チャンネルのオーナー・管理者だけです",
+   "en": "Only the creator, assignees, channel owners and admins can delete this task.",
+   "zh-Hans": "只有创建者、负责人、频道所有者和管理员可以删除此任务。"
+  },
+  "task_invalid_assignee": {
+   "ja": "担当者にできるのはチャンネルのメンバーだけです (自分のタスクには担当者を付けられません)",
+   "en": "Only channel members can be assignees (your own tasks can't have assignees).",
+   "zh-Hans": "只有频道成员可以成为负责人（自己的任务不能设置负责人）。"
+  },
+  "task_invalid_column": {
+   "ja": "このボードの列ではありません",
+   "en": "This column is not on this board.",
+   "zh-Hans": "此列不属于此看板。"
+  },
+  "task_invalid_deadline": {
+   "ja": "この締切は設定できません (チャンネルのボードに、日付を付けて作ります。繰り返しはできません)",
+   "en": "This deadline can't be set (create it on a channel board with a date; it can't repeat).",
+   "zh-Hans": "无法设置此截止日期（需在频道看板中带日期创建，且不能重复）。"
+  },
+  "task_invalid_range": {
+   "ja": "表示する期間の指定が正しくありません (100 日まで)",
+   "en": "The date range is invalid (up to 100 days).",
+   "zh-Hans": "显示的期间无效（最多 100 天）。"
+  },
+  "task_invalid_rrule": {
+   "ja": "この繰り返しは設定できません (期限が必要です。レビュー依頼は繰り返せません)",
+   "en": "This repeat can't be set (it needs a due date; review requests can't repeat).",
+   "zh-Hans": "无法设置此重复（需要截止日期；审阅请求不能重复）。"
+  },
+  "task_invalid_source": {
+   "ja": "このメッセージからはこのチャンネルのタスクを作れません",
+   "en": "A task for this channel can't be created from this message.",
+   "zh-Hans": "无法从此消息创建本频道的任务。"
+  },
+  "task_limit_reached": {
+   "ja": "未完了のタスクが多すぎます (1 つのボードに 1000 件まで)",
+   "en": "Too many open tasks (up to 1000 per board).",
+   "zh-Hans": "未完成的任务太多（每个看板最多 1000 个）。"
+  },
+  "task_not_found": {
+   "ja": "タスクが見つかりません",
+   "en": "Task not found.",
+   "zh-Hans": "找不到任务。"
+  },
+  "task_subtask_not_found": {
+   "ja": "サブタスクが見つかりません",
+   "en": "Subtask not found.",
+   "zh-Hans": "找不到子任务。"
+  },
+  "template_body_empty": {
+   "ja": "テンプレートの本文を入れてください",
+   "en": "Enter the template's text.",
+   "zh-Hans": "请输入模板内容。"
+  },
+  "template_builtin": {
+   "ja": "組み込みのテンプレートは削除できません。非表示にしてください",
+   "en": "Built-in templates can't be deleted. Hide them instead.",
+   "zh-Hans": "不能删除内置模板。请将其隐藏。"
+  },
+  "template_key_taken": {
+   "ja": "同じキーのテンプレートがすでにあります",
+   "en": "A template with the same key already exists.",
+   "zh-Hans": "已有相同键的模板。"
+  },
+  "template_limit": {
+   "ja": "テンプレートの数が上限に達しています",
+   "en": "The template limit has been reached.",
+   "zh-Hans": "模板数量已达上限。"
+  },
+  "template_name_invalid": {
+   "ja": "テンプレートの名前は 20 文字までの文字・数字・_ と - で付けてください",
+   "en": "Template names may use up to 20 letters, digits, _ and -.",
+   "zh-Hans": "模板名称最多 20 个字符，只能使用字母、数字、_ 和 -。"
+  },
+  "template_name_reserved": {
+   "ja": "この名前はコマンドとして使われています。別の名前にしてください",
+   "en": "This name is used by a command. Choose another name.",
+   "zh-Hans": "此名称已被命令使用。请换一个名称。"
+  },
+  "template_name_taken": {
+   "ja": "この名前のテンプレートはすでにあります",
+   "en": "A template with this name already exists.",
+   "zh-Hans": "已有同名的模板。"
+  },
+  "template_not_found": {
+   "ja": "テンプレートが見つかりません",
+   "en": "Template not found.",
+   "zh-Hans": "找不到模板。"
+  },
+  "test_notification_rate_limited": {
+   "ja": "テスト通知は 10 分に 5 回までです。少し待ってからお試しください",
+   "en": "You can send 5 test notifications per 10 minutes. Wait a moment and try again.",
+   "zh-Hans": "测试通知每 10 分钟最多 5 次。请稍候再试。"
+  },
+  "thumbnail_not_found": {
+   "ja": "サムネイルがありません",
+   "en": "No thumbnail.",
+   "zh-Hans": "没有缩略图。"
+  },
+  "times_exists": {
+   "ja": "この人の times はすでにあります",
+   "en": "This person already has a times channel.",
+   "zh-Hans": "此人已有 times 频道。"
+  },
+  "token_expired": {
+   "ja": "ログインし直してください",
+   "en": "Log in again.",
+   "zh-Hans": "请重新登录。"
+  },
+  "too_many_attachments": {
+   "ja": "添付は 10 件までです",
+   "en": "Up to 10 attachments.",
+   "zh-Hans": "附件最多 10 个。"
+  },
+  "too_many_bookings": {
+   "ja": "1 つの枠に入れられる予約は 2 件までです",
+   "en": "A slot can hold up to 2 bookings.",
+   "zh-Hans": "一个名额最多可容纳 2 个预约。"
+  },
+  "too_many_canvas_images": {
+   "ja": "1 つのキャンバスに入れられる画像・ファイルは 100 件までです",
+   "en": "A canvas can hold up to 100 images and files.",
+   "zh-Hans": "一个画布最多可包含 100 个图片或文件。"
+  },
+  "too_many_canvases": {
+   "ja": "この会話のキャンバスが多すぎます (200 件まで)",
+   "en": "This conversation has too many canvases (up to 200).",
+   "zh-Hans": "此对话的画布太多（最多 200 个）。"
+  },
+  "too_many_channel_feeds": {
+   "ja": "1 つのチャンネルのフィードは 20 件までです",
+   "en": "A channel can have up to 20 feeds.",
+   "zh-Hans": "一个频道最多 20 个订阅源。"
+  },
+  "too_many_drafts": {
+   "ja": "下書きが多すぎます。不要な下書きを削除してください",
+   "en": "Too many drafts. Delete drafts you don't need.",
+   "zh-Hans": "草稿太多。请删除不需要的草稿。"
+  },
+  "too_many_feeds": {
+   "ja": "1 人が追加できるフィードは 20 件までです",
+   "en": "You can add up to 20 feeds.",
+   "zh-Hans": "每人最多可添加 20 个订阅源。"
+  },
+  "too_many_links": {
+   "ja": "リンクは 30 件までです",
+   "en": "Up to 30 links.",
+   "zh-Hans": "链接最多 30 个。"
+  },
+  "too_many_members": {
+   "ja": "メンバーが多すぎます",
+   "en": "Too many members.",
+   "zh-Hans": "成员太多。"
+  },
+  "too_many_recurring_posts": {
+   "ja": "1 つのチャンネルの定期投稿は 20 件までです",
+   "en": "A channel can have up to 20 recurring posts.",
+   "zh-Hans": "一个频道最多 20 条定期消息。"
+  },
+  "too_many_reminders": {
+   "ja": "リマインダーは 200 件までです",
+   "en": "Up to 200 reminders.",
+   "zh-Hans": "提醒最多 200 个。"
+  },
+  "too_many_reservation_pools": {
+   "ja": "予約の枠は 20 個までです",
+   "en": "Up to 20 reservation slots.",
+   "zh-Hans": "预约名额最多 20 个。"
+  },
+  "too_many_scheduled": {
+   "ja": "予約送信は 100 件までです",
+   "en": "Up to 100 scheduled messages.",
+   "zh-Hans": "定时消息最多 100 条。"
+  },
+  "too_many_sections": {
+   "ja": "セクションは 20 個までです",
+   "en": "Up to 20 sections.",
+   "zh-Hans": "分组最多 20 个。"
+  },
+  "too_many_workflows": {
+   "ja": "ワークフローは 200 件までです",
+   "en": "Up to 200 workflows.",
+   "zh-Hans": "工作流最多 200 个。"
+  },
+  "totp_already_enabled": {
+   "ja": "2 要素認証はすでに有効です",
+   "en": "Two-factor authentication is already on.",
+   "zh-Hans": "两步验证已启用。"
+  },
+  "totp_required": {
+   "ja": "確認コードを入れてください",
+   "en": "Enter the verification code.",
+   "zh-Hans": "请输入验证码。"
+  },
+  "totp_setup_required": {
+   "ja": "先に 2 要素認証を設定してください",
+   "en": "Set up two-factor authentication first.",
+   "zh-Hans": "请先设置两步验证。"
+  },
+  "unauthorized": {
+   "ja": "ログインしてください",
+   "en": "Log in.",
+   "zh-Hans": "请登录。"
+  },
+  "unsupported_media_type": {
+   "ja": "この種類のファイルは扱えません",
+   "en": "This type of file isn't supported.",
+   "zh-Hans": "不支持此类型的文件。"
+  },
+  "url_not_allowed": {
+   "ja": "この URL は開けません",
+   "en": "This URL can't be opened.",
+   "zh-Hans": "无法打开此 URL。"
+  },
+  "user_deactivated": {
+   "ja": "このユーザーは無効化されています",
+   "en": "This user has been deactivated.",
+   "zh-Hans": "此用户已被停用。"
+  },
+  "user_not_found": {
+   "ja": "ユーザーが見つかりません",
+   "en": "User not found.",
+   "zh-Hans": "找不到用户。"
+  },
+  "username_change_limited": {
+   "ja": "ユーザー名を変更できるのは 24 時間に 3 回までです。しばらくしてからお試しください",
+   "en": "You can change your username 3 times per 24 hours. Try again later.",
+   "zh-Hans": "用户名每 24 小时最多修改 3 次。请稍后再试。"
+  },
+  "username_reserved": {
+   "ja": "このユーザー名は予約されているため使えません",
+   "en": "This username is reserved and can't be used.",
+   "zh-Hans": "此用户名已被保留，无法使用。"
+  },
+  "username_taken": {
+   "ja": "このユーザー名はすでに使われています",
+   "en": "This username is already taken.",
+   "zh-Hans": "此用户名已被使用。"
+  },
+  "validation_error": {
+   "ja": "入力内容を確認してください",
+   "en": "Check what you entered.",
+   "zh-Hans": "请检查输入内容。"
+  },
+  "webhook_not_found": {
+   "ja": "Webhook が見つかりません",
+   "en": "Webhook not found.",
+   "zh-Hans": "找不到 Webhook。"
+  },
+  "workflow_channel_unsupported": {
+   "ja": "ワークフローはダイレクトメッセージでは使えません",
+   "en": "Workflows can't be used in direct messages.",
+   "zh-Hans": "私信中不能使用工作流。"
+  },
+  "workflow_disabled": {
+   "ja": "このワークフローは停止中です",
+   "en": "This workflow is paused.",
+   "zh-Hans": "此工作流已暂停。"
+  },
+  "workflow_manage_restricted": {
+   "ja": "ワークフローを管理できるのは、送り先チャンネルのオーナーと管理者だけです",
+   "en": "Only owners of the destination channel and admins can manage workflows.",
+   "zh-Hans": "只有目标频道的所有者和管理员可以管理工作流。"
+  },
+  "workflow_name_reserved": {
+   "ja": "この名前はコマンドとして使われています。別の名前にしてください",
+   "en": "This name is used by a command. Choose another name.",
+   "zh-Hans": "此名称已被命令使用。请换一个名称。"
+  },
+  "workflow_name_taken": {
+   "ja": "同じ名前のワークフローがあります",
+   "en": "A workflow with the same name already exists.",
+   "zh-Hans": "已有同名的工作流。"
+  },
+  "workflow_not_found": {
+   "ja": "ワークフローが見つかりません",
+   "en": "Workflow not found.",
+   "zh-Hans": "找不到工作流。"
+  },
+  "workflow_template_invalid": {
+   "ja": "本文の雛形に、無い項目 ({{…}}) が書かれています",
+   "en": "The message template uses a field that doesn't exist ({{…}}).",
+   "zh-Hans": "消息模板中使用了不存在的字段（{{…}}）。"
+  },
+  "workflow_values_invalid": {
+   "ja": "入力に誤りがあります。各項目を確認してください",
+   "en": "Some input is wrong. Check each field.",
+   "zh-Hans": "输入有误。请检查各项。"
+  },
+  "workspace_icon_empty": {
+   "ja": "画像が空です",
+   "en": "The image is empty.",
+   "zh-Hans": "图片为空。"
+  },
+  "workspace_icon_not_found": {
+   "ja": "このワークスペースにはアイコンがありません",
+   "en": "This workspace has no icon.",
+   "zh-Hans": "此工作区没有图标。"
+  },
+  "workspace_icon_not_image": {
+   "ja": "PNG・JPEG・WebP の画像を選んでください",
+   "en": "Choose a PNG, JPEG or WebP image.",
+   "zh-Hans": "请选择 PNG、JPEG 或 WebP 图片。"
+  },
+  "workspace_icon_too_large": {
+   "ja": "画像が大きすぎます",
+   "en": "The image is too large.",
+   "zh-Hans": "图片太大。"
+  }
+ },
+ "status": {
+  "400": {
+   "ja": "入力内容を確認してください",
+   "en": "Check what you entered.",
+   "zh-Hans": "请检查输入内容。"
+  },
+  "401": {
+   "ja": "ログインし直してください",
+   "en": "Log in again.",
+   "zh-Hans": "请重新登录。"
+  },
+  "403": {
+   "ja": "この操作の権限がありません",
+   "en": "You don't have permission to do this.",
+   "zh-Hans": "你没有执行此操作的权限。"
+  },
+  "404": {
+   "ja": "見つかりませんでした",
+   "en": "Not found.",
+   "zh-Hans": "未找到。"
+  },
+  "409": {
+   "ja": "ほかの変更と重なりました。もう一度お試しください",
+   "en": "This clashed with another change. Try again.",
+   "zh-Hans": "与其他更改冲突。请重试。"
+  },
+  "413": {
+   "ja": "ファイルが大きすぎます",
+   "en": "The file is too large.",
+   "zh-Hans": "文件太大。"
+  },
+  "422": {
+   "ja": "入力内容を確認してください",
+   "en": "Check what you entered.",
+   "zh-Hans": "请检查输入内容。"
+  },
+  "429": {
+   "ja": "操作が多すぎます。少し待ってからお試しください",
+   "en": "Too many requests. Wait a moment and try again.",
+   "zh-Hans": "操作过于频繁。请稍候再试。"
+  },
+  "5xx": {
+   "ja": "サーバーで問題が発生しました。しばらくしてからお試しください",
+   "en": "Something went wrong on the server. Try again later.",
+   "zh-Hans": "服务器出现问题。请稍后再试。"
+  }
+ },
+ "network": {
+  "ja": "サーバーに接続できません。ネットワークを確認してください",
+  "en": "Can't reach the server. Check your network.",
+  "zh-Hans": "无法连接服务器。请检查网络。"
+ },
+ "unknown": {
+  "ja": "エラーが発生しました",
+  "en": "An error occurred.",
+  "zh-Hans": "发生错误。"
+ }
+}
