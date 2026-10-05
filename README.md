@@ -11,7 +11,9 @@ keep the old name.)
 > **No support guarantee.** Taylis is developed for the author's own use and published as-is. Issues and pull
 > requests are welcome, but there is no promise of support, fixes, or a roadmap. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-![Taylis on iPhone: home, a channel, a thread and a reservation pool (demo data)](docs/images/screenshots-ios.png)
+![Taylis desktop app: a channel with a thread open (demo data)](docs/images/desktop.png)
+
+<img src="docs/images/iphone.png" alt="Taylis on iPhone (demo data)" width="220">
 
 ## Features
 
