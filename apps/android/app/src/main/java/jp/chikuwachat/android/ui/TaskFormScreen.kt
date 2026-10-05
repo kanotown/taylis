@@ -184,9 +184,9 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
         val held = store.channel(id)
         // A DM has no board (L9): its shared tasks are named after the other people.
         if (held?.channel?.isDm == true || (held == null && task?.channelId == id && task?.channelName == null)) {
-            return (held?.let { channelTitle(it, store) } ?: "DM") + " との DM"
+            return L10n.str(R.string.task_form_screen_dm_with, held?.let { channelTitle(it, store) } ?: "DM")
         }
-        return "#" + (held?.channel?.name ?: task?.channelName ?: "?") + " のボード"
+        return L10n.str(R.string.task_form_screen_board_of, held?.channel?.name ?: task?.channelName ?: "?")
     }
 
     fun save() {
@@ -410,7 +410,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     if (draft.dueTime.isNotEmpty()) TextButton(onClick = { change(draft.copy(dueTime = "")) }) { Text(stringResource(R.string.task_form_screen_remove_time)) }
                                     // Without a due date nothing repeats: the save sends `rrule: null` with it. M86: a deadline keeps its date.
-                                    if (!deadline) TextButton(onClick = { change(TaskRules.withDueOn(draft, "")) }) { Text(dueName + "をなくす") }
+                                    if (!deadline) TextButton(onClick = { change(TaskRules.withDueOn(draft, "")) }) { Text(stringResource(R.string.task_form_screen_clear_due, dueName)) }
                                 }
                             }
                         }
@@ -499,7 +499,7 @@ fun TaskFormScreen(controller: AppController, form: TaskForm, version: Int, onDi
             TaskPicker.TIME -> {
                 // A new time starts at 9:00 (the desktop's empty time field picks the hour).
                 val time = draft.dueTime.takeIf { it.isNotEmpty() }?.let { runCatching { LocalTime.parse(it) }.getOrNull() } ?: LocalTime.of(9, 0)
-                TimePickDialog(time.hour, time.minute, title = dueName + "の時刻", onDismiss = { picking = null }) { hour, minute ->
+                TimePickDialog(time.hour, time.minute, title = L10n.str(R.string.task_form_screen_due_time, dueName), onDismiss = { picking = null }) { hour, minute ->
                     change(draft.copy(dueTime = LocalTime.of(hour, minute).toString()))
                     picking = null
                 }
@@ -577,7 +577,7 @@ private fun SubtaskEditor(items: List<SubtaskDraft>, enabled: Boolean, onChange:
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(
                     checked = item.done, enabled = enabled, onCheckedChange = { onTick(item, it) },
-                    modifier = Modifier.semantics { contentDescription = L10n.str(R.string.common_fmt_2, item.title) + if (item.done) "を未完了に戻す" else "を完了にする" },
+                    modifier = Modifier.semantics { contentDescription = L10n.str(if (item.done) R.string.task_screens_mark_not_done else R.string.task_screens_mark_done, item.title) },
                 )
                 OutlinedTextField(
                     value = item.title, singleLine = true, enabled = enabled, placeholder = { Text(stringResource(R.string.task_form_screen_subtasks)) },
@@ -695,7 +695,7 @@ private fun AssigneePicker(
     val q = query.trim().lowercase()
     val shown = if (q.isEmpty()) rows else rows.filter { it.second.lowercase().contains(q) || it.third.lowercase().contains(q) }
     Column(Modifier.fillMaxWidth()) {
-        FieldLabel(label + if (selected.isNotEmpty()) stringResource(R.string.task_form_screen_fmt, selected.size) else "")
+        FieldLabel(label + if (selected.isNotEmpty()) stringResource(R.string.task_form_screen_people_count, selected.size) else "")
         when {
             failed -> Text(stringResource(R.string.common_couldnt_load_members), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             members == null -> Text(stringResource(R.string.common_loading), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -762,7 +762,7 @@ private fun ReadOnlyTask(controller: AppController, task: TaskOut, version: Int)
         }
         if (task.channelId != null) {
             Text(
-                (if (review) stringResource(R.string.task_form_screen_reviewer_2) else stringResource(R.string.task_form_screen_assignee_2)) + task.assigneeIds.joinToString(stringResource(R.string.common_fmt_6)) { users[it]?.displayName ?: "?" }.ifEmpty { stringResource(R.string.common_none) },
+                (if (review) stringResource(R.string.task_form_screen_reviewer_2) else stringResource(R.string.task_form_screen_assignee_2)) + task.assigneeIds.joinToString(stringResource(R.string.common_list_separator)) { users[it]?.displayName ?: "?" }.ifEmpty { stringResource(R.string.common_none) },
                 style = MaterialTheme.typography.bodyLarge,
             )
         }

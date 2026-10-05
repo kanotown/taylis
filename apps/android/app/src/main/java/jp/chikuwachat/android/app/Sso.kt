@@ -99,7 +99,7 @@ object Sso {
 /** What the Google button says; `subtitle` is set when the button names the organisation. */
 data class GoogleButtonText(val title: String, val subtitle: String?) {
     companion object {
-        val GOOGLE = GoogleButtonText(L10n.str(R.string.sso_sign_in_with_google), null)
+        val GOOGLE get() = GoogleButtonText(L10n.str(R.string.sso_sign_in_with_google), null)
     }
 }
 

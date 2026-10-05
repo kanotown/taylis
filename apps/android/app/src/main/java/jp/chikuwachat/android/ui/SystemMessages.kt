@@ -31,7 +31,7 @@ import jp.chikuwachat.android.L10n
  */
 object SystemMessages {
     /** 「A、B」 as the server writes the list (the Japanese comma, no 「と」). */
-    fun joinNames(names: List<String>): String = names.joinToString(L10n.str(R.string.common_fmt_6))
+    fun joinNames(names: List<String>): String = names.joinToString(L10n.str(R.string.common_list_separator))
 
     fun text(body: String, event: SystemEventOut?, nameOf: (String) -> String?): String {
         if (event == null) return body

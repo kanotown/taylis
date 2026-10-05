@@ -16,17 +16,19 @@ import jp.chikuwachat.android.L10n
  * M40 (MOBILE_UI.md §6.5): a screen of the 自分 tab, pushed over its list ([Route.Settings]). The list's order is
  * [listed]; [PASSWORD] opens from [ACCOUNT].
  */
-enum class SettingsPage(val title: String) {
-    STATUS(L10n.str(R.string.common_update_status)),
-    QUIET_HOURS(L10n.str(R.string.common_quiet_hours)),
-    NOTIFICATIONS(L10n.str(R.string.common_notifications)),
-    APPEARANCE(L10n.str(R.string.common_show)),
-    PROFILE(L10n.str(R.string.common_edit_profile)),
-    ACCOUNT(L10n.str(R.string.you_account)),
-    PASSWORD(L10n.str(R.string.common_change_password)),
-    WORKSPACES(L10n.str(R.string.common_workspaces)),
-    ADMIN(L10n.str(R.string.common_admin)),
+enum class SettingsPage(private val titleRes: Int) {
+    STATUS(R.string.common_update_status),
+    QUIET_HOURS(R.string.common_quiet_hours),
+    NOTIFICATIONS(R.string.common_notifications),
+    APPEARANCE(R.string.you_appearance),
+    PROFILE(R.string.common_edit_profile),
+    ACCOUNT(R.string.you_account),
+    PASSWORD(R.string.common_change_password),
+    WORKSPACES(R.string.common_workspaces),
+    ADMIN(R.string.common_admin),
     ;
+
+    val title: String get() = L10n.str(titleRes)
 
     companion object {
         /** The rows under 「おやすみ時間」, in the list's order (「管理」 for admins only). */
@@ -36,21 +38,25 @@ enum class SettingsPage(val title: String) {
 }
 
 /** 「通知を一時停止」's choices (MOBILE_UI.md §6.5); [RESUME] only while paused. */
-enum class PauseChoice(val label: String) {
-    MINUTES_30(L10n.str(R.string.common_30_minutes)),
-    HOUR_1(L10n.str(R.string.common_1_hour)),
-    HOURS_2(L10n.str(R.string.common_2_hours)),
-    TOMORROW_8(L10n.str(R.string.you_tomorrow_8_00)),
-    CUSTOM(L10n.str(R.string.you_pick_date_and_time)),
-    RESUME(L10n.str(R.string.common_resume)),
+enum class PauseChoice(private val labelRes: Int) {
+    MINUTES_30(R.string.common_30_minutes),
+    HOUR_1(R.string.common_1_hour),
+    HOURS_2(R.string.common_2_hours),
+    TOMORROW_8(R.string.you_tomorrow_8_00),
+    CUSTOM(R.string.you_pick_date_and_time),
+    RESUME(R.string.common_resume);
+
+    val label: String get() = L10n.str(labelRes)
 }
 
 /** M40: the appearance, kept on this device (not on the server): the system's, or always light / dark. */
-enum class Appearance(val label: String, val stored: String?) {
-    SYSTEM(L10n.str(R.string.you_follow_device), null),
-    LIGHT(L10n.str(R.string.you_light), "light"),
-    DARK(L10n.str(R.string.you_dark), "dark"),
+enum class Appearance(private val labelRes: Int, val stored: String?) {
+    SYSTEM(R.string.you_follow_device, null),
+    LIGHT(R.string.you_light, "light"),
+    DARK(R.string.you_dark, "dark"),
     ;
+
+    val label: String get() = L10n.str(labelRes)
 
     /** Whether the app is dark, given the system's own setting. */
     fun isDark(systemDark: Boolean): Boolean = when (this) {
@@ -103,7 +109,7 @@ object YouSettings {
         PauseChoice.HOUR_1 -> Dnd.pauseUntil("1h", now)
         PauseChoice.HOURS_2 -> Dnd.pauseUntil("2h", now)
         PauseChoice.TOMORROW_8 -> Dnd.pauseUntil("tomorrow", now)
-        PauseChoice.CUSTOM -> requireNotNull(picked) { "日時を指定 needs the picked time" }.toInstant().toString()
+        PauseChoice.CUSTOM -> requireNotNull(picked) { "PauseChoice.CUSTOM needs the picked time" }.toInstant().toString()
         PauseChoice.RESUME -> null
     }
 
@@ -119,7 +125,7 @@ object YouSettings {
         return when (end.toLocalDate()) {
             today -> L10n.str(R.string.common_until, time)
             today.plusDays(1) -> L10n.str(R.string.you_until_tomorrow, time)
-            else -> end.format(DateTimeFormatter.ofPattern("M/d")) + " $time まで"
+            else -> L10n.str(R.string.common_until, end.format(DateTimeFormatter.ofPattern("M/d")) + " " + time)
         }
     }
 
@@ -178,7 +184,7 @@ object YouSettings {
         return when {
             local.toLocalDate() == today -> L10n.str(R.string.you_today) + local.format(HHMM)
             local.toLocalDate() == today.minusDays(1) -> L10n.str(R.string.you_yesterday) + local.format(HHMM)
-            local.year == today.year -> local.format(DateTimeFormatter.ofPattern("M月d日"))
+            local.year == today.year -> local.format(DateTimeFormatter.ofPattern(L10n.str(R.string.you_month_day_pattern), L10n.locale))
             else -> local.format(DateTimeFormatter.ofPattern(L10n.str(R.string.common_mmm_d_yyyy)))
         }
     }

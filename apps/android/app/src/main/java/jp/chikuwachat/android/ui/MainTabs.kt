@@ -14,11 +14,13 @@ import jp.chikuwachat.android.R
 import jp.chikuwachat.android.L10n
 
 /** M34 (MOBILE_UI.md §5): the phone's bottom tabs, in the bar's order. */
-enum class MainTab(val label: String) {
-    HOME(L10n.str(R.string.main_tabs_home)),
-    DM("DM"),
-    ACTIVITY(L10n.str(R.string.common_activity)),
-    YOU(L10n.str(R.string.common_you)),
+enum class MainTab(private val labelRes: Int) {
+    HOME(R.string.main_tabs_home),
+    DM(R.string.main_tabs_dm),
+    ACTIVITY(R.string.common_activity),
+    YOU(R.string.common_you);
+
+    val label: String get() = L10n.str(labelRes)
 }
 
 /**
@@ -282,7 +284,7 @@ object MainTabs {
 
     private fun parse(iso: String?): Instant? = iso?.let { runCatching { Instant.parse(it) }.getOrNull() }
 
-    private val weekdays = mapOf(
+    private val weekdays get() = mapOf(
         DayOfWeek.MONDAY to L10n.str(R.string.main_tabs_monday), DayOfWeek.TUESDAY to L10n.str(R.string.main_tabs_tuesday), DayOfWeek.WEDNESDAY to L10n.str(R.string.main_tabs_wednesday), DayOfWeek.THURSDAY to L10n.str(R.string.main_tabs_thursday),
         DayOfWeek.FRIDAY to L10n.str(R.string.main_tabs_friday), DayOfWeek.SATURDAY to L10n.str(R.string.main_tabs_saturday), DayOfWeek.SUNDAY to L10n.str(R.string.main_tabs_sunday),
     )

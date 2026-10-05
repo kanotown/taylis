@@ -33,7 +33,7 @@ data class SectionLetterIcon(val text: String, val color: String) {
         const val PREFIX = "letter:"
 
         /** The palette keys in the server's order (apps/shared/text-emoji.json), with the names the picker says. */
-        val COLORS: List<Pair<String, String>> = listOf(
+        val COLORS: List<Pair<String, String>> get() = listOf(
             "gray" to L10n.str(R.string.section_letter_icon_gray), "red" to L10n.str(R.string.section_letter_icon_red), "orange" to L10n.str(R.string.section_letter_icon_orange), "yellow" to L10n.str(R.string.section_letter_icon_yellow),
             "green" to L10n.str(R.string.section_letter_icon_green), "blue" to L10n.str(R.string.section_letter_icon_blue), "purple" to L10n.str(R.string.section_letter_icon_purple), "pink" to L10n.str(R.string.section_letter_icon_pink),
         )

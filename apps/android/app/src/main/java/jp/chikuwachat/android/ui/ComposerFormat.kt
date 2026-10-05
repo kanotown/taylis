@@ -7,17 +7,19 @@ import jp.chikuwachat.android.L10n
  * web): the markdown the message body shows (BodyTokenizer), put around the selected text or at the cursor. A line
  * style goes at the start of each line the selection touches. Offsets are the text field's (UTF-16).
  */
-enum class ComposerFormat(val label: String) {
-    BOLD(L10n.str(R.string.common_bold)),
-    ITALIC(L10n.str(R.string.composer_format_italic)),
-    STRIKE(L10n.str(R.string.composer_format_strikethrough)),
-    CODE(L10n.str(R.string.composer_format_code)),
-    CODE_BLOCK(L10n.str(R.string.composer_format_code_block)),
-    HEADING(L10n.str(R.string.common_heading)),
-    QUOTE(L10n.str(R.string.common_quote)),
-    BULLET(L10n.str(R.string.common_bulleted_list)),
-    NUMBERED(L10n.str(R.string.common_numbered_list)),
-    LINK(L10n.str(R.string.common_link));
+enum class ComposerFormat(private val labelRes: Int) {
+    BOLD(R.string.common_bold),
+    ITALIC(R.string.composer_format_italic),
+    STRIKE(R.string.composer_format_strikethrough),
+    CODE(R.string.composer_format_code),
+    CODE_BLOCK(R.string.composer_format_code_block),
+    HEADING(R.string.common_heading),
+    QUOTE(R.string.common_quote),
+    BULLET(R.string.common_bulleted_list),
+    NUMBERED(R.string.common_numbered_list),
+    LINK(R.string.common_link);
+
+    val label: String get() = L10n.str(labelRes)
 
     /** A text and its selection (`start == end`: the cursor). */
     data class Result(val text: String, val start: Int, val end: Int)

@@ -40,16 +40,18 @@ import jp.chikuwachat.android.L10n
 import androidx.compose.ui.res.stringResource
 
 /** M29: what the body of an open conversation shows, picked from the tab row under the app bar. */
-enum class ConversationTab(val label: String) {
-    MESSAGES(L10n.str(R.string.common_message)),
+enum class ConversationTab(private val labelRes: Int) {
+    MESSAGES(R.string.common_message),
     /** M46 (CANVAS.md §4.1): the conversation's canvas (its tab canvas, else the newest), and the others from its list. */
-    CANVAS(L10n.str(R.string.common_canvas)),
+    CANVAS(R.string.common_canvas),
     /** M52 (CALENDAR.md §7): the channel's shared calendar (public and private channels only, never a DM). */
-    EVENTS(L10n.str(R.string.common_event)),
+    EVENTS(R.string.common_event),
     /** M56 (TASKS.md §6): the channel's board (public and private channels only, never a DM). */
-    TASKS(L10n.str(R.string.common_tasks)),
-    PINS(L10n.str(R.string.common_pinned)),
-    FILES(L10n.str(R.string.common_files)),
+    TASKS(R.string.common_tasks),
+    PINS(R.string.common_pinned),
+    FILES(R.string.common_files);
+
+    val label: String get() = L10n.str(labelRes)
 }
 
 /**

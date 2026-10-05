@@ -562,7 +562,7 @@ private fun SuggestionRow(store: Store, row: Suggestion, onClick: () -> Unit, on
                     buildAnnotatedString {
                         append(stringResource(R.string.search_pane_search_for))
                         withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(row.q) }
-                        append(stringResource(R.string.search_pane_fmt))
+                        append(stringResource(R.string.search_pane_search_for_end))
                     },
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
@@ -1163,7 +1163,7 @@ private fun KindFilter(params: SearchParams, onChange: (SearchParams) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Box {
         FilterPill(
-            label = if (params.has.isEmpty()) stringResource(R.string.common_type) else params.has.joinToString(stringResource(R.string.common_fmt_5)) { Search.HAS_LABELS[it] ?: it },
+            label = if (params.has.isEmpty()) stringResource(R.string.common_type) else params.has.joinToString(stringResource(R.string.common_list_separator_dot)) { Search.HAS_LABELS[it] ?: it },
             icon = Icons.Default.AttachFile,
             selected = params.has.isNotEmpty(),
             onClick = { menu = true },

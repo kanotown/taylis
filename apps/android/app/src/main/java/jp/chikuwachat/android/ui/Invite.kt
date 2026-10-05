@@ -35,7 +35,7 @@ object Invite {
             affiliation?.let { if (step != null) "$it ($step)" else it },
             lab.supervisorName?.ifBlank { null }?.let { L10n.str(R.string.invite_supervisor, it) },
         )
-        val roster = if (who.isEmpty()) L10n.str(R.string.invite_you_will_be_listed_in_the) else "研究室の名簿に ${who.joinToString("・")} として載ります。"
+        val roster = if (who.isEmpty()) L10n.str(R.string.invite_you_will_be_listed_in_the) else L10n.str(R.string.invite_listed_as, who.joinToString(L10n.str(R.string.common_list_separator_dot)))
         return if (lab.times) roster + L10n.str(R.string.invite_a_times_channel_will_be_created) else roster
     }
 

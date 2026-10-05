@@ -69,7 +69,7 @@ private fun ReminderRow(row: ReminderOut, controller: AppController, action: Str
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(store.channel(row.channelId)?.let { channelTitle(it, store) } ?: "?", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            Text(" · " + Schedule.label(row.remindAt) + if (row.status == "fired") " にリマインド" else " にリマインド予定", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(if (row.status == "fired") R.string.reminders_pane_reminded_at else R.string.reminders_pane_reminds_at, Schedule.label(row.remindAt)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         row.note?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 2.dp)) }
         Text(row.preview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))

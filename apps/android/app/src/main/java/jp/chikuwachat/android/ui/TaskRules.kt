@@ -127,7 +127,7 @@ data class TaskNoticeText(val body: String, val taskId: String, val channelId: S
  * (sync/Tasks.kt) and the screens share them, and TaskRulesTest reads them. Dates are "YYYY-MM-DD" strings (they sort).
  */
 object TaskRules {
-    val STATUS_LABELS: Map<String, String> = mapOf(TaskStatus.TODO to L10n.str(R.string.task_rules_to_do), TaskStatus.DOING to L10n.str(R.string.task_rules_in_progress), TaskStatus.DONE to L10n.str(R.string.common_done_2))
+    val STATUS_LABELS: Map<String, String> get() = mapOf(TaskStatus.TODO to L10n.str(R.string.task_rules_to_do), TaskStatus.DOING to L10n.str(R.string.task_rules_in_progress), TaskStatus.DONE to L10n.str(R.string.common_done_2))
     const val MAX_TITLE = 200
     const val MAX_NOTES = 4000
     /** A board brings this many completed cards (then 「完了をすべて表示」 reads them all). */
@@ -142,7 +142,7 @@ object TaskRules {
     // --- L9: kinds and the chips under a message (REVIEWS.md §2.2) ----------------------------------
 
     /** A review request's states: 依頼中 / 対応中 / 完了. */
-    val REVIEW_LABELS: Map<String, String> = mapOf(TaskStatus.TODO to L10n.str(R.string.task_rules_requested), TaskStatus.DOING to L10n.str(R.string.task_rules_in_review), TaskStatus.DONE to L10n.str(R.string.common_done_2))
+    val REVIEW_LABELS: Map<String, String> get() = mapOf(TaskStatus.TODO to L10n.str(R.string.task_rules_requested), TaskStatus.DOING to L10n.str(R.string.task_rules_in_review), TaskStatus.DONE to L10n.str(R.string.common_done_2))
 
     /** A status in its kind's words (a review: 依頼中 / 対応中 / 完了; a task: 未着手 / 進行中 / 完了). */
     fun label(kind: String, status: String): String = if (kind == TaskKind.REVIEW) REVIEW_LABELS[status] ?: status else label(status)
@@ -163,7 +163,7 @@ object TaskRules {
     fun chipAt(task: MessageTaskOut, today: String, now: Instant, nameOf: (String) -> String?): TaskChip {
         val names = task.assigneeIds.take(CHIP_NAMES).map { nameOf(it) ?: "?" }
         val rest = task.assigneeIds.size - names.size
-        val who = names.joinToString(L10n.str(R.string.common_fmt_6)) + if (rest > 0) L10n.str(R.string.common_and_others, rest) else ""
+        val who = names.joinToString(L10n.str(R.string.common_list_separator)) + if (rest > 0) L10n.str(R.string.common_and_others, rest) else ""
         val done = task.status == TaskStatus.DONE
         val parts = buildList {
             add(kindLabel(task.kind))
@@ -307,7 +307,7 @@ object TaskRules {
     }
 
     /** 「種類」 of a new column: the status its cards get. */
-    val COLUMN_KIND_LABELS: Map<String, String> = mapOf(
+    val COLUMN_KIND_LABELS: Map<String, String> get() = mapOf(
         TaskStatus.TODO to L10n.str(R.string.task_rules_to_do_not_started), TaskStatus.DOING to L10n.str(R.string.task_rules_in_progress), TaskStatus.DONE to L10n.str(R.string.task_rules_done_the_card_is_marked_done),
     )
 
@@ -753,18 +753,18 @@ object TaskRules {
         // A DM's task has no channel name to show (L9).
         val where = if (data.channelName.isNotEmpty()) " (#${data.channelName})" else ""
         val what = if (data.kind == TaskKind.REVIEW) L10n.str(R.string.common_review_requested) else L10n.str(R.string.task_rules_assigned_you_a_task)
-        return TaskNoticeText(L10n.str(R.string.task_rules_fmt, who, what, data.title, where), data.taskId, data.channelId)
+        return TaskNoticeText(L10n.str(R.string.task_rules_notice, who, what, data.title, where), data.taskId, data.channelId)
     }
 
     /** L9 task.review_done while the app is open: 「〇〇 がレビューを完了しました: 題名」 (REVIEWS.md §4). */
     fun reviewDoneText(data: TaskReviewDone, nameOf: (String) -> String?): TaskNoticeText =
-        TaskNoticeText("${nameOf(data.byUserId) ?: "メンバー"} がレビューを完了しました: ${data.title}", data.taskId, data.channelId)
+        TaskNoticeText(L10n.str(R.string.task_rules_review_done, nameOf(data.byUserId) ?: L10n.str(R.string.common_member), data.title), data.taskId, data.channelId)
 
     /** task.due while the app is open: 「今日が期限: 題名」 (+ the channel for a shared one). */
     fun dueText(data: TaskDue): TaskNoticeText {
         val where = if (data.channelId != null && !data.channelName.isNullOrEmpty()) " (#${data.channelName})" else ""
         // M84: a due time (the notification went out at it): 「14:00 が期限: 題名」.
         val time = data.dueAt?.let { runCatching { CalendarDates.clock(it) }.getOrNull() }
-        return TaskNoticeText("${if (time != null) "$time が期限" else "今日が期限"}: ${data.title}$where", data.taskId, data.channelId)
+        return TaskNoticeText(if (time != null) L10n.str(R.string.task_rules_due_at, time, data.title, where) else L10n.str(R.string.task_rules_due_today_notice, data.title, where), data.taskId, data.channelId)
     }
 }

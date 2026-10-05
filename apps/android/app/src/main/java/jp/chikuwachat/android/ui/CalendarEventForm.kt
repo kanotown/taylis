@@ -392,7 +392,7 @@ internal fun RepeatSection(repeat: RepeatDraft, start: LocalDate, onChange: (Rep
                         onChange(next)
                     })
                 }
-                Text(stringResource(R.string.calendar_event_form_fmt), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.calendar_event_form_every_suffix), style = MaterialTheme.typography.bodyLarge)
             }
         }
         if (freq == RepeatFreq.WEEKLY) {
@@ -406,7 +406,7 @@ internal fun RepeatSection(repeat: RepeatDraft, start: LocalDate, onChange: (Rep
                             .toggleable(value = on, role = Role.Checkbox, onValueChange = { checked ->
                                 onChange(repeat.copy(weekdays = if (checked) repeat.weekdays + day else repeat.weekdays - day))
                             })
-                            .semantics { contentDescription = L10n.str(R.string.common_fmt_4, name) },
+                            .semantics { contentDescription = L10n.str(R.string.common_weekday_name, name) },
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(name, color = if (on) MaterialTheme.colorScheme.onPrimary else weekdayColor(day) ?: MaterialTheme.colorScheme.onSurface)
@@ -429,7 +429,7 @@ internal fun RepeatSection(repeat: RepeatDraft, start: LocalDate, onChange: (Rep
                 }
                 when (repeat.end) {
                     RepeatEnd.UNTIL -> OutlinedButton(onClick = onPickUntil, modifier = Modifier.weight(1f).padding(top = 20.dp)) {
-                        Text(repeat.until?.let { CalendarDates.dayLabel(it) + " まで" } ?: stringResource(R.string.calendar_event_form_end_date), maxLines = 1)
+                        Text(repeat.until?.let { stringResource(R.string.calendar_event_form_until, CalendarDates.dayLabel(it)) } ?: stringResource(R.string.calendar_event_form_end_date), maxLines = 1)
                     }
                     RepeatEnd.COUNT -> Row(Modifier.padding(top = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                         NumberField(repeat.count, label = stringResource(R.string.common_times), onValue = { onChange(repeat.copy(count = it)) })

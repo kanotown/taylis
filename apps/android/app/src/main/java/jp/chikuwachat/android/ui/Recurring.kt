@@ -28,13 +28,14 @@ import jp.chikuwachat.android.L10n
  */
 object Recurring {
     /** 0 = Monday (the server's weekday numbers). */
-    val WEEKDAY_LABELS = listOf("月", "火", "水", "木", "金", "土", "日")
+    val WEEKDAY_LABELS: List<String> get() = L10n.weekdaysMondayFirst
     const val MAX_NAME = 40
     const val MAX_BODY = 4000
     const val MAX_AFTER_DAYS = 30
     /** The server keeps at most this many per channel (409 too_many_recurring_posts). */
     const val MAX_PER_CHANNEL = 20
     private val TIME = Regex("""^([01]\d|2[0-3]):([0-5]\d)$""")
+    // i18n: keep (whitespace pattern)
     private val SPACES = Regex("""[\s　]+""")
 
     /** "09:00" → "9:00"; anything else as it is. */
@@ -56,7 +57,7 @@ object Recurring {
             "weekly" -> {
                 val days = schedule.weekdays.filter { it in 0..6 }.distinct().sorted()
                 if (days.size == 7) L10n.str(R.string.recurring_daily, clockLabel(schedule.time))
-                else "毎週 ${days.joinToString("・") { WEEKDAY_LABELS[it] }} ${clockLabel(schedule.time)}"
+                else L10n.str(R.string.recurring_weekly, days.joinToString(L10n.str(R.string.common_list_separator_dot)) { WEEKDAY_LABELS[it] }, clockLabel(schedule.time))
             }
             "monthly" -> L10n.str(R.string.recurring_monthly, dayLabel(schedule.day), clockLabel(schedule.time))
             // A kind a newer server added: its time at least.
@@ -70,7 +71,7 @@ object Recurring {
 
     /** 「当日 18:00 締切」 / 「3 日後 18:00 締切」. */
     fun dueSummary(due: CollectDue): String =
-        "${if (due.afterDays == 0) "当日" else "${due.afterDays} 日後"} ${clockLabel(due.time)} 締切"
+        if (due.afterDays == 0) L10n.str(R.string.recurring_due_same_day, clockLabel(due.time)) else L10n.str(R.string.recurring_due_after, due.afterDays, clockLabel(due.time))
 
     /** An ISO time from the server; null when unreadable. */
     fun instant(iso: String?): Instant? {
@@ -87,8 +88,8 @@ object Recurring {
     /** Whom it collects from, as one line (names from the caller). */
     fun targetsSummary(spec: CollectSpec, groupName: (String) -> String?, userName: (String) -> String?): String {
         if (spec.targets.allMembers) return L10n.str(R.string.common_everyone_in_the_channel)
-        val names = spec.targets.groupIds.map { "@${groupName(it) ?: "グループ"}" } + spec.targets.userIds.map { userName(it) ?: "?" }
-        return if (names.size > 4) names.take(4).joinToString(L10n.str(R.string.common_fmt_6)) + L10n.str(R.string.recurring_fmt, names.size - 4) else names.joinToString(L10n.str(R.string.common_fmt_6))
+        val names = spec.targets.groupIds.map { "@" + (groupName(it) ?: L10n.str(R.string.common_group)) } + spec.targets.userIds.map { userName(it) ?: "?" }
+        return if (names.size > 4) names.take(4).joinToString(L10n.str(R.string.common_list_separator)) + L10n.str(R.string.recurring_and_more, names.size - 4) else names.joinToString(L10n.str(R.string.common_list_separator))
     }
 
     /** Owners and the administrators among the members of a channel (not a DM) manage its recurring posts (§7). */

@@ -429,7 +429,7 @@ fun RecurringPostForm(controller: AppController, channel: ChannelState, post: Re
                                         .toggleable(value = on, role = Role.Checkbox, onValueChange = { now ->
                                             set { it.copy(weekdays = if (now) (it.weekdays + day).distinct().sorted() else it.weekdays - day) }
                                         })
-                                        .semantics { contentDescription = L10n.str(R.string.common_fmt_4, label); selected = on },
+                                        .semantics { contentDescription = L10n.str(R.string.common_weekday_name, label); selected = on },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Text(label, fontWeight = FontWeight.Medium, color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)

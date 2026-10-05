@@ -95,7 +95,7 @@ import androidx.compose.ui.res.stringResource
  * the canvas reads its history. A phone shows the list, then the version; from 840 dp the two sit side by side.
  */
 
-private val KIND_LABELS = mapOf(
+private val KIND_LABELS get() = mapOf(
     "create" to L10n.str(R.string.common_create),
     "save" to L10n.str(R.string.common_edit),
     "merge" to L10n.str(R.string.canvas_history_merged_simultaneous_edits),

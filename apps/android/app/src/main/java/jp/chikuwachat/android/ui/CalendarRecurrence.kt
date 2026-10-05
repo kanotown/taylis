@@ -6,31 +6,37 @@ import jp.chikuwachat.android.R
 import jp.chikuwachat.android.L10n
 
 /** M69 (CALENDAR.md §10.9): 「繰り返し」's choice. The presets repeat every day / week / month / year; カスタム has an interval. */
-enum class RepeatKind(val label: String) {
-    NONE(L10n.str(R.string.calendar_recurrence_never)),
-    DAILY(L10n.str(R.string.calendar_recurrence_daily)),
-    WEEKLY(L10n.str(R.string.common_weekly)),
-    MONTHLY(L10n.str(R.string.common_monthly)),
-    YEARLY(L10n.str(R.string.calendar_recurrence_yearly)),
-    CUSTOM(L10n.str(R.string.common_custom)),
+enum class RepeatKind(private val labelRes: Int) {
+    NONE(R.string.calendar_recurrence_never),
+    DAILY(R.string.calendar_recurrence_daily),
+    WEEKLY(R.string.common_weekly),
+    MONTHLY(R.string.common_monthly),
+    YEARLY(R.string.calendar_recurrence_yearly),
+    CUSTOM(R.string.common_custom);
+
+    val label: String get() = L10n.str(labelRes)
 }
 
 /** What a rule repeats every (`label`: カスタム's unit, 「N 日 / 週 / か月 / 年ごと」). */
-enum class RepeatFreq(val label: String) {
-    DAILY(L10n.str(R.string.calendar_recurrence_days)),
-    WEEKLY(L10n.str(R.string.calendar_recurrence_weeks)),
-    MONTHLY(L10n.str(R.string.calendar_recurrence_months)),
-    YEARLY(L10n.str(R.string.calendar_recurrence_years)),
+enum class RepeatFreq(private val labelRes: Int) {
+    DAILY(R.string.calendar_recurrence_days),
+    WEEKLY(R.string.calendar_recurrence_weeks),
+    MONTHLY(R.string.calendar_recurrence_months),
+    YEARLY(R.string.calendar_recurrence_years);
+
+    val label: String get() = L10n.str(labelRes)
 }
 
 /** 毎月: the same date (「10 日」), the month's last day (「月末」), the nth weekday (「第 2 火曜日」) or the last such weekday (「最終 金曜日」). */
 enum class MonthlyMode { DAY, MONTH_END, NTH, LAST }
 
 /** 終了: なし / 日付 (the day included) / 回数. */
-enum class RepeatEnd(val label: String) {
-    NEVER(L10n.str(R.string.common_none)),
-    UNTIL(L10n.str(R.string.calendar_recurrence_on_date)),
-    COUNT(L10n.str(R.string.common_times)),
+enum class RepeatEnd(private val labelRes: Int) {
+    NEVER(R.string.common_none),
+    UNTIL(R.string.calendar_recurrence_on_date),
+    COUNT(R.string.common_times);
+
+    val label: String get() = L10n.str(labelRes)
 }
 
 /** The picker's state. Weekdays are 0 = Sunday … 6 = Saturday (as CalendarDates.weekdayIndex). */
@@ -60,10 +66,12 @@ data class ParsedRule(
 )
 
 /** 「この予定」「これ以降すべて」「すべての予定」 (the API's `scope`). */
-enum class OccurrenceScope(val wire: String, val label: String) {
-    THIS("this", L10n.str(R.string.calendar_recurrence_this_event)),
-    FOLLOWING("following", L10n.str(R.string.calendar_recurrence_this_and_following)),
-    ALL("all", L10n.str(R.string.calendar_recurrence_all_events)),
+enum class OccurrenceScope(val wire: String, private val labelRes: Int) {
+    THIS("this", R.string.calendar_recurrence_this_event),
+    FOLLOWING("following", R.string.calendar_recurrence_this_and_following),
+    ALL("all", R.string.calendar_recurrence_all_events);
+
+    val label: String get() = L10n.str(labelRes)
 }
 
 /**
@@ -77,7 +85,7 @@ object CalendarRecurrence {
     const val MAX_COUNT = 999
 
     private val CODES = listOf("SU", "MO", "TU", "WE", "TH", "FR", "SA")
-    private val NAMES = listOf("日", "月", "火", "水", "木", "金", "土")
+    private val NAMES: List<String> get() = L10n.weekdaysSundayFirst
     /** The server's order (RFC 5545's default week start): Monday first. */
     private val MONDAY_FIRST = listOf(1, 2, 3, 4, 5, 6, 0)
     private val BYDAY_ITEM = Regex("^([+-]?\\d)?(SU|MO|TU|WE|TH|FR|SA)$")
@@ -195,9 +203,9 @@ object CalendarRecurrence {
         return repeatToRrule(draft, start) != before
     }
 
-    private fun weekdayList(days: List<Int>): String = MONDAY_FIRST.filter { it in days }.joinToString(L10n.str(R.string.common_fmt_5)) { NAMES[it] }
+    private fun weekdayList(days: List<Int>): String = MONDAY_FIRST.filter { it in days }.joinToString(L10n.str(R.string.common_list_separator_dot)) { NAMES[it] }
 
-    private fun longDay(day: LocalDate): String = L10n.str(R.string.calendar_recurrence_fmt, day.year, day.monthValue, day.dayOfMonth)
+    private fun longDay(day: LocalDate): String = L10n.str(R.string.calendar_recurrence_long_date, day.year, day.monthValue, day.dayOfMonth)
 
     /**
      * A rule in words: 「毎日」「3 日ごと」「毎週 火・木曜日」「2 週間ごと 月曜日」「毎月 10 日」「毎月 月末」「毎月 第 2 火曜日」「毎月 最終 金曜日」
@@ -211,18 +219,18 @@ object CalendarRecurrence {
             RepeatFreq.DAILY -> every(L10n.str(R.string.calendar_recurrence_days), L10n.str(R.string.calendar_recurrence_daily))
             RepeatFreq.WEEKLY -> {
                 val days = rule.byday.map { it.second }.ifEmpty { listOf(weekday(start)) }
-                "${every("週間", "毎週")} ${weekdayList(days)}曜日"
+                L10n.str(R.string.calendar_recurrence_weekly_on, every(L10n.str(R.string.calendar_recurrence_weeks_interval), L10n.str(R.string.common_weekly)), weekdayList(days))
             }
             RepeatFreq.MONTHLY -> {
                 val nth = rule.byday.firstOrNull()
                 val which = when {
-                    nth != null && nth.first != null -> "${if (nth.first!! < 0) "最終" else "第 ${nth.first}"} ${NAMES[nth.second]}曜日"
+                    nth != null && nth.first != null -> if (nth.first!! < 0) L10n.str(R.string.calendar_recurrence_last_weekday, NAMES[nth.second]) else L10n.str(R.string.calendar_recurrence_nth_weekday, nth.first, NAMES[nth.second])
                     rule.bymonthday == -1 -> L10n.str(R.string.calendar_recurrence_end_of_month)
                     else -> L10n.str(R.string.common_day, rule.bymonthday ?: start.dayOfMonth)
                 }
-                "${every("か月", "毎月")} $which"
+                L10n.str(R.string.calendar_recurrence_monthly_on, every(L10n.str(R.string.calendar_recurrence_months), L10n.str(R.string.common_monthly)), which)
             }
-            RepeatFreq.YEARLY -> "${every("年", "毎年")} ${start.monthValue}月${start.dayOfMonth}日"
+            RepeatFreq.YEARLY -> L10n.str(R.string.calendar_recurrence_yearly_on, every(L10n.str(R.string.calendar_recurrence_years), L10n.str(R.string.calendar_recurrence_yearly)), start.monthValue, start.dayOfMonth)
         }
         if (rule.until != null) text += L10n.str(R.string.calendar_recurrence_until, longDay(rule.until))
         else if (rule.count != null && rule.count != 0) text += L10n.str(R.string.calendar_recurrence_times, rule.count)

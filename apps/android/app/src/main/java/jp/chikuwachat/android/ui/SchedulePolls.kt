@@ -90,7 +90,7 @@ object SchedulePolls {
             endDay == slot.day.plusDays(1) && end.hour == 0 && end.minute == 0 -> "24:00"
             else -> L10n.str(R.string.schedule_polls_next_day) + clock(end)
         }
-        return L10n.str(R.string.schedule_polls_fmt, shortDay(slot.day), clock(start), until)
+        return L10n.str(R.string.schedule_polls_slot_label, shortDay(slot.day), clock(start), until)
     }
 
     /** Earliest first; a day's all-day candidate before its times. */

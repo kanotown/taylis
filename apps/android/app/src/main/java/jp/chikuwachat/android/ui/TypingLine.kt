@@ -40,7 +40,7 @@ fun TypingLine(controller: AppController, channelId: String, parentId: String? =
     Row(Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         if (users.isEmpty()) return@Row
         val names = users.map { store.users[it]?.displayName ?: "…" }
-        val label = if (names.size <= 2) names.joinToString(stringResource(R.string.common_fmt_6)) + stringResource(R.string.typing_line_typing) else stringResource(R.string.typing_line_and_others_are_typing, names.first(), names.size - 1)
+        val label = if (names.size <= 2) names.joinToString(stringResource(R.string.common_list_separator)) + stringResource(R.string.typing_line_typing) else stringResource(R.string.typing_line_and_others_are_typing, names.first(), names.size - 1)
         CircularProgressIndicator(Modifier.size(10.dp), strokeWidth = 1.5.dp)
         Text(
             label,

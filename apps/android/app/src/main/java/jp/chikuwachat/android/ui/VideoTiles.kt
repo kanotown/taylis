@@ -57,7 +57,7 @@ object VideoTiles {
 
     /** What a screen reader says for the tile: 「動画 clip.mp4、0:42」. */
     fun description(attachment: AttachmentOut): String =
-        L10n.str(R.string.video_tiles_video, attachment.filename) + (formatDuration(attachment.durationMs)?.let { L10n.str(R.string.common_fmt, it) } ?: "")
+        L10n.str(R.string.video_tiles_video, attachment.filename) + (formatDuration(attachment.durationMs)?.let { L10n.str(R.string.common_comma_then, it) } ?: "")
 
     /** The player's frame before the clip reports its own size: the server's shape, else 16:9. */
     fun aspectRatio(attachment: AttachmentOut): Float {

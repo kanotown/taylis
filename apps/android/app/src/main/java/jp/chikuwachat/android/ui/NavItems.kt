@@ -15,7 +15,7 @@ object NavItems {
 
     private val BOTH = listOf(Platform.DESKTOP, Platform.MOBILE)
 
-    val catalogue: List<Entry> = listOf(
+    val catalogue: List<Entry> get() = listOf(
         Entry("threads", L10n.str(R.string.common_thread), visible = true, platforms = BOTH),
         Entry("activity", L10n.str(R.string.common_activity), visible = true, platforms = listOf(Platform.DESKTOP)),
         Entry("times-feed", "Times", visible = true, platforms = listOf(Platform.MOBILE)),

@@ -9,7 +9,7 @@ object SlashCommands {
     data class Command(val name: String, val usage: String, val description: String, val channelOnly: Boolean = false)
     data class Parsed(val name: String, val args: String, val known: Boolean)
 
-    val all = listOf(
+    val all get() = listOf(
         Command("status", L10n.str(R.string.commands_status_emoji_text), L10n.str(R.string.commands_set_your_status_status_clear_to)),
         Command("dnd", "/dnd 30m | 1h | 2h | 4h | tomorrow | off", L10n.str(R.string.common_pause_notifications)),
         Command("topic", L10n.str(R.string.commands_topic_text), L10n.str(R.string.commands_change_the_channel_topic), channelOnly = true),
@@ -27,9 +27,11 @@ object SlashCommands {
     )
 
     /** M30: the date poll; M54: the scheduling poll's form (ui/Templates.kt readSchedule, SchedulePollForm). */
+    // i18n: keep (the command name, typed the same in any language)
     const val SCHEDULE = "日程"
 
     /** In a code span, so the underscores do not read as italics (the light markdown has no escapes). */
+    // i18n: keep (the shrug itself)
     const val SHRUG = "`¯\\_(ツ)_/¯`"
 
     // M30: a name is letters of any script, digits, `_` or `-` (`/日程`, a template's `/日報`), like the server's template names.
@@ -64,6 +66,7 @@ object SlashCommands {
     /** `30m`, `1h`, `2d`, `tomorrow` (08:00) → when a pause ends; null for anything else. */
     fun duration(arg: String, now: ZonedDateTime = ZonedDateTime.now()): ZonedDateTime? {
         val word = arg.trim().lowercase()
+        // i18n: keep (a word /dnd and /mute accept)
         if (word == "tomorrow" || word == "明日") return tomorrowMorning(now)
         val match = DURATION.find(word) ?: return null
         val amount = match.groupValues[1].toLong()

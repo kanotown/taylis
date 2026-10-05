@@ -69,10 +69,10 @@ object Search {
     const val NEWEST = "newest"
 
     val HAS_FLAGS = listOf("file", "link", "pin", "reaction", "poll")
-    val HAS_LABELS = mapOf("file" to L10n.str(R.string.search_has_files), "link" to L10n.str(R.string.search_has_links), "pin" to L10n.str(R.string.common_pinned), "reaction" to L10n.str(R.string.search_has_reactions), "poll" to L10n.str(R.string.search_polls))
+    val HAS_LABELS get() = mapOf("file" to L10n.str(R.string.search_has_files), "link" to L10n.str(R.string.search_has_links), "pin" to L10n.str(R.string.common_pinned), "reaction" to L10n.str(R.string.search_has_reactions), "poll" to L10n.str(R.string.search_polls))
 
     /** 期間 presets: how many days before today the range starts. */
-    val DATE_PRESETS = listOf("today" to L10n.str(R.string.common_today), "yesterday" to L10n.str(R.string.common_yesterday), "week" to L10n.str(R.string.search_last_7_days), "month" to L10n.str(R.string.search_last_30_days), "year" to L10n.str(R.string.search_last_year))
+    val DATE_PRESETS get() = listOf("today" to L10n.str(R.string.common_today), "yesterday" to L10n.str(R.string.common_yesterday), "week" to L10n.str(R.string.search_last_7_days), "month" to L10n.str(R.string.search_last_30_days), "year" to L10n.str(R.string.search_last_year))
     private val DAYS_BACK = mapOf("today" to 0L, "yesterday" to 1L, "week" to 6L, "month" to 29L, "year" to 364L)
 
     private val ISO: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
@@ -114,7 +114,7 @@ object Search {
         val from = date.from?.replace("-", "/")
         val to = date.to?.replace("-", "/")
         return when {
-            from != null && to != null -> if (from == to) from else L10n.str(R.string.search_fmt, from, to)
+            from != null && to != null -> if (from == to) from else L10n.str(R.string.search_date_range, from, to)
             from != null -> L10n.str(R.string.search_from, from)
             to != null -> L10n.str(R.string.common_until, to)
             else -> null

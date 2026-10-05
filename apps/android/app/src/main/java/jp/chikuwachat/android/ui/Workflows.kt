@@ -51,9 +51,9 @@ object Workflows {
     /** How long a channel's list is kept before it is read again (§4: devices keep it a minute). */
     const val CACHE_MS = 60_000L
 
-    private val WEEKDAYS = listOf("月", "火", "水", "木", "金", "土", "日") // 0 = Monday
+    private val WEEKDAYS: List<String> get() = L10n.weekdaysMondayFirst // 0 = Monday
 
-    val VALUE_ERROR_TEXT = mapOf(
+    val VALUE_ERROR_TEXT get() = mapOf(
         "required" to L10n.str(R.string.workflows_required),
         "invalid" to L10n.str(R.string.workflows_invalid_format),
         "too_long" to L10n.str(R.string.workflows_too_long),
@@ -94,7 +94,7 @@ object Workflows {
     /** 「2026年7月28日 (火)」 for `YYYY-MM-DD`; "" when it is not a date. */
     fun dateLabel(value: String): String {
         val day = parseDate(value) ?: return ""
-        return L10n.str(R.string.workflows_fmt, day.year, day.monthValue, day.dayOfMonth, WEEKDAYS[weekdayOf(day)])
+        return L10n.str(R.string.workflows_long_date, day.year, day.monthValue, day.dayOfMonth, WEEKDAYS[weekdayOf(day)])
     }
 
     private fun validDatetime(value: String): Boolean {
@@ -179,6 +179,7 @@ object Workflows {
     fun json(values: Map<String, FieldValue>): Map<String, JsonElement> = values.mapValues { it.value.toJson() }
 
     /** A typed value cannot call anyone: `<@…` and `<!…` lose their `<`. */
+    // i18n: keep (a full-width bracket that defuses a mention)
     fun escapeText(value: String): String = MENTION_START.replace(value, "＜")
 
     fun formatValue(field: WorkflowField, value: FieldValue?): String {

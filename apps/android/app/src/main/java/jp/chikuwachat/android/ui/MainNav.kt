@@ -120,12 +120,14 @@ sealed interface Route {
  * The activity tab's filter. M39 (stage B, MOBILE_UI.md §6.4): the chips [すべて][メンション][スレッド][リアクション],
  * `filter` being GET /activity's. M34's stage A (a server before M39) shows only [メンション | スレッド] ([stageA]).
  */
-enum class ActivitySegment(val label: String, val filter: String) {
-    ALL(L10n.str(R.string.common_all), "all"),
-    MENTIONS(L10n.str(R.string.common_mention), "mentions"),
-    THREADS(L10n.str(R.string.common_thread), "threads"),
-    REACTIONS(L10n.str(R.string.main_nav_reactions), "reactions"),
+enum class ActivitySegment(private val labelRes: Int, val filter: String) {
+    ALL(R.string.common_all, "all"),
+    MENTIONS(R.string.common_mention, "mentions"),
+    THREADS(R.string.common_thread, "threads"),
+    REACTIONS(R.string.main_nav_reactions, "reactions"),
     ;
+
+    val label: String get() = L10n.str(labelRes)
 
     companion object {
         val stageA: List<ActivitySegment> = listOf(MENTIONS, THREADS)

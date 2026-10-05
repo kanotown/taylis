@@ -19,8 +19,8 @@ import jp.chikuwachat.android.L10n
  * An affiliation, rank or grade a newer server adds sorts after the known ones of its step.
  */
 object Roster {
-    val AFFILIATIONS = listOf("faculty" to L10n.str(R.string.roster_faculty), "student" to L10n.str(R.string.roster_student), "other" to L10n.str(R.string.common_other), "alumni" to L10n.str(R.string.roster_alumni))
-    val RANKS = listOf("professor" to L10n.str(R.string.roster_professor), "associate_professor" to L10n.str(R.string.roster_associate_professor), "lecturer" to L10n.str(R.string.roster_lecturer), "assistant_professor" to L10n.str(R.string.roster_assistant_professor))
+    val AFFILIATIONS get() = listOf("faculty" to L10n.str(R.string.roster_faculty), "student" to L10n.str(R.string.roster_student), "other" to L10n.str(R.string.common_other), "alumni" to L10n.str(R.string.roster_alumni))
+    val RANKS get() = listOf("professor" to L10n.str(R.string.roster_professor), "associate_professor" to L10n.str(R.string.roster_associate_professor), "lecturer" to L10n.str(R.string.roster_lecturer), "assistant_professor" to L10n.str(R.string.roster_assistant_professor))
     /** Roster order: from D3 down to B3. */
     val GRADES = listOf("D3", "D2", "D1", "M2", "M1", "B4", "B3")
     /** The heading of the people off the roster, after everyone on it. */

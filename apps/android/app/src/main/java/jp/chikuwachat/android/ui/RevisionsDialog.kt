@@ -51,7 +51,7 @@ fun RevisionsDialog(controller: AppController, message: MessageState, onDismiss:
                     else -> LazyColumn(Modifier.heightIn(max = 420.dp).padding(top = 8.dp)) {
                         if (list.isEmpty()) item { Text(stringResource(R.string.revisions_dialog_no_earlier_versions_were_recorded_edited), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         itemsIndexed(list) { _, row ->
-                            Text(Timeline.fullLabel(row.writtenAt) + " の版 · " + Timeline.fullLabel(row.replacedAt) + " に編集", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                            Text(stringResource(R.string.revisions_dialog_version_line, Timeline.fullLabel(row.writtenAt), Timeline.fullLabel(row.replacedAt)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                             SelectionContainer { Text(text(row.body), style = MaterialTheme.typography.bodyMedium) }
                             HorizontalDivider(Modifier.padding(top = 8.dp))
                         }

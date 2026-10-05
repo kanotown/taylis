@@ -44,6 +44,7 @@ object Links {
     private val FENCE = Regex("```[\\s\\S]*?```")
     private val CODE = Regex("`[^`\\n]*`")
     private val URL = Regex("https?://[^\\s<>)\\]]+")
+    // i18n: keep (trailing punctuation of a URL)
     private const val TRAILING = ".,!?;:。、」』）"
 
     fun first(body: String): String? {

@@ -56,7 +56,7 @@ import androidx.compose.ui.res.stringResource
  */
 object ReservationRules {
     private val HOUR: Duration = Duration.ofHours(1)
-    private val WEEKDAYS = listOf("月", "火", "水", "木", "金", "土", "日")
+    private val WEEKDAYS: List<String> get() = L10n.weekdaysMondayFirst
 
     private fun time(iso: String?): Instant? = iso?.let { runCatching { Instant.parse(it) }.getOrNull() ?: runCatching { java.time.OffsetDateTime.parse(it).toInstant() }.getOrNull() }
 
@@ -90,7 +90,7 @@ object ReservationRules {
         val end = time(endIso) ?: return ""
         val day = start.atZone(zone).toLocalDate()
         val prefix = if (day == now.atZone(zone).toLocalDate()) "" else dayLabel(day, now, zone) + " "
-        return L10n.str(R.string.reservations_fmt, prefix, hm(start, zone), hm(end, zone))
+        return L10n.str(R.string.reservations_time_span, prefix, hm(start, zone), hm(end, zone))
     }
 
     /** Bookings still counting (booked or on a seat). */
@@ -192,12 +192,12 @@ object ReservationRules {
     fun row(pool: PoolOut, id: String?): ReservationOut? =
         id?.let { pool.holders.firstOrNull { r -> r.id == it } ?: pool.waiting.firstOrNull { r -> r.id == it } ?: pool.bookings.firstOrNull { r -> r.id == it } }
 
-    private val REASONS = mapOf("free" to L10n.str(R.string.reservations_available), "returned" to L10n.str(R.string.reservations_returned_2), "booking_ended" to L10n.str(R.string.reservations_booking_ended), "guarantee_over" to L10n.str(R.string.reservations_guaranteed_time_ended))
+    private val REASONS get() = mapOf("free" to L10n.str(R.string.reservations_available), "returned" to L10n.str(R.string.reservations_returned_2), "booking_ended" to L10n.str(R.string.reservations_booking_ended), "guarantee_over" to L10n.str(R.string.reservations_guaranteed_time_ended))
 
     fun todoLine(todo: ReservationTodo, pool: PoolOut, name: (String) -> String, now: Instant, zone: ZoneId): String {
         fun who(id: String?): String {
             val row = row(pool, id) ?: return L10n.str(R.string.reservations_unknown)
-            return row.email?.let { L10n.str(R.string.reservations_fmt_2, name(row.userId), it) } ?: L10n.str(R.string.reservations_fmt_3, name(row.userId))
+            return row.email?.let { L10n.str(R.string.reservations_person_with_email, name(row.userId), it) } ?: L10n.str(R.string.reservations_person, name(row.userId))
         }
         val target = row(pool, todo.assignId)
         val booked = if (target?.kind == "booking") L10n.str(R.string.reservations_booking, span(target.startAt, target.endAt, now, zone)) else ""
@@ -331,7 +331,7 @@ fun ReservationsPane(controller: AppController, version: Int) {
                                 "${hour.rows.size}/${pool.capacity}", Modifier.width(40.dp), style = MaterialTheme.typography.labelMedium,
                                 color = if (hour.rows.size >= pool.capacity) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Text(hour.rows.joinToString(stringResource(R.string.common_fmt_6)) { name(it.userId) + if (it.kind == "walkin") L10n.str(R.string.reservations_now_2) else "" }, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                            Text(hour.rows.joinToString(stringResource(R.string.common_list_separator)) { name(it.userId) + if (it.kind == "walkin") L10n.str(R.string.reservations_now_2) else "" }, style = MaterialTheme.typography.bodySmall, maxLines = 2)
                         }
                     }
                     HorizontalDivider(Modifier.padding(top = 12.dp))

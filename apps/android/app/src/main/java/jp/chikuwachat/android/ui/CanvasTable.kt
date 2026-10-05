@@ -138,7 +138,7 @@ object CanvasTable {
         return Range(start, end)
     }
 
-    val NEW_TABLE = Table(listOf(null, null, null), listOf(L10n.str(R.string.canvas_table_column_1), L10n.str(R.string.canvas_table_column_2), L10n.str(R.string.canvas_table_column_3)), listOf(listOf("", "", ""), listOf("", "", "")))
+    val NEW_TABLE get() = Table(listOf(null, null, null), listOf(L10n.str(R.string.canvas_table_column_1), L10n.str(R.string.canvas_table_column_2), L10n.str(R.string.canvas_table_column_3)), listOf(listOf("", "", ""), listOf("", "", "")))
 
     /** The text with a table in it and that table's lines. */
     data class Insertion(val text: String, val range: Range)

@@ -37,8 +37,8 @@ import androidx.compose.ui.res.stringResource
 fun ScheduleDialog(
     onDismiss: () -> Unit,
     title: String = L10n.str(R.string.common_send_later),
-    confirm: String = L10n.str(R.string.common_reservations),
-    describe: (ZonedDateTime) -> String = { Schedule.label(it) + " に送信します" },
+    confirm: String = L10n.str(R.string.schedule_dialog_schedule),
+    describe: (ZonedDateTime) -> String = { L10n.str(R.string.common_will_send_at, Schedule.label(it)) },
     onPick: (ZonedDateTime) -> Unit,
 ) {
     val initial = remember { ZonedDateTime.now().plusHours(1) }

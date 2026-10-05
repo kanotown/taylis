@@ -24,9 +24,11 @@ import jp.chikuwachat.android.R
 import jp.chikuwachat.android.L10n
 
 /** M52: the calendar's two phone views (CALENDAR.md §7): the agenda from today and the month with dots. */
-enum class CalendarMode(val label: String) {
-    LIST(L10n.str(R.string.calendar_dates_list)),
-    MONTH(L10n.str(R.string.calendar_dates_month)),
+enum class CalendarMode(private val labelRes: Int) {
+    LIST(R.string.calendar_dates_list),
+    MONTH(R.string.calendar_dates_month);
+
+    val label: String get() = L10n.str(labelRes)
 }
 
 /**
@@ -47,7 +49,7 @@ object CalendarDates {
     /** Today and tomorrow (the 「予定 N」 count on a channel's tab). */
     const val UPCOMING_DAYS = 2
 
-    private val WEEKDAYS = listOf("日", "月", "火", "水", "木", "金", "土")
+    private val WEEKDAYS: List<String> get() = L10n.weekdaysSundayFirst
     private val OFFSET_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx")
     private val collator: Collator = Collator.getInstance(Locale.JAPANESE)
 
@@ -180,11 +182,11 @@ object CalendarDates {
     fun clock(time: LocalTime): String = "${time.hour}:${pad(time.minute)}"
 
     /** "10月1日 (木)". */
-    fun dayLabel(day: LocalDate): String = L10n.str(R.string.common_fmt_3, day.monthValue, day.dayOfMonth, WEEKDAYS[weekdayIndex(day)])
+    fun dayLabel(day: LocalDate): String = L10n.str(R.string.common_day_label, day.monthValue, day.dayOfMonth, WEEKDAYS[weekdayIndex(day)])
 
     fun weekdayLabel(index: Int): String = WEEKDAYS[index]
 
-    fun monthLabel(day: LocalDate): String = "${day.year}年${day.monthValue}月"
+    fun monthLabel(day: LocalDate): String = day.format(DateTimeFormatter.ofPattern(L10n.str(R.string.calendar_dates_year_month_pattern), L10n.locale))
 
     /** The header of a mode's range: 「2026年10月」, 「10月1日 (木) から」. */
     fun rangeTitle(mode: CalendarMode, anchor: LocalDate): String = when (mode) {
@@ -199,7 +201,7 @@ object CalendarDates {
         val start = if (first == day) clock(event.startsAt!!) else ""
         val end = if (last == day) clock(event.endsAt!!) else ""
         if (start.isEmpty() && end.isEmpty()) return L10n.str(R.string.common_all_day)
-        return L10n.str(R.string.calendar_dates_fmt, start, end)
+        return L10n.str(R.string.calendar_dates_time_range, start, end)
     }
 
     /** The whole time of an event: 「10月1日 (木) 14:00〜15:00」, 「10月1日 (木)〜10月3日 (土) 終日」. */
@@ -210,7 +212,7 @@ object CalendarDates {
         val endDay = localDay(event.endsAt!!)
         val start = "${dayLabel(startDay)} ${clock(event.startsAt)}"
         val end = if (endDay == startDay) clock(event.endsAt) else "${dayLabel(endDay)} ${clock(event.endsAt)}"
-        return L10n.str(R.string.calendar_dates_fmt, start, end)
+        return L10n.str(R.string.calendar_dates_time_range, start, end)
     }
 
     /** What an alarm says when it fires while the app is open, as the server's push does (PUSH_NOTIFICATIONS.md). */
@@ -250,7 +252,7 @@ object CalendarDates {
 
     data class AlarmChoice(val value: Int?, val label: String)
 
-    val TIMED_ALARMS = listOf(
+    val TIMED_ALARMS: List<AlarmChoice> get() = listOf(
         AlarmChoice(null, L10n.str(R.string.common_none)),
         AlarmChoice(0, L10n.str(R.string.calendar_dates_at_start)),
         AlarmChoice(5, L10n.str(R.string.calendar_dates_5_min_before)),
@@ -262,7 +264,7 @@ object CalendarDates {
     )
 
     /** An all-day event's alarm goes out at 8:00: the day before (1440) or on the day (-480). */
-    val ALL_DAY_ALARMS = listOf(
+    val ALL_DAY_ALARMS: List<AlarmChoice> get() = listOf(
         AlarmChoice(null, L10n.str(R.string.common_none)),
         AlarmChoice(1440, L10n.str(R.string.calendar_dates_day_before_at_8_00)),
         AlarmChoice(-480, L10n.str(R.string.calendar_dates_same_day_at_8_00)),

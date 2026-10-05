@@ -234,7 +234,7 @@ private fun PendingTile(item: AttachmentOut, controller: AppController, onRemove
         Box(
             Modifier.size(PENDING_TILE).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)
                 .clickable(onClickLabel = stringResource(R.string.common_preview)) { if (item.isImage || video) viewing = true else controller.openAttachment(item) }
-                .semantics { contentDescription = if (video) VideoTiles.description(item) else "${if (item.isImage) "写真" else "ファイル"} ${item.filename}" },
+                .semantics { contentDescription = if (video) VideoTiles.description(item) else L10n.str(if (item.isImage) R.string.attachments_photo_named else R.string.attachments_file_named, item.filename) },
             contentAlignment = Alignment.Center,
         ) {
             val image = bitmap

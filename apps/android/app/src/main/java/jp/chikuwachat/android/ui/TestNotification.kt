@@ -41,7 +41,7 @@ import androidx.compose.ui.res.stringResource
 object TestNotificationText {
     enum class Tone { OK, PROBLEM, NONE }
 
-    private val platformNames = mapOf("ios" to "iPhone / iPad", "android" to "Android", "desktop" to L10n.str(R.string.common_desktop), "web" to L10n.str(R.string.test_notification_browser))
+    private val platformNames get() = mapOf("ios" to "iPhone / iPad", "android" to "Android", "desktop" to L10n.str(R.string.common_desktop), "web" to L10n.str(R.string.test_notification_browser))
 
     /** The device's name as its owner knows it, with 「(この端末)」 on the one that asked. */
     fun deviceName(device: TestNotificationDevice): String {

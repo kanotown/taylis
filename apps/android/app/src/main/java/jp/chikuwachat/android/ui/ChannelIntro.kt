@@ -65,10 +65,9 @@ fun introSummary(channel: ChannelState, store: Store, zone: ZoneId = ZoneId.syst
     if (out.isDm) return L10n.str(R.string.channel_intro_this_is_the_beginning_of_your, title)
     val creator = out.createdBy?.let { store.users[it]?.displayName }
     val date = runCatching { OffsetDateTime.parse(out.createdAt).atZoneSameInstant(zone) }.getOrNull()
-    return buildString {
-        if (creator != null) append("$creator が")
-        if (date != null) append("${date.year}年${date.monthValue}月${date.dayOfMonth}日に")
-        append("作成した${if (out.type == "private") "非公開" else "公開"}チャンネルの始まりです。")
-        out.memberCount?.takeIf { it > 0 }?.let { append(" メンバー $it 人。") }
-    }
+    val by = creator?.let { L10n.str(R.string.channel_intro_by, it) } ?: ""
+    val on = date?.let { L10n.str(R.string.channel_intro_on, it.year, it.monthValue, it.dayOfMonth) } ?: ""
+    val kind = L10n.str(if (out.type == "private") R.string.channel_intro_private else R.string.channel_intro_public)
+    val members = out.memberCount?.takeIf { it > 0 }?.let { L10n.plural(R.plurals.channel_intro_members, it, it) } ?: ""
+    return L10n.str(R.string.channel_intro_created, by, on, kind) + members
 }

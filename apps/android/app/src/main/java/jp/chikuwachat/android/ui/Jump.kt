@@ -13,6 +13,7 @@ import java.util.Locale
  */
 object JumpMatch {
     /** After one of these, a name starts a new word (score 1). */
+    // i18n: keep (separators the matcher ignores)
     private const val SEPARATORS = " -_./・　"
 
     /** NFKC (full-width / half-width forms), lower case, katakana as hiragana, no leading # or @, trimmed. */
