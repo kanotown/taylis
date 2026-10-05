@@ -4,9 +4,9 @@
  * words. Times are the device's (the page draws one local day; the pools' grid is whole hours).
  */
 import type { PoolOut, ReservationOut, TodoOut } from "../api/types";
+import { t, weekdayName } from "../i18n";
 
 export const HOUR_MS = 3_600_000;
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
 const ms = (iso: string | null | undefined): number => (iso ? Date.parse(iso) : NaN);
 
@@ -24,9 +24,9 @@ export function bookingDays(now: Date, horizonDays: number): Date[] {
 /** 「今日」 「明日」 or 「10/7 (水)」. */
 export function dayLabel(day: Date, now: Date): string {
   const diff = Math.round((dayStart(day).getTime() - dayStart(now).getTime()) / (24 * HOUR_MS));
-  if (diff === 0) return "今日";
-  if (diff === 1) return "明日";
-  return `${day.getMonth() + 1}/${day.getDate()} (${WEEKDAYS[day.getDay()]})`;
+  if (diff === 0) return t("common.today");
+  if (diff === 1) return t("common.tomorrow");
+  return t("common.monthDayWeekday", { month: day.getMonth() + 1, day: day.getDate(), weekday: weekdayName((day.getDay() + 6) % 7) });
 }
 
 /** 「13:00」. */
@@ -39,7 +39,7 @@ export function hm(iso: string | Date): string {
 export function spanLabel(startIso: string, endIso: string, now: Date): string {
   const start = new Date(startIso);
   const day = dayStart(start).getTime() === dayStart(now).getTime() ? "" : `${dayLabel(start, now)} `;
-  return `${day}${hm(start)}〜${hm(endIso)}`;
+  return `${day}${hm(start)}${t("common.rangeTo")}${hm(endIso)}`;
 }
 
 /** 「13:00」 today, else 「10/7 (水) 13:00」. */
@@ -190,22 +190,22 @@ export function myBookingCount(pools: readonly PoolOut[], meId: string | undefin
 /** What a walk-in request of mine says (empty when there is none). */
 export function walkinText(row: ReservationOut, pool: PoolOut, now: Date): string {
   if (row.status === "waiting") {
-    if (row.step === "assign") return row.until ? `空きあり (〜${whenLabel(row.until, now)} まで) · 担当者の割り当て待ち` : "空きあり · 担当者の割り当て待ち";
-    if (row.step === "swap") return row.ready ? "まもなく担当者が割り当てます" : "前の人の保証時間の後に割り当てられます";
-    return `順番待ち ${row.position ?? "?"} 番目`;
+    if (row.step === "assign") return row.until ? t("reservations.walkin.freeUntil", { until: whenLabel(row.until, now) }) : t("reservations.walkin.free");
+    if (row.step === "swap") return row.ready ? t("reservations.walkin.soon") : t("reservations.walkin.afterGuarantee");
+    return t("reservations.walkin.position", { position: row.position ?? "?" });
   }
-  if (row.status === "returning") return "返却済み · 担当者が外すのを待っています";
-  if (row.evict_at) return `${whenLabel(row.evict_at, now)} 以降に外されます`;
-  if (pool.next_evict_id === row.id) return row.guarantee_until ? `利用中 (〜${whenLabel(row.guarantee_until, now)} まで保証、次に外す人)` : "利用中";
-  return row.guarantee_until ? `利用中 (〜${whenLabel(row.guarantee_until, now)} まで保証)` : "利用中";
+  if (row.status === "returning") return t("reservations.walkin.returning");
+  if (row.evict_at) return t("reservations.walkin.evictAt", { at: whenLabel(row.evict_at, now) });
+  if (pool.next_evict_id === row.id) return row.guarantee_until ? t("reservations.walkin.holdingNext", { until: whenLabel(row.guarantee_until, now) }) : t("reservations.holding");
+  return row.guarantee_until ? t("reservations.walkin.holdingUntil", { until: whenLabel(row.guarantee_until, now) }) : t("reservations.holding");
 }
 
 /** What a booking of mine says. */
 export function bookingText(row: ReservationOut, now: Date): string {
   const span = row.start_at && row.end_at ? spanLabel(row.start_at, row.end_at, now) : "";
-  if (row.status === "holding") return `${span} · 利用中`;
-  if (row.status === "returning") return `${span} · 返却済み`;
-  if (row.start_at && ms(row.start_at) <= now.getTime()) return `${span} · 開始 (担当者の割り当て待ち)`;
+  if (row.status === "holding") return `${span} · ${t("reservations.holding")}`;
+  if (row.status === "returning") return `${span} · ${t("reservations.returned")}`;
+  if (row.start_at && ms(row.start_at) <= now.getTime()) return `${span} · ${t("reservations.startedWaiting")}`;
   return span;
 }
 
@@ -220,10 +220,10 @@ export function reservationTodoCount(pools: readonly PoolOut[] | null): number {
 }
 
 const REASONS: Record<TodoOut["reason"], string> = {
-  free: "空きあり",
-  returned: "返却済み",
-  booking_ended: "予約時間が終了",
-  guarantee_over: "保証時間が終了",
+  get free() { return t("reservations.reason.free"); },
+  get returned() { return t("reservations.returned"); },
+  get booking_ended() { return t("reservations.reason.bookingEnded"); },
+  get guarantee_over() { return t("reservations.reason.guaranteeOver"); },
 };
 
 /** Finds a reservation of the pool by id (a to-do's sides). */
@@ -236,26 +236,26 @@ export function rowOf(pool: PoolOut, id: string | null | undefined): Reservation
 export function todoLine(todo: TodoOut, pool: PoolOut, name: (userId: string) => string, now: Date): string {
   const who = (id: string | null | undefined) => {
     const row = rowOf(pool, id);
-    if (!row) return "(不明)";
-    return row.email ? `${name(row.user_id)} さん (${row.email})` : `${name(row.user_id)} さん`;
+    if (!row) return t("reservations.unknown");
+    return row.email ? t("reservations.whoEmail", { name: name(row.user_id), email: row.email }) : t("reservations.who", { name: name(row.user_id) });
   };
   const target = rowOf(pool, todo.assign_id);
-  const booked = target?.kind === "booking" && target.start_at && target.end_at ? ` · 予約 ${spanLabel(target.start_at, target.end_at, now)}` : "";
-  const head = todo.upcoming ? `${whenLabel(todo.due_at, now)} から: ` : "";
-  if (todo.action === "assign") return `${head}${who(todo.assign_id)} に割り当てる${booked}`;
-  if (todo.action === "swap") return `${head}${who(todo.remove_id)} を外して ${who(todo.assign_id)} に割り当てる (${REASONS[todo.reason]})${booked}`;
-  return `${head}${who(todo.remove_id)} を外す (${REASONS[todo.reason]})`;
+  const booked = target?.kind === "booking" && target.start_at && target.end_at ? t("reservations.todo.booked", { span: spanLabel(target.start_at, target.end_at, now) }) : "";
+  const head = todo.upcoming ? t("reservations.todo.from", { at: whenLabel(todo.due_at, now) }) : "";
+  if (todo.action === "assign") return head + t("reservations.todo.assign", { who: who(todo.assign_id) }) + booked;
+  if (todo.action === "swap") return head + t("reservations.todo.swap", { out: who(todo.remove_id), who: who(todo.assign_id), reason: REASONS[todo.reason] }) + booked;
+  return head + t("reservations.todo.remove", { who: who(todo.remove_id), reason: REASONS[todo.reason] });
 }
 
 /** The settings form's numbers, checked as the server does (null = fine). */
 export function poolFormProblem(form: { name: string; capacity: string; maxHours: string; minHours: string; graceMinutes: string }): string | null {
-  if (!form.name.trim()) return "名前を入力してください";
-  if (form.name.trim().length > 80) return "名前は 80 文字までです";
+  if (!form.name.trim()) return t("reservations.check.name");
+  if (form.name.trim().length > 80) return t("reservations.check.nameTooLong");
   const whole = (value: string, low: number, high: number) => /^\d+$/.test(value.trim()) && Number(value) >= low && Number(value) <= high;
-  if (!whole(form.capacity, 1, 100)) return "枠の数は 1〜100 の整数で入力してください";
-  if (!whole(form.maxHours, 1, 24)) return "予約の最長は 1〜24 時間の整数で入力してください";
-  if (!whole(form.minHours, 0, 720)) return "今すぐの保証時間は 0〜720 時間の整数で入力してください";
-  if (!whole(form.graceMinutes, 0, 1440)) return "猶予は 0〜1440 分の整数で入力してください";
+  if (!whole(form.capacity, 1, 100)) return t("reservations.check.capacity");
+  if (!whole(form.maxHours, 1, 24)) return t("reservations.check.maxHours");
+  if (!whole(form.minHours, 0, 720)) return t("reservations.check.minHours");
+  if (!whole(form.graceMinutes, 0, 1440)) return t("reservations.check.grace");
   return null;
 }
 
