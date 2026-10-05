@@ -9,13 +9,20 @@ import jp.chikuwachat.android.L10n
 object ErrorTexts {
     class Table(val byCode: Map<String, String>, val byStatus: Map<String, String>, val network: String, val unknown: String)
 
-    private val japanese = Table(ErrorMessages.byCode, ErrorMessages.byStatus, ErrorMessages.NETWORK, ErrorMessages.UNKNOWN)
+    private fun tableFor(lang: String): Table? {
+        val byCode = ErrorMessages.byCodeByLocale[lang] ?: return null
+        return Table(
+            byCode,
+            ErrorMessages.byStatusByLocale[lang] ?: emptyMap(),
+            ErrorMessages.networkByLocale[lang] ?: ErrorMessages.networkByLocale.getValue("ja"),
+            ErrorMessages.unknownByLocale[lang] ?: ErrorMessages.unknownByLocale.getValue("ja"),
+        )
+    }
 
-    /**
-     * Tables by language. errors.json gains "en" / "zh-Hans" texts: when gen_errors.py writes them into ErrorMessages,
-     * add them here (until then English and Chinese show the Japanese text of an error).
-     */
-    private val tables: Map<String, Table> = mapOf("ja" to japanese)
+    private val japanese = tableFor("ja")!!
+
+    /** Tables by language, generated from errors.json (ja / en / zh-Hans). */
+    private val tables: Map<String, Table> = ErrorMessages.byCodeByLocale.keys.associateWith { tableFor(it)!! }
 
     private fun table(): Table = tables[L10n.language] ?: japanese
 
