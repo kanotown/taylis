@@ -15,12 +15,12 @@ PDF と Office の文書 (doc / docx、xls / xlsx、ppt / pptx、odt / ods / odp
         │ (upload が preview loop を起こす)
         ▼
 preview loop (app の中の 1 本のバックグラウンドループ、1 件ずつ)
-  1. 期限の来た pending を 1 件 claim (FOR UPDATE SKIP LOCKED、試行回数 +1、リース)
+  1. 期限の来た pending を 1 件 claim (FOR UPDATE SKIP LOCKED、試行回数 +1、claim 番号 n +1、リース)
   2. オブジェクトストアから一時ディレクトリへ落とす
   3. Office なら converter (Gotenberg の LibreOffice) で PDF に。PDF はそのまま
   4. 子プロセス (pypdfium2) で 1 ページ目を WebP (幅 800 px) に、ページ数を数える
-  5. attachments/{id}.preview.pdf (Office のみ) と attachments/{id}.preview.webp を保存
-  6. 行を ready に。メッセージに付いていれば message.updated (change = "attachments")
+  5. attachments/{id}.preview.{n}.pdf (Office のみ) と attachments/{id}.preview.{n}.webp を保存
+  6. 行がまだ claim 番号 n のままなら ready に。メッセージに付いていれば message.updated (change = "attachments")
 ```
 
 - 変換はリクエストの中で決して行わない。アップロードの応答は今までどおりの速さ。
@@ -70,9 +70,18 @@ preview loop (app の中の 1 本のバックグラウンドループ、1 件ず
   PDFium が読めない (壊れている、パスワード付き、時間切れ)) はその場で `failed`。
 - リースが切れた行の試行回数がもう上限なら、もう一度は変換せず `failed` (「最後の試行が終わらなかった」)。
   同じファイルでサーバを繰り返し落とし続けることはない。
-- 結果を書くのは、行がまだ `pending` で削除されていないときだけ。保存するキーは添付の id から決まるので、
-  同じ行を 2 回処理しても同じオブジェクトを上書きするだけ (冪等)。処理中に削除・GC された添付は、保存した
-  オブジェクトをその場で消す。
+- **試行の持ち主（レビュー v0.1.37 #4、移行 0086）**：claim のたびに `preview_generation`（claim 番号）を 1 増やし、
+  試行はその番号を持って仕事をする。結果を書くのは、行をロックしたうえで、まだ `pending`・削除されていない・
+  `preview_generation` が自分の番号のときだけ。リースより長くかかった試行の間に別の試行が取り直していれば、
+  古い試行は成功でも失敗でも何も書かない（それまでは古い試行の恒久的な失敗が先に届くと、新しい試行の成功が
+  書けず `failed` のままになった）。オブジェクトのキーにも番号を入れる（`attachments/{id}.preview.{n}.pdf` /
+  `.webp`）ので、古い試行は新しい試行のオブジェクトを上書きも削除もできない。持ち主でなくなった試行・処理中に
+  削除・GC された添付では、その試行が保存したオブジェクト（自分の番号のキーだけ）をその場で消す。
+- **途中までの保存（レビュー v0.1.37 #9）**：保存するキーは put の前に記録し、失敗・取り消し（停止）のときは
+  記録したキーを消す（PDF は保存できてサムネイルの保存に失敗した、など。それまでは PDF が誰のものでもなく
+  残り、GC でも消えなかった）。プロセスごと止まって消せなかった分は、キーが番号から決まるので、その行の後の
+  試行が `ready` / `failed` で終わったときに番号 1 .. n-1 のキーを消し、GC も添付を消すときに番号 1 ..
+  `preview_generation` と番号の無い旧キー（M108）を消す（無いキーの削除は何もしない）。
 
 ### イベントとの順序
 
@@ -96,7 +105,8 @@ preview loop (app の中の 1 本のバックグラウンドループ、1 件ず
 - PDF の解析 (PDFium) は app のプロセスでなく子プロセス (`python -m app.modules.attachments.pdf_render`) で行い、
   30 秒で kill する。環境変数は `PATH` と `LC_ALL` だけ。出力は JSON 1 行 (4 KB まで) と WebP。描画は幅 800 px、
   高さは幅の 2 倍まで (とても縦長のページは縮める)。
-- 生成物の名前は `attachments/{id}.preview.pdf` / `.preview.webp` (利用者が決められる部分が無い)。
+- 生成物の名前は `attachments/{id}.preview.{n}.pdf` / `.preview.{n}.webp`（n は claim 番号。0086 より前に作ったものは
+  番号なし）で、利用者が決められる部分が無い。
 - 作るのはアップロードした本人のファイルだけ (アップロードの延長)。配信の権限は元のファイルと同じ
   (`get_for_access`: pending はアップロードした本人、attached はチャンネルを読める人、キャンバスは会話のメンバー)。
 

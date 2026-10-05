@@ -1,12 +1,13 @@
 """Document previews (M108, docs/PREVIEWS.md): queueing, the loop, retries, the API, the CLI."""
 
+import asyncio
 import io
 import uuid
 import zipfile
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import httpx
 import pytest
@@ -23,7 +24,7 @@ from app.modules.attachments import previews
 from app.modules.attachments import service as attachments
 from app.modules.attachments.blobstore import MemoryBlobStore
 from app.modules.attachments.models import Attachment
-from app.modules.attachments.preview_kinds import source_kind, wants_preview
+from app.modules.attachments.preview_kinds import pdf_key, source_kind, wants_preview
 from app.modules.users.models import User
 from tests.helpers import make_user
 
@@ -154,8 +155,8 @@ async def test_office_file_preview_flow_and_endpoints(
     out = (await client.get(f"/api/v1/attachments/{meta['id']}")).json()
     assert out["preview"] == {"status": "ready", "pages": 3, "width": 800, "height": 450}
     stored = await row(db, meta["id"])
-    assert stored.preview_pdf_key == f"attachments/{meta['id']}.preview.pdf"
-    assert stored.preview_thumb_key == f"attachments/{meta['id']}.preview.webp"
+    assert stored.preview_pdf_key == f"attachments/{meta['id']}.preview.1.pdf"
+    assert stored.preview_thumb_key == f"attachments/{meta['id']}.preview.1.webp"
     assert stored.preview_attempts == 1 and stored.preview_next_at is None
 
     thumb = await client.get(f"/api/v1/attachments/{meta['id']}/preview/thumbnail")
@@ -313,11 +314,16 @@ async def test_a_lease_that_runs_out_is_retried_and_finally_given_up(
     stored.preview_next_at = utcnow() - timedelta(seconds=1)
     await db.commit()
     claimed = await previews.claim_next(db, settings)
-    assert claimed == (uuid.UUID(meta["id"]), True)
+    assert claimed == previews.Claim(uuid.UUID(meta["id"]), True, 1)
     # Claimed rows are leased: a second claim does not take it.
     assert await previews.claim_next(db, settings) is None
     status = await previews.process_one(
-        db, app.state.blobs, app.state.preview_converter, settings, claimed[0], give_up=True
+        db,
+        app.state.blobs,
+        app.state.preview_converter,
+        settings,
+        claimed.attachment_id,
+        give_up=True,
     )
     assert status == "failed"
     assert "gave up" in ((await row(db, meta["id"])).preview_error or "")
@@ -442,3 +448,238 @@ async def test_gotenberg_converter_maps_answers(tmp_path: Path) -> None:
     with pytest.raises(previews.PreviewError) as gone:
         await down.to_pdf(source, "docx", dest)
     assert not gone.value.permanent
+
+
+# --- Review v0.1.37 #4: a try that outlived its lease; #9: partial results -----------------------
+
+
+class ScriptedConverter(FakeConverter):
+    """Call n follows script[n]: (gate to wait for or None, error to raise or None). `entered`
+    is set when a call starts."""
+
+    def __init__(
+        self, script: list[tuple[asyncio.Event | None, previews.PreviewError | None]]
+    ) -> None:
+        super().__init__(pages=2)
+        self.script = script
+        self.entered = asyncio.Event()
+
+    async def to_pdf(self, source: Path, kind: str, dest: Path) -> None:
+        gate, error = self.script[len(self.calls)]
+        self.calls.append(kind)
+        self.entered.set()
+        if gate is not None:
+            await gate.wait()
+        if error is not None:
+            raise error
+        dest.write_bytes(pdf_bytes(self.pages))  # noqa: ASYNC240
+
+
+def preview_keys(blobs: MemoryBlobStore, attachment_id: str) -> list[str]:
+    return sorted(k for k in blobs.objects if k.startswith(f"attachments/{attachment_id}.preview"))
+
+
+async def race(
+    app: FastAPI,
+    db: AsyncSession,
+    settings: Settings,
+    attachment_id: str,
+    between: Callable[[], Awaitable[None]] | None = None,
+) -> tuple[str | None, str | None]:
+    """Try A is claimed and stalls in the converter past its lease; try B claims the row again
+    and finishes first; then A finishes. Returns (A's status, B's status)."""
+    converter: ScriptedConverter = app.state.preview_converter
+    first = await previews.claim_next(db, settings)
+    assert first is not None and first.generation == 1
+    gate = converter.script[0][0]
+    assert gate is not None
+    async with app.state.db.session_factory() as other:
+        stale = asyncio.create_task(
+            previews.process_one(
+                other,
+                app.state.blobs,
+                converter,
+                settings,
+                first.attachment_id,
+                generation=first.generation,
+            )
+        )
+        await converter.entered.wait()
+        later = utcnow() + previews._lease(settings) + timedelta(seconds=1)
+        second = await previews.claim_next(db, settings, now=later)
+        assert second is not None and second.generation == 2
+        assert second.attachment_id == uuid.UUID(attachment_id)
+        if between is not None:
+            await between()
+        newer = await previews.process_one(
+            db,
+            app.state.blobs,
+            converter,
+            settings,
+            second.attachment_id,
+            generation=second.generation,
+        )
+        gate.set()
+        older = await stale
+    return older, newer
+
+
+async def test_a_stale_failure_does_not_undo_the_newer_success(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    permanent = previews.PreviewError("converter answered 400: bad file", permanent=True)
+    settings = enable(app, ScriptedConverter([(asyncio.Event(), permanent), (None, None)]))
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    meta = await upload(client, "a.docx", docx_bytes(), DOCX)
+    older, newer = await race(app, db, settings, meta["id"])
+    await db.refresh(alice)  # the tries rolled the session back
+    assert (older, newer) == (None, "ready")
+    stored = await row(db, meta["id"])
+    assert stored.preview_status == "ready" and stored.preview_error is None
+    assert stored.preview_pdf_key == f"attachments/{meta['id']}.preview.2.pdf"
+    assert preview_keys(app.state.blobs, meta["id"]) == [
+        f"attachments/{meta['id']}.preview.2.pdf",
+        f"attachments/{meta['id']}.preview.2.webp",
+    ]
+    assert (await client.get(f"/api/v1/attachments/{meta['id']}/preview/pdf")).status_code == 200
+
+
+async def test_a_stale_success_neither_overrides_nor_deletes_the_newer_result(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    # B succeeds first, then A (the stale try) succeeds too: B's objects stay, A's go.
+    settings = enable(app, ScriptedConverter([(asyncio.Event(), None), (None, None)]))
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    meta = await upload(client, "a.docx", docx_bytes(), DOCX)
+    assert await race(app, db, settings, meta["id"]) == (None, "ready")
+    stored = await row(db, meta["id"])
+    assert stored.preview_thumb_key == f"attachments/{meta['id']}.preview.2.webp"
+    assert preview_keys(app.state.blobs, meta["id"]) == [
+        f"attachments/{meta['id']}.preview.2.pdf",
+        f"attachments/{meta['id']}.preview.2.webp",
+    ]
+
+    await db.refresh(alice)  # the tries rolled the session back
+    # B fails for good first, then A succeeds: B's verdict stands, A leaves nothing behind.
+    permanent = previews.PreviewError("converter answered 400: bad file", permanent=True)
+    settings = enable(app, ScriptedConverter([(asyncio.Event(), None), (None, permanent)]))
+    other = await upload(client, "b.docx", docx_bytes(), DOCX)
+    assert await race(app, db, settings, other["id"]) == (None, "failed")
+    assert (await row(db, other["id"])).preview_status == "failed"
+    assert preview_keys(app.state.blobs, other["id"]) == []
+
+
+async def test_a_file_deleted_between_two_tries_keeps_no_preview(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    settings = enable(app, ScriptedConverter([(asyncio.Event(), None), (None, None)]))
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    meta = await upload(client, "a.docx", docx_bytes(), DOCX)
+
+    async def delete() -> None:
+        await attachments.mark_ids_deleted_in_tx(db, [uuid.UUID(meta["id"])])
+        await db.commit()
+
+    assert await race(app, db, settings, meta["id"], between=delete) == (None, None)
+    assert preview_keys(app.state.blobs, meta["id"]) == []
+
+
+class ThumbnailFailingStore(MemoryBlobStore):
+    """Stores everything but a preview thumbnail (the PDF put succeeds, the WebP one fails)."""
+
+    async def put(self, key: str, data: bytes | IO[bytes], content_type: str) -> None:
+        if key.endswith(".webp") and ".preview." in key:
+            raise OSError("disk full")
+        await super().put(key, data, content_type)
+
+
+async def test_a_partial_preview_is_removed_and_the_gc_takes_the_rest(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    settings = enable(app, FakeConverter())
+    blobs = ThumbnailFailingStore()
+    app.state.blobs = blobs
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    meta = await upload(client, "a.docx", docx_bytes(), DOCX)
+    for attempt in range(1, settings.preview_max_attempts + 1):
+        assert await run_loop(app, settings) == 1
+        stored = await row(db, meta["id"])
+        assert stored.preview_attempts == attempt
+        # The PDF was stored, the thumbnail was not: the PDF was removed at once.
+        assert preview_keys(blobs, meta["id"]) == []
+        stored.preview_next_at = utcnow() - timedelta(seconds=1)
+        await db.commit()
+    assert stored.preview_status == "failed" and stored.preview_pdf_key is None
+    assert "could not store the preview" in (stored.preview_error or "")
+
+    # A process that stopped right after the PDF put (nothing recorded), and a PDF left by a
+    # release before the claim numbers: the GC removes them with the file.
+    await blobs.put(f"attachments/{meta['id']}.preview.2.pdf", b"%PDF", "application/pdf")
+    await blobs.put(f"attachments/{meta['id']}.preview.pdf", b"%PDF", "application/pdf")
+    await attachments.gc(db, blobs, now=utcnow() + timedelta(hours=25), pending_ttl_hours=24)
+    assert not [k for k in blobs.objects if meta["id"] in k]
+
+
+async def test_a_try_that_stopped_after_a_partial_write_is_cleaned_up_by_the_next(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    settings = enable(app, FakeConverter())
+    blobs: MemoryBlobStore = app.state.blobs
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    meta = await upload(client, "a.docx", docx_bytes(), DOCX)
+    # Try 1 was claimed, stored its PDF and the process stopped (the lease runs out).
+    first = await previews.claim_next(db, settings)
+    assert first is not None
+    orphan = pdf_key(first.attachment_id, first.generation)
+    await blobs.put(orphan, b"%PDF", "application/pdf")
+    later = utcnow() + previews._lease(settings) + timedelta(seconds=1)
+    second = await previews.claim_next(db, settings, now=later)
+    assert second is not None and second.generation == 2
+    status = await previews.process_one(
+        db,
+        blobs,
+        app.state.preview_converter,
+        settings,
+        second.attachment_id,
+        generation=second.generation,
+    )
+    assert status == "ready"
+    assert preview_keys(blobs, meta["id"]) == [
+        f"attachments/{meta['id']}.preview.2.pdf",
+        f"attachments/{meta['id']}.preview.2.webp",
+    ]
+
+
+async def test_a_cancelled_try_removes_what_it_stored(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """A shutdown cancels the loop between the PDF put and the thumbnail put."""
+    settings = enable(app, FakeConverter())
+    gate = asyncio.Event()
+
+    class SlowThumbnailStore(MemoryBlobStore):
+        async def put(self, key: str, data: bytes | IO[bytes], content_type: str) -> None:
+            await super().put(key, data, content_type)
+            if key.endswith(".webp") and ".preview." in key:
+                gate.set()
+                await asyncio.sleep(3600)
+
+    blobs = SlowThumbnailStore()
+    app.state.blobs = blobs
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    meta = await upload(client, "a.docx", docx_bytes(), DOCX)
+    task = asyncio.create_task(
+        previews.process_due(app.state.db, blobs, app.state.preview_converter, settings)
+    )
+    await gate.wait()
+    assert len(preview_keys(blobs, meta["id"])) == 2
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert preview_keys(blobs, meta["id"]) == []

@@ -25,7 +25,7 @@ from app.modules.attachments import videos
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
 from app.modules.attachments.models import Attachment
-from app.modules.attachments.preview_kinds import queue_on_upload
+from app.modules.attachments.preview_kinds import possible_preview_keys, queue_on_upload
 from app.modules.attachments.schemas import (
     AttachmentOut,
     FileItem,
@@ -460,7 +460,13 @@ async def gc(
 
 async def _delete_blobs(blobs: BlobStore, attachment: Attachment) -> None:
     await blobs.delete(attachment.storage_key)
-    for key in _derived_keys(attachment):
+    keys = _derived_keys(attachment)
+    if attachment.preview_status != "none" or attachment.preview_generation:
+        # Review v0.1.37 #9: also what a preview try stored but never recorded (a try that failed
+        # or stopped after the PDF was written); the keys are predictable from the claim number.
+        possible = possible_preview_keys(attachment.id, attachment.preview_generation)
+        keys += [key for key in possible if key not in keys]
+    for key in keys:
         await blobs.delete(key)
 
 
