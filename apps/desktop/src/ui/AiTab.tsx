@@ -5,7 +5,7 @@ import { AI_CHARACTER_MAX, AI_EFFORTS, AI_MODELS, AI_PROVIDERS, type AiAgentCrea
 import type { AppController } from "../state/app";
 import { Badge, Button, cn, Field, Input, Modal, Textarea } from "./primitives";
 import { usernameHint } from "./username";
-import { t } from "../i18n";
+import { intlLocale, t } from "../i18n";
 
 
 const SELECT = "h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm";
@@ -92,13 +92,13 @@ export function AiTab({ controller }: { controller: AppController }) {
   return (
     <div className="mt-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-muted">メンションに返事をするボットです。要約には、API キーのある最初の有効なボットのモデルを使います。</span>
+        <span className="text-sm text-muted">{t("aiAdmin.intro")}</span>
         <Button size="sm" className="shrink-0" onClick={() => setEditing("new")}>
-          <Bot size={14} /> ボットを作成
+          <Bot size={14} /> {t("aiAdmin.create")}
         </Button>
       </div>
       {rows && (
-        <ul aria-label="AI のボット" className="divide-y divide-line rounded-xl border border-line">
+        <ul aria-label={t("aiAdmin.bots")} className="divide-y divide-line rounded-xl border border-line">
           {rows.map((row) => (
             <li key={row.id} className={cn("flex flex-wrap items-center gap-3 px-3 py-2 text-sm", !row.enabled && "opacity-60")}>
               <Bot size={16} className="shrink-0 text-muted" />
@@ -106,23 +106,23 @@ export function AiTab({ controller }: { controller: AppController }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-medium">{row.name}</span>
                   <span className="text-xs text-muted">@{row.username}</span>
-                  <Badge tone={row.enabled ? "accent" : "neutral"}>{row.enabled ? "有効" : "停止中"}</Badge>
-                  {row.allow_private && <Badge>非公開も可</Badge>}
-                  {keyMissing(providers, row.model) && <Badge tone="danger">API キー未設定</Badge>}
+                  <Badge tone={row.enabled ? "accent" : "neutral"}>{row.enabled ? t("admin.users.filter.active") : t("workflow.paused")}</Badge>
+                  {row.allow_private && <Badge>{t("aiAdmin.privateOk")}</Badge>}
+                  {keyMissing(providers, row.model) && <Badge tone="danger">{t("aiAdmin.noKey")}</Badge>}
                 </div>
                 <div className="truncate text-[11px] text-muted">
-                  {aiModelLabel(row.model)} · 考える量 {AI_EFFORTS.find((e) => e.value === row.effort)?.label ?? row.effort}
+                  {aiModelLabel(row.model)} · {t("aiAdmin.effort")} {AI_EFFORTS.find((e) => e.value === row.effort)?.label ?? row.effort}
                 </div>
               </div>
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(row)}>
-                <Pencil size={14} /> 編集
+                <Pencil size={14} /> {t("canvas.edit")}
               </Button>
               <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setDeleting(row)}>
-                <Trash2 size={14} /> 削除
+                <Trash2 size={14} /> {t("common.delete")}
               </Button>
             </li>
           ))}
-          {rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">ボットはまだありません</li>}
+          {rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("aiAdmin.none")}</li>}
         </ul>
       )}
       {usage && <UsageSection controller={controller} usage={usage} />}
@@ -147,12 +147,12 @@ export function AiTab({ controller }: { controller: AppController }) {
         />
       )}
       {deleting && (
-        <Modal onClose={() => setDeleting(null)} title={`${deleting.name} を削除しますか？`} className="w-[420px]">
-          <p className="mt-3 text-sm text-muted">ボットはすべてのチャンネルから抜けて無効になります。これまでの投稿はそのまま残ります。</p>
+        <Modal onClose={() => setDeleting(null)} title={t("aiAdmin.deleteTitle", { name: deleting.name })} className="w-[420px]">
+          <p className="mt-3 text-sm text-muted">{t("aiAdmin.deleteNote")}</p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setDeleting(null)}>キャンセル</Button>
+            <Button variant="secondary" onClick={() => setDeleting(null)}>{t("common.cancel")}</Button>
             <Button variant="danger" disabled={busy} onClick={() => { const target = deleting; void run(async () => { await controller.api!.adminDeleteAiAgent(target.id); }).then((ok) => { if (ok) setDeleting(null); }); }}>
-              削除する
+              {t("common.deleteConfirm")}
             </Button>
           </div>
         </Modal>
@@ -165,28 +165,28 @@ function UsageSection({ controller, usage }: { controller: AppController; usage:
   const share = usage.budget_usd > 0 ? Math.min(1, usage.total_cost_usd / usage.budget_usd) : 1;
   const users = controller.store.users;
   return (
-    <section aria-label="今月の使用量" className="space-y-3 rounded-xl border border-line p-3">
+    <section aria-label={t("aiAdmin.usage")} className="space-y-3 rounded-xl border border-line p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold">今月の使用量 ({usage.month})</h3>
+        <h3 className="text-sm font-semibold">{t("aiAdmin.usageMonth", { month: usage.month })}</h3>
         <span className="text-sm tabular-nums" data-testid="ai-usage-total">
-          {formatUsd(usage.total_cost_usd)} / 予算 {formatUsd(usage.budget_usd)} · {usage.total_runs} 回
+          {t("aiAdmin.usageLine", { cost: formatUsd(usage.total_cost_usd), budget: formatUsd(usage.budget_usd), runs: usage.total_runs })}
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-panel-2" role="meter" aria-label="予算の使用" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)}>
+      <div className="h-2 overflow-hidden rounded-full bg-panel-2" role="meter" aria-label={t("aiAdmin.budgetUse")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)}>
         <div className={cn("h-full rounded-full", share >= 1 ? "bg-rose-500" : share >= 0.8 ? "bg-amber-500" : "bg-accent")} style={{ width: `${share * 100}%` }} />
       </div>
       {usage.by_agent.length > 0 && (
-        <table className="w-full text-xs" aria-label="ボットごと">
+        <table className="w-full text-xs" aria-label={t("aiAdmin.byBot")}>
           <thead className="text-muted">
-            <tr><th className="py-1 text-left font-medium">ボット</th><th className="text-right font-medium">回数</th><th className="text-right font-medium">入力</th><th className="text-right font-medium">出力</th><th className="text-right font-medium">費用</th></tr>
+            <tr><th className="py-1 text-left font-medium">{t("aiAdmin.bot")}</th><th className="text-right font-medium">{t("aiAdmin.runs")}</th><th className="text-right font-medium">{t("aiAdmin.input")}</th><th className="text-right font-medium">{t("aiAdmin.output")}</th><th className="text-right font-medium">{t("aiAdmin.cost")}</th></tr>
           </thead>
           <tbody className="tabular-nums">
             {usage.by_agent.map((row) => (
               <tr key={row.agent_id} className="border-t border-line">
                 <td className="py-1">{row.name}</td>
                 <td className="text-right">{row.runs}</td>
-                <td className="text-right">{row.input_tokens.toLocaleString("ja-JP")}</td>
-                <td className="text-right">{row.output_tokens.toLocaleString("ja-JP")}</td>
+                <td className="text-right">{row.input_tokens.toLocaleString(intlLocale())}</td>
+                <td className="text-right">{row.output_tokens.toLocaleString(intlLocale())}</td>
                 <td className="text-right">{formatUsd(row.cost_usd)}</td>
               </tr>
             ))}
@@ -194,16 +194,16 @@ function UsageSection({ controller, usage }: { controller: AppController; usage:
         </table>
       )}
       {usage.by_user.length > 0 && (
-        <table className="w-full text-xs" aria-label="人ごと">
+        <table className="w-full text-xs" aria-label={t("aiAdmin.byPerson")}>
           <thead className="text-muted">
-            <tr><th className="py-1 text-left font-medium">頼んだ人</th><th className="text-right font-medium">回数</th><th className="text-right font-medium">費用</th></tr>
+            <tr><th className="py-1 text-left font-medium">{t("aiAdmin.requester")}</th><th className="text-right font-medium">{t("aiAdmin.runs")}</th><th className="text-right font-medium">{t("aiAdmin.cost")}</th></tr>
           </thead>
           <tbody className="tabular-nums">
             {usage.by_user.map((row) => {
               const user = users.get(row.user_id);
               return (
                 <tr key={row.user_id} className="border-t border-line">
-                  <td className="py-1">{user ? `${user.display_name} (@${user.username})` : "(不明なユーザー)"}</td>
+                  <td className="py-1">{user ? `${user.display_name} (@${user.username})` : t("aiAdmin.unknownUser")}</td>
                   <td className="text-right">{row.runs}</td>
                   <td className="text-right">{formatUsd(row.cost_usd)}</td>
                 </tr>
@@ -212,7 +212,7 @@ function UsageSection({ controller, usage }: { controller: AppController; usage:
           </tbody>
         </table>
       )}
-      {usage.total_runs === 0 && <p className="text-xs text-muted">今月はまだ使われていません</p>}
+      {usage.total_runs === 0 && <p className="text-xs text-muted">{t("aiAdmin.unused")}</p>}
     </section>
   );
 }
@@ -235,38 +235,38 @@ function AgentEditor({ row, busy, providers, onClose, onSave }: { row: AiAgentOu
   };
   const tooLong = form.character.length > AI_CHARACTER_MAX;
   return (
-    <Modal onClose={onClose} title={row ? `${row.name} を編集` : "AI のボットを作成"} className="w-[560px]">
+    <Modal onClose={onClose} title={row ? t("aiAdmin.editTitle", { name: row.name }) : t("aiAdmin.createTitle")} className="w-[560px]">
       <form className="mt-4 space-y-3" onSubmit={submit}>
         <div className="grid grid-cols-2 gap-3 max-md:grid-cols-1">
-          <Field label="名前 (投稿者として表示されます)">
-            <Input value={form.name} maxLength={80} required autoFocus placeholder="例: ちくわ" onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Field label={t("aiAdmin.nameLabel")}>
+            <Input value={form.name} maxLength={80} required autoFocus placeholder={t("aiAdmin.namePlaceholder")} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
           {row ? (
-            <Field label="ユーザー名" hint="管理 →「ユーザー」の「ユーザー名を変更」で変えられます">
+            <Field label={t("admin.users.sort.username")} hint={t("aiAdmin.usernameHint")}>
               <Input value={`@${row.username}`} disabled readOnly />
             </Field>
           ) : (
             <Field label={t("admin.users.usernameLabel")} hint={usernameHint()}>
-              <Input value={form.username} pattern="[a-z0-9._-]{3,32}" required placeholder="例: ai-chikuwa" onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} />
+              <Input value={form.username} pattern="[a-z0-9._-]{3,32}" required placeholder={t("aiAdmin.usernamePlaceholder")} onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} />
             </Field>
           )}
         </div>
-        <Field label="性格 (口調・役割。システムプロンプトに入ります)" hint={`${form.character.length} / ${AI_CHARACTER_MAX} 字`}>
-          <Textarea value={form.character} rows={6} className={cn(tooLong && "border-danger")} placeholder="例: 研究室の先輩。やさしく、短く答える。わからないことはわからないと言う。" onChange={(e) => setForm({ ...form, character: e.target.value })} />
+        <Field label={t("aiAdmin.character")} hint={t("aiAdmin.characterCount", { count: form.character.length, max: AI_CHARACTER_MAX })}>
+          <Textarea value={form.character} rows={6} className={cn(tooLong && "border-danger")} placeholder={t("aiAdmin.characterPlaceholder")} onChange={(e) => setForm({ ...form, character: e.target.value })} />
         </Field>
         <div className="grid grid-cols-2 gap-3 max-md:grid-cols-1">
-          <Field label="モデル" hint={keyMissing(providers, form.model) ? `サーバーに ${aiProviderLabel(aiProviderOf(form.model))} の API キーが設定されていません (このボットは応答できません)` : undefined}>
+          <Field label={t("aiAdmin.model")} hint={keyMissing(providers, form.model) ? t("aiAdmin.modelNoKey", { provider: aiProviderLabel(aiProviderOf(form.model)) }) : undefined}>
             <select value={form.model} className={SELECT} onChange={(e) => setForm({ ...form, model: e.target.value as AiModel })}>
               {AI_PROVIDERS.map((p) => (
-                <optgroup key={p.value} label={`${p.label}${providerConfigured(providers, p.value) === false ? " (キー未設定)" : ""}`}>
+                <optgroup key={p.value} label={`${p.label}${providerConfigured(providers, p.value) === false ? t("aiAdmin.keyNotSet") : ""}`}>
                   {AI_MODELS.filter((m) => m.provider === p.value).map((m) => (
-                    <option key={m.value} value={m.value}>{m.label}{m.value === DEFAULT_AI_MODEL ? " (既定)" : ""}</option>
+                    <option key={m.value} value={m.value}>{m.label}{m.value === DEFAULT_AI_MODEL ? t("aiAdmin.defaultMark") : ""}</option>
                   ))}
                 </optgroup>
               ))}
             </select>
           </Field>
-          <Field label="考える量">
+          <Field label={t("aiAdmin.effort")}>
             <select value={form.effort} className={SELECT} onChange={(e) => setForm({ ...form, effort: e.target.value as AiEffort })}>
               {AI_EFFORTS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
@@ -275,17 +275,17 @@ function AgentEditor({ row, busy, providers, onClose, onSave }: { row: AiAgentOu
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--accent)]" checked={form.allow_private} onChange={(e) => setForm({ ...form, allow_private: e.target.checked })} />
           <span>
-            非公開チャンネルと DM を許す
-            <span className="block text-xs text-muted">オフのときは公開チャンネルにだけ入れられます</span>
+            {t("aiAdmin.allowPrivate")}
+            <span className="block text-xs text-muted">{t("aiAdmin.allowPrivateNote")}</span>
           </span>
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-          有効
+          {t("admin.users.filter.active")}
         </label>
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" size="sm" disabled={busy || !form.name.trim() || tooLong || (!row && !form.username.trim())}>{row ? "保存" : "作成"}</Button>
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" size="sm" disabled={busy || !form.name.trim() || tooLong || (!row && !form.username.trim())}>{row ? t("common.save") : t("common.create")}</Button>
         </div>
       </form>
     </Modal>
