@@ -744,6 +744,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attachments/{attachment_id}/preview/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Pdf
+         * @description M108: every page of a document's preview as a PDF (the converter's, or a PDF upload
+         *     itself). Inline, and sandboxed by CSP (SECURITY.md §4 「文書のプレビュー」).
+         */
+        get: operations["preview_pdf_api_v1_attachments__attachment_id__preview_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attachments/{attachment_id}/preview/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Thumbnail
+         * @description M108: the first page of a document's preview (WebP).
+         */
+        get: operations["preview_thumbnail_api_v1_attachments__attachment_id__preview_thumbnail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}/thumbnail": {
         parameters: {
             query?: never;
@@ -4596,10 +4637,31 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            preview?: components["schemas"]["AttachmentPreviewOut"] | null;
             /** Size Bytes */
             size_bytes: number;
             /** Status */
             status: string;
+            /** Width */
+            width: number | null;
+        };
+        /**
+         * AttachmentPreviewOut
+         * @description M108 (docs/PREVIEWS.md): a PDF's or Office file's preview. 'pending': being made (show
+         *     「プレビューを作成中…」); 'ready': the first page at GET /attachments/{id}/preview/thumbnail
+         *     (WebP, width x height pixels) and every page at GET /attachments/{id}/preview/pdf; 'failed':
+         *     none (a plain file card).
+         */
+        AttachmentPreviewOut: {
+            /** Height */
+            height: number | null;
+            /** Pages */
+            pages: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "ready" | "failed";
             /** Width */
             width: number | null;
         };
@@ -10253,6 +10315,68 @@ export interface operations {
             query?: {
                 inline?: boolean;
             };
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_pdf_api_v1_attachments__attachment_id__preview_pdf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_thumbnail_api_v1_attachments__attachment_id__preview_thumbnail_get: {
+        parameters: {
+            query?: never;
             header?: never;
             path: {
                 attachment_id: string;

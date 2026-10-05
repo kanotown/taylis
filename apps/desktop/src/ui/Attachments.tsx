@@ -4,7 +4,8 @@ import { type ReactNode, useCallback, useEffect, useRef, useState, useSyncExtern
 
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { fitBox, formatDuration, groupAttachments, hasPoster, loadsInlineVideo, mediaKind, photoBox, photoLayout, VIDEO_TILE_MAX, VIDEO_TILE_PLACEHOLDER } from "./attachmentLayout";
+import { DocumentCard } from "./DocumentPreview";
+import { documentPreviewState, fitBox, formatDuration, groupAttachments, hasPoster, loadsInlineVideo, mediaKind, photoBox, photoLayout, VIDEO_TILE_MAX, VIDEO_TILE_PLACEHOLDER } from "./attachmentLayout";
 import { scrollParent } from "./LinkPreviewCard";
 import { Button, cn } from "./primitives";
 import { acquireVideo, knownVideoSize, rememberVideoSize, subscribeVideoSizes } from "./videoSource";
@@ -17,7 +18,8 @@ export function formatSize(bytes: number): string {
 
 /**
  * Images show their thumbnail (fetched with the bearer token), videos a tile in their own shape that plays in the
- * viewer (M38), other files a download row. One photo keeps its own shape; two or more are equal squares in a row
+ * viewer (M38), PDFs and Office files with a preview a card with the first page (M108, DocumentPreview.tsx), other
+ * files a download row. One photo keeps its own shape; two or more are equal squares in a row
  * that wraps only when it is full (M38, as Slack; it was a two-column grid, so a third photo always broke the line).
  * The column is `items-start`: a tile is only as wide as its picture, so a click beside it does nothing (a stretched
  * button made the whole message width open the photo).
@@ -40,8 +42,11 @@ export function AttachmentList({ attachments, controller }: { attachments: Attac
         </div>
       )}
       {files.length > 0 && (
-        <div className="flex max-w-full flex-wrap gap-2">
-          {files.map((attachment) => (
+        <div className="flex max-w-full flex-wrap items-start gap-2">
+          {files.map((attachment) => documentPreviewState(attachment) ? (
+            // M108: a PDF / Office file with a preview (being made, or ready).
+            <DocumentCard key={attachment.id} attachment={attachment} controller={controller} />
+          ) : (
             <button
               key={attachment.id}
               type="button"
