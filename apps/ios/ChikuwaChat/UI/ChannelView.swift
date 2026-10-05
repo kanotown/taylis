@@ -6,9 +6,14 @@ struct ChannelView: View {
     @Bindable var controller: AppController
     let channelId: String
     @Binding var pendingThreadId: String?
+    /// The thread opened or closed here: MainView carries it across a change of layout, and in the split shows it in its
+    /// pane (MOBILE_UI.md §12).
+    var onThreadChange: ((String?) -> Void)? = nil
     @State private var sheet: ChannelSheet?
-    /// M29: the thread and the channel's details are pages pushed over the conversation (Slack), not sheets.
+    /// M29: the thread and the channel's details are pages pushed over the conversation (Slack), not sheets. On an
+    /// iPad's split (MOBILE_UI.md §12) the thread is MainView's pane beside the conversation instead (`onThreadChange`).
     @State private var thread: ThreadTarget?
+    @Environment(\.threadInPane) private var threadInPane
     @State private var showInfo = false
     /// M66: the summary sheet's request (the ⋯ 「要約」).
     @State private var aiSummary: AiSummaryRequest?
@@ -121,7 +126,7 @@ struct ChannelView: View {
         let rows = messages
         // Under any page or sheet (the thread, channel info, a message's menu sheets, MainView's search or settings) or
         // the pins / files tab (M29) the list still follows the bottom; rows arriving there are not seen.
-        let looking = thread == nil && !showInfo && tab == .messages && sheet == nil && scenePhase == .active && !cover.covered && !veiled
+        let looking = (thread == nil || threadInPane) && !showInfo && tab == .messages && sheet == nil && scenePhase == .active && !cover.covered && !veiled
         let visible = looking ? rows.filter { fullyShown(visibleFrames[$0.id]) } : []
         let onScreen = looking ? Set(visibleFrames.compactMap { partlyShown($0.value) ? $0.key : nil }) : []
         var next = anchor
@@ -464,7 +469,9 @@ struct ChannelView: View {
                             .padding(.vertical, 8) // the side margin is each row's (margin)
                             // Exactly as wide as the list: a row wider than the screen made the whole stack wider, and the
                             // scroll view showed it centred, the messages shifted to the left (testers, 2026-09-29).
-                            .containerRelativeFrame(.horizontal)
+                            // The viewport's width, not `containerRelativeFrame`: in an iPad's split detail column that
+                            // laid the conversation out again and again without end (a frozen app, MOBILE_UI.md §12).
+                            .frame(width: viewport.size.width)
                             // A new newest row: the others move up for it, animated (the list keeps its origin by itself).
                             .animation(positioned ? .easeOut(duration: 0.25) : nil, value: items.last?.id)
                             .background(StatusBarTapStays())
@@ -673,9 +680,22 @@ struct ChannelView: View {
         }
         .aiSummarySheet(controller, request: $aiSummary)
         .loadsSummaryTarget(controller, channelId: channelId)
-        .navigationDestination(item: $thread) { target in ThreadView(controller: controller, channelId: channelId, parentId: target.id) }
+        .navigationDestination(item: Binding(get: { threadInPane ? nil : thread }, set: { thread = $0 })) { target in
+            ThreadView(controller: controller, channelId: channelId, parentId: target.id)
+        }
+        .onChange(of: thread?.id) { _, id in
+            // The split (MOBILE_UI.md §12): MainView shows the thread in its pane beside the detail column (an inspector
+            // here, inside the conversation, laid it out without end); nothing is pushed or kept here.
+            if threadInPane {
+                guard let id else { return }
+                onThreadChange?(id)
+                thread = nil
+            } else {
+                onThreadChange?(id)
+            }
+        }
         .navigationDestination(isPresented: $showInfo) { ChannelInfoView(controller: controller, channelId: channelId) }
-        .onChange(of: thread == nil && !showInfo) { _, back in if back { sheetClosed() } }
+        .onChange(of: (thread == nil || threadInPane) && !showInfo) { _, back in if back { sheetClosed() } }
         .onChange(of: tab) { _, tab in
             if tab == .messages { sheetClosed() } else { KeyboardBehavior.dismiss() } // the input is under the pins / files
         }
@@ -1727,6 +1747,10 @@ struct ComposerView: View {
         Button(action: send) {
             Image(systemName: "arrow.up.circle.fill").font(.system(size: size)).foregroundStyle(Color.accentColor)
         }
+        // A hardware keyboard (iPad): ⌘Return sends, Return makes a new line (the desktop's default; a plain Return also
+        // confirms a Japanese conversion). Only the composer being typed in, with a thread's composer beside it.
+        .keyboardShortcut(focused ? KeyboardShortcut(.return, modifiers: .command) : nil)
+        .hoverEffect(.highlight)
         .accessibilityLabel("送信")
     }
 
@@ -1913,7 +1937,8 @@ struct ComposerView: View {
             focused = true
         }
         // The picker is presented from the composer itself; a PhotosPicker inside a Menu never opens.
-        .sheet(isPresented: $showEmojiPicker) {
+        // A popover beside the composer on an iPad's regular width, the sheet on a phone.
+        .adaptivePopover(isPresented: $showEmojiPicker) {
             EmojiPickerView(custom: controller.map { Array($0.store.customEmoji.values) } ?? [], images: controller?.store.emojiImages ?? [:],
                             animations: controller?.store.emojiAnimations ?? [:],
                             onNeedImage: { emoji in controller?.loadEmojiImage(emoji) },

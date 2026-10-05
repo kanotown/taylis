@@ -91,7 +91,7 @@ struct ThreadView: View {
                         // the rows at its far end — the screen's top in the flipped list. Layout only: a longer thread
                         // is unchanged, and the newest reply stays at the origin (the keyboard, arrivals).
                         .frame(minHeight: viewport.size.height, alignment: .bottom)
-                        .containerRelativeFrame(.horizontal) // never wider than the list (ChannelView)
+                        .frame(width: viewport.size.width) // never wider than the list (ChannelView)
                         .animation(positioned || provisional ? .easeOut(duration: 0.25) : nil, value: replies.last?.rowKey)
                         .background(StatusBarTapStays())
                     }

@@ -7,6 +7,16 @@ struct ChannelListView: View {
     /// M37: 「移動・検索」 and 「すべての DM」 (the DM tab), which MainView shows.
     var onJump: () -> Void = {}
     var onAllDms: () -> Void = {}
+    /// The iPad's sidebar (MOBILE_UI.md §12): the row of what the detail column shows, highlighted.
+    var current: String? = nil
+    /// The iPad's sidebar: 「アクティビティ」 as a row (the phone has its tab).
+    var activity: SidebarActivity? = nil
+    struct SidebarActivity {
+        let count: Int
+        let mention: Bool
+        let selected: Bool
+        let open: () -> Void
+    }
     /// M37 「未読をまとめる」 (replaces M12's 「未読だけ」 filter): unread conversations gather in a section of their own.
     @AppStorage(Self.groupUnreadKey) private var groupUnread = false
     static let groupUnreadKey = "home.groupUnread"
@@ -56,6 +66,7 @@ struct ChannelListView: View {
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 6, trailing: 16))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
+            if let activity { activityRow(activity) }
             tiles
                 .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
                 .listRowSeparator(.hidden)
@@ -223,8 +234,9 @@ struct ChannelListView: View {
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(row) { tile in
-                    Button { selection = tile.selectionId } label: { tileLabel(tile) }
+                    Button { selection = tile.selectionId } label: { tileLabel(tile, selected: current == tile.selectionId) }
                         .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
                         .accessibilityLabel(tile.title)
                         .accessibilityValue(tile.accessibilityValue)
                 }
@@ -234,7 +246,7 @@ struct ChannelListView: View {
     }
 
     /// An icon over the name, the number beside the icon (red for a mention or a fired reminder).
-    private func tileLabel(_ tile: HomeTile) -> some View {
+    private func tileLabel(_ tile: HomeTile, selected: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: tile.icon).font(.system(size: 17, weight: .medium)).frame(height: 22)
@@ -253,8 +265,8 @@ struct ChannelListView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .frame(minWidth: 84, alignment: .leading)
-        .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .opacity(tile.dimmed ? 0.5 : 1)
+        .background(selected ? Color.accentColor.opacity(0.18) : Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .opacity(tile.dimmed && !selected ? 0.5 : 1)
         .contentShape(Rectangle())
     }
 
@@ -404,6 +416,38 @@ struct ChannelListView: View {
             .listRowSeparator(.hidden)
     }
 
+    /// The sidebar's open row: a tinted rounded rectangle (as a selected List row); other rows keep the list's own.
+    private var currentBackground: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.accentColor.opacity(0.18)).padding(.horizontal, 8)
+    }
+
+    /// The sidebar's 「アクティビティ」 (the phone's tab), with its badge: red with a mention among its items.
+    private func activityRow(_ activity: SidebarActivity) -> some View {
+        Button(action: activity.open) {
+            HStack(spacing: 10) {
+                Image(systemName: "bell").font(.system(size: 16, weight: .medium)).foregroundStyle(.secondary).frame(width: 22)
+                Text("アクティビティ").fontWeight(activity.count > 0 ? .semibold : .regular)
+                Spacer(minLength: 4)
+                if activity.count > 0 {
+                    Text(activity.count > 99 ? "99+" : "\(activity.count)")
+                        .font(.caption2).bold().foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(activity.mention ? Color.red : Color.accentColor, in: Capsule())
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityLabel("アクティビティ")
+        .accessibilityValue(activity.count > 0 ? "未読 \(activity.count) 件" : "")
+        .accessibilityAddTraits(activity.selected ? .isSelected : [])
+        .listRowInsets(Self.rowInsets)
+        .listRowSeparator(.hidden)
+        .listRowBackground(activity.selected ? currentBackground : nil)
+    }
+
     /// A row's insets: the row itself is 44 pt high (MOBILE_UI.md §6.1: one line, no topic).
     static let rowInsets = EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
 
@@ -414,9 +458,10 @@ struct ChannelListView: View {
     private func row(_ channel: ChannelState) -> some View {
         let badge = channel.badgeContribution
         let muted = channel.isMuted
-        let unread = channel.hasUnread(meId: meId) && channel.id != selection
+        let open = channel.id == selection || channel.id == current
+        let unread = channel.hasUnread(meId: meId) && !open
         // M24: someone else's times with new posts but no mention: not bold, a faint dot (SYNC_PROTOCOL.md §10.5).
-        let quietUnread = !unread && channel.id != selection && channel.unreadCount > 0 && channel.isQuiet(meId: meId)
+        let quietUnread = !unread && !open && channel.unreadCount > 0 && channel.isQuiet(meId: meId)
         let store = controller.store
         return Button { selection = channel.id } label: {
             HStack(spacing: 10) {
@@ -456,8 +501,11 @@ struct ChannelListView: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(channel.id == current ? .isSelected : [])
+        .hoverEffect(.highlight)
         .listRowInsets(Self.rowInsets)
         .listRowSeparator(.hidden)
+        .listRowBackground(channel.id == current ? currentBackground : nil)
         .contextMenu { rowMenu(channel) }
         .swipeActions(edge: .leading) {
             Button(starred(channel) ? "お気に入りから外す" : "お気に入り", systemImage: starred(channel) ? "star.slash" : "star") {
