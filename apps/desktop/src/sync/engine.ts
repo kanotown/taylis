@@ -251,6 +251,9 @@ export class SyncEngine {
   private activityRefreshCancel: (() => void) | null = null;
   /** M112: reservation.updated arrives once per change (and a press brings several): one read for a burst. */
   private reservationReload: ReturnType<typeof setTimeout> | null = null;
+  /** Review v0.1.37 #6: the newest reservation read started, and the one whose answer is shown. */
+  private reservationReadSeq = 0;
+  private reservationShownSeq = 0;
   private activityRefresh: Promise<void> | null = null;
   private threadRefresh: Promise<void> | null = null;
   /** "channel[:parent]" → when the last typing frame went out. */
@@ -771,8 +774,14 @@ export class SyncEngine {
    */
   async loadReservationPools(): Promise<void> {
     if (!this.deps.api.reservationPools) return;
+    // Review v0.1.37 #6: reads may overlap (bootstrap and an event); an answer from a read that started before the
+    // one already shown must not put the older state back.
+    const seq = ++this.reservationReadSeq;
     try {
-      this.deps.store.setReservationPools(await this.deps.api.reservationPools());
+      const pools = await this.deps.api.reservationPools();
+      if (seq < this.reservationShownSeq) return;
+      this.reservationShownSeq = seq;
+      this.deps.store.setReservationPools(pools);
     } catch (err) {
       console.warn("could not load reservation pools", err);
     }
