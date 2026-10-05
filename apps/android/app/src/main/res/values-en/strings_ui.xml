@@ -1696,6 +1696,7 @@
     <string name="you_screens_empty_slot">Empty</string>
     <string name="main_tabs_dm">DM</string>
     <string name="notification_channel_messages">Messages</string>
+    <string name="notification_me">You</string>
     <string name="you_language">Language</string>
     <string name="you_language_hint">Your other devices and the server\'s notifications use this language too</string>
     <plurals name="composer_message_max_length">

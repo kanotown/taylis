@@ -24,6 +24,14 @@ data class PushMessage(
     val taskId: String? = null,
     /** M73: the canvas that newly mentions me (`kind = canvas`, CANVAS.md §18.1); `channel_id` is its conversation. */
     val canvasId: String? = null,
+    /**
+     * PUSH_NOTIFICATIONS.md §16 (`kind = message`): who sent it, their picture's version (null without one) and the
+     * conversation's type (public / private / dm / group_dm), for the MessagingStyle notification with the sender's picture.
+     */
+    val senderId: String? = null,
+    val senderName: String? = null,
+    val senderAvatar: String? = null,
+    val channelType: String? = null,
 ) {
     val isSilent: Boolean get() = kind == "silent"
 
@@ -47,6 +55,23 @@ data class PushMessage(
 
     /** M39: someone reacted to my message (PUSH_NOTIFICATIONS.md §4); the tap opens that message. */
     val isReaction: Boolean get() = kind == "reaction"
+
+    /**
+     * §16: a person's message, shown as a conversation (MessagingStyle, the sender's picture). Null for anything else, and
+     * for a server that sends no sender (the plain notification then).
+     */
+    val conversation: ConversationNote? get() {
+        if (kind != "message" || channelId == null) return null
+        val sender = senderId ?: return null
+        val group = ConversationNote.isGroup(channelType)
+        return ConversationNote(
+            senderId = sender,
+            senderName = senderName ?: (if (group) subtitle else title)?.takeIf { it.isNotBlank() } ?: "?",
+            senderAvatar = senderAvatar,
+            isGroup = group,
+            conversationTitle = if (group) title.takeIf { it.isNotBlank() } else null,
+        )
+    }
 
     /** "#general · Alice", or just the sender for a DM (the same title the in-app notifications use). */
     val displayTitle: String get() = listOfNotNull(title.takeIf { it.isNotBlank() }, subtitle?.takeIf { it.isNotBlank() }).joinToString(" · ")
@@ -91,6 +116,10 @@ data class PushMessage(
                 eventId = data["event_id"]?.takeIf { it.isNotBlank() },
                 taskId = data["task_id"]?.takeIf { it.isNotBlank() },
                 canvasId = data["canvas_id"]?.takeIf { it.isNotBlank() },
+                senderId = data["sender_id"]?.takeIf { it.isNotBlank() },
+                senderName = data["sender_name"]?.takeIf { it.isNotBlank() },
+                senderAvatar = data["sender_avatar"]?.takeIf { it.isNotBlank() },
+                channelType = data["channel_type"]?.takeIf { it.isNotBlank() },
             )
         }
     }
