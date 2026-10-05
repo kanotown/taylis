@@ -119,6 +119,7 @@ nav:
   - 管理者ガイド:
       - admin/index.md
       - ユーザーと招待・SSO: admin/users.md
+      - アナリティクス: admin/analytics.md
       - チャンネル: admin/channels.md
       - カスタム絵文字とセット: admin/emoji.md
       - 報告とモデレーション: admin/moderation.md
