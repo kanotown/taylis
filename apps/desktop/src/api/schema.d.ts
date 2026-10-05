@@ -15,7 +15,7 @@ export interface paths {
          * List Activity
          * @description Mentions of me, reactions to my messages and replies in threads I follow, newest first
          *     (M39); with `include=canvas_mention`, canvases that mention me too (M76, under all and
-         *     mentions).
+         *     mentions); with `include=reservation`, reservation notices (M112, under all).
          */
         get: operations["list_activity_api_v1_activity_get"];
         put?: never;
@@ -1857,17 +1857,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Pools
-         * @description The channel's pools, oldest first, with their holders and queue.
+         * List Channel Pools
+         * @deprecated
+         * @description Deprecated (M112): pools are no longer a channel's. Always empty, so the clients of
+         *     M99-M111 show no chips; the reservations page reads GET /reservation-pools.
          */
-        get: operations["list_pools_api_v1_channels__channel_id__reservation_pools_get"];
+        get: operations["list_channel_pools_api_v1_channels__channel_id__reservation_pools_get"];
         put?: never;
-        /**
-         * Create Pool
-         * @description A new pool (channel owners and administrators who are members; at most 5 per channel,
-         *     409 too_many_reservation_pools). The channel's reservation bot joins with the first one.
-         */
-        post: operations["create_pool_api_v1_channels__channel_id__reservation_pools_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2944,7 +2941,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reservation-pools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pools
+         * @description The pools the caller sees, oldest first, with today's and the coming bookings, the queue,
+         *     the holders and (for operators) the to-do.
+         */
+        get: operations["list_pools_api_v1_reservation_pools_get"];
+        put?: never;
+        /**
+         * Create Pool
+         * @description A new pool (administrators; at most 20, 409 too_many_reservation_pools). With a
+         *     `log_channel_id` (a channel the caller is a member of) the 「予約」 bot joins it.
+         */
+        post: operations["create_pool_api_v1_reservation_pools_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reservation-pools/{pool_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Pool */
+        get: operations["get_pool_api_v1_reservation_pools__pool_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Pool
+         * @description The pool, its bookings, its queue and its notices go; log lines stay. Seats handed out in
+         *     the resource's console are not touched there.
+         */
+        delete: operations["delete_pool_api_v1_reservation_pools__pool_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Pool */
+        patch: operations["update_pool_api_v1_reservation_pools__pool_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/reservation-pools/{pool_id}/bookings": {
         parameters: {
             query?: never;
             header?: never;
@@ -2953,17 +2999,18 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
         /**
-         * Delete Pool
-         * @description The pool and its queue go; the bot's posts stay. Seats handed out in the resource's
-         *     console are not touched there.
+         * Book
+         * @description A booking: on the hour, 1 h to max_hours, from the current hour to 14 days ahead.
+         *     400 reservation_booking_invalid (details.reason grid / past / horizon / duration), 409
+         *     reservation_slot_full (details.at: the first full hour), too_many_bookings (two at a time),
+         *     reservation_overlap (one of mine at that time). The same slot again: no change.
          */
-        delete: operations["delete_pool_api_v1_reservation_pools__pool_id__delete"];
+        post: operations["book_api_v1_reservation_pools__pool_id__bookings_post"];
+        delete?: never;
         options?: never;
         head?: never;
-        /** Update Pool */
-        patch: operations["update_pool_api_v1_reservation_pools__pool_id__patch"];
+        patch?: never;
         trace?: never;
     };
     "/api/v1/reservation-pools/{pool_id}/reserve": {
@@ -2977,8 +3024,8 @@ export interface paths {
         put?: never;
         /**
          * Reserve
-         * @description 「予約する」: join the queue (members, not guests). Already in it or holding a seat: no
-         *     change. 409 reservation_pool_disabled while the pool is paused.
+         * @description 「今すぐ (順番待ち)」: join the walk-in queue (members, not guests). Already in it or on a
+         *     seat: no change. 409 reservation_pool_disabled while the pool is paused.
          */
         post: operations["reserve_api_v1_reservation_pools__pool_id__reserve_post"];
         delete?: never;
@@ -3018,8 +3065,9 @@ export interface paths {
         put?: never;
         /**
          * Assign
-         * @description 「割り当てた」 (operators): the member got a seat; their guarantee starts now. 409
-         *     reservation_pool_full when every seat is taken.
+         * @description 「割り当てた」 (operators): the member got a seat. A walk-in's guarantee starts now; a
+         *     booking's runs to its end (from 10 minutes before its start, else 409
+         *     reservation_too_early). 409 reservation_pool_full when every seat is taken.
          */
         post: operations["assign_api_v1_reservations__reservation_id__assign_post"];
         delete?: never;
@@ -3039,9 +3087,31 @@ export interface paths {
         put?: never;
         /**
          * Cancel
-         * @description 「取り消す」: a waiting request (its member, or an operator).
+         * @description 「取り消す」: a waiting walk-in or a booking not on a seat yet (its member, or an
+         *     operator).
          */
         post: operations["cancel_api_v1_reservations__reservation_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reservations/{reservation_id}/extend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extend
+         * @description 「延長」: a booking (booked or on a seat) grows by `hours` if they have a seat (the booker or
+         *     an operator). 409 reservation_slot_full, 400 reservation_booking_invalid.
+         */
+        post: operations["extend_api_v1_reservations__reservation_id__extend_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4087,8 +4157,9 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mention" | "reaction" | "thread_reply" | "canvas_mention";
+            kind: "mention" | "reaction" | "thread_reply" | "canvas_mention" | "reservation";
             message?: components["schemas"]["MessageOut"] | null;
+            reservation?: components["schemas"]["ActivityReservation"] | null;
         };
         /** ActivityListOut */
         ActivityListOut: {
@@ -4109,6 +4180,38 @@ export interface components {
              * Format: date-time
              */
             read_at: string;
+        };
+        /**
+         * ActivityReservation
+         * @description A reservation item's notice (M112, docs/RESERVATIONS.md §5): it opens the reservations
+         *     page. An operator's to-do is `done` once one of them handled it (or it is no longer
+         *     needed).
+         */
+        ActivityReservation: {
+            /** Done */
+            done: boolean;
+            /** Done At */
+            done_at: string | null;
+            /** Done By */
+            done_by: string | null;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Operator */
+            operator: boolean;
+            /**
+             * Pool Id
+             * Format: uuid
+             */
+            pool_id: string;
+            /** Pool Name */
+            pool_name: string;
+            /** Reservation Id */
+            reservation_id: string | null;
+            /** Text */
+            text: string;
         };
         /** ActivitySummaryOut */
         ActivitySummaryOut: {
@@ -4738,6 +4841,20 @@ export interface components {
         Body_upload_workspace_icon_api_v1_admin_workspace_settings_icon_post: {
             /** File */
             file: string;
+        };
+        /** BookingIn */
+        BookingIn: {
+            /**
+             * Hours
+             * @description 1 to the pool's max_hours
+             */
+            hours: number;
+            /**
+             * Start At
+             * Format: date-time
+             * @description On the hour in the pool's zone, from the current hour up to 14 days ahead
+             */
+            start_at: string;
         };
         /** BookmarkItem */
         BookmarkItem: {
@@ -5841,6 +5958,14 @@ export interface components {
             /** Position */
             position?: number | null;
         };
+        /** ExtendIn */
+        ExtendIn: {
+            /**
+             * Hours
+             * @default 1
+             */
+            hours: number;
+        };
         /** FavoriteStateOut */
         FavoriteStateOut: {
             /**
@@ -6900,13 +7025,24 @@ export interface components {
             enabled: boolean;
             /**
              * Grace Minutes
-             * @description Notice a holder past the guarantee gets before the operators may take the seat for a waiting member
+             * @description Notice a walk-in past the guarantee gets before the operators may take the seat for someone in the queue
              * @default 15
              */
             grace_minutes: number;
             /**
+             * Log Channel Id
+             * @description A channel the 「予約」 bot writes a line in for each change (none: no posts)
+             */
+            log_channel_id?: string | null;
+            /**
+             * Max Hours
+             * @description The longest booking (hours)
+             * @default 6
+             */
+            max_hours: number;
+            /**
              * Min Hours
-             * @description A holder keeps the seat at least this long from assignment
+             * @description Walk-ins (「今すぐ」): a holder keeps the seat at least this long from assignment, or until a booking needs it if that comes first
              * @default 6
              */
             min_hours: number;
@@ -6917,37 +7053,46 @@ export interface components {
             name: string;
             /**
              * Operator Ids
-             * @description Members who hand the seats out (notified, see the requesters' email)
+             * @description Members who hand the seats out (get the to-dos, see the members' email)
              */
             operator_ids?: string[];
             /**
              * Tz
-             * @description The zone the bot's posts write times in
+             * @description The zone of the booking grid (whole hours) and of the notices' times
              * @default Asia/Tokyo
              */
             tz: string;
+            /**
+             * Visibility
+             * @description all = every member (not guests); channel / group = that channel's or group's members (the operators and administrators always see it)
+             * @default all
+             * @enum {string}
+             */
+            visibility: "all" | "channel" | "group";
+            /** Visibility Channel Id */
+            visibility_channel_id?: string | null;
+            /** Visibility Group Id */
+            visibility_group_id?: string | null;
         };
         /** PoolOut */
         PoolOut: {
-            /** Bot User Id */
-            bot_user_id: string | null;
+            /**
+             * Bookings
+             * @description Bookings from the start of today (the pool's zone) on, not cancelled: booked, on a seat, or done today
+             */
+            bookings: components["schemas"]["ReservationOut"][];
             /**
              * Can Manage
-             * @description May change the settings (channel owners, admins)
+             * @description May change the settings (its creator, administrators)
              */
             can_manage: boolean;
             /**
              * Can Operate
-             * @description May assign / remove / swap / cancel others (operators, channel owners, admins)
+             * @description May assign / remove / swap / cancel others (operators, its creator, administrators)
              */
             can_operate: boolean;
             /** Capacity */
             capacity: number;
-            /**
-             * Channel Id
-             * Format: uuid
-             */
-            channel_id: string;
             /**
              * Created At
              * Format: date-time
@@ -6959,30 +7104,44 @@ export interface components {
             grace_minutes: number;
             /**
              * Holders
-             * @description Holding and returning, earliest first
+             * @description On a seat (holding, returning)
              */
             holders: components["schemas"]["ReservationOut"][];
+            /**
+             * Horizon Days
+             * @description Bookings reach this many days past today
+             */
+            horizon_days: number;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Log Channel Id */
+            log_channel_id: string | null;
+            /** Max Hours */
+            max_hours: number;
             /** Min Hours */
             min_hours: number;
             /**
              * My Reservation Id
-             * @description The caller's active reservation
+             * @description The caller's active walk-in request
              */
             my_reservation_id: string | null;
             /** Name */
             name: string;
             /**
              * Next Evict Id
-             * @description The holder whose seat goes next while someone waits (「次に外す」)
+             * @description The walk-in whose seat goes next while someone waits (「次に外す」)
              */
             next_evict_id: string | null;
             /** Operator Ids */
             operator_ids: string[];
+            /**
+             * Todos
+             * @description The operators' to-do (empty for the others)
+             */
+            todos: components["schemas"]["TodoOut"][];
             /** Tz */
             tz: string;
             /**
@@ -6991,14 +7150,24 @@ export interface components {
              */
             updated_at: string;
             /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "all" | "channel" | "group";
+            /** Visibility Channel Id */
+            visibility_channel_id: string | null;
+            /** Visibility Group Id */
+            visibility_group_id: string | null;
+            /**
              * Waiting
-             * @description The queue, in order
+             * @description The walk-in queue, in order
              */
             waiting: components["schemas"]["ReservationOut"][];
         };
         /**
          * PoolUpdate
-         * @description Changes apply from now on: a changed min_hours counts for the next assignments.
+         * @description Changes apply from now on: a changed min_hours counts for the next assignments, a lower
+         *     max_hours for the next bookings. `log_channel_id`, `visibility_*`: null clears them.
          */
         PoolUpdate: {
             /** Capacity */
@@ -7007,6 +7176,10 @@ export interface components {
             enabled?: boolean | null;
             /** Grace Minutes */
             grace_minutes?: number | null;
+            /** Log Channel Id */
+            log_channel_id?: string | null;
+            /** Max Hours */
+            max_hours?: number | null;
             /** Min Hours */
             min_hours?: number | null;
             /** Name */
@@ -7015,6 +7188,12 @@ export interface components {
             operator_ids?: string[] | null;
             /** Tz */
             tz?: string | null;
+            /** Visibility */
+            visibility?: ("all" | "channel" | "group") | null;
+            /** Visibility Channel Id */
+            visibility_channel_id?: string | null;
+            /** Visibility Group Id */
+            visibility_group_id?: string | null;
         };
         /** PresenceEntry */
         PresenceEntry: {
@@ -7298,18 +7477,25 @@ export interface components {
             /** Assigned At */
             assigned_at: string | null;
             /**
+             * Can Extend
+             * @description The caller's booking can grow by an hour (the next hour has a seat, within max_hours and the 14 days)
+             */
+            can_extend: boolean;
+            /**
              * Email
              * @description The member's address, only for those who can operate the pool (to find the account in the resource's own console)
              */
             email: string | null;
+            /** End At */
+            end_at: string | null;
             /**
              * Evict At
-             * @description A holder past the guarantee whom a waiting member needs: when the grace period ends (it was told)
+             * @description A walk-in someone needs: when the seat goes (it was told)
              */
             evict_at: string | null;
             /**
              * Guarantee Until
-             * @description assigned_at + the pool's min_hours (fixed at assignment)
+             * @description A walk-in: assignment + min_hours, or when a booking needs the seat if sooner; a booking: end_at
              */
             guarantee_until: string | null;
             /**
@@ -7318,18 +7504,23 @@ export interface components {
              */
             id: string;
             /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "walkin" | "booking";
+            /**
              * Pair Id
-             * @description The reservation on the other side of a swap (a waiter's holder, a holder's waiter)
+             * @description The reservation on the other side of a swap (a claimant's holder, a holder's claimant)
              */
             pair_id: string | null;
             /**
              * Position
-             * @description A waiting member's place in the queue, from 1
+             * @description A waiting walk-in's place in the queue, from 1
              */
             position: number | null;
             /**
              * Ready
-             * @description An operator can act now: a waiter's seat is free (or its holder is ready); a holder is returning or past the grace period
+             * @description An operator can act on it now
              */
             ready: boolean;
             /**
@@ -7340,15 +7531,25 @@ export interface components {
             /** Returned At */
             returned_at: string | null;
             /**
+             * Start At
+             * @description A booking's slot
+             */
+            start_at: string | null;
+            /**
              * Status
              * @enum {string}
              */
-            status: "waiting" | "holding" | "returning";
+            status: "waiting" | "booked" | "holding" | "returning" | "done";
             /**
              * Step
-             * @description A waiting member: assign = a seat is free; swap = takes pair_id's seat; wait = no seat in sight yet
+             * @description A waiting walk-in or a started booking: assign = a seat is free; swap = takes pair_id's seat; wait = no seat in sight yet
              */
             step: ("assign" | "swap" | "wait") | null;
+            /**
+             * Until
+             * @description A waiting walk-in with a free seat: a booking needs that seat from then (「〜13:00 まで」); null = the full guarantee
+             */
+            until: string | null;
             /**
              * User Id
              * Format: uuid
@@ -7905,13 +8106,13 @@ export interface components {
             /**
              * Assign Id
              * Format: uuid
-             * @description The waiting reservation that gets the seat
+             * @description The waiting walk-in or the started booking that gets it
              */
             assign_id: string;
             /**
              * Remove Id
              * Format: uuid
-             * @description The holding (or returning) reservation taken out
+             * @description The reservation on a seat taken out
              */
             remove_id: string;
         };
@@ -8379,6 +8580,45 @@ export interface components {
             items: components["schemas"]["MessageOut"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /**
+         * TodoOut
+         * @description Something an operator does in the resource's console, then presses here.
+         */
+        TodoOut: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "assign" | "swap" | "remove";
+            /**
+             * Assign Id
+             * @description The reservation to give a seat (assign, swap)
+             */
+            assign_id: string | null;
+            /**
+             * Due At
+             * Format: date-time
+             * @description When it is (or was) due
+             */
+            due_at: string;
+            /** Key */
+            key: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "free" | "returned" | "booking_ended" | "guarantee_over";
+            /**
+             * Remove Id
+             * @description The reservation to take out (remove, swap)
+             */
+            remove_id: string | null;
+            /**
+             * Upcoming
+             * @description A booking that starts within 10 minutes: not yet
+             */
+            upcoming: boolean;
         };
         /** TokenResponse */
         TokenResponse: {
@@ -8917,7 +9157,7 @@ export interface operations {
                 filter?: "all" | "mentions" | "reactions" | "threads";
                 cursor?: string | null;
                 limit?: number;
-                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored. */
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored. */
                 include?: string[];
             };
             header?: never;
@@ -8949,7 +9189,7 @@ export interface operations {
     mark_activity_read_api_v1_activity_read_put: {
         parameters: {
             query?: {
-                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored. */
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored. */
                 include?: string[];
             };
             header?: never;
@@ -8985,7 +9225,7 @@ export interface operations {
     activity_summary_api_v1_activity_summary_get: {
         parameters: {
             query?: {
-                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored. */
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored. */
                 include?: string[];
             };
             header?: never;
@@ -12794,7 +13034,7 @@ export interface operations {
             };
         };
     };
-    list_pools_api_v1_channels__channel_id__reservation_pools_get: {
+    list_channel_pools_api_v1_channels__channel_id__reservation_pools_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -12812,41 +13052,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PoolOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_pool_api_v1_channels__channel_id__reservation_pools_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                channel_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PoolCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PoolOut"];
                 };
             };
             /** @description Validation Error */
@@ -15029,6 +15234,90 @@ export interface operations {
             };
         };
     };
+    list_pools_api_v1_reservation_pools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolOut"][];
+                };
+            };
+        };
+    };
+    create_pool_api_v1_reservation_pools_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pool_api_v1_reservation_pools__pool_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pool_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_pool_api_v1_reservation_pools__pool_id__delete: {
         parameters: {
             query?: never;
@@ -15070,6 +15359,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PoolUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    book_api_v1_reservation_pools__pool_id__bookings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pool_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookingIn"];
             };
         };
         responses: {
@@ -15200,6 +15524,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extend_api_v1_reservations__reservation_id__extend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reservation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtendIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

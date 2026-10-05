@@ -150,6 +150,8 @@ class APNsPushProvider:
             "task_id": payload.get("task_id"),
             # kind canvas (M72): the canvas to open.
             "canvas_id": payload.get("canvas_id"),
+            # kind reservation (M112): the pool (opens the reservations page).
+            "pool_id": payload.get("pool_id"),
         }
         return url, headers, body
 
@@ -272,6 +274,7 @@ class FCMPushProvider:
                 "event_id",
                 "task_id",
                 "canvas_id",
+                "pool_id",
                 "seq",
                 "title",
                 "subtitle",

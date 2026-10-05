@@ -6,11 +6,12 @@ from pydantic import BaseModel
 
 from app.modules.messages.schemas import MessageOut
 
-ActivityKind = Literal["mention", "reaction", "thread_reply", "canvas_mention"]
+ActivityKind = Literal["mention", "reaction", "thread_reply", "canvas_mention", "reservation"]
 ActivityFilter = Literal["all", "mentions", "reactions", "threads"]
 # M76 (CANVAS.md §20): canvas_mention items only go to clients that name the kind in `include`
 # (clients before them cannot read an item without `message`). Unknown `include` values are
 # ignored, so a newer client may name kinds an older server does not have.
+# M112 (RESERVATIONS.md §5): reservation items likewise only with `include=reservation`.
 
 
 class ActivityCanvas(BaseModel):
@@ -28,6 +29,25 @@ class ActivityCanvas(BaseModel):
     rev_id: UUID
 
 
+class ActivityReservation(BaseModel):
+    """A reservation item's notice (M112, docs/RESERVATIONS.md §5): it opens the reservations
+    page. An operator's to-do is `done` once one of them handled it (or it is no longer
+    needed)."""
+
+    item_id: UUID
+    pool_id: UUID
+    pool_name: str
+    reservation_id: UUID | None
+    # The notice as one line of plain text (Japanese, written by the server).
+    text: str
+    # A to-do sent to the pool's operators (the others are news about my own reservation).
+    operator: bool
+    done: bool
+    done_at: datetime | None
+    # Who handled it (null: it went away by itself).
+    done_by: UUID | None
+
+
 class ActivityItem(BaseModel):
     kind: ActivityKind
     # When it happened: the message's time, a reaction's (the newest on that message), or the
@@ -37,6 +57,8 @@ class ActivityItem(BaseModel):
     message: MessageOut | None = None
     # canvas_mention only (M76): the canvas and the excerpt.
     canvas: ActivityCanvas | None = None
+    # reservation only (M112): the notice.
+    reservation: ActivityReservation | None = None
     # Who did it: the sender, or everyone who reacted (not me).
     actor_ids: list[UUID]
     # A reaction item's emoji (the distinct ones on my message by others).

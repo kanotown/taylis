@@ -6014,17 +6014,66 @@
         "type": "object"
       }
     },
-    "reservation.updated": {
-      "audience": "channel",
+    "reservation.notice": {
+      "audience": "user",
       "consumes_seq": false,
       "data": {
-        "description": "`reservation.updated` (channel): a pool of the channel changed (its settings, its queue or\nits holders, or it was deleted). Clients that show the channel's pools load them again\n(GET /channels/{id}/reservation-pools): what the card shows differs per person.",
+        "description": "`reservation.notice` (user): a new activity item of kind reservation for me (a to-do as an\noperator, or news about my own reservation). The push; clients refresh the activity badge.",
         "properties": {
-          "channel_id": {
-            "format": "uuid",
-            "title": "Channel Id",
+          "at": {
+            "format": "date-time",
+            "title": "At",
             "type": "string"
           },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "operator": {
+            "title": "Operator",
+            "type": "boolean"
+          },
+          "pool_id": {
+            "format": "uuid",
+            "title": "Pool Id",
+            "type": "string"
+          },
+          "reservation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Id"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "pool_id",
+          "reservation_id",
+          "text",
+          "operator",
+          "at"
+        ],
+        "title": "ReservationNoticeData",
+        "type": "object"
+      }
+    },
+    "reservation.updated": {
+      "audience": "all",
+      "consumes_seq": false,
+      "data": {
+        "description": "`reservation.updated` (all): a pool changed (its settings, bookings, queue or holders, or\nit was deleted). Clients showing the reservations page load the pools again (GET\n/reservation-pools): what a pool shows differs per person.",
+        "properties": {
           "deleted": {
             "default": false,
             "title": "Deleted",
@@ -6037,7 +6086,6 @@
           }
         },
         "required": [
-          "channel_id",
           "pool_id"
         ],
         "title": "ReservationUpdatedData",

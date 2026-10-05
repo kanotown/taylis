@@ -35,6 +35,8 @@ from app.modules.reads import rules as unread_rules
 from app.modules.reads import service as reads
 from app.modules.reminders import service as reminders
 from app.modules.reminders.events import REMINDER_UPDATED
+from app.modules.reservations.events import RESERVATION_NOTICE
+from app.modules.reservations.models import ReservationNotice
 from app.modules.tasks import service as tasks
 from app.modules.tasks.events import TASK_ASSIGNED, TASK_DUE, TASK_REVIEW_DONE
 from app.modules.threads import service as threads
@@ -80,6 +82,9 @@ class PushPlanner:
             return
         if event.event_type == CANVAS_MENTIONED:
             await self.handle_canvas_mention(db, event)
+            return
+        if event.event_type == RESERVATION_NOTICE:
+            await self.handle_reservation(db, event)
             return
         if (
             event.event_type != MESSAGE_CREATED
@@ -409,6 +414,54 @@ class PushPlanner:
                 kind="alert",
                 collapse_key=str(payload["collapse_key"]),
                 channel_id=channel_id,
+                message_id=None,
+                message_seq=None,
+                payload=payload,
+                expires_at=expires_at,
+            )
+
+    async def handle_reservation(self, db: AsyncSession, event: OutboxEvent) -> None:
+        """M112 (RESERVATIONS.md §5): a reservation notice for me (an operator's to-do, or news
+        about my own booking or seat). Not during DND, not while I am on another device (the open
+        app shows it); an operator's to-do another operator handled before the push was planned
+        is dropped (the item is done)."""
+        data = event.payload
+        user_id = uuid.UUID(str(event.audience_id))
+        user = await users.get_user(db, user_id)
+        now = utcnow()
+        if user is None or user.deactivated_at is not None or dnd_active(user, now):
+            return
+        if self.is_active(user_id):
+            return
+        item = await db.get(ReservationNotice, uuid.UUID(str(data["item_id"])))
+        if item is None or item.done_at is not None:
+            return
+        devices = await repo.push_devices_for_users(db, [user_id])
+        if not devices:
+            return
+        expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
+        payload = PushPayload(
+            kind="reservation",
+            workspace_id=await workspace.workspace_id(db),
+            pool_id=item.pool_id,
+            seq=None,
+            title="予約",
+            subtitle=None,
+            body=(item.text if self.settings.push_include_content else "予約のお知らせがあります")[
+                :240
+            ],
+            badge=max(await self.badge_for(db, user_id), 1),
+            collapse_key=f"reservation:{item.id}",
+            sent_at=now,
+        ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+        for device in devices:
+            await repo.add_delivery(
+                db,
+                event_id=event.id,
+                device=device,
+                kind="alert",
+                collapse_key=str(payload["collapse_key"]),
+                channel_id=None,
                 message_id=None,
                 message_seq=None,
                 payload=payload,

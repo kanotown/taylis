@@ -9,6 +9,7 @@ from app.modules.canvases.models import Canvas
 from app.modules.channels.models import ChannelMember
 from app.modules.messages.models import Message, Reaction, mentions_of
 from app.modules.moderation.blocks import not_blocked_by
+from app.modules.reservations.repository import unread_notices
 from app.modules.threads.models import ThreadFollow
 
 # Unread items counted up to this many (the badge shows 99+).
@@ -136,10 +137,16 @@ async def messages_by_ids(db: AsyncSession, ids: list[uuid.UUID]) -> list[Messag
 
 
 async def unread(
-    db: AsyncSession, user_id: uuid.UUID, since: datetime, *, canvas: bool = False
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    since: datetime,
+    *,
+    canvas: bool = False,
+    reservation: bool = False,
 ) -> tuple[int, bool]:
     """(items after `since`, capped; whether a mention is among them). `canvas`: canvas mention
-    items count too (M76), as mentions."""
+    items count too (M76), as mentions. `reservation`: reservation notices not done (M112), as
+    mentions too (they are addressed to me)."""
     mention_count = await db.scalar(
         select(func.count()).select_from(
             _mentions(user_id).where(Message.created_at > since).limit(UNREAD_CAP).subquery()
@@ -168,6 +175,16 @@ async def unread(
             )
             or 0
         )
-    mentioned = (mention_count or 0) + canvas_count
+    reservation_count = 0
+    if reservation:
+        reservation_count = (
+            await db.scalar(
+                select(func.count()).select_from(
+                    unread_notices(user_id, since).limit(UNREAD_CAP).subquery()
+                )
+            )
+            or 0
+        )
+    mentioned = (mention_count or 0) + canvas_count + reservation_count
     total = mentioned + (reply_count or 0) + (reaction_count or 0)
     return min(total, UNREAD_CAP), mentioned > 0
