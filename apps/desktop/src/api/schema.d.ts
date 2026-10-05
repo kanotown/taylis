@@ -3067,8 +3067,9 @@ export interface paths {
          * Book
          * @description A booking: on the hour, 1 h to max_hours, from the current hour to 14 days ahead.
          *     400 reservation_booking_invalid (details.reason grid / past / horizon / duration), 409
-         *     reservation_slot_full (details.at: the first full hour), too_many_bookings (two at a time),
-         *     reservation_overlap (one of mine at that time). The same slot again: no change.
+         *     reservation_slot_full (details.at: the first full hour), reservation_already_active (one
+         *     reservation per person and pool: a booking, a walk-in request or a seat already;
+         *     details.reservation_id / kind / status). The same slot again: no change.
          */
         post: operations["book_api_v1_reservation_pools__pool_id__bookings_post"];
         delete?: never;
@@ -3089,7 +3090,8 @@ export interface paths {
         /**
          * Reserve
          * @description 「今すぐ (順番待ち)」: join the walk-in queue (members, not guests). Already in it or on a
-         *     seat: no change. 409 reservation_pool_disabled while the pool is paused.
+         *     seat: no change. 409 reservation_already_active with a booking in the pool (one reservation
+         *     per person and pool), reservation_pool_disabled while the pool is paused.
          */
         post: operations["reserve_api_v1_reservation_pools__pool_id__reserve_post"];
         delete?: never;
@@ -7356,6 +7358,11 @@ export interface components {
             max_hours: number;
             /** Min Hours */
             min_hours: number;
+            /**
+             * My Active Id
+             * @description The caller's one active reservation in the pool (waiting, booked, on a seat or returned but not yet removed); while it is set, 「今すぐ」 and 「予約する」 answer 409 reservation_already_active
+             */
+            my_active_id?: string | null;
             /**
              * My Reservation Id
              * @description The caller's active walk-in request

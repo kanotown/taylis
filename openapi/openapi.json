@@ -8462,6 +8462,19 @@
             "title": "Min Hours",
             "type": "integer"
           },
+          "my_active_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The caller's one active reservation in the pool (waiting, booked, on a seat or returned but not yet removed); while it is set, 「今すぐ」 and 「予約する」 answer 409 reservation_already_active",
+            "title": "My Active Id"
+          },
           "my_reservation_id": {
             "anyOf": [
               {
@@ -24527,7 +24540,7 @@
     },
     "/api/v1/reservation-pools/{pool_id}/bookings": {
       "post": {
-        "description": "A booking: on the hour, 1 h to max_hours, from the current hour to 14 days ahead.\n400 reservation_booking_invalid (details.reason grid / past / horizon / duration), 409\nreservation_slot_full (details.at: the first full hour), too_many_bookings (two at a time),\nreservation_overlap (one of mine at that time). The same slot again: no change.",
+        "description": "A booking: on the hour, 1 h to max_hours, from the current hour to 14 days ahead.\n400 reservation_booking_invalid (details.reason grid / past / horizon / duration), 409\nreservation_slot_full (details.at: the first full hour), reservation_already_active (one\nreservation per person and pool: a booking, a walk-in request or a seat already;\ndetails.reservation_id / kind / status). The same slot again: no change.",
         "operationId": "book_api_v1_reservation_pools__pool_id__bookings_post",
         "parameters": [
           {
@@ -24586,7 +24599,7 @@
     },
     "/api/v1/reservation-pools/{pool_id}/reserve": {
       "post": {
-        "description": "「今すぐ (順番待ち)」: join the walk-in queue (members, not guests). Already in it or on a\nseat: no change. 409 reservation_pool_disabled while the pool is paused.",
+        "description": "「今すぐ (順番待ち)」: join the walk-in queue (members, not guests). Already in it or on a\nseat: no change. 409 reservation_already_active with a booking in the pool (one reservation\nper person and pool), reservation_pool_disabled while the pool is paused.",
         "operationId": "reserve_api_v1_reservation_pools__pool_id__reserve_post",
         "parameters": [
           {

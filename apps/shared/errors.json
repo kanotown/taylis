@@ -721,6 +721,11 @@
       "en": "Report not found.",
       "zh-Hans": "找不到举报。"
     },
+    "reservation_already_active": {
+      "ja": "この枠にはすでに予約があります。予約・順番待ち・利用中は 1 人 1 つまでです",
+      "en": "You already have a reservation in this slot. One booking, queue place or seat per person.",
+      "zh-Hans": "你在此名额已有预约。每人只能有一个预约、排队或正在使用的名额。"
+    },
     "reservation_booking_invalid": {
       "ja": "その時間は予約できません (開始は毎時 0 分、長さは枠の上限まで、2 週間先まで)",
       "en": "That time can't be booked (start on the hour, no longer than the slot's limit, up to 2 weeks ahead).",
@@ -755,11 +760,6 @@
       "ja": "この操作ができるのは、枠の担当者、枠を作った人、管理者だけです",
       "en": "Only the slot's operators, the person who created it and admins can do this.",
       "zh-Hans": "只有该名额的负责人、创建者和管理员可以执行此操作。"
-    },
-    "reservation_overlap": {
-      "ja": "同じ時間にもう予約があります",
-      "en": "There is already a booking at the same time.",
-      "zh-Hans": "同一时间已有预约。"
     },
     "reservation_pool_disabled": {
       "ja": "この枠は今は予約を受け付けていません",
@@ -1030,11 +1030,6 @@
       "ja": "添付は 10 件までです",
       "en": "Up to 10 attachments.",
       "zh-Hans": "附件最多 10 个。"
-    },
-    "too_many_bookings": {
-      "ja": "1 つの枠に入れられる予約は 2 件までです",
-      "en": "A slot can hold up to 2 bookings.",
-      "zh-Hans": "一个名额最多可容纳 2 个预约。"
     },
     "too_many_canvas_images": {
       "ja": "1 つのキャンバスに入れられる画像・ファイルは 100 件までです",

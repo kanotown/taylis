@@ -198,14 +198,21 @@ async def test_booking_rules_capacity_and_limits(
     mine = _mine(made.json(), s["alice"])
     assert len(mine) == 1 and mine[0]["status"] == "booked" and mine[0]["kind"] == "booking"
     assert mine[0]["email"] is None and mine[0]["can_extend"] is True
-    # A retry of the same slot changes nothing; an overlapping one of mine is refused.
+    assert made.json()["my_active_id"] == mine[0]["id"]
+    # A retry of the same slot changes nothing; any other booking of mine is refused (one active
+    # reservation per person and pool), overlapping or not.
     again = await _book(client, pid, _hour(2), 3)
     assert again.status_code == 200 and len(_mine(again.json(), s["alice"])) == 1
-    overlap = await _book(client, pid, _hour(4), 1)
-    assert overlap.json()["error"]["code"] == "reservation_overlap"
-    assert (await _book(client, pid, _hour(8), 1)).status_code == 200
-    third = await _book(client, pid, _hour(10), 1)
-    assert third.status_code == 409 and third.json()["error"]["code"] == "too_many_bookings"
+    for start, hours in ((_hour(4), 1), (_hour(8), 1), (_hour(2), 2)):
+        second = await _book(client, pid, start, hours)
+        assert second.status_code == 409, second.text
+        error = second.json()["error"]
+        assert error["code"] == "reservation_already_active"
+        assert error["details"] == {
+            "reservation_id": mine[0]["id"],
+            "kind": "booking",
+            "status": "booked",
+        }
     # The grid, the past, the horizon and the duration.
     for start, hours, reason in (
         (_hour(12) + timedelta(minutes=30), 1, "grid"),
@@ -277,6 +284,104 @@ async def test_two_members_book_the_last_seat_at_once(
         )
     )
     assert len(count.scalars().all()) == 1
+
+
+async def test_one_active_reservation_per_person_and_pool(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """A future booking blocks 「今すぐ」 and another booking; a walk-in (waiting, on a seat or
+    returned) blocks a booking; cancelling frees the person; extending still works."""
+    s = await _setup(client, db, as_user)
+    pid = s["pid"]
+    as_user(s["alice"])
+    booked = await _book(client, pid, _hour(5), 2)
+    row = _mine(booked.json(), s["alice"])[0]
+    walkin = await client.post(f"/api/v1/reservation-pools/{pid}/reserve")
+    assert walkin.status_code == 409
+    assert walkin.json()["error"]["code"] == "reservation_already_active"
+    assert walkin.json()["error"]["details"]["reservation_id"] == row["id"]
+    # Extending my own booking is not a new reservation.
+    grown = await client.post(f"/api/v1/reservations/{row['id']}/extend", json={})
+    assert grown.status_code == 200, grown.text
+    # Another person's view never shows my reservation as theirs.
+    as_user(s["bob"])
+    assert (await client.get(f"/api/v1/reservation-pools/{pid}")).json()["my_active_id"] is None
+    # Cancelling frees me: now 「今すぐ」 works, and then a booking is refused.
+    as_user(s["alice"])
+    freed = await client.post(f"/api/v1/reservations/{row['id']}/cancel")
+    assert freed.json()["my_active_id"] is None
+    queued = await client.post(f"/api/v1/reservation-pools/{pid}/reserve")
+    assert queued.status_code == 200
+    rid = queued.json()["my_reservation_id"]
+    assert queued.json()["my_active_id"] == rid
+    again = await client.post(f"/api/v1/reservation-pools/{pid}/reserve")
+    assert again.status_code == 200 and again.json()["my_reservation_id"] == rid
+    refused = await _book(client, pid, _hour(5), 1)
+    assert refused.json()["error"]["details"] == {
+        "reservation_id": rid,
+        "kind": "walkin",
+        "status": "waiting",
+    }
+    # On a seat, and returned but not yet taken off: still the one reservation.
+    as_user(s["op"])
+    await client.post(f"/api/v1/reservations/{rid}/assign")
+    as_user(s["alice"])
+    seated = await _book(client, pid, _hour(8), 1)
+    assert seated.json()["error"]["details"]["status"] == "holding"
+    await client.post(f"/api/v1/reservations/{rid}/return")
+    returned = await _book(client, pid, _hour(8), 1)
+    assert returned.json()["error"]["details"]["status"] == "returning"
+    as_user(s["op"])
+    await client.post(f"/api/v1/reservations/{rid}/remove")
+    as_user(s["alice"])
+    assert (await _book(client, pid, _hour(8), 1)).status_code == 200
+    # Another pool is separate.
+    as_user(s["admin"])
+    other = await client.post("/api/v1/reservation-pools", json={"name": "GPU", "capacity": 1})
+    as_user(s["alice"])
+    elsewhere = await client.post(f"/api/v1/reservation-pools/{other.json()['id']}/reserve")
+    assert elsewhere.status_code == 200 and elsewhere.json()["my_active_id"] is not None
+
+
+async def test_a_walkin_and_a_booking_at_once_make_one_reservation(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """The check runs under the pool's row lock: the same person pressing 「今すぐ」 and
+    「予約する」 at once (two devices), or two bookings at once, ends with one row."""
+    s = await _setup(client, db, as_user)
+    pool_id = uuid.UUID(s["pid"])
+
+    async def call(user: User, what: str, offset: int = 3) -> str:
+        async with app.state.db.session_factory() as session:
+            actor = await session.get(User, user.id)
+            assert actor is not None
+            try:
+                if what == "walkin":
+                    await reservations.reserve(session, actor, pool_id)
+                else:
+                    await reservations.book(
+                        session, actor, pool_id, BookingIn(start_at=_hour(offset), hours=2)
+                    )
+                return "ok"
+            except AppError as exc:
+                return exc.code
+
+    async def active(user: User) -> list[Reservation]:
+        rows = await reservations_repo.active_rows(db, [pool_id])
+        return [r for r in rows if r.user_id == user.id]
+
+    for _ in range(3):
+        results = await asyncio.gather(call(s["alice"], "walkin"), call(s["alice"], "book"))
+        assert sorted(results) == ["ok", "reservation_already_active"], results
+        mine = await active(s["alice"])
+        assert len(mine) == 1
+        as_user(s["alice"])
+        await client.post(f"/api/v1/reservations/{mine[0].id}/cancel")
+    three = await asyncio.gather(
+        call(s["bob"], "book", 3), call(s["bob"], "book", 6), call(s["bob"], "walkin")
+    )
+    assert sorted(three) == ["ok", "reservation_already_active", "reservation_already_active"]
+    assert len(await active(s["bob"])) == 1
 
 
 # --- operators: to-dos as activity items --------------------------------------------------------

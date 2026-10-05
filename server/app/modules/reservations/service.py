@@ -1,10 +1,11 @@
 """Reservation pools (docs/RESERVATIONS.md, M112): the workspace's shared, limited seats.
 
 Members book a seat by the hour (start on the hour, 1 h up to the pool's `max_hours`, up to 14
-days ahead, two bookings at a time) or queue for one right now (「今すぐ」, the walk-in queue of
-M99). The pool's operators hand seats out by hand in the resource's own console (e.g. Claude's
-admin console) and press 「割り当てた」 / 「外した」 / 「入れ替えた」 here. Who gets which seat
-and when is plan.py's; this module keeps the rows, the notices and the log.
+days ahead) or queue for one right now (「今すぐ」, the walk-in queue of M99); one active
+reservation at a time per person and pool. The pool's operators hand seats out by hand in the
+resource's own console (e.g. Claude's admin console) and press 「割り当てた」 / 「外した」 /
+「入れ替えた」 here. Who gets which seat and when is plan.py's; this module keeps the rows, the
+notices and the log.
 
 Every change locks the pool's row first, so two operators pressing at once (or a press and the
 worker) apply one after the other, and every action is idempotent. Notices are activity items
@@ -84,7 +85,6 @@ from app.modules.workflows.render import escape_text
 log = logging.getLogger(__name__)
 
 MAX_POOLS = 20
-MAX_BOOKINGS_PER_PERSON = 2
 HORIZON_DAYS = 14
 BOT_NAME = "予約"
 BOT_KIND = "reservation"  # users.bot_kind of a log channel's reservation bot
@@ -406,6 +406,7 @@ async def _outs(
         bookings += [r for r in done_by_pool.get(pool.id, []) if r.end_at and r.end_at > today]
         bookings.sort(key=lambda r: (r.start_at or now, r.id))
 
+        my_active = _my_active(mine, actor.id)
         extendable = {
             r.id for r in mine if r.user_id == actor.id and _can_extend(pool, r, mine, now)
         }
@@ -453,6 +454,7 @@ async def _outs(
                 my_reservation_id=next(
                     (r.id for r in mine if r.user_id == actor.id and r.kind == "walkin"), None
                 ),
+                my_active_id=my_active.id if my_active else None,
                 can_manage=_can_manage(actor, pool),
                 can_operate=operate,
                 horizon_days=HORIZON_DAYS,
@@ -1036,15 +1038,35 @@ def _require_member(actor: User) -> None:
         raise forbidden("guest_restricted", "Guests cannot do this")
 
 
+def _my_active(rows: list[Reservation], user_id: uuid.UUID) -> Reservation | None:
+    """The person's one active reservation in the pool (`rows`: its active rows): waiting in the
+    queue, booked (now or later), on a seat, or returned but not yet taken off the seat (the
+    resource still has them until an operator presses 「外した」)."""
+    return next((r for r in rows if r.user_id == user_id), None)
+
+
+def _already_active(row: Reservation) -> AppError:
+    """409 for a second reservation in the same pool (one per person, current or future)."""
+    return conflict(
+        "reservation_already_active",
+        "You already have a reservation in this pool",
+        details={"reservation_id": str(row.id), "kind": row.kind, "status": row.status},
+    )
+
+
 async def reserve(db: AsyncSession, actor: User, pool_id: uuid.UUID) -> PoolOut:
-    """「今すぐ」: join the walk-in queue (one at a time per person; pressing again changes
-    nothing)."""
+    """「今すぐ」: join the walk-in queue. Pressing again changes nothing; a booking (or a seat)
+    in the pool already: 409 reservation_already_active (one reservation per person and pool,
+    checked under the pool's lock)."""
     _require_member(actor)
     pool = await _visible_pool(db, actor, pool_id, lock=True)
     rows = await repo.active_rows(db, [pool.id])
-    if any(r.user_id == actor.id and r.kind == "walkin" for r in rows):
+    active = _my_active(rows, actor.id)
+    if active is not None and active.kind == "walkin":
         await db.commit()  # nothing to change (the lock goes)
         return await _one_out(db, actor, pool)
+    if active is not None:
+        raise _already_active(active)
     if not pool.enabled:
         raise conflict("reservation_pool_disabled", "This pool takes no reservations now")
     change = _change_for(pool, actor)
@@ -1079,9 +1101,10 @@ def _invalid_booking(reason: str, message: str) -> AppError:
 
 async def book(db: AsyncSession, actor: User, pool_id: uuid.UUID, data: BookingIn) -> PoolOut:
     """A booking: on the hour (the pool's zone), 1 h to max_hours, from the current hour to the
-    end of the 14th day after today; at most two at a time per person; every hour must have a
-    seat (bookings and walk-in guarantees below the capacity). Booking the same slot again
-    changes nothing (a retry)."""
+    end of the 14th day after today; every hour must have a seat (bookings and walk-in
+    guarantees below the capacity). Booking the same slot again changes nothing (a retry); any
+    other active reservation of the person's in the pool (a booking, a walk-in request or a
+    seat): 409 reservation_already_active, checked under the pool's lock."""
     _require_member(actor)
     pool = await _visible_pool(db, actor, pool_id, lock=True)
     now = utcnow()
@@ -1101,20 +1124,22 @@ async def book(db: AsyncSession, actor: User, pool_id: uuid.UUID, data: BookingI
     if end > _horizon_end(pool, now):
         raise _invalid_booking("horizon", f"Bookings reach {HORIZON_DAYS} days ahead")
     rows = await repo.active_rows(db, [pool.id])
-    mine = [r for r in rows if r.user_id == actor.id and r.kind == "booking"]
-    if any(r.start_at == start and r.end_at == end for r in mine):
+    active = _my_active(rows, actor.id)
+    if (
+        active is not None
+        and active.kind == "booking"
+        and (active.start_at, active.end_at)
+        == (
+            start,
+            end,
+        )
+    ):
         await db.commit()  # a retry (the lock goes)
         return await _one_out(db, actor, pool)
+    if active is not None:
+        raise _already_active(active)
     if not pool.enabled:
         raise conflict("reservation_pool_disabled", "This pool takes no reservations now")
-    if any(r.start_at and r.end_at and r.start_at < end and r.end_at > start for r in mine):
-        raise conflict("reservation_overlap", "You already have a booking at that time")
-    if len(mine) >= MAX_BOOKINGS_PER_PERSON:
-        raise conflict(
-            "too_many_bookings",
-            f"At most {MAX_BOOKINGS_PER_PERSON} bookings at a time per pool",
-            details={"max": MAX_BOOKINGS_PER_PERSON},
-        )
     holders, bookings, _ = _inputs(rows)
     full = booking_conflict(pool.capacity, holders, bookings, start, end, now)
     if full is not None:
