@@ -103,9 +103,15 @@ CREATE TABLE users (
   bot_kind              varchar(16),            -- M98 bot の用途。'feed' = チャンネルのフィードのボット (UserPublic.bot_kind、リンクプレビューを自動で取る。SECURITY.md §14)、'reservation' = 予約の記録のチャンネルのボット (M99、M112、RESERVATIONS.md)。それ以外の bot と人は NULL
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
-  deactivated_at        timestamptz                       -- 無効化 (ログイン不可、表示は残す)
+  deactivated_at        timestamptz,                      -- 無効化 (ログイン不可、表示は残す)
+  last_login_at         timestamptz,            -- M116 最終ログイン (新しいセッションを作った時刻。refresh は数えない)。管理者だけが見る (docs/ANALYTICS.md §2.1)
+  last_active_at        timestamptz             -- M116 最終利用 (認証付きの要求・WS の接続と active な ping。5 分に 1 回まとめて書く、ANALYTICS.md §2.2)
 );
 ```
+
+**user_activity_hours (M116、docs/ANALYTICS.md §2.2)**: `(user_id → users ON DELETE CASCADE, hour timestamptz)` が主キー、
+`hour` に索引。その人がアプリを使った UTC の 1 時間ごとに 1 行 (最終利用と同じまとめ書きで `ON CONFLICT DO NOTHING`)。
+管理者のアナリティクスの「1 日の利用メンバー数」だけが読む。120 日 (`ACTIVITY_RETENTION_DAYS`) で消す。
 
 自由登録は無い。管理者が CLI または `POST /admin/users` で作成し、仮パスワードを本人に渡す。
 削除は無効化のみ。メッセージの `sender_id` 参照を保つ。「削除」(本人の「アカウントを削除」M104、管理者の匿名化 M10) は
@@ -2086,6 +2092,7 @@ LIMIT $limit OFFSET $offset;
 | outbox_events | 1 日数千行 | 処理済みは 7 日で削除 |
 | push_deliveries | 1 日数千行 | 7 日で削除 |
 | sessions / devices | ユーザー × 端末 | 失効 / 無効化から 30 日で削除 |
+| user_activity_hours (M116) | 1 人 1 日最大 24 行 (50 人 × 120 日で最大 14 万行、実際はずっと少ない) | 120 日で削除 |
 | ai_runs | 1 回ごとに 1 行 (入力は最大 6 万字) | 行は無期限 (費用の記録)。入力の本文は 90 日で消す (M65) |
 | canvases / canvas_revisions | 版 1 つ ≈ 本文の圧縮後 (約 1 万字で 9.6 KB)。1 時間の自動保存で約 700 版 | キャンバスは無期限 (ゴミ箱は 30 日で完全削除)。版は 24 時間後に整理 (M42) |
 
