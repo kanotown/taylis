@@ -88,17 +88,16 @@ object Channels {
         return Sections(
             unread = all.filter { grouped(it) }
                 .sortedWith(compareByDescending<ChannelState> { it.channel.lastMessageAt ?: "" }.thenBy { it.channel.name ?: "" }.thenBy { it.id }),
-            favorites = all.filter { it.isMember && !it.channel.archived && starred(it) && keep(it) }.sortedBy { it.channel.name ?: it.channel.lastMessageAt ?: "" },
+            favorites = SidebarOrder.section(all.filter { it.isMember && !it.channel.archived && starred(it) && keep(it) }),
             custom = sidebar.map { section ->
-                val members = all.filter { it.isMember && !it.channel.archived && !starred(it) && keep(it) && placed[it.id] == section.id }
-                section to (members.filter { !it.channel.isDm }.sortedBy { it.channel.name ?: "" } + members.filter { it.channel.isDm }.sortedByDescending { it.channel.lastMessageAt ?: "" })
+                section to SidebarOrder.section(all.filter { it.isMember && !it.channel.archived && !starred(it) && keep(it) && placed[it.id] == section.id })
             },
-            channels = all.filter { it.isMember && !it.channel.isDm && !it.channel.isTimes && !it.channel.archived && loose(it) && keep(it) }.sortedBy { it.channel.name ?: "" },
+            channels = all.filter { it.isMember && !it.channel.isDm && !it.channel.isTimes && !it.channel.archived && loose(it) && keep(it) }.sortedWith(SidebarOrder.byName),
             times = all.filter { it.isMember && it.channel.isTimes && !it.channel.archived && loose(it) && keep(it) }
-                .sortedWith(compareBy<ChannelState> { it.channel.timesOwnerId != meId }.thenBy { it.channel.name ?: "" }),
+                .sortedWith(compareBy<ChannelState> { it.channel.timesOwnerId != meId }.then(SidebarOrder.byName)),
             dms = all.filter { it.isMember && it.channel.isDm && loose(it) && keep(it) }
-                .sortedWith(compareByDescending<ChannelState> { MainTabs.isSelfNotes(it, meId) }.thenByDescending { it.channel.lastMessageAt ?: "" }),
-            browse = all.filter { !it.isMember && !it.channel.archived }.sortedBy { it.channel.name ?: "" },
+                .sortedWith(compareByDescending<ChannelState> { MainTabs.isSelfNotes(it, meId) }.then(SidebarOrder.newestFirst)),
+            browse = all.filter { !it.isMember && !it.channel.archived }.sortedWith(SidebarOrder.byName),
         )
     }
 
@@ -123,6 +122,45 @@ object Channels {
         val olderUnread = others.drop(limit).filter { hasUnread(it, meId, now) }
         return DmSection(self + newest + olderUnread, more = others.size > newest.size + olderUnread.size)
     }
+}
+
+/**
+ * DATA_MODEL.md sidebar_sections 「セクションの中の並び順」: the order inside a section, the same as the desktop's and iOS's
+ * (apps/shared/sidebar-order.json). The server keeps no order inside a section.
+ */
+object SidebarOrder {
+    /**
+     * The name after NFKC, A-Z lower-cased and katakana folded to hiragana, compared by UTF-16 code unit (String.compareTo);
+     * no Collator: locale collation differs per platform.
+     */
+    fun key(name: String): String {
+        val normalized = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFKC)
+        val out = StringBuilder(normalized.length)
+        for (ch in normalized) {
+            out.append(
+                when (ch) {
+                    in 'A'..'Z' -> ch + 0x20
+                    in '\u30A1'..'\u30F6' -> ch - 0x60
+                    else -> ch
+                },
+            )
+        }
+        return out.toString()
+    }
+
+    /** Two names by [key], equal keys by the raw names. */
+    val names: Comparator<String> = compareBy<String> { key(it) }.thenBy { it }
+
+    /** Channels by name, then by id. */
+    val byName: Comparator<ChannelState> = Comparator<ChannelState> { a, b -> names.compare(a.channel.name ?: "", b.channel.name ?: "") }.thenBy { it.id }
+
+    /** DMs newest first: the last message, else when the DM was made (the server's text), then by id. */
+    val newestFirst: Comparator<ChannelState> =
+        compareByDescending<ChannelState> { it.channel.lastMessageAt ?: it.channel.createdAt }.thenBy { it.id }
+
+    /** Favorites and my own sections: their channels by name, then their DMs newest first. */
+    fun section(rows: List<ChannelState>): List<ChannelState> =
+        rows.filter { !it.channel.isDm }.sortedWith(byName) + rows.filter { it.channel.isDm }.sortedWith(newestFirst)
 }
 
 /** M37: 「未読をまとめる」 (replacing M28c's 「未読のみ」 filter) as it was left on this device; off at first. */
