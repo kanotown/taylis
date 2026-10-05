@@ -42,11 +42,18 @@ services:
       S3_REGION: ${S3_REGION:-us-east-1}
       # 絵文字のセットのフォルダ (M102、docs/EMOJI.md §8)。下のマウント先。空のフォルダなら何もしない
       EMOJI_PRESETS_DIR: /presets
+      # 文書のプレビュー (M108、docs/PREVIEWS.md): Office ファイルを PDF にする converter。
+      # infra/.env で PREVIEW_CONVERTER_URL= (空) にすると Office のプレビューを作らない (PDF は作る)
+      PREVIEW_CONVERTER_URL: ${PREVIEW_CONVERTER_URL-http://converter:3000}
     depends_on:
       db:
         condition: service_healthy
       objectstore:
         condition: service_started
+    networks:
+      - default
+      # converter への道 (外へは出られないネットワーク)
+      - converter
     ports:
       # 既定は localhost のみ。同じ LAN の iPhone / Android 実機から試すときは APP_BIND=0.0.0.0 にする
       # (infra/README.md「実機での動作確認」)。本番では docker-compose.prod.yml で打ち消す。
@@ -66,6 +73,36 @@ services:
       # 絵はリポジトリに入れない。本番は deploy.sh が infra/emoji-presets を作る (無いと Docker が root の空フォルダを作る)。
       # 開発で手元の /emoji を使うときは infra/.env に EMOJI_PRESETS_DIR_HOST=../emoji (docs/DEVELOPMENT.md)
       - ${EMOJI_PRESETS_DIR_HOST:-./emoji-presets}:/presets:ro
+    restart: unless-stopped
+
+  converter:
+    # 文書のプレビュー (M108、docs/PREVIEWS.md): Office ファイル (doc / docx / xls / xlsx / ppt / pptx / odt / ods /
+    # odp / rtf) を LibreOffice で PDF にする Gotenberg。Chromium の無い LibreOffice だけのイメージをダイジェストで固定。
+    # 他人が送ったファイルを開くので閉じ込める (SECURITY.md §4「文書のプレビュー」):
+    # - internal のネットワークだけに置く: ホストにもインターネットにも出られず、app からだけ届く (ポートも公開しない)
+    # - 外のファイルの取得・webhook を切り、LibreOffice が文書の中の URL を取りに行くのも全部断る
+    # - 1 回 90 秒・入力 55 MB で打ち切り、待ち行列は 4 件、メモリ 1 GB・CPU 1 個まで。LibreOffice は 10 回ごとに
+    #   起動し直し、10 分使わなければ止める (待機中は 100 MB ほど)。変換は LibreOffice 1 つずつ (app も 1 件ずつ頼む)
+    image: gotenberg/gotenberg:8.37.0-libreoffice@sha256:c85f019d6ae4927714507254331cc0ed72da7b619ee798e3a45de01f54372c12
+    command:
+      - gotenberg
+      - --api-timeout=90s
+      - --api-body-limit=55MB
+      - --api-disable-download-from
+      - --webhook-disable
+      - --libreoffice-deny-public-ips
+      - --libreoffice-deny-private-ips
+      - --libreoffice-max-queue-size=4
+      - --libreoffice-restart-after=10
+      - --libreoffice-idle-shutdown-timeout=10m
+      - --prometheus-disable-collect
+    networks:
+      - converter
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
   caddy:
@@ -88,6 +125,12 @@ services:
     depends_on:
       - app
     restart: unless-stopped
+
+networks:
+  default:
+  # app と converter だけ。internal: 外 (ホスト・インターネット) への経路が無い
+  converter:
+    internal: true
 
 volumes:
   db-data:
