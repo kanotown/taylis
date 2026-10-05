@@ -121,6 +121,8 @@ fun HomeScreen(
     /** M26: folding one of my sections (on all my devices), and drawing its icon. */
     onToggleSection: (SidebarSectionOut) -> Unit,
     sectionIcon: @Composable (String?) -> Unit,
+    /** T1: the conversation open beside the list (wide), marked. */
+    selectedId: String? = null,
 ) {
     val store = controller.store
     val meId = store.me?.id
@@ -153,7 +155,7 @@ fun HomeScreen(
     }
     var refreshing by remember { mutableStateOf(false) }
     val row: @Composable LazyItemScope.(ChannelState) -> Unit = { channel ->
-        HomeChannelRow(channel, controller, version, onClick = { onSelect(channel.id) }, onLongClick = { onChannelMenu(channel.id) }, modifier = Modifier.folding(this))
+        HomeChannelRow(channel, controller, version, onClick = { onSelect(channel.id) }, onLongClick = { onChannelMenu(channel.id) }, modifier = Modifier.folding(this), selected = channel.id == selectedId)
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -412,7 +414,7 @@ private fun ChannelGlyph(channel: ChannelState) {
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun HomeChannelRow(channel: ChannelState, controller: AppController, version: Int, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
+private fun HomeChannelRow(channel: ChannelState, controller: AppController, version: Int, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null, selected: Boolean = false) {
     val store = controller.store
     val meId = store.me?.id
     val title = remember(version, channel) { channelTitle(channel, store).let { if (channel.channel.isDm) it else it.removePrefix("#") } }
@@ -423,7 +425,7 @@ private fun HomeChannelRow(channel: ChannelState, controller: AppController, ver
     val badge = Channels.badgeCount(channel)
     val others = (channel.channel.dmUserIds ?: emptyList()).filter { it != meId }
     Row(
-        modifier.fillMaxWidth().heightIn(min = ROW_MIN).combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "メニュー")
+        modifier.fillMaxWidth().heightIn(min = ROW_MIN).selectedRow(selected).combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "メニュー")
             .padding(horizontal = 16.dp, vertical = 4.dp).alpha(if (muted && !unread) 0.6f else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {

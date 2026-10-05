@@ -2,6 +2,10 @@ package jp.chikuwachat.android
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
+import android.view.KeyboardShortcutGroup
+import android.view.KeyboardShortcutInfo
+import android.view.Menu
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -10,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import jp.chikuwachat.android.platform.Notifier
 import jp.chikuwachat.android.ui.AppRoot
 import jp.chikuwachat.android.ui.ChikuwaTheme
+import jp.chikuwachat.android.ui.HardwareKeys
 
 class MainActivity : ComponentActivity() {
     private val controller get() = (application as ChikuwaApp).controller
@@ -98,6 +103,31 @@ class MainActivity : ComponentActivity() {
         // M16c: the notification's workspace comes on screen first (WORKSPACES.md §7); M28c: a reply's thread opens at the
         // reply; M39: a reaction's notification opens the message reacted to.
         controller.openFromNotification(workspace, channelId, messageId, parentId, reveal)
+    }
+
+    /**
+     * T1 (MOBILE_UI.md §12): Ctrl+K from a hardware keyboard, wherever the focus is (or with none): 「移動・検索」. The
+     * window offers a Ctrl / Meta combination no view took here (a text field takes none of these).
+     */
+    override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
+        if (controller.screen == jp.chikuwachat.android.app.AppController.Screen.MAIN && HardwareKeys.isJump(keyCode, event.isCtrlPressed, event.isMetaPressed, event.isAltPressed, event.isShiftPressed)) {
+            if (event.repeatCount == 0) controller.pendingJump = true
+            return true
+        }
+        return super.onKeyShortcut(keyCode, event)
+    }
+
+    /** The system's keyboard shortcuts list (Meta+/) names the app's own. */
+    override fun onProvideKeyboardShortcuts(data: MutableList<KeyboardShortcutGroup>, menu: Menu?, deviceId: Int) {
+        super.onProvideKeyboardShortcuts(data, menu, deviceId)
+        data += KeyboardShortcutGroup(
+            getString(R.string.app_name),
+            listOf(
+                KeyboardShortcutInfo("移動・検索", KeyEvent.KEYCODE_K, KeyEvent.META_CTRL_ON),
+                KeyboardShortcutInfo("送信", KeyEvent.KEYCODE_ENTER, 0),
+                KeyboardShortcutInfo("改行", KeyEvent.KEYCODE_ENTER, KeyEvent.META_SHIFT_ON),
+            ),
+        )
     }
 
     override fun onStart() {

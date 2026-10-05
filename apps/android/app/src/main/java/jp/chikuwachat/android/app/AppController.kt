@@ -229,6 +229,8 @@ class AppController(private val app: Application) {
     var pendingRevealId by mutableStateOf<String?>(null)
     /** M40: a 自分 screen to open (the own profile card's 「ステータスを設定」): the main screen opens it on the 自分 tab. */
     var pendingSettings by mutableStateOf<jp.chikuwachat.android.ui.SettingsPage?>(null)
+    /** T1 (MOBILE_UI.md §12): Ctrl+K on a hardware keyboard (MainActivity): the main screen opens 「移動・検索」. */
+    var pendingJump by mutableStateOf(false)
     /** M46: a canvas to open once the main screen sees it (a `/c/<id>` link tapped in a body): its conversation and id. */
     var pendingCanvas by mutableStateOf<Pair<String, String>?>(null)
     /** M52: a calendar event to open once the main screen sees it (a tapped alarm): its channel (null: my own) and id. */

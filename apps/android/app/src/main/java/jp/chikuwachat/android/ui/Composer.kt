@@ -89,6 +89,12 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -490,11 +496,22 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 verticalAlignment = Alignment.Bottom,
             ) {
                 val textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface)
+                // T1 (MOBILE_UI.md §12): with a hardware keyboard, Enter sends and Shift+Enter is a new line (HardwareKeys).
+                val hardwareKeyboard = HardwareKeys.attached(LocalConfiguration.current)
                 BasicTextField(
                     value = field, onValueChange = { setField(it) },
                     modifier = Modifier.weight(1f).align(Alignment.CenterVertically)
                         .padding(start = 16.dp, end = if (!focused && canSend) 4.dp else 16.dp, top = 9.dp, bottom = 9.dp)
-                        .focusRequester(inputFocus).onFocusChanged { focused = it.isFocused },
+                        .focusRequester(inputFocus).onFocusChanged { focused = it.isFocused }
+                        .onPreviewKeyEvent { event ->
+                            if (!HardwareKeys.isEnter(event.nativeKeyEvent.keyCode)) return@onPreviewKeyEvent false
+                            val action = HardwareKeys.enter(hardwareKeyboard, event.isShiftPressed, event.isAltPressed, composing = field.composition != null)
+                            if (action == HardwareKeys.EnterAction.NONE) return@onPreviewKeyEvent false
+                            if (event.type == KeyEventType.KeyDown) {
+                                if (action == HardwareKeys.EnterAction.SEND) send() else insertAtCursor("\n")
+                            }
+                            true
+                        },
                     textStyle = textStyle, maxLines = MAX_LINES,
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     decorationBox = { inner ->

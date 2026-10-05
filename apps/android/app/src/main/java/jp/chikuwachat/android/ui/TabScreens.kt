@@ -32,6 +32,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,36 +76,81 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun MainTabBar(store: Store, version: Int, selected: MainTab, onTab: (MainTab) -> Unit) {
+    val badges = rememberTabBadges(store, version)
+    NavigationBar {
+        MainTab.entries.forEach { tab ->
+            val isSelected = tab == selected
+            NavigationBarItem(
+                selected = isSelected,
+                onClick = { onTab(tab) },
+                icon = { TabIcon(tab, isSelected, badges) },
+                label = { Text(tab.label, maxLines = 1, softWrap = false) },
+            )
+        }
+    }
+}
+
+/**
+ * T1 (MOBILE_UI.md §12): the same four tabs with the same badges as a navigation rail, on a wide window. ✏️ 新しいメッセージ
+ * heads it (the phone's button floats over the home list).
+ */
+@Composable
+fun MainTabRail(store: Store, version: Int, selected: MainTab, onTab: (MainTab) -> Unit, onCompose: () -> Unit) {
+    val badges = rememberTabBadges(store, version)
+    NavigationRail(
+        header = {
+            FloatingActionButton(onClick = onCompose, modifier = Modifier.padding(top = 8.dp, bottom = 16.dp)) {
+                Icon(Icons.Default.Edit, contentDescription = "新しいメッセージ")
+            }
+        },
+    ) {
+        MainTab.entries.forEach { tab ->
+            val isSelected = tab == selected
+            NavigationRailItem(
+                selected = isSelected,
+                onClick = { onTab(tab) },
+                icon = { TabIcon(tab, isSelected, badges) },
+                label = { Text(tab.label, maxLines = 1, softWrap = false) },
+            )
+        }
+    }
+}
+
+/** T1: a list row whose conversation is open beside the list (wide) is marked, as a sidebar's is. */
+@Composable
+internal fun Modifier.selectedRow(selected: Boolean): Modifier =
+    if (selected) this.background(MaterialTheme.colorScheme.secondaryContainer).semantics { this.selected = true } else this
+
+/** The tabs' badges, from the Store ([MainTabs]). */
+private class TabBadges(val dm: Int, val activity: MainTabs.ActivityBadge, val home: Boolean)
+
+@Composable
+private fun rememberTabBadges(store: Store, version: Int): TabBadges {
     val meId = store.me?.id
     val dm = remember(version, meId) { MainTabs.dmBadge(store.channels.values, meId) }
     val activity = remember(version) { MainTabs.activityBadge(store.channels.values, store.threadSummary, store.activity) }
     val home = remember(version, meId) { MainTabs.homeDot(store.channels.values, meId) }
-    NavigationBar {
-        MainTab.entries.forEach { tab ->
-            val isSelected = tab == selected
-            val (filled, outlined) = tabIcons(tab)
-            NavigationBarItem(
-                selected = isSelected,
-                onClick = { onTab(tab) },
-                icon = {
-                    // TalkBack reads each badge with the tab (the item merges its children).
-                    BadgedBox(badge = {
-                        when {
-                            tab == MainTab.DM && dm > 0 -> Badge(Modifier.semantics { contentDescription = "未読 $dm 件" }) { Text(badgeText(dm)) }
-                            tab == MainTab.ACTIVITY && activity.count > 0 -> Badge(
-                                Modifier.semantics { contentDescription = "${activity.count} 件" + if (activity.mention) "、メンションあり" else "" },
-                                containerColor = if (activity.mention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
-                                contentColor = if (activity.mention) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSecondary,
-                            ) { Text(badgeText(activity.count)) }
-                            tab == MainTab.HOME && home -> Badge(Modifier.semantics { contentDescription = "未読あり" }, containerColor = MaterialTheme.colorScheme.primary)
-                        }
-                    }) {
-                        Icon(if (isSelected) filled else outlined, contentDescription = null)
-                    }
-                },
-                label = { Text(tab.label, maxLines = 1, softWrap = false) },
-            )
+    return TabBadges(dm, activity, home)
+}
+
+@Composable
+private fun TabIcon(tab: MainTab, selected: Boolean, badges: TabBadges) {
+    val (filled, outlined) = tabIcons(tab)
+    val dm = badges.dm
+    val activity = badges.activity
+    // TalkBack reads each badge with the tab (the item merges its children).
+    BadgedBox(badge = {
+        when {
+            tab == MainTab.DM && dm > 0 -> Badge(Modifier.semantics { contentDescription = "未読 $dm 件" }) { Text(badgeText(dm)) }
+            tab == MainTab.ACTIVITY && activity.count > 0 -> Badge(
+                Modifier.semantics { contentDescription = "${activity.count} 件" + if (activity.mention) "、メンションあり" else "" },
+                containerColor = if (activity.mention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                contentColor = if (activity.mention) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSecondary,
+            ) { Text(badgeText(activity.count)) }
+            tab == MainTab.HOME && badges.home -> Badge(Modifier.semantics { contentDescription = "未読あり" }, containerColor = MaterialTheme.colorScheme.primary)
         }
+    }) {
+        Icon(if (selected) filled else outlined, contentDescription = null)
     }
 }
 
@@ -122,7 +171,7 @@ private fun tabIcons(tab: MainTab): Pair<ImageVector, ImageVector> = when (tab) 
  * (POST /dms with only me) and opens it.
  */
 @Composable
-fun DmListScreen(controller: AppController, version: Int, listState: LazyListState, onOpen: (String) -> Unit, onNew: () -> Unit) {
+fun DmListScreen(controller: AppController, version: Int, listState: LazyListState, onOpen: (String) -> Unit, onNew: () -> Unit, selectedId: String? = null) {
     val store = controller.store
     val meId = store.me?.id
     var query by rememberSaveable { mutableStateOf("") }
@@ -171,7 +220,7 @@ fun DmListScreen(controller: AppController, version: Int, listState: LazyListSta
                     )
                 }
             }
-            items(rows, key = { it.id }) { channel -> DmRow(channel, controller, version, now, onClick = { onOpen(channel.id) }) }
+            items(rows, key = { it.id }) { channel -> DmRow(channel, controller, version, now, onClick = { onOpen(channel.id) }, selected = channel.id == selectedId) }
         }
         ExtendedFloatingActionButton(
             onClick = onNew,
@@ -198,7 +247,7 @@ private fun SelfNotesPlaceholderRow(meId: String, name: String, busy: Boolean, o
 
 /** `version`: the names, presence and statuses come from the Store, not from `channel`. */
 @Composable
-private fun DmRow(channel: ChannelState, controller: AppController, version: Int, now: ZonedDateTime, onClick: () -> Unit) {
+private fun DmRow(channel: ChannelState, controller: AppController, version: Int, now: ZonedDateTime, onClick: () -> Unit, selected: Boolean = false) {
     val store = controller.store
     val meId = store.me?.id
     val title = remember(version, channel) { channelTitle(channel, store) }
@@ -222,7 +271,7 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
         else -> null
     }
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp)
+        Modifier.fillMaxWidth().heightIn(min = 72.dp).selectedRow(selected).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp)
             .alpha(if (muted && !unread) 0.6f else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
