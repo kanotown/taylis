@@ -7,6 +7,7 @@ import type { AppController } from "../state/app";
 import { fullTimestamp } from "./format";
 import { Button, cn } from "./primitives";
 import { WorkspaceIcon } from "./workspaceIcons";
+import { t } from "../i18n";
 
 const CARD = "flex items-center gap-3 rounded-xl border border-line px-3 py-2";
 
@@ -55,8 +56,8 @@ export function WorkspaceSettingsTab({ controller }: { controller: AppController
     }
   };
 
-  if (unsupported) return <p className="mt-4 text-sm text-muted">このサーバはワークスペースの設定に対応していません。</p>;
-  if (!settings) return <p role="status" className="mt-6 text-center text-sm text-muted">読み込み中…</p>;
+  if (unsupported) return <p className="mt-4 text-sm text-muted">{t("workspace.unsupported")}</p>;
+  if (!settings) return <p role="status" className="mt-6 text-center text-sm text-muted">{t("common.loading")}</p>;
   const changedBy = settings.updated_by ? controller.store.users.get(settings.updated_by)?.display_name : null;
   return (
     <div className="mt-4 space-y-3">
@@ -64,13 +65,13 @@ export function WorkspaceSettingsTab({ controller }: { controller: AppController
       <label className={cn(CARD, "cursor-pointer")}>
         <UsersRound size={18} className="shrink-0 text-muted" />
         <span className="min-w-0 flex-1 text-sm">
-          参加・退出の表示
-          <span className="block text-xs text-muted">チャンネルに参加・退出・追加・除外したとき「〇〇 が参加しました」のような一言を表示します (公開・非公開チャンネル。DM には出ません)。オフにしても、これまでの表示は残ります。未読や通知にはなりません。</span>
+          {t("workspace.joinLeave")}
+          <span className="block text-xs text-muted">{t("workspace.joinLeaveNote")}</span>
         </span>
         <input
           type="checkbox"
           role="switch"
-          aria-label="参加・退出の表示"
+          aria-label={t("workspace.joinLeave")}
           className="h-4 w-4 accent-[var(--accent)]"
           disabled={busy}
           checked={settings.show_membership_messages}
@@ -80,13 +81,13 @@ export function WorkspaceSettingsTab({ controller }: { controller: AppController
       <label className={cn(CARD, "cursor-pointer")}>
         <Eye size={18} className="shrink-0 text-muted" />
         <span className="min-w-0 flex-1 text-sm">
-          参加前にチャンネルの中を見られる
-          <span className="block text-xs text-muted">オン: 参加していない公開チャンネルのメッセージを読めます (プレビュー)。オフ: 名前・説明・人数だけが見え、メッセージ・スレッド・ファイルは参加してから読めます。検索にも参加しているチャンネルだけが出ます。管理者も同じです。</span>
+          {t("workspace.preview")}
+          <span className="block text-xs text-muted">{t("workspace.previewNote")}</span>
         </span>
         <input
           type="checkbox"
           role="switch"
-          aria-label="参加前にチャンネルの中を見られる"
+          aria-label={t("workspace.preview")}
           className="h-4 w-4 accent-[var(--accent)]"
           disabled={busy}
           checked={settings.preview_before_join}
@@ -96,7 +97,7 @@ export function WorkspaceSettingsTab({ controller }: { controller: AppController
       <DefaultChannelsSection controller={controller} settings={settings} onSaved={setSettings} />
       {settings.updated_at && changedBy && (
         <p className="text-xs text-muted">
-          最終変更: {changedBy} ({fullTimestamp(settings.updated_at)})
+          {t("workspace.lastChanged", { who: changedBy, at: fullTimestamp(settings.updated_at) })}
         </p>
       )}
     </div>
@@ -151,30 +152,30 @@ export function WorkspaceIconSection({ controller, settings, onSaved }: {
     <div className={CARD} data-testid="workspace-icon-section">
       <WorkspaceIcon serverUrl={entry?.serverUrl ?? controller.serverUrl} version={version} name={name} colorKey={entry?.workspaceId ?? entry?.serverUrl ?? name} className="h-12 w-12 rounded-xl text-lg" />
       <span className="min-w-0 flex-1 text-sm">
-        アイコン
-        <span className="block text-xs text-muted">ワークスペースの一覧・切り替え・ログイン画面に出ます (ログイン前の画面にも出るので、公開してよい画像にしてください)。PNG・JPEG・WebP。正方形でない画像は中央を切り抜きます。無いときは名前の頭文字を表示します。</span>
+        {t("workspace.icon")}
+        <span className="block text-xs text-muted">{t("workspace.iconNote")}</span>
       </span>
       <input
         ref={input}
         type="file"
         accept={ICON_ACCEPT}
-        aria-label="アイコンの画像を選ぶ"
+        aria-label={t("workspace.iconPick")}
         className="hidden"
         onChange={(event) => {
           // Checked before any byte is read; the input is cleared once the copy is made (platform/pickedFiles.ts).
           const picked = takePicked(event.target);
-          const refusal = refusePicked(picked.files, { maxFiles: 1, maxBytes: ICON_MAX_BYTES, tooMany: "画像は1つ選んでください" });
+          const refusal = refusePicked(picked.files, { maxFiles: 1, maxBytes: ICON_MAX_BYTES, tooMany: t("workspace.oneImage") });
           if (refusal) { picked.release(); controller.setError(refusal); return; }
           void forEachPicked(picked.files, async (file) => upload(file), picked.release, (error) => controller.setError(error));
         }}
       />
       <div className="flex shrink-0 flex-col gap-1.5 sm:flex-row">
         <Button size="sm" variant="secondary" disabled={busy} onClick={() => input.current?.click()}>
-          <ImageUp size={14} /> {version ? "変更…" : "画像を選ぶ…"}
+          <ImageUp size={14} /> {version ? t("workspace.change") : t("workspace.pickImage")}
         </Button>
         {version && (
           <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={remove}>
-            <Trash2 size={14} /> 削除
+            <Trash2 size={14} /> {t("common.delete")}
           </Button>
         )}
       </div>
@@ -223,9 +224,9 @@ export function DefaultChannelsSection({ controller, settings, onSaved }: {
 
   if (!supported) {
     return (
-      <section aria-label="既定のチャンネル" className="rounded-xl border border-line px-3 py-2">
-        <h3 className="text-sm">既定のチャンネル</h3>
-        <p className="mt-1 text-xs text-muted">このサーバは既定のチャンネルに対応していません。</p>
+      <section aria-label={t("workspace.defaultChannels")} className="rounded-xl border border-line px-3 py-2">
+        <h3 className="text-sm">{t("workspace.defaultChannels")}</h3>
+        <p className="mt-1 text-xs text-muted">{t("workspace.defaultUnsupported")}</p>
       </section>
     );
   }
@@ -291,7 +292,7 @@ export function DefaultChannelsSection({ controller, settings, onSaved }: {
     setNote(null);
     try {
       const answer = await api.adminApplyDefaultChannels(true);
-      if (answer.memberships === 0) setNote(EVERYONE_IN);
+      if (answer.memberships === 0) setNote(t("workspace.everyoneIn"));
       else setPending(answer);
     } catch (error) {
       controller.setError(error);
@@ -307,7 +308,7 @@ export function DefaultChannelsSection({ controller, settings, onSaved }: {
     try {
       const done = await api.adminApplyDefaultChannels(false);
       setPending(null);
-      setNote(done.memberships === 0 ? EVERYONE_IN : `${done.users} 人を既定のチャンネルに追加しました。`);
+      setNote(done.memberships === 0 ? t("workspace.everyoneIn") : t("workspace.added", { count: done.users }));
     } catch (error) {
       controller.setError(error);
     } finally {
@@ -320,17 +321,17 @@ export function DefaultChannelsSection({ controller, settings, onSaved }: {
   const legacy = settings.legacy_sso_default_channels ?? [];
   const ICON = "rounded p-1 text-muted hover:bg-line disabled:opacity-30";
   return (
-    <section aria-label="既定のチャンネル" className="rounded-xl border border-line px-3 py-2">
+    <section aria-label={t("workspace.defaultChannels")} className="rounded-xl border border-line px-3 py-2">
       <div className="flex items-center gap-3">
         <Hash size={18} className="shrink-0 text-muted" />
         <span className="min-w-0 flex-1 text-sm">
-          既定のチャンネル
-          <span className="block text-xs text-muted">新しく作ったアカウント (管理者の作成・招待リンク・Google でログイン。ゲストを除く) は、ここに並べた公開チャンネルに自動で入ります。アーカイブ・非公開にしたチャンネルは一覧から外れます。</span>
+          {t("workspace.defaultChannels")}
+          <span className="block text-xs text-muted">{t("workspace.defaultNote")}</span>
         </span>
       </div>
       {!settings.default_channels_set && legacy.length > 0 && (
         <p className="mt-2 text-xs text-muted">
-          まだ保存されていません。今は Google でログインして作られたアカウントだけが、サーバの設定 SSO_DEFAULT_CHANNELS ({legacy.map((n) => `#${n}`).join("、")}) に入ります。ここで保存すると、こちらが優先されます。
+          {t("workspace.legacyNote", { channels: legacy.map((n) => `#${n}`).join(t("common.listSeparator")) })}
         </p>
       )}
       {chosen.length > 0 ? (
@@ -338,24 +339,24 @@ export function DefaultChannelsSection({ controller, settings, onSaved }: {
           {chosen.map((channel, index) => (
             <li key={channel.id} className="flex items-center gap-1 rounded-lg bg-panel-2 px-2 py-1 text-sm">
               <span className="min-w-0 flex-1 truncate">#{channel.name}</span>
-              <button type="button" aria-label={`#${channel.name} を上へ`} className={ICON} disabled={busy || index === 0} onClick={() => move(index, -1)}>
+              <button type="button" aria-label={t("workspace.up", { name: channel.name ?? "" })} className={ICON} disabled={busy || index === 0} onClick={() => move(index, -1)}>
                 <ArrowUp size={14} />
               </button>
-              <button type="button" aria-label={`#${channel.name} を下へ`} className={ICON} disabled={busy || index === chosen.length - 1} onClick={() => move(index, 1)}>
+              <button type="button" aria-label={t("workspace.down", { name: channel.name ?? "" })} className={ICON} disabled={busy || index === chosen.length - 1} onClick={() => move(index, 1)}>
                 <ArrowDown size={14} />
               </button>
-              <button type="button" aria-label={`#${channel.name} を外す`} className={ICON} disabled={busy} onClick={() => void saveList(chosen.filter((c) => c.id !== channel.id))}>
+              <button type="button" aria-label={t("workspace.removeChannel", { name: channel.name ?? "" })} className={ICON} disabled={busy} onClick={() => void saveList(chosen.filter((c) => c.id !== channel.id))}>
                 <X size={14} />
               </button>
             </li>
           ))}
         </ol>
       ) : (
-        <p className="mt-2 text-xs text-muted">まだありません。新しいアカウントはどのチャンネルにも入りません。</p>
+        <p className="mt-2 text-xs text-muted">{t("workspace.noneYet")}</p>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <select
-          aria-label="既定のチャンネルを追加"
+          aria-label={t("workspace.addDefault")}
           className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-panel px-2 text-sm"
           disabled={busy || publicChannels === null || choices.length === 0}
           value=""
@@ -364,7 +365,7 @@ export function DefaultChannelsSection({ controller, settings, onSaved }: {
             if (picked) void saveList([...chosen, { id: picked.id, name: picked.name ?? "" }]);
           }}
         >
-          <option value="">{publicChannels === null ? "読み込み中…" : choices.length === 0 ? "追加できる公開チャンネルはありません" : "公開チャンネルを追加…"}</option>
+          <option value="">{publicChannels === null ? t("common.loading") : choices.length === 0 ? t("workspace.noPublicToAdd") : t("workspace.addPublic")}</option>
           {choices.map((c) => (
             <option key={c.id} value={c.id}>
               #{c.name}
@@ -373,33 +374,33 @@ export function DefaultChannelsSection({ controller, settings, onSaved }: {
         </select>
         {chosen.length === 0 && publicChannels !== null && (
           <Button size="sm" variant="secondary" disabled={busy} onClick={() => void createSuggested()}>
-            「{SUGGESTED_DEFAULTS.join("」と「")}」を既定にする
+            {t("workspace.useSuggested", { names: SUGGESTED_DEFAULTS.join(t("workspace.suggestedJoin")) })}
           </Button>
         )}
       </div>
       <div className="mt-3 border-t border-line pt-2">
         <Button size="sm" variant="secondary" disabled={busy || chosen.length === 0} onClick={() => void count()}>
-          <UsersRound size={14} /> 今いる人も全員入れる
+          <UsersRound size={14} /> {t("workspace.addEveryone")}
         </Button>
         {pending && (
-          <div role="alertdialog" aria-label="今いる人も全員入れる" className="mt-2 rounded-lg border border-line bg-panel-2 p-2 text-sm">
-            <p>{pending.users} 人を既定のチャンネルに追加します (のべ {pending.memberships} 件。ゲストとボットは除きます)。よろしいですか？</p>
+          <div role="alertdialog" aria-label={t("workspace.addEveryone")} className="mt-2 rounded-lg border border-line bg-panel-2 p-2 text-sm">
+            <p>{t("workspace.addEveryoneConfirm", { users: pending.users, memberships: pending.memberships })}</p>
             <ul className="mt-1 text-xs text-muted">
               {pending.channels
                 .filter((c) => c.added > 0)
                 .map((c) => (
                   <li key={c.id}>
-                    #{c.name}: {c.added} 人
+                    #{c.name}: {t("common.people", { count: c.added })}
                   </li>
                 ))}
             </ul>
-            <p className="mt-1 text-xs text-muted">「参加・退出の表示」がオンなら、チャンネルごとに「〇〇 が … を追加しました」と 1 行出ます。</p>
+            <p className="mt-1 text-xs text-muted">{t("workspace.addEveryoneNote")}</p>
             <div className="mt-2 flex justify-end gap-2">
               <Button size="sm" variant="secondary" disabled={busy} onClick={() => setPending(null)}>
-                キャンセル
+                {t("common.cancel")}
               </Button>
               <Button size="sm" disabled={busy} onClick={() => void apply()}>
-                追加する
+                {t("workspace.addConfirm")}
               </Button>
             </div>
           </div>
@@ -414,4 +415,3 @@ export function DefaultChannelsSection({ controller, settings, onSaved }: {
   );
 }
 
-const EVERYONE_IN = "全員がすでに既定のチャンネルに入っています。";
