@@ -5,6 +5,7 @@
  * the picker and into Japanese (「毎週 火・木曜日、12月20日まで」). Weekdays here are JavaScript's (0 = Sunday).
  */
 import { type DayKey, parseDay } from "./calendarDates";
+import { t, weekdayName, intlLocale } from "../i18n";
 
 export type RepeatKind = "none" | "daily" | "weekly" | "monthly" | "yearly" | "custom";
 export type RepeatFreq = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -30,7 +31,8 @@ export const MAX_INTERVAL = 99;
 export const MAX_COUNT = 999;
 
 const CODES = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
-const NAMES = ["日", "月", "火", "水", "木", "金", "土"];
+/** The weekdays, Sunday = 0 (keys; the names come from weekdayName). */
+const NAMES = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 /** The server's order (RFC 5545's default week start): Monday first. */
 const MONDAY_FIRST = [1, 2, 3, 4, 5, 6, 0];
 
@@ -157,12 +159,17 @@ export function ruleChanged(draft: RepeatDraft, start: DayKey, rrule: string | n
 }
 
 function weekdayList(days: number[]): string {
-  return MONDAY_FIRST.filter((d) => days.includes(d)).map((d) => NAMES[d]).join("・");
+  return MONDAY_FIRST.filter((d) => days.includes(d)).map((d) => weekdayName((d + 6) % 7)).join(t("recurring.daySeparator"));
 }
 
 function shortDay(day: DayKey): string {
-  const date = parseDay(day);
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+  return parseDay(day).toLocaleDateString(intlLocale(), { year: "numeric", month: "long", day: "numeric" });
+}
+
+/** 「第 2 火曜日」 / 「最終 金曜日」 (`n` < 0: the last), Sunday = 0. */
+function nthWeekday(n: number, weekday: number): string {
+  const name = weekdayName((weekday + 6) % 7, "long");
+  return n < 0 ? t("calendar.rrule.lastWeekday", { weekday: name }) : t("calendar.rrule.nthWeekday", { n, weekday: name });
 }
 
 /**
@@ -170,36 +177,36 @@ function shortDay(day: DayKey): string {
  * 「毎年 1月10日」, then 「、2026年12月20日まで」 or 「、10 回」. `start` is the series' first day (its date, its weekday).
  */
 export function describeRrule(rrule: string | null | undefined, start: DayKey): string {
-  if (!rrule) return "繰り返さない";
+  if (!rrule) return t("calendar.rrule.never");
   const rule = parseRrule(rrule);
-  if (!rule) return "繰り返し";
+  if (!rule) return t("tasks.repeat");
   const date = parseDay(start);
-  const every = (unit: string, one: string) => (rule.interval === 1 ? one : `${rule.interval} ${unit}ごと`);
+  const n = rule.interval;
   let text: string;
   switch (rule.freq) {
     case "DAILY":
-      text = every("日", "毎日");
+      text = n === 1 ? t("calendar.repeat.daily") : t("calendar.rrule.everyDays", { n });
       break;
     case "WEEKLY": {
       const days = rule.byday.length ? rule.byday.map((d) => d.weekday) : [date.getDay()];
-      text = `${every("週間", "毎週")} ${weekdayList(days)}曜日`;
+      text = t("calendar.rrule.weeklyOn", { every: n === 1 ? t("calendar.repeat.weekly") : t("calendar.rrule.everyWeeks", { n }), days: weekdayList(days) });
       break;
     }
     case "MONTHLY": {
       const nth = rule.byday[0];
       let which: string;
-      if (nth && nth.n !== null) which = `${nth.n < 0 ? "最終" : `第 ${nth.n}`} ${NAMES[nth.weekday]}曜日`;
-      else if (rule.bymonthday === -1) which = "月末";
-      else which = `${rule.bymonthday ?? date.getDate()} 日`;
-      text = `${every("か月", "毎月")} ${which}`;
+      if (nth && nth.n !== null) which = nthWeekday(nth.n, nth.weekday);
+      else if (rule.bymonthday === -1) which = t("calendar.rrule.monthEnd");
+      else which = t("calendar.rrule.onDay", { day: rule.bymonthday ?? date.getDate() });
+      text = t("calendar.rrule.monthlyOn", { every: n === 1 ? t("calendar.repeat.monthly") : t("calendar.rrule.everyMonths", { n }), which });
       break;
     }
     case "YEARLY":
-      text = `${every("年", "毎年")} ${date.getMonth() + 1}月${date.getDate()}日`;
+      text = t("calendar.rrule.yearlyOn", { every: n === 1 ? t("calendar.repeat.yearly") : t("calendar.rrule.everyYears", { n }), month: date.getMonth() + 1, day: date.getDate() });
       break;
   }
-  if (rule.until) text += `、${shortDay(rule.until)}まで`;
-  else if (rule.count) text += `、${rule.count} 回`;
+  if (rule.until) text += t("calendar.rrule.until", { date: shortDay(rule.until) });
+  else if (rule.count) text += t("calendar.rrule.count", { count: rule.count });
   return text;
 }
 
@@ -207,11 +214,11 @@ export function describeRrule(rrule: string | null | undefined, start: DayKey): 
 export function monthlyChoices(start: DayKey): Array<{ value: MonthlyMode; label: string }> {
   const date = parseDay(start);
   const { n, last } = nthOfMonth(start);
-  const weekday = NAMES[date.getDay()];
-  const choices: Array<{ value: MonthlyMode; label: string }> = [{ value: "day", label: `毎月 ${date.getDate()} 日` }];
-  if (new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate() === date.getDate()) choices.push({ value: "monthEnd", label: "毎月 月末" });
-  if (n <= 4) choices.push({ value: "nth", label: `毎月 第 ${n} ${weekday}曜日` });
-  if (last) choices.push({ value: "last", label: `毎月 最終 ${weekday}曜日` });
+  const monthly = (which: string) => t("calendar.rrule.monthlyOn", { every: t("calendar.repeat.monthly"), which });
+  const choices: Array<{ value: MonthlyMode; label: string }> = [{ value: "day", label: monthly(t("calendar.rrule.onDay", { day: date.getDate() })) }];
+  if (new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate() === date.getDate()) choices.push({ value: "monthEnd", label: monthly(t("calendar.rrule.monthEnd")) });
+  if (n <= 4) choices.push({ value: "nth", label: monthly(nthWeekday(n, date.getDay())) });
+  if (last) choices.push({ value: "last", label: monthly(nthWeekday(-1, date.getDay())) });
   return choices;
 }
 
@@ -219,15 +226,15 @@ export function monthlyChoices(start: DayKey): Array<{ value: MonthlyMode; label
 export function repeatProblem(draft: RepeatDraft, start: DayKey): string | null {
   if (draft.kind === "none") return null;
   if (draft.kind === "custom" && (!Number.isInteger(draft.interval) || draft.interval < 1 || draft.interval > MAX_INTERVAL)) {
-    return `間隔は 1〜${MAX_INTERVAL} にしてください`;
+    return t("calendar.check.interval", { max: MAX_INTERVAL });
   }
-  if ((freqOf(draft) === "WEEKLY") && draft.weekdays.length === 0) return "曜日を選んでください";
+  if ((freqOf(draft) === "WEEKLY") && draft.weekdays.length === 0) return t("calendar.check.weekdays");
   if (draft.end === "until") {
-    if (!draft.until) return "終了日を入れてください";
-    if (draft.until < start) return "終了日は開始日より後にしてください";
+    if (!draft.until) return t("calendar.check.endDate");
+    if (draft.until < start) return t("calendar.check.endAfterStartDay");
   }
   if (draft.end === "count" && (!Number.isInteger(draft.count) || draft.count < 1 || draft.count > MAX_COUNT)) {
-    return `回数は 1〜${MAX_COUNT} にしてください`;
+    return t("calendar.check.count", { max: MAX_COUNT });
   }
   return null;
 }

@@ -10,14 +10,15 @@ import { describeError } from "../api/errors";
 import type { CalendarFeedOut, CalendarFeedScope } from "../api/types";
 import type { AppController } from "../state/app";
 import { Button, Input, Modal } from "./primitives";
+import { t } from "../i18n";
 
 export const FEED_SCOPES: Array<{ value: CalendarFeedScope; label: string }> = [
-  { value: "all", label: "すべて (自分のカレンダーと参加しているチャンネル)" },
-  { value: "personal", label: "自分のカレンダーだけ" },
+  { value: "all", get label() { return t("calendarFeeds.scopeAll"); } },
+  { value: "personal", get label() { return t("calendarFeeds.scopePersonal"); } },
 ];
 
 export function feedScopeLabel(scope: CalendarFeedScope): string {
-  return scope === "personal" ? "自分のカレンダーだけ" : "すべて";
+  return scope === "personal" ? t("calendarFeeds.scopePersonal") : t("admin.users.filter.all");
 }
 
 function shortDate(iso: string): string {
@@ -87,13 +88,13 @@ export function CalendarFeedsDialog({ controller, onClose }: { controller: AppCo
   };
 
   return (
-    <Modal onClose={onClose} title="カレンダーを購読 (iCal)" description="Google カレンダーや Apple のカレンダーにこのカレンダーの予定を表示します (読み取り専用)。" className="w-[560px]">
+    <Modal onClose={onClose} title={t("calendar.subscribeIcal")} description={t("calendarFeeds.description")} className="w-[560px]">
       <div className="mt-4 space-y-4 text-sm">
         <p className="rounded-lg bg-warning/10 px-3 py-2 text-xs">
-          購読 URL を知っている人は、ログインしなくても誰でも予定を見られます。人に教えないでください。漏れたら削除して作り直してください。
+          {t("calendarFeeds.warning")}
         </p>
-        <section className="space-y-2" aria-label="購読 URL を作る">
-          <div className="text-xs font-medium text-muted">範囲</div>
+        <section className="space-y-2" aria-label={t("calendarFeeds.create")}>
+          <div className="text-xs font-medium text-muted">{t("calendarFeeds.scope")}</div>
           <div className="space-y-1">
             {FEED_SCOPES.map((choice) => (
               <label key={choice.value} className="flex items-center gap-2">
@@ -102,26 +103,26 @@ export function CalendarFeedsDialog({ controller, onClose }: { controller: AppCo
               </label>
             ))}
           </div>
-          <Button size="sm" disabled={!api || busy} onClick={() => void create()}>購読 URL を作る</Button>
+          <Button size="sm" disabled={!api || busy} onClick={() => void create()}>{t("calendarFeeds.create")}</Button>
         </section>
         {made && (
-          <section className="space-y-1 rounded-xl border border-accent/40 bg-accent-soft/50 p-3" aria-label="作った URL">
-            <div className="font-medium">購読 URL</div>
+          <section className="space-y-1 rounded-xl border border-accent/40 bg-accent-soft/50 p-3" aria-label={t("calendarFeeds.madeUrl")}>
+            <div className="font-medium">{t("calendarFeeds.url")}</div>
             <div className="flex items-center gap-2">
-              <Input readOnly value={made} aria-label="購読 URL" onFocus={(e) => e.currentTarget.select()} className="font-mono text-xs" />
+              <Input readOnly value={made} aria-label={t("calendarFeeds.url")} onFocus={(e) => e.currentTarget.select()} className="font-mono text-xs" />
               <Button size="sm" variant="secondary" onClick={() => void copy()}>
-                <Copy size={14} /> {copied ? "コピーしました" : "コピー"}
+                <Copy size={14} /> {copied ? t("calendarFeeds.copied") : t("common.copy")}
               </Button>
             </div>
-            <div className="text-xs text-muted">この URL はいまだけ表示します。閉じると再表示できません (必要なら作り直してください)。</div>
+            <div className="text-xs text-muted">{t("calendarFeeds.onlyNow")}</div>
           </section>
         )}
-        <section className="space-y-1" aria-label="作った購読 URL">
-          <div className="text-xs font-medium text-muted">作った購読 URL</div>
+        <section className="space-y-1" aria-label={t("calendarFeeds.made")}>
+          <div className="text-xs font-medium text-muted">{t("calendarFeeds.made")}</div>
           {feeds === null ? (
-            <div className="text-xs text-muted">{api ? "読み込み中…" : "接続すると表示します"}</div>
+            <div className="text-xs text-muted">{api ? t("common.loading") : t("calendar.connectToShow")}</div>
           ) : feeds.length === 0 ? (
-            <div className="text-xs text-muted">まだありません</div>
+            <div className="text-xs text-muted">{t("rollover.none")}</div>
           ) : (
             <ul className="divide-y divide-line rounded-xl border border-line">
               {feeds.map((feed) => (
@@ -129,11 +130,11 @@ export function CalendarFeedsDialog({ controller, onClose }: { controller: AppCo
                   <span className="min-w-0 flex-1">
                     <span className="block">{feedScopeLabel(feed.scope)}</span>
                     <span className="block text-xs text-muted">
-                      {shortDate(feed.created_at)} に作成 ・ {feed.last_used_at ? `${shortDate(feed.last_used_at)} に読まれました` : "まだ読まれていません"}
+                      {t("calendarFeeds.createdAt", { at: shortDate(feed.created_at) })} · {feed.last_used_at ? t("calendarFeeds.readAt", { at: shortDate(feed.last_used_at) }) : t("calendarFeeds.notRead")}
                     </span>
                   </span>
-                  <Button size="sm" variant="ghost" className="text-danger" disabled={busy} aria-label="この購読 URL を削除" onClick={() => void remove(feed)}>
-                    <Trash2 size={14} /> 削除
+                  <Button size="sm" variant="ghost" className="text-danger" disabled={busy} aria-label={t("calendarFeeds.delete")} onClick={() => void remove(feed)}>
+                    <Trash2 size={14} /> {t("common.delete")}
                   </Button>
                 </li>
               ))}
@@ -141,11 +142,11 @@ export function CalendarFeedsDialog({ controller, onClose }: { controller: AppCo
           )}
         </section>
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-        <section className="space-y-1 text-xs text-muted" aria-label="使い方">
-          <div className="font-medium text-ink">使い方</div>
-          <p>Google カレンダー (ブラウザ): 左の「他のカレンダー」の「＋」→「URL で追加」に URL を貼り付けて「カレンダーを追加」。</p>
-          <p>Apple のカレンダー (Mac): 「ファイル」→「新規カレンダー照会…」に URL を貼り付けて「照会」。iPhone では「設定」→「カレンダー」→「アカウント」→「アカウントを追加」→「その他」→「照会するカレンダーを追加」。</p>
-          <p>反映はカレンダーのアプリが読みに来たとき (数分〜数時間ごと) です。90 日前から 400 日先までの予定が入ります。</p>
+        <section className="space-y-1 text-xs text-muted" aria-label={t("calendarFeeds.howTo")}>
+          <div className="font-medium text-ink">{t("calendarFeeds.howTo")}</div>
+          <p>{t("calendarFeeds.google")}</p>
+          <p>{t("calendarFeeds.apple")}</p>
+          <p>{t("calendarFeeds.refresh")}</p>
         </section>
       </div>
     </Modal>
