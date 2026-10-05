@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
-import { SELF_NOTES_HINT } from "./channels";
+import { selfNotesHint } from "./channels";
 import { pickerChannels, pickerPeople } from "./home";
 import { matchScore } from "./jumpMatch";
 import { ConversationRowBody } from "./JumpView";
@@ -122,7 +122,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
             <Avatar id={meId} name={myName} size={24} className="rounded-md text-[10px]" />
             <span className="min-w-0 flex-1">
               <span className="block truncate font-medium">{myName}</span>
-              <span className="flex min-w-0 items-center gap-1 text-[12.5px] text-muted"><NotebookPen size={12} className="shrink-0" /><span className="min-w-0 truncate">{SELF_NOTES_HINT}</span></span>
+              <span className="flex min-w-0 items-center gap-1 text-[12.5px] text-muted"><NotebookPen size={12} className="shrink-0" /><span className="min-w-0 truncate">{selfNotesHint()}</span></span>
             </span>
           </button>
         )}

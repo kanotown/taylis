@@ -6,7 +6,7 @@ import type { MemberOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar, presenceLabel } from "./Avatar";
-import { myName, SELF_NOTES_HINT } from "./channels";
+import { myName, selfNotesHint } from "./channels";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { compareByRoster, rosterLabel, titleExtra } from "./roster";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
@@ -83,7 +83,7 @@ export function NewDmDialog({ controller, onClose, onOpen }: DialogProps) {
           >
             <NotebookPen size={16} className="shrink-0 text-muted" />
             <span className="shrink-0 font-medium">{myName(controller.store.users, me, controller.store.me)}</span>
-            <span className="min-w-0 truncate text-xs text-muted">{SELF_NOTES_HINT}</span>
+            <span className="min-w-0 truncate text-xs text-muted">{selfNotesHint()}</span>
           </button>
         )}
         <UserPicker users={users} selected={selected} onToggle={toggle} empty="相手になるユーザーがいません" />

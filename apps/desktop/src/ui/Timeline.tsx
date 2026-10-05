@@ -30,7 +30,7 @@ import { Button, cn, HoverList, IconButton, Input, Kbd, Menu, MenuContent, MenuI
 import { hoverMenuGroups, type MessageActionKey, messageActions, rowFitsQuickReactions } from "./messageActions";
 import { EmojiText, StatusEmoji, UserPopover } from "./UserPopover";
 import { channelTitle, myDisplayName } from "./MainScreen";
-import { isSelfNotes, SELF_NOTES_INTRO } from "./channels";
+import { isSelfNotes, selfNotesIntro } from "./channels";
 import { EmojiPicker, rememberEmoji, useRecentEmoji } from "./EmojiPicker";
 import { autoLinkPreview, LinkPreviewCard } from "./LinkPreviewCard";
 import { LONG_PRESS_MS, MessageActionsSheet, quickReactions } from "./MessageActionsSheet";
@@ -526,7 +526,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
             {isSelfNotes(channel, me?.id ?? controller.me?.id ?? null) ? (
               <>
                 <strong className="text-base">{myDisplayName(controller)}</strong>
-                <span className="max-w-md text-sm text-muted">{SELF_NOTES_INTRO}</span>
+                <span className="max-w-md text-sm text-muted">{selfNotesIntro()}</span>
               </>
             ) : (
               <>
@@ -634,7 +634,7 @@ export function ChannelIntro({ controller, channel }: { controller: AppControlle
       </div>
       <p className="mt-1.5 text-sm text-muted">
         {self ? (
-          SELF_NOTES_INTRO
+          selfNotesIntro()
         ) : isDm ? (
           <>{title} との会話の始まりです。</>
         ) : (
