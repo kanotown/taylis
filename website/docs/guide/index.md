@@ -5,7 +5,7 @@ description: Taylis を使うメンバー向けの基本の使い方
 
 # 使い方ガイド
 
-Taylis を使うメンバーのための、基本の使い方です。
+Taylis を使うメンバー向けに、基本の操作を説明します。
 
 <div class="grid cards" markdown>
 

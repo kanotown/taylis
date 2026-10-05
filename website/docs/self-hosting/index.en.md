@@ -5,8 +5,8 @@ description: Run your own Taylis server
 
 # Self-hosting
 
-A Taylis server runs on one Linux machine with Docker Compose. There is no Redis, Kafka or Kubernetes; the same setup
-is meant to carry several dozen users and millions of messages.
+A Taylis server runs on one Linux machine with Docker Compose. It does not use Redis, Kafka or Kubernetes. The same
+setup is designed for several dozen users and millions of messages.
 
 ## Requirements { #requirements }
 
@@ -42,6 +42,6 @@ two (`infra/backup.sh`, `infra/restore.sh`).
    [infra/.env.example](https://github.com/kanotown/taylis/blob/main/infra/.env.example).
 
 !!! warning "What operators can see"
-    Admins who are not members cannot read private channels and DMs in the apps, but anyone with access to the
-    server, the database or the backups can technically read every message. Tell your users, and choose carefully
-    who holds the admin and server roles.
+    Admins who are not members cannot read private channels and DMs in the apps. However, anyone with access to the
+    server, the database or the backups can read every message. Tell your users, and decide who will be an admin and
+    who will run the server.

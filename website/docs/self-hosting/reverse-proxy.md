@@ -40,7 +40,7 @@ nginx -t && systemctl reload nginx
 certbot --nginx -d chat.example.com --redirect
 ```
 
-この設定例は次のことをしています。ほかのリバースプロキシを使うときも、同じことをしてください。
+この設定例では次の設定をしています。ほかのリバースプロキシを使うときも、同じ設定が必要です。
 
 - `X-Forwarded-For` を接続元のアドレスで **置き換え**、`X-Forwarded-Proto` を渡す (Caddy はこの構成でだけ、
   プライベートアドレスからの転送ヘッダを信用します)。

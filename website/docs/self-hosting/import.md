@@ -5,7 +5,7 @@ description: Slack のエクスポートや Mattermost のチームを、会話�
 
 # Slack / Mattermost からの移行
 
-どちらもサーバーのコマンドで行います。共通の特徴:
+どちらも、サーバーでコマンドを実行して読み込みます。両方に共通する点は次のとおりです。
 
 - **試し読み** (`--dry-run`): すべてを検査して、何も書き込まずに、人の対応付け・件数・警告を表示します。
   本番の前に必ず実行してください。
@@ -58,7 +58,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml \
 rm -rf /srv/chikuwachat/import
 ```
 
-よく使うオプション:
+よく使うオプションは次のとおりです。
 
 | オプション | 内容 |
 | --- | --- |

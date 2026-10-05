@@ -53,11 +53,10 @@ Taylis のサーバーは、Linux のサーバー 1 台に Docker Compose で立
 5. [Slack / Mattermost からの移行](import.md)。
 6. うまくいかないときは [困ったとき](troubleshooting.md)。
 
-ここに書いたのは要点です。すべての手順と設定は、リポジトリの
+このサイトには要点だけを書いています。手順と設定の全体は、リポジトリの
 [infra/README.md](https://github.com/kanotown/taylis/blob/main/infra/README.md) と
 [infra/.env.example](https://github.com/kanotown/taylis/blob/main/infra/.env.example) にあります。
 
-!!! warning "サーバーの担当者に見えるもの"
-    アプリでは、メンバーでない管理者は非公開チャンネルや DM を読めません。けれども、サーバー・データベース・
-    バックアップにアクセスできる人は、技術的にはすべてのメッセージを読めます。利用者にそのことを伝え、
-    誰がサーバーを扱うかを決めてください。
+!!! warning "サーバーの担当者はすべてのメッセージを読めます"
+    サーバー・データベース・バックアップを扱える人は、非公開チャンネルや DM を含むすべてのメッセージを技術的には
+    読めます。誰がサーバーを扱うかを決め、利用者に伝えてください ([プライバシーとデータの扱い](../privacy.md#admins))。
