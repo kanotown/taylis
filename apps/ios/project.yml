@@ -29,6 +29,8 @@ targets:
       path: ChikuwaChat/ChikuwaChat.entitlements
       properties:
         aps-environment: development
+        # PUSH_NOTIFICATIONS.md §16: message pushes show the sender's picture (communication notifications).
+        com.apple.developer.usernotifications.communication: true
     info:
       path: ChikuwaChat/Info.plist
       properties:
@@ -48,6 +50,11 @@ targets:
         NSPhotoLibraryAddUsageDescription: メッセージの写真や動画を写真ライブラリに保存するために使います
         # Only HTTPS through the system (exempt): App Store Connect then skips the export compliance question.
         ITSAppUsesNonExemptEncryption: false
+        # PUSH_NOTIFICATIONS.md §16: the extension donates INSendMessageIntent for communication notifications.
+        NSUserActivityTypes: [INSendMessageIntent]
+    dependencies:
+      # Embedded in the app (PlugIns/NotificationService.appex).
+      - target: NotificationService
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.chikuwachat.ios
@@ -58,6 +65,29 @@ targets:
         # M40: the brand colour #5b5bd6 (a lighter #7f7ff2 in dark mode, as the web) for every control and UIKit view.
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
+  # PUSH_NOTIFICATIONS.md §16: turns a message push into a communication notification with the sender's picture.
+  # Its versions must equal the app's (App Store Connect; release-ios.sh and StoreReleaseTests check it).
+  NotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: NotificationService
+        excludes: ["Info.plist"]
+      - path: ChikuwaChat/Platform/CommunicationNotification.swift
+    info:
+      path: NotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: Taylis
+        CFBundleShortVersionString: "1.0.1"
+        CFBundleVersion: "100"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+        NSUserActivityTypes: [INSendMessageIntent]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: jp.chikuwachat.ios.NotificationService
+        TARGETED_DEVICE_FAMILY: "1,2"
   ChikuwaChatTests:
     type: bundle.unit-test
     platform: iOS

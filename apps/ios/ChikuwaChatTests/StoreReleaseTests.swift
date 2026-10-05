@@ -25,4 +25,19 @@ final class StoreReleaseTests: XCTestCase {
         XCTAssertNotNil(version.wholeMatch(of: /\d+\.\d+\.\d+/), "CFBundleShortVersionString \(version) is not X.Y.Z")
         XCTAssertNotNil(Int(info["CFBundleVersion"] as? String ?? ""), "CFBundleVersion is not an integer")
     }
+
+    /// PUSH_NOTIFICATIONS.md §16: the Notification Service Extension is embedded, and its version and build number are
+    /// the app's (App Store Connect warns otherwise). Raise both Info.plist files (and project.yml) together.
+    func testNotificationServiceExtensionIsEmbeddedWithTheAppsVersion() throws {
+        let url = try XCTUnwrap(Bundle.main.builtInPlugInsURL?.appendingPathComponent("NotificationService.appex"))
+        let appex = try XCTUnwrap(Bundle(url: url), "NotificationService.appex is not embedded")
+        let app = Bundle.main.infoDictionary ?? [:]
+        let ext = appex.infoDictionary ?? [:]
+        XCTAssertEqual(ext["CFBundleShortVersionString"] as? String, app["CFBundleShortVersionString"] as? String)
+        XCTAssertEqual(ext["CFBundleVersion"] as? String, app["CFBundleVersion"] as? String,
+                       "raise CFBundleVersion in NotificationService/Info.plist too")
+        XCTAssertEqual(appex.bundleIdentifier, "jp.chikuwachat.ios.NotificationService")
+        let activities = app["NSUserActivityTypes"] as? [String] ?? []
+        XCTAssertTrue(activities.contains("INSendMessageIntent"))
+    }
 }
