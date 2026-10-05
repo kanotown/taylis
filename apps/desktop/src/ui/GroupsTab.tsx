@@ -5,6 +5,7 @@ import type { GroupOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import { UserPicker } from "./Dialogs";
 import { Badge, Button, Field, Input, Modal } from "./primitives";
+import { t } from "../i18n";
 
 /** Administration → グループ (M12k): named sets of members that `@name` notifies. */
 export function GroupsTab({ controller }: { controller: AppController }) {
@@ -31,9 +32,9 @@ export function GroupsTab({ controller }: { controller: AppController }) {
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted">本文の @グループ名 でメンバー全員に知らせます。{groups.length > 0 && ` ${groups.length} 件`}</span>
+        <span className="text-sm text-muted">{t("groups.intro")}{groups.length > 0 && ` ${t("common.count", { count: groups.length })}`}</span>
         <Button size="sm" onClick={() => setEditing("new")}>
-          <UsersRound size={14} /> グループを作成
+          <UsersRound size={14} /> {t("groups.create")}
         </Button>
       </div>
       <ul className="divide-y divide-line rounded-xl border border-line">
@@ -43,30 +44,30 @@ export function GroupsTab({ controller }: { controller: AppController }) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="truncate font-medium">@{group.name}</span>
-                <Badge>{group.member_ids.length} 人</Badge>
-                {group.managed && <Badge tone="accent">名簿から自動</Badge>}
+                <Badge>{t("common.people", { count: group.member_ids.length })}</Badge>
+                {group.managed && <Badge tone="accent">{t("groups.managed")}</Badge>}
               </div>
               <div className="truncate text-[11px] text-muted">
                 {group.description ? `${group.description} · ` : ""}
-                {group.member_ids.map((id) => store.users.get(id)?.display_name ?? "?").join(", ") || "メンバーなし"}
+                {group.member_ids.map((id) => store.users.get(id)?.display_name ?? "?").join(", ") || t("groups.noMembers")}
               </div>
             </div>
             {/* M23: a managed group follows the lab roster (the server refuses edits with 409 group_managed). */}
             {group.managed ? (
-              <span className="shrink-0 text-[11px] text-muted">「名簿」タブで変更</span>
+              <span className="shrink-0 text-[11px] text-muted">{t("groups.changeInRoster")}</span>
             ) : (
               <>
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(group)}>
-                  <Pencil size={14} /> 編集
+                  <Pencil size={14} /> {t("canvas.edit")}
                 </Button>
                 <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setDeleting(group)}>
-                  <Trash2 size={14} /> 削除
+                  <Trash2 size={14} /> {t("common.delete")}
                 </Button>
               </>
             )}
           </li>
         ))}
-        {groups.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">グループはまだありません</li>}
+        {groups.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("groups.none")}</li>}
       </ul>
       {editing && (
         <GroupEditor
@@ -86,12 +87,12 @@ export function GroupsTab({ controller }: { controller: AppController }) {
         />
       )}
       {deleting && (
-        <Modal onClose={() => setDeleting(null)} title={`@${deleting.name} を削除しますか？`} className="w-[420px]">
-          <p className="mt-3 text-sm text-muted">以後 @{deleting.name} は誰にも通知されません。過去のメッセージの表示は「@グループ」になります。</p>
+        <Modal onClose={() => setDeleting(null)} title={t("groups.deleteTitle", { name: deleting.name })} className="w-[420px]">
+          <p className="mt-3 text-sm text-muted">{t("groups.deleteNote", { name: deleting.name })}</p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setDeleting(null)}>キャンセル</Button>
+            <Button variant="secondary" onClick={() => setDeleting(null)}>{t("common.cancel")}</Button>
             <Button variant="danger" disabled={busy} onClick={() => { const target = deleting; void run(async () => { await controller.api!.adminDeleteGroup(target.id); store.applyGroup(target, true); }).then((ok) => { if (ok) setDeleting(null); }); }}>
-              削除する
+              {t("common.deleteConfirm")}
             </Button>
           </div>
         </Modal>
@@ -119,23 +120,23 @@ function GroupEditor({ group, people, busy, onClose, onSave }: {
   };
 
   return (
-    <Modal onClose={onClose} title={group ? `@${group.name} を編集` : "グループを作成"} className="w-[520px]">
+    <Modal onClose={onClose} title={group ? t("groups.editTitle", { name: group.name }) : t("groups.create")} className="w-[520px]">
       <form className="mt-4 space-y-3" onSubmit={submit}>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="名前 (2〜32 文字、a-z 0-9 . _ -)">
+          <Field label={t("groups.nameLabel")}>
             <Input value={name} pattern="[a-z0-9][a-z0-9._-]{1,31}" required autoFocus onChange={(e) => setName(e.target.value.toLowerCase())} />
           </Field>
-          <Field label="説明 (任意)">
+          <Field label={t("canvasTemplates.descriptionOptional")}>
             <Input value={description} maxLength={200} onChange={(e) => setDescription(e.target.value)} />
           </Field>
         </div>
-        <Field label={`メンバー (${memberIds.length} 人)`}>
-          <Input value={filter} placeholder="名前で絞り込み" onChange={(e) => setFilter(e.target.value)} />
+        <Field label={t("groups.membersLabel", { count: memberIds.length })}>
+          <Input value={filter} placeholder={t("tasks.dialog.filterPlaceholder")} onChange={(e) => setFilter(e.target.value)} />
         </Field>
-        <UserPicker users={shown} selected={memberIds} onToggle={(id) => setMemberIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))} empty="該当するユーザーがいません" />
+        <UserPicker users={shown} selected={memberIds} onToggle={(id) => setMemberIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))} empty={t("admin.users.noMatch")} />
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" size="sm" disabled={busy || !name.trim()}>{group ? "保存" : "作成"}</Button>
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" size="sm" disabled={busy || !name.trim()}>{group ? t("common.save") : t("common.create")}</Button>
         </div>
       </form>
     </Modal>

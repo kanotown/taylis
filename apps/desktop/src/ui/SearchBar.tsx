@@ -6,6 +6,8 @@ import { Avatar } from "./Avatar";
 import { channelTitle } from "./MainScreen";
 import { cn, Kbd, modKey } from "./primitives";
 import { dateLabel, EMPTY_SEARCH, HAS_LABELS, removeRecent, type SearchParams, type Suggestion, suggestions } from "./search";
+import { t } from "../i18n";
+import { tRich } from "../i18n/rich";
 
 /**
  * M16b: the search field in the top bar. Opening it shows recent searches and quick filters; typing
@@ -94,7 +96,7 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
           <div className="fixed inset-0 z-40" onMouseDown={() => onOpenChange(false)} />
           {/* On a phone the search takes the whole screen, with 「キャンセル」 instead of a click outside. Wider, it opens at
               the bar's top edge, keeping the bar's margin above it (it reached the window's top, tester 2026-09-30). */}
-          <div role="dialog" aria-label="検索" className="rx-popover absolute left-1/2 top-0 z-50 w-[min(680px,92vw)] -translate-x-1/2 overflow-hidden rounded-xl border border-line bg-canvas text-ink shadow-2xl max-md:fixed max-md:inset-0 max-md:flex max-md:w-auto max-md:translate-x-0 max-md:flex-col max-md:rounded-none max-md:border-0">
+          <div role="dialog" aria-label={t("searchBar.label")} className="rx-popover absolute left-1/2 top-0 z-50 w-[min(680px,92vw)] -translate-x-1/2 overflow-hidden rounded-xl border border-line bg-canvas text-ink shadow-2xl max-md:fixed max-md:inset-0 max-md:flex max-md:w-auto max-md:translate-x-0 max-md:flex-col max-md:rounded-none max-md:border-0">
             <div className="flex shrink-0 items-center gap-2 border-b border-line px-3">
               <Search size={16} className="shrink-0 text-muted" />
               <input
@@ -106,20 +108,20 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
                   setActive(e.target.value.trim() ? 0 : -1);
                 }}
                 onKeyDown={onKeyDown}
-                placeholder="メッセージ、人、チャンネルを検索 (from:@名前 in:#チャンネル is:times も使えます)"
-                aria-label="検索語"
+                placeholder={t("searchBar.placeholder")}
+                aria-label={t("searchBar.words")}
                 enterKeyHint="search"
                 aria-activedescendant={rows[active] ? `search-suggestion-${active}` : undefined}
                 className="h-12 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted"
                 autoFocus
               />
               {text && (
-                <button type="button" className="rounded p-1 text-muted hover:text-ink" aria-label="入力を消す" onClick={() => { setText(""); input.current?.focus(); }}>
+                <button type="button" className="rounded p-1 text-muted hover:text-ink" aria-label={t("searchBar.clear")} onClick={() => { setText(""); input.current?.focus(); }}>
                   <X size={15} />
                 </button>
               )}
               <button type="button" className="shrink-0 px-1 text-sm font-medium text-accent md:hidden" onClick={() => onOpenChange(false)}>
-                キャンセル
+                {t("common.cancel")}
               </button>
             </div>
             <ul role="listbox" className="max-h-[60vh] overflow-y-auto p-1.5 max-md:max-h-none max-md:min-h-0 max-md:flex-1">
@@ -141,7 +143,7 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
                       {row.kind === "recent" && (
                         <button
                           type="button"
-                          aria-label="履歴から消す"
+                          aria-label={t("searchBar.removeHistory")}
                           className="ml-auto rounded p-0.5 text-muted opacity-0 hover:text-ink group-hover:opacity-100"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -156,12 +158,12 @@ export function SearchBar({ controller, current, open, onOpenChange, onSearch, r
                   </li>
                 );
               })}
-              {rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">入力して Enter で検索します</li>}
+              {rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("searchBar.hint")}</li>}
             </ul>
             <div className="flex items-center gap-3 border-t border-line bg-panel px-3 py-1.5 text-[11px] text-muted max-md:hidden">
-              <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> 選択</span>
-              <span><Kbd>Enter</Kbd> 検索</span>
-              <span><Kbd>Esc</Kbd> 閉じる</span>
+              <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> {t("searchBar.select")}</span>
+              <span><Kbd>Enter</Kbd> {t("searchBar.search")}</span>
+              <span><Kbd>Esc</Kbd> {t("common.close")}</span>
             </div>
           </div>
         </>
@@ -191,13 +193,13 @@ function sectionHeading(rows: Suggestion[], index: number, text: string): string
   if (here === group(rows[index - 1])) return null;
   switch (here) {
     case "recent":
-      return text.trim() ? "最近の検索" : "最近の検索";
+      return t("searchBar.recent");
     case "filter":
-      return "絞り込み";
+      return t("admin.users.filterLabel");
     case "user":
-      return "人 (この人の投稿)";
+      return t("searchBar.people");
     case "channel":
-      return "チャンネル (この中を検索)";
+      return t("searchBar.channels");
     default:
       return null;
   }
@@ -211,7 +213,7 @@ function SuggestionRow({ controller, row }: { controller: AppController; row: Su
         <>
           <Search size={15} className="shrink-0 text-muted" />
           <span className="min-w-0 truncate">
-            「<strong>{row.q}</strong>」を検索
+            {tRich("searchBar.searchFor", { b: (s) => <strong>{s}</strong> }, { q: row.q })}
           </span>
         </>
       );
@@ -244,21 +246,21 @@ function SuggestionRow({ controller, row }: { controller: AppController; row: Su
       return (
         <>
           <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-panel-2 text-[10px] font-bold text-muted">has</span>
-          <span>{HAS_LABELS[row.flag]}のメッセージ</span>
+          <span>{t("searchBar.hasMessages", { label: HAS_LABELS[row.flag] })}</span>
         </>
       );
     case "thread":
       return (
         <>
           <MessagesSquare size={15} className="shrink-0 text-muted" />
-          <span>スレッド内のメッセージ</span>
+          <span>{t("searchBar.inThreads")}</span>
         </>
       );
     case "times":
       return (
         <>
           <span className="flex h-5 shrink-0 items-center justify-center rounded bg-panel-2 px-1 text-[10px] font-bold text-muted">is:times</span>
-          <span>times の投稿 (参加していない公開の times も)</span>
+          <span>{t("searchBar.times")}</span>
         </>
       );
   }
@@ -269,7 +271,7 @@ export function describeSearch(controller: AppController, params: SearchParams):
   const store = controller.store;
   const parts: string[] = [];
   if (params.q.trim()) parts.push(params.q.trim());
-  if (params.fromUserId) parts.push(`送信者: ${store.users.get(params.fromUserId)?.display_name ?? "?"}`);
+  if (params.fromUserId) parts.push(`${t("search.sender")}: ${store.users.get(params.fromUserId)?.display_name ?? "?"}`);
   if (params.channelId) {
     const channel = store.getChannel(params.channelId);
     parts.push(channel ? channelTitle(channel, controller) : "?");
@@ -277,7 +279,7 @@ export function describeSearch(controller: AppController, params: SearchParams):
   const date = dateLabel(params.date);
   if (date) parts.push(date);
   for (const flag of params.has) parts.push(HAS_LABELS[flag]);
-  if (params.isThread) parts.push("スレッド内");
+  if (params.isThread) parts.push(t("search.inThreads"));
   if (params.isTimes) parts.push("Times");
   return parts.join(" · ");
 }
