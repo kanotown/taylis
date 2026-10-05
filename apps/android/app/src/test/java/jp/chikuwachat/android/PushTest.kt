@@ -64,7 +64,7 @@ class PushTest {
 
     @Test fun aTaskNotificationStandsApartAndMayHaveNoConversation() { // M56 (PUSH_NOTIFICATIONS.md, TASKS.md §8)
         val shared = PushMessage.parse(
-            mapOf("kind" to "task", "channel_id" to "c1", "task_id" to "t1", "title" to "タスク", "body" to "ボブ がタスクを割り当てました: 資料 (#lab)", "collapse_key" to "task:t1"),
+            mapOf("kind" to "task", "channel_id" to "c1", "task_id" to "t1", "title" to "タスク", "body" to "ボブ がタスクを割り当てました：資料 (#lab)", "collapse_key" to "task:t1"),
         )!!
         assertEquals("t1", shared.taskId)
         assertEquals(true, shared.isTask)
@@ -72,7 +72,7 @@ class PushTest {
         assertEquals(true, shared.shown)
         assertEquals("タスク", shared.displayTitle)
         // A personal task's due date: no channel_id, still shown, keyed by the task.
-        val own = PushMessage.parse(mapOf("kind" to "task", "task_id" to "t2", "title" to "タスク", "body" to "今日が期限: 買い物"))!!
+        val own = PushMessage.parse(mapOf("kind" to "task", "task_id" to "t2", "title" to "タスク", "body" to "今日が期限：買い物"))!!
         assertNull(own.channelId)
         assertEquals("task:t2", own.notificationKey)
         assertEquals(true, own.shown)

@@ -345,8 +345,8 @@ class TaskExtrasTest {
             jp.chikuwachat.android.ui.TaskChipTone.OVERDUE,
             TaskRules.chipAt(chip, "2030-01-10", Instant.parse("2030-01-10T06:00:00Z")) { null }.tone,
         )
-        assertEquals("14:00 が期限: 会議", TaskRules.dueText(TaskDue("t", title = "会議", dueOn = "2030-01-10", dueAt = "2030-01-10T05:00:00Z")).body)
-        assertEquals("今日が期限: 会議", TaskRules.dueText(TaskDue("t", title = "会議", dueOn = "2030-01-10")).body)
+        assertEquals("14:00 が期限：会議", TaskRules.dueText(TaskDue("t", title = "会議", dueOn = "2030-01-10", dueAt = "2030-01-10T05:00:00Z")).body)
+        assertEquals("今日が期限：会議", TaskRules.dueText(TaskDue("t", title = "会議", dueOn = "2030-01-10")).body)
     }
 
     @Test fun theCardSaysItsTimeItsChecklistAndItsRepeat() {

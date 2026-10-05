@@ -82,7 +82,7 @@ class DmPreviewTest {
         val blank = mapOf("you" to UserPublic("you", "you", "  ", "member", null, "", ""))
         assertEquals("メンバー: hi", previewLine("group_dm", listOf("me", "you", "x"), last, "me", blank))
         assertEquals("hi", previewLine("dm", listOf("me", "you"), last, null, blank))
-        assertEquals("あなた: hi", previewLine("private", null, last.copy(senderId = "me"), "me", blank))
+        assertEquals("あなた：hi", previewLine("private", null, last.copy(senderId = "me"), "me", blank))
         assertEquals("hi", previewLine("dm", listOf("me"), last.copy(senderId = "me"), "me", blank)) // my own DM
         assertEquals("", previewLine("dm", listOf("me", "you"), null, "me", blank))
     }
@@ -220,10 +220,10 @@ class DmPreviewTest {
 
             val mine = server.post(dmId, bob.id, "よろしく").first // another device of mine
             settle()
-            assertEquals("あなた: よろしく", shown())
+            assertEquals("あなた：よろしく", shown())
             server.edit(dmId, bob.id, mine.id, "よろしくお願いします")
             settle()
-            assertEquals("あなた: よろしくお願いします", shown())
+            assertEquals("あなた：よろしくお願いします", shown())
             server.delete(dmId, bob.id, mine.id)
             settle()
             assertEquals("はじめまして", shown())
@@ -233,7 +233,7 @@ class DmPreviewTest {
             engine.openChannel(dmId); settle()
             val again = server.post(dmId, bob.id, "もう一度").first
             settle()
-            assertEquals("あなた: もう一度", shown())
+            assertEquals("あなた：もう一度", shown())
             server.delete(dmId, bob.id, again.id)
             settle()
             assertEquals("はじめまして", shown())

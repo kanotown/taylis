@@ -339,10 +339,10 @@ class AiTest {
         val agents = listOf(AiAgentPublic("a", "bot1", "ちくわ"), AiAgentPublic("b", "bot2", "はんぺん"))
         assertNull(AiTexts.memberNotice(agents, listOf("me", "someone")))
         assertEquals(
-            "AI (ちくわ) が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます",
+            "AI（ちくわ）が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます",
             AiTexts.memberNotice(agents, listOf("me", "bot1")),
         )
-        assertTrue(AiTexts.memberNotice(agents, listOf("bot1", "bot2"))!!.startsWith("AI (ちくわ、はんぺん)"))
+        assertTrue(AiTexts.memberNotice(agents, listOf("bot1", "bot2"))!!.startsWith("AI（ちくわ、はんぺん）"))
         val sol = listOf(AiAgentPublic("s", "bot3", "そる", "gpt-6.1-sol"), AiAgentPublic("o", "bot4", "ちくわ", "claude-opus-5-5"))
         assertTrue(AiTexts.memberNotice(sol, listOf("bot3"))!!.contains("OpenAI の API"))
         assertTrue(AiTexts.memberNotice(sol, listOf("bot3", "bot4"))!!.contains("Anthropic と OpenAI の API"))
@@ -388,8 +388,8 @@ class AiTest {
     }
 
     @Test fun targetLineNamesTheBotAndProvider() {
-        assertEquals("要約は ちくわ (Anthropic) に送られます", AiTexts.targetLine(AiSummaryTargetOut(true, "anthropic", "claude-opus-5-5", "ちくわ")))
-        assertEquals("要約は そる (OpenAI) に送られます", AiTexts.targetLine(AiSummaryTargetOut(true, "openai", "gpt-6.1-sol", "そる")))
+        assertEquals("要約は ちくわ（Anthropic）に送られます", AiTexts.targetLine(AiSummaryTargetOut(true, "anthropic", "claude-opus-5-5", "ちくわ")))
+        assertEquals("要約は そる（OpenAI）に送られます", AiTexts.targetLine(AiSummaryTargetOut(true, "openai", "gpt-6.1-sol", "そる")))
         assertEquals("要約は OpenAI に送られます", AiTexts.targetLine(AiSummaryTargetOut(true, "openai")))
         assertNull(AiTexts.targetLine(AiSummaryTargetOut(true)))
         assertNull(AiTexts.targetLine(null)) // an older server: no line

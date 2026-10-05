@@ -107,7 +107,7 @@ class CanvasOfflineTest {
     fun theNoticeSaysWhenTheCopyWasRead() {
         val zone = ZoneId.of("Asia/Tokyo")
         val at = java.time.ZonedDateTime.of(2026, 10, 2, 14, 5, 0, 0, zone).toInstant().toEpochMilli()
-        assertEquals("オフライン — 最後に読み込んだ時点 (10/2 14:05) の内容です", CanvasOffline.notice(at, at + 3_600_000, zone))
+        assertEquals("オフライン — 最後に読み込んだ時点（10/2 14:05）の内容です", CanvasOffline.notice(at, at + 3_600_000, zone))
         assertEquals("2025/10/2 9:07", CanvasOffline.stamp(at - 365L * 86_400_000 - 5 * 3_600_000 + 2 * 60_000, at, zone))
     }
 

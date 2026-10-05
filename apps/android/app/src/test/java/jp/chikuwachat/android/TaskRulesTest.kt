@@ -251,12 +251,12 @@ class TaskRulesTest {
     fun noticesAreWordedLikeThePush() {
         val nameOf = { id: String -> if (id == "u-bob") "ボブ" else null }
         val assigned = TaskRules.assignedText(TaskAssigned("t1", "c-lab", "lab", "資料", "u-bob"), nameOf)
-        assertEquals("ボブ がタスクを割り当てました: 資料 (#lab)", assigned.body)
+        assertEquals("ボブ がタスクを割り当てました：資料 (#lab)", assigned.body)
         assertEquals("t1", assigned.taskId)
         assertEquals("c-lab", assigned.channelId)
-        assertEquals("メンバー がタスクを割り当てました: 資料 (#lab)", TaskRules.assignedText(TaskAssigned("t1", "c-lab", "lab", "資料", "u-x"), nameOf).body)
-        assertEquals("今日が期限: 買い物", TaskRules.dueText(TaskDue("t2", null, null, "買い物", "2026-10-01")).body)
-        assertEquals("今日が期限: 発表 (#lab)", TaskRules.dueText(TaskDue("t3", "c-lab", "lab", "発表", "2026-10-01")).body)
+        assertEquals("メンバー がタスクを割り当てました：資料 (#lab)", TaskRules.assignedText(TaskAssigned("t1", "c-lab", "lab", "資料", "u-x"), nameOf).body)
+        assertEquals("今日が期限：買い物", TaskRules.dueText(TaskDue("t2", null, null, "買い物", "2026-10-01")).body)
+        assertEquals("今日が期限：発表 (#lab)", TaskRules.dueText(TaskDue("t3", "c-lab", "lab", "発表", "2026-10-01")).body)
     }
 
     @Test

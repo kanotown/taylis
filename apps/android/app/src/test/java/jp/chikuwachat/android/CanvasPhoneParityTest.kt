@@ -169,7 +169,7 @@ class CanvasPhoneParityTest {
     @Test
     fun aSnippetReadsAnImageAsImage() {
         assertEquals("前 [画像] 後", CanvasText.readableSnippet("前 ![](attachment:$id) 後"))
-        assertEquals("[画像: 図1] と [画像]", CanvasText.readableSnippet("![図1](attachment:$id) と ![](attachment:0d4f7f2e-1c"))
+        assertEquals("[画像：図1] と [画像]", CanvasText.readableSnippet("![図1](attachment:$id) と ![](attachment:0d4f7f2e-1c"))
     }
 
     // --- rights (§4.7) -----------------------------------------------------------------------------------

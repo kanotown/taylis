@@ -18,6 +18,6 @@ class PreviewJoinTest {
 
     @Test fun anArchivedChannelShowsANoteInstead() {
         assertFalse(PreviewJoin.canJoin(channel(archived = true)))
-        assertEquals("アーカイブされたチャンネルです (読むだけ)", PreviewJoin.ARCHIVED_NOTE)
+        assertEquals("アーカイブされたチャンネルです（読むだけ）", PreviewJoin.ARCHIVED_NOTE)
     }
 }
