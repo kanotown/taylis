@@ -329,9 +329,9 @@ def test_rename_and_bot_options(tmp_path: Path) -> None:
         parse_emoji_renames(["完了=a1", "完了=b2"])
     with pytest.raises(ValueError, match="use FROM=TO"):
         parse_emoji_renames(["完了"])
-    # the lab's file in the repo is all valid names
-    lab = parse_emoji_renames([], [str(REPO / "infra/slack-import/kano-lab.emoji-rename.txt")])
-    assert len(lab) == 17 and lab["確認しました"] == "kakunin_shimashita"
+    # the example file in the repo is all valid names
+    example = parse_emoji_renames([], [str(REPO / "infra/slack-import/example.emoji-rename.txt")])
+    assert len(example) == 8 and example["確認しました"] == "kakunin_shimashita"
 
     assert parse_bot_as(["Suzuki=U02", "sato=new:佐藤:guest"]) == {
         "suzuki": "U02",

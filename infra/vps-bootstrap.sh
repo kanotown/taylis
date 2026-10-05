@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time setup of a fresh Debian (12 / 13) or Ubuntu VPS, e.g. Xserver VPS, for automatic deployment
+# One-time setup of a fresh Debian (12 / 13) or Ubuntu VPS for automatic deployment
 # (infra/README.md 「自動デプロイ」). Run as root; it never overwrites an existing .env or deploy.conf.
 #
 #   scp infra/vps-bootstrap.sh infra/deploy-ssh.sh infra/.env.example infra/deploy.conf.example \
@@ -11,7 +11,7 @@
 # What it does: Docker Engine + compose plugin (unless already there), a swap file on small machines, the
 # `deploy` user (docker group), /srv/chikuwachat/infra and /srv/backups, the forced command
 # /usr/local/bin/chikuwa-deploy with the deploy key, infra/.env with fresh random secrets, infra/deploy.conf and
-# the daily backup. The firewall is left to the provider's packet filter (Xserver VPS: SSH 22, Web 80 / 443,
+# the daily backup. The firewall is left to the provider's packet filter (allow SSH 22, Web 80 / 443,
 # UDP 443), so a typo here cannot lock you out of SSH.
 # --behind-proxy: the server already runs nginx on 80 / 443 (other sites); Caddy then listens on 127.0.0.1:18080
 # only (docker-compose.behind-proxy.yml) and nginx is set up by hand (nginx-site.conf.example).

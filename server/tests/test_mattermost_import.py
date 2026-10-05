@@ -105,7 +105,7 @@ def _write(path: Path, records: list[dict[str, Any]]) -> Path:
 
 def _records(extra_posts: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     users = [
-        _user("u-kano", "kanotown"),
+        _user("u-kano", "alicemm"),
         _user("u-ebi", "bobmm"),
         _user("u-taro", "taro", first_name="太郎", last_name="山田", position="M1"),
         _user("u-sato", "sato-mm", email="sato@example.com"),
@@ -135,7 +135,7 @@ def _records(extra_posts: list[dict[str, Any]] | None = None) -> list[dict[str, 
             "p2",
             "c-gen",
             "u-ebi",
-            "thanks @kanotown",
+            "thanks @alicemm",
             T0 + 2000,
             root_id="p1",
             reactions=[
@@ -202,7 +202,7 @@ async def _run(
         db,
         path,
         files_root=files,
-        user_map={"kanotown": "kano", "bobmm": "ebi"},
+        user_map={"alicemm": "kano", "bobmm": "ebi"},
         actor_username="admin",
         blobs=app.state.blobs,
         settings=settings,
@@ -373,7 +373,7 @@ async def test_bad_options_fail_before_writing(
     }
     with pytest.raises(ImportFailed, match="no Taylis user"):
         await import_mattermost(
-            db, path, user_map={"kanotown": "nobody"}, actor_username="admin", **common
+            db, path, user_map={"alicemm": "nobody"}, actor_username="admin", **common
         )
     with pytest.raises(ImportFailed, match="no such Mattermost user"):
         await import_mattermost(
@@ -427,7 +427,7 @@ async def test_refresh_emoji_brings_back_the_animation(
         db,
         path,
         files_root=mm_files,
-        user_map={"kanotown": "kano", "bobmm": "ebi"},
+        user_map={"alicemm": "kano", "bobmm": "ebi"},
         actor_username="admin",
         blobs=app.state.blobs,
         settings=settings,
@@ -483,7 +483,7 @@ CREATE TABLE emoji (id varchar(26), name varchar(64), creatorid varchar(26), del
 
 INSERT INTO teams VALUES ('t1', 'ebi', '🍤', 0), ('t2', 'other', 'Other', 0);
 INSERT INTO users VALUES
-  ('u1', 'kanotown', 'k@example.com', '', 'Toru', 'Kano', 'PI', 0),
+  ('u1', 'alicemm', 'k@example.com', '', 'Alice', 'Example', 'PI', 0),
   ('u2', 'bobmm', 'e@example.com', 'えび', '', '', '', 0),
   ('u3', 'hanpeen', '', '', '', '', '', 0),
   ('u4', 'mentioned', 'm@example.com', '', '', '', '', 0),
@@ -564,8 +564,8 @@ async def test_extract_reads_one_team_only(tmp_path: Path, migrated_database: st
     assert [f["id"] for f in p2["files"]] == ["f1"]
     assert p5["override_username"] == "CI"
     users = {u["username"]: u for u in by_type["user"]}
-    assert set(users) == {"kanotown", "bobmm", "hanpeen", "mentioned"}  # not the other team's
-    assert users["hanpeen"]["is_bot"] and not users["kanotown"]["is_bot"]
+    assert set(users) == {"alicemm", "bobmm", "hanpeen", "mentioned"}  # not the other team's
+    assert users["hanpeen"]["is_bot"] and not users["alicemm"]["is_bot"]
     assert users["hanpeen"]["email"] is None
     assert [e["name"] for e in by_type["emoji"]] == ["hanpen_ok"]
 

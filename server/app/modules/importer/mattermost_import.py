@@ -252,7 +252,7 @@ class MattermostImport(core.ImportJob):
                 return f"<@{person.id}>{rest}"
             if name[-1] not in "._-":
                 break
-            name, rest = name[:-1], name[-1] + rest  # "@bobmm." ends a sentence
+            name, rest = name[:-1], name[-1] + rest  # "@bob." ends a sentence
         return match.group(0)
 
     def _shortcode(self, match: re.Match[str]) -> str:
