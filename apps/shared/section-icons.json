@@ -1,0 +1,29 @@
+{
+  "_comment": "Sidebar section icons (docs/DATA_MODEL.md sidebar_sections, M114): a letter badge is `letter:<text>:<colour>`, the text one or two ASCII letters / digits or one Japanese character (kana, kanji, 々), the colour a text emoji palette key (text-emoji.json). `letter` is what a client draws (null = not a letter badge: an emoji or `:name:`, drawn as before). The server rejects every `letter:` icon whose `letter` is null here (tests/test_sidebar.py); each client's parser passes all cases.",
+  "cases": [
+    { "icon": "letter:M:blue", "letter": { "text": "M", "color": "blue" } },
+    { "icon": "letter:B:green", "letter": { "text": "B", "color": "green" } },
+    { "icon": "letter:D2:red", "letter": { "text": "D2", "color": "red" } },
+    { "icon": "letter:ab:gray", "letter": { "text": "ab", "color": "gray" } },
+    { "icon": "letter:7:yellow", "letter": { "text": "7", "color": "yellow" } },
+    { "icon": "letter:修:purple", "letter": { "text": "修", "color": "purple" } },
+    { "icon": "letter:卒:orange", "letter": { "text": "卒", "color": "orange" } },
+    { "icon": "letter:ア:pink", "letter": { "text": "ア", "color": "pink" } },
+    { "icon": "letter:ゼ:blue", "letter": { "text": "ゼ", "color": "blue" } },
+    { "icon": "letter:々:gray", "letter": { "text": "々", "color": "gray" } },
+    { "icon": "letter:MBA:blue", "letter": null },
+    { "icon": "letter::blue", "letter": null },
+    { "icon": "letter:修士:blue", "letter": null },
+    { "icon": "letter:M修:blue", "letter": null },
+    { "icon": "letter:M:teal", "letter": null },
+    { "icon": "letter:M:Blue", "letter": null },
+    { "icon": "letter:M", "letter": null },
+    { "icon": "letter:M:blue:x", "letter": null },
+    { "icon": "letter:Ｍ:blue", "letter": null },
+    { "icon": "letter:é:blue", "letter": null },
+    { "icon": "letter:😀:blue", "letter": null },
+    { "icon": "letter:-:blue", "letter": null },
+    { "icon": "🔬", "letter": null },
+    { "icon": ":party_parrot:", "letter": null }
+  ]
+}

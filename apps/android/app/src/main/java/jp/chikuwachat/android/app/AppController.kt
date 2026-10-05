@@ -591,6 +591,12 @@ class AppController(private val app: Application) {
         openWorkspace(entry)
     }
 
+    /** M114 (WORKSPACES.md §5.4): the switcher's order, kept on this device only (each workspace is its own server). */
+    fun moveWorkspace(serverUrl: String, by: Int) {
+        val next = Workspaces.moved(workspaces, serverUrl, by)
+        if (next != workspaces) replaceWorkspaces(next)
+    }
+
     /** 「ワークスペースを追加」: the login form for another server; cancelling returns to this one (§5.1). */
     fun beginAddWorkspace() {
         switcherOpen = false

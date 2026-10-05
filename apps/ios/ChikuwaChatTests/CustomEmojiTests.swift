@@ -262,4 +262,22 @@ final class CustomEmojiTests: XCTestCase {
         // The standard shortcode is its glyph, the custom names are not text.
         XCTAssertEqual(Emoji.replaceShortcodes(":+1:"), "👍")
     }
+
+    /// M114: section letter badges parse as apps/shared/section-icons.json says, in the text emoji colours.
+    func testSectionLetterIconsFollowTheSharedCases() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/section-icons.json")
+        let shared = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+        let cases = shared["cases"] as! [[String: Any]]
+        XCTAssertGreaterThan(cases.count, 10)
+        for item in cases {
+            let icon = item["icon"] as! String
+            let expected = (item["letter"] as? [String: String]).map { SectionLetterIcon(text: $0["text"]!, color: $0["color"]!) }
+            XCTAssertEqual(SectionLetterIcon.parse(icon), expected, icon)
+            if let expected { XCTAssertEqual(expected.icon, icon) }
+        }
+        XCTAssertEqual(Set(SectionLetterIcon.colors.map(\.key)), Set(CustomEmoji.textPalette.keys))
+        XCTAssertEqual(SectionLetterIcon.normalize(" Ｍ "), "M")
+        XCTAssertEqual(SectionLetterIcon.normalize("ｱ"), "ア")
+    }
 }
