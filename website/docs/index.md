@@ -10,7 +10,7 @@ hide:
 
 ![Taylis のアイコン](assets/logo.png){ .hero-icon }
 
-# Taylis (テイリス)
+# Taylis（テイリス）
 
 <p class="tagline">研究室や小さなチームのための、自分たちのサーバーで動かすチャット</p>
 
@@ -27,13 +27,13 @@ Taylis は、研究室・ゼミ・小さなチームのためのチャットで�
 管理します。アプリは Windows・macOS・iOS・Android 版と、ブラウザ版があります。
 
 <div class="screens" markdown>
-![デスクトップ版: スレッドを開いたチャンネル (デモのデータ)](assets/screens/desktop.png){ .wide }
+![デスクトップ版：スレッドを開いたチャンネル（デモのデータ）](assets/screens/desktop.png){ .wide }
 </div>
 
 <div class="screens" markdown>
-![iPhone のホーム (デモのデータ)](assets/screens/ios-home.jpg){ .phone }
-![iPhone の会話 (デモのデータ)](assets/screens/ios-conversation.jpg){ .phone }
-![iPhone の投票 (デモのデータ)](assets/screens/ios-poll.jpg){ .phone }
+![iPhone のホーム（デモのデータ）](assets/screens/ios-home.jpg){ .phone }
+![iPhone の会話（デモのデータ）](assets/screens/ios-conversation.jpg){ .phone }
+![iPhone の投票（デモのデータ）](assets/screens/ios-poll.jpg){ .phone }
 </div>
 
 <small>画面はすべて架空のデモのデータです。</small>
@@ -61,7 +61,7 @@ Taylis は、研究室・ゼミ・小さなチームのためのチャットで�
     ---
 
     メッセージの順番はサーバーが決め、送り直しても重複しません。通信が切れても、再接続のときに足りない分を
-    取り寄せます。プッシュ通知は iOS (APNs) と Android (FCM) に対応しています。
+    取り寄せます。プッシュ通知は iOS（APNs）と Android（FCM）に対応しています。
 
 -   :material-magnify:{ .lg } **日本語と英語の全文検索**
 
@@ -73,7 +73,7 @@ Taylis は、研究室・ゼミ・小さなチームのためのチャットで�
 
     ---
 
-    投票と日程調整、カレンダー、タスクとカンバン、締切、キャンバス (共有の文書)、Times (作業ログ)、
+    投票と日程調整、カレンダー、タスクとカンバン、締切、キャンバス（共有の文書）、Times（作業ログ）、
     ワークフロー、共有の機材やアカウントの予約。
 
 -   :material-shield-account-outline:{ .lg } **管理と移行**
@@ -94,13 +94,13 @@ Taylis を使うには、所属する組織の Taylis サーバーと、管理�
 
 | アプリ | 入手方法 |
 | --- | --- |
-| Windows / macOS | [GitHub のリリース (taylis-releases)](https://github.com/kanotown/taylis-releases/releases/latest) からインストーラをダウンロードしてください。アプリの中から新しい版に更新できます。 |
-| iOS / iPadOS | 準備中です (App Store での配信を準備しています) |
-| Android | 準備中です (Google Play での配信を準備しています) |
-| ブラウザ | インストールは要りません。サーバーの URL (例: `https://chat.example.com/`) をブラウザで開いてください。 |
+| Windows / macOS | [GitHub のリリース（taylis-releases）](https://github.com/kanotown/taylis-releases/releases/latest) からインストーラをダウンロードしてください。アプリの中から新しい版に更新できます。 |
+| iOS / iPadOS | 準備中です（App Store での配信を準備しています） |
+| Android | 準備中です（Google Play での配信を準備しています） |
+| ブラウザ | インストールは要りません。サーバーの URL（例：`https://chat.example.com/`）をブラウザで開いてください。 |
 
 サーバーを自分たちで立てる方法は [サーバーを立てる](self-hosting/index.md) にまとめています。
-ソースコードは [GitHub (kanotown/taylis)](https://github.com/kanotown/taylis) で公開しています (Apache License 2.0)。
+ソースコードは [GitHub（kanotown/taylis）](https://github.com/kanotown/taylis) で公開しています（Apache License 2.0）。
 
 !!! note "サポートについて"
     Taylis は作者が自分たちで使うために開発し、そのままの形で公開しています。Issue やプルリクエストは歓迎しますが、
@@ -108,7 +108,7 @@ Taylis を使うには、所属する組織の Taylis サーバーと、管理�
 
 ## はじめての方へ
 
-- **使う人**: [使い方ガイド](guide/index.md) で、ログイン・通知の設定・メッセージの書き方を説明しています。
-- **管理者**: [管理者ガイド](admin/index.md) で、ユーザーの作成や招待、チャンネルや絵文字の管理を説明しています。
-- **サーバーを用意する人**: [クイックスタート](self-hosting/quickstart.md) から始めてください。
-- **仕組みが気になる人**: [仕組み](how-it-works/index.md) で、同期・通知・検索・セキュリティの考え方を紹介しています。
+- **使う人**：[使い方ガイド](guide/index.md) で、ログイン・通知の設定・メッセージの書き方を説明しています。
+- **管理者**：[管理者ガイド](admin/index.md) で、ユーザーの作成や招待、チャンネルや絵文字の管理を説明しています。
+- **サーバーを用意する人**：[クイックスタート](self-hosting/quickstart.md) から始めてください。
+- **仕組みが気になる人**：[仕組み](how-it-works/index.md) で、同期・通知・検索・セキュリティの考え方を紹介しています。

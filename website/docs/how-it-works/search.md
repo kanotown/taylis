@@ -10,9 +10,9 @@ description: PostgreSQL + PGroonga による日本語と英語の全文検索
 メッセージには日本語と英語が混ざります。Taylis は PostgreSQL の拡張の **PGroonga** で全文検索をしています。
 
 - 日本語も英語も、分かち書きなしで探せます。
-- 検索のための別のサーバー (Elasticsearch など) が要りません。データベースのバックアップに索引も含まれます。
+- 検索のための別のサーバー（Elasticsearch など）が要りません。データベースのバックアップに索引も含まれます。
 - 「その人が読めるメッセージだけ」という権限の条件を、同じ SQL の中で確実に付けられます。
-- 将来、意味で探す検索 (ベクトル検索の pgvector) を同じデータベースに足せます。
+- 将来、意味で探す検索（ベクトル検索の pgvector）を同じデータベースに足せます。
 
 PostgreSQL 標準の `tsvector` は日本語に弱く、`pg_trgm` は大量のデータで遅くなるので選びませんでした。
 
@@ -22,7 +22,7 @@ PostgreSQL 標準の `tsvector` は日本語に弱く、`pg_trgm` は大量の�
 - キャンバスの題名と本文
 - ファイルの一覧
 
-結果は、その人が読めるもの (参加しているチャンネル、参加前に見られる公開チャンネル) だけです。
+結果は、その人が読めるもの（参加しているチャンネル、参加前に見られる公開チャンネル）だけです。
 
 ## 絞り込みの書き方
 
@@ -32,10 +32,10 @@ PostgreSQL 標準の `tsvector` は日本語に弱く、`pg_trgm` は大量の�
 | --- | --- |
 | `from:@hanako` | その人の投稿 |
 | `in:#general` | そのチャンネル |
-| `after:2026-04-01` / `before:2026-05-01` / `on:2026-04-15` | 日付 (after / before はその日を含みません) |
+| `after:2026-04-01` / `before:2026-05-01` / `on:2026-04-15` | 日付（after / before はその日を含みません） |
 | `has:file` / `has:link` / `has:pin` / `has:reaction` / `has:poll` | 添付・リンク・ピン留め・リアクション・投票のあるもの |
 | `is:thread` | スレッドの返信と、返信のある親 |
-| `is:times` | Times (作業ログ) だけ |
+| `is:times` | Times（作業ログ）だけ |
 
 修飾子だけで検索すると、条件に合うものを新しい順に並べます。
 
@@ -46,8 +46,8 @@ PostgreSQL 標準の `tsvector` は日本語に弱く、`pg_trgm` は大量の�
 
 ## AI に聞く
 
-AI を有効にしたサーバーでは、「AI に聞く」がこの全文検索で関係のありそうなメッセージを (その人の権限で) 拾い、
-番号付きの出典として AI に渡して答えを作ります。埋め込み (ベクトル) はまだ使っていません。
+AI を有効にしたサーバーでは、「AI に聞く」がこの全文検索で関係のありそうなメッセージを（その人の権限で）拾い、
+番号付きの出典として AI に渡して答えを作ります。埋め込み（ベクトル）はまだ使っていません。
 
 詳しくは [docs/DATA_MODEL.md](https://github.com/kanotown/taylis/blob/main/docs/DATA_MODEL.md) の「代表的なクエリ」と
 [docs/ARCHITECTURE.md](https://github.com/kanotown/taylis/blob/main/docs/ARCHITECTURE.md) をご覧ください。

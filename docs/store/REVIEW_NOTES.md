@@ -1,19 +1,19 @@
-# 審査への説明 (Apple の App Review メモ / Google Play の「アプリのアクセス権」)
+# 審査への説明（Apple の App Review メモ / Google Play の「アプリのアクセス権」）
 
-`<…>` を埋めて貼る。審査は公開のサーバに接続して確かめるので、審査用のワークスペース (本番とは別のサーバか、
-本番の中の審査用チャンネルだけに入った普通のユーザ) を用意し、架空の会話をいくつか入れておく
-(ローカルの開発 DB の demo.* ユーザのような内容。docs/store/README の「デモデータ」)。
-審査用アカウントは管理者ではなく普通のメンバー (`member`) で作り、2 要素認証は付けない。
+`<…>` を埋めて貼る。審査は公開のサーバに接続して確かめるので、審査用のワークスペース（本番とは別のサーバか、
+本番の中の審査用チャンネルだけに入った普通のユーザ）を用意し、架空の会話をいくつか入れておく
+（ローカルの開発 DB の demo.* ユーザのような内容。docs/store/README の「デモデータ」）。
+審査用アカウントは管理者ではなく普通のメンバー（`member`）で作り、2 要素認証は付けない。
 
-## 1. Apple: App Review に関する情報
+## 1. Apple：App Review に関する情報
 
-`apps/ios/scripts/asc-metadata.py` が入れる (STORE_RELEASE.md §3.1)。メモは `docs/store/appstore.json` の `review.notes`
-(`{server_url}` と `{demo_user}` は実行時に埋める)。電話番号・審査用ユーザ・パスワード・サーバ URL はリポジトリに入れず
+`apps/ios/scripts/asc-metadata.py` が入れる（STORE_RELEASE.md §3.1）。メモは `docs/store/appstore.json` の `review.notes`
+（`{server_url}` と `{demo_user}` は実行時に埋める）。電話番号・審査用ユーザ・パスワード・サーバ URL はリポジトリに入れず
 `~/.config/taylis/asc-review.env` に置く。
 
-- サインイン情報: ユーザ名 `<reviewer>` / パスワード `<password>`
-- 連絡先: Toru Kano / kanotown@gmail.com / `<電話番号>`
-- メモ (英語で貼る):
+- サインイン情報：ユーザ名 `<reviewer>` / パスワード `<password>`
+- 連絡先：Toru Kano / kanotown@gmail.com / `<電話番号>`
+- メモ（英語で貼る）：
 
 ```text
 Taylis is a chat client for self-hosted Taylis servers. Each organization (for example a university
@@ -61,16 +61,16 @@ administrator enables them; they are disabled on the review server.
 ```
 
 - 審査サーバで AI 機能を切るか、メモの最後の文を消す。
-- 報告・ブロック・アカウント削除の場所は M104 の実装 (iOS / Android) に合わせて確かめてから貼る。
+- 報告・ブロック・アカウント削除の場所は M104 の実装（iOS / Android）に合わせて確かめてから貼る。
 
-## 2. Google Play: アプリのアクセス権 (App access)
+## 2. Google Play：アプリのアクセス権（App access）
 
-「一部の機能が制限されている」を選び、手順を追加する:
+「一部の機能が制限されている」を選び、手順を追加する：
 
-- 名前: 審査用ワークスペースへのログイン
-- ユーザ名: `<reviewer>`
-- パスワード: `<password>`
-- その他の手順:
+- 名前：審査用ワークスペースへのログイン
+- ユーザ名：`<reviewer>`
+- パスワード：`<password>`
+- その他の手順：
 
 ```text
 This app connects to a self-hosted chat server run by an organization; accounts are created by the
@@ -84,7 +84,7 @@ https://kano.ac/pages/apps/taylis-account-deletion/).
 No 2-step verification is required for this account.
 ```
 
-## 3. Google Play: そのほかのポリシーの申告
+## 3. Google Play：そのほかのポリシーの申告
 
 | 項目 | 回答 |
 |---|---|
@@ -95,5 +95,5 @@ No 2-step verification is required for this account.
 | 金融機能 | なし |
 | 健康 | なし |
 | アカウントの削除 | アプリ内 + https://kano.ac/pages/apps/taylis-account-deletion/ |
-| フォアグラウンド サービス / 正確なアラーム / フルスクリーン インテント などの特別な権限 | 使っていない (要求する権限はインターネット、ネットワーク状態、通知のみ) |
-| ユーザ生成コンテンツ (UGC) | あり。報告・ブロック・管理者による削除、利用規約は組織の運用ルール |
+| フォアグラウンド サービス / 正確なアラーム / フルスクリーン インテント などの特別な権限 | 使っていない（要求する権限はインターネット、ネットワーク状態、通知のみ） |
+| ユーザ生成コンテンツ（UGC） | あり。報告・ブロック・管理者による削除、利用規約は組織の運用ルール |
