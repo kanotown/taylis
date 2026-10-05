@@ -135,6 +135,7 @@ enum ErrorMessages {
         "poll_option_invalid": "選択肢が正しくありません",
         "posting_restricted": "このチャンネルに投稿できるのはオーナーと管理者だけです",
         "preview_disabled": "参加するとメッセージを読めます",
+        "preview_not_found": "このファイルのプレビューはありません",
         "provider_error": "Google との通信に失敗しました。しばらくしてからもう一度お試しください",
         "rate_limited": "操作が多すぎます。少し待ってからお試しください",
         "recurring_channel_unsupported": "ダイレクトメッセージには定期投稿を作れません",

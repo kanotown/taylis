@@ -25,6 +25,7 @@ from app.modules.attachments import videos
 from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
 from app.modules.attachments.models import Attachment
+from app.modules.attachments.preview_kinds import queue_on_upload
 from app.modules.attachments.schemas import (
     AttachmentOut,
     FileItem,
@@ -131,6 +132,8 @@ async def upload(
             await _probe_spooled_video(attachment, spool, settings, blobs)
         spool.seek(0)
         await blobs.put(attachment.storage_key, spool, content_type)
+    # M108: a PDF or Office file is queued for its preview (made by the preview loop, not here).
+    queue_on_upload(attachment, settings)
     db.add(attachment)
     await db.commit()
     await db.refresh(attachment)
@@ -192,7 +195,9 @@ async def bind_in_tx(
         raise bad_request(
             "too_many_attachments", f"At most {MAX_ATTACHMENTS_PER_MESSAGE} attachments"
         )
-    rows = {a.id: a for a in await repo.get_many(db, attachment_ids)}
+    # FOR UPDATE (M108): a document preview being recorded meanwhile is waited for and carried by
+    # the message.created this send writes (previews._finish).
+    rows = {a.id: a for a in await repo.get_many(db, attachment_ids, for_update=True)}
     bound: list[Attachment] = []
     now = utcnow()
     for attachment_id in dict.fromkeys(attachment_ids):
@@ -412,6 +417,25 @@ def content_headers(attachment: Attachment, *, inline: bool) -> dict[str, str]:
     }
 
 
+def preview_pdf_headers(attachment: Attachment) -> dict[str, str]:
+    """M108: the preview PDF is shown inline (a PDF upload's preview is the upload itself, the
+    only file served inline that is not an image). The CSP sandbox gives a browser that opens it
+    directly no scripts, forms or same-origin access; nosniff keeps it a PDF."""
+    stem = attachment.filename.rsplit(".", 1)[0]
+    name = f"{stem or 'preview'}.pdf"
+    ascii_name = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+    headers = {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}",
+        "Content-Security-Policy": "sandbox",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, max-age=3600",
+    }
+    if attachment.preview_pdf_key is None:
+        headers["Content-Length"] = str(attachment.size_bytes)
+    return headers
+
+
 def stream(blobs: BlobStore, key: str) -> AsyncIterator[bytes]:
     return blobs.stream(key)
 
@@ -436,8 +460,14 @@ async def gc(
 
 async def _delete_blobs(blobs: BlobStore, attachment: Attachment) -> None:
     await blobs.delete(attachment.storage_key)
-    if attachment.thumbnail_key:
-        await blobs.delete(attachment.thumbnail_key)
+    for key in _derived_keys(attachment):
+        await blobs.delete(key)
+
+
+def _derived_keys(attachment: Attachment) -> list[str]:
+    """The thumbnail or poster, and (M108) the preview's PDF and thumbnail."""
+    keys = (attachment.thumbnail_key, attachment.preview_pdf_key, attachment.preview_thumb_key)
+    return [key for key in keys if key]
 
 
 async def verify(db: AsyncSession, blobs: BlobStore) -> list[tuple[uuid.UUID, str]]:
@@ -446,6 +476,7 @@ async def verify(db: AsyncSession, blobs: BlobStore) -> list[tuple[uuid.UUID, st
     for attachment in await repo.all_live(db):
         if not await blobs.exists(attachment.storage_key):
             missing.append((attachment.id, attachment.storage_key))
-        if attachment.thumbnail_key and not await blobs.exists(attachment.thumbnail_key):
-            missing.append((attachment.id, attachment.thumbnail_key))
+        for key in _derived_keys(attachment):
+            if not await blobs.exists(key):
+                missing.append((attachment.id, key))
     return missing

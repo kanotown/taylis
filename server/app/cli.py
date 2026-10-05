@@ -310,6 +310,44 @@ def cmd_probe_videos(args: argparse.Namespace) -> int:
     return asyncio.run(_probe_videos(args.limit))
 
 
+async def _generate_previews(limit: int, retry_failed: bool) -> int:
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.attachments.blobstore import build_blobstore
+    from app.modules.attachments.previews import build_converter, generate_stored
+
+    settings = get_settings()
+    db = Database(settings.database_url)
+    blobs = build_blobstore(settings)
+    converter = build_converter(settings)
+    if converter is None:
+        print("PREVIEW_CONVERTER_URL is not set: only PDFs get previews", file=sys.stderr)
+    try:
+        async with db.session_factory() as session:
+            try:
+                result = await generate_stored(
+                    session, blobs, converter, settings, limit=limit, retry_failed=retry_failed
+                )
+            except RuntimeError as exc:
+                raise SystemExit(f"error: {exc}") from exc
+        print(
+            f"tried {result.tried} file(s): {result.ready} ready, {result.failed} failed, "
+            f"{result.retrying} left to the server's retries"
+        )
+        if result.remaining:
+            print("more files are left: run it again")
+        return 0
+    finally:
+        await db.dispose()
+
+
+def cmd_generate_previews(args: argparse.Namespace) -> int:
+    """M108: previews of the PDFs and Office files stored before previews (resumable)."""
+    if args.limit < 1:
+        raise SystemExit("error: --limit must be at least 1")
+    return asyncio.run(_generate_previews(args.limit, args.retry_failed))
+
+
 def cmd_push_test(args: argparse.Namespace) -> int:
     """Send a test notification to every push-registered device of a user."""
     return asyncio.run(_push_test(args.username, args.body))
@@ -749,6 +787,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     probe.add_argument("--limit", type=int, default=1000, help="at most this many a run")
     probe.set_defaults(func=cmd_probe_videos)
+
+    gen_previews = sub.add_parser(
+        "generate-previews",
+        help="make previews of PDFs and Office files stored before previews (docs/PREVIEWS.md)",
+    )
+    gen_previews.add_argument("--limit", type=int, default=200, help="at most this many a run")
+    gen_previews.add_argument(
+        "--retry-failed", action="store_true", help="also try again the ones that failed"
+    )
+    gen_previews.set_defaults(func=cmd_generate_previews)
 
     anonymize = sub.add_parser("anonymize-user", help="erase a user's identity, keep the history")
     anonymize.add_argument("--username", required=True)

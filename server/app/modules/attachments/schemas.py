@@ -1,10 +1,23 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
 
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.videos import is_video
+
+
+class AttachmentPreviewOut(BaseModel):
+    """M108 (docs/PREVIEWS.md): a PDF's or Office file's preview. 'pending': being made (show
+    「プレビューを作成中…」); 'ready': the first page at GET /attachments/{id}/preview/thumbnail
+    (WebP, width x height pixels) and every page at GET /attachments/{id}/preview/pdf; 'failed':
+    none (a plain file card)."""
+
+    status: Literal["pending", "ready", "failed"]
+    pages: int | None
+    width: int | None
+    height: int | None
 
 
 class AttachmentOut(BaseModel):
@@ -25,6 +38,9 @@ class AttachmentOut(BaseModel):
     duration_ms: int | None
     status: str
     created_at: datetime
+    # M108: null for a file without a preview (not a document, or stored before previews and not
+    # generated yet).
+    preview: AttachmentPreviewOut | None = None
 
 
 class FileItem(BaseModel):
@@ -57,4 +73,21 @@ def to_attachment_out(attachment: Attachment) -> AttachmentOut:
         duration_ms=attachment.duration_ms,
         status=attachment.status,
         created_at=attachment.created_at,
+        preview=_preview_out(attachment),
     )
+
+
+def _preview_out(attachment: Attachment) -> AttachmentPreviewOut | None:
+    status = attachment.preview_status
+    if status == "ready":
+        return AttachmentPreviewOut(
+            status="ready",
+            pages=attachment.preview_pages,
+            width=attachment.preview_width,
+            height=attachment.preview_height,
+        )
+    if status == "pending":
+        return AttachmentPreviewOut(status="pending", pages=None, width=None, height=None)
+    if status == "failed":
+        return AttachmentPreviewOut(status="failed", pages=None, width=None, height=None)
+    return None

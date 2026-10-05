@@ -20,7 +20,10 @@ async def upload(
     key = str(user.id)
     if not limiter.try_acquire(key):
         raise rate_limited(limiter.retry_after_seconds(key))
-    return await service.upload(db, user, file, request.app.state.settings, request.app.state.blobs)
+    out = await service.upload(db, user, file, request.app.state.settings, request.app.state.blobs)
+    if out.preview is not None and out.preview.status == "pending":
+        request.app.state.preview_wake.set()  # M108: the preview loop starts on it now
+    return out
 
 
 @router.get("/files", response_model=FileListOut)
@@ -73,4 +76,39 @@ async def thumbnail(
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "private, max-age=3600",
         },
+    )
+
+
+@router.get("/attachments/{attachment_id}/preview/thumbnail")
+async def preview_thumbnail(
+    attachment_id: UUID, request: Request, user: CurrentUser, db: Db
+) -> StreamingResponse:
+    """M108: the first page of a document's preview (WebP)."""
+    attachment = await service.get_for_access(db, user, attachment_id)
+    if attachment.preview_status != "ready" or attachment.preview_thumb_key is None:
+        raise not_found("preview_not_found", "This attachment has no preview")
+    return StreamingResponse(
+        service.stream(request.app.state.blobs, attachment.preview_thumb_key),
+        headers={
+            "Content-Type": "image/webp",
+            "Content-Disposition": "inline",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
+
+
+@router.get("/attachments/{attachment_id}/preview/pdf")
+async def preview_pdf(
+    attachment_id: UUID, request: Request, user: CurrentUser, db: Db
+) -> StreamingResponse:
+    """M108: every page of a document's preview as a PDF (the converter's, or a PDF upload
+    itself). Inline, and sandboxed by CSP (SECURITY.md §4 「文書のプレビュー」)."""
+    attachment = await service.get_for_access(db, user, attachment_id)
+    if attachment.preview_status != "ready":
+        raise not_found("preview_not_found", "This attachment has no preview")
+    key = attachment.preview_pdf_key or attachment.storage_key
+    return StreamingResponse(
+        service.stream(request.app.state.blobs, key),
+        headers=service.preview_pdf_headers(attachment),
     )

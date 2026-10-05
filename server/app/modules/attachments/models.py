@@ -49,6 +49,21 @@ class Attachment(Base):
     # M79: when the server looked at the video (found something or not). NULL: not yet (uploaded
     # before M79 or without ffmpeg); `app.cli probe-videos` takes those.
     video_probed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # M108 (docs/PREVIEWS.md): a document's preview. 'none' (not a previewable type, or uploaded
+    # while previews were off: `app.cli generate-previews` takes those), 'pending' (queued for the
+    # preview loop), 'ready', 'failed'.
+    preview_status: Mapped[str] = mapped_column(String(16), default="none", server_default="none")
+    preview_pages: Mapped[int | None] = mapped_column(Integer)
+    # The PDF made by the converter; NULL for a PDF upload (the original is the preview).
+    preview_pdf_key: Mapped[str | None] = mapped_column(Text)
+    # The first page as WebP, preview_width x preview_height pixels.
+    preview_thumb_key: Mapped[str | None] = mapped_column(Text)
+    preview_width: Mapped[int | None] = mapped_column(Integer)
+    preview_height: Mapped[int | None] = mapped_column(Integer)
+    preview_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # When the loop may take it (again): after a failed try, or once a claimed try's lease runs out.
+    preview_next_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    preview_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
@@ -62,5 +77,10 @@ class Attachment(Base):
             "attachments_canvas_idx",
             "canvas_id",
             postgresql_where=text("canvas_id IS NOT NULL"),
+        ),
+        Index(
+            "attachments_preview_queue_idx",
+            "preview_next_at",
+            postgresql_where=text("preview_status = 'pending'"),
         ),
     )

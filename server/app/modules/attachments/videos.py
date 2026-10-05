@@ -146,13 +146,16 @@ def _kill(process: asyncio.subprocess.Process) -> None:
         pass
 
 
-async def _run(argv: list[str], seconds: float, max_output: int) -> bytes | None:
+async def run_bounded(
+    argv: list[str], seconds: float, max_output: int, *, cwd: str | None = None
+) -> bytes | None:
     """stdout of the command, or None (logged) when it fails, times out or says too much.
 
     Both pipes are read in chunks as the child writes: at most `max_output` bytes of stdout are
     held (one more chunk and the child is killed) and the last STDERR_TAIL bytes of stderr. A
     timeout, a cancellation or the cap kills the child and waits for it, so nothing is left
-    running and the caller's semaphore is released with the process gone."""
+    running and the caller's semaphore is released with the process gone. Also the PDF renderer of
+    the previews (M108, previews.render_pdf)."""
     name = os.path.basename(argv[0])
     try:
         process = await asyncio.create_subprocess_exec(
@@ -161,6 +164,7 @@ async def _run(argv: list[str], seconds: float, max_output: int) -> bytes | None
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LC_ALL": "C"},
+            cwd=cwd,
         )
     except OSError as exc:
         log.warning("%s could not start: %s", argv[0], exc)
@@ -216,7 +220,7 @@ async def _run(argv: list[str], seconds: float, max_output: int) -> bytes | None
 async def _probe(
     ffprobe: str, path: str, seconds: float
 ) -> tuple[int | None, int | None, int | None]:
-    out = await _run(
+    out = await run_bounded(
         [
             ffprobe,
             "-v",
@@ -243,7 +247,7 @@ async def _frame(ffmpeg: str, path: str, at: float, max_px: int, seconds: float)
         "scale=trunc(iw*sar):ih,setsar=1,"
         f"scale=w='min({max_px},iw)':h='min({max_px},ih)':force_original_aspect_ratio=decrease"
     )
-    out = await _run(
+    out = await run_bounded(
         [
             ffmpeg,
             "-nostdin",
