@@ -261,7 +261,7 @@ private fun Tag(text: String) {
 /** 「○ 2 · △ 0 · × 1」, read as 「○ 2 人、△ 0 人、× 1 人」. */
 @Composable
 private fun CountLine(counts: SlotCounts, modifier: Modifier = Modifier) {
-    Row(modifier.clearAndSetSemantics { contentDescription = L10n.str(R.string.schedule_card_fmt, counts.yes, counts.maybe, counts.no) }) {
+    Row(modifier.clearAndSetSemantics { contentDescription = L10n.str(R.string.schedule_card_answer_counts, counts.yes, counts.maybe, counts.no) }) {
         val muted = MaterialTheme.colorScheme.onSurfaceVariant
         val style = MaterialTheme.typography.labelMedium
         Text("○", style = style, color = YES_TONE)
@@ -426,7 +426,7 @@ private fun ScheduleTable(
                         }
                         if (poll.anonymous && poll.comments.isNotEmpty()) {
                             Text(stringResource(R.string.schedule_card_comments_anonymous), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            poll.comments.forEach { Text(stringResource(R.string.common_fmt_5) + it.text, style = MaterialTheme.typography.bodyMedium) }
+                            poll.comments.forEach { Text(stringResource(R.string.common_list_separator_dot) + it.text, style = MaterialTheme.typography.bodyMedium) }
                         }
                         if (!poll.anonymous && people.isEmpty()) {
                             Text(stringResource(R.string.schedule_card_no_one_has_answered_yet), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

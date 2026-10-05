@@ -309,7 +309,7 @@ private fun EventRow(event: CalendarEventOut, day: LocalDate, onOpen: (CalendarE
         Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = stringResource(R.string.common_open)) { onOpen(event) }
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = L10n.str(R.string.calendar_screen_fmt, time, event.title, calendar) + (event.location?.let { L10n.str(R.string.common_fmt, it) } ?: "") +
+                contentDescription = L10n.str(R.string.calendar_screen_event_description, time, event.title, calendar) + (event.location?.let { L10n.str(R.string.common_comma_then, it) } ?: "") +
                     (repeat?.let { L10n.str(R.string.calendar_screen_repeats) + it.removePrefix("🔁 ") } ?: "")
             },
         verticalAlignment = Alignment.Top,

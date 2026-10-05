@@ -1605,7 +1605,7 @@ class AppController(private val app: Application) {
         val api = api ?: return false
         return try {
             store.applyReminder(api.createReminder(messageId, at.toInstant().toString(), note))
-            notice = Schedule.label(at) + " にリマインドします"
+            notice = L10n.str(R.string.common_will_remind_at, Schedule.label(at))
             true
         } catch (e: Exception) { report(e); false }
     }
@@ -1631,7 +1631,7 @@ class AppController(private val app: Application) {
         return try {
             val row = api.scheduleMessage(channelId, clientMsgId, body, parentId, attachmentIds, sendAt.toInstant().toString())
             store.applyScheduled(row)
-            notice = Schedule.label(sendAt) + " に送信します"
+            notice = L10n.str(R.string.common_will_send_at, Schedule.label(sendAt))
             true
         } catch (e: Exception) { report(e); false }
     }
@@ -2587,7 +2587,7 @@ class AppController(private val app: Application) {
                 } else {
                     val until = SlashCommands.duration(command.args)
                     if (until == null) { error = "/dnd 30m | 1h | 2h | 4h | tomorrow | off"; false }
-                    else updateProfileJson(buildJsonObject { put("dnd_until", until.toInstant().toString()) }).also { if (it) notice = Schedule.label(until) + " まで通知を止めます" }
+                    else updateProfileJson(buildJsonObject { put("dnd_until", until.toInstant().toString()) }).also { if (it) notice = L10n.str(R.string.common_notifications_paused_until, Schedule.label(until)) }
                 }
             }
             "topic" -> updateTopic(channelId, command.args)
@@ -2620,7 +2620,7 @@ class AppController(private val app: Application) {
             "mute" -> {
                 val until = if (command.args.isEmpty()) ZonedDateTime.now().plusHours(8) else SlashCommands.duration(command.args)
                 if (until == null) { error = "/mute 1h | 8h | tomorrow"; return false }
-                setNotification(channelId, level, until.toInstant().toString()).also { if (it) notice = Schedule.label(until) + " まで通知を止めます" }
+                setNotification(channelId, level, until.toInstant().toString()).also { if (it) notice = L10n.str(R.string.common_notifications_paused_until, Schedule.label(until)) }
             }
             // Both mutes end: the timed one and the one until unmuted (M35).
             "unmute" -> setNotification(channelId, level, null, muted = false).also { if (it) notice = L10n.str(R.string.app_controller_notifications_resumed_2) }

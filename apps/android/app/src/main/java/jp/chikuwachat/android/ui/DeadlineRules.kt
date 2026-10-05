@@ -14,7 +14,10 @@ import jp.chikuwachat.android.L10n
 enum class DeadlineTone { SOON, WEEK, LATER }
 
 /** 「締切」's sections, in order. */
-enum class DeadlineGroupKey(val label: String) { WEEK(L10n.str(R.string.deadline_rules_this_week)), MONTH(L10n.str(R.string.deadline_rules_this_month)), LATER(L10n.str(R.string.deadline_rules_later)), PAST(L10n.str(R.string.deadline_rules_past)) }
+enum class DeadlineGroupKey(private val labelRes: Int) { WEEK(R.string.deadline_rules_this_week), MONTH(R.string.deadline_rules_this_month), LATER(R.string.deadline_rules_later), PAST(R.string.deadline_rules_past);
+
+    val label: String get() = L10n.str(labelRes)
+}
 
 data class DeadlineGroup(val key: DeadlineGroupKey, val tasks: List<TaskOut>) {
     val label: String get() = key.label
@@ -51,7 +54,7 @@ object DeadlineRules {
     /** 「7 日前・3 日前・前日・当日」, largest first; 「通知しない」 for none. */
     fun noticeSummary(days: List<Int>?): String {
         val sorted = normalize(days ?: emptyList())
-        return if (sorted.isEmpty()) L10n.str(R.string.common_dont_notify) else sorted.joinToString(L10n.str(R.string.common_fmt_5)) { noticeLabel(it) }
+        return if (sorted.isEmpty()) L10n.str(R.string.common_dont_notify) else sorted.joinToString(L10n.str(R.string.common_list_separator_dot)) { noticeLabel(it) }
     }
 
     fun sameNoticeDays(a: List<Int>?, b: List<Int>?): Boolean = normalize(a ?: emptyList()) == normalize(b ?: emptyList())
@@ -111,7 +114,7 @@ object DeadlineRules {
     fun whenText(task: TaskOut, today: String): String {
         val day = day(task) ?: return ""
         val date = runCatching { LocalDate.parse(day) }.getOrNull() ?: return day
-        val label = if (day == today) L10n.str(R.string.common_today) else "${TaskRules.dueLabel(day, today)} (${"日月火水木金土"[CalendarDates.weekdayIndex(date)]})"
+        val label = if (day == today) L10n.str(R.string.common_today) else "${TaskRules.dueLabel(day, today)} (${L10n.weekdaysSundayFirst[CalendarDates.weekdayIndex(date)]})"
         return task.dueAt?.let { at -> runCatching { "$label ${CalendarDates.clock(at)}" }.getOrNull() } ?: label
     }
 

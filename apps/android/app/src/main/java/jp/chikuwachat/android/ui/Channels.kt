@@ -141,25 +141,28 @@ object GroupUnread {
 }
 
 /** M37 (MOBILE_UI.md §6.1): the home's tiles, in the row's order. */
-enum class HomeTile(val label: String) {
-    THREADS(L10n.str(R.string.common_thread)),
+enum class HomeTile(private val labelRes: Int?) {
+    THREADS(R.string.home_tile_threads),
     /** L8 (TIMES_FEED.md §7): the Times feed, after スレッド; no number (the feed is read, never marked read by looking). */
-    TIMES("Times"),
-    DRAFTS(L10n.str(R.string.common_drafts)),
-    SAVED(L10n.str(R.string.common_save)),
-    REMINDERS(L10n.str(R.string.common_reminders)),
+    TIMES(null),
+    DRAFTS(R.string.common_drafts),
+    SAVED(R.string.home_tile_saved),
+    REMINDERS(R.string.common_reminders),
     /** M52 (CALENDAR.md §7): the calendar, next to リマインダー; no number. */
-    CALENDAR(L10n.str(R.string.common_calendar)),
+    CALENDAR(R.string.common_calendar),
     /** M56 (TASKS.md §6): 「自分のタスク」 and 「自分の担当」, next to カレンダー; no number. */
-    TASKS(L10n.str(R.string.common_tasks)),
+    TASKS(R.string.common_tasks),
     /** M86 (DEADLINES.md §8 3.): my channels' deadlines (今週 / 今月 / それ以降 / 過ぎたもの), next to タスク; no number. */
-    DEADLINES(L10n.str(R.string.common_deadlines)),
+    DEADLINES(R.string.common_deadlines),
     /** M112 (RESERVATIONS.md §6): the workspace's reservation pools, after 締切; the to-dos due in the pools I operate. */
-    RESERVATIONS(L10n.str(R.string.common_reservations)),
-    FILES(L10n.str(R.string.common_files)),
+    RESERVATIONS(R.string.common_reservations),
+    FILES(R.string.common_files),
     /** M78 (CANVAS.md §21.2): the canvases of all my conversations, after ファイル (as the desktop's sidebar); no number. */
-    CANVASES(L10n.str(R.string.common_canvas)),
+    CANVASES(R.string.home_tile_canvases),
     ;
+
+    /** The tile's name; 「Times」 is the same in every language. */
+    val label: String get() = labelRes?.let { L10n.str(it) } ?: "Times"
 
     /** M111: the key in apps/shared/nav-items.json (UserMe.nav_items). */
     val navKey: String get() = if (this == TIMES) "times-feed" else name.lowercase()
@@ -215,9 +218,9 @@ object HomeTiles {
             HomeTile.THREADS -> L10n.str(R.string.common_unread_2, count)
             HomeTile.REMINDERS -> L10n.str(R.string.channels_notified, count)
             HomeTile.RESERVATIONS -> L10n.str(R.string.channels_operator_tasks, count)
-            else -> L10n.str(R.string.common_fmt_7, count)
+            else -> L10n.str(R.string.common_count_items, count)
         }
-        return L10n.str(R.string.common_fmt_8, state.tile.label, number) + if (state.alert && state.tile == HomeTile.THREADS) L10n.str(R.string.common_has_mentions) else ""
+        return L10n.str(R.string.common_pair, state.tile.label, number) + if (state.alert && state.tile == HomeTile.THREADS) L10n.str(R.string.common_has_mentions) else ""
     }
 }
 

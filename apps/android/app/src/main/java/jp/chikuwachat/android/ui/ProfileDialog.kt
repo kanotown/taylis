@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import jp.chikuwachat.android.L10n
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -111,8 +112,8 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
 fun expiryLabel(iso: String?): String? {
     val instant = iso?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return null
     val zoned = instant.atZone(ZoneId.systemDefault())
-    return if (zoned.toLocalDate() == LocalDate.now()) zoned.format(DateTimeFormatter.ofPattern("HH:mm")) + " まで"
-    else zoned.format(DateTimeFormatter.ofPattern("M月d日")) + "まで"
+    return if (zoned.toLocalDate() == LocalDate.now()) L10n.str(R.string.common_until, zoned.format(DateTimeFormatter.ofPattern("HH:mm")))
+    else L10n.str(R.string.profile_dialog_until_date, zoned.format(DateTimeFormatter.ofPattern(L10n.str(R.string.you_month_day_pattern), L10n.locale)))
 }
 
 /** ISO time when a status with this expiry should disappear; null = never. */

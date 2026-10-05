@@ -6,6 +6,7 @@ object Emoji {
     private val SHORTCODE = Regex(":([a-z0-9_+\\-]{1,30}):")
     /** ":ta" at the end of the text, at a word start; the query needs at least 2 characters. */
     /** M100: or a Japanese word (":ありがとう", "：了解"), one character enough: custom emoji by label / keyword. */
+    // i18n: keep (emoji query pattern)
     private val QUERY = Regex("(^|[\\s(（「])[:：]([a-z0-9_+\\-]{2,30}|[^\\s:：\\x00-\\x7f][^\\s:：]{0,19})$")
 
     fun byShortcode(shortcode: String): EmojiEntry? = byShortcode[shortcode]

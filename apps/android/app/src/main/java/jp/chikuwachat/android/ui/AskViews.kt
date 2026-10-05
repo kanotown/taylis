@@ -150,7 +150,7 @@ private fun AskAnswerSheet(
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                 Column(Modifier.weight(1f).padding(start = 8.dp)) {
                     Text(stringResource(R.string.ask_views_ask_ai), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    if (state.question.isNotBlank()) Text(stringResource(R.string.common_fmt_2, state.question), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (state.question.isNotBlank()) Text(stringResource(R.string.common_quoted, state.question), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(vertical = 12.dp)) {

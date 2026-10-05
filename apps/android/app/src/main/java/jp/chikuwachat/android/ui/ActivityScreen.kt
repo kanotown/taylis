@@ -85,7 +85,7 @@ object ActivityText {
             "mention" -> L10n.str(R.string.activity_screen_mentioned_you, who)
             "thread_reply" -> L10n.str(R.string.activity_screen_replied_in_a_thread, who)
             "reaction" -> L10n.str(R.string.activity_screen_reacted, who)
-            "canvas_mention" -> "${who}が「${item.canvas?.title ?: "キャンバス"}」であなたをメンションしました"
+            "canvas_mention" -> L10n.str(R.string.activity_screen_mentioned_you_in_canvas, who, item.canvas?.title ?: L10n.str(R.string.common_canvas))
             else -> who.trim()
         }
     }
@@ -102,7 +102,7 @@ object ActivityText {
 
     /** TalkBack for a canvas row (CANVAS.md §20.5): 「未読 佐藤 が「題名」であなたをメンションしました、#一般」. */
     fun spokenCanvas(item: ActivityItem, name: (String) -> String?, conversation: String, unread: Boolean): String =
-        (if (unread) L10n.str(R.string.activity_screen_unread) else "") + lead(item, name) + (if (conversation.isNotEmpty()) L10n.str(R.string.common_fmt, conversation) else "")
+        (if (unread) L10n.str(R.string.activity_screen_unread) else "") + lead(item, name) + (if (conversation.isNotEmpty()) L10n.str(R.string.common_comma_then, conversation) else "")
 
     /** Where a tapped row goes: its message (a reply in its thread), or a canvas item's canvas (M77). */
     fun target(item: ActivityItem): ActivityTarget? {

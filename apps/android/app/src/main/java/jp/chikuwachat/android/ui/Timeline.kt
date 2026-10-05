@@ -41,9 +41,9 @@ sealed class OpenPosition {
 
 object Timeline {
     private const val GROUP_WINDOW_SECONDS = 5 * 60
-    private val WEEKDAYS = listOf("月", "火", "水", "木", "金", "土", "日")
+    private val WEEKDAYS: List<String> get() = L10n.weekdaysMondayFirst
     private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-    private val FULL: DateTimeFormatter = DateTimeFormatter.ofPattern(L10n.str(R.string.timeline_mmm_d_yyyy_hh_mm))
+    private val FULL: DateTimeFormatter get() = DateTimeFormatter.ofPattern(L10n.str(R.string.timeline_mmm_d_yyyy_hh_mm))
 
     fun parse(iso: String, zone: ZoneId = ZoneId.systemDefault()): ZonedDateTime? =
         runCatching { Instant.parse(iso).atZone(zone) }.getOrNull()
@@ -76,8 +76,8 @@ object Timeline {
         if (day == today) return L10n.str(R.string.common_today)
         if (day == today.minusDays(1)) return L10n.str(R.string.common_yesterday)
         val weekday = WEEKDAYS[day.dayOfWeek.value - 1]
-        val md = L10n.str(R.string.common_fmt_3, day.monthValue, day.dayOfMonth, weekday)
-        return if (day.year == today.year) md else "${day.year}年$md"
+        val md = L10n.str(R.string.common_day_label, day.monthValue, day.dayOfMonth, weekday)
+        return if (day.year == today.year) md else L10n.str(R.string.timeline_date_with_year, day.year, md)
     }
 
     /** 「Toru Kano」→ TK, 「かのう」→ か. */
@@ -244,7 +244,7 @@ object Timeline {
     fun muteLabel(mutedUntil: String?, zone: ZoneId = ZoneId.systemDefault()): String? {
         val until = mutedUntil?.let { parse(it, zone) } ?: return null
         if (!until.isAfter(ZonedDateTime.now(zone))) return null
-        return until.format(TIME) + " までミュート"
+        return L10n.str(R.string.timeline_muted_until, until.format(TIME))
     }
 
     /** What a conversation without rows shows (M28c): the first page on its way, offline before any page, or truly empty. */

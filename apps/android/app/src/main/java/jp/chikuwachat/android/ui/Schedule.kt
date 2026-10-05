@@ -66,7 +66,7 @@ object Schedule {
     /** 「リマインド」's 「日時を指定…」 (as on iOS and the desktop): the picked time, labelled with when it is. */
     fun customReminder(at: ZonedDateTime, now: ZonedDateTime = ZonedDateTime.now()): Preset = Preset(CUSTOM, label(at, now), at)
 
-    private val DAYS = listOf("月", "火", "水", "木", "金", "土", "日")
+    private val DAYS: List<String> get() = L10n.weekdaysMondayFirst
 
     /** "今日 18:00" / "明日 9:00" / "10月3日(土) 9:00" / "2027年1月4日(月) 9:00". */
     fun label(at: ZonedDateTime, now: ZonedDateTime = ZonedDateTime.now()): String {
@@ -74,8 +74,8 @@ object Schedule {
         val days = ChronoUnit.DAYS.between(now.toLocalDate(), at.withZoneSameInstant(now.zone).toLocalDate())
         if (days == 0L) return L10n.str(R.string.schedule_today, time)
         if (days == 1L) return L10n.str(R.string.schedule_tomorrow, time)
-        val year = if (at.year != now.year) "${at.year}年" else ""
-        return "$year${at.monthValue}月${at.dayOfMonth}日(${DAYS[at.dayOfWeek.value - 1]}) $time"
+        val key = if (at.year != now.year) R.string.schedule_label_date_year else R.string.schedule_label_date
+        return L10n.str(key, at.year, at.monthValue, at.dayOfMonth, DAYS[at.dayOfWeek.value - 1], time)
     }
 
     fun label(iso: String, zone: ZoneId = ZoneId.systemDefault(), now: ZonedDateTime = ZonedDateTime.now(zone)): String =

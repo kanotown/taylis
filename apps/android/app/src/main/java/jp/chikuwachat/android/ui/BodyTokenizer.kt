@@ -60,6 +60,7 @@ private val RULE_LINE = Regex("""^-{3,}\s*$""")
 // `\`` are the literal character (also inside emphasis). E-mail addresses (and the shrug, which keeps its backslash) are
 // text tokens of their own, so emphasis and escapes are never read inside them.
 private const val INLINE =
+    // i18n: keep (inline-format pattern)
     """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)"""
 private val INLINE_PATTERN = Regex(INLINE)
 private val FULL_PATTERN = Regex("""(```([\s\S]*?)```)|$INLINE|(\n)""")

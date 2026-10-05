@@ -49,7 +49,7 @@ fun ThreadSummaryLine(message: MessageState, store: Store, onOpen: () -> Unit) {
     val repliers = Timeline.replierAvatars(message.replyUserIds)
     val last = message.lastReplyAt?.let { Timeline.lastReplyLabel(it) } ?: ""
     val count = pluralStringResource(R.plurals.common_reply_replies, message.replyCount, message.replyCount)
-    val spoken = listOf(count, last).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.common_fmt_6))
+    val spoken = listOf(count, last).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.common_list_separator))
     Row(
         Modifier
             .heightIn(min = 36.dp)

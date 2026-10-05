@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.ui
 
+import jp.chikuwachat.android.L10n
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -43,7 +44,7 @@ fun ReminderDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime, String?) -> Un
                     FilterChip(selected = custom, onClick = { picking = true }, label = { Text(if (custom) chosen.label else stringResource(R.string.common_pick_a_date_and_time)) })
                 }
                 Text(
-                    if (tooSoon) stringResource(R.string.common_choose_a_time_at_least_1) else Schedule.label(chosen.at) + " にリマインドします",
+                    if (tooSoon) stringResource(R.string.common_choose_a_time_at_least_1) else stringResource(R.string.common_will_remind_at, Schedule.label(chosen.at)),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (tooSoon) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),
@@ -61,7 +62,7 @@ fun ReminderDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime, String?) -> Un
     if (picking) {
         ScheduleDialog(
             onDismiss = { picking = false }, title = stringResource(R.string.reminder_dialog_remind_me), confirm = stringResource(R.string.common_done),
-            describe = { Schedule.label(it) + " にリマインドします" },
+            describe = { L10n.str(R.string.common_will_remind_at, Schedule.label(it)) },
         ) { at ->
             chosen = Schedule.customReminder(at)
             tooSoon = false

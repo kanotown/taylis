@@ -13,8 +13,8 @@ import jp.chikuwachat.android.L10n
  * Same rule as the server: an overnight window belongs to the day it starts on.
  */
 object Dnd {
-    val DAY_LABELS = listOf("月", "火", "水", "木", "金", "土", "日")
-    val PAUSE_OPTIONS = listOf("30m" to L10n.str(R.string.common_30_minutes), "1h" to L10n.str(R.string.common_1_hour), "2h" to L10n.str(R.string.common_2_hours), "tomorrow" to L10n.str(R.string.dnd_until_8_00_tomorrow))
+    val DAY_LABELS: List<String> get() = L10n.weekdaysMondayFirst
+    val PAUSE_OPTIONS get() = listOf("30m" to L10n.str(R.string.common_30_minutes), "1h" to L10n.str(R.string.common_1_hour), "2h" to L10n.str(R.string.common_2_hours), "tomorrow" to L10n.str(R.string.dnd_until_8_00_tomorrow))
 
     fun minutes(hhmm: String): Int {
         val parts = hhmm.split(":").mapNotNull { it.toIntOrNull() }
@@ -55,6 +55,6 @@ object Dnd {
     /** "22:00〜07:00 (月〜金)" for the profile card. */
     fun label(hours: QuietHours): String {
         val days = if (hours.days.isEmpty() || hours.days.size == 7) "" else " (" + hours.days.sorted().joinToString("") { DAY_LABELS[it] } + ")"
-        return L10n.str(R.string.dnd_fmt, hours.start, hours.end, days)
+        return L10n.str(R.string.dnd_hours_range, hours.start, hours.end, days)
     }
 }

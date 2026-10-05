@@ -146,7 +146,7 @@ private fun TabIcon(tab: MainTab, selected: Boolean, badges: TabBadges) {
         when {
             tab == MainTab.DM && dm > 0 -> Badge(Modifier.semantics { contentDescription = L10n.str(R.string.common_unread_2, dm) }) { Text(badgeText(dm)) }
             tab == MainTab.ACTIVITY && activity.count > 0 -> Badge(
-                Modifier.semantics { contentDescription = L10n.str(R.string.common_fmt_7, activity.count) + if (activity.mention) L10n.str(R.string.common_has_mentions) else "" },
+                Modifier.semantics { contentDescription = L10n.str(R.string.common_count_items, activity.count) + if (activity.mention) L10n.str(R.string.common_has_mentions) else "" },
                 containerColor = if (activity.mention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
                 contentColor = if (activity.mention) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSecondary,
             ) { Text(badgeText(activity.count)) }

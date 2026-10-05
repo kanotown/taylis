@@ -86,7 +86,7 @@ object AiTexts {
             "Anthropic".takeIf { present.any { !it.model.startsWith("gpt-") } },
             "OpenAI".takeIf { present.any { it.model.startsWith("gpt-") } },
         ).joinToString(L10n.str(R.string.ai_views_and))
-        return "AI (${names.joinToString("、")}) が参加しています。メンションしたときと要約のときに、会話の一部が $where の API に送られます"
+        return L10n.str(R.string.ai_views_ai_present, names.joinToString(L10n.str(R.string.common_list_separator)), where)
     }
 
     val PRIVATE_NOTE: String get() = L10n.str(R.string.ai_views_only_you_can_see_this_summary)
@@ -152,7 +152,9 @@ object AiTexts {
     fun askOmittedNote(count: Int): String? = if (count > 0) L10n.str(R.string.ai_views_left_out_messages_from_private, count) else null
 
     /** An answer's citations: [3], [1][4], [1, 4], [1、4] (not a Markdown link's label already). */
+    // i18n: keep (citation pattern)
     private val CITATION = Regex("""\[(\d+(?:\s*[,、]\s*\d+)*)](?!\()""")
+    // i18n: keep (citation separators)
     private val CITATION_SPLIT = Regex("""\s*[,、]\s*""")
 
     /**

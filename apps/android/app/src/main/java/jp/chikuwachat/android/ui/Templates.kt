@@ -20,10 +20,12 @@ object Templates {
     private const val MIN_OPTIONS = 2
     private const val MAX_OPTIONS = 10
 
-    private val WEEKDAYS = listOf("月", "火", "水", "木", "金", "土", "日")
+    private val WEEKDAYS: List<String> get() = L10n.weekdaysMondayFirst
     private val PLACEHOLDER = Regex("""\{(date|weekday|week)\}""")
+    // i18n: keep (whitespace pattern)
     private val WHITESPACE = Regex("""[\s　]+""")
     private const val DATE = """(?:(\d{4})/)?(\d{1,2})/(\d{1,2})"""
+    // i18n: keep (range pattern)
     private const val DASH = """[-〜~]"""
     /** `M/D`, `YYYY/M/D`, and a range to a date or to a day of the same month. */
     private val DATE_TOKEN = Regex("""^$DATE(?:$DASH(?:$DATE|(\d{1,2})))?$""")
@@ -130,7 +132,7 @@ object Templates {
         read.entries.forEach { entry ->
             var text = dateLabel(entry.day, today)
             entry.from?.let { text += " " + label(it) }
-            entry.to?.let { text += L10n.str(R.string.templates_fmt) + label(it) }
+            entry.to?.let { text += L10n.str(R.string.templates_range_dash) + label(it) }
             labels += text
         }
         if (labels.size < MIN_OPTIONS || labels.size > MAX_OPTIONS) return null

@@ -111,6 +111,7 @@ object CanvasDiff {
     // (?s): `.` takes any character. The spaces are spelled out (JavaScript's `\s` but the line break: the full-width
     // space too): the JVM's `\s` is ASCII only and Android's ICU refuses the (?U) flag that would widen it (it crashed
     // the history on the emulator). `script=` is the script syntax both the JVM and ICU read.
+    // i18n: keep (diff tokenizer pattern)
     private val WORD = Regex("""(?s)\n|[\p{Z}\t\x{0B}\f\r\x{FEFF}]+|[\p{script=Han}々〆ヶ]+|\p{script=Hiragana}+|[\p{script=Katakana}ー]+|[\p{L}\p{N}_]+|.""")
 
     /** A line cut into words as the server's merge cuts it. */

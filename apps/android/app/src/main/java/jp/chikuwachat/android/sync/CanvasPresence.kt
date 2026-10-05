@@ -98,7 +98,7 @@ class CanvasEditors {
         /** 「〇〇 が編集中」, 「〇〇、△△ が編集中」, 「〇〇 ほか N 人が編集中」. */
         fun label(names: List<String>): String = when {
             names.isEmpty() -> ""
-            names.size <= 2 -> names.joinToString(L10n.str(R.string.common_fmt_6)) + L10n.str(R.string.canvas_presence_editing)
+            names.size <= 2 -> names.joinToString(L10n.str(R.string.common_list_separator)) + L10n.str(R.string.canvas_presence_editing)
             else -> L10n.str(R.string.canvas_presence_and_others_editing, names[0], names.size - 1)
         }
     }

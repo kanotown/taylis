@@ -525,14 +525,14 @@ fun TaskCard(
         if (deadline) append(stringResource(R.string.task_screens_deadline))
         append(task.title)
         if (done) append(stringResource(R.string.task_screens_done))
-        badge?.let { append(stringResource(R.string.common_fmt_6)).append(it) }
+        badge?.let { append(stringResource(R.string.common_list_separator)).append(it) }
         if (task.dueOn != null) {
-            append(stringResource(R.string.common_fmt_6)).append(TaskRules.cardDueText(task, today))
+            append(stringResource(R.string.common_list_separator)).append(TaskRules.cardDueText(task, today))
             if (overdue) append(stringResource(R.string.task_screens_overdue))
         }
         if (task.rrule != null) append(stringResource(R.string.task_screens_repeats))
         progress?.let { append(stringResource(R.string.task_screens_subtasks_done, it.first, it.second)) }
-        if (names.isNotEmpty()) append(stringResource(R.string.task_screens_assigned_to)).append(names.joinToString(stringResource(R.string.common_fmt_6)))
+        if (names.isNotEmpty()) append(stringResource(R.string.task_screens_assigned_to)).append(names.joinToString(stringResource(R.string.common_list_separator)))
         if (!task.notes.isNullOrBlank()) append(stringResource(R.string.task_screens_has_notes))
         if (task.source?.messageId != null) append(stringResource(R.string.task_screens_has_original_message))
         if (task.canvasSource?.canvasId != null) append(stringResource(R.string.task_screens_has_original_canvas))
@@ -848,7 +848,7 @@ fun TaskDayRow(task: TaskOut, onOpen: (TaskOut) -> Unit, showBoard: Boolean = tr
         Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = stringResource(R.string.common_open)) { onOpen(task) }
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = L10n.str(R.string.common_due_2) + (if (time.isNotEmpty()) "$time " else "") + L10n.str(R.string.common_fmt_8, task.title, board) + if (done) L10n.str(R.string.task_screens_done) else ""
+                contentDescription = L10n.str(R.string.common_due_2) + (if (time.isNotEmpty()) "$time " else "") + L10n.str(R.string.common_pair, task.title, board) + if (done) L10n.str(R.string.task_screens_done) else ""
             },
         verticalAlignment = Alignment.Top,
     ) {

@@ -43,7 +43,7 @@ import androidx.compose.ui.res.stringResource
 /** M104 (docs/MODERATION.md): the rules the other clients share, used by the views below. */
 object Moderation {
     /** The reasons of 「報告する」, in the order every client shows them (the server's `reason`). */
-    val reasons: List<Pair<String, String>> = listOf(
+    val reasons: List<Pair<String, String>> get() = listOf(
         "spam" to L10n.str(R.string.moderation_spam),
         "harassment" to L10n.str(R.string.moderation_harassment),
         "inappropriate" to L10n.str(R.string.moderation_inappropriate_content),

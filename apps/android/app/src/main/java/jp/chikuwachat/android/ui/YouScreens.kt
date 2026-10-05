@@ -258,7 +258,7 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
                     onDismiss = { pickingPause = false },
                     title = stringResource(R.string.common_pause_notifications),
                     confirm = stringResource(R.string.you_screens_pause),
-                    describe = { Schedule.label(it) + " まで通知を止めます" },
+                    describe = { L10n.str(R.string.common_notifications_paused_until, Schedule.label(it)) },
                 ) { at ->
                     pickingPause = false
                     pause(YouSettings.dndUntil(PauseChoice.CUSTOM, picked = at))
@@ -373,8 +373,8 @@ private fun RadioRow(label: String, selected: Boolean, enabled: Boolean = true, 
     }
 }
 
-private val STATUS_PRESETS = listOf("📅" to L10n.str(R.string.you_screens_in_a_meeting), "🚌" to L10n.str(R.string.you_screens_commuting), "🤒" to L10n.str(R.string.you_screens_out_sick), "🌴" to L10n.str(R.string.you_screens_on_vacation), "🏠" to L10n.str(R.string.you_screens_working_remotely), "🍱" to L10n.str(R.string.you_screens_lunch_break))
-private val EXPIRY_OPTIONS = listOf("never" to L10n.str(R.string.you_screens_dont_clear), "30m" to L10n.str(R.string.you_screens_in_30_minutes), "1h" to L10n.str(R.string.common_in_1_hour), "4h" to L10n.str(R.string.you_screens_in_4_hours), "today" to L10n.str(R.string.you_screens_end_of_today), "week" to L10n.str(R.string.you_screens_end_of_this_week))
+private val STATUS_PRESETS get() = listOf("📅" to L10n.str(R.string.you_screens_in_a_meeting), "🚌" to L10n.str(R.string.you_screens_commuting), "🤒" to L10n.str(R.string.you_screens_out_sick), "🌴" to L10n.str(R.string.you_screens_on_vacation), "🏠" to L10n.str(R.string.you_screens_working_remotely), "🍱" to L10n.str(R.string.you_screens_lunch_break))
+private val EXPIRY_OPTIONS get() = listOf("never" to L10n.str(R.string.you_screens_dont_clear), "30m" to L10n.str(R.string.you_screens_in_30_minutes), "1h" to L10n.str(R.string.common_in_1_hour), "4h" to L10n.str(R.string.you_screens_in_4_hours), "today" to L10n.str(R.string.you_screens_end_of_today), "week" to L10n.str(R.string.you_screens_end_of_this_week))
 
 /** 「ステータスを更新」 (M11d): the emoji, the words, when it disappears; presets; クリア. Saved, the screen closes. */
 @Composable
@@ -552,6 +552,7 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
         SectionTitle(stringResource(R.string.you_screens_notification_keywords))
         val savedKeywords = me?.notifyKeywords ?: emptyList()
         var keywords by rememberSaveable { mutableStateOf(savedKeywords.joinToString(", ")) }
+        // i18n: keep (keyword separators)
         val parsed = keywords.split(Regex("[,、\\n]")).map { it.trim() }.filter { it.isNotEmpty() }.take(20)
         var busy by remember { mutableStateOf(false) }
         var saved by remember { mutableStateOf(false) }
@@ -684,7 +685,7 @@ private fun QuickReactionsSection(controller: AppController, me: UserMe) {
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
                     .clickable(enabled = !saving, role = Role.Button, onClickLabel = stringResource(R.string.common_change)) { picking = index }
-                    .semantics { contentDescription = "候補 ${index + 1}: ${glyph ?: "空き"}" },
+                    .semantics { contentDescription = L10n.str(R.string.you_screens_reaction_choice, index + 1, glyph ?: L10n.str(R.string.you_screens_empty_slot)) },
                 contentAlignment = Alignment.Center,
             ) {
                 if (glyph != null) Text(glyph, fontSize = 24.sp, modifier = Modifier.clearAndSetSemantics {})
@@ -978,23 +979,25 @@ private fun PasswordScreen(controller: AppController) {
     var next by remember { mutableStateOf("") }
     var repeat by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
+    var changed by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     ScreenColumn {
         OutlinedTextField(current, { current = it }, label = { Text(stringResource(R.string.common_current_password)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
         OutlinedTextField(next, { next = it }, label = { Text(stringResource(R.string.you_screens_new_password_at_least_8_characters)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
         OutlinedTextField(repeat, { repeat = it }, label = { Text(stringResource(R.string.you_screens_new_password_confirm)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
-        message?.let { Text(it, color = if (it.endsWith("しました")) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+        message?.let { Text(it, color = if (changed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
         Button(
             enabled = !busy && current.isNotEmpty() && next.length >= 8,
             modifier = Modifier.padding(top = 16.dp),
             onClick = {
-                if (next != repeat) { message = L10n.str(R.string.you_screens_the_new_passwords_dont_match); return@Button }
+                if (next != repeat) { message = L10n.str(R.string.you_screens_the_new_passwords_dont_match); changed = false; return@Button }
                 scope.launch {
                     busy = true
                     val error = controller.changePasswordInSession(current, next)
                     busy = false
                     message = error ?: L10n.str(R.string.you_screens_password_changed)
+                    changed = error == null
                     if (error == null) { current = ""; next = ""; repeat = "" }
                 }
             },

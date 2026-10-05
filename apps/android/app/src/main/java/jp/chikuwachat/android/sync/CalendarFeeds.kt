@@ -83,7 +83,7 @@ class CalendarFeeds(private val api: CalendarFeedApi?) {
             L10n.str(R.string.calendar_feeds_created, shortDate(feed.createdAt)) + (feed.lastUsedAt?.let { L10n.str(R.string.calendar_feeds_read, shortDate(it)) } ?: L10n.str(R.string.calendar_feeds_not_read_yet))
 
         /** The choices when making one. */
-        val SCOPE_CHOICES = listOf(
+        val SCOPE_CHOICES get() = listOf(
             SCOPE_ALL to L10n.str(R.string.calendar_feeds_all_my_calendar_and_channels_im),
             SCOPE_PERSONAL to L10n.str(R.string.calendar_feeds_only_my_calendar),
         )

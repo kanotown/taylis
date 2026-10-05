@@ -173,7 +173,7 @@ private fun DeadlineRow(controller: AppController, task: TaskOut, today: String,
     val place = TaskRules.placeLabel(task)
     val detail = buildList {
         add(place)
-        if (names.isNotEmpty()) add(stringResource(R.string.deadline_screens_assigned) + names.joinToString(stringResource(R.string.common_fmt_6)))
+        if (names.isNotEmpty()) add(stringResource(R.string.deadline_screens_assigned) + names.joinToString(stringResource(R.string.common_list_separator)))
         if (done) add(stringResource(R.string.common_done_2))
     }.joinToString(" · ")
     val soon = !done && !past && DeadlineRules.tone(task, today) == DeadlineTone.SOON
@@ -181,7 +181,7 @@ private fun DeadlineRow(controller: AppController, task: TaskOut, today: String,
         Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN)
             .clickable(onClickLabel = stringResource(R.string.common_open)) { controller.taskForm = TaskForm(task, null) }
             .padding(horizontal = 16.dp, vertical = 10.dp)
-            .semantics(mergeDescendants = true) { contentDescription = L10n.str(R.string.deadline_screens_fmt, whenText, task.title, detail) },
+            .semantics(mergeDescendants = true) { contentDescription = L10n.str(R.string.deadline_screens_row_description, whenText, task.title, detail) },
         verticalAlignment = Alignment.Top,
     ) {
         Text(

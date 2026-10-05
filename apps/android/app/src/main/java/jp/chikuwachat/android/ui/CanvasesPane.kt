@@ -131,7 +131,7 @@ object MyCanvases {
         add(L10n.str(R.string.canvases_pane_last_edited_by, row.editor))
         if (row.updated.isNotEmpty()) add(row.updated)
         row.progress?.let { add(L10n.str(R.string.canvases_pane_tasks, it)) }
-    }.joinToString(L10n.str(R.string.common_fmt_6))
+    }.joinToString(L10n.str(R.string.common_list_separator))
 
     /** The text of an empty list: [headline, detail]. */
     fun empty(query: String, offline: Boolean): Pair<String, String> = when {

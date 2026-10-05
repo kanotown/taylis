@@ -43,7 +43,7 @@ fun DraftsPane(controller: AppController, version: Int, onOpen: (channelId: Stri
                         if (row.parentId != null) Text(stringResource(R.string.drafts_pane_thread), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         val failed = row.status == "failed"
                         if (failed) Text(stringResource(R.string.drafts_pane_couldnt_send), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
-                        else Text(" · " + Schedule.label(row.sendAt) + " に送信", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        else Text(stringResource(R.string.drafts_pane_sends_at, Schedule.label(row.sendAt)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (row.attachments.isNotEmpty()) Text(stringResource(R.string.drafts_pane_attachments, row.attachments.size), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text(plainText(Mentions.toNames(row.body, store.users, store.groups)).ifBlank { stringResource(R.string.drafts_pane_no_text) }, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))

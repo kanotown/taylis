@@ -119,6 +119,7 @@ fun AvatarCropDialog(bitmap: Bitmap, onCancel: () -> Unit, onDone: (ByteArray) -
                         valueRange = 1f..AvatarCrop.MAX_ZOOM,
                         modifier = Modifier.weight(1f),
                     )
+                    // i18n: keep (a glyph)
                     Text("＋", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(

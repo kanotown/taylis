@@ -40,8 +40,8 @@ object PeopleText {
 
     /** 「山田、佐藤」, 「山田、佐藤、鈴木 ほか 2 人」; empty for nobody. */
     fun compact(names: List<String>, shown: Int = SHOWN): String {
-        if (names.size <= shown) return names.joinToString(L10n.str(R.string.common_fmt_6))
-        return names.take(shown).joinToString(L10n.str(R.string.common_fmt_6)) + L10n.str(R.string.common_and_others, names.size - shown)
+        if (names.size <= shown) return names.joinToString(L10n.str(R.string.common_list_separator))
+        return names.take(shown).joinToString(L10n.str(R.string.common_list_separator)) + L10n.str(R.string.common_and_others, names.size - shown)
     }
 
     /** M15e acknowledgements: 「山田、佐藤 が確認」, 「山田、佐藤、鈴木 ほか 2 人が確認」. */
