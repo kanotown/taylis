@@ -48,6 +48,7 @@ import { useTaskHub } from "./TaskBoard";
 import { TaskDialog } from "./TaskDialog";
 import { filterTasks, hasBoard, taskPlace, tasksForDay } from "./tasks";
 import { conversationTitle } from "./channels";
+import { t } from "../i18n";
 
 /** "all", "me" (my own calendar) or a channel id. */
 export type CalendarFilter = string;
@@ -89,8 +90,8 @@ function readableChannels(controller: AppController): ChannelState[] {
 
 function windowNote(win: CalendarWindow | undefined): string | null {
   if (!win) return null;
-  if (win.state === "unsupported") return "このサーバはカレンダーに対応していません";
-  if (win.state === "failed") return "予定を読み込めませんでした。再接続すると読み直します";
+  if (win.state === "unsupported") return t("calendar.unsupported");
+  if (win.state === "failed") return t("calendar.loadFailed");
   return null;
 }
 
@@ -157,20 +158,20 @@ export function CalendarView({ controller }: { controller: AppController }) {
       <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-4 md:h-[52px] md:flex-nowrap max-md:px-2 max-md:py-1.5">
         <BackButton />
         <span className="text-muted max-md:hidden"><CalendarDays size={18} /></span>
-        <strong className="shrink-0 whitespace-nowrap text-[15px] max-md:hidden">カレンダー</strong>
+        <strong className="shrink-0 whitespace-nowrap text-[15px] max-md:hidden">{t("nav.calendar")}</strong>
         <div className="ml-2 flex min-w-0 items-center gap-1 max-md:ml-0 max-md:flex-1">
-          <Button variant="secondary" size="sm" onClick={() => setAnchor(now)}>今日</Button>
-          <button type="button" aria-label="前へ" className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-ink/6" onClick={() => step(-1)}>
+          <Button variant="secondary" size="sm" onClick={() => setAnchor(now)}>{t("common.today")}</Button>
+          <button type="button" aria-label={t("calendar.previous")} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-ink/6" onClick={() => step(-1)}>
             <ChevronLeft size={16} />
           </button>
-          <button type="button" aria-label="次へ" className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-ink/6" onClick={() => step(1)}>
+          <button type="button" aria-label={t("calendar.next")} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-ink/6" onClick={() => step(1)}>
             <ChevronRight size={16} />
           </button>
           <span data-range-title className="min-w-0 truncate text-sm font-semibold">{rangeTitle(mode, anchor)}</span>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2 max-md:w-full">
-          <div role="tablist" aria-label="表示" className="flex rounded-lg bg-panel-2 p-0.5 text-xs font-medium">
-            {([["month", "月"], ["week", "週"], ["list", "一覧"]] as const).map(([value, label]) => (
+          <div role="tablist" aria-label={t("canvas.mode")} className="flex rounded-lg bg-panel-2 p-0.5 text-xs font-medium">
+            {([["month", t("calendar.month")], ["week", t("calendar.week")], ["list", t("calendar.list")]] as const).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
@@ -184,34 +185,34 @@ export function CalendarView({ controller }: { controller: AppController }) {
             ))}
           </div>
           <select
-            aria-label="絞り込み"
+            aria-label={t("admin.users.filterLabel")}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="h-7 max-w-[160px] rounded-md border border-line bg-canvas px-1.5 text-xs max-md:min-w-0 max-md:max-w-none max-md:flex-1"
           >
-            <option value="all">すべて</option>
-            <option value="me">自分</option>
+            <option value="all">{t("admin.users.filter.all")}</option>
+            <option value="me">{t("calendar.me")}</option>
             {channels.map((c) => (
               <option key={c.id} value={c.id}>#{c.name}</option>
             ))}
           </select>
           <button
             type="button"
-            aria-label="カレンダーを購読"
-            title="カレンダーを購読 (iCal)"
+            aria-label={t("calendar.subscribe")}
+            title={t("calendar.subscribeIcal")}
             onClick={() => setFeeds(true)}
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-ink/6 hover:text-ink"
           >
             <Rss size={15} />
           </button>
-          <Button size="sm" onClick={() => create(start <= now && now < end ? now : mode === "month" ? `${anchor.slice(0, 7)}-01` : start)} aria-label="予定を追加">
-            <Plus size={14} /> <span className="max-md:hidden">予定を追加</span>
+          <Button size="sm" onClick={() => create(start <= now && now < end ? now : mode === "month" ? `${anchor.slice(0, 7)}-01` : start)} aria-label={t("calendar.addEvent")}>
+            <Plus size={14} /> <span className="max-md:hidden">{t("calendar.addEvent")}</span>
           </Button>
         </div>
       </header>
       {note && <div className="border-b border-line bg-warning/10 px-4 py-1.5 text-xs text-muted">{note}</div>}
       {!hub ? (
-        <div className="py-16 text-center text-sm text-muted">接続すると表示します</div>
+        <div className="py-16 text-center text-sm text-muted">{t("calendar.connectToShow")}</div>
       ) : mode === "month" ? (
         <MonthGrid anchor={anchor} today={now} events={events} tasks={tasks} onOpenTask={setTaskDialog} onOpen={(event) => setDialog({ event })} onNew={create} onDay={(day) => { setAnchor(day); setMode("week"); }} />
       ) : mode === "week" ? (
@@ -231,7 +232,7 @@ export function CalendarView({ controller }: { controller: AppController }) {
 function EventChip({ event, day, onOpen }: { event: CalendarEventOut; day: DayKey; onOpen: (event: CalendarEventOut) => void }) {
   const color = channelColor(event.channel_id);
   const time = timeOnDay(event, day);
-  const filled = event.all_day || time === "終日";
+  const filled = event.all_day || time === t("calendar.allDay");
   return (
     <button
       type="button"
@@ -246,7 +247,7 @@ function EventChip({ event, day, onOpen }: { event: CalendarEventOut; day: DayKe
     >
       {!filled && <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} />}
       {/* A phone's narrow days keep the title, not the time. */}
-      {!filled && <span className="shrink-0 tabular-nums text-muted max-md:hidden">{time.replace(/〜.*$/, "")}</span>}
+      {!filled && <span className="shrink-0 tabular-nums text-muted max-md:hidden">{time.split(t("common.rangeTo"))[0]}</span>}
       <span className="min-w-0 truncate">{event.title}</span>
     </button>
   );
@@ -260,7 +261,7 @@ export function TaskChip({ task, onOpen }: { task: TaskOut; onOpen: (task: TaskO
     <button
       type="button"
       data-task={task.id}
-      title={`期限: ${task.title}${task.channel_name ? ` (#${task.channel_name})` : ""}`}
+      title={`${t("calendar.dueColon")}${task.title}${task.channel_name ? ` (#${task.channel_name})` : ""}`}
       onClick={(e) => {
         e.stopPropagation();
         onOpen(task);
@@ -279,7 +280,7 @@ export function TaskChip({ task, onOpen }: { task: TaskOut; onOpen: (task: TaskO
 /** A month cell's rows: all-day events, then the tasks due, then timed events (cut to MONTH_CELL_EVENTS by the caller). */
 function cellRows(events: CalendarEventOut[], tasks: TaskOut[], day: DayKey): Array<{ event: CalendarEventOut } | { task: TaskOut }> {
   const list = eventsOn(events, day);
-  const allDay = list.filter((e) => e.all_day || timeOnDay(e, day) === "終日");
+  const allDay = list.filter((e) => e.all_day || timeOnDay(e, day) === t("calendar.allDay"));
   const timed = list.filter((e) => !allDay.includes(e));
   return [...allDay.map((event) => ({ event })), ...tasksForDay(tasks, day).map((task) => ({ task })), ...timed.map((event) => ({ event }))];
 }
@@ -298,7 +299,7 @@ export function MonthGrid({ anchor, today, events, tasks = [], onOpen, onOpenTas
   const weeks = monthGrid(anchor);
   const month = anchor.slice(0, 7);
   return (
-    <div className="flex min-h-0 flex-1 flex-col" role="grid" aria-label="月">
+    <div className="flex min-h-0 flex-1 flex-col" role="grid" aria-label={t("calendar.month")}>
       <div className="grid shrink-0 grid-cols-7 border-b border-line text-center text-[11px] font-medium text-muted" role="row">
         {Array.from({ length: 7 }, (_, i) => (
           <div key={i} role="columnheader" className={cn("py-1", i === 0 && "text-rose-500", i === 6 && "text-sky-600")}>{weekdayLabel(i)}</div>
@@ -334,7 +335,7 @@ export function MonthGrid({ anchor, today, events, tasks = [], onOpen, onOpenTas
                       i === 6 && !outside && "text-sky-600",
                       day === today && "bg-accent-solid font-bold text-white hover:bg-accent-solid",
                     )}
-                    title="この週を表示"
+                    title={t("calendar.showWeek")}
                   >
                     {parseDay(day).getDate()}
                   </button>
@@ -385,7 +386,7 @@ export function WeekGrid({ anchor, today, events, tasks = [], onOpen, onOpenTask
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollTop = HOUR_PX * 8 - 8;
   }, [start]);
-  const allDay = days.map((day) => eventsOn(events, day).filter((e) => e.all_day || timeOnDay(e, day) === "終日"));
+  const allDay = days.map((day) => eventsOn(events, day).filter((e) => e.all_day || timeOnDay(e, day) === t("calendar.allDay")));
   const [minute, setMinute] = useState(() => new Date().getHours() * 60 + new Date().getMinutes());
   useEffect(() => {
     const timer = setInterval(() => setMinute(new Date().getHours() * 60 + new Date().getMinutes()), 60_000);
@@ -393,7 +394,7 @@ export function WeekGrid({ anchor, today, events, tasks = [], onOpen, onOpenTask
   }, []);
   const columns = "grid-cols-[48px_repeat(7,minmax(0,1fr))]";
   return (
-    <div className="flex min-h-0 flex-1 flex-col" aria-label="週">
+    <div className="flex min-h-0 flex-1 flex-col" aria-label={t("calendar.week")}>
       <div className={cn("grid shrink-0 border-b border-line", columns)}>
         <div />
         {days.map((day, i) => (
@@ -405,8 +406,8 @@ export function WeekGrid({ anchor, today, events, tasks = [], onOpen, onOpenTask
           </div>
         ))}
       </div>
-      <div className={cn("grid shrink-0 border-b border-line", columns)} aria-label="終日">
-        <div className="px-1 py-1 text-right text-[10px] text-muted">終日</div>
+      <div className={cn("grid shrink-0 border-b border-line", columns)} aria-label={t("calendar.allDay")}>
+        <div className="px-1 py-1 text-right text-[10px] text-muted">{t("calendar.allDay")}</div>
         {days.map((day, i) => (
           <div key={day} className="flex min-h-[26px] min-w-0 flex-col gap-px border-l border-line p-0.5" data-all-day={day}>
             {allDay[i]!.map((event) => (
@@ -433,7 +434,7 @@ export function WeekGrid({ anchor, today, events, tasks = [], onOpen, onOpenTask
                 <button
                   key={hour}
                   type="button"
-                  aria-label={`${dayLabel(day)} ${hour}:00 に予定を追加`}
+                  aria-label={t("calendar.addAt", { day: dayLabel(day), hour })}
                   onClick={() => onNew(day, hour)}
                   className="absolute inset-x-0 border-t border-line/60 hover:bg-panel-2/60"
                   style={{ top: hour * HOUR_PX, height: HOUR_PX }}
@@ -475,7 +476,7 @@ export function WeekGrid({ anchor, today, events, tasks = [], onOpen, onOpenTask
 }
 
 /** Day by day, the days with events only (「今日」 and 「明日」 marked). */
-export function AgendaList({ events, tasks = [], taskPlaceOf = (task) => taskPlace(task), start, end, today, onOpen, onOpenTask = () => {}, loading = false, empty = "この期間の予定はありません", showCalendar = true }: {
+export function AgendaList({ events, tasks = [], taskPlaceOf = (task) => taskPlace(task), start, end, today, onOpen, onOpenTask = () => {}, loading = false, empty = t("calendar.emptyRange"), showCalendar = true }: {
   events: CalendarEventOut[];
   /** M55: the tasks due, after the day's events. */
   tasks?: TaskOut[];
@@ -501,15 +502,15 @@ export function AgendaList({ events, tasks = [], taskPlaceOf = (task) => taskPla
     }
     return out;
   }, [events, tasks, start, end]);
-  if (days.length === 0) return <div className="py-16 text-center text-sm text-muted">{loading ? "読み込み中…" : empty}</div>;
+  if (days.length === 0) return <div className="py-16 text-center text-sm text-muted">{loading ? t("common.loading") : empty}</div>;
   return (
-    <div className="mx-auto max-w-3xl space-y-4" aria-label="予定の一覧">
+    <div className="mx-auto max-w-3xl space-y-4" aria-label={t("calendar.agenda")}>
       {days.map(([day, list, due]) => (
         <section key={day} data-agenda-day={day}>
           <h3 className="mb-1 flex items-baseline gap-2 text-xs font-semibold text-muted">
             <span className={cn(day === today && "text-accent")}>{dayLabel(day)}</span>
-            {day === today && <span className="text-accent">今日</span>}
-            {day === addDays(today, 1) && <span>明日</span>}
+            {day === today && <span className="text-accent">{t("common.today")}</span>}
+            {day === addDays(today, 1) && <span>{t("common.tomorrow")}</span>}
           </h3>
           <ul className="divide-y divide-line rounded-xl border border-line">
             {list.map((event) => (
@@ -520,10 +521,10 @@ export function AgendaList({ events, tasks = [], taskPlaceOf = (task) => taskPla
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{event.title}</span>
                     <span className="flex min-w-0 items-center gap-2 text-xs text-muted">
-                      {showCalendar && <span className="shrink-0">{event.channel_name ? `#${event.channel_name}` : "自分"}</span>}
+                      {showCalendar && <span className="shrink-0">{event.channel_name ? `#${event.channel_name}` : t("calendar.me")}</span>}
                       {event.recurring && (
                         <span className="flex min-w-0 items-center gap-0.5 truncate" title={describeRrule(event.rrule, day)}>
-                          <Repeat size={11} className="shrink-0" aria-label="繰り返し" />
+                          <Repeat size={11} className="shrink-0" aria-label={t("tasks.repeat")} />
                           <span className="truncate max-md:hidden">{describeRrule(event.rrule, day)}</span>
                         </span>
                       )}
@@ -538,7 +539,7 @@ export function AgendaList({ events, tasks = [], taskPlaceOf = (task) => taskPla
             {due.map((task) => (
               <li key={`task-${task.id}`}>
                 <button type="button" data-task={task.id} onClick={() => onOpenTask(task)} className="flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-panel-2/60">
-                  <span className="w-[92px] shrink-0 pt-px text-xs text-muted">{task.due_at ? `期限 ${clock(task.due_at)}` : "期限"}</span>
+                  <span className="w-[92px] shrink-0 pt-px text-xs text-muted">{task.due_at ? `${t("tasks.due")} ${clock(task.due_at)}` : t("tasks.due")}</span>
                   <span aria-hidden className="mt-1 h-3 w-1 shrink-0 self-stretch rounded-full" style={{ background: channelColor(task.channel_id) }} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">
@@ -576,11 +577,11 @@ export function ChannelEvents({ controller, channel }: { controller: AppControll
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2">
-        <span className="text-sm font-semibold">予定</span>
-        <span className="text-xs text-muted">これから {LIST_DAYS} 日</span>
+        <span className="text-sm font-semibold">{t("main.tab.events")}</span>
+        <span className="text-xs text-muted">{t("calendar.nextDays", { count: LIST_DAYS })}</span>
         {canAdd && (
           <Button size="sm" className="ml-auto" onClick={() => setDialog({ event: null, initial: newDraft(now, channel.id) })}>
-            <Plus size={14} /> 予定を追加
+            <Plus size={14} /> {t("calendar.addEvent")}
           </Button>
         )}
       </div>
@@ -593,7 +594,7 @@ export function ChannelEvents({ controller, channel }: { controller: AppControll
           today={now}
           onOpen={(event) => setDialog({ event })}
           loading={!win || win.state === "loading"}
-          empty="これからの予定はありません"
+          empty={t("calendar.noUpcoming")}
           showCalendar={false}
         />
       </div>
