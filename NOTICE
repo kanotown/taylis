@@ -1,0 +1,31 @@
+Taylis
+Copyright 2026 Toru Kano
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE),
+with the exception of the brand assets listed below.
+
+Brand assets (NOT licensed under the Apache License, Version 2.0)
+-----------------------------------------------------------------
+The name "Taylis" and the squirrel icon / logo are trademarks of Toru Kano.
+The following files depict the Taylis icon or logo. They are excluded from
+the Apache License grant; all rights reserved (see TRADEMARKS.md):
+
+  apps/shared/brand/appicon.png
+  apps/shared/brand/dmg-background.png
+  apps/shared/brand/dmg-background@2x.png
+  apps/desktop/public/ (favicon.ico, favicon-*.png, icon-*.png, apple-touch-icon.png)
+  apps/desktop/src-tauri/icons/
+  apps/ios/ChikuwaChat/Resources/Assets.xcassets/AppIcon.appiconset/
+  apps/android/app/src/main/res/drawable-*/ic_launcher_*.png
+  apps/android/app/src/main/res/drawable/ic_notification.xml
+
+The scripts that generate these files (apps/shared/brand/*.py, *.sh) are
+covered by the Apache License. Forks must replace the name and the brand
+assets before redistributing modified versions; see TRADEMARKS.md.
+
+Third-party data
+----------------
+This product includes data derived from the Unicode emoji data files and the
+Unicode CLDR (Copyright Unicode, Inc., Unicode License v3) and from
+iamcal/emoji-data (Copyright Cal Henderson, MIT License). See
+THIRD_PARTY_NOTICES.md for details and the full license texts.
