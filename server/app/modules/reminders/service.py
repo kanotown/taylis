@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import i18n
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
@@ -20,6 +21,7 @@ from app.modules.reminders import repository as repo
 from app.modules.reminders.events import REMINDER_UPDATED, ReminderUpdatedData
 from app.modules.reminders.models import Reminder
 from app.modules.reminders.schemas import AckRemindOut, ReminderCreate, ReminderOut
+from app.modules.users import service as users
 from app.modules.users.models import User
 
 MIN_LEAD = timedelta(seconds=30)
@@ -142,12 +144,15 @@ async def remind_unacknowledged(
         )
     pending = await messages.ack_pending_ids_in_tx(db, message)
     already = await repo.open_user_ids(db, message.id, "ack")
-    note = f"{actor.display_name} さんから確認のお願い"[:200]
     body = message.body or ""
     reminded = 0
+    people = await users.get_users(db, list(pending))
     for user_id in pending:
         if user_id in already:
             continue
+        # M115: the note in the reader's language (docs/I18N.md).
+        lc = await i18n.text_locale(db, people[user_id]) if user_id in people else "ja"
+        note = i18n.t("reminder.ack_note", lc, name=actor.display_name)[:200]
         await create_system_in_tx(
             db,
             user_id=user_id,

@@ -11,6 +11,7 @@ import { useListAnchor } from "./scrollAnchor";
 import { PaneBackButton, PaneCloseButton } from "./compact";
 import { Button } from "./primitives";
 import { ChannelIntro, MessageRow } from "./Timeline";
+import { t } from "../i18n";
 
 /**
  * A public channel read before joining (SYNC_PROTOCOL.md §7.6.1, Slack): the engine's ChannelPreview, never the store.
@@ -78,20 +79,20 @@ export function PreviewTimeline({ controller, channel, onOpenThread, onJoin }: {
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {/* Chromium's own scroll anchoring is off: the list anchors itself, the same on every engine (scrollAnchor.ts). */}
-      <div data-message-list data-chat-focus tabIndex={-1} aria-label="メッセージ一覧" data-preview="" ref={container} className="flex-1 overflow-y-auto px-4 pb-2 pt-2 [overflow-anchor:none]" onScroll={onScroll} {...tapHandlers}>
+      <div data-message-list data-chat-focus tabIndex={-1} aria-label={t("timeline.list")} data-preview="" ref={container} className="flex-1 overflow-y-auto px-4 pb-2 pt-2 [overflow-anchor:none]" onScroll={onScroll} {...tapHandlers}>
         <div ref={content}>
         {focus && (
           <div className="sticky top-0 z-10 mb-2 flex items-center justify-between rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink shadow-sm">
-            <span>検索位置の前後の会話</span>
+            <span>{t("timeline.aroundResult")}</span>
             <Button variant="link" size="sm" onClick={() => controller.clearMessageFocus()}>
-              最新の会話に戻る
+              {t("timeline.backToLatest")}
             </Button>
           </div>
         )}
-        {preview?.loading && <div className="py-2 text-center text-xs text-muted">読み込み中…</div>}
+        {preview?.loading && <div className="py-2 text-center text-xs text-muted">{t("common.loading")}</div>}
         {!focus && preview?.loaded && !preview.loading && preview.hasOlder && (
           <div className="py-1 text-center">
-            <Button variant="link" size="sm" onClick={loadOlder}>以前のメッセージを読み込む</Button>
+            <Button variant="link" size="sm" onClick={loadOlder}>{t("timeline.loadOlder")}</Button>
           </div>
         )}
         {!focus && preview?.loaded && !preview.hasOlder && messages.length > 0 && <ChannelIntro controller={controller} channel={channel} />}
@@ -101,11 +102,11 @@ export function PreviewTimeline({ controller, channel, onOpenThread, onJoin }: {
           <div className="flex flex-col items-center gap-2 px-4 py-16 text-center text-sm text-muted">
             {engine?.status === "online" ? (
               <>
-                メッセージを読み込めませんでした
-                <Button variant="secondary" size="sm" onClick={() => void engine.retryPreview().catch((error) => controller.setError(error))}>再読み込み</Button>
+                {t("preview.loadFailed")}
+                <Button variant="secondary" size="sm" onClick={() => void engine.retryPreview().catch((error) => controller.setError(error))}>{t("common.reload")}</Button>
               </>
             ) : (
-              "接続を待っています…"
+              t("preview.waiting")
             )}
           </div>
         )}
@@ -114,7 +115,7 @@ export function PreviewTimeline({ controller, channel, onOpenThread, onJoin }: {
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
               <MessagesSquare size={22} />
             </span>
-            <strong className="text-base">まだメッセージはありません</strong>
+            <strong className="text-base">{t("timeline.empty")}</strong>
           </div>
         )}
         {items.map((item) => {
@@ -150,9 +151,9 @@ function JoinToReadPanel({ controller, channel, onJoin }: { controller: AppContr
       <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
         <Eye size={22} />
       </span>
-      <strong className="text-base text-ink">参加するとメッセージを読めます</strong>
+      <strong className="text-base text-ink">{t("preview.joinToRead")}</strong>
       {about && <p className="max-w-md whitespace-pre-wrap break-words">{about}</p>}
-      {!!channel.member_count && <span className="text-xs">メンバー {channel.member_count} 人</span>}
+      {!!channel.member_count && <span className="text-xs">{t("preview.members", { count: channel.member_count })}</span>}
       {onJoin && previewCanJoin(channel) && (
         <Button
           disabled={busy || controller.engine?.status !== "online"}
@@ -161,7 +162,7 @@ function JoinToReadPanel({ controller, channel, onJoin }: { controller: AppContr
             void onJoin(channel.id).finally(() => setBusy(false));
           }}
         >
-          {busy ? "参加しています…" : "参加"}
+          {busy ? t("preview.joining") : t("preview.join")}
         </Button>
       )}
     </div>
@@ -174,7 +175,9 @@ export function previewRefused(controller: AppController, channelId: string): bo
 }
 
 /** What the preview's bar says in place of the button when the channel is archived (joining it is refused: 409 channel_archived). */
-export const ARCHIVED_PREVIEW_NOTE = "アーカイブされたチャンネルです (読むだけ)";
+export function archivedPreviewNote(): string {
+  return t("preview.archived");
+}
 
 /** Whether the preview offers 「#name に参加する」: not for an archived channel (e.g. an archived times found by `is:times`). */
 export function previewCanJoin(channel: Pick<ChannelState, "archived">): boolean {
@@ -188,10 +191,10 @@ export function PreviewJoinBar({ controller, channel, onJoin }: { controller: Ap
   return (
     <div className="flex shrink-0 flex-col items-center gap-2 border-t border-line bg-panel/50 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 text-center">
       {!previewCanJoin(channel) ? (
-        <span className="text-sm text-muted">{ARCHIVED_PREVIEW_NOTE}</span>
+        <span className="text-sm text-muted">{archivedPreviewNote()}</span>
       ) : (
         <>
-          <span className="text-xs text-muted">{name} をプレビューしています{channel.member_count ? ` · メンバー ${channel.member_count} 人` : ""}</span>
+          <span className="text-xs text-muted">{t("preview.previewing", { name })}{channel.member_count ? ` · ${t("preview.members", { count: channel.member_count })}` : ""}</span>
           <Button
             disabled={busy || controller.engine?.status !== "online"}
             onClick={() => {
@@ -199,7 +202,7 @@ export function PreviewJoinBar({ controller, channel, onJoin }: { controller: Ap
               void onJoin(channel.id).finally(() => setBusy(false));
             }}
           >
-            {busy ? "参加しています…" : `${name} に参加する`}
+            {busy ? t("preview.joining") : t("preview.joinName", { name })}
           </Button>
         </>
       )}
@@ -249,18 +252,18 @@ export function PreviewThreadPane({ controller, channel, parentId, onClose }: { 
       <header className="flex h-[52px] items-center gap-2 border-b border-line px-4">
         <PaneBackButton onClick={onClose} />
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold">スレッド</div>
+          <div className="text-sm font-semibold">{t("nav.threads")}</div>
           <div className="truncate text-xs text-muted">{channelTitle(channel, controller)}</div>
         </div>
         <PaneCloseButton onClick={onClose} />
       </header>
-      <div data-message-list data-chat-focus tabIndex={-1} aria-label="スレッドのメッセージ一覧" ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [overflow-anchor:none]" onScroll={() => anchor.scrolled()} {...tapHandlers}>
+      <div data-message-list data-chat-focus tabIndex={-1} aria-label={t("preview.threadList")} ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [overflow-anchor:none]" onScroll={() => anchor.scrolled()} {...tapHandlers}>
         <div ref={content}>
         {parent ? (
           <>
             <MessageRow thread readOnly message={parent} controller={controller} />
             <div className="my-2 flex items-center gap-2 text-xs text-muted">
-              <span className="whitespace-nowrap">{replies === undefined ? "読み込み中…" : replies.length === 0 ? "返信はまだありません" : `${replies.length} 件の返信`}</span>
+              <span className="whitespace-nowrap">{replies === undefined ? t("common.loading") : replies.length === 0 ? t("preview.noReplies") : t("timeline.replyCount", { count: replies.length })}</span>
               <span className="h-px flex-1 bg-line" />
             </div>
             <div data-replies="">
@@ -268,11 +271,11 @@ export function PreviewThreadPane({ controller, channel, parentId, onClose }: { 
             </div>
           </>
         ) : (
-          <div className="py-8 text-center text-sm text-muted">{loaded ? "メッセージが見つかりません" : "読み込み中…"}</div>
+          <div className="py-8 text-center text-sm text-muted">{loaded ? t("preview.messageMissing") : t("common.loading")}</div>
         )}
         </div>
       </div>
-      <div className="shrink-0 border-t border-line px-4 py-3 text-center text-xs text-muted">チャンネルに参加すると返信できます</div>
+      <div className="shrink-0 border-t border-line px-4 py-3 text-center text-xs text-muted">{t("preview.joinToReply")}</div>
     </aside>
   );
 }

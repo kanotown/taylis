@@ -15,6 +15,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app import i18n
+
 log = logging.getLogger("app.errors")
 
 
@@ -101,45 +103,77 @@ def _sqlstate(exc: DBAPIError) -> str | None:
     return None
 
 
+def request_locale(request: Request) -> str:
+    """M115 (docs/I18N.md): the signed-in person's chosen language, else the request's
+    Accept-Language, else ja."""
+    chosen = getattr(request.state, "user_locale", None)
+    return i18n.effective(chosen, request.headers.get("accept-language"))
+
+
+def localized(request: Request, status: int, code: str, message: str) -> str:
+    """The error message in the reader's language (apps/shared/errors.json by code, else by
+    HTTP status); the English text for a code without one."""
+    return i18n.error_text(code, request_locale(request), status) or message
+
+
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
-    async def _app_error(_: Request, exc: AppError) -> JSONResponse:
-        return exc.to_response()
+    async def _app_error(request: Request, exc: AppError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status,
+            content=error_body(
+                exc.code, localized(request, exc.status, exc.code, exc.message), exc.details
+            ),
+            headers=exc.headers,
+        )
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(
             status_code=422,
             content=error_body(
-                "validation_error", "Invalid request", {"errors": jsonable_encoder(exc.errors())}
+                "validation_error",
+                localized(request, 422, "validation_error", "Invalid request"),
+                {"errors": jsonable_encoder(exc.errors())},
             ),
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def _http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+    async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         code = _HTTP_STATUS_CODES.get(exc.status_code, f"http_{exc.status_code}")
         return JSONResponse(
             status_code=exc.status_code,
-            content=error_body(code, str(exc.detail)),
+            content=error_body(code, localized(request, exc.status_code, code, str(exc.detail))),
             headers=dict(exc.headers or {}),
         )
 
     @app.exception_handler(DBAPIError)
-    async def _database_error(_: Request, exc: DBAPIError) -> JSONResponse:
+    async def _database_error(request: Request, exc: DBAPIError) -> JSONResponse:
         # Text PostgreSQL cannot store (a NUL character, an unpaired surrogate) is bad input.
         if _sqlstate(exc) in ("22021", "22P05"):
             return JSONResponse(
                 status_code=422,
-                content=error_body("validation_error", "Text contains unsupported characters"),
+                content=error_body(
+                    "validation_error",
+                    localized(
+                        request, 422, "validation_error", "Text contains unsupported characters"
+                    ),
+                ),
             )
         log.exception("database error", exc_info=exc)
         return JSONResponse(
-            status_code=500, content=error_body("server_error", "Internal server error")
+            status_code=500,
+            content=error_body(
+                "server_error", localized(request, 500, "server_error", "Internal server error")
+            ),
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
+    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
         log.exception("unhandled error", exc_info=exc)
         return JSONResponse(
-            status_code=500, content=error_body("server_error", "Internal server error")
+            status_code=500,
+            content=error_body(
+                "server_error", localized(request, 500, "server_error", "Internal server error")
+            ),
         )

@@ -13,6 +13,7 @@ import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { ChannelContextMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
 import { StatusEmoji, UserPopover } from "./UserPopover";
+import { t } from "../i18n";
 
 interface Props {
   controller: AppController;
@@ -166,7 +167,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           <span className="flex-1 truncate">{channelTitle(channel, controller).replace(/^#/, "")}</span>
           {other && <StatusEmoji controller={controller} userId={other} className="shrink-0" />}
           {muted && <BellOff size={12} className="shrink-0 opacity-70" />}
-          {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-sidebar-strong" /> : quietUnread ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sidebar-strong/40" title="新しい投稿があります (静かな未読)" /> : null}
+          {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-sidebar-strong" /> : quietUnread ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sidebar-strong/40" title={t("sidebar.quietUnread")} /> : null}
         </button>
         </ChannelContextMenu>
         </div>
@@ -175,7 +176,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   };
 
   return (
-    <nav data-chat-focus aria-label="チャンネルとDM" className="flex h-full min-h-0 flex-col overflow-y-auto border-r border-sidebar-edge bg-sidebar px-2 pb-4 text-sidebar-fg">
+    <nav data-chat-focus aria-label={t("sidebar.label")} className="flex h-full min-h-0 flex-col overflow-y-auto border-r border-sidebar-edge bg-sidebar px-2 pb-4 text-sidebar-fg">
       {/* Pinned: my avatar, search, 管理 and 設定 stay in view while the list scrolls. */}
       <div data-testid="sidebar-header" className="sticky top-0 z-10 -mx-2 flex items-center gap-2.5 border-b border-sidebar-line bg-sidebar px-4 py-3">
         {/* M93: my picture and name open my own profile card (status, title, 「プロフィールを編集」). */}
@@ -189,17 +190,17 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           </div>
         )}
         {onSearch && (
-          <IconButton tone="sidebar" label={`検索 (${modKey()}+F)`} onClick={onSearch}>
+          <IconButton tone="sidebar" label={t("sidebar.searchKey", { key: `${modKey()}+F` })} onClick={onSearch}>
             <Search size={17} />
           </IconButton>
         )}
         {onAdmin && controller.isAdmin && (
-          <IconButton tone="sidebar" label="管理" onClick={onAdmin}>
+          <IconButton tone="sidebar" label={t("settings.section.admin")} onClick={onAdmin}>
             <ShieldCheck size={17} />
           </IconButton>
         )}
         {onSettings && (
-          <IconButton tone="sidebar" label="設定" onClick={onSettings}>
+          <IconButton tone="sidebar" label={t("settings.title")} onClick={onSettings}>
             <Settings size={17} />
           </IconButton>
         )}
@@ -212,17 +213,17 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           className="flex h-8 flex-1 items-center gap-2 rounded-lg bg-sidebar-strong/8 px-2.5 text-left text-[13px] hover:bg-sidebar-strong/14 hover:text-sidebar-strong"
         >
           <Search size={14} className="opacity-70" />
-          <span className="flex-1">移動…</span>
+          <span className="flex-1">{t("sidebar.jump")}</span>
           <Kbd className="border-sidebar-strong/20 bg-transparent text-sidebar-fg/80 max-md:hidden">{modKey()} K</Kbd>
         </button>
         <button
           type="button"
           aria-pressed={unreadOnly}
-          title={unreadOnly ? "すべて表示" : "未読のみ表示"}
+          title={unreadOnly ? t("sidebar.showAll") : t("sidebar.showUnreadOnly")}
           onClick={onToggleUnreadOnly}
           className={cn("h-8 rounded-lg px-2.5 text-xs font-medium transition-colors", unreadOnly ? "bg-accent-solid text-white" : "bg-sidebar-strong/8 hover:bg-sidebar-strong/14 hover:text-sidebar-strong")}
         >
-          未読
+          {t("sidebar.unread")}
         </button>
       </div>
 
@@ -237,7 +238,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     type="button"
                     onClick={onThreads}
                     aria-current={threadsActive ? "page" : undefined}
-                    title={`スレッド (${modKey()}+Shift+T)`}
+                    title={t("sidebar.threadsKey", { key: `${modKey()}+Shift+T` })}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
                       store.threadSummary.unread_count > 0 && "font-semibold text-sidebar-strong",
@@ -245,7 +246,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     )}
                   >
                     <MessagesSquare size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">スレッド</span>
+                    <span className="flex-1 truncate">{t("nav.threads")}</span>
                     {store.threadSummary.unread_count > 0 && (
                       <Badge tone={store.threadSummary.mention_count > 0 ? "danger" : "neutral"} className={store.threadSummary.mention_count > 0 ? undefined : "bg-current/20 text-inherit"}>
                         {store.threadSummary.unread_count}
@@ -261,8 +262,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     type="button"
                     onClick={onActivity}
                     aria-current={activityActive ? "page" : undefined}
-                    aria-label={store.activity ? (activity.count > 0 ? `アクティビティ (未読 ${activity.count})` : "アクティビティ") : "メンション"}
-                    title={store.activity ? "メンション・スレッドへの返信・リアクション" : "自分宛てのメンション"}
+                    aria-label={store.activity ? (activity.count > 0 ? t("sidebar.activityUnread", { count: activity.count }) : t("nav.activity")) : t("nav.mentions")}
+                    title={store.activity ? t("sidebar.activityTitle") : t("sidebar.mentionsTitle")}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
                       store.activity && activity.count > 0 && "font-semibold text-sidebar-strong",
@@ -270,7 +271,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     )}
                   >
                     {store.activity ? <Bell size={15} className="shrink-0 opacity-70" /> : <AtSign size={15} className="shrink-0 opacity-70" />}
-                    <span className="flex-1 truncate">{store.activity ? "アクティビティ" : "メンション"}</span>
+                    <span className="flex-1 truncate">{store.activity ? t("nav.activity") : t("nav.mentions")}</span>
                     {store.activity && activity.count > 0 && (
                       <Badge tone={activity.mention ? "danger" : "neutral"} className={activity.mention ? undefined : "bg-current/20 text-inherit"}>
                         <span data-badge={activity.mention ? "danger" : "neutral"}>{activity.count > 99 ? "99+" : activity.count}</span>
@@ -286,14 +287,14 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     type="button"
                     onClick={onDrafts}
                     aria-current={draftsActive ? "page" : undefined}
-                    title="送信していない下書き"
+                    title={t("sidebar.draftsTitle")}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
                       draftsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
                     )}
                   >
                     <FileText size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">下書き</span>
+                    <span className="flex-1 truncate">{t("nav.drafts")}</span>
                     <span className="text-[11px] opacity-70">{draftCount}</span>
                   </button>
                 </li>
@@ -305,7 +306,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     type="button"
                     onClick={onReminders}
                     aria-current={remindersActive ? "page" : undefined}
-                    title="リマインダー"
+                    title={t("nav.reminders")}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
                       remindersActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
@@ -313,7 +314,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     )}
                   >
                     <AlarmClock size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">リマインダー</span>
+                    <span className="flex-1 truncate">{t("nav.reminders")}</span>
                     {firedCount > 0 ? <Badge tone="danger">{firedCount}</Badge> : <span className="text-[11px] opacity-70">{reminderCount}</span>}
                   </button>
                 </li>
@@ -325,14 +326,14 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     type="button"
                     onClick={onFiles}
                     aria-current={filesActive ? "page" : undefined}
-                    title="チャンネルのファイル"
+                    title={t("sidebar.filesTitle")}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
                       filesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
                     )}
                   >
                     <Files size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">ファイル</span>
+                    <span className="flex-1 truncate">{t("nav.files")}</span>
                   </button>
                 </li>
                 ) : null;
@@ -343,14 +344,14 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     type="button"
                     onClick={onCanvases}
                     aria-current={canvasesActive ? "page" : undefined}
-                    title="自分の会話のキャンバス"
+                    title={t("sidebar.canvasesTitle")}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
                       canvasesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
                     )}
                   >
                     <NotebookText size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">キャンバス</span>
+                    <span className="flex-1 truncate">{t("nav.canvases")}</span>
                   </button>
                 </li>
                 ) : null;
@@ -361,14 +362,14 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     type="button"
                     onClick={onCalendar}
                     aria-current={calendarActive ? "page" : undefined}
-                    title="自分とチャンネルの予定"
+                    title={t("sidebar.calendarTitle")}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
                       calendarActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
                     )}
                   >
                     <CalendarDays size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">カレンダー</span>
+                    <span className="flex-1 truncate">{t("nav.calendar")}</span>
                   </button>
                 </li>
                 ) : null;
@@ -379,14 +380,14 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     type="button"
                     onClick={onTasks}
                     aria-current={tasksActive ? "page" : undefined}
-                    title="自分のタスクと担当のタスク"
+                    title={t("sidebar.tasksTitle")}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
                       tasksActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
                     )}
                   >
                     <ListTodo size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">タスク</span>
+                    <span className="flex-1 truncate">{t("nav.tasks")}</span>
                   </button>
                 </li>
                 ) : null;
@@ -397,14 +398,14 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     type="button"
                     onClick={onDeadlines}
                     aria-current={deadlinesActive ? "page" : undefined}
-                    title="参加しているチャンネルの締切"
+                    title={t("sidebar.deadlinesTitle")}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
                       deadlinesActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
                     )}
                   >
                     <Timer size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">締切</span>
+                    <span className="flex-1 truncate">{t("nav.deadlines")}</span>
                   </button>
                 </li>
                 ) : null;
@@ -417,14 +418,14 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     onClick={onReservations}
                     data-nav-item="reservations"
                     aria-current={reservationsActive ? "page" : undefined}
-                    title="共有の枠の予約"
+                    title={t("sidebar.reservationsTitle")}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
                       reservationsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
                     )}
                   >
                     <Ticket size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">予約</span>
+                    <span className="flex-1 truncate">{t("nav.reservations")}</span>
                     {!!reservationsCount && <Badge tone="danger">{reservationsCount > 99 ? "99+" : reservationsCount}</Badge>}
                   </button>
                 </li>
@@ -436,14 +437,14 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     type="button"
                     onClick={onSaved}
                     aria-current={savedActive ? "page" : undefined}
-                    title="保存したメッセージ"
+                    title={t("sidebar.savedTitle")}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
                       savedActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
                     )}
                   >
                     <Bookmark size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">保存済み</span>
+                    <span className="flex-1 truncate">{t("nav.saved")}</span>
                     {store.bookmarks.size > 0 && <span className="text-[11px] opacity-70">{store.bookmarks.size}</span>}
                   </button>
                 </li>
@@ -456,7 +457,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
       )}
 
       {sections.favorites.length > 0 && (
-        <Section title="お気に入り" collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")} onDropChannel={(id) => { if (!store.isFavorite(id)) void controller.toggleFavorite(id); }}>
+        <Section title={t("sidebar.favorites")} collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")} onDropChannel={(id) => { if (!store.isFavorite(id)) void controller.toggleFavorite(id); }}>
           <ul className="space-y-px">{shown(sections.favorites, folded.has("favorites"))}</ul>
         </Section>
       )}
@@ -473,31 +474,31 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           action={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} />}
         >
           <ul className="space-y-px">{shown(members, section.collapsed)}</ul>
-          {members.length === 0 && !unreadOnly && !section.collapsed && <Hint>会話をここへドラッグ、または右クリック →「セクションに移動」</Hint>}
+          {members.length === 0 && !unreadOnly && !section.collapsed && <Hint>{t("sidebar.sectionEmptyHint")}</Hint>}
         </Section>
       ))}
       <Section
-        title="チャンネル"
-        collapsed={folded.has("channels")}
+        title={t("sidebar.channels")}
+collapsed={folded.has("channels")}
         onToggle={() => toggleFolded("channels")}
         onDropChannel={backToDefault}
         action={
           <span className="flex items-center">
             {onReadAll && (
-              <IconButton tone="sidebar" label="すべて既読にする" className="h-6 w-6" onClick={onReadAll}>
+              <IconButton tone="sidebar" label={t("sidebar.markAllRead")} className="h-6 w-6" onClick={onReadAll}>
                 <CheckCheck size={14} />
               </IconButton>
             )}
             {onBrowse && !controller.isGuest && (
-              <IconButton tone="sidebar" label={`チャンネルを探す (${modKey()}+Shift+E)`} className="h-6 w-6" onClick={onBrowse}>
+              <IconButton tone="sidebar" label={t("sidebar.browseKey", { key: `${modKey()}+Shift+E` })} className="h-6 w-6" onClick={onBrowse}>
                 <Compass size={14} />
               </IconButton>
             )}
-            <IconButton tone="sidebar" label="新しいセクション" className="h-6 w-6" onClick={() => setNewSection(true)}>
+            <IconButton tone="sidebar" label={t("sidebar.newSection")} className="h-6 w-6" onClick={() => setNewSection(true)}>
               <FolderPlus size={14} />
             </IconButton>
             {!controller.isGuest && (
-              <IconButton tone="sidebar" label="チャンネルを作成" className="h-6 w-6" onClick={onNewChannel}>
+              <IconButton tone="sidebar" label={t("sidebar.createChannel")} className="h-6 w-6" onClick={onNewChannel}>
                 <Plus size={14} />
               </IconButton>
             )}
@@ -505,7 +506,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         }
       >
         <ul className="space-y-px">{shown(sections.channels, folded.has("channels"))}</ul>
-        {sections.channels.length === 0 && <Hint>{unreadOnly ? "未読のチャンネルはありません" : "まだチャンネルがありません"}</Hint>}
+        {sections.channels.length === 0 && <Hint>{unreadOnly ? t("sidebar.noUnreadChannels") : t("sidebar.noChannels")}</Hint>}
       </Section>
       {(sections.times.length > 0 || (onCreateTimes && !hasMyTimes && !controller.isGuest && !unreadOnly)) && (
         <Section
@@ -516,12 +517,12 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           action={
             <span className="flex items-center">
               {onTimesFeed && (
-                <IconButton tone="sidebar" label="Times フィード" className="h-6 w-6" onClick={onTimesFeed}>
+                <IconButton tone="sidebar" label={t("sidebar.timesFeed")} className="h-6 w-6" onClick={onTimesFeed}>
                   <Newspaper size={14} />
                 </IconButton>
               )}
               {onCreateTimes && !hasMyTimes && !controller.isGuest && (
-                <IconButton tone="sidebar" label="自分の times を作る" className="h-6 w-6" onClick={onCreateTimes}>
+                <IconButton tone="sidebar" label={t("sidebar.createTimes")} className="h-6 w-6" onClick={onCreateTimes}>
                   <Plus size={14} />
                 </IconButton>
               )}
@@ -537,36 +538,36 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                     type="button"
                     onClick={onTimesFeed}
                     aria-current={timesFeedActive ? "page" : undefined}
-                    title="参加している times の新しい投稿"
+                    title={t("sidebar.feedTitle")}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg py-[6px] text-left text-[13.5px] leading-5 transition-colors", SECTION_ROW_PAD,
                       timesFeedActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
                     )}
                   >
                     <Newspaper size={15} className="shrink-0 opacity-70" />
-                    <span className="flex-1 truncate">フィード</span>
+                    <span className="flex-1 truncate">{t("sidebar.feed")}</span>
                   </button>
                 </div>
               </li>
             )}
             {shown(sections.times, timesFolded, isMyTimes)}
           </ul>
-          {sections.times.length === 0 && <Hint>+ で自分の times を作成</Hint>}
+          {sections.times.length === 0 && <Hint>{t("sidebar.timesEmptyHint")}</Hint>}
         </Section>
       )}
       <Section
-        title="ダイレクトメッセージ"
-        collapsed={folded.has("dms")}
+        title={t("sidebar.dms")}
+collapsed={folded.has("dms")}
         onToggle={() => toggleFolded("dms")}
         onDropChannel={backToDefault}
         action={
           <span className="flex items-center">
             {onDirectory && (
-              <IconButton tone="sidebar" label="メンバー一覧" className="h-6 w-6" onClick={onDirectory}>
+              <IconButton tone="sidebar" label={t("sidebar.directory")} className="h-6 w-6" onClick={onDirectory}>
                 <Users size={14} />
               </IconButton>
             )}
-            <IconButton tone="sidebar" label={`DM を開始 (${modKey()}+Shift+K)`} className="h-6 w-6" onClick={onNewDm}>
+            <IconButton tone="sidebar" label={t("sidebar.newDmKey", { key: `${modKey()}+Shift+K` })} className="h-6 w-6" onClick={onNewDm}>
               <Plus size={14} />
             </IconButton>
           </span>
@@ -591,10 +592,10 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           )}
           {shown(sections.dms, folded.has("dms"))}
         </ul>
-        {sections.dms.length === 0 && !selfPlaceholder && <Hint>{unreadOnly ? "未読の DM はありません" : "+ から相手を選んで開始"}</Hint>}
+        {sections.dms.length === 0 && !selfPlaceholder && <Hint>{unreadOnly ? t("sidebar.noUnreadDms") : t("sidebar.dmsEmptyHint")}</Hint>}
       </Section>
       {sections.browse.length > 0 && (
-        <Section title="参加できるチャンネル">
+        <Section title={t("sidebar.joinable")}>
           <ul className="space-y-px">
             {sections.browse.map((c) => (
               <li key={c.id}>
@@ -748,7 +749,7 @@ function Section({ title, icon, action, children, collapsed = false, onToggle, o
     >
       <h2
         draggable={sectionId ? true : undefined}
-        title={sectionId ? "ドラッグで並べ替え" : undefined}
+        title={sectionId ? t("sidebar.dragToReorder") : undefined}
         onDragStart={sectionId ? (event) => {
           event.dataTransfer.setData(SECTION_DRAG, sectionId);
           event.dataTransfer.effectAllowed = "move";
@@ -778,25 +779,25 @@ function Hint({ children }: { children: React.ReactNode }) {
 export function statusLabel(status: string): string {
   switch (status) {
     case "online":
-      return "オンライン";
+      return t("connection.online");
     case "connecting":
-      return "接続中…";
+      return t("connection.connecting");
     case "offline":
-      return "再接続中…";
+      return t("connection.reconnecting");
     default:
-      return "オフライン";
+      return t("connection.offline");
   }
 }
 
 export function statusTitle(status: string): string {
   switch (status) {
     case "online":
-      return "サーバに接続しています";
+      return t("connection.onlineTitle");
     case "connecting":
-      return "サーバに接続しています…";
+      return t("connection.connectingLong");
     case "offline":
-      return "サーバに接続できません。自動で再接続します";
+      return t("connection.offlineTitle");
     default:
-      return "オフライン";
+      return t("connection.offline");
   }
 }

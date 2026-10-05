@@ -11,13 +11,14 @@ import { isTauri } from "../platform/env";
 import type { NotificationPermissionState } from "../platform/notify";
 import type { AppController } from "../state/app";
 import { Button, cn } from "./primitives";
+import { t } from "../i18n";
 
-const PLATFORM_NAMES: Record<string, string> = { ios: "iPhone / iPad", android: "Android", desktop: "デスクトップ", web: "ブラウザ" };
+const PLATFORM_NAMES: Record<string, string> = { ios: "iPhone / iPad", android: "Android", get desktop() { return t("device.desktop"); }, get web() { return t("device.browser"); } };
 
 /** The device's name as its owner knows it, with 「(この端末)」 on the one that asked. */
 export function testDeviceName(device: TestNotificationDevice): string {
   const name = device.device_name?.trim() || PLATFORM_NAMES[device.platform] || device.platform;
-  return device.current ? `${name} (この端末)` : name;
+  return device.current ? t("testNotification.thisDevice", { name }) : name;
 }
 
 /** sent / problem / neutral: the row's mark. */
@@ -27,20 +28,20 @@ export type TestTone = "ok" | "problem" | "none";
 export function testDeviceStatus(device: TestNotificationDevice): { text: string; tone: TestTone } {
   switch (device.status) {
     case "sent":
-      return { text: "送信しました", tone: "ok" };
+      return { text: t("testNotification.sent"), tone: "ok" };
     case "failed":
-      return { text: device.detail ? `送れませんでした (${device.detail})` : "送れませんでした", tone: "problem" };
+      return { text: device.detail ? t("testNotification.failedDetail", { detail: device.detail }) : t("testNotification.failed"), tone: "problem" };
     case "no_token":
-      return { text: "プッシュ未登録 (端末の通知がオフか、アプリをまだ開き直していません)", tone: "problem" };
+      return { text: t("testNotification.noToken"), tone: "problem" };
     case "not_configured":
-      return { text: device.push_provider === "fcm" ? "このサーバでは Android のプッシュが無効です" : "このサーバでは iOS のプッシュが無効です", tone: "problem" };
+      return { text: device.push_provider === "fcm" ? t("testNotification.fcmOff") : t("testNotification.apnsOff"), tone: "problem" };
     case "in_app":
       // A desktop / browser shows its own notification (no push): this one just did, the others do while running.
       return device.current
-        ? { text: "この端末に表示しました", tone: "ok" }
-        : { text: "アプリの起動中に表示 (プッシュは使いません)", tone: "none" };
+        ? { text: t("testNotification.shownHere"), tone: "ok" }
+        : { text: t("testNotification.inApp"), tone: "none" };
     case "disabled":
-      return { text: device.detail === "session_expired" ? "ログインの期限切れ" : "ログアウト済み", tone: "none" };
+      return { text: device.detail === "session_expired" ? t("testNotification.sessionExpired") : t("testNotification.loggedOut"), tone: "none" };
     default:
       return { text: device.status, tone: "none" };
   }
@@ -49,12 +50,12 @@ export function testDeviceStatus(device: TestNotificationDevice): { text: string
 /** Lines above the list: push off on this server, nothing that can take a push, DND. */
 export function testNotificationNotes(out: TestNotificationOut): string[] {
   const notes: string[] = [];
-  if (!out.apns_configured && !out.fcm_configured) notes.push("このサーバはプッシュ通知が設定されていません (iPhone・Android のアプリには、開いている間だけ通知が出ます)");
-  else if (!out.apns_configured) notes.push("iOS のプッシュ (APNs) はこのサーバでは無効です");
-  else if (!out.fcm_configured) notes.push("Android のプッシュ (FCM) はこのサーバでは無効です");
+  if (!out.apns_configured && !out.fcm_configured) notes.push(t("testNotification.noPush"));
+  else if (!out.apns_configured) notes.push(t("testNotification.noApns"));
+  else if (!out.fcm_configured) notes.push(t("testNotification.noFcm"));
   const phones = out.devices.filter((d) => d.status !== "disabled" && (d.platform === "ios" || d.platform === "android"));
-  if (phones.length === 0) notes.push("プッシュ通知を受け取れる端末 (iPhone・Android のアプリ) はありません");
-  if (out.dnd_active) notes.push("通知を一時停止中ですが、テスト通知は送りました");
+  if (phones.length === 0) notes.push(t("testNotification.noPhones"));
+  if (out.dnd_active) notes.push(t("testNotification.paused"));
   return notes;
 }
 
@@ -62,12 +63,12 @@ export function testNotificationNotes(out: TestNotificationOut): string[] {
 export function permissionHint(permission: NotificationPermissionState | null, desktop: boolean = isTauri(), userAgent: string = navigator.userAgent): string | null {
   if (permission === null || permission === "granted") return null;
   if (!desktop) {
-    if (permission === "unsupported") return "このブラウザは通知を出せません。デスクトップアプリかスマートフォンのアプリを使ってください";
-    return permission === "denied" ? "ブラウザのサイト設定で通知を許可してください" : "上の「通知を許可」を押すと、このブラウザにも通知が出ます";
+    if (permission === "unsupported") return t("testNotification.browserUnsupported");
+    return permission === "denied" ? t("testNotification.browserDenied") : t("testNotification.browserAsk");
   }
-  if (/Mac/i.test(userAgent)) return "macOS の「システム設定」→「通知」→「Taylis」で通知を許可してください";
-  if (/Windows/i.test(userAgent)) return "Windows の「設定」→「システム」→「通知」で Taylis の通知をオンにしてください";
-  return "OS の設定で Taylis の通知を許可してください";
+  if (/Mac/i.test(userAgent)) return t("testNotification.mac");
+  if (/Windows/i.test(userAgent)) return t("testNotification.windows");
+  return t("testNotification.os");
 }
 
 const TONE_ICONS = {
@@ -94,12 +95,12 @@ export function TestNotificationCard({ controller, permission }: { controller: A
     }
   };
   return (
-    <div className="space-y-2" aria-label="テスト通知">
+    <div className="space-y-2" aria-label={t("testNotification.title")}>
       <div className="flex flex-wrap items-center gap-3">
         <Button size="sm" variant="secondary" disabled={busy} onClick={() => void send()}>
-          <BellRing size={14} aria-hidden /> テスト通知を送る
+          <BellRing size={14} aria-hidden /> {t("testNotification.send")}
         </Button>
-        <span className="text-xs text-muted">この端末と、プッシュ通知を受け取れるスマートフォンに送ります</span>
+        <span className="text-xs text-muted">{t("testNotification.sendNote")}</span>
       </div>
       {hint && <p className="text-xs text-muted">{hint}</p>}
       {error && <p role="alert" className="text-xs text-danger">{error}</p>}
@@ -108,7 +109,7 @@ export function TestNotificationCard({ controller, permission }: { controller: A
           {testNotificationNotes(result).map((note) => (
             <p key={note} className="text-xs text-muted">{note}</p>
           ))}
-          <ul className="divide-y divide-line rounded-xl border border-line" aria-label="端末ごとの結果">
+          <ul className="divide-y divide-line rounded-xl border border-line" aria-label={t("testNotification.results")}>
             {result.devices.map((device) => {
               const status = testDeviceStatus(device);
               return (

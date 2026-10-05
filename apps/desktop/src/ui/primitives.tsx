@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { Dialog, DropdownMenu, Popover, Tooltip } from "radix-ui";
 import { type ButtonHTMLAttributes, type ComponentProps, forwardRef, type InputHTMLAttributes, type ReactElement, type ReactNode, type TextareaHTMLAttributes, useCallback, useRef } from "react";
 import { twMerge } from "tailwind-merge";
+import { t } from "../i18n";
 
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
@@ -210,12 +211,12 @@ export function Modal({
             className,
           )}
         >
-          <Dialog.Title className={cn("text-base font-semibold", title ? "" : "sr-only")}>{title || "ダイアログ"}</Dialog.Title>
+          <Dialog.Title className={cn("text-base font-semibold", title ? "" : "sr-only")}>{title || t("primitives.dialog")}</Dialog.Title>
           <Dialog.Description className={cn("mt-1 text-sm text-muted", description ? "" : "sr-only")}>{description ?? title}</Dialog.Description>
           {children}
           {!hideClose && (
             <Dialog.Close asChild>
-              <button type="button" aria-label="閉じる" className={cn(BASE, VARIANTS.ghost, "absolute right-3 top-3 h-7 w-7 rounded-md text-muted")}>
+              <button type="button" aria-label={t("common.close")} className={cn(BASE, VARIANTS.ghost, "absolute right-3 top-3 h-7 w-7 rounded-md text-muted")}>
                 <X size={16} />
               </button>
             </Dialog.Close>

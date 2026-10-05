@@ -17,6 +17,7 @@ import type { ChannelState } from "../sync/types";
 import { canAddFeed, feedErrorText, feedState, feedStatusLine, feedUrlProblem } from "./feeds";
 import { Button, cn, Input, Modal } from "./primitives";
 import { shortDateTime } from "./recurring";
+import { t } from "../i18n";
 
 const MAX_FEEDS = 20;
 const SELECT = "h-8 min-w-0 flex-1 rounded-lg border border-line bg-canvas px-2 text-sm";
@@ -73,26 +74,26 @@ export function FeedBotPanel({ controller, channel, reload, onChanged }: { contr
       {editing ? (
         <form
           className="flex items-center gap-2"
-          aria-label="ボットの名前を変更"
+          aria-label={t("feeds.renameBot")}
           onSubmit={(e) => {
             e.preventDefault();
-            if (trimmed) void save({ display_name: trimmed }, `ボットの名前を「${trimmed}」にしました`);
+            if (trimmed) void save({ display_name: trimmed }, t("feeds.botRenamed", { name: trimmed }));
           }}
         >
-          <Input aria-label="ボットの名前" className="h-8 min-w-0 flex-1 text-sm" maxLength={80} value={name} autoFocus onChange={(e) => setName(e.target.value)} />
-          <Button type="submit" size="sm" disabled={busy || !trimmed}>保存</Button>
-          <Button type="button" size="sm" variant="secondary" onClick={() => setEditing(false)}>キャンセル</Button>
+          <Input aria-label={t("feeds.botName")} className="h-8 min-w-0 flex-1 text-sm" maxLength={80} value={name} autoFocus onChange={(e) => setName(e.target.value)} />
+          <Button type="submit" size="sm" disabled={busy || !trimmed}>{t("common.save")}</Button>
+          <Button type="button" size="sm" variant="secondary" onClick={() => setEditing(false)}>{t("common.cancel")}</Button>
         </form>
       ) : (
         <div className="flex items-center gap-2 text-sm">
           <Bot size={15} className="shrink-0 text-muted" />
           <span className="min-w-0 flex-1 truncate">
-            投稿するボット: {bot.display_name ? <strong data-feed-bot-name>{bot.display_name}</strong> : <span className="text-muted">(最初のフィードを追加すると「RSS」ボットができます)</span>}
-            {bot.adopted && <span className="ml-1.5 text-xs text-muted">(既存のボットを使用)</span>}
+            {t("feeds.postingBot")} {bot.display_name ? <strong data-feed-bot-name>{bot.display_name}</strong> : <span className="text-muted">{t("feeds.botCreatedOnFirst")}</span>}
+            {bot.adopted && <span className="ml-1.5 text-xs text-muted">{t("feeds.adopted")}</span>}
           </span>
           {bot.can_rename && bot.display_name && (
             <Button variant="ghost" size="sm" onClick={() => { setName(bot.display_name ?? ""); setEditing(true); setResult(null); }}>
-              <Pencil size={13} /> 名前を変更
+              <Pencil size={13} /> {t("channel.rename")}
             </Button>
           )}
         </div>
@@ -101,26 +102,26 @@ export function FeedBotPanel({ controller, channel, reload, onChanged }: { contr
         confirmAdopt && chosen ? (
           <div className="space-y-1.5 rounded-lg bg-panel-2 px-2 py-1.5 text-xs">
             <p>
-              「{chosen.display_name}」(@{chosen.username}) をこのチャンネルのフィードのボットにしますか？ これからの記事はこのボットが投稿し、
-              {bot.adopted || !bot.bot_user_id ? "" : `今の「${bot.display_name ?? ""}」ボットは無効になります (これまでの投稿は残ります)。`}
-              このボットはフィードを削除しても無効化されません。
+              {t("feeds.adoptQuestion", { name: chosen.display_name, username: chosen.username })}
+              {bot.adopted || !bot.bot_user_id ? "" : t("feeds.adoptDisables", { name: bot.display_name ?? "" })}
+              {t("feeds.adoptKeeps")}
             </p>
             <div className="flex justify-end gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setConfirmAdopt(false)}>キャンセル</Button>
-              <Button size="sm" disabled={busy} onClick={() => void save({ bot_user_id: chosen.id }, `「${chosen.display_name}」をフィードのボットにしました`)}>
-                このボットにする
+              <Button variant="secondary" size="sm" onClick={() => setConfirmAdopt(false)}>{t("common.cancel")}</Button>
+              <Button size="sm" disabled={busy} onClick={() => void save({ bot_user_id: chosen.id }, t("feeds.adoptedNotice", { name: chosen.display_name }))}>
+                {t("feeds.useThisBot")}
               </Button>
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <select aria-label="既存のボットを使う" className={SELECT} value={pick} onChange={(e) => { setPick(e.target.value); setResult(null); }}>
-              <option value="">既存のボットを使う (管理者)…</option>
+            <select aria-label={t("feeds.useExisting")} className={SELECT} value={pick} onChange={(e) => { setPick(e.target.value); setResult(null); }}>
+              <option value="">{t("feeds.useExistingAdmin")}</option>
               {candidates.map((c) => (
-                <option key={c.id} value={c.id}>{c.display_name} (@{c.username}{c.active ? "" : "、無効"})</option>
+                <option key={c.id} value={c.id}>{c.display_name} (@{c.username}{c.active ? "" : t("feeds.inactiveMark")})</option>
               ))}
             </select>
-            <Button variant="secondary" size="sm" disabled={!chosen} onClick={() => setConfirmAdopt(true)}>選ぶ</Button>
+            <Button variant="secondary" size="sm" disabled={!chosen} onClick={() => setConfirmAdopt(true)}>{t("feeds.choose")}</Button>
           </div>
         )
       )}
@@ -182,7 +183,7 @@ export function FeedList({ controller, channel }: { controller: AppController; c
     try {
       const feed = await api.createFeed(channel.id, { url: url.trim() });
       setUrl("");
-      setResult({ ok: true, text: `「${feed.title ?? feed.url}」を追加しました。これからの新しい記事を投稿します` });
+      setResult({ ok: true, text: t("feeds.added", { name: feed.title ?? feed.url }) });
       setReload((n) => n + 1);
     } catch (error) {
       setAddError(feedErrorText(error));
@@ -197,12 +198,12 @@ export function FeedList({ controller, channel }: { controller: AppController; c
     <div className="space-y-2" data-feed-list>
       <FeedBotPanel controller={controller} channel={channel} reload={reload} onChanged={() => setReload((n) => n + 1)} />
       {rows === null ? (
-        <p className="py-2 text-sm text-muted">読み込み中…</p>
+        <p className="py-2 text-sm text-muted">{t("common.loading")}</p>
       ) : rows === "failed" ? (
-        <p className="py-2 text-sm text-danger">読み込めませんでした</p>
+        <p className="py-2 text-sm text-danger">{t("common.loadFailed")}</p>
       ) : rows.length === 0 ? (
         <p className="py-1 text-sm text-muted">
-          フィードはありません。{canAdd ? "ブログや週報サイトの RSS / Atom の URL を追加すると、新しい記事を「RSS」ボットがこのチャンネルに投稿します。" : ""}
+          {t("feeds.none")}{canAdd ? t("feeds.noneAdd") : ""}
         </p>
       ) : (
         <ul className="divide-y divide-line rounded-lg border border-line">
@@ -214,13 +215,13 @@ export function FeedList({ controller, channel }: { controller: AppController; c
                 <div className="flex items-center gap-2">
                   <Rss size={15} className="shrink-0 text-muted" />
                   <strong className="min-w-0 flex-1 truncate text-sm">{feed.title ?? feed.url}</strong>
-                  {state === "paused" && <span className="shrink-0 rounded bg-panel-2 px-1.5 text-[11px] font-medium text-muted">停止中</span>}
+                  {state === "paused" && <span className="shrink-0 rounded bg-panel-2 px-1.5 text-[11px] font-medium text-muted">{t("workflow.paused")}</span>}
                   {state === "owner_absent" && (
-                    <span className="shrink-0 rounded bg-panel-2 px-1.5 text-[11px] font-medium text-muted" title="追加した人がチャンネルにいない (または無効) ため取得していません">
-                      取得を休止中
+                    <span className="shrink-0 rounded bg-panel-2 px-1.5 text-[11px] font-medium text-muted" title={t("feeds.dormantTitle")}>
+                      {t("feeds.dormant")}
                     </span>
                   )}
-                  {state === "failing" && <span className="shrink-0 rounded bg-danger/10 px-1.5 text-[11px] font-medium text-danger">エラー</span>}
+                  {state === "failing" && <span className="shrink-0 rounded bg-danger/10 px-1.5 text-[11px] font-medium text-danger">{t("feeds.error")}</span>}
                 </div>
                 <a
                   href={feed.url}
@@ -232,17 +233,17 @@ export function FeedList({ controller, channel }: { controller: AppController; c
                 >
                   {feed.url}
                 </a>
-                <div className="text-xs text-muted">追加: {owner}</div>
+                <div className="text-xs text-muted">{t("feeds.addedBy", { name: owner })}</div>
                 <div className={cn("text-xs", state === "failing" ? "text-danger" : "text-muted")} data-feed-status>
                   {feedStatusLine(feed, shortDateTime)}
                 </div>
                 {feed.can_manage && api && (
                   confirmDelete === feed.id ? (
                     <div className="flex items-center justify-end gap-2 rounded-lg bg-danger/10 px-2 py-1.5">
-                      <span className="mr-auto text-xs">「{feed.title ?? feed.url}」を削除しますか？ これまでの投稿は残ります</span>
-                      <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(null)}>キャンセル</Button>
-                      <Button variant="danger" size="sm" disabled={busy === feed.id} onClick={() => void act(feed, () => api.deleteFeed(feed.id), "削除しました")}>
-                        削除する
+                      <span className="mr-auto text-xs">{t("recurring.deleteConfirm", { name: feed.title ?? feed.url })}</span>
+                      <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(null)}>{t("common.cancel")}</Button>
+                      <Button variant="danger" size="sm" disabled={busy === feed.id} onClick={() => void act(feed, () => api.deleteFeed(feed.id), t("common.deleted"))}>
+                        {t("common.deleteConfirm")}
                       </Button>
                     </div>
                   ) : (
@@ -252,13 +253,13 @@ export function FeedList({ controller, channel }: { controller: AppController; c
                           variant="secondary"
                           size="sm"
                           disabled={busy === feed.id}
-                          onClick={() => void act(feed, () => api.updateFeed(feed.id, { enabled: !feed.enabled }), feed.enabled ? "止めました" : "再開しました")}
+                          onClick={() => void act(feed, () => api.updateFeed(feed.id, { enabled: !feed.enabled }), feed.enabled ? t("workflow.pausedNotice") : t("workflow.resumedNotice"))}
                         >
-                          {feed.enabled ? <><Pause size={13} /> 止める</> : <><Play size={13} /> 再開</>}
+                          {feed.enabled ? <><Pause size={13} /> {t("settings.pause.pause")}</> : <><Play size={13} /> {t("settings.pause.resume")}</>}
                         </Button>
                       )}
                       <Button variant="ghost" size="sm" className="text-danger" onClick={() => setConfirmDelete(feed.id)}>
-                        <Trash2 size={13} /> 削除
+                        <Trash2 size={13} /> {t("common.delete")}
                       </Button>
                     </div>
                   )
@@ -272,7 +273,7 @@ export function FeedList({ controller, channel }: { controller: AppController; c
       {canAdd && api && rows !== "failed" && (
         <form
           className="space-y-1.5 pt-1"
-          aria-label="フィードを追加"
+          aria-label={t("feeds.add")}
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
@@ -282,7 +283,7 @@ export function FeedList({ controller, channel }: { controller: AppController; c
           <div className="flex items-center gap-2">
             <Input
               type="url"
-              aria-label="フィードの URL"
+              aria-label={t("feeds.url")}
               placeholder="https://example.com/feed.xml"
               className="h-8 min-w-0 flex-1 text-sm"
               value={url}
@@ -290,14 +291,14 @@ export function FeedList({ controller, channel }: { controller: AppController; c
               onChange={(e) => { setUrl(e.target.value); setAddError(null); }}
             />
             <Button type="submit" size="sm" variant="secondary" disabled={adding || full}>
-              <Plus size={14} /> {adding ? "確認中…" : "追加"}
+              <Plus size={14} /> {adding ? t("common.checking") : t("common.add")}
             </Button>
           </div>
           {addError ? (
             <p role="alert" className="text-xs text-danger">{addError}</p>
           ) : (
             <p className="text-xs text-muted">
-              {full ? `1 つのチャンネルのフィードは ${MAX_FEEDS} 件までです` : "RSS / Atom の URL (サイトのトップページでも、フィードを案内していれば見つけます)。追加の時点の記事は投稿しません"}
+              {full ? t("feeds.full", { max: MAX_FEEDS }) : t("feeds.urlHint")}
             </p>
           )}
         </form>
@@ -309,7 +310,7 @@ export function FeedList({ controller, channel }: { controller: AppController; c
 /** The wide window's way in: ⋯ → 「フィード…」. */
 export function FeedsDialog({ controller, channel, onClose }: { controller: AppController; channel: ChannelState; onClose: () => void }) {
   return (
-    <Modal onClose={onClose} title="フィード" description={`ブログや週報サイトの新しい記事を #${channel.name ?? ""} に投稿します (30 分ごとに確認)`} className="w-[520px]">
+    <Modal onClose={onClose} title={t("feeds.title")} description={t("feeds.description", { name: channel.name ?? "" })} className="w-[520px]">
       <div className="mt-3">
         <FeedList controller={controller} channel={channel} />
       </div>

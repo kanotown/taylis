@@ -11,6 +11,7 @@ import { plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
 import { IconButton } from "./primitives";
 import { EmojiText } from "./UserPopover";
+import { t } from "../i18n";
 
 /** Messages pinned in this channel (M11c), most recently pinned first; null while loading. */
 export function usePins(controller: AppController, channel: ChannelState): MessageOut[] | null {
@@ -30,9 +31,9 @@ export function PinsList({ controller, pins, onOpen }: { controller: AppControll
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
       {pins === null ? (
-        <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
+        <div className="py-8 text-center text-sm text-muted">{t("common.loading")}</div>
       ) : pins.length === 0 ? (
-        <div className="px-4 py-8 text-center text-sm text-muted">ピン留めされたメッセージはありません。メッセージのピンアイコンから追加できます。</div>
+        <div className="px-4 py-8 text-center text-sm text-muted">{t("pins.none")}</div>
       ) : (
         <div className="space-y-1">
           {pins.map((message) => <MessageCard key={message.id} message={message} controller={controller} onOpen={() => onOpen(message)} />)}
@@ -55,10 +56,10 @@ export function PinsPane({ controller, channel, onOpen, onClose }: { controller:
       <header className="flex h-[52px] items-center gap-2 border-b border-line px-4">
         <Pin size={16} className="text-warning" />
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold">ピン留め{pins ? ` (${pins.length})` : ""}</div>
+          <div className="text-sm font-semibold">{t("main.pins")}{pins ? ` (${pins.length})` : ""}</div>
           <div className="truncate text-xs text-muted">{channelTitle(channel, controller)}</div>
         </div>
-        <IconButton label="閉じる (Esc)" onClick={onClose}>
+        <IconButton label={t("attach.closeEsc")} onClick={onClose}>
           <X size={18} />
         </IconButton>
       </header>
@@ -85,7 +86,7 @@ export function MessageCard({ message, controller, onOpen, onRemove, removeLabel
         <div className="mt-1 line-clamp-4 text-sm text-ink"><EmojiText controller={controller} text={text} /></div>
       </button>
       {onRemove && (
-        <IconButton label={removeLabel ?? "外す"} className="absolute right-2 top-2 h-7 w-7 text-muted opacity-0 hover:text-ink group-hover:opacity-100" onClick={onRemove}>
+        <IconButton label={removeLabel ?? t("settings.workspaces.remove")} className="absolute right-2 top-2 h-7 w-7 text-muted opacity-0 hover:text-ink group-hover:opacity-100" onClick={onRemove}>
           <X size={14} />
         </IconButton>
       )}

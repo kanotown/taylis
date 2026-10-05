@@ -9,6 +9,7 @@
  */
 import type { AiAskCreate, AiAskTargetOut, AiRunOut, AiRunUpdated, AiStatusOut, AiSummaryCreate, AiSummaryScope, AiSummaryTargetOut } from "../api/ai";
 import { ApiError } from "../api/errors";
+import { t } from "../i18n";
 
 export interface AiApi {
   aiStatus(): Promise<AiStatusOut>;
@@ -72,9 +73,9 @@ export function summaryBody(target: SummaryTarget, tzOffsetMinutes: number = -ne
 
 /** The dialog's title. */
 export function summaryTitle(target: { scope: AiSummaryScope; days?: number | null }): string {
-  if (target.scope === "thread") return "スレッドの要約";
-  if (target.scope === "unread") return "未読の要約";
-  return `直近 ${target.days ?? 1} 日の要約`;
+  if (target.scope === "thread") return t("ai.summary.titleThread");
+  if (target.scope === "unread") return t("ai.summary.titleUnread");
+  return t("ai.summary.titleDays", { days: target.days ?? 1 });
 }
 
 /** Events that came before POST answered (the worker can be quicker than the response). */

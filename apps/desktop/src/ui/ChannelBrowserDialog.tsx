@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ChannelOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { Badge, Button, cn, Input, Modal } from "./primitives";
+import { t } from "../i18n";
 
 /** Channel browser (M11h): every public channel plus my private ones, with member counts, join / leave and create. */
 export function ChannelBrowserDialog({ controller, onClose, onOpen, onCreate }: { controller: AppController; onClose: () => void; onOpen: (id: string) => void; onCreate: () => void }) {
@@ -62,16 +63,16 @@ export function ChannelBrowserDialog({ controller, onClose, onOpen, onCreate }: 
   };
 
   return (
-    <Modal onClose={onClose} title="チャンネルを探す" className="w-[640px]">
+    <Modal onClose={onClose} title={t("shortcuts.browse")} className="w-[640px]">
       <div className="mt-3 flex items-center gap-2">
         <div className="relative flex-1">
           <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <Input value={query} autoFocus placeholder="名前やトピックで絞り込む" className="pl-9" onChange={(e) => setQuery(e.target.value)} />
+          <Input value={query} autoFocus placeholder={t("browser.filter")} className="pl-9" onChange={(e) => setQuery(e.target.value)} />
         </div>
-        <Button size="sm" onClick={() => { onClose(); onCreate(); }}>チャンネルを作成</Button>
+        <Button size="sm" onClick={() => { onClose(); onCreate(); }}>{t("sidebar.createChannel")}</Button>
       </div>
       <ul className="mt-3 max-h-[440px] divide-y divide-line overflow-y-auto rounded-xl border border-line">
-        {listed === null && <li className="px-3 py-6 text-center text-sm text-muted">読み込み中…</li>}
+        {listed === null && <li className="px-3 py-6 text-center text-sm text-muted">{t("common.loading")}</li>}
         {rows.map((channel) => {
           const mine = store.getChannel(channel.id)?.isMember || channel.membership !== null;
           return (
@@ -80,23 +81,23 @@ export function ChannelBrowserDialog({ controller, onClose, onOpen, onCreate }: 
               <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { if (mine || channel.type === "public") openRow(channel, mine); }}>
                 <div className="flex items-center gap-2">
                   <span className="truncate font-medium">{channel.name}</span>
-                  {channel.archived && <Badge>アーカイブ済み</Badge>}
-                  {mine && !channel.archived && <Badge tone="accent">参加中</Badge>}
+                  {channel.archived && <Badge>{t("channel.archived")}</Badge>}
+                  {mine && !channel.archived && <Badge tone="accent">{t("browser.joined")}</Badge>}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted">
-                  <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap"><Users size={12} /> {channel.member_count ?? 0} 人</span>
+                  <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap"><Users size={12} /> {t("common.people", { count: channel.member_count ?? 0 })}</span>
                   {(channel.purpose || channel.topic) && <span className="truncate">· {channel.purpose || channel.topic}</span>}
                 </div>
               </button>
               {!channel.archived && (mine ? (
-                <Button size="sm" variant="ghost" disabled={busy === channel.id} onClick={() => void leave(channel)}>退出</Button>
+                <Button size="sm" variant="ghost" disabled={busy === channel.id} onClick={() => void leave(channel)}>{t("channel.leaveConfirm")}</Button>
               ) : (
-                <Button size="sm" variant="secondary" disabled={busy === channel.id} onClick={() => void join(channel)}>参加</Button>
+                <Button size="sm" variant="secondary" disabled={busy === channel.id} onClick={() => void join(channel)}>{t("preview.join")}</Button>
               ))}
             </li>
           );
         })}
-        {listed !== null && rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">見つかりません</li>}
+        {listed !== null && rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("workflow.notFound")}</li>}
       </ul>
     </Modal>
   );

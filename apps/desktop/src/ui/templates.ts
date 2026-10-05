@@ -4,6 +4,7 @@
  */
 
 import type { TemplateOut } from "../api/types";
+import { t } from "../i18n";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 const DAY_MS = 86_400_000;
@@ -72,7 +73,9 @@ export function templateWithText(body: string, text: string): string {
 
 // --- /日程 -----------------------------------------------------------------------------------
 
-export const SCHEDULE_USAGE = "/日程 [題名] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)";
+export function scheduleUsage(): string {
+  return t("templates.scheduleUsage");
+}
 export const SCHEDULE_QUESTION = "日程調整";
 const MAX_RANGE_DAYS = 14;
 const MIN_OPTIONS = 2;

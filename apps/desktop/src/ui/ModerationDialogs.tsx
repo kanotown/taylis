@@ -4,13 +4,14 @@ import type { ReportReason } from "../api/types";
 import type { AppController } from "../state/app";
 import type { MessageState } from "../sync/types";
 import { Button, cn, Input, Modal, Textarea } from "./primitives";
+import { t } from "../i18n";
 
 /** M104 (docs/MODERATION.md §3): the reasons, in the order the phones show them. */
 export const REPORT_REASONS: ReadonlyArray<{ value: ReportReason; label: string }> = [
-  { value: "spam", label: "迷惑・スパム" },
-  { value: "harassment", label: "嫌がらせ" },
-  { value: "inappropriate", label: "不適切な内容" },
-  { value: "other", label: "その他" },
+  { value: "spam", get label() { return t("report.reason.spam"); } },
+  { value: "harassment", get label() { return t("report.reason.harassment"); } },
+  { value: "inappropriate", get label() { return t("report.reason.inappropriate"); } },
+  { value: "other", get label() { return t("roster.other"); } },
 ];
 
 /** 「報告する」: a reason and an optional note; the administrators are told, the author is not. */
@@ -26,9 +27,9 @@ export function ReportDialog({ controller, message, onClose }: { controller: App
     if (ok) onClose();
   };
   return (
-    <Modal onClose={onClose} title="メッセージを報告" description="ワークスペースの管理者に知らせます。投稿した人には伝わりません。" className="w-[440px]">
+    <Modal onClose={onClose} title={t("report.title")} description={t("report.description")} className="w-[440px]">
       <div className="mt-4 space-y-3">
-        <div role="radiogroup" aria-label="理由" className="space-y-1.5">
+        <div role="radiogroup" aria-label={t("report.reason")} className="space-y-1.5">
           {REPORT_REASONS.map((item) => (
             <label key={item.value} className={cn("flex cursor-pointer items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm", reason === item.value && "border-accent bg-accent-soft/60")}>
               <input type="radio" name="report-reason" value={item.value} checked={reason === item.value} onChange={() => setReason(item.value)} />
@@ -36,10 +37,10 @@ export function ReportDialog({ controller, message, onClose }: { controller: App
             </label>
           ))}
         </div>
-        <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="補足 (任意)" rows={2} maxLength={1000} aria-label="補足" />
+        <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("report.notePlaceholder")} rows={2} maxLength={1000} aria-label={t("report.note")} />
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" size="sm" onClick={onClose}>キャンセル</Button>
-          <Button size="sm" disabled={busy || !reason} onClick={() => void send()}>報告する</Button>
+          <Button variant="secondary" size="sm" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button size="sm" disabled={busy || !reason} onClick={() => void send()}>{t("report.send")}</Button>
         </div>
       </div>
     </Modal>
@@ -65,15 +66,15 @@ export function DeleteAccountDialog({ controller, onClose }: { controller: AppCo
     else onClose();
   };
   return (
-    <Modal onClose={onClose} title="アカウントを削除" description="この操作は取り消せません。" className="w-[460px]">
+    <Modal onClose={onClose} title={t("settings.account.delete")} description={t("deleteAccount.cannotUndo")} className="w-[460px]">
       <div className="mt-4 space-y-3 text-sm">
         <ul className="list-disc space-y-1 pl-5 text-muted">
-          <li>すべての端末からすぐにログアウトし、通知も届かなくなります。</li>
-          <li>表示名・ユーザー名・メールアドレス・プロフィール画像・ステータスは消去されます。</li>
-          <li>投稿したメッセージとファイルは会話の記録として残り、「退会したユーザー」と表示されます。</li>
+          <li>{t("deleteAccount.point1")}</li>
+          <li>{t("deleteAccount.point2")}</li>
+          <li>{t("deleteAccount.point3")}</li>
         </ul>
         <label className="block">
-          <span className="text-xs text-muted">{hasPassword ? "確認のためパスワードを入力" : `確認のためユーザー名 (${me?.username ?? ""}) を入力`}</span>
+          <span className="text-xs text-muted">{hasPassword ? t("deleteAccount.enterPassword") : t("deleteAccount.enterUsername", { username: me?.username ?? "" })}</span>
           <Input
             type={hasPassword ? "password" : "text"}
             autoComplete={hasPassword ? "current-password" : "off"}
@@ -85,8 +86,8 @@ export function DeleteAccountDialog({ controller, onClose }: { controller: AppCo
         </label>
         {error && <p className="rounded-lg bg-danger/10 px-3 py-2 text-danger" role="alert">{error}</p>}
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" size="sm" onClick={onClose}>キャンセル</Button>
-          <Button variant="danger" size="sm" disabled={busy || !secret.trim()} onClick={() => void remove()}>アカウントを削除</Button>
+          <Button variant="secondary" size="sm" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button variant="danger" size="sm" disabled={busy || !secret.trim()} onClick={() => void remove()}>{t("settings.account.delete")}</Button>
         </div>
       </div>
     </Modal>

@@ -10,6 +10,8 @@ import { channelTitle } from "./MainScreen";
 import { Badge, cn, IconButton } from "./primitives";
 import { describeSearch } from "./SearchBar";
 import { EMPTY_SEARCH, type SearchParams } from "./search";
+import { t } from "../i18n";
+import { tRich } from "../i18n/rich";
 
 type Row =
   | { kind: "conversation"; channel: ChannelState }
@@ -89,16 +91,16 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
     const group = (row: Row | undefined) => (!row ? null : row.kind === "conversation" ? "c" : row.kind === "person" ? "p" : row.kind === "recent-search" ? "r" : "s");
     const here = group(rows[index]);
     if (here === group(rows[index - 1])) return null;
-    if (here === "c") return query ? "会話" : "最近の会話";
-    if (here === "p") return "人";
-    if (here === "r") return "最近の検索";
+    if (here === "c") return query ? t("ask.conversation") : t("jump.recentConversations");
+    if (here === "p") return t("jump.people");
+    if (here === "r") return t("searchBar.recent");
     return null;
   };
 
   return (
-    <section role="dialog" aria-label="移動・検索" className="fixed inset-0 z-40 flex flex-col bg-canvas text-ink" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
+    <section role="dialog" aria-label={t("home.jumpSearch")} className="fixed inset-0 z-40 flex flex-col bg-canvas text-ink" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
       <div className="flex h-[52px] shrink-0 items-center gap-1 border-b border-line pl-2 pr-3">
-        <IconButton label="戻る" className="h-11 w-11" onClick={onClose}>
+        <IconButton label={t("common.back")} className="h-11 w-11" onClick={onClose}>
           <ArrowLeft size={20} />
         </IconButton>
         <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl bg-panel px-3 text-muted">
@@ -111,13 +113,13 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
               setActive(0);
             }}
             onKeyDown={onKeyDown}
-            placeholder="会話・人・メッセージを検索"
-            aria-label="移動・検索"
+            placeholder={t("jump.placeholder")}
+            aria-label={t("home.jumpSearch")}
             enterKeyHint="go"
             className="min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-muted"
           />
           {text && (
-            <button type="button" aria-label="入力を消す" className="rounded p-1 text-muted hover:text-ink" onClick={() => { setText(""); input.current?.focus(); }}>
+            <button type="button" aria-label={t("searchBar.clear")} className="rounded p-1 text-muted hover:text-ink" onClick={() => { setText(""); input.current?.focus(); }}>
               <X size={15} />
             </button>
           )}
@@ -134,7 +136,7 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
                   <JumpRowBody controller={controller} row={row} meId={meId} />
                 </button>
                 {row.kind === "recent-search" && (
-                  <button type="button" aria-label="履歴から消す" className="mr-2 rounded p-2 text-muted hover:text-ink" onClick={() => onRemoveRecentSearch(row.params)}>
+                  <button type="button" aria-label={t("searchBar.removeHistory")} className="mr-2 rounded p-2 text-muted hover:text-ink" onClick={() => onRemoveRecentSearch(row.params)}>
                     <X size={14} />
                   </button>
                 )}
@@ -142,7 +144,7 @@ export function JumpView({ controller, recentIds, recentSearches, onOpen, onOpen
             </li>
           );
         })}
-        {rows.length === 0 && <li className="px-6 py-12 text-center text-sm text-muted">チャンネルや人の名前で移動、語句でメッセージを検索します</li>}
+        {rows.length === 0 && <li className="px-6 py-12 text-center text-sm text-muted">{t("jump.hint")}</li>}
       </ul>
     </section>
   );
@@ -169,7 +171,7 @@ function JumpRowBody({ controller, row, meId }: { controller: AppController; row
         <>
           <Avatar id={row.user.id} name={row.user.display_name} size={24} className="rounded-md text-[10px]" presence={store.presenceOf(row.user.id)} presenceClassName="border border-canvas" />
           <span className="min-w-0 truncate">{row.user.display_name}</span>
-          <span className="min-w-0 shrink truncate text-[13px] text-muted">@{row.user.username}{row.user.id === meId ? " (自分)" : ""}</span>
+          <span className="min-w-0 shrink truncate text-[13px] text-muted">@{row.user.username}{row.user.id === meId ? ` ${t("tasks.dialog.me")}` : ""}</span>
         </>
       );
     case "recent-search":
@@ -184,7 +186,7 @@ function JumpRowBody({ controller, row, meId }: { controller: AppController; row
         <>
           <span className="flex w-6 shrink-0 justify-center text-muted"><Search size={18} /></span>
           <span className="min-w-0 truncate">
-            「<strong>{row.q}</strong>」をメッセージ検索
+            {tRich("jump.searchFor", { b: (s) => <strong>{s}</strong> }, { q: row.q })}
           </span>
         </>
       );
@@ -210,7 +212,7 @@ export function ConversationRowBody({ controller, channel, meId }: { controller:
         )}
       </span>
       <span className={cn("min-w-0 flex-1 truncate", unread && "font-bold", isMutedChannel(channel) && !unread && "opacity-55")}>{channelTitle(channel, controller).replace(/^#/, "")}</span>
-      {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-label="未読" /> : null}
+      {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-label={t("sidebar.unread")} /> : null}
     </>
   );
 }

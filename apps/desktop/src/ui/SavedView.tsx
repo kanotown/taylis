@@ -6,6 +6,7 @@ import type { AppController } from "../state/app";
 import { BackButton } from "./compact";
 import { Button } from "./primitives";
 import { MessageCard } from "./PinsPane";
+import { t } from "../i18n";
 
 /** The centre column 「保存済み」 (M11c): my bookmarked messages, newest saved first; a row reveals it. */
 export function SavedView({ controller, onOpen }: { controller: AppController; onOpen: (message: MessageOut) => void }) {
@@ -37,29 +38,29 @@ export function SavedView({ controller, onOpen }: { controller: AppController; o
         <span className="text-muted max-md:hidden">
           <Bookmark size={18} />
         </span>
-        <strong className="shrink-0 whitespace-nowrap text-[15px]">保存済み</strong>
-        <span className="min-w-0 truncate text-xs text-muted">{items ? `${store.bookmarks.size} 件` : ""}</span>
+        <strong className="shrink-0 whitespace-nowrap text-[15px]">{t("nav.saved")}</strong>
+        <span className="min-w-0 truncate text-xs text-muted">{items ? t("common.count", { count: store.bookmarks.size }) : ""}</span>
       </header>
       <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {items === null ? (
-          <div className="py-8 text-center text-sm text-muted">読み込み中…</div>
+          <div className="py-8 text-center text-sm text-muted">{t("common.loading")}</div>
         ) : items.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
               <Bookmark size={22} />
             </span>
-            <strong className="text-sm">保存したメッセージはありません</strong>
-            <span className="text-xs text-muted">メッセージのしおりアイコンで、あとで見返したいものをここに集められます。</span>
+            <strong className="text-sm">{t("saved.none")}</strong>
+            <span className="text-xs text-muted">{t("saved.hint")}</span>
           </div>
         ) : (
           <div className="mx-auto max-w-3xl space-y-1">
             {items.map((item) => (
-              <MessageCard key={item.message.id} message={item.message} controller={controller} onOpen={() => onOpen(item.message)} removeLabel="保存を解除" onRemove={() => void controller.toggleBookmark({ ...item.message, seq: item.message.seq })} />
+              <MessageCard key={item.message.id} message={item.message} controller={controller} onOpen={() => onOpen(item.message)} removeLabel={t("timeline.unsave")} onRemove={() => void controller.toggleBookmark({ ...item.message, seq: item.message.seq })} />
             ))}
             {hasMore && (
               <div className="py-2 text-center">
                 <Button variant="secondary" size="sm" onClick={() => void load(true)}>
-                  さらに読み込む
+                  {t("canvasHistory.loadMore")}
                 </Button>
               </div>
             )}

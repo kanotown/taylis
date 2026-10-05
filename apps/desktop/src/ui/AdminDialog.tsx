@@ -15,6 +15,7 @@ import { WebhooksTab } from "./WebhooksTab";
 import { WorkflowManager } from "./WorkflowViews";
 import { WorkspaceSettingsTab } from "./WorkspaceSettingsTab";
 import { Badge, Button, cn, Field, Input, Modal, UNDERLINE_TAB, UnderlineTabRow } from "./primitives";
+import { t } from "../i18n";
 
 type Tab = "users" | "reports" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates";
 
@@ -22,7 +23,7 @@ type Tab = "users" | "reports" | "roster" | "groups" | "invites" | "webhooks" | 
 export function AdminDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
   return (
     // One height for every tab (the body scrolls): sized to its content, the dialog jumped and re-centred on each switch.
-    <Modal onClose={onClose} title="管理" focusDialog className="flex h-[80dvh] w-[760px] flex-col overflow-hidden">
+    <Modal onClose={onClose} title={t("settings.section.admin")} focusDialog className="flex h-[80dvh] w-[760px] flex-col overflow-hidden">
       <AdminBody controller={controller} className="mt-3" />
     </Modal>
   );
@@ -39,21 +40,21 @@ export function AdminBody({ controller, className }: { controller: AppController
   const shown: Tab = tab === "ai" && !ai ? "users" : tab;
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
-      <UnderlineTabRow role="tablist" aria-label="管理" className="gap-1">
+      <UnderlineTabRow role="tablist" aria-label={t("settings.section.admin")} className="gap-1">
         {(
           [
-            ["users", "ユーザー"],
-            ["reports", "報告"],
-            ["roster", "名簿"],
-            ["groups", "グループ"],
-            ["invites", "招待"],
+            ["users", t("admin.tab.users")],
+            ["reports", t("admin.tab.reports")],
+            ["roster", t("admin.tab.roster")],
+            ["groups", t("admin.tab.groups")],
+            ["invites", t("admin.tab.invites")],
             ["webhooks", "Webhook"],
-            ["workflows", "ワークフロー"],
+            ["workflows", t("admin.tab.workflows")],
             ...(ai ? [["ai", "AI"]] : []),
-            ["workspace", "設定"],
-            ["channels", "チャンネル"],
-            ["emoji", "絵文字"],
-            ["canvas-templates", "キャンバス"],
+            ["workspace", t("admin.tab.workspace")],
+            ["channels", t("admin.tab.channels")],
+            ["emoji", t("admin.tab.emoji")],
+            ["canvas-templates", t("admin.tab.canvasTemplates")],
           ] as Array<[Tab, string]>
         ).map(([value, label]) => (
           <button
@@ -98,7 +99,7 @@ function ChannelsTab({ controller }: { controller: AppController }) {
 
   return (
     <div className="mt-4 space-y-3">
-      <p className="text-xs text-muted">参加していない非公開チャンネルはここに出ません。アーカイブすると投稿できなくなりますが、履歴と検索は残ります。</p>
+      <p className="text-xs text-muted">{t("admin.channels.note")}</p>
       <ul className="divide-y divide-line rounded-xl border border-line">
         {channels.map((channel) => (
           <li key={channel.id} className={cn("flex items-center gap-3 px-3 py-2 text-sm", channel.archived && "opacity-60")}>
@@ -106,36 +107,36 @@ function ChannelsTab({ controller }: { controller: AppController }) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="truncate font-medium">{channel.name}</span>
-                {channel.archived && <Badge>アーカイブ済み</Badge>}
-                {!channel.isMember && <Badge>未参加</Badge>}
-                {channel.times_owner_id && <Badge tone="accent">{store.users.get(channel.times_owner_id)?.display_name ?? "?"} の times</Badge>}
+                {channel.archived && <Badge>{t("channel.archived")}</Badge>}
+                {!channel.isMember && <Badge>{t("admin.channels.notJoined")}</Badge>}
+                {channel.times_owner_id && <Badge tone="accent">{t("admin.channels.timesOf", { name: store.users.get(channel.times_owner_id)?.display_name ?? "?" })}</Badge>}
               </div>
               {channel.topic && <div className="truncate text-xs text-muted">{channel.topic}</div>}
             </div>
             {channel.archived && (
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setBusy(true); void controller.unarchiveChannel(channel.id).then(() => setBusy(false)); }}>
-                <ArchiveRestore size={14} /> アーカイブを解除
+                <ArchiveRestore size={14} /> {t("channel.unarchive")}
               </Button>
             )}
             {!channel.archived && (
               <div className="flex items-center gap-1">
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setRenaming(channel); setName(channel.name ?? ""); }}>
-                  <Pencil size={14} /> 名前を変更
+                  <Pencil size={14} /> {t("channel.rename")}
                 </Button>
-                <Button size="sm" variant="ghost" disabled={busy} title="誰かの times (作業ログ) として扱う" onClick={() => { setMarking(channel); setTimesOwner(channel.times_owner_id ?? ""); }}>
-                  <NotebookPen size={14} /> {channel.times_owner_id ? "times を変更" : "times にする"}
+                <Button size="sm" variant="ghost" disabled={busy} title={t("admin.channels.timesTitle")} onClick={() => { setMarking(channel); setTimesOwner(channel.times_owner_id ?? ""); }}>
+                  <NotebookPen size={14} /> {channel.times_owner_id ? t("admin.channels.changeTimes") : t("admin.channels.makeTimes")}
                 </Button>
                 <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setArchiving(channel)}>
-                  <Archive size={14} /> アーカイブ
+                  <Archive size={14} /> {t("channel.archive")}
                 </Button>
               </div>
             )}
           </li>
         ))}
-        {channels.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">チャンネルがありません</li>}
+        {channels.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("invites.noChannels")}</li>}
       </ul>
       {marking && (
-        <Modal onClose={() => setMarking(null)} title={`#${marking.name} を times にする`} className="w-[420px]">
+        <Modal onClose={() => setMarking(null)} title={t("admin.channels.makeTimesTitle", { name: marking.name ?? "" })} className="w-[420px]">
           <form
             className="mt-3 space-y-3"
             onSubmit={(event) => {
@@ -144,27 +145,27 @@ function ChannelsTab({ controller }: { controller: AppController }) {
               void controller.setTimesOwner(marking.id, timesOwner || null).then((ok) => { setBusy(false); if (ok) setMarking(null); });
             }}
           >
-            <p className="text-xs text-muted">その人の作業ログとして扱います。他の人には静かな未読 (メンションのときだけ通知) になり、その人はチャンネルのオーナーになります。1 人 1 つまでです。</p>
-            <Field label="誰の times か">
+            <p className="text-xs text-muted">{t("admin.channels.timesNote")}</p>
+            <Field label={t("admin.channels.timesOwner")}>
               <select value={timesOwner} onChange={(e) => setTimesOwner(e.target.value)} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
-                <option value="">times にしない</option>
+                <option value="">{t("admin.channels.notTimes")}</option>
                 {people.map((u) => <option key={u.id} value={u.id}>{u.display_name} (@{u.username})</option>)}
               </select>
             </Field>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => setMarking(null)}>キャンセル</Button>
-              <Button type="submit" disabled={busy || timesOwner === (marking.times_owner_id ?? "")}>保存</Button>
+              <Button type="button" variant="secondary" onClick={() => setMarking(null)}>{t("common.cancel")}</Button>
+              <Button type="submit" disabled={busy || timesOwner === (marking.times_owner_id ?? "")}>{t("common.save")}</Button>
             </div>
           </form>
         </Modal>
       )}
       {renaming && (
-        <Modal onClose={() => setRenaming(null)} title="チャンネル名を変更" className="w-[440px]">
+        <Modal onClose={() => setRenaming(null)} title={t("dialogs.renameChannel")} className="w-[440px]">
           <form className="mt-4 space-y-4" onSubmit={rename}>
             <Input value={name} pattern="[a-z0-9][a-z0-9._-]*" maxLength={80} autoFocus required onChange={(e) => setName(e.target.value.toLowerCase())} />
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => setRenaming(null)}>キャンセル</Button>
-              <Button type="submit" disabled={busy || !name.trim() || name.trim() === renaming.name}>保存</Button>
+              <Button type="button" variant="secondary" onClick={() => setRenaming(null)}>{t("common.cancel")}</Button>
+              <Button type="submit" disabled={busy || !name.trim() || name.trim() === renaming.name}>{t("common.save")}</Button>
             </div>
           </form>
         </Modal>
@@ -178,11 +179,11 @@ function ChannelsTab({ controller }: { controller: AppController }) {
 
 export function ArchiveConfirm({ channel, busy, onClose, onConfirm }: { channel: ChannelState; busy: boolean; onClose: () => void; onConfirm: () => void }) {
   return (
-    <Modal onClose={onClose} title={`#${channel.name} をアーカイブしますか？`} className="w-[440px]">
-      <p className="mt-3 text-sm text-muted">以後は投稿できなくなります。履歴の閲覧と検索はできます。元に戻す操作は用意していません。</p>
+    <Modal onClose={onClose} title={t("admin.channels.archiveTitle", { name: channel.name ?? "" })} className="w-[440px]">
+      <p className="mt-3 text-sm text-muted">{t("admin.channels.archiveNote")}</p>
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>キャンセル</Button>
-        <Button variant="danger" disabled={busy} onClick={onConfirm}>アーカイブする</Button>
+        <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+        <Button variant="danger" disabled={busy} onClick={onConfirm}>{t("admin.channels.archiveConfirm")}</Button>
       </div>
     </Modal>
   );

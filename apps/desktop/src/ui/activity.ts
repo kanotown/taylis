@@ -3,10 +3,11 @@
  * the newest time a screen of rows marks read, and pages put together.
  */
 import type { ActivityFilter, ActivityItem } from "../api/types";
+import { t } from "../i18n";
 
 export const ACTIVITY_FILTERS: readonly ActivityFilter[] = ["all", "mentions", "threads", "reactions"];
 
-export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = { all: "すべて", mentions: "メンション", threads: "スレッド", reactions: "リアクション" };
+export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = { get all() { return t("admin.users.filter.all"); }, get mentions() { return t("nav.mentions"); }, get threads() { return t("nav.threads"); }, get reactions() { return t("activity.reactions"); } };
 
 /**
  * One row per kind and message (a reaction item is one message's reactions); a canvas mention (M76) by its own id (one
@@ -61,14 +62,14 @@ export function appendActivityPage(held: readonly ActivityItem[], page: readonly
  */
 export function activityHeadline(item: Pick<ActivityItem, "kind" | "actor_ids" | "canvas" | "reservation">, nameOf: (userId: string) => string): { who: string; what: string } {
   // M112: a reservation notice — the pool, and whether it is a to-do (an operator's) or news of my own reservation.
-  if (item.kind === "reservation") return { who: item.reservation?.pool_name ?? "予約", what: item.reservation?.operator ? " · 担当者の作業" : " · 予約" };
+  if (item.kind === "reservation") return { who: item.reservation?.pool_name ?? t("nav.reservations"), what: item.reservation?.operator ? ` · ${t("reservations.todos")}` : ` · ${t("reservations.booking")}` };
   const first = item.actor_ids[0];
-  const name = first ? nameOf(first) : "誰か";
-  if (item.kind === "mention") return { who: name, what: " がメンション" };
-  if (item.kind === "canvas_mention") return { who: name, what: ` が「${item.canvas?.title ?? "キャンバス"}」であなたをメンションしました` };
-  if (item.kind === "thread_reply") return { who: name, what: " がスレッドに返信" };
+  const name = first ? nameOf(first) : t("activity.someone");
+  if (item.kind === "mention") return { who: name, what: t("activity.mentioned") };
+  if (item.kind === "canvas_mention") return { who: name, what: t("activity.canvasMentioned", { title: item.canvas?.title ?? t("main.tab.canvas") }) };
+  if (item.kind === "thread_reply") return { who: name, what: t("activity.repliedInThread") };
   const others = Math.max(0, item.actor_ids.length - 1);
-  return others > 0 ? { who: `${name} ほか ${others} 人`, what: "が" } : { who: name, what: " が" };
+  return others > 0 ? { who: t("activity.andOthers", { name, count: others }), what: t("activity.reactedMany") } : { who: name, what: t("activity.reacted") };
 }
 
 /** The same headline as plain text (the row's accessible name), the emoji written out. */
@@ -81,12 +82,12 @@ export function activityHeadlineText(item: Pick<ActivityItem, "kind" | "actor_id
 export function activityEmptyText(filter: ActivityFilter): string {
   switch (filter) {
     case "mentions":
-      return "まだメンションはありません";
+      return t("activity.empty.mentions");
     case "threads":
-      return "フォロー中のスレッドへの返信はまだありません";
+      return t("activity.empty.threads");
     case "reactions":
-      return "自分の投稿へのリアクションはまだありません";
+      return t("activity.empty.reactions");
     default:
-      return "まだアクティビティはありません";
+      return t("activity.empty.all");
   }
 }

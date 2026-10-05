@@ -89,7 +89,12 @@ def _token_response(
 
 
 async def login(
-    db: AsyncSession, data: LoginRequest, settings: Settings, ip: str | None
+    db: AsyncSession,
+    data: LoginRequest,
+    settings: Settings,
+    ip: str | None,
+    *,
+    locale: str | None = None,
 ) -> TokenResponse:
     # All mutations lock user before sessions, so login cannot race a password reset.
     user = await users.get_by_username(db, data.username, for_update=True)
@@ -101,7 +106,7 @@ async def login(
     await totp.check_login(
         db, user.id, data.totp_code, now
     )  # M12i: 401 totp_required / invalid_totp
-    return await open_session(db, user, data.device, settings, ip, now)
+    return await open_session(db, user, data.device, settings, ip, now, locale=locale)
 
 
 async def open_session(
@@ -111,13 +116,17 @@ async def open_session(
     settings: Settings,
     ip: str | None,
     now: datetime,
+    *,
+    locale: str | None = None,
 ) -> TokenResponse:
-    """A new device and session for an authenticated user, committed (password login, M48 SSO)."""
+    """A new device and session for an authenticated user, committed (password login, M48 SSO).
+    `locale`: the app's language (Accept-Language, M115), for pushes to the device."""
     device = Device(
         user_id=user.id,
         platform=device_data.platform,
         device_name=device_data.device_name,
         app_version=device_data.app_version,
+        locale=locale,
         last_seen_at=now,
         created_at=now,
         updated_at=now,
@@ -141,7 +150,12 @@ async def open_session(
 
 
 async def refresh(
-    db: AsyncSession, token: str, settings: Settings, ip: str | None
+    db: AsyncSession,
+    token: str,
+    settings: Settings,
+    ip: str | None,
+    *,
+    locale: str | None = None,
 ) -> TokenResponse:
     token_hash = hash_token(token)
     candidate = await repo.get_by_refresh_hash(db, token_hash)
@@ -185,6 +199,8 @@ async def refresh(
     session.expires_at = expires_at
     device.last_seen_at = now
     device.updated_at = now
+    if locale is not None:  # M115: the language the app asks in now
+        device.locale = locale
     await db.commit()
     return _token_response(user, session, device, refresh_token, settings, now)
 
@@ -230,9 +246,13 @@ async def revoke_session(db: AsyncSession, context: AuthContext, session_id: uui
     await db.commit()
 
 
-async def update_device(db: AsyncSession, context: AuthContext, data: DeviceUpdate) -> DeviceOut:
+async def update_device(
+    db: AsyncSession, context: AuthContext, data: DeviceUpdate, *, locale: str | None = None
+) -> DeviceOut:
     context = await _lock_current(db, context)
     device = await _require_device(db, context.session)
+    if locale is not None:  # M115
+        device.locale = locale
     if "device_name" in data.model_fields_set:
         device.device_name = data.device_name
     if "app_version" in data.model_fields_set:

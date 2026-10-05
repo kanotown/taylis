@@ -33,9 +33,10 @@ import {
   walkinText,
   whenLabel,
 } from "./reservationPools";
+import { t } from "../i18n";
 
 function userName(controller: AppController, userId: string): string {
-  return controller.store.users.get(userId)?.display_name ?? "(不明)";
+  return controller.store.users.get(userId)?.display_name ?? t("reservations.unknown");
 }
 
 /** The page (the centre view on a wide screen, a pushed screen on a phone). */
@@ -50,20 +51,20 @@ export function ReservationsView({ controller }: { controller: AppController }) 
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4 max-md:px-2">
         <BackButton />
         <span className="text-muted max-md:hidden"><Ticket size={18} /></span>
-        <strong className="text-[15px]">予約</strong>
+        <strong className="text-[15px]">{t("nav.reservations")}</strong>
         {controller.isAdmin && (
-          <Button size="sm" className="ml-auto" onClick={() => setEditing("new")} aria-label="枠を追加">
-            <Plus size={14} /> <span className="max-md:hidden">枠を追加</span>
+          <Button size="sm" className="ml-auto" onClick={() => setEditing("new")} aria-label={t("reservations.addPool")}>
+            <Plus size={14} /> <span className="max-md:hidden">{t("reservations.addPool")}</span>
           </Button>
         )}
       </header>
       <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-4 max-md:px-3">
         <div className="mx-auto max-w-5xl space-y-8">
           {pools === null ? (
-            <p className="text-sm text-muted">読み込み中…</p>
+            <p className="text-sm text-muted">{t("common.loading")}</p>
           ) : pools.length === 0 ? (
             <p className="text-sm text-muted">
-              予約の枠はありません。{controller.isAdmin ? "共有のアカウントやシートなど、数に限りのあるものを時間で予約する枠を作れます。" : ""}
+              {t("reservations.none")}{controller.isAdmin ? t("reservations.noneAdmin") : ""}
             </p>
           ) : (
             pools.map((pool) => <PoolSection key={pool.id} controller={controller} pool={pool} onEdit={() => setEditing(pool)} />)
@@ -109,54 +110,54 @@ export function PoolSection({ controller, pool, onEdit }: { controller: AppContr
       <div className="flex flex-wrap items-center gap-2">
         <Ticket size={16} className="shrink-0 text-muted" />
         <h2 className="min-w-0 truncate text-[16px] font-semibold">{pool.name}</h2>
-        <span className="text-xs text-muted">{pool.capacity} 枠 · 予約は 1 回 {pool.max_hours} 時間まで</span>
-        {!pool.enabled && <Badge>停止中</Badge>}
+        <span className="text-xs text-muted">{t("reservations.poolSummary", { capacity: pool.capacity, hours: pool.max_hours })}</span>
+        {!pool.enabled && <Badge>{t("workflow.paused")}</Badge>}
         {pool.can_manage && (
-          <Button size="sm" variant="ghost" onClick={onEdit} aria-label={`${pool.name} の設定`}><Pencil size={13} /></Button>
+          <Button size="sm" variant="ghost" onClick={onEdit} aria-label={t("reservations.poolSettingsOf", { name: pool.name })}><Pencil size={13} /></Button>
         )}
         <span className="ml-auto flex gap-2">
-          <Button size="sm" disabled={!pool.enabled || busy || mine.bookings.length >= 2} onClick={() => setBooking(true)} title={mine.bookings.length >= 2 ? "予約は 2 件までです" : undefined}>
-            <CalendarClock size={14} /> 予約する
+          <Button size="sm" disabled={!pool.enabled || busy || mine.bookings.length >= 2} onClick={() => setBooking(true)} title={mine.bookings.length >= 2 ? t("reservations.twoMax") : undefined}>
+            <CalendarClock size={14} /> {t("reservations.book")}
           </Button>
           {!mine.walkin && (
             <Button size="sm" variant="secondary" disabled={!pool.enabled || busy} onClick={() => void run(() => controller.reservePool(pool.id))}>
-              今すぐ (順番待ち)
+              {t("reservations.walkinButton")}
             </Button>
           )}
         </span>
       </div>
 
       {(mine.walkin || mine.bookings.length > 0) && (
-        <div className="rounded-xl border border-line px-3 py-2" aria-label="自分の予約">
-          <h3 className="text-xs font-semibold text-muted">自分の予約</h3>
+        <div className="rounded-xl border border-line px-3 py-2" aria-label={t("reservations.mine")}>
+          <h3 className="text-xs font-semibold text-muted">{t("reservations.mine")}</h3>
           <ul className="divide-y divide-line">
             {mine.bookings.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center gap-2 py-2 text-sm" data-my-booking={row.id}>
                 <span className="min-w-0 flex-1">{bookingText(row, now)}</span>
                 {row.status === "booked" && (
                   <>
-                    <Button size="sm" variant="secondary" disabled={busy || !row.can_extend} onClick={() => void run(() => controller.extendReservation(row.id))} title={row.can_extend ? undefined : "次の 1 時間は空いていないか、上限です"}>
-                      1 時間延長
+                    <Button size="sm" variant="secondary" disabled={busy || !row.can_extend} onClick={() => void run(() => controller.extendReservation(row.id))} title={row.can_extend ? undefined : t("reservations.cannotExtend")}>
+                      {t("reservations.extend")}
                     </Button>
-                    <ConfirmButton label="取り消す" question="この予約を取り消しますか？" disabled={busy} onConfirm={() => void run(() => controller.reservationAction(row.id, "cancel"))} />
+                    <ConfirmButton label={t("reservations.cancel")} question={t("reservations.cancelQuestion")} disabled={busy} onConfirm={() => void run(() => controller.reservationAction(row.id, "cancel"))} />
                   </>
                 )}
                 {row.status === "holding" && (
                   <>
-                    <Button size="sm" variant="secondary" disabled={busy || !row.can_extend} onClick={() => void run(() => controller.extendReservation(row.id))}>1 時間延長</Button>
-                    <ConfirmButton label="返却する" question="使い終わりましたか？ 担当者に外してもらいます。" disabled={busy} onConfirm={() => void run(() => controller.reservationAction(row.id, "return"))} />
+                    <Button size="sm" variant="secondary" disabled={busy || !row.can_extend} onClick={() => void run(() => controller.extendReservation(row.id))}>{t("reservations.extend")}</Button>
+                    <ConfirmButton label={t("reservations.return")} question={t("reservations.returnQuestion")} disabled={busy} onConfirm={() => void run(() => controller.reservationAction(row.id, "return"))} />
                   </>
                 )}
               </li>
             ))}
             {mine.walkin && (
               <li className="flex flex-wrap items-center gap-2 py-2 text-sm" data-my-walkin={mine.walkin.id}>
-                <span className="min-w-0 flex-1">今すぐ: {walkinText(mine.walkin, pool, now)}</span>
+                <span className="min-w-0 flex-1">{t("reservations.walkinLine", { text: walkinText(mine.walkin, pool, now) })}</span>
                 {mine.walkin.status === "waiting" && (
-                  <Button size="sm" variant="secondary" disabled={busy} onClick={() => void run(() => controller.reservationAction(mine.walkin!.id, "cancel"))}>取り消す</Button>
+                  <Button size="sm" variant="secondary" disabled={busy} onClick={() => void run(() => controller.reservationAction(mine.walkin!.id, "cancel"))}>{t("reservations.cancel")}</Button>
                 )}
                 {mine.walkin.status === "holding" && (
-                  <ConfirmButton label="返却する" question="使い終わりましたか？ 担当者に外してもらいます。" disabled={busy} onConfirm={() => void run(() => controller.reservationAction(mine.walkin!.id, "return"))} />
+                  <ConfirmButton label={t("reservations.return")} question={t("reservations.returnQuestion")} disabled={busy} onConfirm={() => void run(() => controller.reservationAction(mine.walkin!.id, "return"))} />
                 )}
               </li>
             )}
@@ -168,10 +169,10 @@ export function PoolSection({ controller, pool, onEdit }: { controller: AppContr
 
       <div className="space-y-2">
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" aria-label="前の日" disabled={dayIndex === 0} onClick={() => setDay(days[dayIndex - 1]!)}><ChevronLeft size={14} /></Button>
+          <Button size="sm" variant="ghost" aria-label={t("reservations.prevDay")} disabled={dayIndex === 0} onClick={() => setDay(days[dayIndex - 1]!)}><ChevronLeft size={14} /></Button>
           <select
-            aria-label="日付"
-            className="rounded-lg border border-line bg-canvas px-2 py-1 text-sm"
+            aria-label={t("reservations.date")}
+className="rounded-lg border border-line bg-canvas px-2 py-1 text-sm"
             value={day.getTime()}
             onChange={(e) => setDay(new Date(Number(e.target.value)))}
           >
@@ -179,7 +180,7 @@ export function PoolSection({ controller, pool, onEdit }: { controller: AppContr
               <option key={d.getTime()} value={d.getTime()}>{dayLabel(d, now)}{dayLabel(d, now).length <= 2 ? ` (${d.getMonth() + 1}/${d.getDate()})` : ""}</option>
             ))}
           </select>
-          <Button size="sm" variant="ghost" aria-label="次の日" disabled={dayIndex >= days.length - 1} onClick={() => setDay(days[dayIndex + 1]!)}><ChevronRight size={14} /></Button>
+          <Button size="sm" variant="ghost" aria-label={t("reservations.nextDay")} disabled={dayIndex >= days.length - 1} onClick={() => setDay(days[dayIndex + 1]!)}><ChevronRight size={14} /></Button>
         </div>
         <Timeline controller={controller} pool={pool} day={day} now={now} />
       </div>
@@ -187,9 +188,8 @@ export function PoolSection({ controller, pool, onEdit }: { controller: AppContr
       <WalkIns controller={controller} pool={pool} now={now} busy={busy} run={run} />
 
       <p className="text-xs text-muted">
-        予約は毎時 0 分から {pool.max_hours} 時間まで、2 週間先まで、1 人 2 件まで。「今すぐ」は空いている枠を次の予約が始まるまで使えます
-        (最長 {pool.min_hours} 時間の保証。過ぎた後に待つ人がいれば {pool.grace_minutes} 分後に入れ替え)。
-        {pool.can_operate ? " 担当者の操作 (割り当てた・外した・入れ替えた) は、管理画面で実際に変えた後に押してください。" : ""}
+        {t("reservations.rules", { maxHours: pool.max_hours, minHours: pool.min_hours, grace: pool.grace_minutes })}
+        {pool.can_operate ? t("reservations.operatorRule") : ""}
       </p>
       {booking && <BookingDialog controller={controller} pool={pool} initialDay={day} onClose={() => setBooking(false)} />}
     </section>
@@ -202,7 +202,7 @@ function ConfirmButton({ label, question, disabled, onConfirm, variant = "second
   return (
     <span className="flex items-center gap-1 rounded-lg bg-panel-2 px-2 py-1 text-xs">
       {question}
-      <Button size="sm" variant="secondary" onClick={() => setAsking(false)}>やめる</Button>
+      <Button size="sm" variant="secondary" onClick={() => setAsking(false)}>{t("reservations.dontDo")}</Button>
       <Button
         size="sm"
         variant={variant === "danger" ? "danger" : undefined}
@@ -226,15 +226,15 @@ function TodoList({ controller, pool, todos, now, busy, run }: { controller: App
     if (todo.action === "swap" && todo.remove_id && todo.assign_id) return run(() => controller.swapReservations(pool.id, todo.remove_id!, todo.assign_id!));
     return Promise.resolve();
   };
-  const label = (todo: TodoOut) => (todo.action === "assign" ? "割り当てた" : todo.action === "remove" ? "外した" : "入れ替えた");
+  const label = (todo: TodoOut) => (todo.action === "assign" ? t("reservations.assigned") : todo.action === "remove" ? t("reservations.removed") : t("reservations.swapped"));
   const upcomingBooking = (todo: TodoOut) => (todo.upcoming ? rowOf(pool, todo.assign_id) : undefined);
   return (
-    <div className="rounded-xl border border-line px-3 py-2" aria-label="担当者の作業" data-todos>
+    <div className="rounded-xl border border-line px-3 py-2" aria-label={t("reservations.todos")} data-todos>
       <h3 className="flex items-center gap-2 text-xs font-semibold text-muted">
-        担当者の作業 {dueTodos(pool).length > 0 && <Badge tone="danger">{dueTodos(pool).length}</Badge>}
+        {t("reservations.todos")} {dueTodos(pool).length > 0 && <Badge tone="danger">{dueTodos(pool).length}</Badge>}
       </h3>
       {todos.length === 0 ? (
-        <p className="py-2 text-sm text-muted">今はありません</p>
+        <p className="py-2 text-sm text-muted">{t("reservations.noTodos")}</p>
       ) : (
         <ul className="divide-y divide-line">
           {todos.map((todo) => {
@@ -242,7 +242,7 @@ function TodoList({ controller, pool, todos, now, busy, run }: { controller: App
             const tooEarly = !!early?.start_at && Date.parse(early.start_at) - now.getTime() > 10 * 60_000;
             return (
               <li key={todo.key} className="flex flex-wrap items-center gap-2 py-2 text-sm" data-todo={todo.key}>
-                {todo.upcoming && <Badge tone="accent">まもなく</Badge>}
+                {todo.upcoming && <Badge tone="accent">{t("reservations.soon")}</Badge>}
                 <span className="min-w-0 flex-1">{todoLine(todo, pool, name, now)}</span>
                 <Button size="sm" variant={todo.upcoming ? "secondary" : undefined} disabled={busy || tooEarly} onClick={() => void press(todo)}>{label(todo)}</Button>
               </li>
@@ -291,13 +291,13 @@ function Timeline({ controller, pool, day, now }: { controller: AppController; p
           {today && nowAt > 0 && nowAt < 1 && <div className="absolute bottom-0 top-0 w-px bg-rose-500" style={{ left: `${nowAt * 100}%` }} aria-hidden="true" />}
           {bars.map((bar) => {
             const who = userName(controller, bar.userId);
-            const span = `${hm(bar.start)}〜${hm(bar.end)}`;
+            const span = `${hm(bar.start)}${t("common.rangeTo")}${hm(bar.end)}`;
             const mineBar = bar.userId === me;
             return (
               <div
                 key={bar.id}
                 data-bar={bar.id}
-                title={`${who} · ${bar.kind === "walkin" ? "今すぐ" : "予約"} ${span}`}
+                title={`${who} · ${bar.kind === "walkin" ? t("reservations.walkin") : t("reservations.booking")} ${span}`}
                 className={cn(
                   "absolute flex items-center gap-1 overflow-hidden rounded-md px-1.5 text-[11px] leading-none",
                   bar.kind === "walkin" ? "border border-dashed border-amber-500 bg-amber-500/15" : "bg-accent-soft text-accent",
@@ -314,9 +314,9 @@ function Timeline({ controller, pool, day, now }: { controller: AppController; p
         </div>
       </div>
       <div className="flex gap-3 border-t border-line px-2 py-1 text-[11px] text-muted">
-        <span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-accent-soft align-middle" />予約</span>
-        <span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-accent-solid align-middle" />予約 (利用中)</span>
-        <span><span className="mr-1 inline-block h-2 w-3 rounded-sm border border-dashed border-amber-500 align-middle" />今すぐ</span>
+        <span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-accent-soft align-middle" />{t("reservations.booking")}</span>
+        <span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-accent-solid align-middle" />{t("reservations.bookingInUse")}</span>
+        <span><span className="mr-1 inline-block h-2 w-3 rounded-sm border border-dashed border-amber-500 align-middle" />{t("reservations.walkin")}</span>
       </div>
     </div>
   );
@@ -339,32 +339,32 @@ function WalkIns({ controller, pool, now, busy, run }: { controller: AppControll
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <div className="rounded-xl border border-line px-3 py-2">
-        <h3 className="text-xs font-semibold text-muted">利用中 ({pool.holders.length}/{pool.capacity})</h3>
+        <h3 className="text-xs font-semibold text-muted">{t("reservations.holdersTitle", { count: pool.holders.length, capacity: pool.capacity })}</h3>
         <ul>
           {pool.holders.map((row) =>
             person(
               row,
               row.kind === "booking" && row.start_at && row.end_at
-                ? `予約 ${spanLabel(row.start_at, row.end_at, now)}${row.status === "returning" ? " · 返却済み" : ""}`
+                ? `${t("reservations.booking")} ${spanLabel(row.start_at, row.end_at, now)}${row.status === "returning" ? ` · ${t("reservations.returned")}` : ""}`
                 : walkinText(row, pool, now),
             ),
           )}
-          {pool.holders.length === 0 && <li className="py-1.5 text-sm text-muted">いません</li>}
+          {pool.holders.length === 0 && <li className="py-1.5 text-sm text-muted">{t("reservations.nobody")}</li>}
         </ul>
       </div>
       <div className="rounded-xl border border-line px-3 py-2">
-        <h3 className="text-xs font-semibold text-muted">今すぐの順番待ち ({pool.waiting.length})</h3>
+        <h3 className="text-xs font-semibold text-muted">{t("reservations.queueTitle", { count: pool.waiting.length })}</h3>
         <ul>
           {pool.waiting.map((row) =>
             person(
               row,
-              `${whenLabel(row.requested_at, now)} から · ${row.step === "assign" ? (row.until ? `空きあり (〜${whenLabel(row.until, now)})` : "空きあり") : row.step === "swap" ? "次に入れ替え" : `${row.position} 番目`}`,
+              `${t("reservations.since", { at: whenLabel(row.requested_at, now) })} · ${row.step === "assign" ? (row.until ? t("reservations.freeUntilShort", { until: whenLabel(row.until, now) }) : t("reservations.reason.free")) : row.step === "swap" ? t("reservations.nextSwap") : t("reservations.nth", { position: row.position })}`,
               pool.can_operate && row.user_id !== controller.store.me?.id ? (
-                <ConfirmButton label="取り消す" question={`${userName(controller, row.user_id)} さんの順番待ちを取り消しますか？`} disabled={busy} onConfirm={() => void run(() => controller.reservationAction(row.id, "cancel"))} />
+                <ConfirmButton label={t("reservations.cancel")} question={t("reservations.cancelQueueQuestion", { name: userName(controller, row.user_id) })} disabled={busy} onConfirm={() => void run(() => controller.reservationAction(row.id, "cancel"))} />
               ) : undefined,
             ),
           )}
-          {pool.waiting.length === 0 && <li className="py-1.5 text-sm text-muted">いません</li>}
+          {pool.waiting.length === 0 && <li className="py-1.5 text-sm text-muted">{t("reservations.nobody")}</li>}
         </ul>
       </div>
     </div>
@@ -392,11 +392,11 @@ export function BookingDialog({ controller, pool, initialDay, onClose }: { contr
     const out = await controller.bookReservation(pool.id, startOk.toISOString(), chosenHours);
     setBusy(false);
     if (out) onClose();
-    else setError(controller.error ?? "予約できませんでした");
+    else setError(controller.error ?? t("reservations.bookFailed"));
   };
   const end = startOk ? new Date(startOk.getTime() + chosenHours * 3_600_000) : null;
   return (
-    <Modal onClose={onClose} title={`${pool.name} を予約`} description={`毎時 0 分から、1〜${pool.max_hours} 時間。埋まっている時間は選べません。`} className="w-[480px]">
+    <Modal onClose={onClose} title={t("reservations.bookTitle", { name: pool.name })} description={t("reservations.bookDescription", { max: pool.max_hours })} className="w-[480px]">
       <form
         className="mt-3 space-y-3"
         onSubmit={(e) => {
@@ -405,30 +405,30 @@ export function BookingDialog({ controller, pool, initialDay, onClose }: { contr
         }}
       >
         <label className="block text-xs font-semibold text-muted">
-          日付
+          {t("reservations.date")}
           <select className="mt-1 block w-full rounded-lg border border-line bg-canvas px-2 py-2 text-sm" value={day.getTime()} onChange={(e) => setDay(new Date(Number(e.target.value)))}>
             {days.map((d) => <option key={d.getTime()} value={d.getTime()}>{dayLabel(d, now)} ({d.getMonth() + 1}/{d.getDate()})</option>)}
           </select>
         </label>
         <div className="grid grid-cols-2 gap-2">
           <label className="block text-xs font-semibold text-muted">
-            開始
-            <select aria-label="開始" className="mt-1 block w-full rounded-lg border border-line bg-canvas px-2 py-2 text-sm" value={startOk?.getTime() ?? ""} onChange={(e) => setStart(new Date(Number(e.target.value)))}>
-              {starts.map((s) => <option key={s.start.getTime()} value={s.start.getTime()} disabled={s.full}>{hm(s.start)}{s.full ? " (満)" : ""}</option>)}
+            {t("common.start")}
+            <select aria-label={t("common.start")} className="mt-1 block w-full rounded-lg border border-line bg-canvas px-2 py-2 text-sm" value={startOk?.getTime() ?? ""} onChange={(e) => setStart(new Date(Number(e.target.value)))}>
+              {starts.map((s) => <option key={s.start.getTime()} value={s.start.getTime()} disabled={s.full}>{hm(s.start)}{s.full ? t("reservations.full") : ""}</option>)}
             </select>
           </label>
           <label className="block text-xs font-semibold text-muted">
-            時間
-            <select aria-label="時間" className="mt-1 block w-full rounded-lg border border-line bg-canvas px-2 py-2 text-sm" value={chosenHours} onChange={(e) => setHours(Number(e.target.value))} disabled={durations.length === 0}>
-              {durations.map((h) => <option key={h} value={h}>{h} 時間</option>)}
+            {t("reservations.hours")}
+            <select aria-label={t("reservations.hours")} className="mt-1 block w-full rounded-lg border border-line bg-canvas px-2 py-2 text-sm" value={chosenHours} onChange={(e) => setHours(Number(e.target.value))} disabled={durations.length === 0}>
+              {durations.map((h) => <option key={h} value={h}>{t("reservations.hoursValue", { count: h })}</option>)}
             </select>
           </label>
         </div>
-        {startOk && end ? <p className="text-sm">{spanLabel(startOk.toISOString(), end.toISOString(), now)}</p> : <p className="text-sm text-muted">この日は空いている時間がありません</p>}
+        {startOk && end ? <p className="text-sm">{spanLabel(startOk.toISOString(), end.toISOString(), now)}</p> : <p className="text-sm text-muted">{t("reservations.noFreeTime")}</p>}
         {error && <p role="alert" className="text-xs text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
-          <Button size="sm" variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button size="sm" type="submit" disabled={busy || !startOk || durations.length === 0}>予約する</Button>
+          <Button size="sm" variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button size="sm" type="submit" disabled={busy || !startOk || durations.length === 0}>{t("reservations.book")}</Button>
         </div>
       </form>
     </Modal>
@@ -486,8 +486,8 @@ export function PoolSettingsDialog({ controller, pool, onClose }: { controller: 
   const submit = async () => {
     const problem = poolFormProblem(form);
     if (problem) return setError(problem);
-    if (form.visibility === "channel" && !form.visibilityChannelId) return setError("見える人のチャンネルを選んでください");
-    if (form.visibility === "group" && !form.visibilityGroupId) return setError("見える人のグループを選んでください");
+    if (form.visibility === "channel" && !form.visibilityChannelId) return setError(t("reservations.check.visibilityChannel"));
+    if (form.visibility === "group" && !form.visibilityGroupId) return setError(t("reservations.check.visibilityGroup"));
     setBusy(true);
     setError(null);
     const body = {
@@ -506,44 +506,44 @@ export function PoolSettingsDialog({ controller, pool, onClose }: { controller: 
     const out = pool ? await controller.updateReservationPool(pool.id, body) : await controller.createReservationPool({ ...body, tz: deviceZone() } as PoolCreate);
     setBusy(false);
     if (out) onClose();
-    else setError(controller.error ?? "保存できませんでした");
+    else setError(controller.error ?? t("common.saveFailed"));
   };
   const field = "block text-xs font-semibold text-muted";
   const select = "mt-1 block w-full rounded-lg border border-line bg-canvas px-2 py-2 text-sm text-ink";
   return (
-    <Modal onClose={onClose} title={pool ? "枠の設定" : "枠を追加"} description="数に限りのあるもの (共有のシートなど) を時間で予約する枠" className="w-[600px]">
+    <Modal onClose={onClose} title={pool ? t("reservations.poolSettings") : t("reservations.addPool")} description={t("reservations.poolDescription")} className="w-[600px]">
       <form
         className="mt-3 space-y-3"
-        aria-label={pool ? "枠を編集" : "枠を追加"}
+        aria-label={pool ? t("reservations.editPool") : t("reservations.addPool")}
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
         }}
       >
         <label className={field}>
-          名前
-          <Input className="mt-1" maxLength={80} placeholder="例: Claude Premium シート" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />
+          {t("reservations.name")}
+          <Input className="mt-1" maxLength={80} placeholder={t("reservations.namePlaceholder")} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />
         </label>
         <div className="grid grid-cols-4 gap-2 max-md:grid-cols-2">
           <label className={field}>
-            枠の数
+            {t("reservations.capacity")}
             <Input className="mt-1" inputMode="numeric" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} />
           </label>
           <label className={field}>
-            予約の最長 (時間)
+            {t("reservations.maxHours")}
             <Input className="mt-1" inputMode="numeric" value={form.maxHours} onChange={(e) => setForm({ ...form, maxHours: e.target.value })} />
           </label>
           <label className={field}>
-            今すぐの保証 (時間)
+            {t("reservations.minHours")}
             <Input className="mt-1" inputMode="numeric" value={form.minHours} onChange={(e) => setForm({ ...form, minHours: e.target.value })} />
           </label>
           <label className={field}>
-            猶予 (分)
+            {t("reservations.grace")}
             <Input className="mt-1" inputMode="numeric" value={form.graceMinutes} onChange={(e) => setForm({ ...form, graceMinutes: e.target.value })} />
           </label>
         </div>
         <fieldset>
-          <legend className={field}>担当者 (割り当て・外す人。作業の通知が届き、予約した人のメールアドレスが見えます)</legend>
+          <legend className={field}>{t("reservations.operators")}</legend>
           <div className="mt-1 max-h-40 space-y-0.5 overflow-y-auto rounded-md border border-line px-2 py-1">
             {people.map((u) => (
               <label key={u.id} className="flex items-center gap-2 text-sm">
@@ -556,67 +556,67 @@ export function PoolSettingsDialog({ controller, pool, onClose }: { controller: 
               </label>
             ))}
           </div>
-          <p className="mt-1 text-xs text-muted">選ばないと、枠を作った人 (いなければ管理者) に届きます。</p>
+          <p className="mt-1 text-xs text-muted">{t("reservations.operatorsNote")}</p>
         </fieldset>
         <div className="grid grid-cols-2 gap-2 max-md:grid-cols-1">
           <label className={field}>
-            見える人
+            {t("reservations.visibility")}
             <select className={select} value={form.visibility} onChange={(e) => setForm({ ...form, visibility: e.target.value as Form["visibility"] })}>
-              <option value="all">全員 (ゲストを除く)</option>
-              <option value="channel">チャンネルのメンバー</option>
-              <option value="group">グループのメンバー</option>
+              <option value="all">{t("reservations.visibilityAll")}</option>
+              <option value="channel">{t("reservations.visibilityChannel")}</option>
+              <option value="group">{t("reservations.visibilityGroup")}</option>
             </select>
           </label>
           {form.visibility === "channel" && (
             <label className={field}>
-              チャンネル
+              {t("sidebar.channels")}
               <select className={select} value={form.visibilityChannelId} onChange={(e) => setForm({ ...form, visibilityChannelId: e.target.value })}>
-                <option value="">選んでください</option>
+                <option value="">{t("workflow.choose")}</option>
                 {channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
               </select>
             </label>
           )}
           {form.visibility === "group" && (
             <label className={field}>
-              グループ
+              {t("composer.group")}
               <select className={select} value={form.visibilityGroupId} onChange={(e) => setForm({ ...form, visibilityGroupId: e.target.value })}>
-                <option value="">選んでください</option>
+                <option value="">{t("workflow.choose")}</option>
                 {groups.map((g) => <option key={g.id} value={g.id}>@{g.name}</option>)}
               </select>
             </label>
           )}
         </div>
         <label className={field}>
-          記録を書くチャンネル (任意)
+          {t("reservations.logChannel")}
           <select className={select} value={form.logChannelId} onChange={(e) => setForm({ ...form, logChannelId: e.target.value })}>
-            <option value="">書かない</option>
+            <option value="">{t("reservations.noLog")}</option>
             {channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
           </select>
-          <span className="mt-1 block font-normal">選ぶと「予約」のボットが予約・取り消し・割り当てなどを 1 行ずつ書きます。通知は本人と担当者のアクティビティに届きます。</span>
+          <span className="mt-1 block font-normal">{t("reservations.logNote")}</span>
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-          予約を受け付ける
+          {t("reservations.accepting")}
         </label>
         {error && <p role="alert" className="text-xs text-danger">{error}</p>}
         {confirmDelete && pool && (
           <div className="space-y-1.5 rounded-lg bg-panel-2 px-2 py-1.5 text-xs">
             <p>
-              「{pool.name}」を削除しますか？ 予約・順番待ち・利用中の記録が消えます (記録のチャンネルの投稿は残ります)。
-              {pool.holders.length > 0 ? ` 利用中の ${pool.holders.length} 人のシートは管理画面で手で外してください。` : ""}
+              {t("reservations.deleteQuestion", { name: pool.name })}
+              {pool.holders.length > 0 ? t("reservations.deleteHolders", { count: pool.holders.length }) : ""}
             </p>
             <div className="flex justify-end gap-2">
-              <Button size="sm" variant="secondary" onClick={() => setConfirmDelete(false)}>キャンセル</Button>
-              <Button size="sm" variant="danger" onClick={() => void controller.deleteReservationPool(pool.id).then((ok) => { if (ok) onClose(); })}>削除</Button>
+              <Button size="sm" variant="secondary" onClick={() => setConfirmDelete(false)}>{t("common.cancel")}</Button>
+              <Button size="sm" variant="danger" onClick={() => void controller.deleteReservationPool(pool.id).then((ok) => { if (ok) onClose(); })}>{t("common.delete")}</Button>
             </div>
           </div>
         )}
         <div className="flex items-center justify-end gap-2">
           {pool && !confirmDelete && (
-            <Button size="sm" variant="ghost" className="mr-auto text-danger" onClick={() => setConfirmDelete(true)}><Trash2 size={13} /> 削除</Button>
+            <Button size="sm" variant="ghost" className="mr-auto text-danger" onClick={() => setConfirmDelete(true)}><Trash2 size={13} /> {t("common.delete")}</Button>
           )}
-          <Button size="sm" variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button size="sm" type="submit" disabled={busy}>{pool ? "保存" : "追加"}</Button>
+          <Button size="sm" variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button size="sm" type="submit" disabled={busy}>{pool ? t("common.save") : t("common.add")}</Button>
         </div>
       </form>
     </Modal>

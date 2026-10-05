@@ -6,10 +6,11 @@ import type { MemberOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar, presenceLabel } from "./Avatar";
-import { myName, SELF_NOTES_HINT } from "./channels";
+import { myName, selfNotesHint } from "./channels";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { compareByRoster, rosterLabel, titleExtra } from "./roster";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
+import { type MessageKey, t } from "../i18n";
 
 // The settings (M40) are in Settings.tsx: the phone's 「自分」 list and the wide layout's dialog.
 
@@ -72,7 +73,7 @@ export function NewDmDialog({ controller, onClose, onOpen }: DialogProps) {
   };
 
   return (
-    <Modal onClose={onClose} title="ダイレクトメッセージ" description="相手を選びます。複数選ぶとグループ DM になります。">
+    <Modal onClose={onClose} title={t("sidebar.dms")} description={t("dialogs.newDmDescription")}>
       <div className="mt-4 space-y-3">
         {/* A DM with only myself, titled with my name (as in Slack / Mattermost). */}
         {me && (
@@ -83,17 +84,17 @@ export function NewDmDialog({ controller, onClose, onOpen }: DialogProps) {
           >
             <NotebookPen size={16} className="shrink-0 text-muted" />
             <span className="shrink-0 font-medium">{myName(controller.store.users, me, controller.store.me)}</span>
-            <span className="min-w-0 truncate text-xs text-muted">{SELF_NOTES_HINT}</span>
+            <span className="min-w-0 truncate text-xs text-muted">{selfNotesHint()}</span>
           </button>
         )}
-        <UserPicker users={users} selected={selected} onToggle={toggle} empty="相手になるユーザーがいません" />
+        <UserPicker users={users} selected={selected} onToggle={toggle} empty={t("dialogs.noDmCandidates")} />
         <ErrorText error={error} />
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
-            閉じる
+            {t("common.close")}
           </Button>
           <Button onClick={() => void create()} disabled={selected.length === 0 || selected.length > 8}>
-            開く
+            {t("dialogs.open")}
           </Button>
         </div>
       </div>
@@ -120,7 +121,7 @@ export function AddMemberDialog({ controller, channelId, onClose }: { controller
     const api = controller.api;
     void (async () => {
       try {
-        if (!api) throw new Error("接続を確認してください");
+        if (!api) throw new Error(t("dialogs.checkConnection"));
         const list = await api.members(channelId);
         if (!cancelled) setMembers(new Set(list.map((m) => m.user_id)));
       } catch (error) {
@@ -146,22 +147,22 @@ export function AddMemberDialog({ controller, channelId, onClose }: { controller
   };
 
   return (
-    <Modal onClose={onClose} title="メンバーを追加">
+    <Modal onClose={onClose} title={t("dialogs.addMembers")}>
       <div className="mt-4 space-y-3">
         {loadError !== null ? (
           <div className="space-y-2 py-4 text-sm">
-            <p role="alert">メンバー一覧を読み込めませんでした</p>
+            <p role="alert">{t("dialogs.membersLoadFailed")}</p>
             <p className="text-muted">{loadError}</p>
-            <Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>再試行</Button>
+            <Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>{t("common.retry")}</Button>
           </div>
-        ) : members === null ? <p role="status" className="py-6 text-center text-sm text-muted">読み込み中…</p> : <UserPicker users={users} selected={selected} onToggle={toggle} empty="追加できるユーザーはいません" />}
+        ) : members === null ? <p role="status" className="py-6 text-center text-sm text-muted">{t("common.loading")}</p> : <UserPicker users={users} selected={selected} onToggle={toggle} empty={t("dialogs.noOneToAdd")} />}
         <ErrorText error={error} />
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
-            閉じる
+            {t("common.close")}
           </Button>
           <Button onClick={() => void add()} disabled={members === null || adding || selected.length === 0}>
-            追加
+            {t("common.add")}
           </Button>
         </div>
       </div>
@@ -203,25 +204,25 @@ export function NewChannelDialog({ controller, onClose, onOpen }: DialogProps) {
   );
 
   return (
-    <Modal onClose={onClose} title="チャンネルを作成">
+    <Modal onClose={onClose} title={t("sidebar.createChannel")}>
       <form className="mt-4 space-y-4" onSubmit={create}>
-        <Field label="名前" hint="小文字の英数字とハイフンがおすすめです">
+        <Field label={t("reservations.name")} hint={t("dialogs.channelNameHint")}>
           <div className="relative">
             <Hash size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="general" pattern="[^\s#@/]{1,80}" required autoFocus className="pl-8" />
           </div>
         </Field>
         <div className="flex gap-2">
-          {option("public", <Hash size={18} />, "パブリック", "誰でも参加できます")}
-          {option("private", <Lock size={18} />, "プライベート", "招待されたメンバーだけ")}
+          {option("public", <Hash size={18} />, t("dialogs.public"), t("dialogs.publicNote"))}
+          {option("private", <Lock size={18} />, t("dialogs.private"), t("dialogs.privateNote"))}
         </div>
         <ErrorText error={error} />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
-            閉じる
+            {t("common.close")}
           </Button>
           <Button type="submit" disabled={!name.trim()}>
-            作成
+            {t("common.create")}
           </Button>
         </div>
       </form>
@@ -233,16 +234,16 @@ export function NewChannelDialog({ controller, onClose, onOpen }: DialogProps) {
 export function MembersDialog({ controller, channel, onClose, onAdd }: { controller: AppController; channel: ChannelState; onClose: () => void; onAdd: () => void }) {
   const [members, setMembers] = useMembers(controller, channel.id);
   return (
-    <Modal onClose={onClose} title={`メンバー${members ? ` (${members.length})` : ""}`}>
+    <Modal onClose={onClose} title={members ? t("dialogs.membersCount", { count: members.length }) : t("channel.members")}>
       <div className="mt-4 space-y-3">
         {/* M65 (docs/AI.md §4): an AI bot among the members. */}
         <AiChannelNotice controller={controller} memberIds={members ? members.map((m) => m.user_id) : null} />
         <MemberList controller={controller} channel={channel} members={members} onChange={setMembers} className="max-h-80" />
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
-            閉じる
+            {t("common.close")}
           </Button>
-          {channel.isMember && !channel.archived && <Button onClick={onAdd}>メンバーを追加</Button>}
+          {channel.isMember && !channel.archived && <Button onClick={onAdd}>{t("dialogs.addMembers")}</Button>}
         </div>
       </div>
     </Modal>
@@ -282,7 +283,7 @@ export function MemberList({ controller, channel, members, onChange, className }
   const roster = controller.store.roster;
   const setMembers = onChange;
   return members === null ? (
-          <p className="py-6 text-center text-sm text-muted">読み込み中…</p>
+          <p className="py-6 text-center text-sm text-muted">{t("common.loading")}</p>
         ) : (
           <ul className={cn("divide-y divide-line overflow-y-auto rounded-xl border border-line", className)}>
             {members
@@ -304,8 +305,8 @@ export function MemberList({ controller, channel, members, onChange, className }
                     <span className="text-xs text-muted">{presenceLabel(controller.store.presenceOf(member.user_id))}</span>
                   )}
                   {roster.get(member.user_id) && <Badge>{rosterLabel(roster.get(member.user_id)!)}</Badge>}
-                  {member.role === "owner" && <Badge tone="accent">オーナー</Badge>}
-                  {controller.store.users.get(member.user_id)?.role === "guest" && <Badge>ゲスト</Badge>}
+                  {member.role === "owner" && <Badge tone="accent">{t("dialogs.owner")}</Badge>}
+                  {controller.store.users.get(member.user_id)?.role === "guest" && <Badge>{t("dialogs.guest")}</Badge>}
                   {/* L4: not for guests and bots (403 owner_not_allowed); the last owner is the server's to keep (409 last_owner). */}
                   {canManage && !channel.archived && (member.role === "owner" || (user?.role !== "guest" && user?.role !== "bot")) && (
                     <Button
@@ -319,7 +320,7 @@ export function MemberList({ controller, channel, members, onChange, className }
                         });
                       }}
                     >
-                      {member.role === "owner" ? "オーナーから外す" : "オーナーにする"}
+                      {member.role === "owner" ? t("dialogs.removeOwner") : t("dialogs.makeOwner")}
                     </Button>
                   )}
                   {canManage && member.user_id !== controller.store.me?.id && member.role !== "owner" && (
@@ -327,10 +328,10 @@ export function MemberList({ controller, channel, members, onChange, className }
                       size="sm"
                       variant="ghost"
                       className="text-muted hover:text-danger"
-                      title="チャンネルから外す"
+                      title={t("dialogs.removeFromChannel")}
                       onClick={() => void controller.removeMember(channel.id, member.user_id).then((ok) => { if (ok) setMembers((list) => list?.filter((m) => m.user_id !== member.user_id) ?? null); })}
                     >
-                      外す
+                      {t("settings.workspaces.remove")}
                     </Button>
                   )}
                 </li>
@@ -350,15 +351,15 @@ export function TopicDialog({ controller, channel, onClose }: { controller: AppC
     if (ok) onClose();
   };
   return (
-    <Modal onClose={onClose} title="トピック" description="このチャンネルで何を話すのかを一行で。">
+    <Modal onClose={onClose} title={t("dialogs.topic")} description={t("dialogs.topicDescription")}>
       <form className="mt-4 space-y-4" onSubmit={save}>
-        <Input value={topic} maxLength={250} autoFocus onChange={(e) => setTopic(e.target.value)} placeholder="例: 週次の進捗共有" />
+        <Input value={topic} maxLength={250} autoFocus onChange={(e) => setTopic(e.target.value)} placeholder={t("dialogs.topicPlaceholder")} />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
-            キャンセル
+            {t("common.cancel")}
           </Button>
           <Button type="submit" disabled={busy}>
-            保存
+            {t("common.save")}
           </Button>
         </div>
       </form>
@@ -378,15 +379,15 @@ export function RenameChannelDialog({ controller, channel, onClose }: { controll
     if (ok) onClose();
   };
   return (
-    <Modal onClose={onClose} title="チャンネル名を変更" description="小文字の英数字と . _ - が使えます。">
+    <Modal onClose={onClose} title={t("dialogs.renameChannel")} description={t("dialogs.renameChannelDescription")}>
       <form className="mt-4 space-y-4" onSubmit={save}>
         <Input value={name} pattern="[a-z0-9][a-z0-9._-]*" maxLength={80} autoFocus required onChange={(e) => setName(e.target.value.toLowerCase())} />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
-            キャンセル
+            {t("common.cancel")}
           </Button>
           <Button type="submit" disabled={busy || !name.trim() || name.trim() === channel.name}>
-            保存
+            {t("common.save")}
           </Button>
         </div>
       </form>
@@ -394,41 +395,45 @@ export function RenameChannelDialog({ controller, channel, onClose }: { controll
   );
 }
 
-const SHORTCUTS: Array<[string, string]> = [
-  ["F6 / Shift + F6", "サイドバー・メッセージ一覧・入力欄へ移動"],
-  ["↑ / ↓・Home / End (メッセージ上)", "前後・読み込み済みの先頭/末尾のメッセージへ移動"],
-  ["Enter / Shift + F10 (メッセージ上)", "メッセージの操作ボタンへ移動 (Tab で選択)"],
-  ["→ / T (メッセージ上)", "スレッドを開く"],
-  ["Ctrl/⌘ + K", "チャンネルや DM に移動"],
-  ["Ctrl/⌘ + Shift + K", "新しい DM"],
-  ["Ctrl/⌘ + F", "検索 (↑↓ で候補を選び Enter)"],
-  ["Ctrl/⌘ + 1〜9", "n 番目のワークスペースに切り替え (デスクトップ版)"],
-  ["Ctrl/⌘ + Shift + T", "フォロー中のスレッド一覧"],
-  ["Ctrl/⌘ + Shift + E", "チャンネルを探す"],
-  ["Alt/⌥ + ↑ / ↓", "前 / 次のチャンネル"],
-  ["Alt/⌥ + Shift + ↑ / ↓", "前 / 次の未読チャンネル"],
-  ["⌘ + [ / ]・Alt + ← / → (Windows)", "履歴を戻る / 進む (マウスの戻る / 進むボタンも)"],
-  ["⌘ + ← / → (Mac、入力欄の外)", "履歴を戻る / 進む"],
-  ["Esc", "パネルを閉じる。何も開いていなければ表示中のチャンネルを既読にする"],
-  ["↑ (空の入力欄)", "自分の最後のメッセージを編集"],
-  ["Shift + ↑ (空の入力欄)", "最後のメッセージにスレッドで返信"],
-  ["Shift + Enter / Enter", "送信 / 改行 (設定で入れ替え可能)"],
-  ["Alt/⌥ + クリック", "そのメッセージから未読にする"],
-  ["Ctrl/⌘ + B / I", "太字 / 斜体"],
-  ["Ctrl/⌘ + Shift + X / C", "取り消し線 / コード"],
-  ["Ctrl/⌘ + Shift + U", "リンクを挿入"],
-  ["Tab / Shift + Tab", "リスト項目の字下げ / 戻し"],
-  ["Ctrl/⌘ + U", "ファイルを添付"],
-  ["Ctrl/⌘ + Shift + L", "入力欄にフォーカス"],
-  ["Ctrl/⌘ + /", "この一覧"],
+function shortcuts(): Array<[string, string]> {
+  return SHORTCUT_KEYS.map(([keys, what]) => [keys.replace(/\{(\w+)\}/g, (_, k: string) => t(`shortcuts.${k}` as MessageKey)), t(what)]);
+}
+
+const SHORTCUT_KEYS: Array<[string, MessageKey]> = [
+  ["F6 / Shift + F6", "shortcuts.f6"],
+  ["↑ / ↓・Home / End {onMessage}", "shortcuts.arrows"],
+  ["Enter / Shift + F10 {onMessage}", "shortcuts.enter"],
+  ["→ / T {onMessage}", "shortcuts.openThread"],
+  ["Ctrl/⌘ + K", "shortcuts.jump"],
+  ["Ctrl/⌘ + Shift + K", "shortcuts.newDm"],
+  ["Ctrl/⌘ + F", "shortcuts.search"],
+  ["Ctrl/⌘ + 1〜9", "shortcuts.workspace"],
+  ["Ctrl/⌘ + Shift + T", "shortcuts.threads"],
+  ["Ctrl/⌘ + Shift + E", "shortcuts.browse"],
+  ["Alt/⌥ + ↑ / ↓", "shortcuts.prevNext"],
+  ["Alt/⌥ + Shift + ↑ / ↓", "shortcuts.prevNextUnread"],
+  ["⌘ + [ / ]・Alt + ← / → (Windows)", "shortcuts.history"],
+  ["⌘ + ← / → {macOutside}", "shortcuts.historyShort"],
+  ["Esc", "shortcuts.esc"],
+  ["↑ {emptyBox}", "shortcuts.editLast"],
+  ["Shift + ↑ {emptyBox}", "shortcuts.replyLast"],
+  ["Shift + Enter / Enter", "shortcuts.send"],
+  ["Alt/⌥ + {click}", "shortcuts.markUnread"],
+  ["Ctrl/⌘ + B / I", "shortcuts.boldItalic"],
+  ["Ctrl/⌘ + Shift + X / C", "shortcuts.strikeCode"],
+  ["Ctrl/⌘ + Shift + U", "shortcuts.link"],
+  ["Tab / Shift + Tab", "shortcuts.indent"],
+  ["Ctrl/⌘ + U", "shortcuts.attach"],
+  ["Ctrl/⌘ + Shift + L", "shortcuts.focus"],
+  ["Ctrl/⌘ + /", "shortcuts.this"],
 ];
 
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   return (
-    <Modal onClose={onClose} title="キーボードショートカット" className="w-[520px]">
+    <Modal onClose={onClose} title={t("main.shortcuts")} className="w-[520px]">
       <table className="mt-4 w-full text-sm">
         <tbody className="divide-y divide-line">
-          {SHORTCUTS.map(([keys, what]) => (
+          {shortcuts().map(([keys, what]) => (
             <tr key={keys}>
               <td className="whitespace-nowrap py-2 pr-4 align-top">
                 <Kbd>{keys}</Kbd>

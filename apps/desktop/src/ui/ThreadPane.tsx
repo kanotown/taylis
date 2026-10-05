@@ -16,6 +16,7 @@ import { useListAnchor } from "./scrollAnchor";
 import { MessageRow, screenRows } from "./Timeline";
 import { TypingIndicator } from "./Typing";
 import { READER_BACK } from "../platform/idle";
+import { t } from "../i18n";
 
 /** The right pane: one thread (parent + replies) with its own composer, follow toggle and read position. */
 export function ThreadPane({ controller, channel, parentId, onClose }: { controller: AppController; channel: ChannelState; parentId: string; onClose: () => void }) {
@@ -217,44 +218,44 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
       <header className="flex h-[52px] items-center gap-2 border-b border-line px-4">
         <PaneBackButton onClick={onClose} />
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold">スレッド</div>
+          <div className="text-sm font-semibold">{t("nav.threads")}</div>
           <div className="truncate text-xs text-muted">{channelTitle(channel, controller)}</div>
         </div>
         {state && channel.isMember && (
           <Button
             size="sm"
             variant={state.following ? "secondary" : "ghost"}
-            title={state.following ? "フォローを外すと一覧と通知から消えます" : "フォローすると返信が一覧と通知に届きます"}
+            title={state.following ? t("thread.unfollowTitle") : t("thread.followTitle")}
             aria-pressed={state.following}
             onClick={() => void engine?.setThreadFollow(parentId, !state.following).catch((error) => controller.setError(error))}
           >
             {state.following ? <BellRing size={14} /> : <Bell size={14} />}
-            {state.following ? "フォロー中" : "フォロー"}
+            {state.following ? t("thread.following") : t("thread.follow")}
           </Button>
         )}
         {/* M65: 「このスレッドを要約」 (docs/AI.md §6), only to the one who asks. */}
         {parent && !parent.pending && parent.seq !== null && !parent.parent_id && channel.isMember && summaryAvailable(controller) && (
           <Menu>
             <MenuTrigger asChild>
-              <button type="button" aria-label="スレッドの操作" title="スレッドの操作" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
+              <button type="button" aria-label={t("thread.actions")} title={t("thread.actions")} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
                 <MoreHorizontal size={18} />
               </button>
             </MenuTrigger>
             <MenuContent align="end">
-              <SummaryChoices controller={controller} channelId={channel.id} choices={[{ label: "このスレッドを要約", target: { channelId: channel.id, scope: "thread", threadId: parentId } }]} />
+              <SummaryChoices controller={controller} channelId={channel.id} choices={[{ label: t("thread.summarize"), target: { channelId: channel.id, scope: "thread", threadId: parentId } }]} />
             </MenuContent>
           </Menu>
         )}
         <PaneCloseButton onClick={onClose} />
       </header>
       {/* Chromium's own scroll anchoring is off: the pane anchors itself, the same on every engine (scrollAnchor.ts). */}
-      <div data-message-list data-chat-focus tabIndex={-1} aria-label="スレッドのメッセージ一覧" ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [overflow-anchor:none]" {...tapHandlers}>
+      <div data-message-list data-chat-focus tabIndex={-1} aria-label={t("preview.threadList")} ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [overflow-anchor:none]" {...tapHandlers}>
         <div ref={content}>
         {parent ? (
           <>
             <MessageRow thread message={parent} controller={controller} />
             <div className="my-2 flex items-center gap-2 text-xs text-muted">
-              <span className="whitespace-nowrap">{replies.length === 0 ? "返信はまだありません" : `${replies.length} 件の返信`}</span>
+              <span className="whitespace-nowrap">{replies.length === 0 ? t("preview.noReplies") : t("timeline.replyCount", { count: replies.length })}</span>
               <span className="h-px flex-1 bg-line" />
             </div>
             <div data-replies="">
@@ -263,7 +264,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
                   {reply.id === firstUnread && (
                     <div ref={divider} className="my-1 flex items-center gap-2 text-[11px] font-semibold text-rose-500">
                       <span className="h-px flex-1 bg-rose-400/70" />
-                      新しい返信
+                      {t("thread.newReplies")}
                     </div>
                   )}
                   <MessageRow thread message={reply} controller={controller} compact={group && index > 0 && reply.id !== firstUnread && continuesGroup(replies[index - 1]!, reply)} />
@@ -272,11 +273,11 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
             </div>
           </>
         ) : (
-          <div className="py-8 text-center text-sm text-muted">メッセージが見つかりません</div>
+          <div className="py-8 text-center text-sm text-muted">{t("preview.messageMissing")}</div>
         )}
         </div>
       </div>
-      {parent && channel.isMember && !channel.archived && <Composer key={parentId} controller={controller} channel={channel} parentId={parentId} placeholder="スレッドに返信" />}
+      {parent && channel.isMember && !channel.archived && <Composer key={parentId} controller={controller} channel={channel} parentId={parentId} placeholder={t("thread.replyPlaceholder")} />}
       {parent && channel.isMember && !channel.archived && <TypingIndicator controller={controller} channelId={channel.id} parentId={parentId} />}
     </aside>
   );

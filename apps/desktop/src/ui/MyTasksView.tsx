@@ -17,6 +17,7 @@ import { Button, cn } from "./primitives";
 import { InlineAdd, TaskCard, useTaskHub, useToday } from "./TaskBoard";
 import { TaskDialog } from "./TaskDialog";
 import { canEditTask, groupMineByChannel, hasBoard, sortRequested, splitOpenDone, taskPlace } from "./tasks";
+import { t } from "../i18n";
 
 export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
   controller: AppController;
@@ -48,7 +49,7 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
   };
   const { personal, groups } = groupMineByChannel(list?.tasks ?? [], me, (id) => store.getChannel(id)?.name || dmTitle(id));
   const loading = !list || list.state === "loading";
-  const note = list?.state === "unsupported" ? "このサーバはタスクに対応していません" : list?.state === "failed" ? "タスクを読み込めませんでした。再接続すると読み直します" : null;
+  const note = list?.state === "unsupported" ? t("tasks.unsupported") : list?.state === "failed" ? t("tasks.board.loadFailed") : null;
 
   const toggleDone = (task: TaskOut) => {
     if (!hub) return;
@@ -83,7 +84,7 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
               className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
               checked={task.status === "done"}
               disabled={!editable || !hub?.available}
-              aria-label={task.status === "done" ? `「${task.title}」を未完了に戻す` : `「${task.title}」を完了にする`}
+              aria-label={task.status === "done" ? t("myTasks.reopen", { title: task.title }) : t("myTasks.complete", { title: task.title })}
               onChange={() => toggleDone(task)}
             />
           )
@@ -98,27 +99,27 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4 max-md:px-2">
         <BackButton />
         <span className="text-muted max-md:hidden"><ListTodo size={18} /></span>
-        <strong className="text-[15px]">タスク</strong>
-        <Button size="sm" className="ml-auto" disabled={!hub?.available} onClick={() => setCreating(true)} aria-label="タスクを追加">
-          <Plus size={14} /> <span className="max-md:hidden">タスクを追加</span>
+        <strong className="text-[15px]">{t("nav.tasks")}</strong>
+        <Button size="sm" className="ml-auto" disabled={!hub?.available} onClick={() => setCreating(true)} aria-label={t("tasks.dialog.addTask")}>
+          <Plus size={14} /> <span className="max-md:hidden">{t("tasks.dialog.addTask")}</span>
         </Button>
       </header>
       {note && <div className="border-b border-line bg-warning/10 px-4 py-1.5 text-xs text-muted">{note}</div>}
       <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-4 max-md:px-3">
         <div className="mx-auto max-w-2xl space-y-8">
-          <section aria-label="自分のタスク" className="space-y-2">
-            <h2 className="text-sm font-semibold">自分のタスク <span className="ml-1 text-xs font-normal text-muted">自分だけに表示</span></h2>
+          <section aria-label={t("tasks.myTasks")} className="space-y-2">
+            <h2 className="text-sm font-semibold">{t("tasks.myTasks")} <span className="ml-1 text-xs font-normal text-muted">{t("myTasks.onlyYou")}</span></h2>
             <TaskList
               tasks={personal}
               loading={loading}
-              empty="個人用のタスクはまだありません"
+              empty={t("myTasks.noPersonal")}
               render={(task) => card(task)}
               footer={hub?.available ? <InlineAdd onAdd={addPersonal} /> : null}
             />
           </section>
-          <section aria-label="自分の担当" className="space-y-3">
-            <h2 className="text-sm font-semibold">自分の担当</h2>
-            {groups.length === 0 && <p className="text-sm text-muted">{loading ? "読み込み中…" : "担当のタスクはありません"}</p>}
+          <section aria-label={t("myTasks.assigned")} className="space-y-3">
+            <h2 className="text-sm font-semibold">{t("myTasks.assigned")}</h2>
+            {groups.length === 0 && <p className="text-sm text-muted">{loading ? t("common.loading") : t("myTasks.noAssigned")}</p>}
             {groups.map((group) => {
               const channel = store.getChannel(group.channelId);
               const board = !channel || hasBoard(channel);
@@ -128,7 +129,7 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
                     <button
                       type="button"
                       className="flex items-center gap-1 rounded-md text-[13px] font-semibold text-muted hover:text-ink hover:underline"
-                      title={`#${group.channelName} のタスクを開く`}
+                      title={t("myTasks.openBoard", { name: group.channelName })}
                       onClick={() => onOpenBoard(group.channelId)}
                     >
                       {channel?.type === "private" ? <Lock size={13} /> : <Hash size={13} />}
@@ -146,13 +147,13 @@ export function MyTasksView({ controller, onOpenBoard, onOpenMessage }: {
             })}
           </section>
           {requested?.state !== "unsupported" && (
-            <section aria-label="自分が依頼した" className="space-y-2">
-              <h2 className="text-sm font-semibold">自分が依頼した <span className="ml-1 text-xs font-normal text-muted">ほかの人が担当のもの</span></h2>
-              {requested?.state === "failed" && <p className="text-xs text-muted">読み込めませんでした。再接続すると読み直します</p>}
+            <section aria-label={t("myTasks.requested")} className="space-y-2">
+              <h2 className="text-sm font-semibold">{t("myTasks.requested")} <span className="ml-1 text-xs font-normal text-muted">{t("myTasks.requestedNote")}</span></h2>
+              {requested?.state === "failed" && <p className="text-xs text-muted">{t("myTasks.loadFailed")}</p>}
               <TaskList
                 tasks={requested?.tasks ?? []}
                 loading={requestedLoading}
-                empty="依頼したタスクはありません"
+                empty={t("myTasks.noRequested")}
                 split={sortRequested}
                 render={(task) => card(task, { checkbox: false, place: true })}
               />
@@ -179,7 +180,7 @@ function TaskList({ tasks, loading, empty, render, footer, split = splitOpenDone
   const { open, done } = split(tasks);
   return (
     <div className="space-y-1.5">
-      {open.length === 0 && done.length === 0 && empty && <p className="text-sm text-muted">{loading ? "読み込み中…" : empty}</p>}
+      {open.length === 0 && done.length === 0 && empty && <p className="text-sm text-muted">{loading ? t("common.loading") : empty}</p>}
       {open.map(render)}
       {footer}
       {done.length > 0 && (
@@ -190,7 +191,7 @@ function TaskList({ tasks, loading, empty, render, footer, split = splitOpenDone
             className={cn("flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-medium text-muted hover:text-ink")}
             onClick={() => setShowDone((v) => !v)}
           >
-            {showDone ? <ChevronDown size={13} /> : <ChevronRight size={13} />} 完了 ({done.length})
+            {showDone ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {t("myTasks.done", { count: done.length })}
           </button>
           {showDone && done.map(render)}
         </>

@@ -44,6 +44,7 @@ import {
 } from "./calendarRecurrence";
 import { canPostTopLevel } from "./channels";
 import { Button, cn, Field, Input, Modal, Textarea } from "./primitives";
+import { t, weekdayName } from "../i18n";
 
 /** The channels whose calendars I may add to: public and private ones I belong to and may post in. */
 export function writableCalendars(controller: AppController): ChannelState[] {
@@ -69,9 +70,9 @@ interface ScopeAsk {
 }
 
 export const SCOPE_CHOICES: Array<{ value: OccurrenceScope; label: string }> = [
-  { value: "this", label: "この予定" },
-  { value: "following", label: "これ以降すべて" },
-  { value: "all", label: "すべての予定" },
+  { value: "this", get label() { return t("calendar.scope.this"); } },
+  { value: "following", get label() { return t("calendar.scope.following"); } },
+  { value: "all", get label() { return t("calendar.scope.all"); } },
 ];
 
 export function CalendarEventDialog({ controller, event, initial, onClose }: {
@@ -186,8 +187,8 @@ export function CalendarEventDialog({ controller, event, initial, onClose }: {
     }
   };
 
-  const calendarName = (choice: string) => (choice === "me" ? "自分" : `#${controller.store.getChannel(choice)?.name ?? event?.channel_name ?? "?"}`);
-  const title = !event ? "予定を追加" : editable ? "予定を編集" : "予定";
+  const calendarName = (choice: string) => (choice === "me" ? t("calendar.me") : `#${controller.store.getChannel(choice)?.name ?? event?.channel_name ?? "?"}`);
+  const title = !event ? t("calendar.addEvent") : editable ? t("calendar.editEvent") : t("notification.calendar");
 
   return (
     <Modal onClose={onClose} title={title} className="w-[520px]">
@@ -200,8 +201,8 @@ export function CalendarEventDialog({ controller, event, initial, onClose }: {
       >
         {editable ? (
           <>
-            <Field label="題名">
-              <Input autoFocus value={draft.title} maxLength={MAX_TITLE} placeholder="ゼミ" onChange={(e) => set({ title: e.target.value })} />
+            <Field label={t("canvas.titleLabel")}>
+              <Input autoFocus value={draft.title} maxLength={MAX_TITLE} placeholder={t("calendar.titlePlaceholder")} onChange={(e) => set({ title: e.target.value })} />
             </Field>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -213,30 +214,30 @@ export function CalendarEventDialog({ controller, event, initial, onClose }: {
                   set({ allDay, endDay: draft.endDay < draft.startDay ? draft.startDay : draft.endDay, alarm: remapAlarm(draft.alarm, allDay) });
                 }}
               />
-              終日
+              {t("calendar.allDay")}
             </label>
             <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-2 text-sm">
-              <span className="text-xs font-medium text-muted">開始</span>
-              <Input type="date" aria-label="開始日" value={draft.startDay} onChange={(e) => moveStart(e.target.value, draft.startTime)} />
-              {draft.allDay ? <span /> : <Input type="time" aria-label="開始時刻" className="w-32" value={draft.startTime} onChange={(e) => moveStart(draft.startDay, e.target.value)} />}
-              <span className="text-xs font-medium text-muted">終了</span>
-              <Input type="date" aria-label="終了日" value={draft.endDay} min={draft.startDay} onChange={(e) => set({ endDay: e.target.value })} />
-              {draft.allDay ? <span /> : <Input type="time" aria-label="終了時刻" className="w-32" value={draft.endTime} onChange={(e) => set({ endTime: e.target.value })} />}
+              <span className="text-xs font-medium text-muted">{t("common.start")}</span>
+              <Input type="date" aria-label={t("calendar.startDate")} value={draft.startDay} onChange={(e) => moveStart(e.target.value, draft.startTime)} />
+              {draft.allDay ? <span /> : <Input type="time" aria-label={t("calendar.startTime")} className="w-32" value={draft.startTime} onChange={(e) => moveStart(draft.startDay, e.target.value)} />}
+              <span className="text-xs font-medium text-muted">{t("common.end")}</span>
+              <Input type="date" aria-label={t("calendar.endDate")} value={draft.endDay} min={draft.startDay} onChange={(e) => set({ endDay: e.target.value })} />
+              {draft.allDay ? <span /> : <Input type="time" aria-label={t("calendar.endTime")} className="w-32" value={draft.endTime} onChange={(e) => set({ endTime: e.target.value })} />}
             </div>
             <RepeatPicker
               repeat={draft.repeat}
               start={draft.startDay}
               onChange={(repeat) => set({ repeat })}
             />
-            <Field label="カレンダー">
+            <Field label={t("nav.calendar")}>
               <select
                 className={SELECT}
-                aria-label="カレンダー"
+                aria-label={t("nav.calendar")}
                 value={draft.calendar}
                 disabled={!!event}
                 onChange={(e) => set({ calendar: e.target.value })}
               >
-                <option value="me">自分 (自分だけに表示)</option>
+                <option value="me">{t("calendar.meOnly")}</option>
                 {event && event.channel_id && !calendars.some((c) => c.id === event.channel_id) && (
                   <option value={event.channel_id}>{calendarName(event.channel_id)}</option>
                 )}
@@ -245,18 +246,18 @@ export function CalendarEventDialog({ controller, event, initial, onClose }: {
                 ))}
               </select>
             </Field>
-            <Field label="場所">
-              <Input value={draft.location} maxLength={MAX_LOCATION} placeholder="5 号館 501 / https://…" onChange={(e) => set({ location: e.target.value })} />
+            <Field label={t("calendar.location")}>
+              <Input value={draft.location} maxLength={MAX_LOCATION} placeholder={t("calendar.locationPlaceholder")} onChange={(e) => set({ location: e.target.value })} />
             </Field>
-            <Field label="説明">
+            <Field label={t("workflow.description")}>
               <Textarea rows={3} value={draft.description} maxLength={MAX_DESCRIPTION} onChange={(e) => set({ description: e.target.value })} />
             </Field>
           </>
         ) : (
           event && <ReadOnlyEvent event={event} calendar={calendarName(event.channel_id ?? "me")} />
         )}
-        <Field label="通知" hint={draft.calendar !== "me" ? "通知は自分にだけ届きます" : undefined}>
-          <select className={SELECT} aria-label="通知" value={draft.alarm === null ? "" : String(draft.alarm)} onChange={(e) => set({ alarm: e.target.value === "" ? null : Number(e.target.value) })}>
+        <Field label={t("calendar.alarm")} hint={draft.calendar !== "me" ? t("calendar.alarmOnlyMe") : undefined}>
+          <select className={SELECT} aria-label={t("calendar.alarm")} value={draft.alarm === null ? "" : String(draft.alarm)} onChange={(e) => set({ alarm: e.target.value === "" ? null : Number(e.target.value) })}>
             {alarmChoices(draft.allDay).map((choice) => (
               <option key={String(choice.value)} value={choice.value === null ? "" : String(choice.value)}>{choice.label}</option>
             ))}
@@ -264,8 +265,8 @@ export function CalendarEventDialog({ controller, event, initial, onClose }: {
         </Field>
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         {askScope ? (
-          <div role="group" aria-label={askScope.action === "delete" ? "繰り返しの予定の削除" : "繰り返しの予定の変更"} className="space-y-2 rounded-lg bg-panel-2 px-3 py-2">
-            <div className="text-sm font-medium">{askScope.action === "delete" ? "繰り返しの予定の削除" : "繰り返しの予定の変更"}</div>
+          <div role="group" aria-label={askScope.action === "delete" ? t("calendar.deleteRecurring") : t("calendar.changeRecurring")} className="space-y-2 rounded-lg bg-panel-2 px-3 py-2">
+            <div className="text-sm font-medium">{askScope.action === "delete" ? t("calendar.deleteRecurring") : t("calendar.changeRecurring")}</div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               {SCOPE_CHOICES.filter((choice) => askScope.allowThis || choice.value !== "this").map((choice) => (
                 <Button
@@ -278,25 +279,25 @@ export function CalendarEventDialog({ controller, event, initial, onClose }: {
                   {choice.label}
                 </Button>
               ))}
-              <Button size="sm" variant="ghost" onClick={() => setAskScope(null)}>キャンセル</Button>
+              <Button size="sm" variant="ghost" onClick={() => setAskScope(null)}>{t("common.cancel")}</Button>
             </div>
           </div>
         ) : confirmDelete ? (
           <div className="flex items-center justify-end gap-2 rounded-lg bg-danger/10 px-3 py-2">
-            <span className="mr-auto text-sm">この予定を削除しますか？</span>
-            <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>キャンセル</Button>
-            <Button variant="danger" size="sm" disabled={busy} onClick={() => void remove()}>削除する</Button>
+            <span className="mr-auto text-sm">{t("calendar.deleteConfirm")}</span>
+            <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>{t("common.cancel")}</Button>
+            <Button variant="danger" size="sm" disabled={busy} onClick={() => void remove()}>{t("common.deleteConfirm")}</Button>
           </div>
         ) : (
           <div className="flex items-center justify-end gap-2 pt-1">
             {event && editable && (
               <Button variant="ghost" className="mr-auto text-danger" onClick={() => (recurring ? setAskScope({ action: "delete", allowThis: true }) : setConfirmDelete(true))}>
-                <Trash2 size={15} /> 削除
+                <Trash2 size={15} /> {t("common.delete")}
               </Button>
             )}
-            <Button variant="secondary" onClick={onClose}>{editable || alarmChanged ? "キャンセル" : "閉じる"}</Button>
+            <Button variant="secondary" onClick={onClose}>{editable || alarmChanged ? t("common.cancel") : t("common.close")}</Button>
             {(editable || alarmChanged) && (
-              <Button type="submit" disabled={busy || !!problem || !hub}>{event ? "保存" : "追加"}</Button>
+              <Button type="submit" disabled={busy || !!problem || !hub}>{event ? t("common.save") : t("common.add")}</Button>
             )}
           </div>
         )}
@@ -328,7 +329,7 @@ function ReadOnlyEvent({ event, calendar }: { event: CalendarEventOut; calendar:
         </div>
       )}
       {event.description && <p className="whitespace-pre-wrap break-words rounded-lg bg-panel-2 px-3 py-2 text-sm">{event.description}</p>}
-      <p className="text-xs text-muted">この予定を変更できるのは、作成者・チャンネルのオーナー・管理者です。</p>
+      <p className="text-xs text-muted">{t("calendar.editRights")}</p>
     </div>
   );
 }
@@ -341,19 +342,19 @@ function localDay(iso: string): string {
 }
 
 const REPEAT_KINDS: Array<{ value: RepeatKind; label: string }> = [
-  { value: "none", label: "しない" },
-  { value: "daily", label: "毎日" },
-  { value: "weekly", label: "毎週" },
-  { value: "monthly", label: "毎月" },
-  { value: "yearly", label: "毎年" },
-  { value: "custom", label: "カスタム" },
+  { value: "none", get label() { return t("calendar.repeat.none"); } },
+  { value: "daily", get label() { return t("calendar.repeat.daily"); } },
+  { value: "weekly", get label() { return t("calendar.repeat.weekly"); } },
+  { value: "monthly", get label() { return t("calendar.repeat.monthly"); } },
+  { value: "yearly", get label() { return t("calendar.repeat.yearly"); } },
+  { value: "custom", get label() { return t("calendar.repeat.custom"); } },
 ];
 
 const UNITS: Array<{ value: RepeatFreq; label: string }> = [
-  { value: "DAILY", label: "日" },
-  { value: "WEEKLY", label: "週" },
-  { value: "MONTHLY", label: "か月" },
-  { value: "YEARLY", label: "年" },
+  { value: "DAILY", get label() { return t("calendar.unit.day"); } },
+  { value: "WEEKLY", get label() { return t("calendar.unit.week"); } },
+  { value: "MONTHLY", get label() { return t("calendar.unit.month"); } },
+  { value: "YEARLY", get label() { return t("calendar.unit.year"); } },
 ];
 
 /** 「繰り返し」: しない / 毎日 / 毎週 (曜日) / 毎月 (日付・第 N 曜日) / 毎年 / カスタム (間隔), the end, and the rule in words. */
@@ -365,10 +366,10 @@ export function RepeatPicker({ repeat, start, onChange }: { repeat: RepeatDraft;
   const rrule = start ? repeatToRrule(repeat, start) : null;
   return (
     <div className="space-y-2 text-sm" data-repeat-picker>
-      <Field label="繰り返し">
+      <Field label={t("tasks.repeat")}>
         <select
           className={SELECT}
-          aria-label="繰り返し"
+          aria-label={t("tasks.repeat")}
           value={repeat.kind}
           onChange={(e) => {
             const kind = e.target.value as RepeatKind;
@@ -382,25 +383,26 @@ export function RepeatPicker({ repeat, start, onChange }: { repeat: RepeatDraft;
       </Field>
       {repeat.kind === "custom" && (
         <div className="flex items-center gap-2">
+          {t("calendar.everyPrefix") && <span className="text-muted">{t("calendar.everyPrefix")}</span>}
           <Input
             type="number"
-            aria-label="間隔"
+            aria-label={t("calendar.interval")}
             className="w-20"
             min={1}
             max={MAX_INTERVAL}
             value={String(repeat.interval)}
             onChange={(e) => set({ interval: Number(e.target.value) })}
           />
-          <select className={cn(SELECT, "w-auto")} aria-label="間隔の単位" value={repeat.freq} onChange={(e) => set({ freq: e.target.value as RepeatFreq })}>
+          <select className={cn(SELECT, "w-auto")} aria-label={t("calendar.intervalUnit")} value={repeat.freq} onChange={(e) => set({ freq: e.target.value as RepeatFreq })}>
             {UNITS.map((unit) => (
               <option key={unit.value} value={unit.value}>{unit.label}</option>
             ))}
           </select>
-          <span className="text-muted">ごと</span>
+          {t("calendar.everySuffix") && <span className="text-muted">{t("calendar.everySuffix")}</span>}
         </div>
       )}
       {freq === "WEEKLY" && (
-        <div role="group" aria-label="曜日" className="flex gap-1">
+        <div role="group" aria-label={t("settings.quiet.weekdays")} className="flex gap-1">
           {WEEKDAY_NAMES.map((name, day) => {
             const on = repeat.weekdays.includes(day);
             return (
@@ -408,21 +410,21 @@ export function RepeatPicker({ repeat, start, onChange }: { repeat: RepeatDraft;
                 key={name}
                 type="button"
                 aria-pressed={on}
-                aria-label={`${name}曜日`}
+                aria-label={weekdayName((day + 6) % 7, "long")}
                 onClick={() => set({ weekdays: on ? repeat.weekdays.filter((d) => d !== day) : [...repeat.weekdays, day] })}
                 className={cn(
                   "h-8 w-8 rounded-full border text-xs font-medium",
                   on ? "border-accent bg-accent-solid text-white" : "border-line text-muted hover:text-ink",
                 )}
               >
-                {name}
+                {weekdayName((day + 6) % 7)}
               </button>
             );
           })}
         </div>
       )}
       {freq === "MONTHLY" && (
-        <select className={SELECT} aria-label="毎月の日" value={repeat.monthly} onChange={(e) => set({ monthly: e.target.value as RepeatDraft["monthly"] })}>
+        <select className={SELECT} aria-label={t("calendar.monthlyDay")} value={repeat.monthly} onChange={(e) => set({ monthly: e.target.value as RepeatDraft["monthly"] })}>
           {months.map((choice) => (
             <option key={choice.value} value={choice.value}>{choice.label}</option>
           ))}
@@ -431,17 +433,17 @@ export function RepeatPicker({ repeat, start, onChange }: { repeat: RepeatDraft;
       )}
       {repeat.kind !== "none" && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-muted">終了</span>
-          <select className={cn(SELECT, "w-auto")} aria-label="繰り返しの終了" value={repeat.end} onChange={(e) => set({ end: e.target.value as RepeatDraft["end"] })}>
-            <option value="never">なし</option>
-            <option value="until">日付</option>
-            <option value="count">回数</option>
+          <span className="text-xs font-medium text-muted">{t("common.end")}</span>
+          <select className={cn(SELECT, "w-auto")} aria-label={t("calendar.repeatEnd")} value={repeat.end} onChange={(e) => set({ end: e.target.value as RepeatDraft["end"] })}>
+            <option value="never">{t("workflow.none")}</option>
+            <option value="until">{t("reservations.date")}</option>
+            <option value="count">{t("calendar.count")}</option>
           </select>
-          {repeat.end === "until" && <Input type="date" aria-label="繰り返しの終了日" className="w-40" min={start} value={repeat.until} onChange={(e) => set({ until: e.target.value })} />}
+          {repeat.end === "until" && <Input type="date" aria-label={t("calendar.repeatEndDate")} className="w-40" min={start} value={repeat.until} onChange={(e) => set({ until: e.target.value })} />}
           {repeat.end === "count" && (
             <span className="flex items-center gap-1">
-              <Input type="number" aria-label="回数" className="w-20" min={1} max={MAX_COUNT} value={String(repeat.count)} onChange={(e) => set({ count: Number(e.target.value) })} />
-              回
+              <Input type="number" aria-label={t("calendar.count")} className="w-20" min={1} max={MAX_COUNT} value={String(repeat.count)} onChange={(e) => set({ count: Number(e.target.value) })} />
+              {t("calendar.times")}
             </span>
           )}
         </div>

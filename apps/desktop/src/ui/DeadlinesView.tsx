@@ -16,6 +16,7 @@ import { Button, cn } from "./primitives";
 import { TaskCard, useTaskHub, useToday } from "./TaskBoard";
 import { TaskDialog } from "./TaskDialog";
 import { canEditBoard, hasBoard, type TaskCreateInit } from "./tasks";
+import { t } from "../i18n";
 
 /** The channels whose board I may add a deadline to, by name. */
 export function deadlineChannels(controller: AppController): string[] {
@@ -48,7 +49,7 @@ export function DeadlineChip({ controller, channel, onOpen }: { controller: AppC
     <button
       type="button"
       data-deadline-chip={next.id}
-      title={`締切: ${next.title} (${deadlineWhen(next, today)})`}
+      title={t("deadlinesView.title", { title: next.title, when: deadlineWhen(next, today) })}
       onClick={() => onOpen(next)}
       className={cn(
         "inline-flex min-w-0 max-w-[16rem] shrink-[50] items-center gap-1 truncate rounded-full px-2 py-0.5 text-xs font-medium",
@@ -75,7 +76,7 @@ export function DeadlinesView({ controller }: { controller: AppController }) {
   const groups = deadlineGroups(tasks, today);
   const loading = !list || list.state === "loading";
   const note =
-    list?.state === "unsupported" ? "このサーバは締切に対応していません" : list?.state === "failed" ? "締切を読み込めませんでした。再接続すると読み直します" : !hub?.available ? "このサーバはタスクに対応していません" : null;
+    list?.state === "unsupported" ? t("deadlinesView.unsupported") : list?.state === "failed" ? t("deadlinesView.loadFailed") : !hub?.available ? t("tasks.unsupported") : null;
   const addInit = newDeadlineInit(controller, null);
   const place = (task: TaskOut) => {
     const channel = task.channel_id ? store.getChannel(task.channel_id) : undefined;
@@ -87,16 +88,16 @@ export function DeadlinesView({ controller }: { controller: AppController }) {
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4 max-md:px-2">
         <BackButton />
         <span className="text-muted max-md:hidden"><AlarmClock size={18} /></span>
-        <strong className="text-[15px]">締切</strong>
-        <Button size="sm" className="ml-auto" disabled={!addInit || !hub?.available} onClick={() => setCreating(addInit)} aria-label="締切を追加">
-          <Plus size={14} /> <span className="max-md:hidden">締切を追加</span>
+        <strong className="text-[15px]">{t("nav.deadlines")}</strong>
+        <Button size="sm" className="ml-auto" disabled={!addInit || !hub?.available} onClick={() => setCreating(addInit)} aria-label={t("tasks.dialog.addDeadline")}>
+          <Plus size={14} /> <span className="max-md:hidden">{t("tasks.dialog.addDeadline")}</span>
         </Button>
       </header>
       {note && <div className="border-b border-line bg-warning/10 px-4 py-1.5 text-xs text-muted">{note}</div>}
       <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-4 max-md:px-3">
         <div className="mx-auto max-w-2xl space-y-6">
-          <p className="text-xs text-muted">参加しているチャンネルの締切です。締切の前に「締切」のボットがチャンネルで知らせます (既定は 7 日前・3 日前・前日・当日の 9:00)。</p>
-          {groups.length === 0 && <p className="text-sm text-muted">{loading ? "読み込み中…" : "締切はありません"}</p>}
+          <p className="text-xs text-muted">{t("deadlinesView.note")}</p>
+          {groups.length === 0 && <p className="text-sm text-muted">{loading ? t("common.loading") : t("deadlinesView.none")}</p>}
           {groups.map((group) => (
             <section key={group.key} aria-label={group.label} data-deadline-group={group.key} className="space-y-2">
               <h2 className="text-sm font-semibold">

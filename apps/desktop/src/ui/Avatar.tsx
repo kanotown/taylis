@@ -2,6 +2,7 @@ import type { PresenceStatus } from "../api/types";
 import { useAvatar } from "./avatars";
 import { avatarHue, initials } from "./format";
 import { cn, HoverList } from "./primitives";
+import { t } from "../i18n";
 
 /**
  * The profile picture when the user has one (M14a), else initials on a colour derived from the id. A picture never loaded
@@ -44,10 +45,10 @@ export function Avatar({ id, name, size = 36, className, presence, presenceClass
 export function presenceLabel(status: PresenceStatus): string {
   switch (status) {
     case "online":
-      return "オンライン";
+      return t("connection.online");
     case "away":
-      return "離席中";
+      return t("directory.away");
     default:
-      return "オフライン";
+      return t("connection.offline");
   }
 }

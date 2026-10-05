@@ -20,6 +20,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import i18n
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.time import utcnow
 from app.modules.admin import service as admin
@@ -350,14 +351,18 @@ async def remind_due(db: AsyncSession, *, now: datetime | None = None, limit: in
             await db.flush()
             continue
         post = await repo.get_post_any(db, row.recurring_post_id)
-        name = post.name if post is not None else "提出"
         tz = post.tz if post is not None else "Asia/Tokyo"
         submitted = (await message_repo.repliers_for(db, [message.id])).get(message.id, set())
         members = set(await repo.eligible_members(db, channel.id))
-        note = f"{name} の提出をお願いします (締切 {due_label(row.due_at, tz)})"[:200]
+        people = await users.get_users(db, list(row.target_user_ids))
         for user_id in row.target_user_ids:
             if user_id in submitted or user_id not in members:
                 continue
+            # M115: the note in the reader's language (docs/I18N.md).
+            lc = await i18n.text_locale(db, people[user_id]) if user_id in people else "ja"
+            name = post.name if post is not None else i18n.t("reminder.collect_default", lc)
+            due = due_label(row.due_at, tz, lc)
+            note = i18n.t("reminder.collect_note", lc, name=name, due=due)[:200]
             await reminders.create_system_in_tx(
                 db,
                 user_id=user_id,

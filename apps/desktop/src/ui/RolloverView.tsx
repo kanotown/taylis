@@ -8,6 +8,7 @@ import { Avatar } from "./Avatar";
 import { fullTimestamp } from "./format";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
 import { academicYear, actionOptions, defaultChoice, type RolloverChoice, rolloverBody, rolloverCounts, rolloverSummary } from "./rollover";
+import { t } from "../i18n";
 
 const SELECT = "h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm";
 
@@ -72,7 +73,7 @@ export function RolloverView({ controller }: { controller: AppController }) {
     event.preventDefault();
     const target = Number(year);
     if (!Number.isInteger(target) || target < 2000 || target > 2100) {
-      setNote({ tone: "error", text: "年度は 2000〜2100 の数字で入れてください" });
+      setNote({ tone: "error", text: t("rollover.yearInvalid") });
       return;
     }
     setBusy(true);
@@ -111,7 +112,7 @@ export function RolloverView({ controller }: { controller: AppController }) {
     try {
       const out = await controller.api!.applyRollover(body);
       setConfirming(false);
-      setNote({ tone: "ok", text: `${out.academic_year} 年度の年度更新を適用しました (${rolloverSummary(out)})` });
+      setNote({ tone: "ok", text: t("rollover.applied", { year: out.academic_year, summary: rolloverSummary(out) }) });
       await Promise.all([loadPreview(out.academic_year, true), loadHistory()]);
     } catch (error) {
       setDialogError(describeError(error));
@@ -126,7 +127,7 @@ export function RolloverView({ controller }: { controller: AppController }) {
     try {
       await controller.api!.undoRollover(row.academic_year);
       setUndoing(null);
-      setNote({ tone: "ok", text: `${row.academic_year} 年度の年度更新を取り消しました` });
+      setNote({ tone: "ok", text: t("rollover.undone", { year: row.academic_year }) });
       await Promise.all([loadHistory(), preview?.academic_year === row.academic_year ? loadPreview(row.academic_year) : Promise.resolve()]);
     } catch (error) {
       setDialogError(describeError(error));
@@ -138,25 +139,25 @@ export function RolloverView({ controller }: { controller: AppController }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted">
-        名簿の学生を 1 年進めます。卒業・修了する人は卒業生になり、times がアーカイブされ、残すチャンネルと卒業生のチャンネル以外の公開・非公開チャンネルから外れます (DM は残ります)。あとから取り消せます。
+        {t("rollover.intro")}
       </p>
       <form className="flex items-end gap-2" onSubmit={(e) => void read(e)}>
         <div className="w-32">
-          <Field label="年度">
+          <Field label={t("rollover.year")}>
             <Input type="number" inputMode="numeric" min={2000} max={2100} value={year} onChange={(e) => setYear(e.target.value)} />
           </Field>
         </div>
-        <Button type="submit" size="sm" variant="secondary" disabled={busy} className="mb-0.5">読み込む</Button>
+        <Button type="submit" size="sm" variant="secondary" disabled={busy} className="mb-0.5">{t("rollover.load")}</Button>
       </form>
       <NoteLine note={note} />
       {preview && (
         <div className="space-y-3">
           {preview.applied_at && (
             <p className="rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm">
-              {preview.academic_year} 年度の年度更新は {fullTimestamp(preview.applied_at)} に適用済みです。やり直すには下の履歴で取り消してください。
+              {t("rollover.alreadyApplied", { year: preview.academic_year, at: fullTimestamp(preview.applied_at) })}
             </p>
           )}
-          <ul className="divide-y divide-line rounded-xl border border-line" aria-label="学生">
+          <ul className="divide-y divide-line rounded-xl border border-line" aria-label={t("rollover.students")}>
             {preview.items.map((item) => {
               const choice = choices.get(item.user_id);
               const name = nameOf(item.user_id);
@@ -166,9 +167,9 @@ export function RolloverView({ controller }: { controller: AppController }) {
                   <div className="flex items-center gap-3">
                     <Avatar id={item.user_id} name={name} size={24} />
                     <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
-                    <Badge tone="accent">{item.grade ?? "学年なし"}</Badge>
+                    <Badge tone="accent">{item.grade ?? t("rollover.noGrade")}</Badge>
                     <select
-                      aria-label={`${name} の年度更新`}
+                      aria-label={t("rollover.forPerson", { name })}
                       value={choice?.action ?? item.action}
                       disabled={!!preview.applied_at}
                       onChange={(e) => choose(item.user_id, { action: e.target.value as RolloverAction })}
@@ -186,29 +187,29 @@ export function RolloverView({ controller }: { controller: AppController }) {
                           disabled={!guestAllowed(item.user_id)}
                           onChange={(e) => choose(item.user_id, { guest: e.target.checked })}
                         />
-                        ゲストにする{!guestAllowed(item.user_id) && " (自分自身はゲストにできません)"}
+                        {t("rollover.makeGuest")}{!guestAllowed(item.user_id) && t("rollover.notSelf")}
                       </label>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1" role="group" aria-label={`${name} の残すチャンネル`}>
-                        <span className="text-muted">残すチャンネル:</span>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1" role="group" aria-label={t("rollover.keepFor", { name })}>
+                        <span className="text-muted">{t("rollover.keep")}</span>
                         {item.channels.map((channel) => (
                           <label key={channel.id} className="flex items-center gap-1">
                             <input type="checkbox" checked={choice.keep.has(channel.id)} onChange={() => toggleKeep(item.user_id, channel.id)} />
                             {channel.type === "private" ? "🔒" : "#"}{channel.name}
                           </label>
                         ))}
-                        {item.channels.length === 0 && <span className="text-muted">なし (参加しているチャンネルはありません)</span>}
+                        {item.channels.length === 0 && <span className="text-muted">{t("rollover.noChannels")}</span>}
                       </div>
                     </div>
                   )}
                 </li>
               );
             })}
-            {preview.items.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">名簿に学生がいません</li>}
+            {preview.items.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("rollover.noStudents")}</li>}
           </ul>
           <div className="flex items-end gap-3">
             <div className="min-w-0 flex-1">
               <div className="text-xs font-medium text-muted" id="stay-channels-label">
-                卒業生が入って残るチャンネル (OB・OG 用、全体連絡など。ほかは DM だけが残ります)
+                {t("rollover.alumniChannels")}
               </div>
               <div className="mt-1 flex max-h-24 flex-wrap gap-x-3 gap-y-1 overflow-y-auto text-sm" role="group" aria-labelledby="stay-channels-label">
                 {channels.map((c) => (
@@ -232,70 +233,70 @@ export function RolloverView({ controller }: { controller: AppController }) {
               size="sm"
               className="mb-0.5"
               disabled={busy || !!preview.applied_at || preview.items.length === 0}
-              title={preview.applied_at ? "適用済みです。やり直すには先に取り消してください" : undefined}
+              title={preview.applied_at ? t("rollover.appliedTitle") : undefined}
               onClick={() => { setDialogError(null); setConfirming(true); }}
             >
-              適用…
+              {t("rollover.applyMenu")}
             </Button>
           </div>
         </div>
       )}
       <div>
-        <h3 className="mb-1 text-xs font-medium text-muted">これまでの年度更新</h3>
-        <ul className="divide-y divide-line rounded-xl border border-line" aria-label="これまでの年度更新">
+        <h3 className="mb-1 text-xs font-medium text-muted">{t("rollover.history")}</h3>
+        <ul className="divide-y divide-line rounded-xl border border-line" aria-label={t("rollover.history")}>
           {(history ?? []).map((row) => (
             <li key={row.academic_year} className={cn("flex items-center gap-3 px-3 py-2 text-sm", row.undone_at && "opacity-60")}>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium">{row.academic_year} 年度</span>
+                  <span className="font-medium">{t("rollover.yearValue", { year: row.academic_year })}</span>
                   <span className="text-xs text-muted">{rolloverSummary(row)}</span>
-                  {row.undone_at && <Badge>取り消し済み</Badge>}
+                  {row.undone_at && <Badge>{t("rollover.undoneBadge")}</Badge>}
                 </div>
                 <div className="truncate text-[11px] text-muted">
-                  {nameOf(row.applied_by)} が {fullTimestamp(row.applied_at)} に適用{row.undone_at && ` · ${fullTimestamp(row.undone_at)} に取り消し`}
+                  {t("rollover.appliedBy", { name: nameOf(row.applied_by), at: fullTimestamp(row.applied_at) })}{row.undone_at && t("rollover.undoneAt", { at: fullTimestamp(row.undone_at) })}
                 </div>
               </div>
               {!row.undone_at && (
                 <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => { setDialogError(null); setUndoing(row); }}>
-                  <RotateCcw size={14} /> 取り消す
+                  <RotateCcw size={14} /> {t("rollover.undo")}
                 </Button>
               )}
             </li>
           ))}
-          {history?.length === 0 && <li className="px-3 py-4 text-center text-sm text-muted">まだありません</li>}
-          {history === null && <li className="px-3 py-4 text-center text-sm text-muted">読み込み中…</li>}
+          {history?.length === 0 && <li className="px-3 py-4 text-center text-sm text-muted">{t("rollover.none")}</li>}
+          {history === null && <li className="px-3 py-4 text-center text-sm text-muted">{t("common.loading")}</li>}
         </ul>
       </div>
       {confirming && preview && counts && (
-        <Modal onClose={() => setConfirming(false)} title={`${preview.academic_year} 年度の年度更新を適用しますか？`} className="w-[480px]">
+        <Modal onClose={() => setConfirming(false)} title={t("rollover.applyTitle", { year: preview.academic_year })} className="w-[480px]">
           <ul className="mt-3 space-y-0.5 text-sm">
-            <li>進級: {counts.advance} 人</li>
-            <li>据え置き: {counts.stay} 人</li>
-            <li>卒業・修了: {counts.graduate} 人{counts.graduate > 0 && ` (うちゲストにする ${counts.guests} 人)`}</li>
-            {counts.graduate > 0 && <li>卒業生が入って残るチャンネル: {stayIds.size ? [...stayIds].map((id) => `#${store.channels.get(id)?.name ?? ""}`).join("、") : "なし"}</li>}
+            <li>{t("rollover.countAdvance", { count: counts.advance })}</li>
+            <li>{t("rollover.countStay", { count: counts.stay })}</li>
+            <li>{t("rollover.countGraduate", { count: counts.graduate })}{counts.graduate > 0 && t("rollover.countGuests", { count: counts.guests })}</li>
+            {counts.graduate > 0 && <li>{t("rollover.alumniChannelsList", { channels: stayIds.size ? [...stayIds].map((id) => `#${store.channels.get(id)?.name ?? ""}`).join(t("common.listSeparator")) : t("workflow.none") })}</li>}
           </ul>
           {counts.graduate > 0 && (
             <p className="mt-3 rounded-lg bg-panel-2 px-3 py-2 text-sm">
-              卒業・修了する人は卒業生になり、times はアーカイブされます。残すチャンネルと卒業生のチャンネル以外の、公開・非公開チャンネルからはすべて外れます。DM は残ります。
+              {t("rollover.applyNote")}
             </p>
           )}
-          <p className="mt-2 text-xs text-muted">全員分を 1 回で適用します。あとから履歴で取り消せます。</p>
+          <p className="mt-2 text-xs text-muted">{t("rollover.applyNote2")}</p>
           {dialogError && <p role="alert" className="mt-3 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{dialogError}</p>}
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setConfirming(false)}>キャンセル</Button>
-            <Button disabled={busy} onClick={() => void apply()}>適用する</Button>
+            <Button variant="secondary" onClick={() => setConfirming(false)}>{t("common.cancel")}</Button>
+            <Button disabled={busy} onClick={() => void apply()}>{t("rollover.apply")}</Button>
           </div>
         </Modal>
       )}
       {undoing && (
-        <Modal onClose={() => setUndoing(null)} title={`${undoing.academic_year} 年度の年度更新を取り消しますか？`} className="w-[440px]">
+        <Modal onClose={() => setUndoing(null)} title={t("rollover.undoTitle", { year: undoing.academic_year })} className="w-[440px]">
           <p className="mt-2 text-sm text-muted">
-            学年・名簿・ロール・外したチャンネル (元のロールで)・times のアーカイブを適用前に戻し、加えた卒業生のチャンネルから外します。
+            {t("rollover.undoNote")}
           </p>
           {dialogError && <p role="alert" className="mt-3 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{dialogError}</p>}
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setUndoing(null)}>キャンセル</Button>
-            <Button variant="danger" disabled={busy} onClick={() => void undo(undoing)}>取り消す</Button>
+            <Button variant="secondary" onClick={() => setUndoing(null)}>{t("common.cancel")}</Button>
+            <Button variant="danger" disabled={busy} onClick={() => void undo(undoing)}>{t("rollover.undo")}</Button>
           </div>
         </Modal>
       )}

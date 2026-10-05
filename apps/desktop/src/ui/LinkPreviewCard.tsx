@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { openExternalLink } from "../platform/external";
 import type { AppController } from "../state/app";
 import type { Store } from "../sync/store";
+import { t } from "../i18n";
 
 /**
  * Whether a message's link card is fetched without asking (docs/AI.md §4): not for an AI bot's posts (its user is a
@@ -58,13 +59,13 @@ export function LinkPreviewCard({ controller, url, auto = true }: { controller: 
         type="button"
         data-link-preview-ask=""
         className="mt-1 block text-xs text-muted hover:text-ink hover:underline"
-        title={`${hostOf(url)} のプレビューを取得します`}
+        title={t("linkPreview.fetch", { host: hostOf(url) })}
         onClick={() => {
           setAsked(true);
           controller.linkPreview(url);
         }}
       >
-        プレビューを表示
+        {t("linkPreview.show")}
       </button>
     );
   }

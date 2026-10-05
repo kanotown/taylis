@@ -17,6 +17,7 @@ import { channelTitle } from "./MainScreen";
 import { MessageBody } from "./MessageBody";
 import { Button, cn, IconButton } from "./primitives";
 import { askQuery, type SearchParams } from "./search";
+import { t } from "../i18n";
 
 export function AskPanel({ controller, params, onOpenMessage }: {
   controller: AppController;
@@ -58,11 +59,11 @@ export function AskPanel({ controller, params, onOpenMessage }: {
   };
 
   return (
-    <section aria-label="AI に聞く" data-testid="ai-ask" className="mb-3 max-w-3xl rounded-xl border border-accent/30 bg-accent-soft/30 px-3 py-2.5">
+    <section aria-label={t("ask.title")} data-testid="ai-ask" className="mb-3 max-w-3xl rounded-xl border border-accent/30 bg-accent-soft/30 px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <Sparkles size={16} className="shrink-0 text-accent" />
         <Button size="sm" disabled={!canAsk} onClick={() => { setHistoryOpen(false); void hub.startAsk(question, channelId); }}>
-          AI に聞く
+          {t("ask.title")}
         </Button>
         {line && (
           <span data-testid="ai-ask-target" className={cn("min-w-0 flex-1 text-xs", target?.available ? "text-muted" : "text-danger")}>
@@ -71,10 +72,10 @@ export function AskPanel({ controller, params, onOpenMessage }: {
         )}
         <div className="ml-auto flex items-center gap-1">
           <Button size="sm" variant="ghost" aria-pressed={historyOpen} onClick={toggleHistory}>
-            <History size={14} /> 履歴
+            <History size={14} /> {t("canvas.history")}
           </Button>
           {session && (
-            <IconButton label="AI の答えを閉じる" onClick={() => hub.closeAsk()}>
+            <IconButton label={t("ask.close")} onClick={() => hub.closeAsk()}>
               <X size={16} />
             </IconButton>
           )}
@@ -91,18 +92,18 @@ export function AskPanel({ controller, params, onOpenMessage }: {
       )}
       {session && (
         <div className="mt-3 border-t border-accent/20 pt-3" aria-live="polite">
-          <p className="mb-2 text-sm font-semibold text-ink">「{session.question}」</p>
+          <p className="mb-2 text-sm font-semibold text-ink">{t("common.quoted", { text: session.question })}</p>
           {session.error !== null && session.error !== undefined ? (
             <div className="space-y-2">
               <p role="alert" className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-danger">{describeAiError(session.error)}</p>
               <Button size="sm" variant="secondary" onClick={() => void hub.retryAsk()}>
-                <RotateCw size={14} /> もう一度
+                <RotateCw size={14} /> {t("ai.again")}
               </Button>
             </div>
           ) : !session.run || !isFinished(session.run) ? (
             <div className="flex items-center gap-2 py-3 text-sm text-muted" role="status">
               <Loader2 size={16} className="animate-spin" />
-              {!session.run || session.run.status === "pending" ? "メッセージを探しています…" : "答えを書いています…"}
+              {!session.run || session.run.status === "pending" ? t("ask.searching") : t("ask.writing")}
             </div>
           ) : (
             <AskAnswer controller={controller} run={session.run} onOpenMessage={onOpenMessage} />
@@ -122,7 +123,7 @@ function AskAnswer({ controller, run, onOpenMessage }: { controller: AppControll
     <div className="space-y-2">
       {run.status === "failed" ? (
         <p role="alert" className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-danger">
-          答えられませんでした{run.error ? `: ${run.error}` : ""}
+          {t("ask.failed")}{run.error ? `: ${run.error}` : ""}
         </p>
       ) : (
         <MessageBody
@@ -137,11 +138,11 @@ function AskAnswer({ controller, run, onOpenMessage }: { controller: AppControll
         />
       )}
       {run.omitted_count > 0 && (
-        <p className="text-xs text-muted">非公開の会話の {run.omitted_count} 件は、このボットに送れないため除きました</p>
+        <p className="text-xs text-muted">{t("ask.omitted", { count: run.omitted_count })}</p>
       )}
       {sources.length > 0 && <AskSources controller={controller} sources={sources} onOpenMessage={onOpenMessage} />}
       <p className="text-[11px] text-muted">
-        この答えはあなたにだけ表示されます。AI が書いた答えです。間違いがあるかもしれません。
+        {t("ask.disclaimer")}
         {caption && <span data-testid="ai-run-caption" className="ml-1">({caption})</span>}
       </p>
     </div>
@@ -152,8 +153,8 @@ function AskSources({ controller, sources, onOpenMessage }: { controller: AppCon
   const store = controller.store;
   return (
     <div>
-      <div className="mb-1 text-xs font-semibold text-muted">出典</div>
-      <ol className="space-y-1" aria-label="出典">
+      <div className="mb-1 text-xs font-semibold text-muted">{t("ask.sources")}</div>
+      <ol className="space-y-1" aria-label={t("ask.sources")}>
         {sources.map((source) => {
           const channel = store.getChannel(source.channel_id);
           const sender = store.users.get(source.sender_id)?.display_name ?? "?";
@@ -169,8 +170,8 @@ function AskSources({ controller, sources, onOpenMessage }: { controller: AppCon
                   <span className="text-muted">
                     <span className="font-medium text-ink">{sender}</span>
                     {" · "}
-                    {channel ? channelTitle(channel, controller) : "会話"}
-                    {source.parent_id ? " · スレッド" : ""}
+                    {channel ? channelTitle(channel, controller) : t("ask.conversation")}
+                    {source.parent_id ? ` · ${t("nav.threads")}` : ""}
                     {" · "}
                     {fullTimestamp(source.created_at)}
                   </span>
@@ -189,15 +190,15 @@ function AskHistory({ runs, onPick }: { runs: AiRunOut[] | null; onPick: (run: A
   return (
     <div className="mt-2 rounded-lg border border-line bg-canvas p-1.5" data-testid="ai-ask-history">
       {runs === null ? (
-        <p className="px-2 py-1.5 text-xs text-muted">読み込んでいます…</p>
+        <p className="px-2 py-1.5 text-xs text-muted">{t("common.loading")}</p>
       ) : runs.length === 0 ? (
-        <p className="px-2 py-1.5 text-xs text-muted">まだ質問していません</p>
+        <p className="px-2 py-1.5 text-xs text-muted">{t("ask.noHistory")}</p>
       ) : (
-        <ul aria-label="過去の質問">
+        <ul aria-label={t("ask.history")}>
           {runs.map((run) => (
             <li key={run.id}>
               <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent-soft" onClick={() => onPick(run)}>
-                <span className="min-w-0 flex-1 truncate">{run.question ?? "(質問)"}</span>
+                <span className="min-w-0 flex-1 truncate">{run.question ?? t("ask.questionPlaceholder")}</span>
                 <time className="shrink-0 text-xs text-muted">{fullTimestamp(run.created_at)}</time>
               </button>
             </li>

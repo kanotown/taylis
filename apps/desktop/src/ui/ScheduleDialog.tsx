@@ -16,6 +16,7 @@ import {
   slotToIn,
   sortSlots,
 } from "./scheduling";
+import { t } from "../i18n";
 
 export interface ScheduleFormInitial {
   question?: string;
@@ -106,20 +107,20 @@ export function ScheduleDialog({ controller, channelId, parentId, onClose, initi
   };
 
   return (
-    <Modal onClose={onClose} title="日程調整を作成" description="候補の日時を選ぶと、メンバーが ○ △ × で答えます" className="w-[540px]">
+    <Modal onClose={onClose} title={t("schedule.createTitle")} description={t("schedule.createDescription")} className="w-[540px]">
       <form className="mt-3 space-y-3" onSubmit={(event) => void submit(event)}>
-        <Field label="題名">
-          <Input value={question} maxLength={200} autoFocus placeholder="例: M2 中間発表の練習" onChange={(e) => setQuestion(e.target.value)} />
+        <Field label={t("canvas.titleLabel")}>
+          <Input value={question} maxLength={200} autoFocus placeholder={t("schedule.titlePlaceholder")} onChange={(e) => setQuestion(e.target.value)} />
         </Field>
 
         <div className="grid gap-3 sm:grid-cols-[minmax(0,15rem)_1fr]">
-          <div aria-label="候補の日" role="group">
+          <div aria-label={t("schedule.candidateDays")} role="group">
             <div className="mb-1 flex items-center justify-between">
-              <button type="button" aria-label="前の月" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-ink" onClick={() => setMonth((m) => addMonths(m, -1))}>
+              <button type="button" aria-label={t("schedule.prevMonth")} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-ink" onClick={() => setMonth((m) => addMonths(m, -1))}>
                 <ChevronLeft size={15} />
               </button>
               <span className="text-sm font-medium">{monthLabel(month)}</span>
-              <button type="button" aria-label="次の月" className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-ink" onClick={() => setMonth((m) => addMonths(m, 1))}>
+              <button type="button" aria-label={t("schedule.nextMonth")} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-ink" onClick={() => setMonth((m) => addMonths(m, 1))}>
                 <ChevronRight size={15} />
               </button>
             </div>
@@ -158,48 +159,48 @@ export function ScheduleDialog({ controller, channelId, parentId, onClose, initi
           </div>
 
           <div className="space-y-2">
-            <span className="text-xs font-medium text-muted">時刻 (すべての候補)</span>
-            <div className="flex gap-1" role="radiogroup" aria-label="時刻か終日か">
-              <Button type="button" size="sm" variant={allDay ? "secondary" : "primary"} role="radio" aria-checked={!allDay} onClick={() => applyToAll({ allDay: false })}>時刻を決める</Button>
-              <Button type="button" size="sm" variant={allDay ? "primary" : "secondary"} role="radio" aria-checked={allDay} onClick={() => applyToAll({ allDay: true })}>終日</Button>
+            <span className="text-xs font-medium text-muted">{t("schedule.timeAll")}</span>
+            <div className="flex gap-1" role="radiogroup" aria-label={t("schedule.timeOrAllDay")}>
+              <Button type="button" size="sm" variant={allDay ? "secondary" : "primary"} role="radio" aria-checked={!allDay} onClick={() => applyToAll({ allDay: false })}>{t("schedule.setTime")}</Button>
+              <Button type="button" size="sm" variant={allDay ? "primary" : "secondary"} role="radio" aria-checked={allDay} onClick={() => applyToAll({ allDay: true })}>{t("calendar.allDay")}</Button>
             </div>
             {!allDay && (
               <div className="flex flex-wrap items-center gap-1.5 text-sm">
-                <input type="time" aria-label="開始時刻" className={TIME_INPUT} value={start} step={300} onChange={(e) => e.target.value && applyToAll({ start: e.target.value })} />
-                <span className="text-muted">から</span>
-                <select aria-label="長さ" className={SELECT} value={minutes} onChange={(e) => applyToAll({ minutes: Number(e.target.value) })}>
+                <input type="time" aria-label={t("calendar.startTime")} className={TIME_INPUT} value={start} step={300} onChange={(e) => e.target.value && applyToAll({ start: e.target.value })} />
+                <span className="text-muted">{t("schedule.for")}</span>
+                <select aria-label={t("schedule.length")} className={SELECT} value={minutes} onChange={(e) => applyToAll({ minutes: Number(e.target.value) })}>
                   {lengthChoices(minutes).map((m) => <option key={m} value={m}>{durationLabel(m)}</option>)}
                 </select>
               </div>
             )}
-            <p className="text-xs text-muted">カレンダーで日を選ぶと候補に入ります (もう一度押すと外れます)。</p>
+            <p className="text-xs text-muted">{t("schedule.pickHint")}</p>
           </div>
         </div>
 
         <div className="space-y-1">
           <div className="flex items-baseline justify-between text-xs font-medium text-muted">
-            <span>候補</span>
+            <span>{t("schedule.candidates")}</span>
             <span className={cn(slots.length > MAX_SLOTS && "text-danger")}>{slots.length} / {MAX_SLOTS}</span>
           </div>
           {slots.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-line px-3 py-3 text-center text-sm text-muted">カレンダーで日を選んでください</p>
+            <p className="rounded-lg border border-dashed border-line px-3 py-3 text-center text-sm text-muted">{t("schedule.pickDays")}</p>
           ) : (
-            <ul className="max-h-60 space-y-1 overflow-y-auto" aria-label="候補の一覧">
+            <ul className="max-h-60 space-y-1 overflow-y-auto" aria-label={t("schedule.candidateList")}>
               {slots.map((slot, index) => (
                 <li key={`${slot.day}-${index}`} data-slot-row className="flex flex-wrap items-center gap-1.5 rounded-lg border border-line px-2 py-1">
                   <span className="min-w-[9rem] flex-1 text-sm">{slotLabel(slot)}</span>
                   {!slot.allDay && (
                     <>
-                      <input type="time" aria-label={`${slotLabel(slot)} の開始時刻`} className={TIME_INPUT} value={slot.start} step={300} onChange={(e) => e.target.value && change(index, { start: e.target.value })} />
-                      <select aria-label={`${slotLabel(slot)} の長さ`} className={SELECT} value={slot.minutes} onChange={(e) => change(index, { minutes: Number(e.target.value) })}>
+                      <input type="time" aria-label={t("schedule.slotStart", { slot: slotLabel(slot) })} className={TIME_INPUT} value={slot.start} step={300} onChange={(e) => e.target.value && change(index, { start: e.target.value })} />
+                      <select aria-label={t("schedule.slotLength", { slot: slotLabel(slot) })} className={SELECT} value={slot.minutes} onChange={(e) => change(index, { minutes: Number(e.target.value) })}>
                         {lengthChoices(slot.minutes).map((m) => <option key={m} value={m}>{durationLabel(m)}</option>)}
                       </select>
-                      <button type="button" aria-label={`${slotLabel(slot)} の後に同じ日の候補を追加`} title="同じ日に別の時刻を追加" className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-ink" onClick={() => addAfter(index)}>
+                      <button type="button" aria-label={t("schedule.slotAddAfter", { slot: slotLabel(slot) })} title={t("schedule.slotAddTitle")} className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-ink" onClick={() => addAfter(index)}>
                         <CopyPlus size={15} />
                       </button>
                     </>
                   )}
-                  <button type="button" aria-label={`${slotLabel(slot)} を削除`} className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-ink" onClick={() => remove(index)}>
+                  <button type="button" aria-label={t("schedule.slotRemove", { slot: slotLabel(slot) })} className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-ink" onClick={() => remove(index)}>
                     <X size={15} />
                   </button>
                 </li>
@@ -210,12 +211,12 @@ export function ScheduleDialog({ controller, channelId, parentId, onClose, initi
 
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
-          匿名にする (誰が答えたか表示しない)
+          {t("schedule.anonymous")}
         </label>
         {tried && problem && <p className="text-xs text-danger">{problem}</p>}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" disabled={busy}>{busy ? "作成中…" : "作成"}</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" disabled={busy}>{busy ? t("common.creating") : t("common.create")}</Button>
         </div>
       </form>
     </Modal>

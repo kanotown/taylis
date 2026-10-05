@@ -1,4 +1,5 @@
 import type { TextEmojiColor } from "../api/types";
+import { t } from "../i18n";
 
 /**
  * Text emoji colours (M100, docs/EMOJI.md §1): a copy of apps/shared/text-emoji.json (tests/textEmoji.test.ts compares
@@ -15,16 +16,16 @@ export const TEXT_EMOJI_COLORS: Readonly<Record<TextEmojiColor, { light: { bg: s
   pink: { light: { bg: "#FCE1EF", fg: "#A3215F" }, dark: { bg: "#5A1A3A", fg: "#FFB0D5" } },
 };
 
-/** Japanese names for the colour choice in the add dialog. */
+/** The colour choice's names in the add dialog (in the UI language). */
 export const TEXT_EMOJI_COLOR_NAMES: Readonly<Record<TextEmojiColor, string>> = {
-  gray: "グレー",
-  red: "赤",
-  orange: "オレンジ",
-  yellow: "黄",
-  green: "緑",
-  blue: "青",
-  purple: "紫",
-  pink: "ピンク",
+  get gray() { return t("color.gray"); },
+  get red() { return t("color.red"); },
+  get orange() { return t("color.orange"); },
+  get yellow() { return t("color.yellow"); },
+  get green() { return t("color.green"); },
+  get blue() { return t("color.blue"); },
+  get purple() { return t("color.purple"); },
+  get pink() { return t("color.pink"); },
 };
 
 export const TEXT_EMOJI_LABEL_MAX = 12;

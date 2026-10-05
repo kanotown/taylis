@@ -11,6 +11,7 @@ import { parseCanvasLink, parsePermalink } from "./permalink";
 import { openExternalLink } from "../platform/external";
 import { cn } from "./primitives";
 import { type EmojiOnly, emojiOnly, JUMBO } from "./emojiOnly";
+import { t } from "../i18n";
 
 const NO_CUSTOM: ReadonlyMap<string, CustomEmojiOut> = new Map();
 
@@ -84,7 +85,7 @@ export function BlockView({ block, users, options }: { block: Block; users: Map<
         </ul>
       );
     case "image":
-      return <div className="my-1 text-muted">[画像{block.alt ? `: ${block.alt}` : ""}]</div>;
+      return <div className="my-1 text-muted">{block.alt ? t("canvasSearch.imageAlt", { alt: block.alt }) : t("canvasSearch.image")}</div>;
     case "hr":
       return <hr className="my-3 border-line" />;
     case "paragraph": {
@@ -223,7 +224,7 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
               title={token.url}
               onClick={() => open(internal)}
             >
-              <MessageSquareText size={13} /> {token.label && token.label !== token.url ? token.label : "メッセージを表示"}
+              <MessageSquareText size={13} /> {token.label && token.label !== token.url ? token.label : t("files.showMessage")}
             </button>
           );
         }
@@ -241,8 +242,8 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
         );
       case "mention_group":
         return (
-          <span key={i} className="mention" title="グループ">
-            @{groups?.get(token.groupId)?.name ?? "グループ"}
+          <span key={i} className="mention" title={t("composer.group")}>
+            @{groups?.get(token.groupId)?.name ?? t("composer.group")}
           </span>
         );
       case "mention_all":

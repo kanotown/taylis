@@ -6,6 +6,7 @@ import type { AppController } from "../state/app";
 import { Button, cn, Field, Input, Modal } from "./primitives";
 import { useRef } from "react";
 import { packFromDrop, readZipPackFiles } from "./emojiPackSource";
+import { t } from "../i18n";
 
 /** Custom emoji (M12f): `:name:` in text and reactions renders as the uploaded image. */
 
@@ -216,30 +217,30 @@ export function AddEmojiDialog({ controller, onClose }: { controller: AppControl
     if (ok) onClose();
   };
   return (
-    <Modal onClose={onClose} title="絵文字を追加" className="w-[440px]">
+    <Modal onClose={onClose} title={t("emoji.add")} className="w-[440px]">
       <div className="mt-3 space-y-3">
-        <div className="flex gap-1" role="radiogroup" aria-label="種類">
+        <div className="flex gap-1" role="radiogroup" aria-label={t("tasks.kind")}>
           {(["image", "text"] as const).map((k) => (
             <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)} className={cn("rounded-md px-3 py-1 text-sm", kind === k ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel")}>
-              {k === "image" ? "画像" : "文字"}
+              {k === "image" ? t("emoji.kindImage") : t("emoji.kindText")}
             </button>
           ))}
         </div>
-        <Field label="名前 (a-z 0-9 _ + -、2〜32 文字)">
-          <Input value={name} autoFocus placeholder={kind === "image" ? "例: party_parrot" : "例: kakunin"} onChange={(e) => setName(e.target.value.trim().toLowerCase())} />
-          {name && <div className="mt-1 text-xs text-muted">本文では :{name}: と書きます</div>}
+        <Field label={t("emoji.nameLabel")}>
+          <Input value={name} autoFocus placeholder={kind === "image" ? t("emoji.namePlaceholderImage") : t("emoji.namePlaceholderText")} onChange={(e) => setName(e.target.value.trim().toLowerCase())} />
+          {name && <div className="mt-1 text-xs text-muted">{t("emoji.writeAs", { name })}</div>}
         </Field>
         {kind === "image" ? (
-          <Field label="画像 (PNG / GIF / JPEG / WebP、512px・256 KB まで)">
+          <Field label={t("emoji.imageLabel")}>
             <input ref={input} type="file" accept="image/png,image/gif,image/jpeg,image/webp" className="text-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </Field>
         ) : (
           <>
-            <Field label={`表示する文字 (${TEXT_EMOJI_LABEL_MAX} 文字まで)`}>
-              <Input value={label} placeholder="例: 確認しました" onChange={(e) => setLabel(e.target.value)} />
-              {labelLength > TEXT_EMOJI_LABEL_MAX && <div className="mt-1 text-xs text-danger">{TEXT_EMOJI_LABEL_MAX} 文字までです</div>}
+            <Field label={t("emoji.textLabel", { max: TEXT_EMOJI_LABEL_MAX })}>
+              <Input value={label} placeholder={t("emoji.textPlaceholder")} onChange={(e) => setLabel(e.target.value)} />
+              {labelLength > TEXT_EMOJI_LABEL_MAX && <div className="mt-1 text-xs text-danger">{t("emoji.textTooLong", { max: TEXT_EMOJI_LABEL_MAX })}</div>}
             </Field>
-            <Field label="色">
+            <Field label={t("emoji.color")}>
               <div className="flex flex-wrap gap-1.5">
                 {(Object.keys(TEXT_EMOJI_COLORS) as TextEmojiColor[]).map((key) => (
                   <button key={key} type="button" aria-pressed={color === key} title={TEXT_EMOJI_COLOR_NAMES[key]} onClick={() => setColor(key)} className={cn("rounded-md p-0.5", color === key ? "ring-2 ring-accent" : "")}>
@@ -251,16 +252,16 @@ export function AddEmojiDialog({ controller, onClose }: { controller: AppControl
           </>
         )}
         {kind === "image" && (
-          <Field label="表示名 (任意、ピッカーで名前の代わりに出ます)">
-            <Input value={label} placeholder="例: おじぎ" onChange={(e) => setLabel(e.target.value)} />
+          <Field label={t("emoji.labelLabel")}>
+            <Input value={label} placeholder={t("emoji.labelPlaceholder")} onChange={(e) => setLabel(e.target.value)} />
           </Field>
         )}
-        <Field label="検索キーワード (任意、、や空白で区切る)">
-          <Input value={keywords} placeholder="例: ありがとう よろしく" onChange={(e) => setKeywords(e.target.value)} />
+        <Field label={t("emoji.keywordsOptional")}>
+          <Input value={keywords} placeholder={t("emoji.keywordsPlaceholder")} onChange={(e) => setKeywords(e.target.value)} />
         </Field>
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button disabled={!valid || busy} onClick={() => void submit()}>追加</Button>
+          <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button disabled={!valid || busy} onClick={() => void submit()}>{t("common.add")}</Button>
         </div>
       </div>
     </Modal>
@@ -291,13 +292,13 @@ export function EditEmojiDialog({ controller, emoji, onClose }: { controller: Ap
     if (ok) onClose();
   };
   return (
-    <Modal onClose={onClose} title={`:${emoji.name}: を編集`} className="w-[440px]">
+    <Modal onClose={onClose} title={t("emoji.editTitle", { name: emoji.name })} className="w-[440px]">
       <div className="mt-3 space-y-3">
-        <Field label={text ? `表示する文字 (${TEXT_EMOJI_LABEL_MAX} 文字まで)` : "表示名 (任意)"}>
+        <Field label={text ? t("emoji.textLabel", { max: TEXT_EMOJI_LABEL_MAX }) : t("emoji.labelOptional")}>
           <Input value={label} autoFocus onChange={(e) => setLabel(e.target.value)} />
         </Field>
         {text && (
-          <Field label="色">
+          <Field label={t("emoji.color")}>
             <div className="flex flex-wrap gap-1.5">
               {(Object.keys(TEXT_EMOJI_COLORS) as TextEmojiColor[]).map((key) => (
                 <button key={key} type="button" aria-pressed={color === key} title={TEXT_EMOJI_COLOR_NAMES[key]} onClick={() => setColor(key)} className={cn("rounded-md p-0.5", color === key ? "ring-2 ring-accent" : "")}>
@@ -307,20 +308,20 @@ export function EditEmojiDialog({ controller, emoji, onClose }: { controller: Ap
             </div>
           </Field>
         )}
-        <Field label="検索キーワード (、や空白で区切る)">
+        <Field label={t("emoji.keywords")}>
           <Input value={keywords} onChange={(e) => setKeywords(e.target.value)} />
         </Field>
         {admin && (
-          <Field label="セット">
+          <Field label={t("emoji.pack")}>
             <select value={packId} onChange={(e) => setPackId(e.target.value)} className="h-9 w-full rounded-lg border border-line bg-canvas px-2 text-sm">
-              <option value="">なし (「カスタム」のタブ)</option>
+              <option value="">{t("emoji.noPack")}</option>
               {packs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Field>
         )}
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button disabled={!valid || busy} onClick={() => void submit()}>保存</Button>
+          <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button disabled={!valid || busy} onClick={() => void submit()}>{t("common.save")}</Button>
         </div>
       </div>
     </Modal>
@@ -334,18 +335,18 @@ const THUMBNAILS = 6;
 /** What a folder's pack.json says, before uploading (the server checks everything again). */
 export async function previewPackFolder(files: File[]): Promise<PackManifestPreview | string> {
   const manifest = files.find((f) => f.name === "pack.json");
-  if (!manifest) return "pack.json がありません。PNG 画像と pack.json の入ったフォルダか ZIP を選んでください";
+  if (!manifest) return t("emoji.packNoManifest");
   let parsed: { name?: unknown; items?: Array<{ file?: unknown }>; tab?: unknown };
   try {
     parsed = JSON.parse(await manifest.text());
   } catch {
-    return "pack.json を JSON として読めません";
+    return t("emoji.packBadJson");
   }
   const names = new Set(files.map((f) => f.name.normalize("NFC")));
   const items = Array.isArray(parsed.items) ? parsed.items.map((i) => String(i?.file ?? "")) : [];
   const wanted = [...items, ...(typeof parsed.tab === "string" ? [parsed.tab] : [])];
   return {
-    name: typeof parsed.name === "string" ? parsed.name : "(名前なし)",
+    name: typeof parsed.name === "string" ? parsed.name : t("emoji.packNoName"),
     items: items.length,
     missing: wanted.filter((f) => !names.has(f.normalize("NFC"))),
     thumbnails: items.filter((f) => names.has(f.normalize("NFC"))).slice(0, THUMBNAILS),
@@ -375,11 +376,11 @@ export async function pickPack(source: PackSource): Promise<Picked> {
     return { source, label: source.archive.name, preview: inside ? await previewPackFolder(files) : null, files };
   }
   const files = packFiles(source.files);
-  const label = (source.files[0] as (File & { webkitRelativePath?: string }) | undefined)?.webkitRelativePath?.split("/")[0] || "フォルダ";
+  const label = (source.files[0] as (File & { webkitRelativePath?: string }) | undefined)?.webkitRelativePath?.split("/")[0] || t("emoji.folder");
   return {
     source: { files },
     label,
-    preview: files.length ? await previewPackFolder(files) : "PNG 画像も pack.json も見つかりません。PNG 画像と pack.json の入ったフォルダか ZIP を選んでください",
+    preview: files.length ? await previewPackFolder(files) : t("emoji.packNothingFound"),
     files,
   };
 }
@@ -394,7 +395,7 @@ function PackThumbnails({ files, names }: { files: File[]; names: string[] }) {
   }, [files, names]);
   if (!urls.length) return null;
   return (
-    <div className="mt-2 flex gap-1.5" aria-label="見本">
+    <div className="mt-2 flex gap-1.5" aria-label={t("emoji.samples")}>
       {urls.map((u) => <img key={u} src={u} alt="" className="h-10 w-10 rounded object-contain" />)}
     </div>
   );
@@ -433,7 +434,7 @@ export function ImportPackDialog({ controller, onClose }: { controller: AppContr
   const preview = picked?.preview;
   const blocked = typeof preview === "string" || (!!preview && preview.missing.length > 0);
   return (
-    <Modal onClose={onClose} title="絵文字のセットを追加" className="w-[480px]">
+    <Modal onClose={onClose} title={t("emoji.addPack")} className="w-[480px]">
       <div
         className={cn("mt-3 space-y-3 rounded-lg text-sm", dragging && "ring-2 ring-accent")}
         onDragOver={(e) => { if (e.dataTransfer?.types.includes("Files")) { e.preventDefault(); setDragging(true); } }}
@@ -442,37 +443,35 @@ export function ImportPackDialog({ controller, onClose }: { controller: AppContr
           e.preventDefault();
           setDragging(false);
           if (busy) return;
-          void packFromDrop(e.dataTransfer).then((source) => choose(source, "フォルダか ZIP ファイルをドロップしてください"));
+          void packFromDrop(e.dataTransfer).then((source) => choose(source, t("emoji.dropHint")));
         }}
       >
         {!picked ? (
           <>
-            <p>PNG 画像と pack.json の入ったフォルダ (またはそれを ZIP にしたもの) を選んでください。ここにドロップしても選べます。</p>
+            <p>{t("emoji.packChoose")}</p>
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="secondary" className="h-16" onClick={() => folderInput.current?.click()}>フォルダを選ぶ</Button>
-              <Button variant="secondary" className="h-16" onClick={() => zipInput.current?.click()}>ZIP ファイルを選ぶ</Button>
+              <Button variant="secondary" className="h-16" onClick={() => folderInput.current?.click()}>{t("emoji.chooseFolder")}</Button>
+              <Button variant="secondary" className="h-16" onClick={() => zipInput.current?.click()}>{t("emoji.chooseZip")}</Button>
             </div>
             {/* webkitdirectory: the whole folder (WebView2, WKWebView, browsers). */}
             <input ref={folderInput} type="file" multiple hidden data-testid="pack-folder" {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={(e) => void choose(e.target.files?.length ? { files: [...e.target.files] } : null)} />
             <input ref={zipInput} type="file" hidden data-testid="pack-zip" accept=".zip,application/zip" onChange={(e) => { const f = e.target.files?.[0]; void choose(f ? { archive: f } : null); }} />
             <details className="text-xs text-muted">
-              <summary className="cursor-pointer">pack.json の書き方</summary>
+              <summary className="cursor-pointer">{t("emoji.packHowTo")}</summary>
               <p className="mt-1">
-                画像は 512px・256 KB まで。pack.json は
-                {" {\"name\": \"セット名\", \"tab\": \"tab.png\", \"items\": [{\"file\", \"shortcode\", \"label\", \"keywords\": []}]} "}
-                です。同じ名前のセットをもう一度取り込むと、表示名・キーワード・並び順を更新し、新しい絵文字を足します (画像は差し替えません)。
+                {t("emoji.packHelp")}
               </p>
             </details>
           </>
         ) : (
-          <div className="rounded-lg border border-line p-3" aria-label="取り込む内容">
+          <div className="rounded-lg border border-line p-3" aria-label={t("emoji.importContents")}>
             <div className="truncate text-xs text-muted">{picked.label}</div>
-            {preview === null && <div className="mt-1">ZIP の中身はここでは確かめられません。取り込むときにサーバが確かめます。</div>}
+            {preview === null && <div className="mt-1">{t("emoji.zipUnchecked")}</div>}
             {typeof preview === "string" && <div className="mt-1 text-danger">{preview}</div>}
             {preview && typeof preview !== "string" && (
               <>
-                <div className="mt-1 font-semibold">「{preview.name}」 · {preview.items} 個</div>
-                {preview.missing.length > 0 && <div className="mt-1 text-xs text-danger">見つからないファイル: {preview.missing.join("、")}</div>}
+                <div className="mt-1 font-semibold">{t("emoji.packPreview", { name: preview.name, count: preview.items })}</div>
+                {preview.missing.length > 0 && <div className="mt-1 text-xs text-danger">{t("emoji.missingFiles", { files: preview.missing.join(t("common.listSeparator")) })}</div>}
                 <PackThumbnails files={picked.files} names={preview.thumbnails} />
               </>
             )}
@@ -481,13 +480,13 @@ export function ImportPackDialog({ controller, onClose }: { controller: AppContr
         {error && <div className="text-xs text-danger" role="alert">{error}</div>}
         {result && (
           <div className="rounded-lg border border-line bg-panel p-2 text-xs" role="status">
-            「{result.pack.name}」を取り込みました: 追加 {result.created.length} · 更新 {result.updated.length} · 変更なし {result.unchanged.length}
+            {t("emoji.imported", { name: result.pack.name, created: result.created.length, updated: result.updated.length, unchanged: result.unchanged.length })}
           </div>
         )}
         <div className="flex justify-end gap-2">
-          {picked && !result && <Button variant="ghost" disabled={busy} onClick={reset}>選び直す</Button>}
-          <Button variant="secondary" onClick={onClose}>{result ? "閉じる" : "キャンセル"}</Button>
-          {!result && <Button disabled={!picked || blocked || busy} onClick={() => void submit()}>{busy ? "取り込み中…" : "取り込む"}</Button>}
+          {picked && !result && <Button variant="ghost" disabled={busy} onClick={reset}>{t("emoji.chooseAgain")}</Button>}
+          <Button variant="secondary" onClick={onClose}>{result ? t("common.close") : t("common.cancel")}</Button>
+          {!result && <Button disabled={!picked || blocked || busy} onClick={() => void submit()}>{busy ? t("emoji.importing") : t("emoji.import")}</Button>}
         </div>
       </div>
     </Modal>
@@ -517,41 +516,41 @@ export function EmojiAdminTab({ controller }: { controller: AppController }) {
       <span className="flex-1 truncate text-xs text-muted">
         {emoji.label ? `${emoji.label} · ` : ""}
         {(emoji.keywords ?? []).length ? `${(emoji.keywords ?? []).join("、")} · ` : ""}
-        {store.users.get(emoji.created_by)?.display_name ?? "?"}{emoji.kind === "text" ? " · 文字" : ` · ${emoji.width}×${emoji.height}`}
+        {store.users.get(emoji.created_by)?.display_name ?? "?"}{emoji.kind === "text" ? ` · ${t("emoji.kindText")}` : ` · ${emoji.width}×${emoji.height}`}
       </span>
-      <Button size="sm" variant="ghost" onClick={() => setEditing(emoji)}>編集</Button>
-      <Button size="sm" variant="ghost" onClick={() => void controller.deleteEmoji(emoji.id)}>削除</Button>
+      <Button size="sm" variant="ghost" onClick={() => setEditing(emoji)}>{t("canvas.edit")}</Button>
+      <Button size="sm" variant="ghost" onClick={() => void controller.deleteEmoji(emoji.id)}>{t("common.delete")}</Button>
     </li>
   );
   return (
     <div className="mt-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-xs text-muted">{rows.length} 件 · 誰でも追加でき、作成者と管理者が変更・削除できます</span>
+        <span className="text-xs text-muted">{t("emoji.listNote", { count: rows.length })}</span>
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={() => setImporting(true)}>セットを追加</Button>
-          <Button size="sm" onClick={() => setAdding(true)}>絵文字を追加</Button>
+          <Button size="sm" variant="secondary" onClick={() => setImporting(true)}>{t("emoji.addPackShort")}</Button>
+          <Button size="sm" onClick={() => setAdding(true)}>{t("emoji.add")}</Button>
         </div>
       </div>
       {packs.map((pack, index) => {
         const members = rows.filter((e) => e.pack_id === pack.id).sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name));
         return (
-          <section key={pack.id} className="mb-3" aria-label={`セット ${pack.name}`}>
+          <section key={pack.id} className="mb-3" aria-label={t("emoji.packLabel", { name: pack.name })}>
             <div className="mb-1 flex items-center gap-2">
               {renaming?.id === pack.id ? (
                 <>
                   <Input value={renaming.name} autoFocus className="h-7 w-48 text-sm" onChange={(e) => setRenaming({ id: pack.id, name: e.target.value })} />
-                  <Button size="sm" onClick={() => { void controller.updateEmojiPack(pack.id, { name: renaming.name }).then((ok) => { if (ok) setRenaming(null); }); }}>保存</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setRenaming(null)}>キャンセル</Button>
+                  <Button size="sm" onClick={() => { void controller.updateEmojiPack(pack.id, { name: renaming.name }).then((ok) => { if (ok) setRenaming(null); }); }}>{t("common.save")}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setRenaming(null)}>{t("common.cancel")}</Button>
                 </>
               ) : (
                 <>
                   <span className="text-sm font-semibold">{pack.name}</span>
-                  <span className="text-xs text-muted">{members.length} 個</span>
+                  <span className="text-xs text-muted">{t("emoji.packCount", { count: members.length })}</span>
                   <span className="flex-1" />
-                  <Button size="sm" variant="ghost" disabled={index === 0} onClick={() => move(index, -1)} aria-label="前へ">↑</Button>
-                  <Button size="sm" variant="ghost" disabled={index === packs.length - 1} onClick={() => move(index, 1)} aria-label="後ろへ">↓</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setRenaming({ id: pack.id, name: pack.name })}>名前を変更</Button>
-                  <Button size="sm" variant="ghost" onClick={() => { if (window.confirm(`セット「${pack.name}」を削除しますか？ 絵文字は残り、「カスタム」に移ります。`)) void controller.deleteEmojiPack(pack.id); }}>セットを削除</Button>
+                  <Button size="sm" variant="ghost" disabled={index === 0} onClick={() => move(index, -1)} aria-label={t("emoji.earlier")}>↑</Button>
+                  <Button size="sm" variant="ghost" disabled={index === packs.length - 1} onClick={() => move(index, 1)} aria-label={t("emoji.later")}>↓</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setRenaming({ id: pack.id, name: pack.name })}>{t("channel.rename")}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { if (window.confirm(t("emoji.deletePackConfirm", { name: pack.name }))) void controller.deleteEmojiPack(pack.id); }}>{t("emoji.deletePack")}</Button>
                 </>
               )}
             </div>
@@ -559,10 +558,10 @@ export function EmojiAdminTab({ controller }: { controller: AppController }) {
           </section>
         );
       })}
-      {packs.length > 0 && <div className="mb-1 text-sm font-semibold">セットなし</div>}
+      {packs.length > 0 && <div className="mb-1 text-sm font-semibold">{t("emoji.noPackHeading")}</div>}
       <ul className="divide-y divide-line rounded-xl border border-line">
         {ungrouped.map(row)}
-        {rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">カスタム絵文字はまだありません</li>}
+        {rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("emoji.none")}</li>}
       </ul>
       {adding && <AddEmojiDialog controller={controller} onClose={() => setAdding(false)} />}
       {importing && <ImportPackDialog controller={controller} onClose={() => setImporting(false)} />}

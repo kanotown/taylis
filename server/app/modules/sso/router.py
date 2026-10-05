@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app import i18n
 from app.core.db import Db
 from app.core.errors import not_found, rate_limited
 from app.core.ratelimit import RateLimiter
@@ -157,7 +158,13 @@ async def sso_exchange(
     _google(request)
     _throttle(request)
     _no_store(response)
-    tokens = await service.exchange(db, body, request.app.state.settings, _client_ip(request))
+    tokens = await service.exchange(
+        db,
+        body,
+        request.app.state.settings,
+        _client_ip(request),
+        locale=i18n.from_accept_language(request.headers.get("accept-language")),
+    )
     if web_session.is_web(body.device.platform):
         web_session.issue(response, request, tokens)
     return tokens

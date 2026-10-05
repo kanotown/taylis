@@ -6,12 +6,13 @@
 import type { ActivitySummaryOut } from "../api/types";
 import type { ChannelState, ThreadSummary } from "../sync/types";
 import { hasUnread, isDmChannel, isSelfNotes } from "./channels";
+import { t, weekdayName } from "../i18n";
 
 export type MobileTab = "home" | "dm" | "activity" | "you";
 
 export const MOBILE_TABS: readonly MobileTab[] = ["home", "dm", "activity", "you"];
 
-export const MOBILE_TAB_LABELS: Record<MobileTab, string> = { home: "ホーム", dm: "DM", activity: "アクティビティ", you: "自分" };
+export const MOBILE_TAB_LABELS: Record<MobileTab, string> = { get home() { return t("home.title"); }, dm: "DM", get activity() { return t("nav.activity"); }, get you() { return t("mobileTabs.you"); } };
 
 // --- badges (§8) -------------------------------------------------------------------------------
 
@@ -67,7 +68,6 @@ export function dmList(channels: Iterable<ChannelState>, title: (channel: Channe
   return rows.sort((a, b) => Number(isSelfNotes(b, meId)) - Number(isSelfNotes(a, meId)) || (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""));
 }
 
-const WEEKDAYS = ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"];
 
 /**
  * The time on a DM row, in local time: today "H:mm", the day before 「昨日」, 2–6 days before the weekday, older "M/d",
@@ -80,8 +80,8 @@ export function dmTimeLabel(iso: string | null | undefined, now: Date = new Date
   const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const days = Math.round((day(now) - day(at)) / 86_400_000);
   if (days === 0) return `${at.getHours()}:${String(at.getMinutes()).padStart(2, "0")}`;
-  if (days === 1) return "昨日";
-  if (days >= 2 && days <= 6) return WEEKDAYS[at.getDay()]!;
+  if (days === 1) return t("search.date.yesterday");
+  if (days >= 2 && days <= 6) return weekdayName((at.getDay() + 6) % 7, "long");
   if (at.getFullYear() !== now.getFullYear()) return `${at.getFullYear()}/${at.getMonth() + 1}/${at.getDate()}`;
   return `${at.getMonth() + 1}/${at.getDate()}`;
 }

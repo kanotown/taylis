@@ -28,6 +28,7 @@ import { CANVAS_SPLIT_DEFAULT, CANVAS_SPLIT_MAX, CANVAS_SPLIT_MIN, clampCanvasSp
 import { sinceLabel } from "./format";
 import { mentionsToNames } from "./mentions";
 import { Badge, Button, cn, Input, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { t } from "../i18n";
 
 /** The canvas the tab opens on: the conversation's tab canvas, else the most recently updated one. */
 export function defaultCanvasId(list: readonly CanvasMeta[]): string | null {
@@ -71,35 +72,35 @@ export function CanvasPane({ controller, channel, canvasId, onSelect, onOpenThre
   );
 
   if (!hub || !hub.available) {
-    return <Empty icon={<CircleAlert size={22} />} title="キャンバスを使えません" text="サーバがキャンバスに対応していません。" />;
+    return <Empty icon={<CircleAlert size={22} />} title={t("canvas.unavailable")} text={t("canvas.unavailableText")} />;
   }
   if (list === null && !selectedId) {
     const failure = store.canvasListFailure(channel.id);
     if (failure === "unsupported") {
-      return <Empty icon={<CircleAlert size={22} />} title="このサーバはまだキャンバスに対応していません" text="サーバの更新後に使えるようになります。" />;
+      return <Empty icon={<CircleAlert size={22} />} title={t("canvas.serverTooOld")} text={t("canvas.serverTooOldText")} />;
     }
     if (failure === "failed") {
       return (
         <Empty
           icon={<CircleAlert size={22} />}
-          title="キャンバスを読み込めませんでした"
-          action={<Button variant="secondary" size="sm" onClick={() => void hub.loadList(channel.id)}>再読み込み</Button>}
+          title={t("canvas.loadFailed")}
+          action={<Button variant="secondary" size="sm" onClick={() => void hub.loadList(channel.id)}>{t("common.reload")}</Button>}
         />
       );
     }
-    return <Empty icon={<Loader2 size={22} className="animate-spin" />} title="読み込み中…" />;
+    return <Empty icon={<Loader2 size={22} className="animate-spin" />} title={t("common.loading")} />;
   }
   if (!selectedId) {
     return (
-      <section aria-label="キャンバス" className="flex min-h-0 flex-1 flex-col">
+      <section aria-label={t("main.tab.canvas")} className="flex min-h-0 flex-1 flex-col">
         <Empty
           icon={<FileText size={24} />}
-          title="この会話にはまだキャンバスがありません"
-          text="議事録・週報・チェックリストなど、会話のメンバーで一緒に書く文書です。"
+          title={t("canvas.none")}
+          text={t("canvas.noneText")}
           action={
             <div className="flex flex-wrap justify-center gap-2">
-              {createRights.create && <Button onClick={() => setDialog("new")}><Plus size={16} /> キャンバスを作成</Button>}
-              <Button variant="secondary" onClick={() => setDialog("trash")}><Trash2 size={15} /> ゴミ箱</Button>
+              {createRights.create && <Button onClick={() => setDialog("new")}><Plus size={16} /> {t("canvas.create")}</Button>}
+              <Button variant="secondary" onClick={() => setDialog("trash")}><Trash2 size={15} /> {t("canvas.trash")}</Button>
             </div>
           }
         />
@@ -158,7 +159,7 @@ function OpenCanvas(props: OpenCanvasProps) {
     setSaver(held.saver);
     return held.release;
   }, [hub, props.canvasId, props.channel.id]);
-  if (!saver) return <Empty icon={<Loader2 size={22} className="animate-spin" />} title="読み込み中…" />;
+  if (!saver) return <Empty icon={<Loader2 size={22} className="animate-spin" />} title={t("common.loading")} />;
   return <CanvasView {...props} saver={saver} />;
 }
 
@@ -224,7 +225,7 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
   const share = async () => {
     if (!meta) return;
     const done = await controller.shareCanvas(meta.id);
-    if (done) controller.setNotice("会話に共有しました");
+    if (done) controller.setNotice(t("canvas.sharedToConversation"));
   };
   const editing = rights.edit && mode === "edit" && saver.status !== "loading" && saver.status !== "gone";
   const onToggleTask = rights.tick && saver.status !== "gone" && saver.status !== "loading"
@@ -253,11 +254,11 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
 
   const headings = useMemo(() => outline(saver.text), [saver.text]);
   const showOutline = !compact && !editing && headings.length >= 3;
-  const title = meta?.title ?? "キャンバス";
+  const title = meta?.title ?? t("main.tab.canvas");
   const notice = noticeFor(channel, rights, saver, controller);
 
   return (
-    <section aria-label={`キャンバス: ${title}`} className="flex min-h-0 flex-1 flex-col">
+    <section aria-label={t("canvas.labelWithTitle", { title })} className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-line px-2">
         <CanvasPicker controller={controller} list={list} currentId={canvasId} title={title} onSelect={onSelect} onNew={onNew} onTrash={onTrash} />
         <div className="min-w-0 flex-1" />
@@ -266,23 +267,23 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
         {meta && saver.status !== "gone" && onOpenThread && (shared || rights.share) && (
           <button
             type="button"
-            title={shared ? "コメント (共有したメッセージのスレッド)" : "コメント (会話に共有してスレッドを開きます)"}
-            aria-label="コメント"
+            title={shared ? t("canvas.commentsShared") : t("canvas.commentsShare")}
+            aria-label={t("canvas.comments")}
             disabled={opening}
             onClick={() => void openComments()}
             className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-ink transition-colors hover:bg-ink/6 disabled:opacity-50"
           >
             {opening ? <Loader2 size={15} className="animate-spin" /> : <MessageSquare size={15} />}
-            <span className="max-md:sr-only">コメント</span>
+            <span className="max-md:sr-only">{t("canvas.comments")}</span>
           </button>
         )}
         {meta && saver.status !== "gone" && (
-          <button type="button" title="履歴" aria-label="履歴" onClick={() => setHistoryOpen(true)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6 max-md:hidden">
+          <button type="button" title={t("canvas.history")} aria-label={t("canvas.history")} onClick={() => setHistoryOpen(true)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6 max-md:hidden">
             <History size={16} />
           </button>
         )}
         {rights.edit && saver.status !== "gone" && (
-          <div role="tablist" aria-label="表示" className="flex shrink-0 rounded-lg bg-panel-2 p-0.5 text-xs font-medium">
+          <div role="tablist" aria-label={t("canvas.mode")} className="flex shrink-0 rounded-lg bg-panel-2 p-0.5 text-xs font-medium">
             {(["edit", "view"] as const).map((value) => (
               <button
                 key={value}
@@ -292,7 +293,7 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
                 onClick={() => setMode(value)}
                 className={cn("rounded-md px-2.5 py-1 transition-colors", mode === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
               >
-                {value === "edit" ? "編集" : "閲覧"}
+                {value === "edit" ? t("canvas.edit") : t("canvas.view")}
               </button>
             ))}
           </div>
@@ -303,7 +304,7 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
       </div>
       {notice && <div className={cn("flex shrink-0 items-center gap-2 border-b border-line px-4 py-1.5 text-xs", notice.tone === "warn" ? "bg-warning/10 text-ink" : "bg-panel text-muted")}>{notice.text}{notice.action}</div>}
       {saver.status === "loading" ? (
-        <Empty icon={<Loader2 size={22} className="animate-spin" />} title="読み込み中…" />
+        <Empty icon={<Loader2 size={22} className="animate-spin" />} title={t("common.loading")} />
       ) : editing ? (
         <div ref={splitBox} className={cn("flex min-h-0 flex-1", compact ? "flex-col" : "flex-row")}>
           <CanvasEditor controller={controller} saver={saver} className={cn("min-w-0", compact ? "flex-1" : "shrink-0")} style={compact ? undefined : { width: `${split * 100}%` }} />
@@ -311,12 +312,12 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
             <div
               role="separator"
               aria-orientation="vertical"
-              aria-label="編集とプレビューの幅"
+              aria-label={t("canvas.splitWidth")}
               aria-valuemin={CANVAS_SPLIT_MIN * 100}
               aria-valuemax={CANVAS_SPLIT_MAX * 100}
               aria-valuenow={Math.round(split * 100)}
               tabIndex={0}
-              title="ドラッグで幅を変更、ダブルクリックで元に戻す"
+              title={t("main.resizeHint")}
               onPointerDown={startSplitResize}
               onDoubleClick={() => changeSplit(CANVAS_SPLIT_DEFAULT)}
               onKeyDown={(event) => {
@@ -329,9 +330,9 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
             />
           )}
           {!compact && (
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" aria-label="キャンバスのプレビュー">
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" aria-label={t("canvas.previewLabel")}>
               <div className="mx-auto max-w-3xl px-6 py-4">
-                <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted">プレビュー</div>
+                <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted">{t("composer.preview")}</div>
                 <CanvasBody body={saver.text} controller={controller} onToggleTask={onToggleTask} onMakeTask={onMakeTask} />
               </div>
             </div>
@@ -339,13 +340,13 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <div className="min-h-0 flex-1 overflow-y-auto" aria-label="キャンバスの内容">
+          <div className="min-h-0 flex-1 overflow-y-auto" aria-label={t("canvas.content")}>
             <article className="mx-auto max-w-3xl px-6 py-6 max-md:px-4 max-md:py-4">
               <h1 className="mb-1 text-[26px] font-bold leading-tight max-md:text-[22px]">{title}</h1>
               {meta && <Byline controller={controller} canvas={meta} />}
               {saver.text.trim() === "" ? (
                 <p className="mt-6 text-sm text-muted">
-                  まだ何も書かれていません。{rights.edit && <button type="button" className="text-accent hover:underline" onClick={() => setMode("edit")}>書き始める</button>}
+                  {t("canvas.emptyBody")}{rights.edit && <button type="button" className="text-accent hover:underline" onClick={() => setMode("edit")}>{t("canvas.startWriting")}</button>}
                 </p>
               ) : (
                 <CanvasBody body={saver.text} controller={controller} onToggleTask={onToggleTask} onMakeTask={onMakeTask} className="mt-5" />
@@ -353,8 +354,8 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
             </article>
           </div>
           {showOutline && (
-            <nav aria-label="目次" className="w-52 shrink-0 overflow-y-auto border-l border-line px-3 py-5 text-sm">
-              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted"><ListTree size={13} /> 目次</div>
+            <nav aria-label={t("canvas.toc")} className="w-52 shrink-0 overflow-y-auto border-l border-line px-3 py-5 text-sm">
+              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted"><ListTree size={13} /> {t("canvas.toc")}</div>
               {headings.map((entry) => (
                 <button
                   key={entry.line}
@@ -396,7 +397,7 @@ function CanvasEditing({ controller, canvasId }: { controller: AppController; ca
     return () => clearInterval(timer);
   }, [editors.length]);
   if (editors.length === 0) return null;
-  const nameOf = (id: string) => store.users.get(id)?.display_name ?? "メンバー";
+  const nameOf = (id: string) => store.users.get(id)?.display_name ?? t("common.member");
   const label = editingLabel(editors.map((e) => nameOf(e.userId)));
   const detail = editors.map((e) => (e.section ? `${nameOf(e.userId)}: ${e.section}` : nameOf(e.userId))).join("\n");
   const shown = editors.slice(0, 3);
@@ -419,49 +420,49 @@ function CanvasEditing({ controller, canvasId }: { controller: AppController; ca
 function noticeFor(channel: ChannelState, rights: CanvasRights, saver: CanvasSaver, controller: AppController): { text: string; tone: "info" | "warn"; action?: ReactNode } | null {
   const copy = (
     <button type="button" className="ml-auto inline-flex shrink-0 items-center gap-1 text-accent hover:underline" onClick={() => void controller.copyMessageText(stripTaskMarkers(saver.text))}>
-      <Copy size={12} /> 本文をコピー
+      <Copy size={12} /> {t("canvas.copyBody")}
     </button>
   );
-  if (saver.status === "gone") return { text: "このキャンバスはゴミ箱に移されたか、見られなくなりました。手元の本文はコピーできます。", tone: "warn", action: copy };
-  if (saver.status === "blocked") return { text: `保存できませんでした: ${describeError(saver.error)}`, tone: "warn", action: copy };
-  if (channel.archived) return { text: "アーカイブされた会話のキャンバスは閲覧だけです。", tone: "info" };
+  if (saver.status === "gone") return { text: t("canvas.goneNote"), tone: "warn", action: copy };
+  if (saver.status === "blocked") return { text: t("canvas.blockedNote", { error: describeError(saver.error) }), tone: "warn", action: copy };
+  if (channel.archived) return { text: t("canvas.archivedNote"), tone: "info" };
   if (saver.status === "loading") return null;
-  if (!rights.edit && rights.tick) return { text: "チェックだけ付けられます。本文を変更できるのは作成者・オーナー・管理者です。", tone: "info" };
-  if (!rights.tick) return { text: "閲覧のみです。", tone: "info" };
+  if (!rights.edit && rights.tick) return { text: t("canvas.tickOnlyNote"), tone: "info" };
+  if (!rights.tick) return { text: t("canvas.readOnlyNote"), tone: "info" };
   return null;
 }
 
 /** 「更新: 名前 · 10:23」 and the task progress. */
 function Byline({ controller, canvas }: { controller: AppController; canvas: CanvasMeta }) {
-  const who = controller.store.users.get(canvas.updated_by)?.display_name ?? "メンバー";
+  const who = controller.store.users.get(canvas.updated_by)?.display_name ?? t("common.member");
   const progress = taskProgress(canvas.task_total, canvas.task_done);
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-      <span>最終更新: {who} · {sinceLabel(canvas.updated_at)}</span>
+      <span>{t("canvas.lastUpdated", { who, when: sinceLabel(canvas.updated_at) })}</span>
       {progress && <span className="inline-flex items-center gap-1"><Check size={12} /> {progress}</span>}
-      {canvas.is_channel_tab && <Badge tone="accent">会話のキャンバス</Badge>}
-      {canvas.edit_policy === "owners" && <span>編集: 作成者・オーナー・管理者</span>}
+      {canvas.is_channel_tab && <Badge tone="accent">{t("canvas.conversationCanvas")}</Badge>}
+      {canvas.edit_policy === "owners" && <span>{t("canvas.editOwnersOnly")}</span>}
     </div>
   );
 }
 
 const STATUS: Record<CanvasSaveStatus, { label: string; icon: ReactNode; tone: string }> = {
-  loading: { label: "読み込み中…", icon: <Loader2 size={13} className="animate-spin" />, tone: "text-muted" },
-  saved: { label: "保存済み", icon: <Cloud size={13} />, tone: "text-muted" },
-  editing: { label: "編集中", icon: <Pencil size={13} />, tone: "text-muted" },
-  saving: { label: "保存中…", icon: <Loader2 size={13} className="animate-spin" />, tone: "text-muted" },
-  offline: { label: "オフライン", icon: <CloudOff size={13} />, tone: "text-warning" },
-  retrying: { label: "再試行中…", icon: <Loader2 size={13} className="animate-spin" />, tone: "text-warning" },
-  conflict: { label: "競合", icon: <CircleAlert size={13} />, tone: "text-danger" },
-  expired: { label: "競合", icon: <CircleAlert size={13} />, tone: "text-danger" },
-  blocked: { label: "保存できません", icon: <CircleAlert size={13} />, tone: "text-danger" },
-  gone: { label: "ゴミ箱", icon: <Trash2 size={13} />, tone: "text-muted" },
+  loading: { get label() { return t("common.loading"); }, icon: <Loader2 size={13} className="animate-spin" />, tone: "text-muted" },
+  saved: { get label() { return t("canvas.status.saved"); }, icon: <Cloud size={13} />, tone: "text-muted" },
+  editing: { get label() { return t("canvas.status.editing"); }, icon: <Pencil size={13} />, tone: "text-muted" },
+  saving: { get label() { return t("common.saving"); }, icon: <Loader2 size={13} className="animate-spin" />, tone: "text-muted" },
+  offline: { get label() { return t("connection.offline"); }, icon: <CloudOff size={13} />, tone: "text-warning" },
+  retrying: { get label() { return t("canvas.status.retrying"); }, icon: <Loader2 size={13} className="animate-spin" />, tone: "text-warning" },
+  conflict: { get label() { return t("canvas.status.conflict"); }, icon: <CircleAlert size={13} />, tone: "text-danger" },
+  expired: { get label() { return t("canvas.status.conflict"); }, icon: <CircleAlert size={13} />, tone: "text-danger" },
+  blocked: { get label() { return t("canvas.status.blocked"); }, icon: <CircleAlert size={13} />, tone: "text-danger" },
+  gone: { get label() { return t("canvas.trash"); }, icon: <Trash2 size={13} />, tone: "text-muted" },
 };
 
 /** The save state beside the canvas's name; a conflict reopens its choice. */
 function SaveState({ saver, onOpenConflict }: { saver: CanvasSaver; onOpenConflict: () => void }) {
   const state = STATUS[saver.status];
-  const hint = saver.status === "offline" ? "オフラインです。つながったら保存します" : saver.status === "retrying" ? "サーバが混み合っています。自動で保存し直します" : undefined;
+  const hint = saver.status === "offline" ? t("canvas.offlineHint") : saver.status === "retrying" ? t("canvas.retryingHint") : undefined;
   const content = (
     <>
       {state.icon}
@@ -501,15 +502,15 @@ function CanvasPicker({ controller, list, currentId, title, onSelect, onNew, onT
   return (
     <PopoverRoot open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" aria-label="キャンバスの一覧" className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold hover:bg-ink/6">
+        <button type="button" aria-label={t("canvas.list")} className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold hover:bg-ink/6">
           <FileText size={16} className="shrink-0 text-accent" />
           <span className="truncate">{title}</span>
           <ChevronDown size={14} className="shrink-0 text-muted" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 p-1">
-        <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">この会話のキャンバス</div>
-        <ul className="max-h-80 overflow-y-auto" aria-label="キャンバス">
+        <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">{t("canvas.inThisConversation")}</div>
+        <ul className="max-h-80 overflow-y-auto" aria-label={t("nav.canvases")}>
           {list.map((canvas) => (
             <li key={canvas.id}>
               <button
@@ -521,9 +522,9 @@ function CanvasPicker({ controller, list, currentId, title, onSelect, onNew, onT
                 <FileText size={14} className="shrink-0 text-muted" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{canvas.title}</span>
-                  <span className="block truncate text-[11px] text-muted">{controller.store.users.get(canvas.updated_by)?.display_name ?? "メンバー"} · {sinceLabel(canvas.updated_at)}</span>
+                  <span className="block truncate text-[11px] text-muted">{controller.store.users.get(canvas.updated_by)?.display_name ?? t("common.member")} · {sinceLabel(canvas.updated_at)}</span>
                 </span>
-                {canvas.is_channel_tab && <Badge tone="accent">タブ</Badge>}
+                {canvas.is_channel_tab && <Badge tone="accent">{t("canvas.tab")}</Badge>}
                 {taskProgress(canvas.task_total, canvas.task_done) && <span className="shrink-0 text-[11px] text-muted">{taskProgress(canvas.task_total, canvas.task_done)}</span>}
               </button>
             </li>
@@ -532,11 +533,11 @@ function CanvasPicker({ controller, list, currentId, title, onSelect, onNew, onT
         <div className="mt-1 border-t border-line pt-1">
           {onNew && (
             <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-accent-soft" onClick={() => choose(onNew)}>
-              <Plus size={14} /> 新しいキャンバス
+              <Plus size={14} /> {t("canvas.new")}
             </button>
           )}
           <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-accent-soft" onClick={() => choose(onTrash)}>
-            <Trash2 size={14} /> ゴミ箱
+            <Trash2 size={14} /> {t("canvas.trash")}
           </button>
         </div>
       </PopoverContent>
@@ -561,31 +562,31 @@ function CanvasMenu({ controller, channel, canvas, rights, onRename, onTrashed, 
   return (
     <Menu>
       <MenuTrigger asChild>
-        <button type="button" aria-label="キャンバスの操作" title="キャンバスの操作" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
+        <button type="button" aria-label={t("canvas.actions")} title={t("canvas.actions")} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
           <MoreHorizontal size={18} />
         </button>
       </MenuTrigger>
       <MenuContent align="end">
         <MenuLabel>{canvas.title}</MenuLabel>
-        {onShare && <MenuItem onSelect={onShare}><Share2 size={14} /> 会話に共有</MenuItem>}
+        {onShare && <MenuItem onSelect={onShare}><Share2 size={14} /> {t("canvas.shareToConversation")}</MenuItem>}
         <MenuItem onSelect={() => void controller.copyCanvasLink(canvas.id)}>
-          <Copy size={14} /> リンクをコピー
+          <Copy size={14} /> {t("canvas.copyLink")}
         </MenuItem>
-        <MenuItem onSelect={onHistory}><History size={14} /> 履歴…</MenuItem>
+        <MenuItem onSelect={onHistory}><History size={14} /> {t("canvas.historyMenu")}</MenuItem>
         {rights.manage && <MenuSeparator />}
-        {rights.manage && <MenuItem onSelect={onRename}>題名を変更…</MenuItem>}
+        {rights.manage && <MenuItem onSelect={onRename}>{t("canvas.renameMenu")}</MenuItem>}
         {rights.manage && !tabTaken && (
           <MenuItem onSelect={() => void controller.updateCanvas(canvas.id, { is_channel_tab: !canvas.is_channel_tab })}>
-            {canvas.is_channel_tab ? "会話のキャンバスから外す" : "会話のキャンバスにする"}
+            {canvas.is_channel_tab ? t("canvas.unsetTab") : t("canvas.setTab")}
           </MenuItem>
         )}
         {rights.manage && !dm && (
           <>
             <MenuSeparator />
-            <MenuLabel>本文を編集できる人</MenuLabel>
+            <MenuLabel>{t("canvas.whoCanEdit")}</MenuLabel>
             <MenuRadioGroup value={canvas.edit_policy} onValueChange={(value) => void controller.updateCanvas(canvas.id, { edit_policy: value as "members" | "owners" })}>
-              <MenuRadioItem value="members">投稿できるメンバー全員</MenuRadioItem>
-              <MenuRadioItem value="owners">作成者・オーナー・管理者 (チェックは全員)</MenuRadioItem>
+              <MenuRadioItem value="members">{t("canvas.editMembers")}</MenuRadioItem>
+              <MenuRadioItem value="owners">{t("canvas.editOwners")}</MenuRadioItem>
             </MenuRadioGroup>
           </>
         )}
@@ -593,7 +594,7 @@ function CanvasMenu({ controller, channel, canvas, rights, onRename, onTrashed, 
           <>
             <MenuSeparator />
             <MenuItem className="text-danger" onSelect={() => void controller.trashCanvas(canvas.id, channel.id).then((ok) => { if (ok) onTrashed(); })}>
-              <Trash2 size={14} /> ゴミ箱に移す
+              <Trash2 size={14} /> {t("canvas.moveToTrash")}
             </MenuItem>
           </>
         )}
@@ -617,12 +618,12 @@ function RenameDialog({ controller, canvas, onClose }: { controller: AppControll
     if (ok) onClose();
   };
   return (
-    <Modal title="題名を変更" onClose={onClose}>
+    <Modal title={t("canvas.rename")} onClose={onClose}>
       <form className="mt-4 space-y-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-        <Input aria-label="題名" value={title} maxLength={200} autoFocus onChange={(event) => setTitle(event.target.value)} />
+        <Input aria-label={t("canvas.titleLabel")} value={title} maxLength={200} autoFocus onChange={(event) => setTitle(event.target.value)} />
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" disabled={busy || title.trim() === ""}>変更</Button>
+          <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" disabled={busy || title.trim() === ""}>{t("common.change")}</Button>
         </div>
       </form>
     </Modal>
@@ -662,22 +663,22 @@ function NewCanvasDialog({ controller, channel, list, onClose, onCreated }: {
     </label>
   );
   return (
-    <Modal title="新しいキャンバス" description="空白から、またはテンプレートから作ります。日付や名前はテンプレートに入ります。" onClose={onClose} className="w-[520px]">
+    <Modal title={t("canvas.new")} description={t("canvas.newDescription")} onClose={onClose} className="w-[520px]">
       <form className="mt-4 space-y-3" onSubmit={(event) => { event.preventDefault(); void create(); }}>
-        <div className="max-h-[42dvh] space-y-1.5 overflow-y-auto pr-1" role="radiogroup" aria-label="テンプレート">
-          {option("", "空白のキャンバス", null)}
-          {templates === null ? <div className="py-2 text-sm text-muted">テンプレートを読み込んでいます…</div> : templates.map((t) => option(t.key, t.name, t.description))}
+        <div className="max-h-[42dvh] space-y-1.5 overflow-y-auto pr-1" role="radiogroup" aria-label={t("composer.templates")}>
+          {option("", t("canvas.blank"), null)}
+          {templates === null ? <div className="py-2 text-sm text-muted">{t("canvas.loadingTemplates")}</div> : templates.map((t) => option(t.key, t.name, t.description))}
         </div>
-        <Input aria-label="題名" placeholder={choice ? "題名 (空欄ならテンプレートの題名)" : "題名 (空欄なら「無題のキャンバス」)"} value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} />
+        <Input aria-label={t("canvas.titleLabel")} placeholder={choice ? t("canvas.titlePlaceholderTemplate") : t("canvas.titlePlaceholderBlank")} value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} />
         {!hasTab && (
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={asTab} onChange={(event) => setAsTab(event.target.checked)} />
-            会話のキャンバスにする (「キャンバス」タブで最初に開きます)
+            {t("canvas.setTabNote")}
           </label>
         )}
         <div className="flex justify-end gap-2 pt-1">
-          <Button variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" disabled={busy}>作成</Button>
+          <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" disabled={busy}>{t("common.create")}</Button>
         </div>
       </form>
     </Modal>
@@ -697,23 +698,23 @@ function TrashDialog({ controller, channel, onClose, onRestored }: {
   }, [controller, channel.id]);
   const actor = actorOf(controller);
   return (
-    <Modal title="キャンバスのゴミ箱" description="ゴミ箱のキャンバスは 30 日後に完全に削除されます。" onClose={onClose}>
+    <Modal title={t("canvas.trashTitle")} description={t("canvas.trashDescription")} onClose={onClose}>
       <div className="mt-4 max-h-[50dvh] space-y-1 overflow-y-auto">
         {rows === null ? (
-          <div className="py-4 text-center text-sm text-muted">読み込み中…</div>
+          <div className="py-4 text-center text-sm text-muted">{t("common.loading")}</div>
         ) : rows.length === 0 ? (
-          <div className="py-4 text-center text-sm text-muted">ゴミ箱は空です。</div>
+          <div className="py-4 text-center text-sm text-muted">{t("canvas.trashEmpty")}</div>
         ) : (
           rows.map((canvas) => (
             <div key={canvas.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-panel">
               <FileText size={15} className="shrink-0 text-muted" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm">{canvas.title}</span>
-                <span className="block text-[11px] text-muted">削除: {canvas.deleted_at ? sinceLabel(canvas.deleted_at) : ""}</span>
+                <span className="block text-[11px] text-muted">{t("canvas.deletedAt", { when: canvas.deleted_at ? sinceLabel(canvas.deleted_at) : "" })}</span>
               </span>
               {canvasRights(channel, actor, canvas).trash && (
                 <Button size="sm" variant="secondary" onClick={() => void controller.restoreCanvas(canvas.id).then((restored) => { if (restored) onRestored(restored); })}>
-                  <RotateCcw size={13} /> 戻す
+                  <RotateCcw size={13} /> {t("canvas.restore")}
                 </Button>
               )}
             </div>
@@ -738,27 +739,27 @@ function ConflictDialog({ controller, saver, tickOnly, conflicts, timedOut, onCl
   const shown = conflicts.slice(0, 5);
   return (
     <Modal
-      title="同じ箇所がほかの人にも変更されました"
-      description={tickOnly ? "相手の版を残して、チェックを付け直してください。" : "重なった箇所だけ、どちらを残すか選んでください。ほかの変更はどちらも残ります。"}
+      title={t("canvas.conflictTitle")}
+      description={tickOnly ? t("canvas.conflictTickOnly") : t("canvas.conflictDescription")}
       onClose={onClose}
       className="w-[680px]"
     >
-      <div className="mt-4 max-h-[50dvh] space-y-3 overflow-y-auto" aria-label="競合した箇所">
-        {timedOut && <p className="text-sm text-muted">文書が大きく、細かく比べられませんでした。文書全体をひとつの箇所として扱います。</p>}
+      <div className="mt-4 max-h-[50dvh] space-y-3 overflow-y-auto" aria-label={t("canvas.conflictParts")}>
+        {timedOut && <p className="text-sm text-muted">{t("canvas.conflictTimedOut")}</p>}
         {shown.map((conflict, index) => (
           <div key={index} className="grid gap-2 rounded-lg border border-line p-2 text-[13px] md:grid-cols-2">
-            <ConflictSide label="自分の版" text={names(conflict.ours)} tone="accent" />
-            <ConflictSide label="相手の版" text={names(conflict.theirs)} tone="neutral" />
-            {conflict.base.trim() !== "" && <div className="text-[11px] text-muted md:col-span-2">元の文: {names(conflict.base).slice(0, 200)}</div>}
+            <ConflictSide label={t("canvas.mine")} text={names(conflict.ours)} tone="accent" />
+            <ConflictSide label={t("canvas.theirs")} text={names(conflict.theirs)} tone="neutral" />
+            {conflict.base.trim() !== "" && <div className="text-[11px] text-muted md:col-span-2">{t("canvas.base", { text: names(conflict.base).slice(0, 200) })}</div>}
           </div>
         ))}
-        {conflicts.length > shown.length && <p className="text-xs text-muted">ほか {conflicts.length - shown.length} 箇所</p>}
+        {conflicts.length > shown.length && <p className="text-xs text-muted">{t("canvas.moreParts", { count: conflicts.length - shown.length })}</p>}
       </div>
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>あとで</Button>
-        {!tickOnly && <Button variant="secondary" onClick={() => { onClose(); void saver.resolveConflict("both"); }}>両方残す</Button>}
-        <Button variant="secondary" onClick={() => { onClose(); void saver.resolveConflict("theirs"); }}>相手の版</Button>
-        {!tickOnly && <Button onClick={() => { onClose(); void saver.resolveConflict("ours"); }}>自分の版</Button>}
+        <Button variant="secondary" onClick={onClose}>{t("common.later")}</Button>
+        {!tickOnly && <Button variant="secondary" onClick={() => { onClose(); void saver.resolveConflict("both"); }}>{t("canvas.keepBoth")}</Button>}
+        <Button variant="secondary" onClick={() => { onClose(); void saver.resolveConflict("theirs"); }}>{t("canvas.theirs")}</Button>
+        {!tickOnly && <Button onClick={() => { onClose(); void saver.resolveConflict("ours"); }}>{t("canvas.mine")}</Button>}
       </div>
     </Modal>
   );
@@ -768,7 +769,7 @@ function ConflictSide({ label, text, tone }: { label: string; text: string; tone
   return (
     <div className={cn("min-w-0 rounded-md px-2.5 py-2", tone === "accent" ? "bg-accent-soft/60" : "bg-panel")}>
       <div className="mb-1 text-[11px] font-semibold text-muted">{label}</div>
-      <div className="whitespace-pre-wrap break-words">{text || <span className="text-muted">(削除)</span>}</div>
+      <div className="whitespace-pre-wrap break-words">{text || <span className="text-muted">{t("canvas.deletedText")}</span>}</div>
     </div>
   );
 }
@@ -784,15 +785,15 @@ function ExpiredDialog({ controller, saver, head, canOverwrite, onClose }: {
   const store = controller.store;
   const names = (text: string) => mentionsToNames(stripTaskMarkers(text), store.users, store.groups);
   return (
-    <Modal title="編集の元にした版がなくなりました" description="長くオフラインだった間に版が整理されました。自分の本文と今の本文を見比べて選んでください。" onClose={onClose} className="w-[760px]">
+    <Modal title={t("canvas.expiredTitle")} description={t("canvas.expiredDescription")} onClose={onClose} className="w-[760px]">
       <div className="mt-4 grid max-h-[50dvh] gap-2 overflow-y-auto text-[13px] md:grid-cols-2">
-        <ConflictSide label="自分の本文" text={names(saver.text)} tone="accent" />
-        <ConflictSide label="今の本文" text={names(head.body)} tone="neutral" />
+        <ConflictSide label={t("canvas.myText")} text={names(saver.text)} tone="accent" />
+        <ConflictSide label={t("canvas.currentText")} text={names(head.body)} tone="neutral" />
       </div>
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <Button variant="secondary" onClick={() => void controller.copyMessageText(stripTaskMarkers(saver.text))}><Copy size={14} /> 自分の本文をコピー</Button>
-        <Button variant="secondary" onClick={() => { onClose(); void saver.resolveExpired("theirs"); }}>今の本文にする</Button>
-        {canOverwrite && <Button onClick={() => { onClose(); void saver.resolveExpired("mine"); }}>自分の本文で上書き</Button>}
+        <Button variant="secondary" onClick={() => void controller.copyMessageText(stripTaskMarkers(saver.text))}><Copy size={14} /> {t("canvas.copyMyText")}</Button>
+        <Button variant="secondary" onClick={() => { onClose(); void saver.resolveExpired("theirs"); }}>{t("canvas.useCurrent")}</Button>
+        {canOverwrite && <Button onClick={() => { onClose(); void saver.resolveExpired("mine"); }}>{t("canvas.overwriteMine")}</Button>}
       </div>
     </Modal>
   );

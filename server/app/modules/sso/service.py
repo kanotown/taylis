@@ -344,7 +344,12 @@ def _invalid_ticket() -> AppError:
 
 
 async def exchange(
-    db: AsyncSession, data: SsoExchange, settings: Settings, ip: str | None
+    db: AsyncSession,
+    data: SsoExchange,
+    settings: Settings,
+    ip: str | None,
+    *,
+    locale: str | None = None,
 ) -> TokenResponse:
     """The ticket and the verifier of the app that started the sign-in → a session (§3)."""
     if not TOKEN_PATTERN.match(data.ticket):
@@ -379,7 +384,7 @@ async def exchange(
         target_id=user.id,
         details={"platform": platform},
     )
-    return await auth.open_session(db, user, data.device, settings, ip, now)
+    return await auth.open_session(db, user, data.device, settings, ip, now, locale=locale)
 
 
 async def purge_expired(db: AsyncSession, now: datetime) -> int:

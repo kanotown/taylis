@@ -12,6 +12,8 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from app import i18n
+
 WEEKDAYS_JA = ("月", "火", "水", "木", "金", "土", "日")  # date.weekday(): 0 = Monday
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 _PLACEHOLDER = re.compile(r"\{(date|weekday|week)\}")
@@ -66,10 +68,17 @@ def due_at(posted_at: datetime, after_days: int, due_time: str, tz: str) -> date
     return moment
 
 
-def due_label(moment: datetime, tz: str) -> str:
-    """「10/9 (金) 18:00」 in the post's zone (the nudge's note)."""
+def due_label(moment: datetime, tz: str, locale: str = "ja") -> str:
+    """「10/9 (金) 18:00」 in the post's zone (the nudge's note), in `locale` (M115)."""
     local = moment.astimezone(ZoneInfo(tz))
-    return f"{local.month}/{local.day} ({WEEKDAYS_JA[local.weekday()]}) {local:%H:%M}"
+    return i18n.t(
+        "reservation.on_day",
+        locale,
+        month=local.month,
+        day=local.day,
+        weekday=i18n.weekday(local.weekday(), locale),
+        time=f"{local:%H:%M}",
+    )
 
 
 def iso_week(day: date) -> str:

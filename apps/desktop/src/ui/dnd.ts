@@ -1,4 +1,5 @@
 import type { UserPublic } from "../api/types";
+import { t, weekdayName, labelled } from "../i18n";
 
 /** Do not disturb (M12c): a manual pause or the daily quiet hours, evaluated in the user's own zone. */
 
@@ -51,10 +52,10 @@ export function dndActive(user: UserPublic | undefined | null, now = new Date())
 export type DndChoice = "30m" | "1h" | "2h" | "tomorrow";
 
 export const DND_OPTIONS: Array<[DndChoice, string]> = [
-  ["30m", "30 分"],
-  ["1h", "1 時間"],
-  ["2h", "2 時間"],
-  ["tomorrow", "明日 8:00"],
+  labelled("30m", "dnd.30m"),
+  labelled("1h", "dnd.1h"),
+  labelled("2h", "dnd.2h"),
+  labelled("tomorrow", "dnd.tomorrow"),
 ];
 
 export function dndUntilAt(choice: DndChoice, now = new Date()): string {
@@ -77,7 +78,10 @@ export function dndUntilAt(choice: DndChoice, now = new Date()): string {
   return at.toISOString();
 }
 
-export const DAY_LABELS = ["月", "火", "水", "木", "金", "土", "日"];
+/** The weekdays' short names, Monday = 0, in the UI language. */
+export function dayLabels(): string[] {
+  return [0, 1, 2, 3, 4, 5, 6].map((day) => weekdayName(day));
+}
 
 export function deviceTimeZone(): string {
   try {
@@ -89,8 +93,8 @@ export function deviceTimeZone(): string {
 
 /** "22:00〜07:00 (月〜金)" for the profile card. */
 export function quietHoursLabel(hours: QuietHours): string {
-  const days = hours.days && hours.days.length > 0 && hours.days.length < 7 ? ` (${hours.days.map((d) => DAY_LABELS[d]).join("")})` : "";
-  return `${hours.start}〜${hours.end}${days}`;
+  const days = hours.days && hours.days.length > 0 && hours.days.length < 7 ? ` (${hours.days.map((d) => weekdayName(d)).join(t("dnd.daysSeparator"))})` : "";
+  return `${hours.start}${t("common.rangeTo")}${hours.end}${days}`;
 }
 
 /** The manual pause still running (dnd_until in the future), else null. */
@@ -103,16 +107,16 @@ const hhmm = (at: Date) => `${String(at.getHours()).padStart(2, "0")}:${String(a
 
 /** M40, 「通知を一時停止」's value: 「オフ」, 「〜 15:30 まで」 today, 「〜 10/1 08:00 まで」 on another day. */
 export function pauseValue(until: string | null | undefined, now = new Date()): string {
-  if (!until) return "オフ";
+  if (!until) return t("dnd.off");
   const at = new Date(until);
-  if (Number.isNaN(at.getTime()) || at.getTime() <= now.getTime()) return "オフ";
+  if (Number.isNaN(at.getTime()) || at.getTime() <= now.getTime()) return t("dnd.off");
   const sameDay = at.toDateString() === now.toDateString();
-  return sameDay ? `〜 ${hhmm(at)} まで` : `〜 ${at.getMonth() + 1}/${at.getDate()} ${hhmm(at)} まで`;
+  return sameDay ? t("dnd.until", { when: hhmm(at) }) : t("dnd.until", { when: `${at.getMonth() + 1}/${at.getDate()} ${hhmm(at)}` });
 }
 
 /** M40, 「おやすみ時間」's value: 「22:00〜07:00」 (with the days when not every day) or 「オフ」. */
 export function quietHoursValue(hours: QuietHours | null | undefined): string {
-  return hours ? quietHoursLabel(hours) : "オフ";
+  return hours ? quietHoursLabel(hours) : t("dnd.off");
 }
 
 /** 「日時を指定」: a datetime-local value ("2026-10-01T09:30") as an instant, or null when empty, invalid or not ahead. */

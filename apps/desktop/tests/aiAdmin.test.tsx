@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { AdminBody } from "../src/ui/AdminDialog";
-import { USERNAME_HINT } from "../src/ui/username";
+import { usernameHint } from "../src/ui/username";
 import { FakeServer } from "./fakeServer";
 
 afterEach(() => {
@@ -127,12 +127,12 @@ it("the creation forms say what the username is for and that it can change later
   fireEvent.click(screen.getByRole("button", { name: /ユーザーを作成/ }));
   await settle();
   const userField = screen.getByLabelText(/ユーザー名/).closest("label")!;
-  expect(within(userField).getByText(USERNAME_HINT)).toBeTruthy();
+  expect(within(userField).getByText(usernameHint())).toBeTruthy();
   await openTab();
   fireEvent.click(screen.getByRole("button", { name: /ボットを作成/ }));
   await settle();
   const botField = within(screen.getByRole("dialog")).getByLabelText(/ユーザー名/).closest("label")!;
-  expect(within(botField).getByText(USERNAME_HINT)).toBeTruthy();
+  expect(within(botField).getByText(usernameHint())).toBeTruthy();
 });
 
 it("deletes a bot after asking", async () => {

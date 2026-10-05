@@ -6,6 +6,7 @@ import type { AppController } from "../state/app";
 import { CustomEmojiImage, customEmojiName, usePackTabUrl } from "./customEmoji";
 import { customEmojiCandidates, EMOJI_CATEGORIES, type EmojiEntry, searchEmoji } from "./emoji";
 import { cn, Input } from "./primitives";
+import { type MessageKey, t } from "../i18n";
 
 /** Emoji picker (M11f): search by shortcode / keyword (en + ja) or browse by category; `onPick` gets the glyph. */
 export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAddCustom }: {
@@ -31,7 +32,7 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
   const customHits: CustomEmojiOut[] = searching ? customEmojiCandidates(query, customByName, 40).map((e) => customByName.get(e.shortcode)!).filter(Boolean) : browsed;
   const textHits = customHits.filter((c) => c.kind === "text");
   const imageHits = customHits.filter((c) => c.kind !== "text");
-  const categories: Array<readonly [string, string]> = custom.length > 0 || onAddCustom ? [...EMOJI_CATEGORIES, ["custom", "カスタム"] as const] : [...EMOJI_CATEGORIES];
+  const categories: Array<readonly [string, string]> = (custom.length > 0 || onAddCustom ? [...EMOJI_CATEGORIES, ["custom", ""] as const] : [...EMOJI_CATEGORIES]).map(([key, label]) => [key, CATEGORY_KEYS[key] ? t(CATEGORY_KEYS[key]) : label] as const);
   const shown = searching ? hits : category === "custom" || pack ? [] : hits.filter((e) => e.category === category);
   const entryOf = (c: CustomEmojiOut): EmojiEntry => ({ shortcode: c.name, glyph: `:${c.name}:`, category: "custom", keywords: [c.label ?? "", ...(c.keywords ?? [])].join(" ") });
   const titleOf = (c: CustomEmojiOut) => (c.label ? `${c.label} :${c.name}:` : `:${c.name}:`);
@@ -47,8 +48,8 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
   });
   const recentRow = !searching && recentShown.length > 0 && (
     // Pinned above the categories (2026-10-04): what I used last is there without scrolling, whatever the category.
-    <div className="mt-2 shrink-0" role="group" aria-label="最近使った絵文字">
-      <div className="text-[10px] tracking-wide text-muted">最近使った絵文字</div>
+    <div className="mt-2 shrink-0" role="group" aria-label={t("emojiPicker.recent")}>
+      <div className="text-[10px] tracking-wide text-muted">{t("emojiPicker.recent")}</div>
       <div className="flex max-h-16 flex-wrap overflow-hidden">
         {recentShown.map((glyph) => {
           const emoji = customByName.get(customEmojiName(glyph) ?? "");
@@ -68,7 +69,7 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
     <div className="flex w-80 max-w-full flex-col" style={{ maxHeight: "calc(var(--radix-popover-content-available-height, 100dvh) - 72px)" }} onKeyDown={(event) => event.stopPropagation()}>
       <div className="relative shrink-0">
         <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-        <Input value={query} autoFocus placeholder="検索 (例: tada、乾杯)" className="h-8 pl-8 text-sm" onChange={(e) => setQuery(e.target.value)} />
+        <Input value={query} autoFocus placeholder={t("emojiPicker.search")} className="h-8 pl-8 text-sm" onChange={(e) => setQuery(e.target.value)} />
       </div>
       {recentRow}
       {!searching && (
@@ -101,7 +102,7 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
       <div className={cn("mt-2 grid min-h-16 content-start overflow-y-auto", big ? "grid-cols-4" : "grid-cols-8")} style={{ maxHeight: big ? "18rem" : "14rem" }}>
           {controller && textHits.length > 0 && (
             // M100: text emoji as pills, as wide as their label, in a row of their own above the images.
-            <div className="col-span-full mb-1 flex flex-wrap gap-1" aria-label="文字の絵文字">
+            <div className="col-span-full mb-1 flex flex-wrap gap-1" aria-label={t("feature.textEmoji")}>
               {textHits.map((emoji) => (
                 <button key={`text:${emoji.name}`} type="button" title={titleOf(emoji)} className="flex h-8 items-center rounded-md px-1 hover:bg-panel-2" onClick={() => onPick(entryOf(emoji))}>
                   <CustomEmojiImage controller={controller} emoji={emoji} size={20} />
@@ -119,10 +120,10 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
               {entry.glyph}
             </button>
           ))}
-          {shown.length === 0 && customHits.length === 0 && <div className="col-span-full py-6 text-center text-xs text-muted">{category === "custom" && !searching ? "カスタム絵文字はまだありません" : pack && !searching ? "このセットは空です" : "見つかりません"}</div>}
+          {shown.length === 0 && customHits.length === 0 && <div className="col-span-full py-6 text-center text-xs text-muted">{category === "custom" && !searching ? t("emoji.none") : pack && !searching ? t("emojiPicker.emptyPack") : t("workflow.notFound")}</div>}
       </div>
       {onAddCustom && (!searching && category === "custom") && (
-        <button type="button" className="mt-2 w-full shrink-0 rounded-lg border border-dashed border-line px-2 py-1.5 text-xs text-muted hover:bg-panel hover:text-ink" onClick={onAddCustom}>＋ 絵文字を追加…</button>
+        <button type="button" className="mt-2 w-full shrink-0 rounded-lg border border-dashed border-line px-2 py-1.5 text-xs text-muted hover:bg-panel hover:text-ink" onClick={onAddCustom}>{t("emojiPicker.add")}</button>
       )}
     </div>
   );
@@ -182,3 +183,17 @@ function subscribeRecentEmoji(listener: () => void): () => void {
     recentListeners.delete(listener);
   };
 }
+
+/** The picker's category names in the UI language (emojiData.ts keeps the generated Japanese ones). */
+const CATEGORY_KEYS: Readonly<Record<string, MessageKey>> = {
+  smileys: "emoji.category.smileys",
+  people: "emoji.category.people",
+  nature: "emoji.category.nature",
+  food: "emoji.category.food",
+  travel: "emoji.category.travel",
+  activities: "emoji.category.activities",
+  objects: "emoji.category.objects",
+  symbols: "emoji.category.symbols",
+  flags: "emoji.category.flags",
+  custom: "emoji.category.custom",
+};

@@ -15,6 +15,7 @@ import { SectionIcon } from "./SectionDialog";
 import { statusLabel, statusTitle, useFoldedDefaults } from "./Sidebar";
 import { ChannelContextMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
 import { StatusEmoji } from "./UserPopover";
+import { t } from "../i18n";
 
 export interface HomeViewProps {
   controller: AppController;
@@ -75,7 +76,7 @@ export function HomeView(props: HomeViewProps) {
   const rows = (list: ChannelState[], collapsed: boolean) => list.map((c) => <HomeRow key={c.id} controller={controller} channel={c} folded={collapsed && !hasUnread(c, meId)} onOpen={onOpen} />);
 
   return (
-    <section aria-label="ホーム" className="relative flex min-h-0 flex-1 flex-col bg-canvas text-ink">
+    <section aria-label={t("home.title")} className="relative flex min-h-0 flex-1 flex-col bg-canvas text-ink">
       <HomeHeader {...props} hasMyTimes={hasMyTimes} onReadAll={() => setConfirmReadAll(true)} onNewSection={() => setNewSection(true)} />
       <div className="shrink-0 px-3 pb-2 pt-1">
         <button
@@ -85,18 +86,18 @@ export function HomeView(props: HomeViewProps) {
           className="flex h-10 w-full items-center gap-2 rounded-xl bg-panel px-3 text-left text-[15px] text-muted transition-colors hover:bg-panel-2"
         >
           <Search size={17} className="shrink-0" />
-          <span className="min-w-0 flex-1 truncate">移動・検索</span>
+          <span className="min-w-0 flex-1 truncate">{t("home.jumpSearch")}</span>
         </button>
       </div>
-      <nav data-chat-focus aria-label="チャンネルとDM" className="min-h-0 flex-1 overflow-y-auto pb-24">
+      <nav data-chat-focus aria-label={t("sidebar.label")} className="min-h-0 flex-1 overflow-y-auto pb-24">
         <Tiles {...props} />
         {gatherUnread && (
-          <HomeSection title="未読" sectionKey="unread">
-            {sections.unread.length > 0 ? <ul>{rows(sections.unread, false)}</ul> : <Hint>未読の会話はありません</Hint>}
+          <HomeSection title={t("sidebar.unread")} sectionKey="unread">
+            {sections.unread.length > 0 ? <ul>{rows(sections.unread, false)}</ul> : <Hint>{t("home.noUnread")}</Hint>}
           </HomeSection>
         )}
         {sections.favorites.length > 0 && (
-          <HomeSection title="お気に入り" sectionKey="favorites" collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")}>
+          <HomeSection title={t("sidebar.favorites")} sectionKey="favorites" collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")}>
             <ul>{rows(sections.favorites, folded.has("favorites"))}</ul>
           </HomeSection>
         )}
@@ -113,26 +114,26 @@ export function HomeView(props: HomeViewProps) {
             <ul>{rows(members, section.collapsed)}</ul>
           </HomeSection>
         ))}
-        <HomeSection title="チャンネル" sectionKey="channels" collapsed={folded.has("channels")} onToggle={() => toggleFolded("channels")}>
+        <HomeSection title={t("sidebar.channels")} sectionKey="channels" collapsed={folded.has("channels")} onToggle={() => toggleFolded("channels")}>
           <ul>
             {rows(sections.channels, folded.has("channels"))}
             {!controller.isGuest && (
               <FoldRow folded={folded.has("channels")}>
                 <button type="button" onClick={props.onBrowse} className={ROW}>
                   <span className="flex w-6 shrink-0 justify-center text-muted"><Plus size={20} /></span>
-                  <span className="min-w-0 flex-1 truncate text-muted">チャンネルを追加</span>
+                  <span className="min-w-0 flex-1 truncate text-muted">{t("home.addChannel")}</span>
                 </button>
               </FoldRow>
             )}
           </ul>
-          {sections.channels.length === 0 && controller.isGuest && <Hint>まだチャンネルがありません</Hint>}
+          {sections.channels.length === 0 && controller.isGuest && <Hint>{t("sidebar.noChannels")}</Hint>}
         </HomeSection>
         {sections.times.length > 0 && (
           <HomeSection title="Times" sectionKey="times" collapsed={folded.has("times")} onToggle={() => toggleFolded("times")}>
             <ul>{rows(sections.times, folded.has("times"))}</ul>
           </HomeSection>
         )}
-        <HomeSection title="ダイレクトメッセージ" sectionKey="dms" collapsed={folded.has("dms")} onToggle={() => toggleFolded("dms")}>
+        <HomeSection title={t("sidebar.dms")} sectionKey="dms" collapsed={folded.has("dms")} onToggle={() => toggleFolded("dms")}>
           <ul>
             {selfPlaceholder && me && (
               <li>
@@ -155,18 +156,18 @@ export function HomeView(props: HomeViewProps) {
               <FoldRow folded={folded.has("dms")}>
                 <button type="button" onClick={props.onAllDms} className={ROW} data-all-dms="">
                   <span className="flex w-6 shrink-0 justify-center text-muted"><ChevronRight size={20} /></span>
-                  <span className="min-w-0 flex-1 truncate text-muted">すべての DM</span>
+                  <span className="min-w-0 flex-1 truncate text-muted">{t("home.allDms")}</span>
                 </button>
               </FoldRow>
             )}
           </ul>
-          {sections.dms.length === 0 && !selfPlaceholder && !folded.has("dms") && <Hint>✏️ から相手を選んで開始</Hint>}
+          {sections.dms.length === 0 && !selfPlaceholder && !folded.has("dms") && <Hint>{t("home.dmsEmptyHint")}</Hint>}
         </HomeSection>
       </nav>
       <button
         type="button"
-        aria-label="新しいメッセージ"
-        title="新しいメッセージ"
+        aria-label={t("home.newMessage")}
+        title={t("home.newMessage")}
         onClick={props.onCompose}
         data-compose-fab=""
         className="absolute bottom-4 right-4 z-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-solid text-white shadow-lg shadow-black/20 transition-transform hover:brightness-110 active:scale-95"
@@ -174,11 +175,11 @@ export function HomeView(props: HomeViewProps) {
         <SquarePen size={24} />
       </button>
       {confirmReadAll && (
-        <Modal onClose={() => setConfirmReadAll(false)} title="すべて既読にしますか？" className="w-[420px]">
-          <p className="mt-3 text-sm text-muted">参加しているすべてのチャンネルと DM を最後まで読んだことにします。</p>
+        <Modal onClose={() => setConfirmReadAll(false)} title={t("home.readAllTitle")} className="w-[420px]">
+          <p className="mt-3 text-sm text-muted">{t("home.readAllNote")}</p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setConfirmReadAll(false)}>キャンセル</Button>
-            <Button onClick={() => { setConfirmReadAll(false); void controller.markAllRead(); }}>既読にする</Button>
+            <Button variant="secondary" onClick={() => setConfirmReadAll(false)}>{t("common.cancel")}</Button>
+            <Button onClick={() => { setConfirmReadAll(false); void controller.markAllRead(); }}>{t("timeline.markRead")}</Button>
           </div>
         </Modal>
       )}
@@ -200,7 +201,7 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
       {switchable ? (
         <Menu>
           <MenuTrigger asChild>
-            <button type="button" aria-label={`ワークスペース: ${name}`} className="-ml-1 flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left hover:bg-panel">
+            <button type="button" aria-label={t("home.workspace", { name })} className="-ml-1 flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left hover:bg-panel">
               <WorkspaceIcon serverUrl={entry?.serverUrl} version={entry?.iconVersion} name={name} colorKey={entry?.workspaceId ?? entry?.serverUrl ?? name} className="h-6 w-6 rounded-md text-[11px]" />
               {title}
               <ChevronDown size={16} className="shrink-0 text-muted" />
@@ -216,7 +217,7 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
             ))}
             <MenuSeparator />
             <MenuItem onSelect={() => controller.beginAddWorkspace()}>
-              <Plus size={15} /> ワークスペースを追加…
+              <Plus size={15} /> {t("home.addWorkspace")}
             </MenuItem>
           </MenuContent>
         </Menu>
@@ -232,22 +233,22 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
       <span className="flex-1" />
       <Menu>
         <MenuTrigger asChild>
-          <button type="button" aria-label="ホームのメニュー" title="ホームのメニュー" className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-ink transition-colors hover:bg-panel">
+          <button type="button" aria-label={t("home.menu")} title={t("home.menu")} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-ink transition-colors hover:bg-panel">
             <MoreHorizontal size={22} />
           </button>
         </MenuTrigger>
         <MenuContent align="end" className="min-w-56">
-          <MenuItem onSelect={onReadAll}>すべて既読にする…</MenuItem>
-          <MenuCheckboxItem checked={gatherUnread} onCheckedChange={(on) => onGatherUnread(on === true)}>未読をまとめる</MenuCheckboxItem>
+          <MenuItem onSelect={onReadAll}>{t("home.readAllMenu")}</MenuItem>
+          <MenuCheckboxItem checked={gatherUnread} onCheckedChange={(on) => onGatherUnread(on === true)}>{t("home.gatherUnread")}</MenuCheckboxItem>
           <MenuSeparator />
-          {!controller.isGuest && <MenuItem onSelect={onBrowse}>チャンネルを探す</MenuItem>}
-          {!controller.isGuest && <MenuItem onSelect={onNewChannel}>チャンネルを作成</MenuItem>}
-          <MenuItem onSelect={onDirectory}>メンバー一覧</MenuItem>
-          <MenuItem onSelect={onNewSection}>新しいセクション…</MenuItem>
-          {!hasMyTimes && !controller.isGuest && <MenuItem onSelect={onCreateTimes}>自分の times を作る</MenuItem>}
-          {controller.multiWorkspace && !switchable && <MenuItem onSelect={() => controller.beginAddWorkspace()}>ワークスペースを追加…</MenuItem>}
+          {!controller.isGuest && <MenuItem onSelect={onBrowse}>{t("shortcuts.browse")}</MenuItem>}
+          {!controller.isGuest && <MenuItem onSelect={onNewChannel}>{t("sidebar.createChannel")}</MenuItem>}
+          <MenuItem onSelect={onDirectory}>{t("sidebar.directory")}</MenuItem>
+          <MenuItem onSelect={onNewSection}>{t("home.newSection")}</MenuItem>
+          {!hasMyTimes && !controller.isGuest && <MenuItem onSelect={onCreateTimes}>{t("sidebar.createTimes")}</MenuItem>}
+          {controller.multiWorkspace && !switchable && <MenuItem onSelect={() => controller.beginAddWorkspace()}>{t("home.addWorkspace")}</MenuItem>}
           <MenuSeparator />
-          <MenuItem onSelect={() => void controller.resync()}>再読み込み</MenuItem>
+          <MenuItem onSelect={() => void controller.resync()}>{t("common.reload")}</MenuItem>
         </MenuContent>
       </Menu>
     </header>
@@ -261,18 +262,18 @@ function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onRemind
   const drafts = store.listDrafts().length + store.scheduled.size;
   const fired = store.firedReminderCount();
   const tiles: Array<{ key: string; label: string; icon: ReactNode; count: number | null; danger: boolean; onClick: () => void }> = [
-    { key: "threads", label: "スレッド", icon: <MessagesSquare size={20} />, count: threads.unread_count, danger: threads.mention_count > 0, onClick: onThreads },
+    { key: "threads", label: t("nav.threads"), icon: <MessagesSquare size={20} />, count: threads.unread_count, danger: threads.mention_count > 0, onClick: onThreads },
     ...(onTimesFeed ? [{ key: "times", label: "Times", icon: <Newspaper size={20} />, count: null, danger: false, onClick: onTimesFeed }] : []),
-    { key: "drafts", label: "下書き", icon: <FileText size={20} />, count: drafts, danger: false, onClick: onDrafts },
-    { key: "saved", label: "保存", icon: <Bookmark size={20} />, count: store.bookmarks.size, danger: false, onClick: onSaved },
-    { key: "reminders", label: "リマインダー", icon: <AlarmClock size={20} />, count: fired, danger: fired > 0, onClick: onReminders },
-    ...(onCalendar ? [{ key: "calendar", label: "カレンダー", icon: <CalendarDays size={20} />, count: null, danger: false, onClick: onCalendar }] : []),
-    ...(onTasks ? [{ key: "tasks", label: "タスク", icon: <ListTodo size={20} />, count: null, danger: false, onClick: onTasks }] : []),
-    ...(onDeadlines ? [{ key: "deadlines", label: "締切", icon: <Timer size={20} />, count: null, danger: false, onClick: onDeadlines }] : []),
+    { key: "drafts", label: t("nav.drafts"), icon: <FileText size={20} />, count: drafts, danger: false, onClick: onDrafts },
+    { key: "saved", label: t("nav.savedShort"), icon: <Bookmark size={20} />, count: store.bookmarks.size, danger: false, onClick: onSaved },
+    { key: "reminders", label: t("nav.reminders"), icon: <AlarmClock size={20} />, count: fired, danger: fired > 0, onClick: onReminders },
+    ...(onCalendar ? [{ key: "calendar", label: t("nav.calendar"), icon: <CalendarDays size={20} />, count: null, danger: false, onClick: onCalendar }] : []),
+    ...(onTasks ? [{ key: "tasks", label: t("nav.tasks"), icon: <ListTodo size={20} />, count: null, danger: false, onClick: onTasks }] : []),
+    ...(onDeadlines ? [{ key: "deadlines", label: t("nav.deadlines"), icon: <Timer size={20} />, count: null, danger: false, onClick: onDeadlines }] : []),
     // M112: 「予約」 — the count is the to-dos due in the pools I operate (apps/shared/nav-items.json key "reservations").
-    ...(onReservations ? [{ key: "reservations", label: "予約", icon: <Ticket size={20} />, count: store.reservationPools?.some((p) => p.can_operate) ? reservationTodoCount(store.reservationPools) : null, danger: true, onClick: onReservations }] : []),
-    { key: "files", label: "ファイル", icon: <Files size={20} />, count: null, danger: false, onClick: onFiles },
-    ...(onCanvases ? [{ key: "canvases", label: "キャンバス", icon: <NotebookText size={20} />, count: null, danger: false, onClick: onCanvases }] : []),
+    ...(onReservations ? [{ key: "reservations", label: t("nav.reservations"), icon: <Ticket size={20} />, count: store.reservationPools?.some((p) => p.can_operate) ? reservationTodoCount(store.reservationPools) : null, danger: true, onClick: onReservations }] : []),
+    { key: "files", label: t("nav.files"), icon: <Files size={20} />, count: null, danger: false, onClick: onFiles },
+    ...(onCanvases ? [{ key: "canvases", label: t("nav.canvases"), icon: <NotebookText size={20} />, count: null, danger: false, onClick: onCanvases }] : []),
   ];
   return (
     <div className="flex gap-2 overflow-x-auto px-3 pb-2 pt-1 [scrollbar-width:none]">
@@ -376,13 +377,13 @@ function HomeRow({ controller, channel, folded, onOpen }: { controller: AppContr
           </span>
           <span className="min-w-0 flex-1 truncate">{title.replace(/^#/, "")}</span>
           {other && !group && <StatusEmoji controller={controller} userId={other} className="shrink-0" />}
-          {muted && <BellOff size={15} className="shrink-0 text-muted" aria-label="ミュート中" />}
+          {muted && <BellOff size={15} className="shrink-0 text-muted" aria-label={t("home.muted")} />}
           {unread && badge > 0 ? (
             <Badge tone="danger">{badge}</Badge>
           ) : unread ? (
-            <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-label="未読" />
+            <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-label={t("sidebar.unread")} />
           ) : quietUnread ? (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted/50" title="新しい投稿があります (静かな未読)" />
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted/50" title={t("sidebar.quietUnread")} />
           ) : null}
         </button>
       </ChannelContextMenu>

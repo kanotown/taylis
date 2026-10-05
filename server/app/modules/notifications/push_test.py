@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import i18n
 from app.core.settings import Settings
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
@@ -33,7 +34,7 @@ from app.modules.workspace import service as workspace
 log = logging.getLogger("app.push")
 
 TITLE = "Taylis"
-BODY = "テスト通知です。この端末に通知が届いています。"
+BODY_KEY = "push.test.body"  # M115: in each device's language (app/i18n/messages.json)
 # A logged-out device stays listed this long, so "why did my old phone get nothing" has an answer.
 DISABLED_LISTED_FOR = timedelta(days=30)
 MAX_DEVICES = 20
@@ -69,7 +70,10 @@ async def send_test(
     current_device_id: uuid.UUID | None,
     providers: dict[str, PushProvider],
     settings: Settings,
+    locale: str = "ja",
 ) -> TestNotificationOut:
+    """`locale`: the requester's language, for the open apps' banner (each push goes in its
+    device's language, docs/I18N.md)."""
     from app.modules.auth import service as auth
     from app.modules.notifications.planner import PushPlanner
 
@@ -85,16 +89,19 @@ async def send_test(
     )
     devices = devices[:MAX_DEVICES]
     badge = await PushPlanner(settings, is_active=lambda _: False).badge_for(db, user.id)
-    payload = PushPayload(
-        kind="test",
-        workspace_id=await workspace.workspace_id(db),
-        title=TITLE,
-        body=BODY,
-        badge=badge,
-        collapse_key="test",
-        sent_at=now,
-    ).model_dump(mode="json")
-    payload["expires_at"] = (now + timedelta(seconds=settings.push_alert_ttl_seconds)).isoformat()
+    workspace_id = await workspace.workspace_id(db)
+    expires_at = (now + timedelta(seconds=settings.push_alert_ttl_seconds)).isoformat()
+    payloads: dict[str, dict[str, Any]] = {}
+    for lc in i18n.LOCALES:
+        payloads[lc] = PushPayload(
+            kind="test",
+            workspace_id=workspace_id,
+            title=TITLE,
+            body=i18n.t(BODY_KEY, lc),
+            badge=badge,
+            collapse_key="test",
+            sent_at=now,
+        ).model_dump(mode="json") | {"expires_at": expires_at}
 
     results: dict[uuid.UUID, tuple[TestNotificationStatus, str | None]] = {}
     sends: list[tuple[Device, Any]] = []
@@ -109,6 +116,7 @@ async def send_test(
             results[device.id] = ("not_configured", None)
         else:
             provider = providers[device.push_provider]
+            payload = payloads[i18n.device_locale(user, device)]
             sends.append((device, _send(provider, device, payload)))
 
     outcomes = await asyncio.gather(*(task for _, task in sends))
@@ -124,7 +132,7 @@ async def send_test(
 
     data = NotificationTestData(
         title=TITLE,
-        body=BODY,
+        body=i18n.t(BODY_KEY, locale),
         device_id=str(current_device_id) if current_device_id else None,
         sent_at=now.isoformat().replace("+00:00", "Z"),
     )

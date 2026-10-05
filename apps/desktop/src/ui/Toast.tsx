@@ -2,6 +2,7 @@ import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useEffect } from "react";
 
 import type { AppController } from "../state/app";
+import { t } from "../i18n";
 
 /** Transient error banner for actions that fail after login (edit, upload, settings…). */
 export function Toast({ controller }: { controller: AppController }) {
@@ -19,7 +20,7 @@ export function Toast({ controller }: { controller: AppController }) {
     >
       <AlertCircle size={18} className="shrink-0 text-danger" />
       <span>{message}</span>
-      <button type="button" className="rounded-md p-1 text-muted hover:bg-ink/6 hover:text-ink" onClick={() => controller.setError(null)} aria-label="閉じる">
+      <button type="button" className="rounded-md p-1 text-muted hover:bg-ink/6 hover:text-ink" onClick={() => controller.setError(null)} aria-label={t("common.close")}>
         <X size={14} />
       </button>
     </div>

@@ -1,6 +1,7 @@
 /** Slash commands (M13b): a few Slack-style shortcuts that map onto existing actions, client-side only. */
 
 import { replaceShortcodes } from "./emoji";
+import { t } from "../i18n";
 
 export interface SlashCommand {
   name: string;
@@ -11,20 +12,20 @@ export interface SlashCommand {
 }
 
 export const COMMANDS: readonly SlashCommand[] = [
-  { name: "status", usage: "/status [絵文字] 文", description: "ステータスを設定 (/status clear で消す)" },
-  { name: "dnd", usage: "/dnd 30m | 1h | 2h | 4h | tomorrow | off", description: "通知を一時停止" },
-  { name: "topic", usage: "/topic 文", description: "チャンネルのトピックを変更", channelOnly: true },
-  { name: "invite", usage: "/invite @名前 …", description: "メンバーを追加", channelOnly: true },
-  { name: "leave", usage: "/leave", description: "チャンネルから退出", channelOnly: true },
-  { name: "join", usage: "/join #チャンネル", description: "公開チャンネルに参加" },
-  { name: "dm", usage: "/dm @名前", description: "ダイレクトメッセージを開く" },
-  { name: "mute", usage: "/mute [1h | 8h | tomorrow]", description: "この会話の通知を止める" },
-  { name: "unmute", usage: "/unmute", description: "この会話の通知を再開" },
-  { name: "me", usage: "/me 文", description: "動作を斜体で投稿" },
-  { name: "shrug", usage: "/shrug [文]", description: "¯\\_(ツ)_/¯ を添えて投稿" },
-  { name: "poll", usage: "/poll 質問 | 選択肢 | 選択肢 …", description: "アンケートを作る (/poll だけでフォームを開く)" },
-  { name: "日程", usage: "/日程 [題名] 日付 …", description: "日程調整を作る (候補に ○ △ × で答える。日付を続けるとフォームに入る)" },
-  { name: "help", usage: "/help", description: "コマンド一覧" },
+  { name: "status", get usage() { return t("commands.status.usage"); }, get description() { return t("commands.status.description"); } },
+  { name: "dnd", usage: "/dnd 30m | 1h | 2h | 4h | tomorrow | off", get description() { return t("commands.dnd.description"); } },
+  { name: "topic", get usage() { return t("commands.topic.usage"); }, get description() { return t("commands.topic.description"); }, channelOnly: true },
+  { name: "invite", get usage() { return t("commands.invite.usage"); }, get description() { return t("commands.invite.description"); }, channelOnly: true },
+  { name: "leave", usage: "/leave", get description() { return t("commands.leave.description"); }, channelOnly: true },
+  { name: "join", get usage() { return t("commands.join.usage"); }, get description() { return t("commands.join.description"); } },
+  { name: "dm", get usage() { return t("command.dmUsage"); }, get description() { return t("commands.dm.description"); } },
+  { name: "mute", usage: "/mute [1h | 8h | tomorrow]", get description() { return t("commands.mute.description"); } },
+  { name: "unmute", usage: "/unmute", get description() { return t("commands.unmute.description"); } },
+  { name: "me", get usage() { return t("commands.me.usage"); }, get description() { return t("commands.me.description"); } },
+  { name: "shrug", get usage() { return t("commands.shrug.usage"); }, get description() { return t("commands.shrug.description"); } },
+  { name: "poll", get usage() { return t("command.pollUsage"); }, get description() { return t("commands.poll.description"); } },
+  { name: "日程", get usage() { return t("commands.schedule.usage"); }, get description() { return t("commands.schedule.description"); } },
+  { name: "help", usage: "/help", get description() { return t("commands.help.description"); } },
 ];
 
 export interface ParsedCommand {

@@ -7,6 +7,7 @@
 import type { TaskOut } from "../api/types";
 import { addDays, clock, type DayKey, dayKey, daysBetween, parseDay, weekStart } from "./calendarDates";
 import { dueDay, dueLabel } from "./tasks";
+import { t, weekdayName } from "../i18n";
 
 /** The server's default (LAB.md §E): a week, three days, the day before and the day itself. */
 export const DEFAULT_NOTICE_DAYS: readonly number[] = [7, 3, 1, 0];
@@ -21,15 +22,15 @@ export function isDeadline(task: Pick<TaskOut, "kind">): boolean {
 
 /** 「当日」 / 「前日」 / 「3 日前」. */
 export function noticeLabel(days: number): string {
-  if (days === 0) return "当日";
-  if (days === 1) return "前日";
-  return `${days} 日前`;
+  if (days === 0) return t("recurring.sameDay");
+  if (days === 1) return t("deadlines.dayBefore");
+  return t("deadlines.daysBefore", { count: days });
 }
 
 /** 「7 日前・3 日前・前日・当日」, largest first; 「通知しない」 for none. */
 export function noticeSummary(days: readonly number[] | null | undefined): string {
   const sorted = [...new Set(days ?? [])].sort((a, b) => b - a);
-  return sorted.length === 0 ? "通知しない" : sorted.map(noticeLabel).join("・");
+  return sorted.length === 0 ? t("notify.channel.none") : sorted.map(noticeLabel).join(t("recurring.daySeparator"));
 }
 
 /** The days as the server keeps them (distinct, largest first). */
@@ -73,9 +74,9 @@ export function remainingText(task: Pick<DeadlineLike, "due_on"> & { due_at?: st
   if (!day) return "";
   const days = daysBetween(today, day);
   const time = task.due_at ? ` ${clock(task.due_at)}` : "";
-  if (days <= 0) return `今日${time}`;
-  if (days === 1) return `明日${time}`;
-  return `あと ${days} 日`;
+  if (days <= 0) return `${t("common.today")}${time}`;
+  if (days === 1) return `${t("common.tomorrow")}${time}`;
+  return t("deadlines.daysLeft", { count: days });
 }
 
 /** 「全国大会 原稿 あと 3 日」. */
@@ -95,13 +96,13 @@ export function deadlineTone(task: Pick<DeadlineLike, "due_on"> & { due_at?: str
 export function deadlineWhen(task: Pick<DeadlineLike, "due_on"> & { due_at?: string | null }, today: DayKey): string {
   const day = dueDay(task);
   if (!day) return "";
-  const weekday = "日月火水木金土"[parseDay(day).getDay()];
-  const label = day === today ? "今日" : `${dueLabel(day, today)} (${weekday})`;
+  const weekday = weekdayName((parseDay(day).getDay() + 6) % 7);
+  const label = day === today ? t("common.today") : `${dueLabel(day, today)} (${weekday})`;
   return task.due_at ? `${label} ${clock(task.due_at)}` : label;
 }
 
 export type DeadlineGroupKey = "week" | "month" | "later" | "past";
-export const DEADLINE_GROUP_LABELS: Readonly<Record<DeadlineGroupKey, string>> = { week: "今週", month: "今月", later: "それ以降", past: "過ぎたもの" };
+export const DEADLINE_GROUP_LABELS: Readonly<Record<DeadlineGroupKey, string>> = { get week() { return t("deadlines.group.week"); }, get month() { return t("deadlines.group.month"); }, get later() { return t("deadlines.group.later"); }, get past() { return t("deadlines.group.past"); } };
 
 export interface DeadlineGroup<T> {
   key: DeadlineGroupKey;
