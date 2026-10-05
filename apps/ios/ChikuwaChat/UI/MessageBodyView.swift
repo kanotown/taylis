@@ -50,7 +50,12 @@ enum BodyTableAlign: Equatable {
 }
 
 enum BodyTokenizer {
-    private static let inline = #"(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)"#
+    // M107 (apps/shared/inline-format.json): `_` emphasis follows CommonMark's word rule: the opening `_` is not preceded and
+    // the closing one not followed by a letter, digit or `_`, so snake_case and e-mail addresses stay as they are.
+    // `\_` `\*` `\~` `\`` are the literal character (also inside emphasis). E-mail addresses (and the shrug, which keeps its
+    // backslash) are text tokens of their own, so emphasis and escapes are never read inside them.
+    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)"#
+    private static let escaped = try! NSRegularExpression(pattern: #"\\([_*~`])"#)
     private static let inlinePattern = try! NSRegularExpression(pattern: inline)
     private static let fullPattern = try! NSRegularExpression(pattern: #"(```([\s\S]*?)```)|"# + inline + #"|(\n)"#)
     private static let fenceOpen = try! NSRegularExpression(pattern: #"^```([A-Za-z0-9_+#.-]{0,20})\s*$"#)
@@ -107,8 +112,15 @@ enum BodyTokenizer {
         var tokens: [BodyToken] = []
         let ns = body as NSString
         var last = 0
+        func text(_ value: String) {
+            guard !value.isEmpty else { return }
+            if case .text(let previous)? = tokens.last { tokens[tokens.count - 1] = .text(previous + value) } else { tokens.append(.text(value)) }
+        }
+        func unescape(_ value: String) -> String {
+            escaped.stringByReplacingMatches(in: value, range: NSRange(location: 0, length: (value as NSString).length), withTemplate: "$1")
+        }
         for match in pattern.matches(in: body, range: NSRange(location: 0, length: ns.length)) {
-            if match.range.location > last { tokens.append(.text(ns.substring(with: NSRange(location: last, length: match.range.location - last)))) }
+            text(ns.substring(with: NSRange(location: last, length: match.range.location - last)))
             func group(_ index: Int) -> String? {
                 let shifted = withBlocks ? index + 2 : index
                 let range = match.range(at: shifted)
@@ -121,21 +133,36 @@ enum BodyTokenizer {
             if withBlocks, raw(1) != nil {
                 let (text, lang) = splitFence(raw(2) ?? "")
                 tokens.append(.codeBlock(text, lang: lang))
-            } else if group(1) != nil { tokens.append(.bold(group(2) ?? "")) }
+            } else if group(1) != nil { tokens.append(.bold(unescape(group(2) ?? ""))) }
             else if group(3) != nil { tokens.append(.code(group(4) ?? "")) }
-            else if group(5) != nil { tokens.append(.bold(group(6) ?? "")) }
-            else if group(7) != nil { tokens.append(.italic(group(8) ?? "")) }
-            else if group(9) != nil { tokens.append(.strike(group(10) ?? "")) }
+            else if group(5) != nil { tokens.append(.bold(unescape(group(6) ?? ""))) }
+            else if group(7) != nil { tokens.append(.italic(unescape(group(8) ?? ""))) }
+            else if group(9) != nil { tokens.append(.strike(unescape(group(10) ?? ""))) }
             else if group(11) != nil { tokens.append(.link(group(13) ?? "", label: group(12))) }
             else if group(14) != nil { tokens.append(.mentionGroup(group(15) ?? "")) }
             else if group(16) != nil { tokens.append(.mention(group(17) ?? "")) }
             else if group(18) != nil { tokens.append(.mentionAll(group(19) ?? "")) }
             else if let url = group(20) { tokens.append(.link(url)) }
+            else if group(21) != nil { text(group(22) ?? "") }
+            else if let literal = group(23) { text(literal) }
             else { tokens.append(.newline) }
             last = match.range.location + match.range.length
         }
-        if last < ns.length { tokens.append(.text(ns.substring(from: last))) }
+        if last < ns.length { text(ns.substring(from: last)) }
         return tokens
+    }
+
+    /// What a reader sees of an inline token as text; mention tokens stay as they are (callers name them first).
+    static func inlineText(_ token: BodyToken) -> String {
+        switch token {
+        case .text(let text), .bold(let text), .italic(let text), .strike(let text), .code(let text): return text
+        case .codeBlock(let text, _): return text
+        case .link(let url, let label): return label ?? url
+        case .mention(let id): return "<@\(id)>"
+        case .mentionGroup(let id): return "<@group:\(id)>"
+        case .mentionAll(let target): return "<!\(target)>"
+        case .newline: return "\n"
+        }
     }
 
     private static func splitFence(_ raw: String) -> (String, String?) {

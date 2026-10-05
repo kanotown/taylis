@@ -53,8 +53,12 @@ val TASK_LINE = Regex("""^([ \t]*)[-*] \[([ xX])\](?: (.*))?$""")
 private val IMAGE_LINE = Regex("""^!\[([^\]\n]*)\]\(attachment:([0-9a-f-]{36})\)\s*$""")
 private val RULE_LINE = Regex("""^-{3,}\s*$""")
 
+// M107 (apps/shared/inline-format.json): `_` emphasis follows CommonMark's word rule: the opening `_` is not preceded and the
+// closing one not followed by a letter, digit or `_`, so snake_case and e-mail addresses stay as they are. `\_` `\*` `\~`
+// `\`` are the literal character (also inside emphasis). E-mail addresses (and the shrug, which keeps its backslash) are
+// text tokens of their own, so emphasis and escapes are never read inside them.
 private const val INLINE =
-    """(\*\*([^*\n]+?)\*\*)|(`([^`\n]+)`)|(\*([^*\n]+)\*)|(_([^_\n]+)_)|(~~([^~\n]+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)"""
+    """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)"""
 private val INLINE_PATTERN = Regex(INLINE)
 private val FULL_PATTERN = Regex("""(```([\s\S]*?)```)|$INLINE|(\n)""")
 private val FENCE_OPEN = Regex("""^```([A-Za-z0-9_+#.-]{0,20})\s*$""")
@@ -112,32 +116,40 @@ fun tokenizeBody(body: String): List<BodyToken> = scan(body, FULL_PATTERN, withB
 /** Inline tokens of a single line. */
 fun tokenizeInline(line: String): List<BodyToken> = scan(line, INLINE_PATTERN, withBlocks = false)
 
+private val ESCAPED = Regex("""\\([_*~`])""")
+
 private fun scan(body: String, pattern: Regex, withBlocks: Boolean): List<BodyToken> {
     val tokens = ArrayList<BodyToken>()
+    fun text(value: String) {
+        if (value.isEmpty()) return
+        val previous = tokens.lastOrNull()
+        if (previous is BodyToken.Text) tokens[tokens.size - 1] = BodyToken.Text(previous.text + value) else tokens.add(BodyToken.Text(value))
+    }
+    fun unescape(value: String) = ESCAPED.replace(value, "$1")
     var last = 0
     for (match in pattern.findAll(body)) {
-        if (match.range.first > last) tokens.add(BodyToken.Text(body.substring(last, match.range.first)))
+        text(body.substring(last, match.range.first))
         val g = match.groups
         fun group(index: Int): String? = g[if (withBlocks) index + 2 else index]?.value
-        tokens.add(
-            when {
-                withBlocks && g[1] != null -> splitFence(g[2]?.value ?: "")
-                group(1) != null -> BodyToken.Bold(group(2) ?: "")
-                group(3) != null -> BodyToken.Code(group(4) ?: "")
-                group(5) != null -> BodyToken.Bold(group(6) ?: "")
-                group(7) != null -> BodyToken.Italic(group(8) ?: "")
-                group(9) != null -> BodyToken.Strike(group(10) ?: "")
-                group(11) != null -> BodyToken.Link(group(13) ?: "", label = group(12))
-                group(14) != null -> BodyToken.MentionGroup(group(15) ?: "")
-                group(16) != null -> BodyToken.Mention(group(17) ?: "")
-                group(18) != null -> BodyToken.MentionAll(group(19) ?: "")
-                group(20) != null -> BodyToken.Link(group(20) ?: "")
-                else -> BodyToken.Newline
-            },
-        )
+        when {
+            withBlocks && g[1] != null -> tokens.add(splitFence(g[2]?.value ?: ""))
+            group(1) != null -> tokens.add(BodyToken.Bold(unescape(group(2) ?: "")))
+            group(3) != null -> tokens.add(BodyToken.Code(group(4) ?: ""))
+            group(5) != null -> tokens.add(BodyToken.Bold(unescape(group(6) ?: "")))
+            group(7) != null -> tokens.add(BodyToken.Italic(unescape(group(8) ?: "")))
+            group(9) != null -> tokens.add(BodyToken.Strike(unescape(group(10) ?: "")))
+            group(11) != null -> tokens.add(BodyToken.Link(group(13) ?: "", label = group(12)))
+            group(14) != null -> tokens.add(BodyToken.MentionGroup(group(15) ?: ""))
+            group(16) != null -> tokens.add(BodyToken.Mention(group(17) ?: ""))
+            group(18) != null -> tokens.add(BodyToken.MentionAll(group(19) ?: ""))
+            group(20) != null -> tokens.add(BodyToken.Link(group(20) ?: ""))
+            group(21) != null -> text(group(22) ?: "")
+            group(23) != null -> text(group(23) ?: "")
+            else -> tokens.add(BodyToken.Newline)
+        }
         last = match.range.last + 1
     }
-    if (last < body.length) tokens.add(BodyToken.Text(body.substring(last)))
+    text(body.substring(last))
     return tokens
 }
 
@@ -310,6 +322,21 @@ fun splitIntoLines(tokens: List<BodyToken>): List<List<BodyToken>> {
     return lines.filter { it.isNotEmpty() }
 }
 
+/** What a reader sees of an inline token as text; mention tokens stay as they are (callers name them first). */
+private fun inlineText(token: BodyToken): String = when (token) {
+    is BodyToken.Text -> token.text
+    is BodyToken.Bold -> token.text
+    is BodyToken.Italic -> token.text
+    is BodyToken.Strike -> token.text
+    is BodyToken.Code -> token.text
+    is BodyToken.CodeBlock -> token.text
+    is BodyToken.Link -> token.label ?: token.url
+    is BodyToken.Mention -> "<@${token.userId}>"
+    is BodyToken.MentionGroup -> "<@group:${token.groupId}>"
+    is BodyToken.MentionAll -> "<!${token.target}>"
+    BodyToken.Newline -> "\n"
+}
+
 /** One-line plain text for notifications and previews: markers removed, newlines collapsed. */
 fun plainText(body: String, maxLength: Int = 200): String {
     val text = body
@@ -319,12 +346,9 @@ fun plainText(body: String, maxLength: Int = 200): String {
         .replace(Regex("""(?m)^#{1,3}\s+"""), "")
         .replace(Regex("""(?m)^>\s?"""), "")
         .replace(Regex("""(?m)^\s*(?:[-*•]|\d{1,3}\.)\s+"""), "")
-        .replace(Regex("""\*\*([^*\n]+?)\*\*"""), "$1")
-        .replace(Regex("""\*([^*\n]+)\*"""), "$1")
-        .replace(Regex("""_([^_\n]+)_"""), "$1")
-        .replace(Regex("""~~([^~\n]+)~~"""), "$1")
-        .replace(Regex("""`([^`\n]+)`"""), "$1")
-        .replace(Regex("""\[([^\]\n]+)\]\((https?://[^\s)]+)\)"""), "$1")
+        // M107: the inline markers are those the tokenizer reads (apps/shared/inline-format.json), not patterns of their own.
+        .split("\n")
+        .joinToString("\n") { line -> tokenizeInline(line).joinToString("") { inlineText(it) } }
         .replace(Regex("""\s*\n+\s*"""), " ")
         .trim()
     return if (text.length > maxLength) text.take(maxLength - 1) + "…" else text

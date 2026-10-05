@@ -25,7 +25,7 @@ describe("message body tokenizer", () => {
   it("keeps code blocks verbatim and leaves unmatched markers as text", () => {
     expect(tokenize("```\nlet *x* = 1\n```")).toEqual([{ kind: "codeblock", text: "let *x* = 1", lang: null }]);
     expect(tokenize("a * b * c")).toEqual([{ kind: "text", text: "a " }, { kind: "bold", text: " b " }, { kind: "text", text: " c" }]);
-    expect(tokenize("plain_text_here")).toEqual([{ kind: "text", text: "plain" }, { kind: "italic", text: "text" }, { kind: "text", text: "here" }]);
+    expect(tokenize("plain_text_here")).toEqual([{ kind: "text", text: "plain_text_here" }]); // M107: never inside a word
     expect(tokenize("<script>alert(1)</script>")).toEqual([{ kind: "text", text: "<script>alert(1)</script>" }]);
   });
 });
