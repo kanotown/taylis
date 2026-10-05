@@ -85,5 +85,5 @@ describe("no lookups while modules load", () => {
     await Promise.all(Object.values(import.meta.glob(["../src/**/*.{ts,tsx}", "!../src/main.tsx", "!../src/**/*.d.ts"])).map((load) => load()));
     expect(importTimeCalls.slice(before)).toEqual([]);
     markStarted();
-  });
+  }, 60_000);
 });

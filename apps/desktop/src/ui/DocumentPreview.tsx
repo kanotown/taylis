@@ -8,6 +8,7 @@ import { formatSize } from "./Attachments";
 import { DOCUMENT_CARD_WIDTH, documentPreviewState, documentThumbBox, pageCountLabel } from "./attachmentLayout";
 import type { PDFDocumentProxy } from "./pdfLoader";
 import { cn } from "./primitives";
+import { t } from "../i18n";
 
 /**
  * M108 (docs/PREVIEWS.md §5): the card of a PDF or Office file with a preview, as Slack shows one. Ready: the first
@@ -34,14 +35,14 @@ export function DocumentCard({ attachment, controller }: { attachment: Attachmen
           className="block w-full overflow-hidden border-b border-line bg-white"
           style={box ? { height: box.height } : { aspectRatio: "4 / 3" }}
           data-document-box={box ? `${box.width}x${box.height}` : undefined}
-          title={`${attachment.filename} — クリックでプレビュー`}
-          aria-label={`${attachment.filename} のプレビューを開く`}
+          title={`${attachment.filename} — ${t("docPreview.clickToPreview")}`}
+          aria-label={t("docPreview.open", { name: attachment.filename })}
           onClick={() => setOpen(true)}
         >
           {thumb ? (
             <img src={thumb} alt="" className="block h-full w-full object-cover object-top" />
           ) : (
-            <span role="status" aria-label="プレビューを読み込み中" className="flex h-full w-full items-center justify-center text-muted">
+            <span role="status" aria-label={t("docPreview.loading")} className="flex h-full w-full items-center justify-center text-muted">
               <Loader2 size={18} className="animate-spin" />
             </span>
           )}
@@ -56,14 +57,14 @@ export function DocumentCard({ attachment, controller }: { attachment: Attachmen
         >
           <span className="block truncate" title={attachment.filename}>{attachment.filename}</span>
           <span className="block text-xs text-muted">
-            {state === "pending" ? <span role="status">プレビューを作成中…</span> : meta}
+            {state === "pending" ? <span role="status">{t("docPreview.creating")}</span> : meta}
           </span>
         </button>
         <button
           type="button"
           className="shrink-0 rounded-lg p-1.5 text-muted hover:bg-accent-soft/60 hover:text-ink"
-          title="ダウンロード"
-          aria-label="ダウンロード"
+          title={t("attach.download")}
+          aria-label={t("attach.download")}
           onClick={() => void controller.downloadAttachment(attachment)}
         >
           <Download size={14} />
@@ -169,26 +170,26 @@ export function PdfViewer({ attachment, controller, onClose }: { attachment: Att
         <Dialog.Overlay className="rx-overlay fixed inset-0 z-40 bg-black/85" />
         <Dialog.Content className="fixed inset-0 z-50 flex flex-col focus:outline-none">
           <Dialog.Title className="sr-only">{attachment.filename}</Dialog.Title>
-          <Dialog.Description className="sr-only">文書のプレビュー</Dialog.Description>
+          <Dialog.Description className="sr-only">{t("docPreview.description")}</Dialog.Description>
           <div className="flex items-center gap-2 px-4 py-3 text-white">
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium">{attachment.filename}</div>
               <div className="text-xs text-white/70">{[formatSize(attachment.size_bytes), pageCountLabel(pages)].filter(Boolean).join(" · ")}</div>
             </div>
-            <button type="button" className="rounded-lg p-2 hover:bg-white/15 disabled:opacity-40" title="縮小" aria-label="縮小" disabled={zoomIndex <= 0} onClick={() => setZoom(ZOOMS[Math.max(0, zoomIndex - 1)] ?? 1)}>
+            <button type="button" className="rounded-lg p-2 hover:bg-white/15 disabled:opacity-40" title={t("docPreview.zoomOut")} aria-label={t("docPreview.zoomOut")} disabled={zoomIndex <= 0} onClick={() => setZoom(ZOOMS[Math.max(0, zoomIndex - 1)] ?? 1)}>
               <ZoomOut size={18} />
             </button>
-            <button type="button" className="min-w-12 rounded-lg px-1 py-2 text-xs tabular-nums hover:bg-white/15" title="幅に合わせる" onClick={() => setZoom(1)}>
+            <button type="button" className="min-w-12 rounded-lg px-1 py-2 text-xs tabular-nums hover:bg-white/15" title={t("docPreview.fitWidth")} onClick={() => setZoom(1)}>
               {Math.round(zoom * 100)}%
             </button>
-            <button type="button" className="rounded-lg p-2 hover:bg-white/15 disabled:opacity-40" title="拡大" aria-label="拡大" disabled={zoomIndex >= ZOOMS.length - 1} onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, zoomIndex + 1)] ?? 1)}>
+            <button type="button" className="rounded-lg p-2 hover:bg-white/15 disabled:opacity-40" title={t("docPreview.zoomIn")} aria-label={t("docPreview.zoomIn")} disabled={zoomIndex >= ZOOMS.length - 1} onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, zoomIndex + 1)] ?? 1)}>
               <ZoomIn size={18} />
             </button>
-            <button type="button" className="rounded-lg p-2 hover:bg-white/15" title="ダウンロード" aria-label="ダウンロード" onClick={() => void controller.downloadAttachment(attachment)}>
+            <button type="button" className="rounded-lg p-2 hover:bg-white/15" title={t("attach.download")} aria-label={t("attach.download")} onClick={() => void controller.downloadAttachment(attachment)}>
               <Download size={18} />
             </button>
             <Dialog.Close asChild>
-              <button type="button" className="rounded-lg p-2 hover:bg-white/15" title="閉じる (Esc)" aria-label="閉じる">
+              <button type="button" className="rounded-lg p-2 hover:bg-white/15" title={t("attach.closeEsc")} aria-label={t("common.close")}>
                 <X size={20} />
               </button>
             </Dialog.Close>
@@ -202,15 +203,15 @@ export function PdfViewer({ attachment, controller, onClose }: { attachment: Att
               </div>
             ) : failed ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-white">
-                <p role="status">プレビューを読み込めませんでした</p>
+                <p role="status">{t("docPreview.failed")}</p>
                 <div className="flex gap-2">
-                  <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => setAttempt((n) => n + 1)}>再試行</button>
-                  <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => void controller.downloadAttachment(attachment)}>ダウンロード</button>
+                  <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => setAttempt((n) => n + 1)}>{t("common.retry")}</button>
+                  <button type="button" className="rounded-lg border border-white/50 px-4 py-2 hover:bg-white/15" onClick={() => void controller.downloadAttachment(attachment)}>{t("attach.download")}</button>
                 </div>
               </div>
             ) : (
               <div className="flex h-full items-center justify-center">
-                <Loader2 size={28} role="status" aria-label="プレビューを読み込み中" className="animate-spin text-white/70" />
+                <Loader2 size={28} role="status" aria-label={t("docPreview.loading")} className="animate-spin text-white/70" />
               </div>
             )}
           </div>
@@ -272,8 +273,8 @@ function PdfPage({ doc, number, width, aspect, root }: { doc: PDFDocumentProxy; 
   const height = Math.round(width * (ownAspect ?? aspect));
   return (
     <div ref={holder} data-pdf-page={number} className="relative bg-white shadow-lg" style={{ width, height }}>
-      <canvas ref={canvas} className="block" style={{ width, height }} aria-label={`${number} ページ目`} />
-      {failed && <span className={cn("absolute inset-0 flex items-center justify-center text-sm text-muted")}>このページを表示できませんでした</span>}
+      <canvas ref={canvas} className="block" style={{ width, height }} aria-label={t("docPreview.page", { n: number })} />
+      {failed && <span className={cn("absolute inset-0 flex items-center justify-center text-sm text-muted")}>{t("docPreview.pageFailed")}</span>}
     </div>
   );
 }
