@@ -91,10 +91,10 @@ class SearchTest {
         assertEquals("1,000 件以上", Search.totalLabel(1000, true))
         val params = SearchParams(q = " 設計 ", fromUserId = "u1", channelId = "c1", date = SearchDate(preset = "week"), has = listOf("file", "pin"), isThread = true)
         assertEquals(
-            "設計 · 送信者: 田中 · #general · 過去 7 日間 · ファイルあり · ピン留め · スレッド内",
+            "設計 · 送信者：田中 · #general · 過去 7 日間 · ファイルあり · ピン留め · スレッド内",
             Search.describe(params, userName = { if (it == "u1") "田中" else null }, channelName = { if (it == "c1") "#general" else null }),
         )
-        assertEquals("送信者: ?", Search.describe(SearchParams(fromUserId = "gone"), { null }, { null }))
+        assertEquals("送信者：?", Search.describe(SearchParams(fromUserId = "gone"), { null }, { null }))
     }
 
     @Test fun recentSearchesAreNewestFirstWithoutDuplicatesAndPerAccount() {

@@ -65,7 +65,7 @@ class RosterTest {
         assertEquals("M1", Roster.section(roster["m1a"]))
         assertEquals("卒業生", Roster.section(roster["old"]))
         assertNull(Roster.section(null))
-        assertEquals("D1 · 指導教員: Prof", Roster.summary(roster.getValue("doc"), mapOf(prof.id to prof)))
+        assertEquals("D1 · 指導教員：Prof", Roster.summary(roster.getValue("doc"), mapOf(prof.id to prof)))
         assertEquals("D1", Roster.summary(roster.getValue("doc"), emptyMap())) // the supervisor not known here
     }
 

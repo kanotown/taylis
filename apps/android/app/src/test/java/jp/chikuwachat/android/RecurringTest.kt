@@ -51,13 +51,13 @@ class RecurringTest {
         assertEquals("毎日 8:15", Recurring.scheduleSummary(RecurringSchedule("weekly", weekdays = listOf(0, 1, 2, 3, 4, 5, 6), time = "08:15")))
         assertEquals("毎週 日 23:59", Recurring.scheduleSummary(RecurringSchedule("weekly", weekdays = listOf(6), time = "23:59")))
         assertEquals("毎月 1 日 9:00", Recurring.scheduleSummary(RecurringSchedule("monthly", day = 1, time = "09:00")))
-        assertEquals("毎月 30 日 (ない月は末日) 9:00", Recurring.scheduleSummary(RecurringSchedule("monthly", day = 30, time = "09:00")))
+        assertEquals("毎月 30 日（ない月は末日） 9:00", Recurring.scheduleSummary(RecurringSchedule("monthly", day = 30, time = "09:00")))
         assertEquals("毎月 末日 18:00", Recurring.scheduleSummary(RecurringSchedule("monthly", day = 31, time = "18:00")))
         // Another zone than this device's is named.
         assertEquals("毎月 1 日 9:00 (America/New_York)", Recurring.scheduleSummary(RecurringSchedule("monthly", day = 1, time = "09:00"), "America/New_York", "Asia/Tokyo"))
         assertEquals("毎月 1 日 9:00", Recurring.scheduleSummary(RecurringSchedule("monthly", day = 1, time = "09:00"), "Asia/Tokyo", "Asia/Tokyo"))
         // A kind a newer server adds: its time, and the form does not offer to edit it.
-        assertEquals("9:00 (このアプリでは表示できない予定)", Recurring.scheduleSummary(RecurringSchedule("yearly", time = "09:00")))
+        assertEquals("9:00（このアプリでは表示できない予定）", Recurring.scheduleSummary(RecurringSchedule("yearly", time = "09:00")))
         assertFalse(Recurring.editable(post(schedule = RecurringSchedule("yearly"))))
         assertTrue(Recurring.editable(post()))
     }
@@ -85,10 +85,10 @@ class RecurringTest {
 
     @Test fun explainsThePlaceholdersWithTodaysValues() {
         assertEquals(
-            "{date} → 2026/09/28 (月)、{weekday} → 月、{week} → 週番号 (例 2026-W40)。投稿した日に置き換わります",
+            "{date} → 2026/09/28 (月)、{weekday} → 月、{week} → 週番号（例 2026-W40）。投稿した日に置き換わります",
             Recurring.placeholderHint(LocalDate.of(2026, 9, 28)),
         )
-        assertTrue(Recurring.placeholderHint(LocalDate.of(2027, 1, 1)).contains("(例 2026-W53)"))
+        assertTrue(Recurring.placeholderHint(LocalDate.of(2027, 1, 1)).contains("（例 2026-W53）"))
     }
 
     // --- who manages -----------------------------------------------------------------------------------------------

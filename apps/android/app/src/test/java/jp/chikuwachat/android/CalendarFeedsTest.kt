@@ -14,7 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** M69 (CALENDAR.md §10.6, §10.9): 「カレンダーを購読 (iCal)」's state against the fake server, and its words. */
+/** M69 (CALENDAR.md §10.6, §10.9): 「カレンダーを購読（iCal）」's state against the fake server, and its words. */
 class CalendarFeedsTest {
     @get:Rule val tokyo = TokyoZone()
 
@@ -90,7 +90,7 @@ class CalendarFeedsTest {
         // Days in the device's zone (03:00Z is noon in Tokyo; 20:00Z is the next day there).
         assertEquals("2026/10/2 に作成 ・ まだ読まれていません", CalendarFeeds.feedLine(CalendarFeedOut("f", "all", "2026-10-02T03:00:00Z", null)))
         assertEquals("2026/10/2 に作成 ・ 2026/10/4 に読まれました", CalendarFeeds.feedLine(CalendarFeedOut("f", "all", "2026-10-02T03:00:00Z", "2026-10-03T20:00:00Z")))
-        // 「カレンダーを購読 (iCal)」 is the calendar page's ⋮ (and only there).
+        // 「カレンダーを購読（iCal）」 is the calendar page's ⋮ (and only there).
         assertEquals(listOf(BarMenuItem.CALENDAR_FEEDS), BarMenu.items(conversation = false, channel = false, archived = false, activityFeed = false, calendar = true))
         assertTrue(BarMenuItem.CALENDAR_FEEDS !in BarMenu.items(conversation = true, channel = true, archived = false, activityFeed = false))
     }

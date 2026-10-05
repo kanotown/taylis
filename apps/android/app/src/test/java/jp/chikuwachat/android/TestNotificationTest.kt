@@ -27,14 +27,14 @@ class TestNotificationTest {
             ]}
         """.trimIndent()
         val decoded = Codec.snake.decodeFromString(TestNotificationOut.serializer(), json)
-        assertEquals(listOf("Pixel (この端末)", "iPhone / iPad"), decoded.devices.map(TestNotificationText::deviceName))
+        assertEquals(listOf("Pixel（この端末）", "iPhone / iPad"), decoded.devices.map(TestNotificationText::deviceName))
         assertEquals("このサーバでは iOS のプッシュが無効です", TestNotificationText.status(decoded.devices[1]).first)
-        assertEquals(listOf("iOS のプッシュ (APNs) はこのサーバでは無効です"), TestNotificationText.notes(decoded))
+        assertEquals(listOf("iOS のプッシュ（APNs）はこのサーバでは無効です"), TestNotificationText.notes(decoded))
     }
 
     @Test fun eachStatusInWords() {
         assertEquals("送信しました" to TestNotificationText.Tone.OK, TestNotificationText.status(device("sent")))
-        assertEquals("送れませんでした (UNREGISTERED)", TestNotificationText.status(device("failed", detail = "UNREGISTERED")).first)
+        assertEquals("送れませんでした（UNREGISTERED）", TestNotificationText.status(device("failed", detail = "UNREGISTERED")).first)
         assertEquals(TestNotificationText.Tone.PROBLEM, TestNotificationText.status(device("no_token")).second)
         assertEquals("このサーバでは Android のプッシュが無効です", TestNotificationText.status(device("not_configured")).first)
         assertEquals(TestNotificationText.Tone.NONE, TestNotificationText.status(device("in_app", platform = "desktop", provider = "none")).second)
@@ -45,12 +45,12 @@ class TestNotificationTest {
     @Test fun notes() {
         assertEquals(
             listOf(
-                "このサーバはプッシュ通知が設定されていません (iPhone・Android のアプリには、開いている間だけ通知が出ます)",
-                "プッシュ通知を受け取れる端末 (iPhone・Android のアプリ) はありません",
+                "このサーバはプッシュ通知が設定されていません（iPhone・Android のアプリには、開いている間だけ通知が出ます）",
+                "プッシュ通知を受け取れる端末（iPhone・Android のアプリ）はありません",
             ),
             TestNotificationText.notes(out(listOf(device("in_app", platform = "desktop")), apns = false, fcm = false)),
         )
-        assertEquals(listOf("Android のプッシュ (FCM) はこのサーバでは無効です"), TestNotificationText.notes(out(listOf(device("sent")), fcm = false)))
+        assertEquals(listOf("Android のプッシュ（FCM）はこのサーバでは無効です"), TestNotificationText.notes(out(listOf(device("sent")), fcm = false)))
         assertEquals(listOf("通知を一時停止中ですが、テスト通知は送りました"), TestNotificationText.notes(out(listOf(device("sent")), dnd = true)))
     }
 

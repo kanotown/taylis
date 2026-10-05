@@ -132,8 +132,8 @@ class NotificationLevelsTest {
     @Test fun labels() {
         assertEquals(listOf("すべての新着メッセージ", "メンションと DM のみ", "なし"), NotificationLevels.levels.map(NotificationLabels::overallLabel))
         assertEquals(listOf("すべてのメッセージ", "メンションのみ", "通知しない"), NotificationLevels.levels.map(NotificationLabels::label))
-        assertEquals("既定 (メンションと DM のみ)", NotificationLabels.defaultChoice("mentions"))
-        assertEquals("既定 (なし)", NotificationLabels.defaultChoice("none"))
+        assertEquals("既定（メンションと DM のみ）", NotificationLabels.defaultChoice("mentions"))
+        assertEquals("既定（なし）", NotificationLabels.defaultChoice("none"))
     }
 
     /** One message seen by "me" (apps/shared/notify-rules.json, PUSH_NOTIFICATIONS.md §4). */

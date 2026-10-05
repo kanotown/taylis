@@ -15,6 +15,6 @@ class ShareTest {
     @Test fun clipsLongBodiesAndStandsInForAttachmentOnlyMessages() {
         val long = "あ".repeat(400)
         assertEquals("> " + "あ".repeat(300) + "…\n$link", Share.body(long, link, ""))
-        assertEquals("資料です\n> (添付ファイル)\n$link", Share.body("   ", link, "資料です"))
+        assertEquals("資料です\n> （添付ファイル）\n$link", Share.body("   ", link, "資料です"))
     }
 }

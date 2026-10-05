@@ -177,7 +177,7 @@ class ReviewRequestsTest {
         assertEquals("lab", init.channelId)
         assertEquals(TaskKind.REVIEW, init.kind)
         assertTrue(init.isReview)
-        assertEquals("レビュー: 修論 の第 3 章です", init.title)
+        assertEquals("レビュー：修論 の第 3 章です", init.title)
         assertEquals("修論 の第 3 章です", init.sourceExcerpt)
         assertEquals("m1", init.sourceMessageId)
         assertEquals(emptyList<String>(), init.assigneeIds)
@@ -211,8 +211,8 @@ class ReviewRequestsTest {
         assertEquals("lab", board.targetChannel("lab", emptyList()))
         assertNull(board.targetChannel(null, listOf("u-kano")))
         // A review needs someone to ask.
-        assertEquals("依頼先を選んでください", TaskRules.draftProblem(jp.chikuwachat.android.ui.TaskDraft("レビュー: x"), review = true))
-        assertNull(TaskRules.draftProblem(jp.chikuwachat.android.ui.TaskDraft("レビュー: x", assigneeIds = listOf("u-kano")), review = true))
+        assertEquals("依頼先を選んでください", TaskRules.draftProblem(jp.chikuwachat.android.ui.TaskDraft("レビュー：x"), review = true))
+        assertNull(TaskRules.draftProblem(jp.chikuwachat.android.ui.TaskDraft("レビュー：x", assigneeIds = listOf("u-kano")), review = true))
         assertNull(TaskRules.draftProblem(jp.chikuwachat.android.ui.TaskDraft("x")))
     }
 
@@ -302,15 +302,15 @@ class ReviewRequestsTest {
         // task.review_done is said like the push.
         hub.applyEvent("task.review_done", Codec.plain.parseToJsonElement("""{"task_id":"t9","channel_id":"d1","channel_name":"","title":"第 3 章","by_user_id":"u-kano"}""").jsonObject)
         val said = notices.single() as TaskNotice.ReviewDone
-        assertEquals("加納 がレビューを完了しました: 第 3 章", TaskRules.reviewDoneText(said.data, nameOf).body)
+        assertEquals("加納 がレビューを完了しました：第 3 章", TaskRules.reviewDoneText(said.data, nameOf).body)
         scope.cancel()
     }
 
     @Test fun theAssignmentNoticeSaysReviewAndLeavesOutADmsName() {
         assertEquals(
-            "加納 がレビューを依頼しました: 第 3 章 (#lab)",
+            "加納 がレビューを依頼しました：第 3 章 (#lab)",
             TaskRules.assignedText(TaskAssigned("t1", "c-lab", "lab", "第 3 章", "u-kano", kind = TaskKind.REVIEW), nameOf).body,
         )
-        assertEquals("加納 がタスクを割り当てました: 資料", TaskRules.assignedText(TaskAssigned("t1", "d1", "", "資料", "u-kano"), nameOf).body)
+        assertEquals("加納 がタスクを割り当てました：資料", TaskRules.assignedText(TaskAssigned("t1", "d1", "", "資料", "u-kano"), nameOf).body)
     }
 }

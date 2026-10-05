@@ -124,9 +124,9 @@ class ReservationsTest {
             todos = todos, myReservationId = "q1", canOperate = true)
         val name: (String) -> String = { mapOf("me" to "わたし", "bob" to "ボブ", "alice" to "アリス")[it] ?: "?" }
         assertEquals("q1", ReservationRules.mine(pool, "me").walkin?.id)
-        assertEquals("空きあり (〜13:00 まで) · 担当者の割り当て待ち", ReservationRules.walkinText(waiting, pool, now, tokyo))
-        assertEquals("わたし さん (me@example.jp) に割り当てる", ReservationRules.todoLine(todos[0], pool, name, now, tokyo))
-        assertEquals("12:00 から: ボブ さん を外して アリス さん に割り当てる (保証時間が終了) · 予約 12:00〜15:00", ReservationRules.todoLine(todos[1], pool, name, now, tokyo))
+        assertEquals("空きあり（〜13:00 まで）· 担当者の割り当て待ち", ReservationRules.walkinText(waiting, pool, now, tokyo))
+        assertEquals("わたし さん（me@example.jp） に割り当てる", ReservationRules.todoLine(todos[0], pool, name, now, tokyo))
+        assertEquals("12:00 から：ボブ さん を外して アリス さん に割り当てる（保証時間が終了） · 予約 12:00〜15:00", ReservationRules.todoLine(todos[1], pool, name, now, tokyo))
         assertEquals(1, ReservationRules.todoCount(listOf(pool)))
         val tiles = HomeTiles.tiles(ThreadSummary(0, 0), 0, 0, 0, HomeTiles.ReservationTile(1, true))
         val tile = tiles.first { it.tile == HomeTile.RESERVATIONS }
