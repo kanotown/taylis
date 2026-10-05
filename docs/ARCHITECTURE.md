@@ -140,7 +140,7 @@ server/
   pyproject.toml
   app/
     main.py              # app factory, lifespan (background tasks の起動), 依存の組み立て (composition root)
-    cli.py               # create-admin / create-user / export-openapi / push-test / verify-attachments / probe-videos
+    cli.py               # create-admin / create-user / export-openapi / push-test / verify-attachments / probe-videos / generate-previews
     core/
       settings.py        # pydantic-settings (環境変数)
       db.py              # engine, session factory, transaction helper

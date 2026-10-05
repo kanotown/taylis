@@ -69,6 +69,30 @@ app 側の設定: `S3_ENDPOINT=http://objectstore:7070`、`S3_BUCKET=chikuwa`、
 - WebUI (`--webui`) と admin API (`--admin-port`) は使わない。
 - データディレクトリ直下の `.vgwlocks/` とバケット内の `.sgwtmp/` は versitygw の内部作業用ディレクトリ。バックアップに含めても害はないが、復元後に空でよい。
 
+## 文書のプレビュー (converter、M108)
+
+PDF と Office の文書の 1 ページ目のサムネイルと全ページのビューア ([docs/PREVIEWS.md](../docs/PREVIEWS.md))。Office を PDF に
+するのは `converter` サービス ([Gotenberg](https://gotenberg.dev/) 8 の LibreOffice だけのイメージ、MIT。中の LibreOffice は
+MPL-2.0)。PDF の 1 ページ目とページ数は app が pypdfium2 で作るので、converter が無くても PDF のプレビューはできる。
+
+- **起動**: `docker-compose.yml` に入っているので、開発の `docker compose up -d`、本番の `deploy.sh` (と `docker-compose.prod.yml`
+  / `.release.yml` / `.behind-proxy.yml` の組み合わせ) のどれでも一緒に起動する。deploy.sh はイメージを先に pull する。
+  既存のサーバーでは、このリリースの最初のデプロイで約 440 MB のダウンロードが 1 回増える。
+- **設定**: app には `PREVIEW_CONVERTER_URL=http://converter:3000` が既定で入る。`infra/.env` に `PREVIEW_CONVERTER_URL=` (空) と
+  書くと Office のプレビューを作らない (PDF は作る)。`PREVIEWS_ENABLED=false` なら一切作らない。入力の上限は
+  `PREVIEW_MAX_INPUT_BYTES` (既定 50 MB)。
+- **閉じ込め**: converter は `converter` ネットワーク (`internal: true`) だけにつながり、ホストにもインターネットにも出られない
+  (ポートの公開も無い)。app だけがこのネットワークにも入る。外部取得と webhook は無効、1 回 90 秒・55 MB・待ち行列 4・
+  メモリ 1 GB・CPU 1 (SECURITY.md §4「文書のプレビュー」)。外に出られないことの確認:
+  `docker compose exec converter curl -m 5 https://example.com` が名前解決できずに失敗する。
+- **資源**: イメージは展開後 1.5 GB。メモリは待機中 100 MB ほど (LibreOffice は 10 分使わなければ止まり、次の変換で
+  起動する)、変換中は文書によって増える (上限 1 GB)。app のイメージは pypdfium2 で約 30 MB 増える。小さな文書なら
+  変換と描画で 1 件 1 秒未満。
+- **古いファイル**: `generate-previews` (下の運用コマンド) で作る。
+- **状態の場所**: converter は状態を持たない (バックアップ不要)。プレビューの PDF と WebP は versitygw の
+  `attachments/{id}.preview.*` に入り、いつものバックアップに含まれる (`verify-attachments` も見る)。失ったときは、その行の
+  `preview_status` を `none` に戻してから `generate-previews` で作り直せる。
+
 ## 方針
 
 - 本番では PostgreSQL / versitygw のポートをホストに公開しない。開発では `localhost` に限定して公開する。
@@ -231,6 +255,7 @@ Android のプッシュは Firebase Cloud Messaging を使う (CLAUDE.md)。サ�
    | `push-test --user <name>` | プッシュ疎通 |
    | `verify-attachments` | 添付のバイト列欠損を報告 |
    | `probe-videos [--limit 1000]` | M79 より前 (または ffmpeg の無いサーバ) の動画の縦横・長さ・ポスターを埋める。1 本ずつ確定するので途中で止めても再開でき、何度流しても同じ。「more videos are left」と出たらもう一度流す。メッセージに付いた動画はそのメッセージを差分で端末に届け直す |
+   | `generate-previews [--limit 200] [--retry-failed]` | M108 より前 (またはプレビューが切れていた間) の PDF と Office の文書のプレビューを作る (docs/PREVIEWS.md §6)。1 件ずつ確定するので途中で止めても再開でき、何度流しても同じ。「more files are left」と出たらもう一度流す。`--retry-failed` は失敗したものもやり直す。一時的に失敗したものはサーバが後で再試行する。メッセージに付いたファイルはそのメッセージを差分で端末に届け直す |
    | `anonymize-user --username <name>` | 退会: 氏名・メール・資格情報・端末を消し、履歴は「退会したユーザー」名義で残す |
    | `export-channel --channel <name|id> --out <file.jsonl>` | チャンネルの履歴を JSONL で書き出す (添付はメタデータのみ) |
 
