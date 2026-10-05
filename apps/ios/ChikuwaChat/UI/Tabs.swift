@@ -43,8 +43,7 @@ enum DMList {
         channels.filter { $0.isMember && $0.channel.isDm }.sorted { a, b in
             let selfA = isNotesToSelf(a, meId: meId), selfB = isNotesToSelf(b, meId: meId)
             if selfA != selfB { return selfA }
-            let lastA = a.channel.lastMessageAt ?? a.channel.createdAt, lastB = b.channel.lastMessageAt ?? b.channel.createdAt
-            return lastA > lastB
+            return SidebarOrder.newestFirst(a, b)
         }
     }
 

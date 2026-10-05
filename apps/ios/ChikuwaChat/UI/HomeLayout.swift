@@ -42,8 +42,6 @@ enum HomeSections {
         /// The default sections folded on this device ("favorites", "channels", "times", "dms"); my own sections fold
         /// by their `collapsed`.
         var folded: Set<String> = []
-        /// The name the favorites are ordered by.
-        var title: (ChannelState) -> String = { $0.channel.name ?? "" }
         var now = Date()
     }
 
@@ -64,12 +62,10 @@ enum HomeSections {
             Rows(rows: folded ? rows.filter(unread) : rows, isEmpty: rows.isEmpty)
         }
 
-        layout.favorites = fold(pool.filter(starred).sorted { input.title($0) < input.title($1) }, input.folded.contains("favorites"))
+        layout.favorites = fold(SidebarOrder.section(pool.filter(starred)), input.folded.contains("favorites"))
         layout.custom = input.sections.map { section in
             let rows = pool.filter { !starred($0) && section.channelIds.contains($0.id) }
-            let named = rows.filter { !$0.channel.isDm }.sorted { ($0.channel.name ?? "") < ($1.channel.name ?? "") }
-            let direct = rows.filter(\.channel.isDm).sorted(by: newestFirst)
-            return Custom(section: section, rows: fold(named + direct, section.collapsed))
+            return Custom(section: section, rows: fold(SidebarOrder.section(rows), section.collapsed))
         }
         let sections = ChannelListView.channelSections(pool, meId: meId) { !starred($0) && !placed.contains($0.id) }
         layout.channels = fold(sections.channels, input.folded.contains("channels"))
@@ -92,9 +88,47 @@ enum HomeSections {
     }
 
     /// The newest message first (a conversation without one by when it was made).
+    static func newestFirst(_ a: ChannelState, _ b: ChannelState) -> Bool { SidebarOrder.newestFirst(a, b) }
+}
+
+/// DATA_MODEL.md sidebar_sections 「セクションの中の並び順」: the order inside a section, the same as the desktop's and
+/// Android's (apps/shared/sidebar-order.json). The server keeps no order inside a section.
+enum SidebarOrder {
+    /// The name after NFKC, A-Z lower-cased and katakana folded to hiragana, as UTF-16 code units (no locale collation:
+    /// it differs per platform).
+    static func key(_ name: String) -> [UInt16] {
+        name.precomposedStringWithCompatibilityMapping.utf16.map { unit in
+            switch unit {
+            case 0x41...0x5A: unit + 0x20
+            case 0x30A1...0x30F6: unit - 0x60
+            default: unit
+            }
+        }
+    }
+
+    private static func precedes(_ a: String, _ b: String) -> Bool { a.utf16.lexicographicallyPrecedes(b.utf16) }
+
+    /// Two names by [key], equal keys by the raw names (UTF-16 code units).
+    static func namesInOrder(_ a: String, _ b: String) -> Bool {
+        let keyA = key(a), keyB = key(b)
+        return keyA != keyB ? keyA.lexicographicallyPrecedes(keyB) : precedes(a, b)
+    }
+
+    /// Channels by name, then by id.
+    static func byName(_ a: ChannelState, _ b: ChannelState) -> Bool {
+        let nameA = a.channel.name ?? "", nameB = b.channel.name ?? ""
+        return nameA.utf16.elementsEqual(nameB.utf16) ? precedes(a.id, b.id) : namesInOrder(nameA, nameB)
+    }
+
+    /// DMs newest first: the last message, else when the DM was made (the server's text), then by id.
     static func newestFirst(_ a: ChannelState, _ b: ChannelState) -> Bool {
         let lastA = a.channel.lastMessageAt ?? a.channel.createdAt, lastB = b.channel.lastMessageAt ?? b.channel.createdAt
-        return lastA != lastB ? lastA > lastB : a.id < b.id
+        return lastA.utf16.elementsEqual(lastB.utf16) ? precedes(a.id, b.id) : precedes(lastB, lastA)
+    }
+
+    /// Favorites and my own sections: their channels by name, then their DMs newest first.
+    static func section(_ rows: [ChannelState]) -> [ChannelState] {
+        rows.filter { !$0.channel.isDm }.sorted(by: byName) + rows.filter(\.channel.isDm).sorted(by: newestFirst)
     }
 }
 
