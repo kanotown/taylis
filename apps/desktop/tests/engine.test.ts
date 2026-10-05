@@ -6,7 +6,7 @@ import { mentionsMe, type SyncApi, SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import { FakeServer, MemoryPersistence } from "./fakeServer";
 
-async function setup(options: { hold?: boolean; active?: boolean; prepare?: (options: { refresh: boolean }) => Promise<void>; sleep?: (ms: number) => Promise<void>; store?: Store } = {}) {
+async function setup(options: { hold?: boolean; active?: boolean; prepare?: (options: { refresh: boolean }) => Promise<void>; sleep?: (ms: number) => Promise<void>; store?: Store; onReservationNotice?: (notice: { text: string }) => void } = {}) {
   const server = new FakeServer();
   const alice = server.addUser("alice");
   const bob = server.addUser("bob");
@@ -25,6 +25,7 @@ async function setup(options: { hold?: boolean; active?: boolean; prepare?: (opt
       random: () => 0.5,
       onNotify: (message) => notifications.push(message.body),
       isActive: () => options.active ?? false,
+      onReservationNotice: options.onReservationNotice,
     },
     { pageSize: 3, gapLimit: 5, reconnectMinMs: 0 },
   );
@@ -307,21 +308,34 @@ describe("channel browsing", () => {
   });
 });
 
-describe("reservation pools (M99)", () => {
-  it("loads a channel's pools when it opens and reads them again on reservation.updated", async () => {
-    const { server, channel, store, engine } = await setup();
-    const pool = { id: "p1", channel_id: channel.id, name: "シート", holders: [], waiting: [] } as unknown as PoolOut;
-    server.pools.set(channel.id, [pool]);
+describe("reservation pools (M112)", () => {
+  it("reads the workspace's pools after bootstrap and again (once per burst) on reservation.updated", async () => {
+    const { server, store, engine } = await setup();
+    const pool = { id: "p1", name: "シート", holders: [], waiting: [], bookings: [], todos: [] } as unknown as PoolOut;
+    server.pools = [pool];
+    expect(store.reservationPools).toBeNull();
     await engine.start();
     await engine.idle();
-    expect(store.poolsOf(channel.id)).toEqual([]); // not part of bootstrap
-    await engine.openChannel(channel.id);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(store.poolsOf(channel.id).map((p) => p.name)).toEqual(["シート"]);
-    server.setPools(channel.id, [{ ...pool, name: "Claude Premium シート" }]);
+    expect(store.reservationPools?.map((p) => p.name)).toEqual(["シート"]);
+    const reads = server.poolReads;
+    server.setPools([{ ...pool, name: "Claude Premium シート" }]);
+    server.setPools([{ ...pool, name: "Claude Premium シート" }]);
     await engine.idle();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(store.poolsOf(channel.id).map((p) => p.name)).toEqual(["Claude Premium シート"]);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(store.reservationPools?.map((p) => p.name)).toEqual(["Claude Premium シート"]);
+    expect(server.poolReads).toBe(reads + 1);
+    engine.stop();
+  });
+
+  it("shows a reservation notice and refreshes the activity badge", async () => {
+    const notices: string[] = [];
+    const { server, bob, engine } = await setup({ onReservationNotice: (n: { text: string }) => notices.push(n.text) });
+    await engine.start();
+    await engine.idle();
+    server.noticeReservation(bob.id, "🙋 Alice さんに割り当ててください");
+    await engine.idle();
+    expect(notices).toEqual(["🙋 Alice さんに割り当ててください"]);
     engine.stop();
   });
 });

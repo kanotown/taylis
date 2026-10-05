@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BellOff, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Plus, Search, SquarePen, Timer } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Plus, Search, SquarePen, Ticket, Timer } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -8,6 +8,7 @@ import { Avatar } from "./Avatar";
 import { badgeCount, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, showsSelfNotesInDmSection } from "./channels";
 import { useOpenSelfNotes } from "./DmListView";
 import { homeSections } from "./home";
+import { reservationTodoCount } from "./reservationPools";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { Badge, Button, cn, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
@@ -40,6 +41,8 @@ export interface HomeViewProps {
   onTasks?: () => void;
   /** M85 「締切」. */
   onDeadlines?: () => void;
+  /** M112: 「予約」 (once the server answered the pools). */
+  onReservations?: () => void;
   onBrowse: () => void;
   onNewChannel: () => void;
   onDirectory: () => void;
@@ -252,7 +255,7 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
 }
 
 /** The tiles across the top (MOBILE_UI.md §6.1): the views the wide sidebar lists as rows. A zero is dimmed, still a tap. */
-function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onReminders, onFiles, onCanvases, onCalendar, onTasks, onDeadlines }: HomeViewProps) {
+function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onReminders, onFiles, onCanvases, onCalendar, onTasks, onDeadlines, onReservations }: HomeViewProps) {
   const store = controller.store;
   const threads = store.threadSummary;
   const drafts = store.listDrafts().length + store.scheduled.size;
@@ -266,6 +269,8 @@ function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onRemind
     ...(onCalendar ? [{ key: "calendar", label: "カレンダー", icon: <CalendarDays size={20} />, count: null, danger: false, onClick: onCalendar }] : []),
     ...(onTasks ? [{ key: "tasks", label: "タスク", icon: <ListTodo size={20} />, count: null, danger: false, onClick: onTasks }] : []),
     ...(onDeadlines ? [{ key: "deadlines", label: "締切", icon: <Timer size={20} />, count: null, danger: false, onClick: onDeadlines }] : []),
+    // M112: 「予約」 — the count is the to-dos due in the pools I operate (apps/shared/nav-items.json key "reservations").
+    ...(onReservations ? [{ key: "reservations", label: "予約", icon: <Ticket size={20} />, count: store.reservationPools?.some((p) => p.can_operate) ? reservationTodoCount(store.reservationPools) : null, danger: true, onClick: onReservations }] : []),
     { key: "files", label: "ファイル", icon: <Files size={20} />, count: null, danger: false, onClick: onFiles },
     ...(onCanvases ? [{ key: "canvases", label: "キャンバス", icon: <NotebookText size={20} />, count: null, danger: false, onClick: onCanvases }] : []),
   ];

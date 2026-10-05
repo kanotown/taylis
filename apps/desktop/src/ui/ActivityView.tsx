@@ -217,6 +217,7 @@ const KIND_ICON = {
 
 /** What a row quotes: the message's opening words, or (a canvas mention, M76) the line around the mention. */
 function activityExcerpt(item: ActivityItem, controller: AppController): string {
+  if (item.reservation) return item.reservation.text; // M112
   // An erased canvas revision blanks the excerpt (`activity.updated`, review v0.1.22 #3), even in a list already loaded.
   if (item.canvas) return controller.store.erasedActivityItems.has(item.canvas.item_id) ? "" : item.canvas.excerpt;
   const message = item.message;
@@ -236,7 +237,35 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
   const excerpt = activityExcerpt(item, controller);
   const actors = item.actor_ids.slice(0, 3);
   const fallbackActor = item.message?.sender_id ?? "";
-  const kindIcon = item.kind === "canvas_mention" ? null : KIND_ICON[item.kind];
+  const kindIcon = item.kind === "canvas_mention" || item.kind === "reservation" ? null : KIND_ICON[item.kind];
+  // M112: a to-do another operator handled (or no longer needed) is done: greyed with 「対応済み」.
+  const done = !!item.reservation && (item.reservation.done || store.doneActivityItems.has(item.reservation.item_id));
+  if (item.reservation) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        data-activity={item.kind}
+        data-unread={unread || undefined}
+        data-done={done || undefined}
+        aria-label={`${unread ? "未読 " : ""}${activityHeadlineText(item, nameOf)}${done ? " · 対応済み" : ""}`}
+        className={cn("flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-panel active:bg-panel md:rounded-xl", done && "opacity-60")}
+      >
+        <span className="flex w-2.5 shrink-0 justify-center pt-4" aria-hidden="true">
+          {unread && !done && <span className="h-2 w-2 rounded-full bg-accent" />}
+        </span>
+        <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-panel-2 text-[20px]">🎫</span>
+        <span className="min-w-0 flex-1 pl-1">
+          <span className="flex items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate text-[14px] text-ink"><strong className="font-semibold">{who}</strong>{what}</span>
+            {done && <span className="shrink-0 text-xs text-muted">対応済み</span>}
+            <time dateTime={item.at} title={fullTimestamp(item.at)} className="shrink-0 text-xs text-muted">{dmTimeLabel(item.at)}</time>
+          </span>
+          <span className={cn("mt-0.5 line-clamp-3 text-[13.5px] leading-snug text-ink/80", done && "line-through decoration-ink/30")}>{excerpt}</span>
+        </span>
+      </button>
+    );
+  }
   return (
     <button
       type="button"

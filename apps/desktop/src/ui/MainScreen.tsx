@@ -16,7 +16,8 @@ import { QuickSwitcher } from "./QuickSwitcher";
 import { ChannelPins, PinsPane } from "./PinsPane";
 import { ChannelDetails } from "./ChannelDetails";
 import { FeedsDialog } from "./ChannelFeeds";
-import { ReservationBar, ReservationSettingsDialog } from "./Reservations";
+import { ReservationsView } from "./Reservations";
+import { reservationTodoCount } from "./reservationPools";
 import { RecurringPostsDialog } from "./RecurringPosts";
 import { ChannelWorkflowsDialog } from "./WorkflowViews";
 import { CanvasPane } from "./CanvasPane";
@@ -80,7 +81,8 @@ import { YouView } from "./YouView";
 // "canvases" (M44): the canvases of all my conversations. "calendar" (M51): my calendar and my channels'.
 // "tasks" (M55): 「自分のタスク」 and 「自分の担当」. "times" (L8): the Times feed (TIMES_FEED.md §7).
 // "deadlines" (M85): 「締切」, my channels' deadlines (DEADLINES.md).
-type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times";
+// "reservations" (M112): 「予約」, the workspace's reservation pools (RESERVATIONS.md).
+type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations";
 /** A message revealed in its conversation (the controller's focus): kept by a conversation's history entry (M67). */
 type Focus = NonNullable<AppController["messageFocus"]>;
 
@@ -124,7 +126,7 @@ function liveKey(place: Place<Focus>): string {
 
 const isRootNav = (nav: Nav) => nav.pane === "list";
 
-type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | "recurring" | "feeds" | "reservations" | "workflows" | null;
+type Dialog = "dm" | "channel" | "members" | "add-member" | "settings" | "topic" | "shortcuts" | "status" | "admin" | "rename" | "archive" | "leave" | "browse" | "directory" | "convert" | "link" | "recurring" | "feeds" | "workflows" | null;
 
 const UNREAD_ONLY_KEY = "chikuwa.sidebar.unreadOnly";
 
@@ -545,6 +547,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [taskDialog, setTaskDialog] = useState<TaskOut | null>(null);
   /** M85: ⋯ 「締切を追加…」 (a new deadline on the open channel's board). */
   const [deadlineInit, setDeadlineInit] = useState<TaskCreateInit | null>(null);
+  // M112: a reservation notification (or activity item) asked for 「予約」.
+  const reservationsAsked = useRef(controller.openReservationsRequest);
+  useEffect(() => {
+    if (controller.openReservationsRequest === reservationsAsked.current) return;
+    reservationsAsked.current = controller.openReservationsRequest;
+    openView("reservations");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller.openReservationsRequest]);
   useEffect(() => {
     const request = controller.openTaskRequest;
     if (!request) return;
@@ -659,7 +669,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times") => {
+  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -720,6 +730,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
    * that tab's screens.
    */
   const openActivityItem = (item: ActivityItem) => {
+    // M112: a reservation notice opens 「予約」.
+    if (item.reservation) {
+      openView("reservations");
+      return;
+    }
     // M76: a canvas mention opens the canvas (as its notification does).
     if (item.canvas) {
       openCanvas(item.canvas.channel_id, item.canvas.canvas_id);
@@ -1041,6 +1056,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       tasksActive={view === "tasks"}
       onDeadlines={() => openView("deadlines")}
       deadlinesActive={view === "deadlines"}
+      onReservations={store.reservationPools ? () => openView("reservations") : undefined}
+      reservationsActive={view === "reservations"}
+      reservationsCount={reservationTodoCount(store.reservationPools)}
       onReadAll={() => void controller.markAllRead()}
       onReminders={() => openView("reminders")}
       remindersActive={view === "reminders"}
@@ -1054,7 +1072,6 @@ export function MainScreen({ controller }: { controller: AppController }) {
       <MenuItem onSelect={() => setDialog("members")}>メンバー</MenuItem>
       {(current.type === "public" || current.type === "private") && current.isMember && <MenuItem onSelect={() => setDialog("recurring")}>定期投稿…</MenuItem>}
       {(current.type === "public" || current.type === "private") && <MenuItem onSelect={() => setDialog("feeds")}>フィード…</MenuItem>}
-      {(current.type === "public" || current.type === "private") && <MenuItem onSelect={() => setDialog("reservations")}>共有枠の予約…</MenuItem>}
       {(current.type === "public" || current.type === "private") && <MenuItem onSelect={() => setDialog("workflows")}>ワークフロー…</MenuItem>}
       {(current.type === "public" || current.type === "private") && current.isMember && canEditBoard(current, controller.isAdmin) && !!controller.engine?.tasks?.available && (
         <MenuItem onSelect={() => setDeadlineInit(newDeadlineInit(controller, current.id))}>締切を追加…</MenuItem>
@@ -1170,6 +1187,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <MyTasksView controller={controller} onOpenBoard={openTasksTab} />
       ) : view === "deadlines" ? (
         <DeadlinesView controller={controller} />
+      ) : view === "reservations" ? (
+        <ReservationsView controller={controller} />
       ) : view === "drafts" ? (
         <DraftsView controller={controller} onOpen={(channelId, parentId) => { open(channelId); if (parentId) { setThreadChannelId(channelId); setThreadId(parentId); } }} />
       ) : current && (current.isMember || previewing) ? (
@@ -1393,8 +1412,6 @@ export function MainScreen({ controller }: { controller: AppController }) {
               )}
             </div>
           </header>
-          {/* M99: the channel's reservation pools, on every layout (a phone too), above the tabs / links. */}
-          {(current.type === "public" || current.type === "private") && <ReservationBar controller={controller} channel={current} />}
           {tabbed ? (
             <ConversationTabs controller={controller} channel={current} tab={tab} onTab={setTab} onAddLink={addLink} onEditLink={editLink} upcoming={upcomingCount} />
           ) : (
@@ -1539,7 +1556,6 @@ export function MainScreen({ controller }: { controller: AppController }) {
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
       {dialog === "recurring" && current && <RecurringPostsDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {dialog === "feeds" && current && <FeedsDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
-      {dialog === "reservations" && current && <ReservationSettingsDialog controller={controller} channel={current} onClose={() => setDialog(null)} />}
       {dialog === "workflows" && current && <ChannelWorkflowsDialog controller={controller} channel={current} manage onClose={() => setDialog(null)} />}
       {taskDialog && <TaskDialog controller={controller} task={controller.engine?.tasks?.find(taskDialog.id) ?? taskDialog} onClose={() => setTaskDialog(null)} onOpenMessage={openTaskMessage} />}
       {deadlineInit && <TaskDialog controller={controller} task={null} init={deadlineInit} onClose={() => setDeadlineInit(null)} onOpenMessage={openTaskMessage} />}
@@ -1572,6 +1588,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onCalendar={() => openView("calendar")}
           onTasks={() => openView("tasks")}
           onDeadlines={() => openView("deadlines")}
+          onReservations={store.reservationPools ? () => openView("reservations") : undefined}
           onBrowse={() => setDialog("browse")}
           onNewChannel={() => setDialog("channel")}
           onDirectory={() => setDialog("directory")}

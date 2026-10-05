@@ -12,13 +12,15 @@ export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = { all: "�
  * One row per kind and message (a reaction item is one message's reactions); a canvas mention (M76) by its own id (one
  * per canvas while unread).
  */
-export function activityKey(item: Pick<ActivityItem, "kind" | "message" | "canvas">): string {
-  return `${item.kind}:${item.message?.id ?? item.canvas?.item_id ?? ""}`;
+export function activityKey(item: Pick<ActivityItem, "kind" | "message" | "canvas" | "reservation">): string {
+  return `${item.kind}:${item.message?.id ?? item.canvas?.item_id ?? item.reservation?.item_id ?? ""}`;
 }
 
 /** M76: an item this client can show: a message's, or a canvas mention with its canvas (anything else is skipped). */
 export function isShownActivity(item: ActivityItem): boolean {
-  return item.kind === "canvas_mention" ? !!item.canvas : !!item.message;
+  if (item.kind === "canvas_mention") return !!item.canvas;
+  if (item.kind === "reservation") return !!item.reservation; // M112
+  return !!item.message;
 }
 
 const time = (iso: string | null | undefined): number => {
@@ -57,7 +59,9 @@ export function appendActivityPage(held: readonly ActivityItem[], page: readonly
  * メンションしました」 (a canvas, M76), and for reactions 「〇〇 が」 / 「〇〇 ほか N 人が」 followed by the emoji (drawn by
  * the caller, custom emoji as pictures).
  */
-export function activityHeadline(item: Pick<ActivityItem, "kind" | "actor_ids" | "canvas">, nameOf: (userId: string) => string): { who: string; what: string } {
+export function activityHeadline(item: Pick<ActivityItem, "kind" | "actor_ids" | "canvas" | "reservation">, nameOf: (userId: string) => string): { who: string; what: string } {
+  // M112: a reservation notice — the pool, and whether it is a to-do (an operator's) or news of my own reservation.
+  if (item.kind === "reservation") return { who: item.reservation?.pool_name ?? "予約", what: item.reservation?.operator ? " · 担当者の作業" : " · 予約" };
   const first = item.actor_ids[0];
   const name = first ? nameOf(first) : "誰か";
   if (item.kind === "mention") return { who: name, what: " がメンション" };
@@ -68,7 +72,7 @@ export function activityHeadline(item: Pick<ActivityItem, "kind" | "actor_ids" |
 }
 
 /** The same headline as plain text (the row's accessible name), the emoji written out. */
-export function activityHeadlineText(item: Pick<ActivityItem, "kind" | "actor_ids" | "emojis" | "canvas">, nameOf: (userId: string) => string): string {
+export function activityHeadlineText(item: Pick<ActivityItem, "kind" | "actor_ids" | "emojis" | "canvas" | "reservation">, nameOf: (userId: string) => string): string {
   const { who, what } = activityHeadline(item, nameOf);
   return item.kind === "reaction" ? `${who}${what} ${(item.emojis ?? []).join("")}` : `${who}${what}`;
 }

@@ -9,7 +9,9 @@ import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, ReportAc
  * M76 (CANVAS.md §20): the activity kinds this client shows beyond M39's (the server sends canvas_mention items, and
  * counts them in the badge, only to clients that name them; an older server ignores the parameter).
  */
-export const ACTIVITY_INCLUDE = "canvas_mention";
+export const ACTIVITY_INCLUDE = ["canvas_mention", "reservation"] as const;
+/** M112: ACTIVITY_INCLUDE as repeated query parameters (`include=canvas_mention&include=reservation`). */
+const includeQuery = (name: string): string => ACTIVITY_INCLUDE.map((kind) => `${name}=${kind}`).join("&");
 
 /** The refresh token's stand-in in the browser (M12j): the real one is an HttpOnly cookie. */
 export const COOKIE_SESSION = "cookie";
@@ -189,7 +191,7 @@ export class ApiClient {
   }
 
   bootstrap(): Promise<BootstrapOut> {
-    return this.request("GET", `/api/v1/sync/bootstrap?activity_include=${ACTIVITY_INCLUDE}`);
+    return this.request("GET", `/api/v1/sync/bootstrap?${includeQuery("activity_include")}`);
   }
 
   channels(includePublic: boolean): Promise<ChannelOut[]> {
@@ -767,19 +769,20 @@ export class ApiClient {
 
   /** Mentions, reactions to my messages and replies in threads I follow, newest first; `cursor` is `next_cursor`. */
   listActivity(options: { filter?: ActivityFilter; cursor?: string | null; limit?: number } = {}): Promise<ActivityListOut> {
-    const params = new URLSearchParams({ filter: options.filter ?? "all", limit: String(options.limit ?? 50), include: ACTIVITY_INCLUDE });
+    const params = new URLSearchParams({ filter: options.filter ?? "all", limit: String(options.limit ?? 50) });
+    for (const kind of ACTIVITY_INCLUDE) params.append("include", kind);
     if (options.cursor) params.set("cursor", options.cursor);
     return this.request("GET", `/api/v1/activity?${params}`);
   }
 
   /** The activity badge: items after my read position (at most 99), and whether a mention is among them. */
   activitySummary(): Promise<ActivitySummaryOut> {
-    return this.request("GET", `/api/v1/activity/summary?include=${ACTIVITY_INCLUDE}`);
+    return this.request("GET", `/api/v1/activity/summary?${includeQuery("include")}`);
   }
 
   /** Everything up to `readAt` is read (the server only moves it forward, never past its own now). */
   markActivityRead(readAt: string): Promise<ActivitySummaryOut> {
-    return this.request("PUT", `/api/v1/activity/read?include=${ACTIVITY_INCLUDE}`, { read_at: readAt });
+    return this.request("PUT", `/api/v1/activity/read?${includeQuery("include")}`, { read_at: readAt });
   }
 
   // --- files (M11i) ----------------------------------------------------------------------
@@ -1492,16 +1495,26 @@ export class ApiClient {
     return this.request("PATCH", `/api/v1/channels/${channelId}/feed-bot`, body);
   }
 
-  // --- reservation pools (M99, docs/RESERVATIONS.md §3) ---------------------------------------
+  // --- reservation pools (M99, M112, docs/RESERVATIONS.md §3) ---------------------------------
 
-  /** The channel's pools (whoever reads the channel), with their holders and queue as I see them. */
-  reservationPools(channelId: string): Promise<PoolOut[]> {
-    return this.request("GET", `/api/v1/channels/${channelId}/reservation-pools`);
+  /** The pools I see, with today's and the coming bookings, the queue, the holders and (operators) the to-do. */
+  reservationPools(): Promise<PoolOut[]> {
+    return this.request("GET", "/api/v1/reservation-pools");
   }
 
-  /** Channel owners and administrators who are members (403 reservation_manage_restricted). */
-  createReservationPool(channelId: string, body: PoolCreate): Promise<PoolOut> {
-    return this.request("POST", `/api/v1/channels/${channelId}/reservation-pools`, body);
+  /** Administrators (403 reservation_manage_restricted). */
+  createReservationPool(body: PoolCreate): Promise<PoolOut> {
+    return this.request("POST", "/api/v1/reservation-pools", body);
+  }
+
+  /** A booking: on the hour, 1 h to the pool's max_hours, up to 14 days ahead (409 reservation_slot_full …). */
+  bookReservation(poolId: string, startAt: string, hours: number): Promise<PoolOut> {
+    return this.request("POST", `/api/v1/reservation-pools/${poolId}/bookings`, { start_at: startAt, hours });
+  }
+
+  /** 「延長」: a booking grows by `hours` if they have a seat. */
+  extendReservation(reservationId: string, hours = 1): Promise<PoolOut> {
+    return this.request("POST", `/api/v1/reservations/${reservationId}/extend`, { hours });
   }
 
   updateReservationPool(poolId: string, body: PoolUpdate): Promise<PoolOut> {
@@ -1512,7 +1525,7 @@ export class ApiClient {
     return this.request("DELETE", `/api/v1/reservation-pools/${poolId}`);
   }
 
-  /** 「予約する」: join the queue (pressing again changes nothing). */
+  /** 「今すぐ (順番待ち)」: join the walk-in queue (pressing again changes nothing). */
   reserve(poolId: string): Promise<PoolOut> {
     return this.request("POST", `/api/v1/reservation-pools/${poolId}/reserve`);
   }

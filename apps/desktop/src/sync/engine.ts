@@ -14,7 +14,7 @@ import { type AiApi, AiHub } from "./ai";
 import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
 import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, EmojiPackOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
-import type { NotificationTest } from "../api/types";
+import type { NotificationTest, ReservationNotice } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
@@ -68,8 +68,8 @@ export interface SyncApi {
   setThreadFollow(messageId: string, following: boolean): Promise<ThreadState>;
   /** M15f: a conversation's link bar. Optional (older fakes). */
   channelLinks?(channelId: string): Promise<ChannelLinkOut[]>;
-  /** M99: a channel's reservation pools. Optional (older fakes). */
-  reservationPools?(channelId: string): Promise<PoolOut[]>;
+  /** M112: the workspace's reservation pools. Optional (older fakes). */
+  reservationPools?(): Promise<PoolOut[]>;
   /** M43: canvases (CANVAS.md §4.5). Optional (older fakes). */
   listCanvases?(channelId: string, trashed?: boolean): Promise<CanvasMeta[]>;
   getCanvas?(canvasId: string, knownVersion: number | null): Promise<CanvasOut | null>;
@@ -176,6 +176,8 @@ export interface EngineDeps {
    * server pushes to phones; the app shows it while open).
    */
   onCanvasMention?: (mention: CanvasMentioned, channel: ChannelState) => void;
+  /** M112: reservation.notice, an activity item about reservations for me (the server pushes to phones). */
+  onReservationNotice?: (notice: ReservationNotice) => void;
   /** PUSH_NOTIFICATIONS.md §15: notification.test, a test notification I asked for (here or on another device). */
   onTestNotification?: (test: NotificationTest) => void;
   /** A channel became fully read (here or on another device). */
@@ -247,6 +249,8 @@ export class SyncEngine {
   private readonly views = new Map<string, number>();
   private threadRefreshCancel: (() => void) | null = null;
   private activityRefreshCancel: (() => void) | null = null;
+  /** M112: reservation.updated arrives once per change (and a press brings several): one read for a burst. */
+  private reservationReload: ReturnType<typeof setTimeout> | null = null;
   private activityRefresh: Promise<void> | null = null;
   private threadRefresh: Promise<void> | null = null;
   /** "channel[:parent]" → when the last typing frame went out. */
@@ -747,6 +751,7 @@ export class SyncEngine {
     this.applyWorkspaceSettings(bootstrap.workspace_settings);
     void this.loadScheduled();
     void this.loadReminders();
+    void this.loadReservationPools();
   }
 
   /** M15f: the conversation's link bar; loaded when it opens and after reconnecting (not in bootstrap). */
@@ -760,13 +765,14 @@ export class SyncEngine {
   }
 
   /**
-   * M99 (docs/RESERVATIONS.md §6): the conversation's reservation pools; loaded when it opens, after reconnecting
-   * (openChannel again) and on reservation.updated (the event carries no card: it differs per person).
+   * M112 (docs/RESERVATIONS.md §6): the workspace's reservation pools; read after every bootstrap (the home tile's
+   * count of to-dos) and on reservation.updated (the event carries no pool: what one shows differs per person).
+   * A server before M112 answers the path with 404/405: the pools stay null (no page).
    */
-  async loadReservationPools(channelId: string): Promise<void> {
+  async loadReservationPools(): Promise<void> {
     if (!this.deps.api.reservationPools) return;
     try {
-      this.deps.store.setReservationPools(channelId, await this.deps.api.reservationPools(channelId));
+      this.deps.store.setReservationPools(await this.deps.api.reservationPools());
     } catch (err) {
       console.warn("could not load reservation pools", err);
     }
@@ -918,12 +924,17 @@ export class SyncEngine {
         return;
       }
       case "reservation.updated": {
-        // M99: read the pools again where they are held (a conversation opened so far).
-        const data = frame.data as { channel_id: string; pool_id: string; deleted?: boolean };
-        if (data.deleted) store.dropReservationPool(data.channel_id, data.pool_id);
-        if (store.reservationPools.has(data.channel_id) || data.channel_id === this.currentChannelId) void this.loadReservationPools(data.channel_id);
+        // M112: read the pools again (each shows differently per person, so the event carries none).
+        const data = frame.data as { pool_id: string; deleted?: boolean };
+        if (data.deleted) store.dropReservationPool(data.pool_id);
+        this.scheduleReservationReload();
         return;
       }
+      case "reservation.notice":
+        // M112: an activity item for me (an operator's to-do, or news of my own reservation): the badge, a banner.
+        this.scheduleActivityRefresh();
+        this.deps.onReservationNotice?.(frame.data as unknown as ReservationNotice);
+        return;
       case "draft.updated":
         this.drafts.applyEvent(frame.data as unknown as DraftUpdated);
         return;
@@ -1011,8 +1022,10 @@ export class SyncEngine {
       }
       case "activity.updated": {
         // Review v0.1.22 #3: an erased canvas revision blanked these items' excerpts; the open list drops them now.
+        // M112: a reservation to-do another operator handled is done (and leaves the badge).
         const data = frame.data as { item_ids?: string[] };
         store.eraseActivityExcerpts(data.item_ids ?? []);
+        this.scheduleActivityRefresh();
         return;
       }
       case "canvas.mentioned":
@@ -1246,6 +1259,14 @@ export class SyncEngine {
     this.deps.onCanvasMention?.(mention, channel);
   }
 
+  private scheduleReservationReload(): void {
+    if (this.reservationReload !== null) return;
+    this.reservationReload = setTimeout(() => {
+      this.reservationReload = null;
+      if (this.status === "online") void this.loadReservationPools();
+    }, 300);
+  }
+
   private scheduleActivityRefresh(): void {
     if (!this.deps.api.activitySummary || this.deps.store.activity === null) return;
     this.activityRefreshCancel?.();
@@ -1311,7 +1332,6 @@ export class SyncEngine {
     this.closePreview(); // another conversation, or the previewed one just joined (§7.6.1)
     if (this.status !== "online") return Promise.resolve();
     void this.loadLinks(channelId);
-    void this.loadReservationPools(channelId);
     if (this.deps.store.getChannel(channelId)?.isMember) void this.canvases.loadList(channelId); // M43 (CANVAS.md §4.6)
     return this.enqueue(async () => {
       const channel = this.deps.store.getChannel(channelId);

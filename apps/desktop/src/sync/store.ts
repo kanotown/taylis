@@ -118,25 +118,26 @@ export class Store {
   linksOf(channelId: string): ChannelLinkOut[] {
     return this.channelLinks.get(channelId) ?? [];
   }
-  /** M99: reservation pools of the conversations opened so far, as the server answered me (not persisted). */
-  readonly reservationPools = new Map<string, PoolOut[]>();
-  setReservationPools(channelId: string, pools: PoolOut[]): void {
-    this.reservationPools.set(channelId, pools);
+  /**
+   * M112 (docs/RESERVATIONS.md §6): the workspace's reservation pools as the server answered me (not persisted); null
+   * until first read (after connecting, then on reservation.updated).
+   */
+  reservationPools: PoolOut[] | null = null;
+  setReservationPools(pools: PoolOut[] | null): void {
+    this.reservationPools = pools;
     this.emit();
   }
   /** One pool as an action answered it (replaced in place, or added at the end). */
   putReservationPool(pool: PoolOut): void {
-    const list = this.reservationPools.get(pool.channel_id) ?? [];
+    const list = this.reservationPools ?? [];
     const index = list.findIndex((p) => p.id === pool.id);
-    const next = index === -1 ? [...list, pool] : list.map((p) => (p.id === pool.id ? pool : p));
-    this.setReservationPools(pool.channel_id, next);
+    this.setReservationPools(index === -1 ? [...list, pool] : list.map((p) => (p.id === pool.id ? pool : p)));
   }
-  dropReservationPool(channelId: string, poolId: string): void {
-    this.setReservationPools(channelId, (this.reservationPools.get(channelId) ?? []).filter((p) => p.id !== poolId));
+  dropReservationPool(poolId: string): void {
+    if (this.reservationPools) this.setReservationPools(this.reservationPools.filter((p) => p.id !== poolId));
   }
-  poolsOf(channelId: string): PoolOut[] {
-    return this.reservationPools.get(channelId) ?? [];
-  }
+  /** M112: reservation activity items marked done since the list was read (activity.updated). */
+  doneActivityItems: ReadonlySet<string> = new Set();
   /**
    * M43 (CANVAS.md §4.6): the canvases of the conversations opened so far, without bodies, most recently updated first.
    * Loaded when a conversation opens and after reconnecting; canvas.* events keep them current (the larger version wins).
@@ -684,6 +685,7 @@ export class Store {
   eraseActivityExcerpts(itemIds: readonly string[]): void {
     if (itemIds.length === 0) return;
     this.erasedActivityItems = new Set([...this.erasedActivityItems, ...itemIds]);
+    this.doneActivityItems = new Set([...this.doneActivityItems, ...itemIds]);
     this.activityEdits += 1;
     this.emit();
   }

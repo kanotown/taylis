@@ -1764,6 +1764,13 @@ export class AppController {
           if (this.active === session) this.requestOpenCanvas(mention.channel_id, mention.canvas_id);
         });
       },
+      // M112: a reservation notice (a to-do as an operator, or news of my own booking); a click opens 「予約」.
+      onReservationNotice: (notice) => {
+        if (this.quiet(session)) return;
+        void notify(this.notificationTitle(session, "予約"), notice.text, () => {
+          if (this.active === session) this.requestOpenReservations();
+        });
+      },
       // §15: a test notification asked for on another device of mine (this one showed its own when the button was pressed).
       onTestNotification: (test) => {
         if (session.testShownAt !== undefined && Date.now() - session.testShownAt < TEST_ECHO_MS) return;
@@ -1892,7 +1899,25 @@ export class AppController {
     }
   }
 
-  // --- reservation pools (M99, docs/RESERVATIONS.md) ------------------------------------------
+  // --- reservation pools (M99, M112, docs/RESERVATIONS.md) ------------------------------------
+
+  /** M112: the main screen should open 「予約」 (a notification, an activity item). */
+  openReservationsRequest = 0;
+
+  requestOpenReservations(): void {
+    this.openReservationsRequest += 1;
+    this.emit();
+  }
+
+  /** A booking (start on the hour, `hours` long). */
+  bookReservation(poolId: string, startAt: string, hours: number): Promise<PoolOut | null> {
+    return this.withPool((api) => api.bookReservation(poolId, startAt, hours));
+  }
+
+  /** 「延長」 by an hour. */
+  extendReservation(reservationId: string, hours = 1): Promise<PoolOut | null> {
+    return this.withPool((api) => api.extendReservation(reservationId, hours));
+  }
 
   /** Runs one call that answers with the pool, and puts the answer in the store; errors go to the banner. */
   private async withPool(call: (api: ApiClient) => Promise<PoolOut>): Promise<PoolOut | null> {
@@ -1907,7 +1932,7 @@ export class AppController {
     }
   }
 
-  /** 「予約する」. */
+  /** 「今すぐ (順番待ち)」. */
   reservePool(poolId: string): Promise<PoolOut | null> {
     return this.withPool((api) => api.reserve(poolId));
   }
@@ -1922,19 +1947,19 @@ export class AppController {
     return this.withPool((api) => api.swapReservations(poolId, removeId, assignId));
   }
 
-  createReservationPool(channelId: string, body: PoolCreate): Promise<PoolOut | null> {
-    return this.withPool((api) => api.createReservationPool(channelId, body));
+  createReservationPool(body: PoolCreate): Promise<PoolOut | null> {
+    return this.withPool((api) => api.createReservationPool(body));
   }
 
   updateReservationPool(poolId: string, body: PoolUpdate): Promise<PoolOut | null> {
     return this.withPool((api) => api.updateReservationPool(poolId, body));
   }
 
-  async deleteReservationPool(channelId: string, poolId: string): Promise<boolean> {
+  async deleteReservationPool(poolId: string): Promise<boolean> {
     if (!this.api) return false;
     try {
       await this.api.deleteReservationPool(poolId);
-      this.store.dropReservationPool(channelId, poolId);
+      this.store.dropReservationPool(poolId);
       return true;
     } catch (error) {
       this.setError(error);
