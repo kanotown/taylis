@@ -1,12 +1,32 @@
 import re
+from typing import get_args
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.modules.emoji.schemas import TextEmojiColor
 
 MAX_SECTIONS = 20
 # M26: a custom emoji by name, or a few code points of emoji (a flag or a family is several).
 _CUSTOM_EMOJI = re.compile(r"^:[a-z0-9_+-]{1,32}:$")
 _MAX_EMOJI_CODEPOINTS = 16
+# M114: a letter badge, `letter:<text>:<colour>` (DATA_MODEL.md sidebar_sections): one or two ASCII
+# letters / digits, or one Japanese character (kana, kanji, 々), on a rounded square in a text emoji
+# colour (apps/shared/text-emoji.json).
+LETTER_PREFIX = "letter:"
+_LETTER_TEXT = re.compile(
+    r"[A-Za-z0-9]{1,2}|[\u3005\u3041-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff]"
+)
+_LETTER_COLORS = frozenset(get_args(TextEmojiColor))
+
+
+def _clean_letter(value: str) -> str:
+    parts = value[len(LETTER_PREFIX) :].split(":")
+    if len(parts) != 2 or not _LETTER_TEXT.fullmatch(parts[0]) or parts[1] not in _LETTER_COLORS:
+        raise ValueError(
+            "A letter icon is letter:<1-2 letters or digits, or one Japanese character>:<colour>"
+        )
+    return value
 
 
 def _clean_name(value: str) -> str:
@@ -17,9 +37,9 @@ def _clean_name(value: str) -> str:
 
 
 def _clean_emoji(value: str | None) -> str | None:
-    """An icon is one emoji (the clients pick it from the emoji picker) or a custom emoji name; a
-    flag or a keycap is several code points, so only the length, spaces and control characters are
-    checked."""
+    """An icon is one emoji (the clients pick it from the emoji picker), a custom emoji name or
+    (M114) a letter badge; a flag or a keycap is several code points, so for an emoji only the
+    length, spaces and control characters are checked."""
     if value is None:
         return None
     value = value.strip()
@@ -27,6 +47,8 @@ def _clean_emoji(value: str | None) -> str | None:
         return None
     if _CUSTOM_EMOJI.match(value):
         return value
+    if value.startswith(LETTER_PREFIX):
+        return _clean_letter(value)
     if len(value) > _MAX_EMOJI_CODEPOINTS or any(ch.isspace() or ord(ch) < 0x20 for ch in value):
         raise ValueError("The icon is one emoji or a custom emoji like :name:")
     return value
@@ -66,7 +88,8 @@ class SectionUpdate(BaseModel):
 class SidebarSectionOut(BaseModel):
     id: UUID
     name: str
-    # M26: the icon (an emoji or `:name:`), and whether it is folded up on all my devices.
+    # M26: the icon (an emoji, `:name:` or, M114, `letter:M:blue`), and whether it is folded up
+    # on all my devices.
     emoji: str | None = None
     collapsed: bool = False
     position: int

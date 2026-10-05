@@ -68,7 +68,7 @@ final class AppController {
 
     // MARK: workspaces (M16c, WORKSPACES.md)
 
-    /// The registered workspaces in the order added. Only the active one is connected and on screen (§6); the others
+    /// The registered workspaces in the order added or as reordered in the switcher (M114, §5.4). Only the active one is connected and on screen (§6); the others
     /// hear of new messages by push and show their last known badge.
     private(set) var workspaces: [Workspace] = []
     private(set) var activeServerUrl: String?
@@ -135,6 +135,13 @@ final class AppController {
 
     private func persistWorkspaces() {
         Workspaces.save(Workspaces.Saved(list: workspaces, active: activeServerUrl), to: defaults)
+    }
+
+    /// M114 (WORKSPACES.md §5.4): the switcher's order, kept on this device only (each workspace is its own server).
+    func reorderWorkspaces(_ list: [Workspace]) {
+        guard list != workspaces, Set(list.map(\.serverUrl)) == Set(workspaces.map(\.serverUrl)) else { return }
+        workspaces = list
+        persistWorkspaces()
     }
 
     /// M96: the account's username now reaches the saved entry (the list and the next login form show it); `username`

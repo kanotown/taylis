@@ -133,6 +133,17 @@ object Workspaces {
         return Saved(listOf(entry), entry.serverUrl)
     }
 
+    /**
+     * M114 (WORKSPACES.md §5.4): one workspace a step up (`by = -1`) or down (`by = 1`), the order the switcher keeps
+     * on this device; at an end (or for an unknown one) the list stays as it is.
+     */
+    fun moved(entries: List<Workspace>, serverUrl: String, by: Int): List<Workspace> {
+        val index = entries.indexOfFirst { it.serverUrl == serverUrl }
+        val target = index + by
+        if (index < 0 || target !in entries.indices) return entries
+        return entries.toMutableList().apply { add(target, removeAt(index)) }
+    }
+
     /** The registered workspace a server is: the same workspace_id (another URL for it), else the same address. */
     fun findRegistered(entries: List<Workspace>, workspaceId: String?, serverUrl: String): Workspace? =
         workspaceId?.let { id -> entries.firstOrNull { it.workspaceId == id } } ?: entries.firstOrNull { sameServer(it.serverUrl, serverUrl) }

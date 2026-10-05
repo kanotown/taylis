@@ -934,7 +934,7 @@ CREATE TABLE sidebar_sections (
   id          uuid PRIMARY KEY,
   user_id     uuid NOT NULL REFERENCES users(id),
   name        varchar(40) NOT NULL,
-  emoji       varchar(64),                   -- M26: アイコン。絵文字 1 つかカスタム絵文字 `:name:` (null = なし)
+  emoji       varchar(64),                   -- M26: アイコン。絵文字 1 つかカスタム絵文字 `:name:` (null = なし)。M114: 文字のバッジ `letter:M:blue`
   collapsed   boolean NOT NULL DEFAULT false, -- M26: 折りたたみ (自分の全端末で同じ)
   position    integer NOT NULL,              -- 0 から。並べ替えで詰め直す
   created_at  timestamptz NOT NULL DEFAULT now()
@@ -959,6 +959,16 @@ CREATE TABLE sidebar_section_channels (
   出す (Slack と同じ)。組み込みの節 (お気に入り、チャンネル、Times、ダイレクトメッセージ) の折りたたみは端末ごと。
   Desktop は会話をセクションの見出しへドラッグして移せる (「チャンネル」「ダイレクトメッセージ」の見出しへ落とすと
   セクションから外す)。
+- **M114 (文字のアイコン)**: 研究室の要望 (修論指導 / 卒論指導に「M」「B」のような分かりやすい印)。`emoji` は
+  `letter:<文字>:<色>` も取る。文字は ASCII の英数字 1〜2 文字 (大文字・小文字はそのまま) か、日本語 1 文字
+  (ひらがな U+3041–309F、カタカナ U+30A0–30FF、漢字 U+3400–4DBF / U+4E00–9FFF、々)。色はテキスト絵文字の
+  パレットのキー (`gray` `red` `orange` `yellow` `green` `blue` `purple` `pink`、apps/shared/text-emoji.json)。
+  サーバは `letter:` で始まる値をこの規則で確かめ、外れれば 422 (列と API の型は変えない、移行なし)。クライアントは
+  角の丸い正方形に、そのパレットの背景色と文字色 (ライト / ダーク) で描く (サイドバー・ホーム・iPad / タブレットの
+  一覧、セクションの操作)。アイコンの選択は「絵文字」「文字」の切り替え: 入力欄 (全角英数字と半角カナは NFKC で
+  直す)・8 色の見本・その場のプレビュー。規則のケースは `apps/shared/section-icons.json` (サーバと 3 クライアントの
+  テストが通す)。M114 より前のクライアントは `letter:M:blue` を文字のまま出す。カスタム絵文字のテキスト絵文字
+  (M100) もアイコンにでき、ラベルの幅のピルで描く。
 
 ### channel_links (会話の上部に並べるリンク、M15f)
 

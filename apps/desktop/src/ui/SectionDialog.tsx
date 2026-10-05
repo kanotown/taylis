@@ -1,20 +1,95 @@
 import { Search, SmilePlus } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type CSSProperties, type FormEvent, useState } from "react";
 
+import type { TextEmojiColor } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { channelTitle } from "./MainScreen";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { EmojiPicker, readRecentEmoji } from "./EmojiPicker";
-import { Button, Field, Input, Modal, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { Button, cn, Field, Input, Modal, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { isLetterText, letterIcon, normalizeLetterInput, parseLetterIcon } from "./sectionIcon";
+import { TEXT_EMOJI_COLOR_NAMES, TEXT_EMOJI_COLORS, textEmojiColors } from "./textEmoji";
 
-/** A section's icon (M26): an emoji, or a custom emoji drawn from its image. */
+/**
+ * A section's icon (M26): an emoji, or a custom emoji drawn from its image (a text emoji as its pill); M114: a letter
+ * badge (`letter:M:blue`).
+ */
 export function SectionIcon({ controller, emoji, size = 14 }: { controller: AppController; emoji: string | null | undefined; size?: number }) {
   if (!emoji) return null;
+  const letter = parseLetterIcon(emoji);
+  if (letter) return <LetterBadge text={letter.text} color={letter.color} size={size} />;
   const name = customEmojiName(emoji);
   const custom = name ? controller.store.customEmoji.get(name) : undefined;
   if (custom) return <CustomEmojiImage controller={controller} emoji={custom} size={size} className="shrink-0" square />;
   return <span className="shrink-0 leading-none" style={{ fontSize: size }} aria-hidden>{emoji}</span>;
+}
+
+/**
+ * M114: one or two letters (or one Japanese character) on a rounded square in a text emoji colour (light and dark,
+ * apps/shared/text-emoji.json), `size` pixels square like an emoji icon.
+ */
+export function LetterBadge({ text, color, size = 14, className }: { text: string; color: TextEmojiColor; size?: number; className?: string }) {
+  const colors = textEmojiColors(color);
+  const style = {
+    width: size,
+    height: size,
+    fontSize: size * ([...text].length > 1 ? 0.52 : 0.64),
+    lineHeight: `${size}px`,
+    borderRadius: size * 0.26,
+    "--te-bg": colors.light.bg,
+    "--te-fg": colors.light.fg,
+    "--te-bg-dark": colors.dark.bg,
+    "--te-fg-dark": colors.dark.fg,
+  } as CSSProperties;
+  return (
+    <span aria-hidden data-letter-icon={text} className={cn("text-emoji inline-block shrink-0 overflow-hidden whitespace-nowrap text-center font-bold tracking-tight", className)} style={style}>
+      {text}
+    </span>
+  );
+}
+
+/** M114: the picker's 「文字」 tab: up to two letters (or one Japanese character) and a colour, previewed as it is typed. */
+function LetterIconPicker({ initial, onPick }: { initial: string | null; onPick: (icon: string) => void }) {
+  const current = parseLetterIcon(initial);
+  // The input as typed (an IME composes 「しゅう」 before 「修」, so nothing is cut while typing); `text` is what is saved.
+  const [raw, setRaw] = useState(current?.text ?? "");
+  const [color, setColor] = useState<TextEmojiColor>(current?.color ?? "blue");
+  const text = normalizeLetterInput(raw);
+  const valid = isLetterText(text);
+  return (
+    <div className="w-[300px] space-y-3" data-testid="letter-icon-picker">
+      <div className="flex items-center gap-3">
+        <LetterBadge text={valid ? text : text ? "?" : "A"} color={color} size={44} className={valid ? "" : "opacity-50"} />
+        <div className="min-w-0 flex-1">
+          <Input
+            value={raw}
+            autoFocus
+            aria-label="アイコンの文字"
+            placeholder="例: M、B、修"
+            onChange={(e) => setRaw(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                if (valid) onPick(letterIcon(text, color));
+              }
+            }}
+          />
+          <div className={cn("mt-1 text-[11px]", text && !valid ? "text-danger" : "text-muted")}>英数字 2 文字まで、または日本語 1 文字</div>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="色">
+        {(Object.keys(TEXT_EMOJI_COLORS) as TextEmojiColor[]).map((key) => (
+          <button key={key} type="button" role="radio" aria-checked={color === key} aria-label={TEXT_EMOJI_COLOR_NAMES[key]} title={TEXT_EMOJI_COLOR_NAMES[key]} onClick={() => setColor(key)} className={cn("rounded-md p-0.5", color === key ? "ring-2 ring-accent" : "")}>
+            <LetterBadge text={valid ? text : "A"} color={key} size={24} />
+          </button>
+        ))}
+      </div>
+      <div className="text-right">
+        <Button type="button" size="sm" disabled={!valid} onClick={() => onPick(letterIcon(text, color))}>このアイコンにする</Button>
+      </div>
+    </div>
+  );
 }
 
 export interface SectionForm {
@@ -41,6 +116,7 @@ export function SectionDialog({ controller, title, submitLabel, initial, pickCha
   const [name, setName] = useState(initial?.name ?? "");
   const [emoji, setEmoji] = useState<string | null>(initial?.emoji ?? null);
   const [picking, setPicking] = useState(false);
+  const [pickerTab, setPickerTab] = useState<"emoji" | "letter">(() => (parseLetterIcon(initial?.emoji) ? "letter" : "emoji"));
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(preselected));
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -72,15 +148,32 @@ export function SectionDialog({ controller, title, submitLabel, initial, pickCha
                 </button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-auto p-3">
-                <EmojiPicker
-                  recent={readRecentEmoji()}
-                  custom={[...store.customEmoji.values()]}
-                  controller={controller}
-                  onPick={(entry) => {
-                    setEmoji(entry.glyph);
-                    setPicking(false);
-                  }}
-                />
+                <div className="mb-2 flex gap-1" role="tablist" aria-label="アイコンの種類">
+                  {(["emoji", "letter"] as const).map((tab) => (
+                    <button key={tab} type="button" role="tab" aria-selected={pickerTab === tab} onClick={() => setPickerTab(tab)} className={cn("rounded-md px-3 py-1 text-sm", pickerTab === tab ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel")}>
+                      {tab === "emoji" ? "絵文字" : "文字"}
+                    </button>
+                  ))}
+                </div>
+                {pickerTab === "emoji" ? (
+                  <EmojiPicker
+                    recent={readRecentEmoji()}
+                    custom={[...store.customEmoji.values()]}
+                    controller={controller}
+                    onPick={(entry) => {
+                      setEmoji(entry.glyph);
+                      setPicking(false);
+                    }}
+                  />
+                ) : (
+                  <LetterIconPicker
+                    initial={emoji}
+                    onPick={(icon) => {
+                      setEmoji(icon);
+                      setPicking(false);
+                    }}
+                  />
+                )}
                 {emoji && (
                   <div className="mt-2 border-t border-line pt-2 text-right">
                     <Button type="button" variant="ghost" size="sm" onClick={() => { setEmoji(null); setPicking(false); }}>アイコンを外す</Button>

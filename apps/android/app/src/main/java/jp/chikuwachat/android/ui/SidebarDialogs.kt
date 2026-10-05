@@ -3,11 +3,13 @@ package jp.chikuwachat.android.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -15,10 +17,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +40,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -129,10 +138,14 @@ fun SectionActionsDialog(
 @Composable
 fun SectionIcon(controller: AppController, emoji: String?, version: Int, size: Dp = 18.dp) {
     if (emoji == null) return
+    // M114: a letter badge.
+    val letter = remember(emoji) { SectionLetterIcon.parse(emoji) }
+    if (letter != null) return LetterBadge(letter.text, letter.color, size)
     val custom = remember(version, emoji) { CustomEmoji.of(emoji, controller.store.customEmoji) }
     val image = remember(version, custom) { custom?.let { controller.store.emojiImages[it.id] } }
     if (custom != null && image == null) LaunchedEffect(custom.id) { controller.loadEmojiImage(custom) }
-    if (image != null) EmojiImage(image, custom?.let { controller.store.emojiAnimations[it.id] }, contentDescription = null, modifier = Modifier.size(size))
+    // A text emoji's pill (M100) as wide as its label, as high as the icon.
+    if (image != null) EmojiImage(image, custom?.let { controller.store.emojiAnimations[it.id] }, contentDescription = null, modifier = Modifier.height(size).width(size * (custom?.let { CustomEmoji.aspect(it) } ?: 1f)))
     else Text(emoji, fontSize = (size.value * 0.9f).sp, maxLines = 1)
 }
 
@@ -149,6 +162,20 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
     var name by rememberSaveable { mutableStateOf(section?.name ?: "") }
     var emoji by rememberSaveable { mutableStateOf(section?.emoji) }
     var picking by rememberSaveable { mutableStateOf(false) }
+    // M114: 「絵文字」 (the picker sheet) or 「文字」 (a letter badge, typed here); the field as typed, so an IME's
+    // composing 「しゅう」 is not cut before it becomes 「修」.
+    val initialLetter = remember { SectionLetterIcon.parse(section?.emoji) }
+    var letters by rememberSaveable { mutableStateOf(initialLetter != null) }
+    var letterRaw by rememberSaveable { mutableStateOf(initialLetter?.text ?: "") }
+    var letterColor by rememberSaveable { mutableStateOf(initialLetter?.color ?: "blue") }
+    val letterText = SectionLetterIcon.normalize(letterRaw)
+    val letterValid = SectionLetterIcon.isLetterText(letterText)
+    fun applyLetter(raw: String, color: String) {
+        letterRaw = raw
+        letterColor = color
+        val text = SectionLetterIcon.normalize(raw)
+        if (SectionLetterIcon.isLetterText(text)) emoji = SectionLetterIcon(text, color).icon
+    }
     var chosenLine by rememberSaveable { mutableStateOf(preselected.joinToString("\n")) }
     val chosen = chosenLine.split("\n").filter { it.isNotEmpty() }.toSet()
     fun choose(ids: Set<String>) { chosenLine = ids.joinToString("\n") }
@@ -171,7 +198,7 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        Modifier.size(48.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)).clickable { picking = true },
+                        Modifier.size(48.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)).clickable { if (!letters) picking = true },
                         contentAlignment = Alignment.Center,
                     ) {
                         if (emoji != null) SectionIcon(controller, emoji, version, size = 26.dp)
@@ -183,7 +210,33 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
                         modifier = Modifier.weight(1f),
                     )
                 }
-                if (emoji != null) TextButton(onClick = { emoji = null }) { Text("アイコンを外す") }
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(selected = !letters, onClick = { letters = false; picking = true }, label = { Text("絵文字") })
+                    FilterChip(selected = letters, onClick = { letters = true; applyLetter(letterRaw, letterColor) }, label = { Text("文字") })
+                    Spacer(Modifier.weight(1f))
+                    if (emoji != null) TextButton(onClick = { emoji = null }) { Text("アイコンを外す") }
+                }
+                if (letters) {
+                    OutlinedTextField(
+                        letterRaw, { applyLetter(it, letterColor) }, label = { Text("アイコンの文字") }, placeholder = { Text("例: M、B、修") },
+                        singleLine = true, isError = letterText.isNotEmpty() && !letterValid,
+                        supportingText = { Text("英数字 2 文字まで、または日本語 1 文字") },
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        SectionLetterIcon.COLORS.forEach { (key, label) ->
+                            val selected = key == letterColor
+                            Box(
+                                Modifier.size(34.dp)
+                                    .border(2.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(10.dp))
+                                    .clickable(onClickLabel = label) { applyLetter(letterRaw, key) }
+                                    .semantics { contentDescription = label; this.selected = selected },
+                                contentAlignment = Alignment.Center,
+                            ) { LetterBadge(if (letterValid) letterText else "A", key, 26.dp) }
+                        }
+                    }
+                }
                 if (creating) {
                     Text(
                         "入れる会話 (${chosen.size})", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -229,7 +282,7 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
         EmojiPickerSheet(
             recent = QuickReactions.read(controller.prefs),
             store = store, onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) },
-            onDismiss = { picking = false }, onPick = { emoji = it; picking = false },
+            onDismiss = { picking = false }, onPick = { emoji = it; letters = false; picking = false },
         )
     }
 }
