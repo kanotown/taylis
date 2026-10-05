@@ -1,5 +1,7 @@
 # Taylis
 
+[日本語](README.ja.md)
+
 Taylis is a self-hosted, Slack-like team chat for small organisations such as research labs: one server you run
 yourself, and native clients for Windows, macOS, iOS and Android plus a browser client.
 
