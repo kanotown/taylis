@@ -112,6 +112,7 @@ async def apply(
 ) -> tuple[RolloverOut, list[uuid.UUID]]:
     """Returns the rollover and the people whose role changed (their connections restart, so a new
     guest's view narrows at once)."""
+    await users.lock_admin_set(db)  # before the roster lock, one order (review v0.1.37 #1)
     await repo.lock_roster(db)
     existing = await repo.get_rollover(db, data.academic_year)
     if existing is not None and existing.undone_at is None:
@@ -226,6 +227,7 @@ async def undo(
 ) -> tuple[RolloverOut, list[uuid.UUID]]:
     """Put everyone back as they were before this year's rollover (grades, alumni, roles, the
     channels left or joined, the archived times)."""
+    await users.lock_admin_set(db)  # before the roster lock, one order (review v0.1.37 #1)
     await repo.lock_roster(db)
     rollover = await repo.get_rollover(db, academic_year)
     if rollover is None:

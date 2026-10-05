@@ -542,9 +542,9 @@
       "zh-Hans": "此邀请链接已被撤销。"
     },
     "last_admin": {
-      "ja": "最後の管理者はアカウントを削除できません。先にほかの人を管理者にしてください",
-      "en": "The last admin can't delete their account. Make someone else an admin first.",
-      "zh-Hans": "最后一位管理员不能删除账号。请先将其他人设为管理员。"
+      "ja": "管理者が 1 人もいなくなるため実行できません。先にほかの人を管理者にしてください",
+      "en": "This would leave no admin. Make someone else an admin first.",
+      "zh-Hans": "这样将没有任何管理员。请先将其他人设为管理员。"
     },
     "last_owner": {
       "ja": "オーナーが 1 人もいなくなるため変更できません",

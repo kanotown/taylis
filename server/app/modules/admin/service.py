@@ -22,6 +22,7 @@ from app.modules.lab import service as lab
 from app.modules.moderation.models import UserBlock
 from app.modules.sso import repository as sso_repo
 from app.modules.totp import service as totp
+from app.modules.users import service as users
 from app.modules.users import username as usernames
 from app.modules.users.events import (
     USER_CREATED,
@@ -207,9 +208,18 @@ async def list_users(db: AsyncSession) -> list[User]:
 async def update_user(
     db: AsyncSession, actor: User, user_id: uuid.UUID, data: AdminUserUpdate
 ) -> User:
-    user = await _get_user(db, user_id)
-    if user.id == actor.id and (data.role is not None or data.deactivated is not None):
+    if user_id == actor.id and (data.role is not None or data.deactivated is not None):
         raise conflict("cannot_modify_self", "Administrators cannot change their own account")
+    lowers_admins = data.role not in (None, "admin") or data.deactivated is True
+    if lowers_admins:
+        await users.lock_admin_set(db)  # before the row lock (review v0.1.37 #1)
+        user = await users.get_user(db, user_id, for_update=True)
+        if user is None:
+            raise not_found("user_not_found", "User not found")
+        if user.is_admin and user.is_active:
+            await users.ensure_admin_remains(db, losing=user.id)
+    else:
+        user = await _get_user(db, user_id)
     if data.username is not None:
         # M96: any account, bots included, without the self-service limit (users/username.py).
         locked = await db.get(User, user_id, with_for_update=True, populate_existing=True)
@@ -341,9 +351,14 @@ async def anonymize_user(
     db: AsyncSession, actor: User | None, user_id: uuid.UUID, blobs: BlobStore | None = None
 ) -> User:
     """The administrator's 「削除 (匿名化)」 (M10): anonymize_in_tx for someone else."""
-    user = await _get_user(db, user_id)
-    if actor is not None and user.id == actor.id:
+    if actor is not None and user_id == actor.id:
         raise conflict("cannot_modify_self", "Administrators cannot anonymize their own account")
+    await users.lock_admin_set(db)  # before the row lock (review v0.1.37 #1)
+    user = await users.get_user(db, user_id, for_update=True)
+    if user is None:
+        raise not_found("user_not_found", "User not found")
+    if user.is_admin and user.is_active:
+        await users.ensure_admin_remains(db, losing=user.id)
     avatar_key = await anonymize_in_tx(
         db, user, admin=actor, actor_id=actor.id if actor else None, action="admin.user_anonymized"
     )
