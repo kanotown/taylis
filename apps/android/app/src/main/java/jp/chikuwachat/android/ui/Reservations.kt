@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
@@ -143,6 +144,58 @@ object ReservationRules {
         return out
     }
 
+    enum class Limit { MAX, FULL, HORIZON }
+
+    /** The dialog's default length: the pool's max_hours, or the longest that fits from `start`, and why it stops. */
+    data class DurationDefault(val hours: Int, val limit: Limit, val at: Instant?)
+
+    fun durationDefault(pool: PoolOut, start: Instant, now: Instant, zone: ZoneId): DurationDefault {
+        val hours = durations(pool, start, now, zone).size
+        if (hours >= pool.maxHours) return DurationDefault(hours, Limit.MAX, null)
+        val at = start.plus(HOUR.multipliedBy(hours.toLong()))
+        val pastHorizon = at.plus(HOUR) > horizonEnd(pool, now, zone)
+        return DurationDefault(hours, if (pastHorizon) Limit.HORIZON else Limit.FULL, at)
+    }
+
+    /** Why the default is shorter than the maximum (null when it is the maximum). */
+    fun limitText(fit: DurationDefault, pool: PoolOut, start: Instant, zone: ZoneId): String? {
+        val at = fit.at ?: return null
+        if (fit.hours <= 0) return null
+        return when (fit.limit) {
+            Limit.MAX -> null
+            Limit.FULL -> {
+                val day = at.atZone(zone).toLocalDate()
+                val whenText = if (day == start.atZone(zone).toLocalDate()) hm(at, zone) else "${dayLabel(day, start, zone)} ${hm(at, zone)}"
+                L10n.str(R.string.reservations_limit_full, whenText, fit.hours)
+            }
+            Limit.HORIZON -> L10n.str(R.string.reservations_limit_horizon, pool.horizonDays, fit.hours)
+        }
+    }
+
+    /**
+     * My one active reservation in the pool (one per person and pool, docs/RESERVATIONS.md §1): while there is one,
+     * 「予約する」 and 「今すぐ」 are off (the server answers 409 reservation_already_active). Read from the lists when the
+     * server does not name it.
+     */
+    fun active(pool: PoolOut, me: String?): ReservationOut? {
+        val rows = pool.holders + pool.waiting + live(pool)
+        pool.myActiveId?.let { id -> return rows.firstOrNull { it.id == id } }
+        return rows.firstOrNull { it.userId == me }
+    }
+
+    /** 「予約 10/7 (水) 13:00〜16:00」, 「今すぐ · 順番待ち」, 「今すぐ · 利用中」. */
+    fun activeText(row: ReservationOut, now: Instant, zone: ZoneId): String {
+        val head = if (row.kind == "booking" && row.startAt != null) L10n.str(R.string.reservations_active_booking, span(row.startAt, row.endAt, now, zone))
+            else L10n.str(R.string.reservations_walkin_label)
+        val state = when (row.status) {
+            "waiting" -> L10n.str(R.string.reservations_waiting_state)
+            "holding" -> L10n.str(R.string.reservations_in_use)
+            "returning" -> L10n.str(R.string.reservations_returned_2)
+            else -> null
+        }
+        return state?.let { "$head · $it" } ?: head
+    }
+
     data class HourRow(val start: Instant, val rows: List<ReservationOut>)
 
     /** The hours of `day` with their bookings and walk-ins (from assignment to the end of the guarantee, or now). */
@@ -246,9 +299,18 @@ fun ReservationsPane(controller: AppController, version: Int) {
         Text(stringResource(R.string.reservations_no_reservation_slots_an_administrator), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+    val listState = rememberLazyListState()
+    // The list's keys in order (the same as the items below), to scroll to one of my rows (「自分の予約を見る」).
+    val keys = pools.flatMap { pool ->
+        val mine = ReservationRules.mine(pool, store.me?.id)
+        listOf("h:" + pool.id) + mine.bookings.map { "b:" + it.id } + listOfNotNull(mine.walkin?.let { "w:" + it.id }) +
+            (if (pool.canOperate) listOf("t:" + pool.id) + pool.todos.map { "todo:" + pool.id + it.key } else emptyList()) + listOf("d:" + pool.id)
+    }
+    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 32.dp)) {
         pools.forEach { pool ->
             val mine = ReservationRules.mine(pool, store.me?.id)
+            // One active reservation per person and pool: while I have one, both buttons are off and say why.
+            val active = ReservationRules.active(pool, store.me?.id)
             item(key = "h:" + pool.id) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text(
@@ -257,10 +319,20 @@ fun ReservationsPane(controller: AppController, version: Int) {
                     )
                     Text(stringResource(R.string.reservations_slots_up_to_hours_per_booking, pool.capacity, pool.maxHours), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { booking = pool }, enabled = pool.enabled && !busy && mine.bookings.size < 2 && !controller.isGuest) { Text(stringResource(R.string.reservations_book)) }
+                        Button(onClick = { booking = pool }, enabled = pool.enabled && !busy && active == null && !controller.isGuest) { Text(stringResource(R.string.reservations_book)) }
                         if (mine.walkin == null) {
-                            OutlinedButton(onClick = { run { controller.reservePool(pool.id) } }, enabled = pool.enabled && !busy && !controller.isGuest) { Text(stringResource(R.string.reservations_now_join_the_line)) }
+                            OutlinedButton(onClick = { run { controller.reservePool(pool.id) } }, enabled = pool.enabled && !busy && active == null && !controller.isGuest) { Text(stringResource(R.string.reservations_now_join_the_line)) }
                         }
+                    }
+                    active?.let { row ->
+                        Text(
+                            stringResource(R.string.reservations_already_active, ReservationRules.activeText(row, now, zone)),
+                            Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(onClick = {
+                            val index = keys.indexOf((if (row.kind == "walkin") "w:" else "b:") + row.id)
+                            if (index >= 0) scope.launch { listState.animateScrollToItem(index) }
+                        }, contentPadding = PaddingValues(0.dp)) { Text(stringResource(R.string.reservations_show_mine), style = MaterialTheme.typography.bodySmall) }
                     }
                 }
             }
@@ -356,13 +428,15 @@ private fun BookingDialog(controller: AppController, pool: PoolOut, now: Instant
     val scope = rememberCoroutineScope()
     var day by remember { mutableStateOf(now.atZone(zone).toLocalDate()) }
     var start by remember { mutableStateOf<Instant?>(null) }
-    var hours by remember { mutableStateOf(1) }
+    // A length picked by hand (kept while it fits); null = the default (the maximum, or the longest that fits).
+    var hours by remember { mutableStateOf<Int?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val starts = ReservationRules.starts(pool, day, now, zone)
     val chosenStart = start?.takeIf { s -> starts.any { it.start == s && !it.full } } ?: starts.firstOrNull { !it.full }?.start
     val durations = chosenStart?.let { ReservationRules.durations(pool, it, now, zone) } ?: emptyList()
-    val chosenHours = if (hours in durations) hours else durations.lastOrNull() ?: 1
+    val chosenHours = hours?.takeIf { it in durations } ?: durations.lastOrNull() ?: 1
+    val limit = chosenStart?.let { s -> ReservationRules.limitText(ReservationRules.durationDefault(pool, s, now, zone), pool, s, zone) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.reservations_book_2, pool.name)) },
@@ -387,6 +461,7 @@ private fun BookingDialog(controller: AppController, pool: PoolOut, now: Instant
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     durations.forEach { h -> FilterChip(selected = h == chosenHours, onClick = { hours = h }, label = { Text(stringResource(R.string.common_h, h)) }) }
                 }
+                limit?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },

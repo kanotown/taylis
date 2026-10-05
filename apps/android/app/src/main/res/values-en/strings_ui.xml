@@ -1112,7 +1112,14 @@
     <string name="reservations_returned">%1$s · Returned</string>
     <string name="reservations_returned_2">Returned</string>
     <string name="reservations_returned_waiting_for_an_operator_to">Returned · waiting for an operator to remove it</string>
-    <string name="reservations_slots_up_to_hours_per_booking">%1$s slots · up to %2$s hours per booking, up to 2 weeks ahead, up to 2 per person</string>
+    <string name="reservations_slots_up_to_hours_per_booking">%1$s slots · up to %2$s hours per booking, up to 2 weeks ahead; one booking, queue place or seat per person</string>
+    <string name="reservations_already_active">You already have a reservation (%1$s)</string>
+    <string name="reservations_show_mine">See my reservation</string>
+    <string name="reservations_limit_full">At most %2$d hours: the slot is full from %1$s</string>
+    <string name="reservations_limit_horizon">At most %2$d hours: bookings reach %1$d days ahead</string>
+    <string name="reservations_waiting_state">In the queue</string>
+    <string name="reservations_active_booking">Booking %1$s</string>
+    <string name="reservations_walkin_label">Now</string>
     <string name="reservations_soon">Soon</string>
     <string name="reservations_started_waiting_for_an_operator_to">%1$s · Started (waiting for an operator to assign)</string>
     <string name="reservations_swapped">Swapped</string>

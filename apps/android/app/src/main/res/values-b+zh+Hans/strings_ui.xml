@@ -1107,7 +1107,14 @@
     <string name="reservations_returned">%1$s · 已归还</string>
     <string name="reservations_returned_2">已归还</string>
     <string name="reservations_returned_waiting_for_an_operator_to">已归还 · 等待负责人移除</string>
-    <string name="reservations_slots_up_to_hours_per_booking">%1$s 个名额 · 每次预约最多 %2$s 小时，最多提前 2 周，每人最多 2 个</string>
+    <string name="reservations_slots_up_to_hours_per_booking">%1$s 个名额 · 每次预约最多 %2$s 小时，最多提前 2 周；每人只能有一个预约、排队或正在使用</string>
+    <string name="reservations_already_active">你已有预约（%1$s）</string>
+    <string name="reservations_show_mine">查看我的预约</string>
+    <string name="reservations_limit_full">%1$s 起已满，最长 %2$d 小时</string>
+    <string name="reservations_limit_horizon">预约最多提前 %1$d 天，最长 %2$d 小时</string>
+    <string name="reservations_waiting_state">排队中</string>
+    <string name="reservations_active_booking">预约 %1$s</string>
+    <string name="reservations_walkin_label">立即</string>
     <string name="reservations_soon">即将</string>
     <string name="reservations_started_waiting_for_an_operator_to">%1$s · 已开始 (等待负责人分配)</string>
     <string name="reservations_swapped">已替换</string>
