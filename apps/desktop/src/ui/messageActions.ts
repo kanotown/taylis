@@ -1,6 +1,7 @@
 import { AlarmClock, Bookmark, BookmarkCheck, ClipboardCheck, Copy, Flag, Forward, Link, ListTodo, type LucideIcon, Mail, MessageSquare, Pencil, Pin, PinOff, Trash2, Users } from "lucide-react";
 
 import type { MessageState } from "../sync/types";
+import { t } from "../i18n";
 
 /**
  * The actions on one message, shared by the hover bar with its 「その他」 menu (Timeline.tsx) and the long-press sheet
@@ -37,21 +38,21 @@ export interface MessageAction {
 export function messageActions(ctx: MessageActionContext): MessageAction[] {
   const { message } = ctx;
   const all: Array<MessageAction | false> = [
-    ctx.showReactions && (message.reactions ?? []).length > 0 && { key: "reactions", label: "リアクションした人", icon: Users },
-    ctx.thread && { key: "thread", label: "スレッドで返信", icon: MessageSquare },
-    ctx.editable && { key: "edit", label: "編集", icon: Pencil },
-    !!message.body && { key: "copyText", label: "テキストをコピー", icon: Copy },
-    { key: "save", label: ctx.saved ? "保存を解除" : "あとで見る (保存)", icon: ctx.saved ? BookmarkCheck : Bookmark },
-    { key: "remind", label: "リマインド…", icon: AlarmClock },
-    ctx.canMakeTask && { key: "task", label: "タスクにする", icon: ListTodo },
-    ctx.canRequestReview && { key: "review", label: "レビューを依頼", icon: ClipboardCheck },
-    ctx.unreadOffered && { key: "unread", label: "ここから未読にする", icon: Mail },
-    { key: "copyLink", label: "リンクをコピー", icon: Link },
-    { key: "share", label: "別のチャンネルに共有…", icon: Forward },
-    { key: "pin", label: message.pinned_at ? "ピン留めを外す" : "チャンネルにピン留め", icon: message.pinned_at ? PinOff : Pin },
+    ctx.showReactions && (message.reactions ?? []).length > 0 && { key: "reactions", label: t("actions.reactions"), icon: Users },
+    ctx.thread && { key: "thread", label: t("timeline.replyInThread"), icon: MessageSquare },
+    ctx.editable && { key: "edit", label: t("canvas.edit"), icon: Pencil },
+    !!message.body && { key: "copyText", label: t("actions.copyText"), icon: Copy },
+    { key: "save", label: ctx.saved ? t("timeline.unsave") : t("timeline.save"), icon: ctx.saved ? BookmarkCheck : Bookmark },
+    { key: "remind", label: t("actions.remind"), icon: AlarmClock },
+    ctx.canMakeTask && { key: "task", label: t("actions.task"), icon: ListTodo },
+    ctx.canRequestReview && { key: "review", label: t("tasks.dialog.requestReview"), icon: ClipboardCheck },
+    ctx.unreadOffered && { key: "unread", label: t("actions.markUnread"), icon: Mail },
+    { key: "copyLink", label: t("canvas.copyLink"), icon: Link },
+    { key: "share", label: t("actions.share"), icon: Forward },
+    { key: "pin", label: message.pinned_at ? t("actions.unpin") : t("actions.pin"), icon: message.pinned_at ? PinOff : Pin },
     // M104 (docs/MODERATION.md §3): someone else's message, once it is stored.
-    !ctx.mine && !message.pending && !message.deleted && message.seq !== null && { key: "report", label: "報告する", icon: Flag },
-    (ctx.mine || ctx.isAdmin) && { key: "delete", label: "削除", icon: Trash2, danger: true },
+    !ctx.mine && !message.pending && !message.deleted && message.seq !== null && { key: "report", label: t("report.send"), icon: Flag },
+    (ctx.mine || ctx.isAdmin) && { key: "delete", label: t("common.delete"), icon: Trash2, danger: true },
   ];
   return all.filter((action): action is MessageAction => !!action);
 }

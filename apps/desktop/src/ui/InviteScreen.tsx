@@ -8,6 +8,8 @@ import { inviteErrorText, parseInviteLink } from "./invite";
 import { AuthShell } from "./LoginScreen";
 import { Button, Field, Input } from "./primitives";
 import { inviteLabLine } from "./roster";
+import { t } from "../i18n";
+import { tRich } from "../i18n/rich";
 
 /** Joining with an invite link (M12h): paste the link, see who invites, choose a name and a password. */
 export function InviteScreen({ controller, onBack, onDone, initialLink }: { controller: AppController; onBack: () => void; onDone: () => void; initialLink?: string }) {
@@ -35,7 +37,7 @@ export function InviteScreen({ controller, onBack, onDone, initialLink }: { cont
   const runCheck = async () => {
     const parsed = parseInviteLink(link);
     if (!parsed) {
-      setError("招待リンクの形式が正しくありません (https://サーバ/invite/… の形です)");
+      setError(t("inviteScreen.badLink"));
       return;
     }
     setBusy(true);
@@ -72,46 +74,46 @@ export function InviteScreen({ controller, onBack, onDone, initialLink }: { cont
             <Ticket size={24} />
           </span>
           <div>
-            <h1 className="text-xl font-bold tracking-tight">招待リンクで参加</h1>
-            <p className="text-xs text-muted">管理者から受け取ったリンクでアカウントを作ります</p>
+            <h1 className="text-xl font-bold tracking-tight">{t("inviteScreen.title")}</h1>
+            <p className="text-xs text-muted">{t("inviteScreen.subtitle")}</p>
           </div>
         </div>
         {!target ? (
-          <Field label="招待リンク">
+          <Field label={t("invites.link")}>
             <Input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://chat.example.com/invite/…" required autoFocus autoCapitalize="off" spellCheck={false} />
           </Field>
         ) : (
           <>
             <div className="rounded-xl border border-accent/40 bg-accent-soft/50 px-3 py-2 text-sm">
               <div>
-                <span className="font-medium">{preview?.invited_by}</span> さんから招待されています{preview?.role === "admin" && " (管理者として参加します)"}
+                {tRich("inviteScreen.invitedBy", { b: (s) => <span className="font-medium">{s}</span> }, { name: preview?.invited_by ?? "" })}{preview?.role === "admin" && t("inviteScreen.asAdmin")}
               </div>
               {preview?.lab && <div className="mt-0.5 text-xs">{inviteLabLine(preview.lab)}</div>}
-              {preview && preview.channels.length > 0 && <div className="mt-0.5 text-xs text-muted">参加するチャンネル: {preview.channels.map((name) => `#${name}`).join(" ")}</div>}
-              {preview && <div className="text-xs text-muted">有効期限: {fullTimestamp(preview.expires_at)} · サーバ {target.server}</div>}
+              {preview && preview.channels.length > 0 && <div className="mt-0.5 text-xs text-muted">{t("inviteScreen.channels", { channels: preview.channels.map((name) => `#${name}`).join(" ") })}</div>}
+              {preview && <div className="text-xs text-muted">{t("inviteScreen.expires", { at: fullTimestamp(preview.expires_at), server: target.server })}</div>}
             </div>
-            <Field label="ユーザー名 (3〜32 文字、a-z 0-9 . _ -)">
+            <Field label={t("admin.users.usernameLabel")}>
               <Input value={username} pattern="[a-z0-9._-]{3,32}" required autoFocus autoCapitalize="off" autoComplete="username" onChange={(e) => setUsername(e.target.value.toLowerCase())} />
             </Field>
-            <Field label="表示名">
+            <Field label={t("settings.profile.displayName")}>
               <Input value={displayName} maxLength={80} required onChange={(e) => setDisplayName(e.target.value)} />
             </Field>
-            <Field label={`パスワード (${minLength} 文字以上)`}>
+            <Field label={t("inviteScreen.password", { min: minLength })}>
               <Input type="password" value={password} minLength={minLength} autoComplete="new-password" required onChange={(e) => setPassword(e.target.value)} />
             </Field>
-            <Field label="パスワード (確認)">
+            <Field label={t("inviteScreen.passwordRepeat")}>
               <Input type="password" value={repeat} autoComplete="new-password" required onChange={(e) => setRepeat(e.target.value)} />
             </Field>
-            {mismatch && <p className="text-sm text-danger">パスワードが一致しません</p>}
+            {mismatch && <p className="text-sm text-danger">{t("inviteScreen.mismatch")}</p>}
           </>
         )}
         {error && <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
         <Button type="submit" disabled={busy || (!!target && mismatch)} className="w-full">
           {busy && <Loader2 size={16} className="animate-spin" />}
-          {target ? (busy ? "参加しています…" : "参加する") : busy ? "確認中…" : "リンクを確認"}
+          {target ? (busy ? t("preview.joining") : t("inviteScreen.join")) : busy ? t("common.checking") : t("inviteScreen.check")}
         </Button>
         <button type="button" onClick={target ? () => { setTarget(null); setPreview(null); setError(null); } : onBack} className="flex w-full items-center justify-center gap-1 text-xs text-muted hover:text-ink hover:underline">
-          <ArrowLeft size={12} /> {target ? "別のリンクを使う" : "ログイン画面に戻る"}
+          <ArrowLeft size={12} /> {target ? t("inviteScreen.otherLink") : t("inviteScreen.backToLogin")}
         </button>
       </form>
     </AuthShell>
