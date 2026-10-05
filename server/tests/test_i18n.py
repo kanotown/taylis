@@ -154,7 +154,7 @@ def test_dates_and_notices_per_language() -> None:
     moment = datetime(2026, 10, 9, 9, 0, tzinfo=UTC)  # Friday 18:00 in Tokyo
     assert due_label(moment, "Asia/Tokyo") == "10/9 (金) 18:00"
     assert due_label(moment, "Asia/Tokyo", "en") == "Fri 10/9 18:00"
-    assert due_label(moment, "Asia/Tokyo", "zh-Hans") == "10/9（周五）18:00"  # noqa: RUF001
+    assert due_label(moment, "Asia/Tokyo", "zh-Hans") == "10/9（周五）18:00"
     notice = AlarmNotice(
         event_id=uuid.uuid4(),
         channel_id=None,

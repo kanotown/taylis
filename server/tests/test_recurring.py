@@ -568,7 +568,7 @@ async def test_nudges_once_for_the_missing_only(
     assert await _remind(app, due + timedelta(minutes=1)) == 0  # once
     reminders = (await db.execute(select(Reminder).order_by(Reminder.user_id))).scalars().all()
     assert sorted(r.user_id for r in reminders) == sorted([alice.id, carol.id])
-    note = f"週報 の提出をお願いします (締切 {due_label(due, 'Asia/Tokyo')})"
+    note = f"週報 の提出をお願いします（締切 {due_label(due, 'Asia/Tokyo')}）"
     assert {(r.kind, r.status, r.note) for r in reminders} == {("collect", "fired", note)}
     # Each event goes to its person only.
     nudges = (

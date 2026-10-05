@@ -105,7 +105,7 @@ async def test_a_timed_due_alarm_fires_at_its_time(
     [event] = await _outbox(db, "task.due")
     assert event.payload["due_at"].startswith("2030-01-10T05:00:00")
     await _drain(_relay(app, test_settings))
-    assert [p["body"] for p in await _task_pushes(db)] == ["14:00 が期限: 締切"]
+    assert [p["body"] for p in await _task_pushes(db)] == ["14:00 が期限：締切"]
 
     # Moving the time re-arms it; dropping it goes back to 8:00 of the day.
     await _patch(client, made["id"], {"due_at": "2030-01-10T06:00:00Z"})
