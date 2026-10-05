@@ -98,7 +98,19 @@ data class UserMe(
      * (not customised). Read it through [navItems] / [knowsNavItems].
      */
     @SerialName("nav_items") val navItemsJson: JsonElement = NAV_ITEMS_ABSENT,
+    /**
+     * docs/I18N.md: `locale` as it came: my UI language ("ja" / "en" / "zh-Hans"; null = follow the device). No key
+     * ([LOCALE_ABSENT]) is a server that does not keep it: the language then stays on this device. Read it through
+     * [locale] / [knowsLocale].
+     */
+    @SerialName("locale") val localeJson: JsonElement = LOCALE_ABSENT,
 ) {
+    /** My UI language as saved on the server; null = the device's (or an older server). */
+    val locale: String? get() = (localeJson as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+    /** The server keeps the UI language (it sends the key, null or a value). */
+    val knowsLocale: Boolean get() = localeJson != LOCALE_ABSENT
+
     /** M111: my list as saved (in order, unknown keys kept); null = the defaults (or an older server). */
     val navItems: List<NavItem>?
         get() = (navItemsJson as? JsonArray)?.mapNotNull { element ->
@@ -124,6 +136,9 @@ data class UserMe(
 /** M111: one sidebar item / home tile and whether it shows (UserMe.nav_items). */
 @Serializable
 data class NavItem(val key: String, val visible: Boolean)
+
+/** [UserMe.localeJson] when the key was missing (a server without the UI language setting). */
+val LOCALE_ABSENT: JsonElement = JsonObject(mapOf("absent" to JsonPrimitive(true)))
 
 /** [UserMe.navItemsJson] when the key was missing (a server before M111). */
 val NAV_ITEMS_ABSENT: JsonElement = JsonObject(mapOf("absent" to JsonPrimitive(true)))

@@ -21,7 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import jp.chikuwachat.android.api.ErrorMessages
+import jp.chikuwachat.android.api.ErrorTexts
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.R
 import androidx.compose.ui.res.stringResource
@@ -49,7 +49,7 @@ fun DraftsPane(controller: AppController, version: Int, onOpen: (channelId: Stri
                     Text(plainText(Mentions.toNames(row.body, store.users, store.groups)).ifBlank { stringResource(R.string.drafts_pane_no_text) }, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                     // Codex audit C3: a failed row says why; its text can go back to a draft or be dismissed.
                     if (row.status == "failed") {
-                        Text(ErrorMessages.byCode[row.error ?: ""] ?: stringResource(R.string.drafts_pane_couldnt_send_2), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 2.dp))
+                        Text(ErrorTexts.code(row.error ?: "") ?: stringResource(R.string.drafts_pane_couldnt_send_2), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 2.dp))
                         Row {
                             TextButton(onClick = { controller.scope.launch { controller.cancelScheduled(row) } }) { Text(stringResource(R.string.drafts_pane_back_to_drafts)) }
                             TextButton(onClick = { controller.scope.launch { controller.dismissScheduled(row) } }) { Text(stringResource(R.string.common_delete)) }

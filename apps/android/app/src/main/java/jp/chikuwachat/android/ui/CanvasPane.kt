@@ -71,7 +71,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import jp.chikuwachat.android.api.ErrorMessages
+import jp.chikuwachat.android.api.ErrorTexts
 import jp.chikuwachat.android.api.CanvasConflict
 import jp.chikuwachat.android.api.CanvasMeta
 import jp.chikuwachat.android.api.CanvasOut
@@ -818,7 +818,7 @@ private fun CanvasEditorField(
     fun insertImages(uris: List<android.net.Uri>, cleanup: () -> Unit = {}) {
         if (uris.isEmpty()) return
         if (!CanvasText.imagesFit(saver.text, uploading + uris.size)) {
-            controller.error = ErrorMessages.byCode["too_many_canvas_images"] ?: L10n.str(R.string.canvas_pane_too_many_images)
+            controller.error = ErrorTexts.code("too_many_canvas_images") ?: L10n.str(R.string.canvas_pane_too_many_images)
             cleanup()
             return
         }

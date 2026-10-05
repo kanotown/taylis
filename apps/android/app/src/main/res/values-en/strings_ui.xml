@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- User-visible text moved out of the Kotlin sources (i18n). values/ is Japanese (the default). -->
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="activity_screen_and_others">%1$s and %2$s others</string>
     <string name="activity_screen_canvas_in">Canvas in %1$s</string>
     <string name="activity_screen_done">Done</string>
@@ -49,7 +49,7 @@
     <string name="ai_views_writing_the_summary">Writing the summary…</string>
     <string name="ai_views_your_question_and_the_messages_found">Your question and the messages found are sent to %1$s</string>
     <string name="ai_youve_reached_todays_ai_usage_limit">You\'ve reached today\'s AI usage limit. Please try again tomorrow.</string>
-    <plurals name="app_controller_added_person_added_people">
+    <plurals name="app_controller_added_people">
         <item quantity="one">Added %1$s person</item>
         <item quantity="other">Added %1$s people</item>
     </plurals>
@@ -571,7 +571,7 @@
     <string name="common_make_a_task">Make a task</string>
     <string name="common_mark_as_read">Mark as read</string>
     <string name="common_member">Member</string>
-    <plurals name="common_member_members">
+    <plurals name="common_members_count">
         <item quantity="one">%1$s member</item>
         <item quantity="other">%1$s members</item>
     </plurals>
@@ -630,7 +630,7 @@
     <string name="common_remove_from_favorites">Remove from favorites</string>
     <string name="common_removed">"Removed: "</string>
     <string name="common_repeat">Repeat</string>
-    <plurals name="common_reply_replies">
+    <plurals name="common_replies_count">
         <item quantity="one">%1$s reply</item>
         <item quantity="other">%1$s replies</item>
     </plurals>
@@ -680,7 +680,7 @@
     <string name="common_unread_2">%1$s unread</string>
     <string name="common_until">Until %1$s</string>
     <string name="common_update_status">Update status</string>
-    <string name="common_username_3_32_characters_a_z">Username (3–32 characters, a-z 0-9 . _ -)</string>
+    <string tools:ignore="TypographyDashes" name="common_username_3_32_characters_a_z">Username (3–32 characters, a-z 0-9 . _ -)</string>
     <string name="common_view_in_conversation">View in conversation</string>
     <string name="common_view_in_thread">View in thread</string>
     <string name="common_weekly">Weekly</string>
@@ -712,7 +712,6 @@
     <string name="composer_priority">Priority</string>
     <string name="composer_put_the_workflows_name_after_wf">Put the workflow\'s name after /wf</string>
     <string name="composer_send_later">Send later…</string>
-    <string name="composer_the_message_can_be_up_to">The message can be up to %,d characters</string>
     <string name="composer_this_channel_has_no_workflow_called">This channel has no workflow called \"%1$s\"</string>
     <string name="composer_unavailable">" (unavailable)"</string>
     <string name="composer_urgent">Urgent</string>
@@ -735,7 +734,7 @@
     <string name="deadline_screens_no_deadlines">No deadlines</string>
     <string name="deadline_screens_open_deadline">Open deadline</string>
     <string name="deadline_screens_this_server_doesnt_support_deadlines">This server doesn\'t support deadlines</string>
-    <plurals name="dialogs_add_person_add_people">
+    <plurals name="dialogs_add_people">
         <item quantity="one">Add %1$s person</item>
         <item quantity="other">Add %1$s people</item>
     </plurals>
@@ -939,7 +938,7 @@
     <string name="notification_labels_mentions_only">Mentions only</string>
     <string name="owners_everyone_has_already_been_reminded">Everyone has already been reminded</string>
     <string name="owners_make_owner">Make owner</string>
-    <plurals name="owners_reminded_person_reminded_people">
+    <plurals name="owners_reminded_people">
         <item quantity="one">Reminded %1$s person</item>
         <item quantity="other">Reminded %1$s people</item>
     </plurals>
@@ -1208,7 +1207,6 @@
     <string name="schedule_today_18_00">Today 18:00</string>
     <string name="schedule_tomorrow">Tomorrow %1$s</string>
     <string name="schedule_tomorrow_9_00">Tomorrow 9:00</string>
-    <string name="search_d_results">%,d results</string>
     <string name="search_date_range">%1$s – %2$s</string>
     <string name="search_from">From %1$s</string>
     <string name="search_from_2">"From: "</string>
@@ -1420,7 +1418,7 @@
     <string name="task_screens_up_to_columns">Up to %1$s columns</string>
     <string name="templates_range_dash">–</string>
     <string name="templates_personal_template">Personal template</string>
-    <string name="templates_title_dates_e_g_seminar_10">/日程 [title] dates … (e.g. /日程 Seminar 10/3 10/5-10/7 13:00)</string>
+    <string tools:ignore="TypographyDashes" name="templates_title_dates_e_g_seminar_10">/日程 [title] dates … (e.g. /日程 Seminar 10/3 10/5-10/7 13:00)</string>
     <string name="test_notification_android_push_fcm_is_disabled_on">Android push (FCM) is disabled on this server</string>
     <string name="test_notification_android_push_is_disabled_on_this">Android push is disabled on this server</string>
     <string name="test_notification_browser">Browser</string>
@@ -1483,7 +1481,7 @@
     <string name="typing_line_and_others_are_typing">%1$s and %2$s others are typing…</string>
     <string name="typing_line_typing">" typing…"</string>
     <string name="username_rules_enter_a_username">Enter a username</string>
-    <string name="username_rules_only_a_z_0_9_are">Only a-z, 0-9, . _ - are allowed</string>
+    <string tools:ignore="TypographyDashes" name="username_rules_only_a_z_0_9_are">Only a-z, 0-9, . _ - are allowed</string>
     <string name="username_rules_password_sign_in_uses_the_new">"Password sign-in uses the new username. "</string>
     <string name="username_rules_past_messages_and_mentions_stay_as">Past messages and mentions stay as they are. Anyone can take the old username right away.</string>
     <string name="username_rules_this_username_is_reserved_and_cant">This username is reserved and can\'t be used</string>
@@ -1655,7 +1653,7 @@
     <string name="reminders_pane_reminded_at">" · Reminded %1$s"</string>
     <string name="reminders_pane_reminds_at">" · Reminds %1$s"</string>
     <string name="revisions_dialog_version_line">Version from %1$s · edited %2$s</string>
-    <string name="schedule_label_date">%4$s %2$s/%3$s %5$s</string>
+    <string name="schedule_label_date">%3$s %1$s/%2$s %4$s</string>
     <string name="schedule_label_date_year">%4$s %2$s/%3$s/%1$s %5$s</string>
     <string name="schedule_dialog_schedule">Schedule</string>
     <string name="task_form_screen_dm_with">DM with %1$s</string>
@@ -1689,4 +1687,15 @@
     <string name="you_screens_reaction_choice">Choice %1$s: %2$s</string>
     <string name="you_screens_empty_slot">Empty</string>
     <string name="main_tabs_dm">DM</string>
+    <string name="notification_channel_messages">Messages</string>
+    <string name="you_language">Language</string>
+    <string name="you_language_hint">Your other devices and the server\'s notifications use this language too</string>
+    <plurals name="composer_message_max_length">
+        <item quantity="one">The message can be up to %1$,d character</item>
+        <item quantity="other">The message can be up to %1$,d characters</item>
+    </plurals>
+    <plurals name="search_results_count">
+        <item quantity="one">%1$,d result</item>
+        <item quantity="other">%1$,d results</item>
+    </plurals>
 </resources>

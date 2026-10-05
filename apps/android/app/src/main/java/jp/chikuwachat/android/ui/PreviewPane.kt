@@ -170,7 +170,7 @@ fun PreviewThreadPane(controller: AppController, channelId: String, parentId: St
                         when {
                             replies == null -> stringResource(R.string.preview_pane_loading_replies)
                             replies.isEmpty() -> stringResource(R.string.common_no_replies_yet)
-                            else -> pluralStringResource(R.plurals.common_reply_replies, replies.size, replies.size)
+                            else -> pluralStringResource(R.plurals.common_replies_count, replies.size, replies.size)
                         },
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -223,7 +223,7 @@ object PreviewJoin {
     fun about(channel: jp.chikuwachat.android.api.ChannelOut): String? =
         channel.purpose?.takeIf { it.isNotBlank() } ?: channel.topic?.takeIf { it.isNotBlank() }
 
-    fun memberLine(channel: jp.chikuwachat.android.api.ChannelOut): String? = channel.memberCount?.takeIf { it > 0 }?.let { L10n.plural(R.plurals.common_member_members, it, it) }
+    fun memberLine(channel: jp.chikuwachat.android.api.ChannelOut): String? = channel.memberCount?.takeIf { it > 0 }?.let { L10n.plural(R.plurals.common_members_count, it, it) }
 }
 
 /**

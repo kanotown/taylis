@@ -1,6 +1,8 @@
 package jp.chikuwachat.android
 
+import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.KeyboardShortcutGroup
@@ -19,8 +21,17 @@ import jp.chikuwachat.android.ui.HardwareKeys
 class MainActivity : ComponentActivity() {
     private val controller get() = (application as ChikuwaApp).controller
 
+    /** Before Android 13 the chosen UI language is applied here (AppLanguage); from 13 the system does it. */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLanguage.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        controller.languageMayHaveChanged()
+        val recreate = { if (Build.VERSION.SDK_INT < 33) recreate() }
+        languageRecreate = recreate
+        controller.languageRecreate = recreate
         enableEdgeToEdge()
         // A tapped notification opens its conversation once: a rotation or a restore after process death
         // re-delivers the same intent, and a launch from Recents replays the old one.
@@ -136,6 +147,13 @@ class MainActivity : ComponentActivity() {
                 KeyboardShortcutInfo(L10n.str(R.string.main_activity_new_line), KeyEvent.KEYCODE_ENTER, KeyEvent.META_SHIFT_ON),
             ),
         )
+    }
+
+    private var languageRecreate: (() -> Unit)? = null
+
+    override fun onDestroy() {
+        if (controller.languageRecreate === languageRecreate) controller.languageRecreate = null
+        super.onDestroy()
     }
 
     override fun onStart() {

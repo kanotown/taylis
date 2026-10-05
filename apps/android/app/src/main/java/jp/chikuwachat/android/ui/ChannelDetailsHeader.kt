@@ -78,7 +78,7 @@ object ChannelDetailsHeader {
     }
 
     /** 「メンバー 12 人」; empty while the count is unknown. */
-    fun memberLine(count: Int?): String = count?.let { L10n.plural(R.plurals.common_member_members, it, it) } ?: ""
+    fun memberLine(count: Int?): String = count?.let { L10n.plural(R.plurals.common_members_count, it, it) } ?: ""
 }
 
 /**

@@ -74,8 +74,9 @@ object Schedule {
         val days = ChronoUnit.DAYS.between(now.toLocalDate(), at.withZoneSameInstant(now.zone).toLocalDate())
         if (days == 0L) return L10n.str(R.string.schedule_today, time)
         if (days == 1L) return L10n.str(R.string.schedule_tomorrow, time)
-        val key = if (at.year != now.year) R.string.schedule_label_date_year else R.string.schedule_label_date
-        return L10n.str(key, at.year, at.monthValue, at.dayOfMonth, DAYS[at.dayOfWeek.value - 1], time)
+        val weekday = DAYS[at.dayOfWeek.value - 1]
+        return if (at.year != now.year) L10n.str(R.string.schedule_label_date_year, at.year, at.monthValue, at.dayOfMonth, weekday, time)
+        else L10n.str(R.string.schedule_label_date, at.monthValue, at.dayOfMonth, weekday, time)
     }
 
     fun label(iso: String, zone: ZoneId = ZoneId.systemDefault(), now: ZonedDateTime = ZonedDateTime.now(zone)): String =
