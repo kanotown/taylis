@@ -13,6 +13,6 @@ describe("sharing a message (M13c)", () => {
   it("clips long bodies and stands in for attachment-only messages", () => {
     const long = "あ".repeat(400);
     expect(shareBody(long, link, "")).toBe(`> ${"あ".repeat(300)}…\n${link}`);
-    expect(shareBody("   ", link, "資料です")).toBe(`資料です\n> (添付ファイル)\n${link}`);
+    expect(shareBody("   ", link, "資料です")).toBe(`資料です\n> （添付ファイル）\n${link}`);
   });
 });

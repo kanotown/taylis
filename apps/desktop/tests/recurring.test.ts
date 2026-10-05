@@ -31,7 +31,7 @@ describe("summaries", () => {
     expect(scheduleSummary({ kind: "weekly", weekdays: [0, 1, 2, 3, 4, 5, 6], time: "08:15" })).toBe("毎日 8:15");
     expect(scheduleSummary({ kind: "weekly", weekdays: [6], time: "23:59" })).toBe("毎週 日 23:59");
     expect(scheduleSummary({ kind: "monthly", day: 1, time: "09:00" })).toBe("毎月 1 日 9:00");
-    expect(scheduleSummary({ kind: "monthly", day: 30, time: "09:00" })).toBe("毎月 30 日 (ない月は末日) 9:00");
+    expect(scheduleSummary({ kind: "monthly", day: 30, time: "09:00" })).toBe("毎月 30 日（ない月は末日） 9:00");
     expect(scheduleSummary({ kind: "monthly", day: 31, time: "18:00" })).toBe("毎月 末日 18:00");
     // Another zone than this device's is named.
     expect(scheduleSummary({ kind: "monthly", day: 1, time: "09:00" }, "America/New_York", "Asia/Tokyo")).toBe("毎月 1 日 9:00 (America/New_York)");
@@ -53,8 +53,8 @@ describe("summaries", () => {
   });
 
   it("explains the placeholders with today's values", () => {
-    expect(placeholderHint(new Date(2026, 8, 28))).toBe("{date} → 2026/09/28 (月)、{weekday} → 月、{week} → 週番号 (例 2026-W40)。投稿した日に置き換わります");
-    expect(placeholderHint(new Date(2027, 0, 1))).toContain("(例 2026-W53)");
+    expect(placeholderHint(new Date(2026, 8, 28))).toBe("{date} → 2026/09/28 (月)、{weekday} → 月、{week} → 週番号（例 2026-W40）。投稿した日に置き換わります");
+    expect(placeholderHint(new Date(2027, 0, 1))).toContain("（例 2026-W53）");
   });
 });
 

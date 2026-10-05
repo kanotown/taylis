@@ -105,7 +105,7 @@ function hoverBar(): string[] {
 }
 
 async function pickInPicker(title: string) {
-  const search = within(screen.getByTestId("settings")).getByPlaceholderText("検索 (例: tada、乾杯)");
+  const search = within(screen.getByTestId("settings")).getByPlaceholderText("検索（例：tada、乾杯）");
   fireEvent.change(search, { target: { value: title.slice(1, -1) } });
   fireEvent.click(within(screen.getByTestId("settings")).getByTitle(title));
   await flush();

@@ -76,7 +76,7 @@ describe("invite links with a lab preset (L7)", () => {
 
   it("shows the preset in the list and sends `lab` only when the section is on", async () => {
     const w = setup();
-    expect(await screen.findByText("名簿: 学生 B4 · 指導: Prof · times")).toBeTruthy();
+    expect(await screen.findByText("名簿：学生 B4 · 指導：Prof · times")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "招待リンクを作成" }));
     await issue();
@@ -215,7 +215,7 @@ describe("年度更新 (L7)", () => {
     expect(actionOf("Bob").value).toBe("graduate");
     expect(actionOf("Carol").value).toBe("graduate");
     expect([...actionOf("Carol").options].map((o) => o.value)).toEqual(["stay", "graduate"]);
-    expect([...actionOf("Alice").options].map((o) => o.textContent)).toEqual(["進級 (→ M1)", "据え置き", "卒業・修了"]);
+    expect([...actionOf("Alice").options].map((o) => o.textContent)).toEqual(["進級（→ M1）", "据え置き", "卒業・修了"]);
 
     // Graduates: guest by default (not me: the server will not change my own account), channels to keep.
     const bobGuest = within(rowOf("Bob")).getByRole("checkbox", { name: "ゲストにする" }) as HTMLInputElement;
@@ -229,9 +229,9 @@ describe("年度更新 (L7)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "適用…" }));
     const dialog = screen.getByRole("dialog", { name: "2026 年度の年度更新を適用しますか？" });
-    expect(within(dialog).getByText("卒業・修了: 2 人 (うちゲストにする 1 人)")).toBeTruthy();
+    expect(within(dialog).getByText("卒業・修了：2 人（うちゲストにする 1 人）")).toBeTruthy();
     expect(within(dialog).getByText(/DM は残ります/)).toBeTruthy();
-    expect(within(dialog).getByText("卒業生が入って残るチャンネル: #alumni")).toBeTruthy();
+    expect(within(dialog).getByText("卒業生が入って残るチャンネル：#alumni")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "適用する" }));
     await flush();
     await flush();

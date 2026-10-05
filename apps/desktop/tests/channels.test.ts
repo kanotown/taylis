@@ -275,14 +275,14 @@ describe("notification level (M35, PUSH_NOTIFICATIONS.md §4)", () => {
     expect(ownNotification({ level: "none" })).toEqual({ notificationLevel: "none", mutedUntil: null, muted: false });
   });
 
-  it("names 「既定 (…)」 after the overall setting", () => {
+  it("names 「既定（…）」 after the overall setting", () => {
     expect(notificationChoices("mentions").map((c) => [c.level, c.label])).toEqual([
-      [null, "既定 (メンションと DM のみ)"],
+      [null, "既定（メンションと DM のみ）"],
       ["all", "すべてのメッセージ"],
       ["mentions", "メンションのみ"],
       ["none", "通知しない"],
     ]);
-    expect(notificationChoices("all")[0]!.label).toBe("既定 (すべての新着メッセージ)");
-    expect(notificationChoices("none")[0]!.label).toBe("既定 (なし)");
+    expect(notificationChoices("all")[0]!.label).toBe("既定（すべての新着メッセージ）");
+    expect(notificationChoices("none")[0]!.label).toBe("既定（なし）");
   });
 });

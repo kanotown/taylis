@@ -37,7 +37,7 @@ describe("アンケートを作成 (tester request: a form like Polly, several a
   it("makes an anonymous poll when asked (M27); named by default", async () => {
     const createPoll = vi.fn(async () => true);
     render(<PollDialog controller={{ createPoll } as unknown as AppController} channelId="c1" parentId="p1" onClose={() => {}} />);
-    const anonymous = screen.getByLabelText("匿名にする (誰が投票したか表示しない)") as HTMLInputElement;
+    const anonymous = screen.getByLabelText("匿名にする（誰が投票したか表示しない）") as HTMLInputElement;
     expect(anonymous.checked).toBe(false);
     fireEvent.change(screen.getByPlaceholderText(/次回のミーティング/), { target: { value: "満足度は？" } });
     fireEvent.change(screen.getByLabelText("選択肢 1"), { target: { value: "高い" } });

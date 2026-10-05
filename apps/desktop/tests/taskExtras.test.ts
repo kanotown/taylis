@@ -83,7 +83,7 @@ describe("due times", () => {
     expect(tasksForDay([timed, day], "2030-01-10").map((t) => t.title)).toEqual(["提出", "会議"]);
     const chip = taskChip({ id: timed.id, kind: "task", status: "todo", assignee_ids: [], due_on: "2030-01-10", due_at: timed.due_at, owner_id: "u" }, () => null, "2030-01-01");
     expect(chip.text).toBe("タスク · 未着手 · 1/10 14:00 まで");
-    expect(taskNoticeText({ kind: "due", data: { task_id: "t", channel_id: null, channel_name: null, title: "会議", due_at: "2030-01-10T05:00:00Z" } }, () => null).body).toBe("14:00 が期限: 会議");
+    expect(taskNoticeText({ kind: "due", data: { task_id: "t", channel_id: null, channel_name: null, title: "会議", due_at: "2030-01-10T05:00:00Z" } }, () => null).body).toBe("14:00 が期限：会議");
   });
 
   it("the dialog sends a due time with the device's offset, drops it, or moves the date", () => {

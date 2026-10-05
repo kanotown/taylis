@@ -193,7 +193,7 @@ describe("the screens", () => {
     expect(document.querySelectorAll("[data-deadline]").length).toBe(1);
     fireEvent.click(screen.getByRole("button", { name: "締切を追加" }));
     expect(screen.getByRole("radio", { name: "⏰ 締切" }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.queryByText("自分のタスク (自分だけに表示)")).toBeNull();
+    expect(screen.queryByText("自分のタスク（自分だけに表示）")).toBeNull();
     fireEvent.change(screen.getByLabelText("題名"), { target: { value: "全国大会 原稿" } });
     fireEvent.change(screen.getByLabelText("締切日"), { target: { value: "2099-02-01" } });
     fireEvent.click(screen.getByLabelText("当日"));

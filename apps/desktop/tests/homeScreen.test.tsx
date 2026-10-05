@@ -254,7 +254,7 @@ it("移動・検索: recent conversations when empty; typing lists 会話, 人 a
   fireEvent.click(within(home()).getByText("移動・検索"));
   fireEvent.change(screen.getByPlaceholderText("会話・人・メッセージを検索"), { target: { value: "@bob" } });
   const person = jump()!.querySelector<HTMLButtonElement>('[data-jump-row="person"]')!;
-  expect(person.textContent).toContain("(自分)");
+  expect(person.textContent).toContain("（自分）");
   fireEvent.click(person);
   await settle(w);
   expect(w.engine.currentChannelId).toBe(notesId);

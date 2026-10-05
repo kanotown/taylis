@@ -63,7 +63,7 @@ describe("the long-press sheet (M25)", () => {
     const labels = within(sheet).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent?.trim());
     expect(labels).toEqual([
       "👍 でリアクション", "❤️ でリアクション", "😂 でリアクション", "🎉 でリアクション", "👀 でリアクション", "✅ でリアクション", "その他のリアクション",
-      "スレッドで返信", "編集", "テキストをコピー", "あとで見る (保存)", "リマインド…", "ここから未読にする", "リンクをコピー", "別のチャンネルに共有…", "チャンネルにピン留め", "削除",
+      "スレッドで返信", "編集", "テキストをコピー", "あとで見る（保存）", "リマインド…", "ここから未読にする", "リンクをコピー", "別のチャンネルに共有…", "チャンネルにピン留め", "削除",
     ]);
     // The finger that opened it lifts over it: that is not a choice.
     fireEvent.click(within(sheet).getByText("リンクをコピー"));

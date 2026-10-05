@@ -77,11 +77,11 @@ describe("rules", () => {
     const store = new Store();
     store.setAiStatus({ available: true, summary_available: true, agents: [{ id: "a1", bot_user_id: "b1", name: "ちくわ", model: "claude-opus-5-5" }, { id: "a2", bot_user_id: "b2", name: "はんぺん", model: "claude-haiku-4-5" }] });
     expect(aiNoticeText(store, ["u1", "u2"])).toBeNull();
-    expect(aiNoticeText(store, ["u1", "b1"])).toBe("AI (ちくわ) が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます");
-    expect(aiNoticeText(store, ["b2", "b1"])).toContain("AI (はんぺん、ちくわ)");
+    expect(aiNoticeText(store, ["u1", "b1"])).toBe("AI（ちくわ）が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます");
+    expect(aiNoticeText(store, ["b2", "b1"])).toContain("AI（はんぺん、ちくわ）");
     // §12: the provider follows each bot's model.
     store.setAiStatus({ available: true, summary_available: true, agents: [{ id: "a1", bot_user_id: "b1", name: "ちくわ", model: "claude-opus-5-5" }, { id: "a3", bot_user_id: "b3", name: "ソル", model: "gpt-6.1-sol" }] });
-    expect(aiNoticeText(store, ["b3"])).toBe("AI (ソル) が参加しています。メンションしたときと要約のときに、会話の一部が OpenAI の API に送られます");
+    expect(aiNoticeText(store, ["b3"])).toBe("AI（ソル）が参加しています。メンションしたときと要約のときに、会話の一部が OpenAI の API に送られます");
     expect(aiNoticeText(store, ["b3", "b1"])).toContain("Anthropic と OpenAI の API");
   });
 
@@ -236,8 +236,8 @@ describe("review v0.1.18 #2: the summary target and the run's caption", () => {
   const target = (patch: Partial<Parameters<typeof summaryTargetLine>[0]> = {}) => ({ available: true, provider: "anthropic" as const, model: "claude-opus-5-5", agent_name: "ちくわ", reason: null, ...patch });
 
   it("the line names the bot and the provider, or the reason in Japanese", () => {
-    expect(summaryTargetLine(target())).toBe("要約は ちくわ (Anthropic) に送られます");
-    expect(summaryTargetLine(target({ provider: "openai", model: "gpt-6-luna", agent_name: "ルナ" }))).toBe("要約は ルナ (OpenAI) に送られます");
+    expect(summaryTargetLine(target())).toBe("要約は ちくわ（Anthropic）に送られます");
+    expect(summaryTargetLine(target({ provider: "openai", model: "gpt-6-luna", agent_name: "ルナ" }))).toBe("要約は ルナ（OpenAI）に送られます");
     expect(summaryTargetLine(target({ agent_name: null }))).toBe("要約は Anthropic に送られます");
     expect(summaryTargetLine(target({ provider: null }))).toBeNull();
     for (const reason of ["ai_unavailable", "ai_budget_exceeded", "ai_private_not_allowed"]) {

@@ -83,7 +83,7 @@ export function ReportsTab({ controller }: { controller: AppController }) {
                 <span className="text-xs text-muted">{fullTimestamp(report.created_at)} · {where(report)}</span>
               </div>
               <div className="text-xs text-muted">
-                {t("reports.author")} <span className="text-ink">{name(report.reported_user_id)}</span> · {t("reports.reporter")} <span className="text-ink">{name(report.reporter_id)}</span>
+                {t("reports.author")}<span className="text-ink">{name(report.reported_user_id)}</span> · {t("reports.reporter")}<span className="text-ink">{name(report.reporter_id)}</span>
               </div>
               <blockquote className="whitespace-pre-wrap break-words rounded-lg bg-panel px-3 py-2 text-[13px]">
                 {report.body_snapshot || t("drafts.noText")}

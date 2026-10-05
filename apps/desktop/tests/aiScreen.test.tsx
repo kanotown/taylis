@@ -168,7 +168,7 @@ it("the members dialog says an AI bot is in the conversation (§4)", async () =>
   await setup();
   fireEvent.click(screen.getByRole("button", { name: "メンバー" }));
   await settle();
-  expect(within(dialog()).getByRole("note").textContent).toBe("AI (ちくわ) が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます");
+  expect(within(dialog()).getByRole("note").textContent).toBe("AI（ちくわ）が参加しています。メンションしたときと要約のときに、会話の一部が Anthropic の API に送られます");
 });
 
 it("a server without AI (404): no 「要約」, no badge, no notice", async () => {
@@ -199,7 +199,7 @@ const targetLine = () => screen.queryByTestId("ai-summary-target")?.textContent 
 it("channel ⋯ tells where the summary goes (Anthropic), and the dialog the run's provider and model", async () => {
   const { server } = await setup();
   await openMenu("チャンネルの操作");
-  expect(targetLine()).toBe("要約は ちくわ (Anthropic) に送られます");
+  expect(targetLine()).toBe("要約は ちくわ（Anthropic）に送られます");
   expect(screen.getByRole("menuitem", { name: "未読を要約" }).getAttribute("aria-disabled")).toBeNull();
   fireEvent.click(screen.getByRole("menuitem", { name: "未読を要約" }));
   await settle();
@@ -210,11 +210,11 @@ it("channel ⋯ tells where the summary goes (Anthropic), and the dialog the run
   expect(within(dialog()).getByTestId("ai-run-caption").textContent).toBe("OpenAI · gpt-6.1-sol");
 });
 
-it("an OpenAI target reads 「要約は … (OpenAI) に送られます」, on the thread ⋯ too", async () => {
+it("an OpenAI target reads 「要約は …（OpenAI）に送られます」, on the thread ⋯ too", async () => {
   const { server, alice, channelId } = await setup();
   server.aiSummaryTargetAnswer = { available: true, provider: "openai", model: "gpt-6.1-sol", agent_name: "ソル", reason: null };
   await openMenu("チャンネルの操作");
-  expect(targetLine()).toBe("要約は ソル (OpenAI) に送られます");
+  expect(targetLine()).toBe("要約は ソル（OpenAI）に送られます");
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await settle();
   const parent = server.post(channelId, alice.id, "スレッドの親").message;
@@ -223,13 +223,13 @@ it("an OpenAI target reads 「要約は … (OpenAI) に送られます」, on t
   fireEvent.click(screen.getAllByTestId("thread-summary").at(-1)!);
   await settle();
   await openMenu("スレッドの操作");
-  expect(targetLine()).toBe("要約は ソル (OpenAI) に送られます");
+  expect(targetLine()).toBe("要約は ソル（OpenAI）に送られます");
 });
 
 it.each([
   ["ai_unavailable", "このサーバーでは AI を使えません"],
   ["ai_budget_exceeded", "今月の AI の利用上限に達しました"],
-  ["ai_private_not_allowed", "この AI のボットは公開チャンネルでだけ使えます (非公開チャンネルと DM には参加・要約できません)"],
+  ["ai_private_not_allowed", "この AI のボットは公開チャンネルでだけ使えます（非公開チャンネルと DM には参加・要約できません）"],
 ])("target unavailable (%s): the choices are disabled and the reason is shown", async (reason, text) => {
   const { server } = await setup();
   server.aiSummaryTargetAnswer = { available: false, provider: reason === "ai_unavailable" ? null : "anthropic", model: null, agent_name: null, reason };

@@ -161,7 +161,7 @@ describe("the helpers", () => {
     const waiting = row({ id: "q1", user_id: ME, kind: "walkin", status: "waiting", step: "assign", until: at(13), position: 1 });
     const p = pool({ waiting: [waiting], my_reservation_id: "q1", bookings: [B1] });
     expect(myReservations(p, ME).walkin?.id).toBe("q1");
-    expect(walkinText(waiting, p, NOW)).toBe("空きあり (〜13:00 まで) · 担当者の割り当て待ち");
+    expect(walkinText(waiting, p, NOW)).toBe("空きあり（〜13:00 まで）· 担当者の割り当て待ち");
     expect(walkinText({ ...waiting, step: "wait", position: 2, until: null }, p, NOW)).toBe("順番待ち 2 番目");
     const todos: TodoOut[] = [
       { key: "assign:q1", action: "assign", reason: "free", assign_id: "q1", remove_id: null, due_at: NOW.toISOString(), upcoming: false },
@@ -169,8 +169,8 @@ describe("the helpers", () => {
     ];
     const withTodos = pool({ waiting: [{ ...waiting, email: "me@example.jp" }], holders: [WALK], bookings: [B1], todos });
     const name = (id: string) => people.find((u) => u.id === id)!.display_name;
-    expect(todoLine(todos[0]!, withTodos, name, NOW)).toBe("わたし さん (me@example.jp) に割り当てる");
-    expect(todoLine(todos[1]!, withTodos, name, NOW)).toBe("12:00 から: ボブ さん を外して アリス さん に割り当てる (保証時間が終了) · 予約 12:00〜15:00");
+    expect(todoLine(todos[0]!, withTodos, name, NOW)).toBe("わたし さん（me@example.jp） に割り当てる");
+    expect(todoLine(todos[1]!, withTodos, name, NOW)).toBe("12:00 から：ボブ さん を外して アリス さん に割り当てる（保証時間が終了） · 予約 12:00〜15:00");
     expect(reservationTodoCount([withTodos])).toBe(1);
     expect(reservationTodoCount(null)).toBe(0);
     expect(poolFormProblem({ name: "x", capacity: "3", maxHours: "25", minHours: "6", graceMinutes: "15" })).toMatch("予約の最長");
@@ -216,7 +216,7 @@ describe("the page", () => {
     expect(controller.reservationAction).toHaveBeenCalledWith("m1", "cancel");
     await settle();
     // One reservation per person and pool: with a booking, 「今すぐ」 and 「予約する」 are off and say why.
-    const walkin = screen.getByRole("button", { name: "今すぐ (順番待ち)" }) as HTMLButtonElement;
+    const walkin = screen.getByRole("button", { name: "今すぐ（順番待ち）" }) as HTMLButtonElement;
     expect(walkin.disabled).toBe(true);
     expect((screen.getByRole("button", { name: /予約する/ }) as HTMLButtonElement).disabled).toBe(true);
     expect(document.querySelector("[data-already-active]")?.textContent).toContain("すでに予約があります（予約 16:00〜18:00）");
@@ -231,14 +231,14 @@ describe("the page", () => {
     render(<PoolSection controller={controller} pool={controller.store.reservationPools![0]!} onEdit={() => {}} />);
     expect(document.querySelector("[data-already-active]")).toBeNull();
     expect((screen.getByRole("button", { name: /予約する/ }) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "今すぐ (順番待ち)" }));
+    fireEvent.click(screen.getByRole("button", { name: "今すぐ（順番待ち）" }));
     expect(controller.reservePool).toHaveBeenCalledWith("p1");
     cleanup();
     // waiting in the queue: the walk-in button is gone, booking is off
     const waiting = row({ id: "q1", user_id: ME, kind: "walkin", status: "waiting", step: "wait", position: 2 });
     const queued = setup(pool({ waiting: [waiting], my_reservation_id: "q1", my_active_id: "q1" }));
     render(<PoolSection controller={queued.controller} pool={queued.controller.store.reservationPools![0]!} onEdit={() => {}} />);
-    expect(screen.queryByRole("button", { name: "今すぐ (順番待ち)" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "今すぐ（順番待ち）" })).toBeNull();
     expect((screen.getByRole("button", { name: /予約する/ }) as HTMLButtonElement).disabled).toBe(true);
     expect(document.querySelector("[data-already-active]")?.textContent).toContain("すでに予約があります（今すぐ · 順番待ち）");
   });
@@ -253,7 +253,7 @@ describe("the page", () => {
     const { controller } = setup(pool({ waiting: [waiting], holders: [back], todos, can_operate: true }));
     render(<PoolSection controller={controller} pool={controller.store.reservationPools![0]!} onEdit={() => {}} />);
     const list = screen.getByLabelText("担当者の作業");
-    expect(within(list).getByText("アリス さん (alice@example.jp) に割り当てる")).toBeTruthy();
+    expect(within(list).getByText("アリス さん（alice@example.jp） に割り当てる")).toBeTruthy();
     fireEvent.click(within(list).getByRole("button", { name: "割り当てた" }));
     expect(controller.reservationAction).toHaveBeenCalledWith("q1", "assign");
     await settle();

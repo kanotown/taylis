@@ -174,7 +174,7 @@ it("the channel name opens the details page over the conversation; ← and the b
   expect(within(details).getByText("トピック")).toBeTruthy();
   expect(within(details).getByText("説明")).toBeTruthy();
   expect(within(details).getByText("すべてのメッセージ")).toBeTruthy();
-  expect(within(details).getByText("メンバー (2)")).toBeTruthy();
+  expect(within(details).getByText("メンバー（2）")).toBeTruthy();
   expect(within(details).getByText("チャンネルを退出…")).toBeTruthy();
   expect(calls.members).toBe(1);
   expect(timeline()).toBe(list); // still mounted under the page
@@ -202,7 +202,7 @@ it("the thread's header has ← (戻る) on a phone and ✕ in the wide layout",
   await flush();
   const thread = threadPane()!;
   expect(within(thread).getByRole("button", { name: "戻る" })).toBeTruthy();
-  expect(within(thread).queryByRole("button", { name: "閉じる (Esc)" })).toBeNull();
+  expect(within(thread).queryByRole("button", { name: "閉じる（Esc）" })).toBeNull();
   fireEvent.click(within(thread).getByRole("button", { name: "戻る" }));
   expect(threadPane()).toBeNull();
   expect(screen.getByRole("tablist")).toBeTruthy();
@@ -216,7 +216,7 @@ it("the thread's header has ← (戻る) on a phone and ✕ in the wide layout",
   expect(screen.getByRole("button", { name: "ピン留め" })).toBeTruthy();
   fireEvent.click(screen.getByText(/1 件の返信/));
   await flush();
-  expect(within(threadPane()!).getByRole("button", { name: "閉じる (Esc)" })).toBeTruthy();
+  expect(within(threadPane()!).getByRole("button", { name: "閉じる（Esc）" })).toBeTruthy();
   expect(within(threadPane()!).queryByRole("button", { name: "戻る" })).toBeNull();
   w.engine.stop();
 });

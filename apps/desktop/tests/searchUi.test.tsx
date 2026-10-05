@@ -45,7 +45,7 @@ describe("search box", () => {
     render(<SearchBar controller={w.controller} current={null} open onOpenChange={() => {}} onSearch={onSearch} recent={[]} onRecentChange={() => {}} recentKey="k" placeholder="ChikuwaChat を検索" />);
     const box = screen.getByLabelText("検索語");
     fireEvent.change(box, { target: { value: "tana" } });
-    expect(screen.getByText("人 (この人の投稿)")).toBeTruthy();
+    expect(screen.getByText("人（この人の投稿）")).toBeTruthy();
     const options = screen.getAllByRole("option").map((o) => o.textContent ?? "");
     expect(options).toHaveLength(2);
     expect(options[0]).toBe("「tana」を検索");

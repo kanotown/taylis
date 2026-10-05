@@ -92,7 +92,7 @@ describe("既定のチャンネル", () => {
 
   it("shows SSO_DEFAULT_CHANNELS while the list was never saved", async () => {
     setup({ ...BASE, legacy_sso_default_channels: ["general"] });
-    expect(await screen.findByText(/SSO_DEFAULT_CHANNELS \(#general\)/)).toBeTruthy();
+    expect(await screen.findByText(/SSO_DEFAULT_CHANNELS（#general）/)).toBeTruthy();
   });
 
   it("asks with the count before adding everyone, then reports", async () => {
@@ -103,7 +103,7 @@ describe("既定のチャンネル", () => {
     await act(async () => { fireEvent.click(everyone); });
     expect(adminApplyDefaultChannels).toHaveBeenCalledWith(true);
     const ask = screen.getByRole("alertdialog", { name: "今いる人も全員入れる" });
-    expect(within(ask).getByText(/3 人を既定のチャンネルに追加します \(のべ 4 件/)).toBeTruthy();
+    expect(within(ask).getByText(/3 人を既定のチャンネルに追加します（のべ 4 件/)).toBeTruthy();
     expect(within(ask).getByText("#談話スペース: 1 人")).toBeTruthy();
     await act(async () => { fireEvent.click(within(ask).getByRole("button", { name: "追加する" })); });
     expect(adminApplyDefaultChannels).toHaveBeenLastCalledWith(false);

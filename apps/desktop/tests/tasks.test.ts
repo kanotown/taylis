@@ -246,11 +246,11 @@ describe("notifications while the app is open", () => {
   it("words them like the push", () => {
     const nameOf = (id: string) => (id === "0b0b0b0b-0000-4000-8000-000000000001" ? "ボブ" : null);
     expect(taskNoticeText({ kind: "assigned", data: { task_id: "t1", channel_id: "c-lab", channel_name: "lab", title: "資料", by_user_id: "0b0b0b0b-0000-4000-8000-000000000001" } }, nameOf)).toEqual({
-      body: "ボブ がタスクを割り当てました: 資料 (#lab)",
+      body: "ボブ がタスクを割り当てました：資料 (#lab)",
       taskId: "t1",
       channelId: "c-lab",
     });
-    expect(taskNoticeText({ kind: "due", data: { task_id: "t2", channel_id: null, channel_name: null, title: "買い物" } }, nameOf).body).toBe("今日が期限: 買い物");
-    expect(taskNoticeText({ kind: "due", data: { task_id: "t3", channel_id: "c-lab", channel_name: "lab", title: "発表" } }, nameOf).body).toBe("今日が期限: 発表 (#lab)");
+    expect(taskNoticeText({ kind: "due", data: { task_id: "t2", channel_id: null, channel_name: null, title: "買い物" } }, nameOf).body).toBe("今日が期限：買い物");
+    expect(taskNoticeText({ kind: "due", data: { task_id: "t3", channel_id: "c-lab", channel_name: "lab", title: "発表" } }, nameOf).body).toBe("今日が期限：発表 (#lab)");
   });
 });

@@ -47,10 +47,10 @@ function grantedNotifications() {
 
 describe("the result's words", () => {
   it("names each device and says what happened there", () => {
-    expect(testDeviceName(device({ device_name: "Mac", platform: "desktop", current: true }))).toBe("Mac (この端末)");
+    expect(testDeviceName(device({ device_name: "Mac", platform: "desktop", current: true }))).toBe("Mac（この端末）");
     expect(testDeviceName(device({ platform: "android" }))).toBe("Android");
     expect(testDeviceStatus(device({ status: "sent" }))).toEqual({ text: "送信しました", tone: "ok" });
-    expect(testDeviceStatus(device({ status: "failed", detail: "BadDeviceToken" })).text).toBe("送れませんでした (BadDeviceToken)");
+    expect(testDeviceStatus(device({ status: "failed", detail: "BadDeviceToken" })).text).toBe("送れませんでした（BadDeviceToken）");
     expect(testDeviceStatus(device({ status: "no_token" })).tone).toBe("problem");
     expect(testDeviceStatus(device({ status: "not_configured", push_provider: "fcm" })).text).toBe("このサーバでは Android のプッシュが無効です");
     expect(testDeviceStatus(device({ status: "in_app", platform: "desktop" })).tone).toBe("none");
@@ -61,16 +61,16 @@ describe("the result's words", () => {
   it("says when this server has no push, when no phone can take one, and that DND was ignored", () => {
     const desk = device({ platform: "desktop", push_provider: "none", status: "in_app" });
     expect(testNotificationNotes(result([desk], { apns_configured: false, fcm_configured: false }))).toEqual([
-      "このサーバはプッシュ通知が設定されていません (iPhone・Android のアプリには、開いている間だけ通知が出ます)",
-      "プッシュ通知を受け取れる端末 (iPhone・Android のアプリ) はありません",
+      "このサーバはプッシュ通知が設定されていません（iPhone・Android のアプリには、開いている間だけ通知が出ます）",
+      "プッシュ通知を受け取れる端末（iPhone・Android のアプリ）はありません",
     ]);
-    expect(testNotificationNotes(result([device({})], { fcm_configured: false }))).toEqual(["Android のプッシュ (FCM) はこのサーバでは無効です"]);
+    expect(testNotificationNotes(result([device({})], { fcm_configured: false }))).toEqual(["Android のプッシュ（FCM）はこのサーバでは無効です"]);
     expect(testNotificationNotes(result([device({})], { apns_configured: false, dnd_active: true }))).toEqual([
-      "iOS のプッシュ (APNs) はこのサーバでは無効です",
+      "iOS のプッシュ（APNs）はこのサーバでは無効です",
       "通知を一時停止中ですが、テスト通知は送りました",
     ]);
     // A logged-out phone does not count.
-    expect(testNotificationNotes(result([device({ status: "disabled" })]))).toEqual(["プッシュ通知を受け取れる端末 (iPhone・Android のアプリ) はありません"]);
+    expect(testNotificationNotes(result([device({ status: "disabled" })]))).toEqual(["プッシュ通知を受け取れる端末（iPhone・Android のアプリ）はありません"]);
   });
 
   it("points to where notifications are turned on", () => {
@@ -108,11 +108,11 @@ describe("the settings' 「テスト通知を送る」", () => {
     fireEvent.click(await screen.findByRole("button", { name: "テスト通知を送る" }));
     const list = await screen.findByRole("list", { name: "端末ごとの結果" });
     expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "Mac (この端末)この端末に表示しました",
+      "Mac（この端末）この端末に表示しました",
       "iPhone送信しました",
       "Pixelこのサーバでは Android のプッシュが無効です",
     ]);
-    expect(screen.getByText("Android のプッシュ (FCM) はこのサーバでは無効です")).toBeTruthy();
+    expect(screen.getByText("Android のプッシュ（FCM）はこのサーバでは無効です")).toBeTruthy();
     expect(controller.sendTestNotification).toHaveBeenCalledTimes(1);
   });
 
