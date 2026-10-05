@@ -1733,13 +1733,9 @@ struct ComposerView: View {
     /// The cursor or selection as character offsets (iOS 26 reports it; before, the end of the text).
     private func selectedRange() -> Range<Int> {
         let end = text.count
-        if #available(iOS 26.0, *), let current = selection.raw(for: text) as? TextSelection, case .selection(let range) = current.indices {
-            func offset(_ index: String.Index) -> Int {
-                let utf16 = min(max(0, index.utf16Offset(in: text)), text.utf16.count)
-                return text[..<String.Index(utf16Offset: utf16, in: text)].count
-            }
-            let lower = offset(range.lowerBound), upper = offset(range.upperBound)
-            return min(lower, upper)..<max(lower, upper)
+        if #available(iOS 26.0, *), let current = selection.selection(for: text), case .selection(let range) = current.indices,
+           let offsets = ComposerSelection.offsets(range, in: text) {
+            return offsets
         }
         return end..<end
     }
@@ -2052,8 +2048,40 @@ final class ComposerSelection {
     /// an emoji chosen from the picker went in at an index past the end and the app crashed (testers, 2026-09-29).
     var text: String?
 
-    /// The selection when it still belongs to `current`, else nil.
-    func raw(for current: String) -> Any? { text == current ? raw : nil }
+    /// The selection when it still belongs to `current`, else nil. Scalar by scalar: `==` also matches canonically
+    /// equivalent texts (が as one scalar or two), whose indices differ.
+    func raw(for current: String) -> Any? {
+        guard let text, text.unicodeScalars.elementsEqual(current.unicodeScalars) else { return nil }
+        return raw
+    }
+
+    /// The selection for `current` when its indices are all positions in it, else nil. A matching text is not enough
+    /// (the field reports the selection and the text separately, and they can pair up wrong): on iOS 27 an emoji picked
+    /// with an index past the end crashed the app in `utf16Offset(in:)` (TestFlight build 93, 2026-10-05).
+    @available(iOS 26.0, *)
+    func selection(for current: String) -> TextSelection? {
+        guard let selection = raw(for: current) as? TextSelection else { return nil }
+        switch selection.indices {
+        case .selection(let range):
+            return Self.offsets(range, in: current) == nil ? nil : selection
+        case .multiSelection(let set):
+            return set.ranges.allSatisfy { Self.offsets($0, in: current) != nil } ? selection : nil
+        @unknown default:
+            return nil
+        }
+    }
+
+    /// `range` as character offsets in `text`, or nil when an index is not a position in it (made in another text, past
+    /// its end). Never traps: `samePosition(in:)` answers nil where `utf16Offset(in:)` stops the app.
+    static func offsets(_ range: Range<String.Index>, in text: String) -> Range<Int>? {
+        func offset(_ index: String.Index) -> Int? {
+            guard let position = index.samePosition(in: text.utf16) else { return nil }
+            let utf16 = text.utf16.distance(from: text.utf16.startIndex, to: position)
+            return text[..<String.Index(utf16Offset: utf16, in: text)].count
+        }
+        guard let lower = offset(range.lowerBound), let upper = offset(range.upperBound) else { return nil }
+        return min(lower, upper)..<max(lower, upper)
+    }
 }
 
 /// The input with its selection reported (iOS 26), for the formatting menu and inserting at the cursor.
@@ -2064,7 +2092,7 @@ private struct SelectingTextField: View {
     let box: ComposerSelection
 
     var body: some View {
-        TextField(placeholder, text: text, selection: Binding(get: { box.raw(for: text.wrappedValue) as? TextSelection },
+        TextField(placeholder, text: text, selection: Binding(get: { box.selection(for: text.wrappedValue) },
                                                               set: { box.raw = $0; box.text = text.wrappedValue }), axis: .vertical)
     }
 }
