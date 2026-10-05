@@ -39,6 +39,10 @@ import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.MessageState
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 
 /**
  * A public channel read before joining (SYNC_PROTOCOL.md §7.6.1, M27): its latest messages (older pages as the reader
@@ -73,8 +77,8 @@ fun PreviewPane(controller: AppController, channelId: String, version: Int, onOp
     Column(Modifier.fillMaxSize()) {
         if (focus != null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("リンク先の前後の会話", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = { controller.messageFocus = null }) { Text("最新の会話へ") }
+                Text(stringResource(R.string.preview_pane_conversation_around_the_linked_message), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = { controller.messageFocus = null }) { Text(stringResource(R.string.common_go_to_latest)) }
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -100,12 +104,12 @@ fun PreviewPane(controller: AppController, channelId: String, version: Int, onOp
                                 loadingOlder = true
                                 try { olderFailed = !controller.loadOlderPreview(channelId) } finally { loadingOlder = false }
                             }
-                            if (olderFailed) LoadFailedRow("以前のメッセージを読み込めませんでした") { olderFailed = false; olderAttempt += 1 }
+                            if (olderFailed) LoadFailedRow(stringResource(R.string.common_couldnt_load_earlier_messages)) { olderFailed = false; olderAttempt += 1 }
                             else Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
                         }
                     } else if (messages.isEmpty()) {
                         item(key = "empty") {
-                            Text("まだメッセージはありません", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth().padding(32.dp))
+                            Text(stringResource(R.string.common_no_messages_yet), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth().padding(32.dp))
                         }
                     } else if (focus == null) {
                         item(key = "start") { ChannelIntro(channel, store, version) }
@@ -156,17 +160,17 @@ fun PreviewThreadPane(controller: AppController, channelId: String, parentId: St
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState) {
             item(key = "parent") {
                 if (parent != null) PreviewRow(parent, controller, version)
-                else Text("元のメッセージはこのプレビューにありません", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+                else Text(stringResource(R.string.preview_pane_the_original_message_is_not_in), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
             }
             item(key = "divider") {
                 if (replies == null && repliesFailed) {
-                    LoadFailedRow("返信を読み込めませんでした") { repliesFailed = false; repliesAttempt += 1 }
+                    LoadFailedRow(stringResource(R.string.preview_pane_couldnt_load_replies)) { repliesFailed = false; repliesAttempt += 1 }
                 } else {
                     Text(
                         when {
-                            replies == null -> "返信を読み込んでいます…"
-                            replies.isEmpty() -> "返信はまだありません"
-                            else -> "${replies.size} 件の返信"
+                            replies == null -> stringResource(R.string.preview_pane_loading_replies)
+                            replies.isEmpty() -> stringResource(R.string.common_no_replies_yet)
+                            else -> pluralStringResource(R.plurals.common_reply_replies, replies.size, replies.size)
                         },
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -194,8 +198,8 @@ private fun PreviewRow(message: MessageState, controller: AppController, version
 private fun PreviewLoading(failed: Boolean, onRetry: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         if (failed) {
-            Text("メッセージを読み込めませんでした", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = onRetry) { Text("再読み込み") }
+            Text(stringResource(R.string.preview_pane_couldnt_load_the_message), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.common_reload)) }
         } else {
             CircularProgressIndicator(Modifier.width(24.dp), strokeWidth = 2.dp)
         }
@@ -205,7 +209,7 @@ private fun PreviewLoading(failed: Boolean, onRetry: () -> Unit) {
 /** The preview's join bar, apart from Compose so it can be tested. */
 object PreviewJoin {
     /** In place of the button when the channel is archived. */
-    const val ARCHIVED_NOTE = "アーカイブされたチャンネルです (読むだけ)"
+    val ARCHIVED_NOTE: String get() = L10n.str(R.string.preview_pane_this_channel_is_archived_read_only)
 
     /** Whether 「#name に参加する」 is offered: not for an archived channel (the server refuses: 409 channel_archived). */
     fun canJoin(channel: jp.chikuwachat.android.api.ChannelOut): Boolean = !channel.archived
@@ -213,13 +217,13 @@ object PreviewJoin {
     /** M89 (MEMBERSHIP.md §5 item 5): the rows are not shown before joining: the workspace's switch, or the server's 403. */
     fun refused(preview: ChannelPreview?, settings: WorkspaceSettingsOut): Boolean = preview?.disabled == true || !settings.previewBeforeJoin
 
-    const val REFUSED_TITLE = "参加するとメッセージを読めます"
+    val REFUSED_TITLE: String get() = L10n.str(R.string.preview_pane_join_to_read_the_messages)
 
     /** What the panel says of the channel: its purpose, else its topic (as the desktop's JoinToReadPanel). */
     fun about(channel: jp.chikuwachat.android.api.ChannelOut): String? =
         channel.purpose?.takeIf { it.isNotBlank() } ?: channel.topic?.takeIf { it.isNotBlank() }
 
-    fun memberLine(channel: jp.chikuwachat.android.api.ChannelOut): String? = channel.memberCount?.takeIf { it > 0 }?.let { "メンバー $it 人" }
+    fun memberLine(channel: jp.chikuwachat.android.api.ChannelOut): String? = channel.memberCount?.takeIf { it > 0 }?.let { L10n.plural(R.plurals.common_member_members, it, it) }
 }
 
 /**
@@ -246,7 +250,7 @@ private fun JoinToReadPanel(controller: AppController, channel: ChannelState) {
                 enabled = !joining && controller.engineStatus == EngineStatus.ONLINE,
                 // The controller's scope: joining replaces this pane, which must not cancel the join half-way.
                 onClick = { joining = true; controller.scope.launch { try { controller.joinChannel(channel.id) } finally { joining = false } } },
-            ) { Text(if (joining) "参加しています…" else "参加") }
+            ) { Text(if (joining) stringResource(R.string.preview_pane_joining) else stringResource(R.string.common_join)) }
         }
     }
 }
@@ -259,14 +263,14 @@ private fun JoinBar(controller: AppController, channel: ChannelState) {
         if (!PreviewJoin.canJoin(channel.channel)) {
             Text(PreviewJoin.ARCHIVED_NOTE, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
         } else {
-            Text("参加すると投稿やリアクションができます", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.preview_pane_join_to_post_and_react), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(
                 enabled = !joining,
                 // The controller's scope: joining replaces this pane, which must not cancel the join half-way.
                 onClick = { joining = true; controller.scope.launch { try { controller.joinChannel(channel.id) } finally { joining = false } } },
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             ) {
-                Text("#${channel.channel.name ?: ""} に参加する", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(stringResource(R.string.preview_pane_join, channel.channel.name ?: ""), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

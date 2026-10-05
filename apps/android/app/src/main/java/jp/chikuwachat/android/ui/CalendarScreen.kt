@@ -69,6 +69,9 @@ import jp.chikuwachat.android.sync.ChannelState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.time.LocalDate
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** M52: the event form to show: an event (null = a new one from `initial`). */
 data class CalendarForm(val event: CalendarEventOut?, val initial: EventDraft?)
@@ -95,9 +98,9 @@ internal fun rememberToday(): LocalDate {
 
 /** The line a range shows when it could not be read. */
 private fun windowNote(window: CalendarWindow?, available: Boolean): String? = when {
-    !available -> "このサーバはカレンダーに対応していません"
-    window?.state == CalendarWindowState.UNSUPPORTED -> "このサーバはカレンダーに対応していません"
-    window?.state == CalendarWindowState.FAILED -> "予定を読み込めませんでした。再接続すると読み直します"
+    !available -> L10n.str(R.string.calendar_screen_this_server_doesnt_support_the_calendar)
+    window?.state == CalendarWindowState.UNSUPPORTED -> L10n.str(R.string.calendar_screen_this_server_doesnt_support_the_calendar)
+    window?.state == CalendarWindowState.FAILED -> L10n.str(R.string.calendar_screen_couldnt_load_events_they_will_reload)
     else -> null
 }
 
@@ -172,13 +175,13 @@ fun CalendarPane(controller: AppController, version: Int) {
             }
             CalendarFilterRow(channels, filter, onFilter = { filter = it })
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { step(-1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "前へ") }
+                IconButton(onClick = { step(-1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = stringResource(R.string.calendar_screen_previous)) }
                 Text(
                     CalendarDates.rangeTitle(mode, anchor), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f).semantics { heading() },
                 )
-                IconButton(onClick = { step(1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "次へ") }
-                TextButton(onClick = { anchorText = today.toString(); selectedText = today.toString() }) { Text("今日") }
+                IconButton(onClick = { step(1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.common_next)) }
+                TextButton(onClick = { anchorText = today.toString(); selectedText = today.toString() }) { Text(stringResource(R.string.common_today)) }
             }
             windowNote(window, hub?.available == true)?.let { NoteStrip(it) }
             HorizontalDivider()
@@ -198,7 +201,7 @@ fun CalendarPane(controller: AppController, version: Int) {
             FloatingActionButton(
                 onClick = { create(if (mode == CalendarMode.MONTH) selected else maxOf(today, anchor)) },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-            ) { Icon(Icons.Default.Add, contentDescription = "予定を追加") }
+            ) { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.common_add_event)) }
         }
     }
 }
@@ -210,10 +213,10 @@ private const val TASK_WINDOW_KEY = "calendar"
 @Composable
 private fun CalendarFilterRow(channels: List<ChannelState>, filter: String, onFilter: (String) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        item(key = "all") { FilterChip(selected = filter == CalendarDates.FILTER_ALL, onClick = { onFilter(CalendarDates.FILTER_ALL) }, label = { Text("すべて") }) }
+        item(key = "all") { FilterChip(selected = filter == CalendarDates.FILTER_ALL, onClick = { onFilter(CalendarDates.FILTER_ALL) }, label = { Text(stringResource(R.string.common_all)) }) }
         item(key = "me") {
             FilterChip(
-                selected = filter == CalendarDates.FILTER_ME, onClick = { onFilter(CalendarDates.FILTER_ME) }, label = { Text("自分") },
+                selected = filter == CalendarDates.FILTER_ME, onClick = { onFilter(CalendarDates.FILTER_ME) }, label = { Text(stringResource(R.string.common_you)) },
                 leadingIcon = { ColorDot(null) },
             )
         }
@@ -244,13 +247,13 @@ internal fun NoteStrip(text: String) {
 @Composable
 fun AgendaList(
     events: List<CalendarEventOut>, start: LocalDate, end: LocalDate, today: LocalDate, onOpen: (CalendarEventOut) -> Unit,
-    loading: Boolean, modifier: Modifier = Modifier, empty: String = "この期間の予定はありません", showCalendar: Boolean = true,
+    loading: Boolean, modifier: Modifier = Modifier, empty: String = L10n.str(R.string.calendar_screen_no_events_in_this_period), showCalendar: Boolean = true,
     /** M56: the tasks due in the range (all-day rows after the all-day events). */
     tasks: List<TaskOut> = emptyList(), onOpenTask: (TaskOut) -> Unit = {},
 ) {
     val days = remember(events, tasks, start, end) { TaskRules.agendaDays(CalendarDates.agenda(events, start, end), tasks, start, end) }
     if (days.isEmpty()) {
-        EmptyNote(if (loading) "読み込み中…" else empty, modifier)
+        EmptyNote(if (loading) L10n.str(R.string.common_loading) else empty, modifier)
         return
     }
     LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 88.dp)) {
@@ -266,7 +269,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.dayRows(
     day: LocalDate, events: List<CalendarEventOut>, tasks: List<TaskOut>, onOpen: (CalendarEventOut) -> Unit, onOpenTask: (TaskOut) -> Unit,
     showCalendar: Boolean,
 ) {
-    val (allDay, timed) = events.partition { CalendarDates.timeOnDay(it, day) == "終日" }
+    val (allDay, timed) = events.partition { CalendarDates.timeOnDay(it, day) == L10n.str(R.string.common_all_day) }
     items(allDay, key = { "e:$day:${it.id}" }) { event -> EventRow(event, day, onOpen, showCalendar) }
     items(TaskRules.tasksForDay(tasks, day.toString()), key = { "t:$day:${it.id}" }) { task -> TaskDayRow(task, onOpenTask, showBoard = showCalendar) }
     items(timed, key = { "e:$day:${it.id}" }) { event -> EventRow(event, day, onOpen, showCalendar) }
@@ -289,8 +292,8 @@ private fun DayHeader(day: LocalDate, today: LocalDate) {
         val color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
         Text(CalendarDates.dayLabel(day), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = color)
         when (day) {
-            today -> Text("  今日", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            today.plusDays(1) -> Text("  明日", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            today -> Text(stringResource(R.string.calendar_screen_today), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            today.plusDays(1) -> Text(stringResource(R.string.calendar_screen_tomorrow), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -298,16 +301,16 @@ private fun DayHeader(day: LocalDate, today: LocalDate) {
 /** An event on a day: its time there, its calendar's colour, its title, calendar and place. */
 @Composable
 private fun EventRow(event: CalendarEventOut, day: LocalDate, onOpen: (CalendarEventOut) -> Unit, showCalendar: Boolean) {
-    val calendar = event.channelName?.let { "#$it" } ?: "自分"
+    val calendar = event.channelName?.let { "#$it" } ?: stringResource(R.string.common_you)
     val time = CalendarDates.timeOnDay(event, day)
     // M69: a recurring event's occurrence says so, with its rule in words (「🔁 毎週 火曜日」).
     val repeat = remember(event) { CalendarDates.repeatLine(event) }
     Row(
-        Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = "開く") { onOpen(event) }
+        Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = stringResource(R.string.common_open)) { onOpen(event) }
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = "$time ${event.title}、$calendar" + (event.location?.let { "、$it" } ?: "") +
-                    (repeat?.let { "、繰り返し: " + it.removePrefix("🔁 ") } ?: "")
+                contentDescription = L10n.str(R.string.calendar_screen_fmt, time, event.title, calendar) + (event.location?.let { L10n.str(R.string.common_fmt, it) } ?: "") +
+                    (repeat?.let { L10n.str(R.string.calendar_screen_repeats) + it.removePrefix("🔁 ") } ?: "")
             },
         verticalAlignment = Alignment.Top,
     ) {
@@ -375,8 +378,8 @@ private fun MonthGrid(
                     Column(
                         Modifier.weight(1f).aspectRatio(1.1f).padding(1.dp)
                             .background(if (chosen) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent, RoundedCornerShape(8.dp))
-                            .clickable(onClickLabel = "この日の予定") { onSelect(day) }
-                            .semantics(mergeDescendants = true) { contentDescription = CalendarDates.dayLabel(day) + if (count > 0) "、予定あり" else "" },
+                            .clickable(onClickLabel = stringResource(R.string.calendar_screen_events_on_this_day)) { onSelect(day) }
+                            .semantics(mergeDescendants = true) { contentDescription = CalendarDates.dayLabel(day) + if (count > 0) L10n.str(R.string.calendar_screen_has_events) else "" },
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
@@ -415,7 +418,7 @@ private fun DayList(
     val due = remember(tasks, day) { tasks.any { it.dueOn == day.toString() } }
     LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 88.dp)) {
         item(key = "h") { DayHeader(day, today) }
-        if (list.isEmpty() && !due) item(key = "empty") { EmptyNote("この日の予定はありません") }
+        if (list.isEmpty() && !due) item(key = "empty") { EmptyNote(L10n.str(R.string.calendar_screen_no_events_on_this_day)) }
         dayRows(day, list, tasks, onOpen, onOpenTask, showCalendar = true)
     }
 }
@@ -437,11 +440,11 @@ fun ChannelEventsPane(controller: AppController, channel: ChannelState, version:
     val canAdd = remember(version, channel.id) { controller.writableCalendars().any { it.id == channel.id } }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("これから ${CalendarDates.LIST_DAYS} 日", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.calendar_screen_next_days, CalendarDates.LIST_DAYS), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             if (canAdd && hub?.available == true) {
                 FilledTonalButton(onClick = { controller.calendarForm = CalendarForm(null, CalendarDates.newDraft(today, channel.id)) }) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Text(" 予定を追加")
+                    Text(stringResource(R.string.calendar_screen_add_event))
                 }
             }
         }
@@ -450,7 +453,7 @@ fun ChannelEventsPane(controller: AppController, channel: ChannelState, version:
         AgendaList(
             window?.events ?: emptyList(), today, end, today, onOpen = { controller.calendarForm = CalendarForm(it, null) },
             loading = hub?.available == true && (window == null || window.state == CalendarWindowState.LOADING),
-            modifier = Modifier.weight(1f), empty = "これからの予定はありません", showCalendar = false,
+            modifier = Modifier.weight(1f), empty = stringResource(R.string.calendar_screen_no_upcoming_events), showCalendar = false,
         )
     }
 }

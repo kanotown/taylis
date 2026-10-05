@@ -36,15 +36,18 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.MessageState
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** M104 (docs/MODERATION.md): the rules the other clients share, used by the views below. */
 object Moderation {
     /** The reasons of 「報告する」, in the order every client shows them (the server's `reason`). */
     val reasons: List<Pair<String, String>> = listOf(
-        "spam" to "迷惑・スパム",
-        "harassment" to "嫌がらせ",
-        "inappropriate" to "不適切な内容",
-        "other" to "その他",
+        "spam" to L10n.str(R.string.moderation_spam),
+        "harassment" to L10n.str(R.string.moderation_harassment),
+        "inappropriate" to L10n.str(R.string.moderation_inappropriate_content),
+        "other" to L10n.str(R.string.common_other),
     )
 
     /** 「報告する」 on someone else's message once it is stored (not mine, not sending, not deleted, not a join / leave line). */
@@ -63,10 +66,10 @@ fun BlockedMessageRow(onShow: () -> Unit) {
         Icon(Icons.Outlined.Block, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(8.dp))
         Text(
-            "ブロック中のユーザーのメッセージ", style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic,
+            stringResource(R.string.moderation_message_from_a_blocked_user), style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f, fill = false),
         )
-        TextButton(onClick = onShow) { Text("表示") }
+        TextButton(onClick = onShow) { Text(stringResource(R.string.common_show)) }
     }
 }
 
@@ -79,10 +82,10 @@ fun ReportMessageDialog(controller: AppController, message: MessageState, onDism
     var busy by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("メッセージを報告") },
+        title = { Text(stringResource(R.string.moderation_report_message)) },
         text = {
             Column {
-                Text("ワークスペースの管理者に知らせます。投稿した人には伝わりません。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.moderation_the_workspace_administrators_are_told), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Moderation.reasons.forEach { (value, label) ->
                     Row(
                         Modifier.fillMaxWidth().selectable(selected = reason == value, role = Role.RadioButton) { reason = value }.padding(vertical = 2.dp),
@@ -94,7 +97,7 @@ fun ReportMessageDialog(controller: AppController, message: MessageState, onDism
                     }
                 }
                 OutlinedTextField(
-                    value = note, onValueChange = { note = it.take(1000) }, label = { Text("補足 (任意)") }, minLines = 2,
+                    value = note, onValueChange = { note = it.take(1000) }, label = { Text(stringResource(R.string.moderation_note_optional)) }, minLines = 2,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 )
             }
@@ -108,9 +111,9 @@ fun ReportMessageDialog(controller: AppController, message: MessageState, onDism
                     busy = false
                     if (ok) onDismiss()
                 }
-            }) { Text("報告する") }
+            }) { Text(stringResource(R.string.common_report)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -128,13 +131,13 @@ fun DeleteAccountDialog(controller: AppController, onDismiss: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("アカウントを削除") },
+        title = { Text(stringResource(R.string.common_delete_account)) },
         text = {
             Column {
-                Text("すべての端末からすぐにログアウトし、通知も届かなくなります。表示名・ユーザー名・メールアドレス・プロフィール画像・ステータスは消去されます。投稿したメッセージとファイルは会話の記録として残り、「退会したユーザー」と表示されます。この操作は取り消せません。", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.moderation_you_are_signed_out_of_all), style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(
                     value = secret, onValueChange = { secret = it }, singleLine = true,
-                    label = { Text(if (hasPassword) "確認のためパスワードを入力" else "確認のためユーザー名 (${me?.username ?: ""}) を入力") },
+                    label = { Text(if (hasPassword) stringResource(R.string.moderation_enter_your_password_to_confirm) else stringResource(R.string.moderation_enter_your_username_to_confirm, me?.username ?: "")) },
                     visualTransformation = if (hasPassword) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
                     keyboardOptions = KeyboardOptions(keyboardType = if (hasPassword) KeyboardType.Password else KeyboardType.Ascii),
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
@@ -151,9 +154,9 @@ fun DeleteAccountDialog(controller: AppController, onDismiss: () -> Unit) {
                     busy = false
                     if (error != null) failure = error else onDismiss()
                 }
-            }) { Text("アカウントを削除", color = MaterialTheme.colorScheme.error) }
+            }) { Text(stringResource(R.string.common_delete_account), color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -165,8 +168,8 @@ fun BlockedUsersList(controller: AppController, version: Int) {
     val scope = rememberCoroutineScope()
     ids.forEach { id ->
         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(store.users[id]?.displayName ?: "不明なユーザー", modifier = Modifier.weight(1f))
-            TextButton(onClick = { scope.launch { controller.setUserBlocked(id, false) } }) { Text("解除") }
+            Text(store.users[id]?.displayName ?: stringResource(R.string.moderation_unknown_user), modifier = Modifier.weight(1f))
+            TextButton(onClick = { scope.launch { controller.setUserBlocked(id, false) } }) { Text(stringResource(R.string.moderation_unblock)) }
         }
     }
 }
@@ -175,7 +178,7 @@ fun BlockedUsersList(controller: AppController, version: Int) {
 @Composable
 fun DeleteAccountRow(onClick: () -> Unit) {
     Text(
-        "アカウントを削除…", color = MaterialTheme.colorScheme.error,
+        stringResource(R.string.moderation_delete_account), color = MaterialTheme.colorScheme.error,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp),
     )
 }

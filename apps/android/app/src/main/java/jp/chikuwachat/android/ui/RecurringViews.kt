@@ -89,6 +89,9 @@ import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
 import java.time.ZoneId
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** The chip's 「未提出」 before the due time (amber, as on the desktop); red once it has passed. */
 private val AMBER = Color(0xFFF59E0B)
@@ -109,14 +112,14 @@ fun CollectionChip(message: MessageState, store: Store, version: Int) {
     val pending = chip.mine == Recurring.Mine.PENDING
     val shape = RoundedCornerShape(6.dp)
     val said = chip.label + when (chip.mine) {
-        Recurring.Mine.PENDING -> " (未提出)"
-        Recurring.Mine.SUBMITTED -> " (提出済み)"
+        Recurring.Mine.PENDING -> stringResource(R.string.recurring_views_not_submitted)
+        Recurring.Mine.SUBMITTED -> stringResource(R.string.recurring_views_submitted)
         null -> ""
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(top = 6.dp)
-            .touchTarget { source -> Modifier.clickable(interactionSource = source, indication = null, onClickLabel = "提出状況") { open = true } }
+            .touchTarget { source -> Modifier.clickable(interactionSource = source, indication = null, onClickLabel = L10n.str(R.string.recurring_views_submissions)) { open = true } }
             .border(1.dp, if (pending) AMBER.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant, shape)
             .background(if (pending) AMBER.copy(alpha = 0.10f) else Color.Transparent, shape)
             .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -131,8 +134,8 @@ fun CollectionChip(message: MessageState, store: Store, version: Int) {
             modifier = Modifier.padding(start = 5.dp).weight(1f, fill = false),
         )
         when (chip.mine) {
-            Recurring.Mine.PENDING -> MineBadge("未提出", if (chip.overdue) MaterialTheme.colorScheme.error else AMBER, if (chip.overdue) MaterialTheme.colorScheme.onError else Color.White)
-            Recurring.Mine.SUBMITTED -> MineBadge("提出済み", MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), MaterialTheme.colorScheme.primary)
+            Recurring.Mine.PENDING -> MineBadge(stringResource(R.string.recurring_views_not_submitted_2), if (chip.overdue) MaterialTheme.colorScheme.error else AMBER, if (chip.overdue) MaterialTheme.colorScheme.onError else Color.White)
+            Recurring.Mine.SUBMITTED -> MineBadge(stringResource(R.string.recurring_views_submitted_2), MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), MaterialTheme.colorScheme.primary)
             null -> {}
         }
     }
@@ -158,17 +161,17 @@ fun CollectionSheet(message: MessageState, store: Store, version: Int, onDismiss
     val (submitted, missing) = Recurring.lists(collection)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 16.dp).navigationBarsPadding()) {
-            Text("提出状況", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+            Text(stringResource(R.string.recurring_views_submissions), style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
             Text(
-                chip.label + if (chip.overdue) " (締切を過ぎました)" else "", style = MaterialTheme.typography.bodyMedium,
+                chip.label + if (chip.overdue) stringResource(R.string.recurring_views_past_due) else "", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp),
             )
-            SheetSection("提出済み ${submitted.size} 人", submitted, "まだいません", store, meId, version)
+            SheetSection(stringResource(R.string.recurring_views_submitted_3, submitted.size), submitted, stringResource(R.string.recurring_views_no_one_yet), store, meId, version)
             HorizontalDivider(Modifier.padding(top = 12.dp))
-            SheetSection("未提出 ${missing.size} 人", missing, "全員が提出しました", store, meId, version)
+            SheetSection(stringResource(R.string.recurring_views_not_submitted_3, missing.size), missing, stringResource(R.string.recurring_views_everyone_has_submitted), store, meId, version)
             Text(
-                "スレッドに返信すると提出済みになります。" +
-                    if (collection.remindedAt != null) "締切後、未提出の人にリマインドしました。" else "締切を過ぎると、未提出の人にだけリマインドが届きます。",
+                stringResource(R.string.recurring_views_replying_in_the_thread_counts_as) +
+                    if (collection.remindedAt != null) stringResource(R.string.recurring_views_after_the_deadline_those_who_hadnt) else stringResource(R.string.recurring_views_after_the_deadline_only_those_who),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 14.dp),
             )
         }
@@ -187,7 +190,7 @@ private fun SheetSection(title: String, ids: List<String>, empty: String, store:
         Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Avatar(person.id, person.name, size = 28.dp)
             Text(person.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 10.dp).weight(1f))
-            if (person.id == meId) Text("(自分)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (person.id == meId) Text(stringResource(R.string.recurring_views_you), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -231,13 +234,13 @@ fun RecurringPostsSection(controller: AppController, channel: ChannelState, vers
         }
     }
 
-    Text("定期投稿", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp).semantics { heading() })
+    Text(stringResource(R.string.recurring_views_recurring_posts), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp).semantics { heading() })
     val list = rows
     when {
-        list == null && failed -> Text("読み込めませんでした", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-        list == null -> Text("読み込み中…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        list == null && failed -> Text(stringResource(R.string.common_couldnt_load), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        list == null -> Text(stringResource(R.string.common_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
         list.isEmpty() -> Text(
-            "定期投稿はありません。" + if (manage) "毎週のスレッド (週報など) をボットが立て、返信で提出を集められます。" else "",
+            stringResource(R.string.recurring_views_no_recurring_posts) + if (manage) stringResource(R.string.recurring_views_a_bot_can_start_a_weekly) else "",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         else -> Column(Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))) {
@@ -245,8 +248,8 @@ fun RecurringPostsSection(controller: AppController, channel: ChannelState, vers
                 if (index > 0) HorizontalDivider()
                 RecurringPostRow(
                     post, store, version, localTz, manage = manage, busy = busy == post.id,
-                    onRun = { act(post, "投稿しました") { controller.runRecurringPost(post.id) } },
-                    onToggle = { act(post, if (post.enabled) "止めました" else "再開しました") { controller.setRecurringEnabled(post.id, !post.enabled) } },
+                    onRun = { act(post, L10n.str(R.string.recurring_views_posted)) { controller.runRecurringPost(post.id) } },
+                    onToggle = { act(post, if (post.enabled) L10n.str(R.string.recurring_views_paused) else L10n.str(R.string.recurring_views_resumed)) { controller.setRecurringEnabled(post.id, !post.enabled) } },
                     onEdit = { editing = post.id },
                     onDelete = { confirmDelete = post },
                 )
@@ -260,15 +263,15 @@ fun RecurringPostsSection(controller: AppController, channel: ChannelState, vers
         TextButton(
             onClick = { editing = "new" }, enabled = !failed && (list?.size ?: 0) < Recurring.MAX_PER_CHANNEL,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-        ) { Text("定期投稿を追加") }
+        ) { Text(stringResource(R.string.recurring_views_add_recurring_post)) }
     }
     confirmDelete?.let { post ->
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
-            title = { Text("「${post.name}」を削除しますか？") },
-            text = { Text("これまでの投稿 (と提出状況) は残ります。") },
-            confirmButton = { TextButton(onClick = { confirmDelete = null; act(post, "削除しました") { controller.deleteRecurringPost(post.id) } }) { Text("削除する", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("キャンセル") } },
+            title = { Text(stringResource(R.string.recurring_views_delete, post.name)) },
+            text = { Text(stringResource(R.string.recurring_views_past_posts_and_submissions_are_kept)) },
+            confirmButton = { TextButton(onClick = { confirmDelete = null; act(post, L10n.str(R.string.recurring_views_deleted)) { controller.deleteRecurringPost(post.id) } }) { Text(stringResource(R.string.recurring_views_delete_2), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     editing?.let { which ->
@@ -277,7 +280,7 @@ fun RecurringPostsSection(controller: AppController, channel: ChannelState, vers
             RecurringPostForm(
                 controller, channel, post, version,
                 onDismiss = { editing = null },
-                onSaved = { editing = null; result = true to "保存しました"; reload += 1 },
+                onSaved = { editing = null; result = true to L10n.str(R.string.common_saved_2); reload += 1 },
             )
         }
     }
@@ -290,8 +293,8 @@ private fun RecurringPostRow(
 ) {
     val collectLine = remember(version, post) {
         post.collect?.let { spec ->
-            "回収: " + Recurring.targetsSummary(spec, { store.groups[it]?.name }, { store.users[it]?.displayName }) + " · " + Recurring.dueSummary(spec.due)
-        } ?: "回収なし"
+            L10n.str(R.string.recurring_views_collects_from) + Recurring.targetsSummary(spec, { store.groups[it]?.name }, { store.users[it]?.displayName }) + " · " + Recurring.dueSummary(spec.due)
+        } ?: L10n.str(R.string.recurring_views_no_collection)
     }
     Row(Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
@@ -300,14 +303,14 @@ private fun RecurringPostRow(
                 Text(post.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 6.dp).weight(1f, fill = false))
                 if (!post.enabled) {
                     Text(
-                        "停止中", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        stringResource(R.string.common_paused), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 6.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
                     )
                 }
             }
             val next = Recurring.shortDateTime(post.nextRunAt)
             Text(
-                Recurring.scheduleSummary(post.schedule, post.tz, localTz) + if (post.enabled && next.isNotEmpty()) " · 次回 $next" else "",
+                Recurring.scheduleSummary(post.schedule, post.tz, localTz) + if (post.enabled && next.isNotEmpty()) stringResource(R.string.recurring_views_next, next) else "",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp),
             )
             Text(collectLine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -315,12 +318,12 @@ private fun RecurringPostRow(
         if (manage) {
             var menu by remember { mutableStateOf(false) }
             Box {
-                IconButton(enabled = !busy, onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "「${post.name}」の操作") }
+                IconButton(enabled = !busy, onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.recurring_views_actions_for, post.name)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("今すぐ投稿") }, onClick = { menu = false; onRun() })
-                    DropdownMenuItem(text = { Text(if (post.enabled) "止める" else "再開") }, onClick = { menu = false; onToggle() })
-                    if (Recurring.editable(post)) DropdownMenuItem(text = { Text("編集") }, onClick = { menu = false; onEdit() })
-                    DropdownMenuItem(text = { Text("削除", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.recurring_views_post_now)) }, onClick = { menu = false; onRun() })
+                    DropdownMenuItem(text = { Text(if (post.enabled) stringResource(R.string.recurring_views_pause) else stringResource(R.string.common_resume)) }, onClick = { menu = false; onToggle() })
+                    if (Recurring.editable(post)) DropdownMenuItem(text = { Text(stringResource(R.string.common_edit)) }, onClick = { menu = false; onEdit() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
                 }
             }
         }
@@ -370,7 +373,7 @@ fun RecurringPostForm(controller: AppController, channel: ChannelState, post: Re
             busy = false
         }
     }
-    val title = if (post == null) "定期投稿を追加" else "定期投稿を編集"
+    val title = if (post == null) stringResource(R.string.recurring_views_add_recurring_post) else stringResource(R.string.recurring_views_edit_recurring_post)
 
     Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val view = LocalView.current
@@ -386,9 +389,9 @@ fun RecurringPostForm(controller: AppController, channel: ChannelState, post: Re
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(enabled = !busy, onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "閉じる") }
+                    IconButton(enabled = !busy, onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close)) }
                     Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-                    TextButton(enabled = !busy, onClick = ::submit) { Text(if (busy) "保存中…" else if (post == null) "追加" else "保存") }
+                    TextButton(enabled = !busy, onClick = ::submit) { Text(if (busy) stringResource(R.string.common_saving) else if (post == null) stringResource(R.string.common_add) else stringResource(R.string.common_save)) }
                 }
                 HorizontalDivider()
                 Column(
@@ -397,18 +400,18 @@ fun RecurringPostForm(controller: AppController, channel: ChannelState, post: Re
                 ) {
                     OutlinedTextField(
                         value = draft.name, onValueChange = { value -> set { it.copy(name = value.take(80)) } },
-                        label = { Text("名前 (ボットの表示名)") }, placeholder = { Text("週報") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.recurring_views_name_the_bots_display_name)) }, placeholder = { Text(stringResource(R.string.recurring_views_weekly_report)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = draft.body, onValueChange = { value -> set { it.copy(body = value.take(Recurring.MAX_BODY)) } },
-                        label = { Text("本文") }, placeholder = { Text("**週報 {date}**\nこのスレッドに今週の進捗を返信してください") },
+                        label = { Text(stringResource(R.string.recurring_views_text)) }, placeholder = { Text(stringResource(R.string.recurring_views_weekly_report_date_nreply_to_this)) },
                         minLines = 4, modifier = Modifier.fillMaxWidth(),
                         supportingText = { Text(remember { Recurring.placeholderHint() }) },
                     )
 
-                    Text("繰り返し", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.common_repeat), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        listOf("weekly" to "毎週", "monthly" to "毎月").forEachIndexed { index, (kind, label) ->
+                        listOf("weekly" to stringResource(R.string.common_weekly), "monthly" to stringResource(R.string.common_monthly)).forEachIndexed { index, (kind, label) ->
                             SegmentedButton(
                                 selected = draft.kind == kind, onClick = { set { it.copy(kind = kind) } },
                                 shape = SegmentedButtonDefaults.itemShape(index, 2), label = { Text(label) },
@@ -426,7 +429,7 @@ fun RecurringPostForm(controller: AppController, channel: ChannelState, post: Re
                                         .toggleable(value = on, role = Role.Checkbox, onValueChange = { now ->
                                             set { it.copy(weekdays = if (now) (it.weekdays + day).distinct().sorted() else it.weekdays - day) }
                                         })
-                                        .semantics { contentDescription = "${label}曜日"; selected = on },
+                                        .semantics { contentDescription = L10n.str(R.string.common_fmt_4, label); selected = on },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Text(label, fontWeight = FontWeight.Medium, color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
@@ -436,14 +439,14 @@ fun RecurringPostForm(controller: AppController, channel: ChannelState, post: Re
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (draft.kind == "monthly") {
-                            Choice(Recurring.dayLabel(draft.day), "日", (1..31).map { it to Recurring.dayLabel(it) }) { day -> set { it.copy(day = day) } }
+                            Choice(Recurring.dayLabel(draft.day), stringResource(R.string.recurring_views_day), (1..31).map { it to Recurring.dayLabel(it) }) { day -> set { it.copy(day = day) } }
                         }
-                        OutlinedButton(onClick = { picking = TimeField.POST }, modifier = Modifier.semantics { contentDescription = "時刻 ${Recurring.clockLabel(draft.time)}" }) {
+                        OutlinedButton(onClick = { picking = TimeField.POST }, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.recurring_views_time, Recurring.clockLabel(draft.time)) }) {
                             Text(Recurring.clockLabel(draft.time))
                         }
                     }
                     Text(
-                        if (zone != localTz) "時刻は $zone の時刻です" else "タイムゾーン: $zone",
+                        if (zone != localTz) stringResource(R.string.recurring_views_times_are_in, zone) else stringResource(R.string.common_time_zone, zone),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
@@ -452,9 +455,9 @@ fun RecurringPostForm(controller: AppController, channel: ChannelState, post: Re
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text("返信で提出を集める", style = MaterialTheme.typography.bodyLarge)
+                            Text(stringResource(R.string.recurring_views_collect_submissions_from_replies), style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                "スレッドに返信した人が提出済みになり、締切を過ぎたら未提出の人にだけリマインドします",
+                                stringResource(R.string.recurring_views_people_who_reply_in_the_thread),
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -467,13 +470,13 @@ fun RecurringPostForm(controller: AppController, channel: ChannelState, post: Re
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             TargetPicker(controller, channel, draft, version) { change -> set(change) }
-                            Text("締切", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                            Text(stringResource(R.string.common_deadlines), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Choice(
-                                    afterLabel(draft.afterDays), "締切の日",
+                                    afterLabel(draft.afterDays), stringResource(R.string.recurring_views_due_day),
                                     (0..Recurring.MAX_AFTER_DAYS).map { it to afterLabel(it) },
                                 ) { days -> set { it.copy(afterDays = days) } }
-                                OutlinedButton(onClick = { picking = TimeField.DUE }, modifier = Modifier.semantics { contentDescription = "締切の時刻 ${Recurring.clockLabel(draft.dueTime)}" }) {
+                                OutlinedButton(onClick = { picking = TimeField.DUE }, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.recurring_views_deadline_time, Recurring.clockLabel(draft.dueTime)) }) {
                                     Text(Recurring.clockLabel(draft.dueTime))
                                 }
                             }
@@ -487,7 +490,7 @@ fun RecurringPostForm(controller: AppController, channel: ChannelState, post: Re
         picking?.let { field ->
             val current = if (field == TimeField.POST) draft.time else draft.dueTime
             val (hour, minute) = current.split(":").let { (it.getOrNull(0)?.toIntOrNull() ?: 9) to (it.getOrNull(1)?.toIntOrNull() ?: 0) }
-            TimePickDialog(hour, minute, title = if (field == TimeField.POST) "投稿の時刻" else "締切の時刻", onDismiss = { picking = null }) { h, m ->
+            TimePickDialog(hour, minute, title = if (field == TimeField.POST) stringResource(R.string.recurring_views_posting_time) else stringResource(R.string.recurring_views_deadline_time_2), onDismiss = { picking = null }) { h, m ->
                 val text = "%02d:%02d".format(h, m)
                 set { if (field == TimeField.POST) it.copy(time = text) else it.copy(dueTime = text) }
                 picking = null
@@ -496,7 +499,7 @@ fun RecurringPostForm(controller: AppController, channel: ChannelState, post: Re
     }
 }
 
-private fun afterLabel(days: Int): String = if (days == 0) "投稿した日" else "$days 日後"
+private fun afterLabel(days: Int): String = if (days == 0) L10n.str(R.string.recurring_views_posting_day) else L10n.str(R.string.recurring_views_days_later, days)
 
 /** A value out of a list, as a button with its menu. */
 @Composable
@@ -531,14 +534,14 @@ private fun TargetPicker(controller: AppController, channel: ChannelState, draft
             .map { Triple(it.userId, store.users[it.userId]?.displayName ?: "?", store.users[it.userId]?.username ?: "") }
             .sortedBy { it.second }
     }
-    Text("提出する人", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(stringResource(R.string.recurring_views_who_submits), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Row(
         Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).toggleable(value = draft.allMembers, role = Role.Checkbox, onValueChange = { on -> onChange { it.copy(allMembers = on) } }),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked = draft.allMembers, onCheckedChange = null)
-        Text("チャンネルの全員", modifier = Modifier.padding(start = 8.dp))
-        Text(" (投稿の時点のメンバー)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.common_everyone_in_the_channel), modifier = Modifier.padding(start = 8.dp))
+        Text(stringResource(R.string.recurring_views_members_at_posting_time), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     if (draft.allMembers) return
     if (groups.isNotEmpty()) {
@@ -553,11 +556,11 @@ private fun TargetPicker(controller: AppController, channel: ChannelState, draft
         }
     }
     when {
-        members == null && failed -> Text("メンバーを読み込めませんでした", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-        members == null -> Text("読み込み中…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        members == null && failed -> Text(stringResource(R.string.common_couldnt_load_members), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        members == null -> Text(stringResource(R.string.common_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
         else -> {
             if (people.size > 8) {
-                OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text("名前で絞り込む") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text(stringResource(R.string.common_filter_by_name)) }, modifier = Modifier.fillMaxWidth())
             }
             val q = query.trim().lowercase()
             val shown = if (q.isEmpty()) people else people.filter { it.second.lowercase().contains(q) || it.third.lowercase().contains(q) }
@@ -576,9 +579,9 @@ private fun TargetPicker(controller: AppController, channel: ChannelState, draft
                         Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp).weight(1f))
                     }
                 }
-                if (shown.isEmpty()) Text("該当する人はいません", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(12.dp))
+                if (shown.isEmpty()) Text(stringResource(R.string.recurring_views_no_matching_people), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(12.dp))
             }
         }
     }
-    Text("グループと選んだ人を合わせた、投稿の時点のチャンネルのメンバーが対象です", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(stringResource(R.string.recurring_views_applies_to_the_channels_members_at), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

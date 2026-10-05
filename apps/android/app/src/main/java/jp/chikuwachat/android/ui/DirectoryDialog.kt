@@ -32,6 +32,9 @@ import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.api.activeStatus
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /**
  * 「メンバー」(M13g): everyone in the workspace, with presence, title and status; a DM is one tap away. People on the lab
@@ -65,16 +68,16 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
             activeStatus(user)?.let { (it.first + " " + it.second).trim() },
         )
         if (parts.isNotEmpty()) return parts.joinToString(" · ")
-        if (user.role == "bot") return "受信 Webhook"
-        return when (store.presenceOf(user.id)) { "online" -> "オンライン"; "away" -> "離席中"; else -> "オフライン" }
+        if (user.role == "bot") return L10n.str(R.string.directory_dialog_incoming_webhook)
+        return when (store.presenceOf(user.id)) { "online" -> L10n.str(R.string.common_online); "away" -> L10n.str(R.string.common_away); else -> L10n.str(R.string.common_offline) }
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("メンバー (${people.size})") },
+        title = { Text(stringResource(R.string.directory_dialog_members, people.size)) },
         text = {
             Column {
                 OutlinedTextField(
-                    query, { query = it }, label = { Text(if (headed) "名前・ユーザー名・肩書・研究テーマで検索" else "名前・ユーザー名・肩書で検索") },
+                    query, { query = it }, label = { Text(if (headed) stringResource(R.string.directory_dialog_search_by_name_username_title_or) else stringResource(R.string.directory_dialog_search_by_name_username_or_title)) },
                     singleLine = true, modifier = Modifier.fillMaxWidth(),
                 )
                 LazyColumn(Modifier.heightIn(max = 420.dp).padding(top = 8.dp)) {
@@ -96,7 +99,7 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
                                         Spacer(Modifier.width(6.dp))
                                         Text("@" + user.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                         roster[user.id]?.let { RosterBadge(it, Modifier.padding(start = 6.dp)) }
-                                        val tag = when (user.role) { "admin" -> "管理者"; "guest" -> "ゲスト"; "bot" -> "BOT"; else -> null }
+                                        val tag = when (user.role) { "admin" -> stringResource(R.string.directory_dialog_admin); "guest" -> stringResource(R.string.directory_dialog_guest); "bot" -> "BOT"; else -> null }
                                         if (tag != null) { Spacer(Modifier.width(6.dp)); Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }
                                         if (user.dndUntil != null) { Spacer(Modifier.width(4.dp)); Text("🔕", style = MaterialTheme.typography.labelSmall) }
                                     }
@@ -108,10 +111,10 @@ fun DirectoryDialog(controller: AppController, onDismiss: () -> Unit, onOpened: 
                             }
                         }
                     }
-                    if (people.isEmpty()) item { Text("該当するメンバーがいません", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    if (people.isEmpty()) item { Text(stringResource(R.string.directory_dialog_no_matching_members), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }

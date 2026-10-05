@@ -117,6 +117,8 @@ import okio.BufferedSink
 import okio.source
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * Application controller: login, session restore and the sync engine lifecycle. Everything runs on
@@ -677,7 +679,7 @@ class AppController(private val app: Application) {
     private suspend fun loginNow(server: String, username: String, password: String, totpCode: String?) {
         val normalized = Workspaces.normalizeServerUrl(server)
         if (normalized == null) {
-            error = "サーバ URL が正しくありません"
+            error = L10n.str(R.string.app_controller_the_server_url_is_not_valid)
             return
         }
         busy = true
@@ -737,7 +739,7 @@ class AppController(private val app: Application) {
             error = null
             totpRequired = false
             sessionLock.withLock { switchLocked(known.serverUrl) }
-            notice = "${known.name} は登録済みです"
+            notice = L10n.str(R.string.app_controller_is_already_added, known.name)
             return null
         }
         if (known != null) key = known.serverUrl // registered but signed out: sign in to it again
@@ -762,7 +764,7 @@ class AppController(private val app: Application) {
     private suspend fun beginGoogleSignInNow(server: String): String? {
         val normalized = Workspaces.normalizeServerUrl(server)
         if (normalized == null) {
-            error = "サーバ URL が正しくありません"
+            error = L10n.str(R.string.app_controller_the_server_url_is_not_valid)
             return null
         }
         busy = true
@@ -788,7 +790,7 @@ class AppController(private val app: Application) {
     /** The browser could not be opened: the sign-in it would have finished is dropped. */
     fun googleSignInNotOpened() {
         scope.launch { ssoPending.take() }
-        error = "ブラウザを開けませんでした"
+        error = L10n.str(R.string.app_controller_couldnt_open_the_browser)
     }
 
     /**
@@ -899,7 +901,7 @@ class AppController(private val app: Application) {
         scope.async { acceptInviteNow(server, token, username, displayName, password) }.await()
 
     private suspend fun acceptInviteNow(server: String, token: String, username: String, displayName: String, password: String): String? {
-        val normalized = Workspaces.normalizeServerUrl(server) ?: return "サーバ URL が正しくありません"
+        val normalized = Workspaces.normalizeServerUrl(server) ?: return L10n.str(R.string.app_controller_the_server_url_is_not_valid)
         val key = workspaces.firstOrNull { Workspaces.sameServer(it.serverUrl, normalized) }?.serverUrl ?: normalized
         val api = makeApi(key, username)
         busy = true
@@ -992,7 +994,7 @@ class AppController(private val app: Application) {
             val text = (row.note?.takeIf { it.isNotBlank() }?.let { "$it — " } ?: "") + row.preview
             notice = "⏰ $text"
             // Worded like the server's push (確認のお願い, L6 提出のお願い).
-            val title = Recurring.reminderBadge(row.kind) ?: "リマインダー"
+            val title = Recurring.reminderBadge(row.kind) ?: L10n.str(R.string.common_reminders)
             if (!dndActive(store)) notify(workspace(), row.channelId, title, text, key = "reminder:${row.id}", messageId = row.messageId)
         }
         // M52: my calendar alarm fired while the app is open (the server's push is not shown then), worded like that push.
@@ -1000,7 +1002,7 @@ class AppController(private val app: Application) {
         engine.calendar.onAlarm = { fired ->
             val text = CalendarDates.alarmText(fired.event, fired.channelId?.let { store.channels[it]?.channel?.name })
             notice = "📅 $text"
-            if (!dndActive(store)) notify(workspace(), fired.channelId, "予定", text, key = "calendar:${fired.eventId}", eventId = fired.eventId)
+            if (!dndActive(store)) notify(workspace(), fired.channelId, L10n.str(R.string.common_event), text, key = "calendar:${fired.eventId}", eventId = fired.eventId)
         }
         // M56: task.assigned / task.due while the app is open (the server's push is not shown then), worded like that push;
         // not with 「タスク (割り当て・期限)」 off (the server sends the event either way, TASKS.md §8).
@@ -1012,7 +1014,7 @@ class AppController(private val app: Application) {
             }
             if (store.me?.notifyTasks != false) {
                 notice = "☑ ${text.body}"
-                if (!dndActive(store)) notify(workspace(), text.channelId, "タスク", text.body, key = "task:${text.taskId}", taskId = text.taskId)
+                if (!dndActive(store)) notify(workspace(), text.channelId, L10n.str(R.string.common_tasks), text.body, key = "task:${text.taskId}", taskId = text.taskId)
             }
         }
         // M73 (CANVAS.md §18.1): a canvas newly mentions me while the app is open (the server's push is not shown then),
@@ -1020,13 +1022,13 @@ class AppController(private val app: Application) {
         engine.onCanvasMention = { mention, channel ->
             val text = jp.chikuwachat.android.ui.CanvasTasks.mentionText(mention, channel) { id -> store.users[id]?.displayName }
             notice = "📝 $text"
-            if (!dndActive(store)) notify(workspace(), channel.id, "キャンバス", text, key = "canvas:${mention.canvasId}", canvasId = mention.canvasId)
+            if (!dndActive(store)) notify(workspace(), channel.id, L10n.str(R.string.common_canvas), text, key = "canvas:${mention.canvasId}", canvasId = mention.canvasId)
         }
         // M112: a reservation notice while the app is open: the banner and a local notification (the push is not shown then).
         engine.onReservationNotice = { notice ->
             notice.text.let { text ->
                 this.notice = "🎫 $text"
-                if (!dndActive(store)) notify(workspace(), null, "予約", text, key = "reservation:${notice.itemId}", reservations = true)
+                if (!dndActive(store)) notify(workspace(), null, L10n.str(R.string.common_reservations), text, key = "reservation:${notice.itemId}", reservations = true)
             }
         }
         engine.onNotify = { message, channel ->
@@ -1035,7 +1037,7 @@ class AppController(private val app: Application) {
                 val sender = store.users[message.senderId]?.displayName ?: "?"
                 val title = if (channel.channel.isDm) sender else channelTitle(channel, store) + " · " + sender
                 notify(
-                    workspace(), channel.id, title, messageLine(message.body, message.attachments, store).ifEmpty { "新しいメッセージ" },
+                    workspace(), channel.id, title, messageLine(message.body, message.attachments, store).ifEmpty { L10n.str(R.string.common_new_message) },
                     messageId = message.id, parentId = message.parentId,
                 )
             }
@@ -1669,14 +1671,14 @@ class AppController(private val app: Application) {
         val base = serverBase ?: return
         val clipboard = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", Permalink.url(base, messageId)))
-        notice = "リンクをコピーしました"
+        notice = L10n.str(R.string.app_controller_link_copied)
     }
 
     /** 「テキストをコピー」: the body as it reads, mentions as @names. */
     fun copyText(message: MessageState) {
         val clipboard = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", jp.chikuwachat.android.ui.Mentions.decode(message.body, store.users, store.groups)))
-        notice = "テキストをコピーしました"
+        notice = L10n.str(R.string.app_controller_text_copied)
     }
 
     /**
@@ -1706,7 +1708,7 @@ class AppController(private val app: Application) {
             val canvas = api.getCanvas(canvasId, null) ?: return false
             canvasLinks[canvasId] = jp.chikuwachat.android.sync.CanvasLinkState.Ok(canvas.meta) // a tap asks again (joined since, restored)
             if (store.channel(canvas.channelId)?.isMember != true) {
-                error = "このキャンバスの会話のメンバーではありません"
+                error = L10n.str(R.string.app_controller_youre_not_a_member_of_this)
                 return false
             }
             pendingCanvas = canvas.channelId to canvas.id
@@ -1717,7 +1719,7 @@ class AppController(private val app: Application) {
             val state = jp.chikuwachat.android.sync.CanvasLinkState.of(e)
             if (state != jp.chikuwachat.android.sync.CanvasLinkState.Failed) canvasLinks[canvasId] = state
             error = when (state) {
-                jp.chikuwachat.android.sync.CanvasLinkState.Forbidden -> "このキャンバスの会話のメンバーではありません"
+                jp.chikuwachat.android.sync.CanvasLinkState.Forbidden -> L10n.str(R.string.app_controller_youre_not_a_member_of_this)
                 jp.chikuwachat.android.sync.CanvasLinkState.Missing -> ErrorMessages.byCode["canvas_not_found"] ?: describe(e)
                 else -> describe(e)
             }
@@ -1905,7 +1907,7 @@ class AppController(private val app: Application) {
     suspend fun uploadCanvasImage(uri: Uri): AttachmentOut? {
         val uploaded = uploadAttachment(uri).getOrNull() ?: return null
         if (!uploaded.contentType.startsWith("image/")) {
-            error = "キャンバスに入れられるのは画像だけです"
+            error = L10n.str(R.string.app_controller_only_images_can_go_in_a)
             return null
         }
         canvasAttachments[uploaded.id] = uploaded
@@ -1916,7 +1918,7 @@ class AppController(private val app: Application) {
     fun copyCanvasText(stored: String) {
         val clipboard = app.getSystemService(ClipboardManager::class.java) ?: return
         clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", Mentions.decode(CanvasMarkers.strip(stored), store.users, store.groups)))
-        notice = "本文をコピーしました"
+        notice = L10n.str(R.string.app_controller_text_copied_2)
     }
 
     /** M12a: a starred channel; the flag moves at once, favorite.updated confirms on every device. */
@@ -1942,7 +1944,7 @@ class AppController(private val app: Application) {
         store.setBlocked(userId, on)
         try {
             if (on) api.blockUser(userId) else api.unblockUser(userId)
-            notice = if (on) "ブロックしました" else "ブロックを解除しました"
+            notice = if (on) L10n.str(R.string.app_controller_blocked) else L10n.str(R.string.app_controller_unblocked)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -1956,7 +1958,7 @@ class AppController(private val app: Application) {
         val api = api ?: return false
         return try {
             api.reportMessage(messageId, reason, note.trim().ifEmpty { null })
-            notice = "報告しました。管理者が確認します"
+            notice = L10n.str(R.string.app_controller_reported_an_administrator_will_review_it)
             true
         } catch (e: CancellationException) {
             throw e
@@ -1971,8 +1973,8 @@ class AppController(private val app: Application) {
      * server has ended every session and this workspace is signed out here. Returns the error to show, or null.
      */
     suspend fun deleteAccount(secret: String): String? {
-        val api = api ?: return "ログインしていません"
-        val key = activeKey ?: return "ログインしていません"
+        val api = api ?: return L10n.str(R.string.app_controller_not_signed_in)
+        val key = activeKey ?: return L10n.str(R.string.app_controller_not_signed_in)
         val hasPassword = store.me?.hasPassword ?: true
         try {
             api.deleteAccount(password = if (hasPassword) secret else null, confirmUsername = if (hasPassword) null else secret)
@@ -2054,11 +2056,11 @@ class AppController(private val app: Application) {
      * bound when the message is sent. The size is checked against bootstrap.limits before anything is sent.
      */
     suspend fun uploadAttachment(uri: Uri): Result<AttachmentOut> = attempt {
-        val api = api ?: throw Refusal("ログインが必要です")
+        val api = api ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
         val resolver = app.contentResolver
         val (name, size) = withContext(Dispatchers.IO) { describeDocument(resolver, uri) }
         val limit = store.limits?.maxAttachmentBytes
-        if (limit != null && size != null && size > limit) throw Refusal("ファイルが大きすぎます (上限 ${formatSize(limit)})")
+        if (limit != null && size != null && size > limit) throw Refusal(L10n.str(R.string.app_controller_the_file_is_too_large_limit, formatSize(limit)))
         api.uploadAttachment(ContentUriBody(resolver, uri, size), name ?: "file")
     }.onFailure { error = describe(it) }
 
@@ -2073,7 +2075,7 @@ class AppController(private val app: Application) {
             }
         }
         val readable = runCatching { resolver.openInputStream(uri)?.use { true } }.getOrNull() == true
-        if (!readable) throw Refusal("ファイルを読み込めませんでした")
+        if (!readable) throw Refusal(L10n.str(R.string.app_controller_couldnt_read_the_file))
         return name to size
     }
 
@@ -2096,7 +2098,7 @@ class AppController(private val app: Application) {
      * opened; the tile shows the server's poster and never downloads it. A cached file of the attachment's size is reused.
      */
     suspend fun videoFile(attachment: AttachmentOut): java.io.File {
-        val api = api ?: throw Refusal("ログインが必要です")
+        val api = api ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
         val file = java.io.File(java.io.File(app.cacheDir, "downloads"), DownloadCache.path(attachment.id, attachment.filename))
         if (withContext(Dispatchers.IO) { file.isFile && file.length() == attachment.sizeBytes }) return file
         api.downloadTo("/api/v1/attachments/${attachment.id}/content", file)
@@ -2137,12 +2139,12 @@ class AppController(private val app: Application) {
     }
 
     /** 「#name」 of a workflow's target, or words for one this device does not know. */
-    fun workflowTarget(channelId: String): String = store.channel(channelId)?.channel?.name?.let { "#$it" } ?: "送り先のチャンネル"
+    fun workflowTarget(channelId: String): String = store.channel(channelId)?.channel?.name?.let { "#$it" } ?: L10n.str(R.string.app_controller_the_destination_channel)
 
     /** Opens the form, or says why it cannot run (the desktop's runBlockedText). `here`: the conversation it is opened from. */
     fun openWorkflow(workflow: jp.chikuwachat.android.api.WorkflowOut, here: String?) {
         if (!workflow.canRun) {
-            error = jp.chikuwachat.android.ui.Workflows.runBlockedText(workflow.runBlocked, workflowTarget(workflow.channelId)) ?: "このワークフローは使えません"
+            error = jp.chikuwachat.android.ui.Workflows.runBlockedText(workflow.runBlocked, workflowTarget(workflow.channelId)) ?: L10n.str(R.string.common_this_workflow_cant_be_used)
             return
         }
         workflowForm = jp.chikuwachat.android.ui.WorkflowSession(workflow, here, java.time.LocalDate.now(), store.me?.id)
@@ -2165,7 +2167,7 @@ class AppController(private val app: Application) {
         engine?.postedFromHere(message) ?: store.upsertMessage(message)
         postedHere = message.id
         if (workflowForm === session) workflowForm = null
-        if (session.here != null && message.channelId != session.here) notice = "${workflowTarget(message.channelId)} に投稿しました"
+        if (session.here != null && message.channelId != session.here) notice = L10n.str(R.string.app_controller_posted_to, workflowTarget(message.channelId))
     }
 
     // --- channel info & settings (UI brush-up) --------------------------------------------------
@@ -2225,7 +2227,7 @@ class AppController(private val app: Application) {
         val base = serverBase ?: return false
         val engine = engine ?: return false
         engine.send(channelId, Share.body(message.body, Permalink.url(base, message.id), comment))
-        notice = "共有しました"
+        notice = L10n.str(R.string.app_controller_shared)
         return true
     }
 
@@ -2333,7 +2335,7 @@ class AppController(private val app: Application) {
 
     /** M14a / M16g: the cropped square (a 512 px JPEG) becomes my profile picture; the store learns it at once. */
     suspend fun uploadAvatar(jpeg: ByteArray): Boolean = attempt {
-        val api = api ?: throw Refusal("ログインが必要です")
+        val api = api ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
         val updated = api.uploadAvatar(jpeg.toRequestBody("image/jpeg".toMediaTypeOrNull()))
         me = updated
         store.setMe(updated)
@@ -2349,7 +2351,7 @@ class AppController(private val app: Application) {
 
     /** M96: rename myself; null when done, else the reason for under the field (taken, reserved, 3 times in 24 hours …). */
     suspend fun renameMe(username: String): String? = attempt {
-        val client = api ?: return "ログインしていません"
+        val client = api ?: return L10n.str(R.string.app_controller_not_signed_in)
         val updated = client.updateUsername(username)
         me = updated
         store.setMe(updated)
@@ -2519,7 +2521,7 @@ class AppController(private val app: Application) {
      */
     suspend fun decideSchedule(message: MessageState, index: Int, createEvent: Boolean = true): DecideOutcome = attempt {
         store.applyMyPollResponse(api!!.decidePoll(message.id, index, createEvent))
-        notice = "日程を決定しました"
+        notice = L10n.str(R.string.app_controller_date_decided)
         DecideOutcome.DONE
     }.getOrElse {
         if (createEvent && it is ApiException.Api && it.code == "posting_restricted") DecideOutcome.NEEDS_NO_EVENT
@@ -2553,8 +2555,8 @@ class AppController(private val app: Application) {
         val state = store.channels[channelId] ?: return false
         val isDm = state.channel.type == "dm" || state.channel.type == "group_dm"
         val spec = SlashCommands.all.firstOrNull { it.name == command.name }
-        if (spec == null) { error = "/${command.name} というコマンドはありません (/help で一覧)"; return false }
-        if (spec.channelOnly && isDm) { error = "/${command.name} はチャンネルでだけ使えます"; return false }
+        if (spec == null) { error = L10n.str(R.string.common_there_is_no_command_help_lists, command.name); return false }
+        if (spec.channelOnly && isDm) { error = L10n.str(R.string.app_controller_can_only_be_used_in_channels, command.name); return false }
         fun user(handle: String) = store.users.values.firstOrNull { it.username.equals(handle.removePrefix("@"), ignoreCase = true) }
         // M35: the channel's own level, null while it follows the overall setting (so a mute does not pin a level).
         val level = NotificationLevels.own(state)
@@ -2563,25 +2565,25 @@ class AppController(private val app: Application) {
                 // M30: the templates' names too, in the order the template button shows them.
                 val templates = Templates.ordered(store.templates.values, inTimes = state.channel.isTimes)
                 notice = SlashCommands.all.joinToString(" · ") { it.usage } +
-                    if (templates.isEmpty()) "" else " · テンプレート: " + templates.map { it.name }.distinct().joinToString(" ") { "/$it" }
+                    if (templates.isEmpty()) "" else L10n.str(R.string.app_controller_templates) + templates.map { it.name }.distinct().joinToString(" ") { "/$it" }
                 true
             }
             "status" -> {
                 if (command.args.isEmpty() || command.args == "clear") {
                     updateProfileJson(buildJsonObject { put("status_text", JsonNull); put("status_emoji", JsonNull); put("status_expires_at", JsonNull) })
-                        .also { if (it) notice = "ステータスを消しました" }
+                        .also { if (it) notice = L10n.str(R.string.app_controller_status_cleared) }
                 } else {
                     val (emoji, text) = SlashCommands.splitStatus(command.args)
                     updateProfileJson(buildJsonObject {
                         put("status_text", text.ifEmpty { null }?.let { JsonPrimitive(it) } ?: JsonNull)
                         put("status_emoji", emoji?.let { JsonPrimitive(it) } ?: JsonNull)
                         put("status_expires_at", JsonNull)
-                    }).also { if (it) notice = "ステータスを更新しました" }
+                    }).also { if (it) notice = L10n.str(R.string.app_controller_status_updated) }
                 }
             }
             "dnd" -> {
                 if (command.args.isEmpty() || command.args == "off") {
-                    updateProfileJson(buildJsonObject { put("dnd_until", JsonNull) }).also { if (it) notice = "通知の一時停止を解除しました" }
+                    updateProfileJson(buildJsonObject { put("dnd_until", JsonNull) }).also { if (it) notice = L10n.str(R.string.app_controller_notifications_resumed) }
                 } else {
                     val until = SlashCommands.duration(command.args)
                     if (until == null) { error = "/dnd 30m | 1h | 2h | 4h | tomorrow | off"; false }
@@ -2592,25 +2594,25 @@ class AppController(private val app: Application) {
             "leave" -> leaveChannel(channelId)
             "invite" -> {
                 val handles = command.args.split(Regex("\\s+")).filter { it.isNotEmpty() }
-                if (handles.isEmpty()) { error = "/invite @名前"; return false }
+                if (handles.isEmpty()) { error = L10n.str(R.string.app_controller_invite_name); return false }
                 // M89: everyone named first, then one batch (one 「追加しました」 line, MEMBERSHIP.md §5 item 6).
-                val targets = handles.map { handle -> user(handle) ?: run { error = "$handle というユーザーはいません"; return false } }
+                val targets = handles.map { handle -> user(handle) ?: run { error = L10n.str(R.string.app_controller_there_is_no_user_called, handle); return false } }
                 val added = addMembers(channelId, targets.map { it.id })
                 if (added.isFailure) { error = describe(added.exceptionOrNull()!!); return false }
-                notice = "${handles.size} 人を追加しました"
+                notice = L10n.plural(R.plurals.app_controller_added_person_added_people, handles.size, handles.size)
                 true
             }
             "join" -> {
                 val name = command.args.removePrefix("#").lowercase()
                 val target = store.channels.values.firstOrNull { it.channel.type == "public" && (it.channel.name ?: "").lowercase() == name }
-                if (target == null) { error = "#$name という公開チャンネルはありません"; return false }
+                if (target == null) { error = L10n.str(R.string.app_controller_there_is_no_public_channel_called, name); return false }
                 if (!target.isMember && !joinChannel(target.id)) return false
                 pendingChannelId = target.id
                 true
             }
             "dm" -> {
                 val target = user(command.args.substringBefore(' '))
-                if (target == null) { error = "/dm @名前"; return false }
+                if (target == null) { error = L10n.str(R.string.common_dm_name); return false }
                 val id = openDmWith(target.id) ?: return false
                 pendingChannelId = id
                 true
@@ -2621,7 +2623,7 @@ class AppController(private val app: Application) {
                 setNotification(channelId, level, until.toInstant().toString()).also { if (it) notice = Schedule.label(until) + " まで通知を止めます" }
             }
             // Both mutes end: the timed one and the one until unmuted (M35).
-            "unmute" -> setNotification(channelId, level, null, muted = false).also { if (it) notice = "通知を再開しました" }
+            "unmute" -> setNotification(channelId, level, null, muted = false).also { if (it) notice = L10n.str(R.string.app_controller_notifications_resumed_2) }
             "me" -> {
                 if (command.args.isEmpty()) return false
                 engine?.send(channelId, "_${command.args}_", parentId = parentId)
@@ -2633,7 +2635,7 @@ class AppController(private val app: Application) {
             }
             "poll" -> {
                 val parts = command.args.split("|").map { it.trim() }.filter { it.isNotEmpty() }
-                if (parts.size < 3) { error = "/poll 質問 | 選択肢 | 選択肢 …"; return false }
+                if (parts.size < 3) { error = L10n.str(R.string.common_poll_question_option_option); return false }
                 createPoll(channelId, parentId, parts[0], parts.drop(1), multiple = false)
             }
             SlashCommands.SCHEDULE -> {
@@ -2733,7 +2735,7 @@ class AppController(private val app: Application) {
 
     private companion object {
         const val SEARCH_PAGE = 30
-        const val NOT_CHIKUWA = "Taylis のサーバーではありません"
+        val NOT_CHIKUWA: String get() = L10n.str(R.string.app_controller_this_is_not_a_taylis_server)
         const val SERVER_KEY = "server"
         const val USERNAME_KEY = "username"
         /** M48: the pending Google sign-in's secret name (never an account's `server|username`). */

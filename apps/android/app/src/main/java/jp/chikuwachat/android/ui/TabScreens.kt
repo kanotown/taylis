@@ -67,6 +67,9 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 /**
  * M34: the bottom tabs (MOBILE_UI.md §5) with their badges (§8, [MainTabs]): DM = the unread DMs, activity = the unread
@@ -100,7 +103,7 @@ fun MainTabRail(store: Store, version: Int, selected: MainTab, onTab: (MainTab) 
     NavigationRail(
         header = {
             FloatingActionButton(onClick = onCompose, modifier = Modifier.padding(top = 8.dp, bottom = 16.dp)) {
-                Icon(Icons.Default.Edit, contentDescription = "新しいメッセージ")
+                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_new_message))
             }
         },
     ) {
@@ -141,13 +144,13 @@ private fun TabIcon(tab: MainTab, selected: Boolean, badges: TabBadges) {
     // TalkBack reads each badge with the tab (the item merges its children).
     BadgedBox(badge = {
         when {
-            tab == MainTab.DM && dm > 0 -> Badge(Modifier.semantics { contentDescription = "未読 $dm 件" }) { Text(badgeText(dm)) }
+            tab == MainTab.DM && dm > 0 -> Badge(Modifier.semantics { contentDescription = L10n.str(R.string.common_unread_2, dm) }) { Text(badgeText(dm)) }
             tab == MainTab.ACTIVITY && activity.count > 0 -> Badge(
-                Modifier.semantics { contentDescription = "${activity.count} 件" + if (activity.mention) "、メンションあり" else "" },
+                Modifier.semantics { contentDescription = L10n.str(R.string.common_fmt_7, activity.count) + if (activity.mention) L10n.str(R.string.common_has_mentions) else "" },
                 containerColor = if (activity.mention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
                 contentColor = if (activity.mention) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSecondary,
             ) { Text(badgeText(activity.count)) }
-            tab == MainTab.HOME && badges.home -> Badge(Modifier.semantics { contentDescription = "未読あり" }, containerColor = MaterialTheme.colorScheme.primary)
+            tab == MainTab.HOME && badges.home -> Badge(Modifier.semantics { contentDescription = L10n.str(R.string.tab_screens_has_unread) }, containerColor = MaterialTheme.colorScheme.primary)
         }
     }) {
         Icon(if (selected) filled else outlined, contentDescription = null)
@@ -197,10 +200,10 @@ fun DmListScreen(controller: AppController, version: Int, listState: LazyListSta
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it.take(80) },
-                    placeholder = { Text("DM を名前で絞り込む") },
+                    placeholder = { Text(stringResource(R.string.tab_screens_filter_dms_by_name)) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     trailingIcon = if (query.isEmpty()) null else {
-                        { IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, contentDescription = "絞り込みを消す") } }
+                        { IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.tab_screens_clear_filter)) } }
                     },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
@@ -213,7 +216,7 @@ fun DmListScreen(controller: AppController, version: Int, listState: LazyListSta
             if (rows.isEmpty() && !placeholder) {
                 item(key = "empty") {
                     Text(
-                        if (query.isNotBlank()) "一致する DM はありません" else "まだ DM はありません",
+                        if (query.isNotBlank()) stringResource(R.string.tab_screens_no_matching_dms) else stringResource(R.string.tab_screens_no_dms_yet),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
@@ -225,7 +228,7 @@ fun DmListScreen(controller: AppController, version: Int, listState: LazyListSta
         ExtendedFloatingActionButton(
             onClick = onNew,
             icon = { Icon(Icons.Default.Edit, contentDescription = null) },
-            text = { Text("新しいメッセージ") },
+            text = { Text(stringResource(R.string.common_new_message)) },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         )
     }
@@ -265,7 +268,7 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
     val preview = remember(version, channel) { previewLine(channel.channel, meId, store.users) }
     val second = when {
         preview.isNotEmpty() -> preview
-        others.size > 1 -> "${others.size + 1} 人"
+        others.size > 1 -> stringResource(R.string.common_people, others.size + 1)
         status != null && status.second.isNotBlank() -> status.second
         presence != null -> presenceLabel(presence)
         else -> null
@@ -312,17 +315,17 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
                     if (loud) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     Modifier.weight(1f), fontWeight = if (loud) FontWeight.SemiBold else FontWeight.Normal,
                 )
-                if (muted) Icon(Icons.Default.NotificationsOff, contentDescription = "通知オフ", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp).size(14.dp))
+                if (muted) Icon(Icons.Default.NotificationsOff, contentDescription = stringResource(R.string.common_notifications_off), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp).size(14.dp))
                 if (unread && badge > 0) {
                     Text(
                         badgeText(badge),
                         color = MaterialTheme.colorScheme.onError,
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(start = 6.dp).background(MaterialTheme.colorScheme.error, CircleShape).padding(horizontal = 7.dp, vertical = 2.dp)
-                            .semantics { contentDescription = "未読 $badge 件" },
+                            .semantics { contentDescription = L10n.str(R.string.common_unread_2, badge) },
                     )
                 } else if (unread) {
-                    Box(Modifier.padding(start = 6.dp).size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = "未読" })
+                    Box(Modifier.padding(start = 6.dp).size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = L10n.str(R.string.common_unread) })
                 }
             }
         }

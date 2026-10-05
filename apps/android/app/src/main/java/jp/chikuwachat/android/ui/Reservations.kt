@@ -46,6 +46,9 @@ import jp.chikuwachat.android.api.ReservationOut
 import jp.chikuwachat.android.api.ReservationTodo
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /**
  * M112 (docs/RESERVATIONS.md §6): the pure parts of 「予約」 — the booking choices, a day's hours, my reservations, the
@@ -66,8 +69,8 @@ object ReservationRules {
     fun dayLabel(day: LocalDate, now: Instant, zone: ZoneId): String {
         val diff = ChronoUnit.DAYS.between(now.atZone(zone).toLocalDate(), day)
         return when (diff) {
-            0L -> "今日"
-            1L -> "明日"
+            0L -> L10n.str(R.string.common_today)
+            1L -> L10n.str(R.string.reservations_tomorrow)
             else -> "${day.monthValue}/${day.dayOfMonth} (${WEEKDAYS[day.dayOfWeek.value - 1]})"
         }
     }
@@ -87,7 +90,7 @@ object ReservationRules {
         val end = time(endIso) ?: return ""
         val day = start.atZone(zone).toLocalDate()
         val prefix = if (day == now.atZone(zone).toLocalDate()) "" else dayLabel(day, now, zone) + " "
-        return "$prefix${hm(start, zone)}〜${hm(end, zone)}"
+        return L10n.str(R.string.reservations_fmt, prefix, hm(start, zone), hm(end, zone))
     }
 
     /** Bookings still counting (booked or on a seat). */
@@ -165,21 +168,21 @@ object ReservationRules {
 
     fun walkinText(row: ReservationOut, pool: PoolOut, now: Instant, zone: ZoneId): String {
         if (row.status == "waiting") return when (row.step) {
-            "assign" -> row.until?.let { "空きあり (〜${whenText(it, now, zone)} まで) · 担当者の割り当て待ち" } ?: "空きあり · 担当者の割り当て待ち"
-            "swap" -> if (row.ready) "まもなく担当者が割り当てます" else "前の人の保証時間の後に割り当てられます"
-            else -> "順番待ち ${row.position ?: "?"} 番目"
+            "assign" -> row.until?.let { L10n.str(R.string.reservations_available_until_waiting_for_an_operator, whenText(it, now, zone)) } ?: L10n.str(R.string.reservations_available_waiting_for_an_operator_to)
+            "swap" -> if (row.ready) L10n.str(R.string.reservations_an_operator_will_assign_it_shortly) else L10n.str(R.string.reservations_it_will_be_assigned_after_the)
+            else -> L10n.str(R.string.reservations_number_in_line, row.position ?: "?")
         }
-        if (row.status == "returning") return "返却済み · 担当者が外すのを待っています"
-        row.evictAt?.let { return "${whenText(it, now, zone)} 以降に外されます" }
-        return row.guaranteeUntil?.let { "利用中 (〜${whenText(it, now, zone)} まで保証)" } ?: "利用中"
+        if (row.status == "returning") return L10n.str(R.string.reservations_returned_waiting_for_an_operator_to)
+        row.evictAt?.let { return L10n.str(R.string.reservations_will_be_removed_after, whenText(it, now, zone)) }
+        return row.guaranteeUntil?.let { L10n.str(R.string.reservations_in_use_guaranteed_until, whenText(it, now, zone)) } ?: L10n.str(R.string.reservations_in_use)
     }
 
     fun bookingText(row: ReservationOut, now: Instant, zone: ZoneId): String {
         val s = span(row.startAt, row.endAt, now, zone)
         return when (row.status) {
-            "holding" -> "$s · 利用中"
-            "returning" -> "$s · 返却済み"
-            else -> if (time(row.startAt)?.let { it <= now } == true) "$s · 開始 (担当者の割り当て待ち)" else s
+            "holding" -> L10n.str(R.string.reservations_in_use_2, s)
+            "returning" -> L10n.str(R.string.reservations_returned, s)
+            else -> if (time(row.startAt)?.let { it <= now } == true) L10n.str(R.string.reservations_started_waiting_for_an_operator_to, s) else s
         }
     }
 
@@ -189,28 +192,28 @@ object ReservationRules {
     fun row(pool: PoolOut, id: String?): ReservationOut? =
         id?.let { pool.holders.firstOrNull { r -> r.id == it } ?: pool.waiting.firstOrNull { r -> r.id == it } ?: pool.bookings.firstOrNull { r -> r.id == it } }
 
-    private val REASONS = mapOf("free" to "空きあり", "returned" to "返却済み", "booking_ended" to "予約時間が終了", "guarantee_over" to "保証時間が終了")
+    private val REASONS = mapOf("free" to L10n.str(R.string.reservations_available), "returned" to L10n.str(R.string.reservations_returned_2), "booking_ended" to L10n.str(R.string.reservations_booking_ended), "guarantee_over" to L10n.str(R.string.reservations_guaranteed_time_ended))
 
     fun todoLine(todo: ReservationTodo, pool: PoolOut, name: (String) -> String, now: Instant, zone: ZoneId): String {
         fun who(id: String?): String {
-            val row = row(pool, id) ?: return "(不明)"
-            return row.email?.let { "${name(row.userId)} さん ($it)" } ?: "${name(row.userId)} さん"
+            val row = row(pool, id) ?: return L10n.str(R.string.reservations_unknown)
+            return row.email?.let { L10n.str(R.string.reservations_fmt_2, name(row.userId), it) } ?: L10n.str(R.string.reservations_fmt_3, name(row.userId))
         }
         val target = row(pool, todo.assignId)
-        val booked = if (target?.kind == "booking") " · 予約 ${span(target.startAt, target.endAt, now, zone)}" else ""
-        val head = if (todo.upcoming) "${whenText(todo.dueAt, now, zone)} から: " else ""
+        val booked = if (target?.kind == "booking") L10n.str(R.string.reservations_booking, span(target.startAt, target.endAt, now, zone)) else ""
+        val head = if (todo.upcoming) L10n.str(R.string.reservations_from, whenText(todo.dueAt, now, zone)) else ""
         val reason = REASONS[todo.reason] ?: ""
         return when (todo.action) {
-            "assign" -> "$head${who(todo.assignId)} に割り当てる$booked"
-            "swap" -> "$head${who(todo.removeId)} を外して ${who(todo.assignId)} に割り当てる ($reason)$booked"
-            else -> "$head${who(todo.removeId)} を外す ($reason)"
+            "assign" -> L10n.str(R.string.reservations_assign_to, head, who(todo.assignId), booked)
+            "swap" -> L10n.str(R.string.reservations_remove_and_assign_to, head, who(todo.removeId), who(todo.assignId), reason, booked)
+            else -> L10n.str(R.string.reservations_remove, head, who(todo.removeId), reason)
         }
     }
 
     fun todoButton(todo: ReservationTodo): String = when (todo.action) {
-        "assign" -> "割り当てた"
-        "remove" -> "外した"
-        else -> "入れ替えた"
+        "assign" -> L10n.str(R.string.reservations_assigned)
+        "remove" -> L10n.str(R.string.reservations_removed)
+        else -> L10n.str(R.string.reservations_swapped)
     }
 }
 
@@ -234,13 +237,13 @@ fun ReservationsPane(controller: AppController, version: Int) {
         busy = true
         scope.launch { try { call() } finally { busy = false } }
     }
-    val name: (String) -> String = { id -> store.users[id]?.displayName ?: "(不明)" }
+    val name: (String) -> String = { id -> store.users[id]?.displayName ?: L10n.str(R.string.reservations_unknown) }
     if (pools == null) {
-        Text("読み込み中…", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.common_loading), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
     if (pools.isEmpty()) {
-        Text("予約の枠はありません (枠は管理者が Desktop / Web で作ります)", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.reservations_no_reservation_slots_an_administrator), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
@@ -249,14 +252,14 @@ fun ReservationsPane(controller: AppController, version: Int) {
             item(key = "h:" + pool.id) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text(
-                        "🎫 ${pool.name}" + if (!pool.enabled) " (停止中)" else "",
+                        "🎫 ${pool.name}" + if (!pool.enabled) stringResource(R.string.reservations_paused) else "",
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() },
                     )
-                    Text("${pool.capacity} 枠 · 予約は 1 回 ${pool.maxHours} 時間まで、2 週間先まで、1 人 2 件まで", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.reservations_slots_up_to_hours_per_booking, pool.capacity, pool.maxHours), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { booking = pool }, enabled = pool.enabled && !busy && mine.bookings.size < 2 && !controller.isGuest) { Text("予約する") }
+                        Button(onClick = { booking = pool }, enabled = pool.enabled && !busy && mine.bookings.size < 2 && !controller.isGuest) { Text(stringResource(R.string.reservations_book)) }
                         if (mine.walkin == null) {
-                            OutlinedButton(onClick = { run { controller.reservePool(pool.id) } }, enabled = pool.enabled && !busy && !controller.isGuest) { Text("今すぐ (順番待ち)") }
+                            OutlinedButton(onClick = { run { controller.reservePool(pool.id) } }, enabled = pool.enabled && !busy && !controller.isGuest) { Text(stringResource(R.string.reservations_now_join_the_line)) }
                         }
                     }
                 }
@@ -265,36 +268,36 @@ fun ReservationsPane(controller: AppController, version: Int) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(ReservationRules.bookingText(row, now, zone), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     if (row.status == "booked" || row.status == "holding") {
-                        TextButton(onClick = { run { controller.extendReservation(row.id) } }, enabled = row.canExtend && !busy) { Text("延長") }
+                        TextButton(onClick = { run { controller.extendReservation(row.id) } }, enabled = row.canExtend && !busy) { Text(stringResource(R.string.reservations_extend)) }
                     }
                     if (row.status == "booked") {
-                        TextButton(onClick = { confirm = Confirm("この予約を取り消しますか？", "取り消す") { controller.reservationAction(row.id, "cancel") } }, enabled = !busy) { Text("取り消す") }
+                        TextButton(onClick = { confirm = Confirm(L10n.str(R.string.reservations_cancel_this_booking), L10n.str(R.string.reservations_cancel_booking)) { controller.reservationAction(row.id, "cancel") } }, enabled = !busy) { Text(stringResource(R.string.reservations_cancel_booking)) }
                     } else if (row.status == "holding") {
-                        TextButton(onClick = { confirm = Confirm("使い終わりましたか？ 担当者に外してもらいます。", "返却する") { controller.reservationAction(row.id, "return") } }, enabled = !busy) { Text("返却する") }
+                        TextButton(onClick = { confirm = Confirm(L10n.str(R.string.reservations_done_using_it_an_operator_will), L10n.str(R.string.reservations_return)) { controller.reservationAction(row.id, "return") } }, enabled = !busy) { Text(stringResource(R.string.reservations_return)) }
                     }
                 }
             }
             mine.walkin?.let { row ->
                 item(key = "w:" + row.id) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("今すぐ: " + ReservationRules.walkinText(row, pool, now, zone), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        if (row.status == "waiting") TextButton(onClick = { run { controller.reservationAction(row.id, "cancel") } }, enabled = !busy) { Text("取り消す") }
+                        Text(stringResource(R.string.reservations_now) + ReservationRules.walkinText(row, pool, now, zone), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        if (row.status == "waiting") TextButton(onClick = { run { controller.reservationAction(row.id, "cancel") } }, enabled = !busy) { Text(stringResource(R.string.reservations_cancel_booking)) }
                         if (row.status == "holding") {
-                            TextButton(onClick = { confirm = Confirm("使い終わりましたか？ 担当者に外してもらいます。", "返却する") { controller.reservationAction(row.id, "return") } }, enabled = !busy) { Text("返却する") }
+                            TextButton(onClick = { confirm = Confirm(L10n.str(R.string.reservations_done_using_it_an_operator_will), L10n.str(R.string.reservations_return)) { controller.reservationAction(row.id, "return") } }, enabled = !busy) { Text(stringResource(R.string.reservations_return)) }
                         }
                     }
                 }
             }
             if (pool.canOperate) {
                 item(key = "t:" + pool.id) {
-                    Text("担当者の作業", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
-                    if (pool.todos.isEmpty()) Text("今はありません", modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.reservations_operator_tasks), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
+                    if (pool.todos.isEmpty()) Text(stringResource(R.string.reservations_nothing_right_now), modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 items(pool.todos, key = { "todo:" + pool.id + it.key }) { todo ->
                     val early = todo.upcoming && (ReservationRules.row(pool, todo.assignId)?.startAt?.let { runCatching { Instant.parse(it) }.getOrNull() }?.let { Duration.between(now, it).toMinutes() > 10 } ?: false)
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            if (todo.upcoming) Text("まもなく", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            if (todo.upcoming) Text(stringResource(R.string.reservations_soon), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                             SelectionContainer { Text(ReservationRules.todoLine(todo, pool, name, now, zone), style = MaterialTheme.typography.bodyMedium) }
                         }
                         Spacer(Modifier.width(8.dp))
@@ -304,7 +307,7 @@ fun ReservationsPane(controller: AppController, version: Int) {
                                 "remove" -> todo.removeId?.let { id -> run { controller.reservationAction(id, "remove") } }
                                 else -> {
                                     val out = todo.removeId; val into = todo.assignId
-                                    if (out != null && into != null) confirm = Confirm("管理画面で入れ替えましたか？", "入れ替えた") { controller.swapReservations(pool.id, out, into) }
+                                    if (out != null && into != null) confirm = Confirm(L10n.str(R.string.reservations_did_you_swap_them_in_the), L10n.str(R.string.reservations_swapped)) { controller.swapReservations(pool.id, out, into) }
                                 }
                             }
                         }, enabled = !busy && !early) { Text(ReservationRules.todoButton(todo)) }
@@ -314,7 +317,7 @@ fun ReservationsPane(controller: AppController, version: Int) {
             item(key = "d:" + pool.id) {
                 val day = days.value[pool.id] ?: now.atZone(zone).toLocalDate()
                 Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                    Text("${pool.name} の空き", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, bottom = 4.dp))
+                    Text(stringResource(R.string.reservations_availability, pool.name), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, bottom = 4.dp))
                     Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         ReservationRules.days(now, pool.horizonDays, zone).forEach { d ->
                             FilterChip(selected = d == day, onClick = { days.value = days.value + (pool.id to d) }, label = { Text(ReservationRules.dayLabel(d, now, zone)) })
@@ -328,7 +331,7 @@ fun ReservationsPane(controller: AppController, version: Int) {
                                 "${hour.rows.size}/${pool.capacity}", Modifier.width(40.dp), style = MaterialTheme.typography.labelMedium,
                                 color = if (hour.rows.size >= pool.capacity) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Text(hour.rows.joinToString("、") { name(it.userId) + if (it.kind == "walkin") " (今すぐ)" else "" }, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                            Text(hour.rows.joinToString(stringResource(R.string.common_fmt_6)) { name(it.userId) + if (it.kind == "walkin") L10n.str(R.string.reservations_now_2) else "" }, style = MaterialTheme.typography.bodySmall, maxLines = 2)
                         }
                     }
                     HorizontalDivider(Modifier.padding(top = 12.dp))
@@ -341,7 +344,7 @@ fun ReservationsPane(controller: AppController, version: Int) {
             onDismissRequest = { confirm = null },
             text = { Text(which.text) },
             confirmButton = { TextButton(onClick = { confirm = null; run { which.run() } }) { Text(which.label) } },
-            dismissButton = { TextButton(onClick = { confirm = null }) { Text("キャンセル") } },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     booking?.let { pool -> BookingDialog(controller, pool, now, zone, onDismiss = { booking = null }) }
@@ -362,7 +365,7 @@ private fun BookingDialog(controller: AppController, pool: PoolOut, now: Instant
     val chosenHours = if (hours in durations) hours else durations.lastOrNull() ?: 1
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("${pool.name} を予約") },
+        title = { Text(stringResource(R.string.reservations_book_2, pool.name)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -370,19 +373,19 @@ private fun BookingDialog(controller: AppController, pool: PoolOut, now: Instant
                         FilterChip(selected = d == day, onClick = { day = d; start = null }, label = { Text(ReservationRules.dayLabel(d, now, zone)) })
                     }
                 }
-                Text("開始", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.common_start), style = MaterialTheme.typography.labelMedium)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     starts.forEach { choice ->
                         FilterChip(
                             selected = choice.start == chosenStart, enabled = !choice.full, onClick = { start = choice.start },
-                            label = { Text(ReservationRules.hm(choice.start, zone) + if (choice.full) " (満)" else "") },
+                            label = { Text(ReservationRules.hm(choice.start, zone) + if (choice.full) stringResource(R.string.reservations_full) else "") },
                         )
                     }
                 }
-                if (starts.none { !it.full }) Text("この日は空いている時間がありません", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("時間", style = MaterialTheme.typography.labelMedium)
+                if (starts.none { !it.full }) Text(stringResource(R.string.reservations_no_free_times_on_this_day), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.reservations_duration), style = MaterialTheme.typography.labelMedium)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    durations.forEach { h -> FilterChip(selected = h == chosenHours, onClick = { hours = h }, label = { Text("$h 時間") }) }
+                    durations.forEach { h -> FilterChip(selected = h == chosenHours, onClick = { hours = h }, label = { Text(stringResource(R.string.common_h, h)) }) }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
@@ -396,11 +399,11 @@ private fun BookingDialog(controller: AppController, pool: PoolOut, now: Instant
                     scope.launch {
                         val out = controller.bookReservation(pool.id, at, chosenHours)
                         busy = false
-                        if (out != null) onDismiss() else error = controller.error ?: "予約できませんでした"
+                        if (out != null) onDismiss() else error = controller.error ?: L10n.str(R.string.reservations_couldnt_book)
                     }
                 },
-            ) { Text("予約する") }
+            ) { Text(stringResource(R.string.reservations_book)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

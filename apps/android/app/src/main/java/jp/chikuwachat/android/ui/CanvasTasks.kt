@@ -5,6 +5,8 @@ import jp.chikuwachat.android.api.GroupOut
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.ChannelState
 import java.time.LocalDate
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M73 (CANVAS.md §18.3 / §18.5): 「タスクにする」 on a canvas's checklist item — what the task form starts with; a port of
@@ -72,8 +74,8 @@ object CanvasTasks {
      * with the channel for a channel's canvas (CANVAS.md §18.1).
      */
     fun mentionText(mention: CanvasMentioned, channel: ChannelState?, nameOf: (String) -> String?): String {
-        val who = nameOf(mention.byUserId) ?: "メンバー"
+        val who = nameOf(mention.byUserId) ?: L10n.str(R.string.common_member)
         val where = channel?.channel?.takeIf { TaskRules.hasBoard(it) && !it.name.isNullOrEmpty() }?.let { " (#${it.name})" } ?: ""
-        return "$who が「${mention.title}」であなたをメンションしました$where"
+        return L10n.str(R.string.canvas_tasks_mentioned_you_in, who, mention.title, where)
     }
 }

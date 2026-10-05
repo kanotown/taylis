@@ -59,6 +59,9 @@ import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 fun formatSize(bytes: Long): String = when {
     bytes >= 1_048_576 -> "%.1f MB".format(bytes / 1_048_576.0)
@@ -136,7 +139,7 @@ private fun VideoAttachment(attachment: AttachmentOut, controller: AppController
         val box = VideoTiles.box(attachment)
         Box(
             Modifier.size(box.width.dp, box.height.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
-                .clickable(onClickLabel = "再生") { viewing = true }
+                .clickable(onClickLabel = stringResource(R.string.attachments_play)) { viewing = true }
                 .semantics { contentDescription = VideoTiles.description(attachment) },
             contentAlignment = Alignment.Center,
         ) {
@@ -206,7 +209,7 @@ fun PendingAttachments(items: List<AttachmentOut>, controller: AppController, up
         items(items, key = { it.id }) { item -> PendingTile(item, controller) { onRemove(item) } }
         items(uploading) {
             Box(Modifier.size(PENDING_TILE).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(Modifier.size(20.dp).semantics { contentDescription = "アップロード中" }, strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.size(20.dp).semantics { contentDescription = L10n.str(R.string.attachments_uploading) }, strokeWidth = 2.dp)
             }
         }
     }
@@ -230,7 +233,7 @@ private fun PendingTile(item: AttachmentOut, controller: AppController, onRemove
     Box(Modifier.padding(top = 6.dp, end = 6.dp)) {
         Box(
             Modifier.size(PENDING_TILE).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)
-                .clickable(onClickLabel = "プレビュー") { if (item.isImage || video) viewing = true else controller.openAttachment(item) }
+                .clickable(onClickLabel = stringResource(R.string.common_preview)) { if (item.isImage || video) viewing = true else controller.openAttachment(item) }
                 .semantics { contentDescription = if (video) VideoTiles.description(item) else "${if (item.isImage) "写真" else "ファイル"} ${item.filename}" },
             contentAlignment = Alignment.Center,
         ) {
@@ -255,7 +258,7 @@ private fun PendingTile(item: AttachmentOut, controller: AppController, onRemove
         Box(
             Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp)
                 .touchTarget { source ->
-                    Modifier.semantics { contentDescription = "${item.filename} を取り消す" }.clickable(interactionSource = source, indication = null, onClick = onRemove)
+                    Modifier.semantics { contentDescription = L10n.str(R.string.attachments_remove, item.filename) }.clickable(interactionSource = source, indication = null, onClick = onRemove)
                 }
                 .size(22.dp).clip(CircleShape).background(MaterialTheme.colorScheme.inverseSurface),
             contentAlignment = Alignment.Center,

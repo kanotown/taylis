@@ -82,6 +82,9 @@ import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /*
  * M58 (CANVAS.md §4.9, the desktop's M44 CanvasHistory.tsx): a canvas's history, full screen. The versions newest first
@@ -93,13 +96,13 @@ import kotlinx.coroutines.withContext
  */
 
 private val KIND_LABELS = mapOf(
-    "create" to "作成",
-    "save" to "編集",
-    "merge" to "同時編集をまとめた版",
-    "side" to "送信した版",
-    "restore" to "復元",
-    "erased" to "本文を消去",
-    "task" to "タスクと連動", // M83 (CANVAS.md §22): the server ticked an item, or tied it to a task
+    "create" to L10n.str(R.string.common_create),
+    "save" to L10n.str(R.string.common_edit),
+    "merge" to L10n.str(R.string.canvas_history_merged_simultaneous_edits),
+    "side" to L10n.str(R.string.canvas_history_version_you_sent),
+    "restore" to L10n.str(R.string.canvas_history_restore),
+    "erased" to L10n.str(R.string.canvas_history_erase_text),
+    "task" to L10n.str(R.string.canvas_history_linked_to_tasks), // M83 (CANVAS.md §22): the server ticked an item, or tied it to a task
 )
 
 /** The kind of a version as the history names it. */
@@ -192,12 +195,12 @@ fun CanvasHistoryDialog(controller: AppController, canvas: CanvasMeta, rights: C
                 Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (!wide && selected != null) {
-                            IconButton(onClick = { selectedId = null }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "版の一覧に戻る") }
+                            IconButton(onClick = { selectedId = null }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.canvas_history_back_to_versions)) }
                         } else {
-                            IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, contentDescription = "閉じる") }
+                            IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.common_close)) }
                         }
                         Column(Modifier.weight(1f)) {
-                            Text("履歴", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+                            Text(stringResource(R.string.common_history), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
                             Text(canvas.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
@@ -221,7 +224,7 @@ fun CanvasHistoryDialog(controller: AppController, canvas: CanvasMeta, rights: C
                                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Outlined.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text("版を選んでください", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(stringResource(R.string.canvas_history_choose_a_version), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 } else {
                                     RevisionDetail(
@@ -243,8 +246,8 @@ fun CanvasHistoryDialog(controller: AppController, canvas: CanvasMeta, rights: C
         confirmRestore?.let { revision ->
             AlertDialog(
                 onDismissRequest = { confirmRestore = null },
-                title = { Text("この版に戻しますか？") },
-                text = { Text("${Timeline.fullLabel(revision.createdAt)} の版の本文を、新しい版として保存します。今の本文も履歴に残ります。") },
+                title = { Text(stringResource(R.string.canvas_history_restore_this_version)) },
+                text = { Text(stringResource(R.string.canvas_history_the_text_of_the_version_from, Timeline.fullLabel(revision.createdAt))) },
                 confirmButton = {
                     Button(enabled = !busy, onClick = {
                         busy = true
@@ -253,21 +256,21 @@ fun CanvasHistoryDialog(controller: AppController, canvas: CanvasMeta, rights: C
                             busy = false
                             confirmRestore = null
                             if (restored != null) {
-                                controller.notice = "この版を復元しました"
+                                controller.notice = L10n.str(R.string.canvas_history_version_restored)
                                 selectedId = restored.headRevId
                                 view = VIEW_PREVIOUS
                             }
                         }
-                    }) { Text("この版に戻す") }
+                    }) { Text(stringResource(R.string.canvas_history_restore_this_version_2)) }
                 },
-                dismissButton = { TextButton(onClick = { confirmRestore = null }) { Text("キャンセル") } },
+                dismissButton = { TextButton(onClick = { confirmRestore = null }) { Text(stringResource(R.string.common_cancel)) } },
             )
         }
         confirmErase?.let { revision ->
             AlertDialog(
                 onDismissRequest = { confirmErase = null },
-                title = { Text("この版の本文を消去しますか？") },
-                text = { Text("誤って書いた秘密などを履歴から消します。消した本文は戻せません。消去したことは監査ログに残ります。") },
+                title = { Text(stringResource(R.string.canvas_history_erase_this_versions_text)) },
+                text = { Text(stringResource(R.string.canvas_history_removes_secrets_written_by_mistake_from)) },
                 confirmButton = {
                     TextButton(enabled = !busy, onClick = {
                         busy = true
@@ -280,9 +283,9 @@ fun CanvasHistoryDialog(controller: AppController, canvas: CanvasMeta, rights: C
                                 bodies.remove(revision.id)
                             }
                         }
-                    }) { Text("消去する", color = MaterialTheme.colorScheme.error) }
+                    }) { Text(stringResource(R.string.canvas_history_erase), color = MaterialTheme.colorScheme.error) }
                 },
-                dismissButton = { TextButton(onClick = { confirmErase = null }) { Text("キャンセル") } },
+                dismissButton = { TextButton(onClick = { confirmErase = null }) { Text(stringResource(R.string.common_cancel)) } },
             )
         }
         labelling?.let { revision ->
@@ -308,25 +311,25 @@ private fun RevisionList(
 ) {
     val store = controller.store
     val version by store.version.collectAsState()
-    LazyColumn(modifier.semantics { contentDescription = "版の一覧" }) {
+    LazyColumn(modifier.semantics { contentDescription = L10n.str(R.string.canvas_history_versions) }) {
         when {
             failed && items == null -> item(key = "failed") {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("読み込めませんでした。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = onRetry) { Text("再読み込み") }
+                    Text(stringResource(R.string.common_couldnt_load_2), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = onRetry) { Text(stringResource(R.string.common_reload)) }
                 }
             }
             items == null -> item(key = "loading") {
                 Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
             }
-            items.isEmpty() -> item(key = "empty") { Text("版はありません。", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+            items.isEmpty() -> item(key = "empty") { Text(stringResource(R.string.canvas_history_no_versions), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
             else -> items(items, key = { it.id }) { revision ->
-                val author = remember(version, revision.authorId) { store.users[revision.authorId]?.displayName ?: "メンバー" }
+                val author = remember(version, revision.authorId) { store.users[revision.authorId]?.displayName ?: L10n.str(R.string.common_member) }
                 val current = revision.id == headId
                 Row(
                     Modifier.fillMaxWidth()
                         .background(if (revision.id == selectedId) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-                        .clickable(onClickLabel = "この版を見る") { onSelect(revision) }
+                        .clickable(onClickLabel = stringResource(R.string.canvas_history_view_this_version)) { onSelect(revision) }
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
                     Avatar(revision.authorId, author, size = 28.dp)
@@ -337,7 +340,7 @@ private fun RevisionList(
                             if (current) {
                                 Spacer(Modifier.width(6.dp))
                                 Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                                    Text("現在の版", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
+                                    Text(stringResource(R.string.common_current_version), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
                                 }
                             }
                         }
@@ -355,7 +358,7 @@ private fun RevisionList(
                                             withStyle(SpanStyle(color = REMOVED)) { append("−${revision.linesRemoved}") }
                                         },
                                         style = MaterialTheme.typography.labelSmall,
-                                        modifier = Modifier.semantics { contentDescription = "${revision.linesAdded} 行追加、${revision.linesRemoved} 行削除" },
+                                        modifier = Modifier.semantics { contentDescription = L10n.str(R.string.canvas_history_lines_added_lines_removed, revision.linesAdded, revision.linesRemoved) },
                                     )
                                 }
                                 revision.label?.let { label ->
@@ -375,7 +378,7 @@ private fun RevisionList(
             }
         }
         if (hasMore) item(key = "more") {
-            Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { OutlinedButton(onClick = onMore) { Text("さらに読み込む") } }
+            Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { OutlinedButton(onClick = onMore) { Text(stringResource(R.string.common_load_more)) } }
         }
     }
 }
@@ -389,7 +392,7 @@ private fun RevisionDetail(
     val erased = revision.kind == "erased"
     Column(Modifier.fillMaxSize()) {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-            listOf(VIEW_PREVIOUS to "前の版との差分", VIEW_CURRENT to "現在の版との差分", VIEW_BODY to "この版の本文").forEachIndexed { index, (value, label) ->
+            listOf(VIEW_PREVIOUS to stringResource(R.string.canvas_history_diff_from_previous), VIEW_CURRENT to stringResource(R.string.canvas_history_diff_from_current), VIEW_BODY to stringResource(R.string.canvas_history_this_versions_text)).forEachIndexed { index, (value, label) ->
                 SegmentedButton(selected = view == value, onClick = { onView(value) }, shape = SegmentedButtonDefaults.itemShape(index, 3), icon = {}) {
                     Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 }
@@ -399,25 +402,25 @@ private fun RevisionDetail(
             FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (rights.edit) OutlinedButton(onClick = onLabel, enabled = !busy) {
                     Icon(Icons.AutoMirrored.Outlined.Label, null, modifier = Modifier.size(16.dp))
-                    Text(if (revision.label != null) " 名前を変更" else " 名前を付ける")
+                    Text(if (revision.label != null) stringResource(R.string.canvas_history_rename) else stringResource(R.string.canvas_history_name_it))
                 }
                 if (rights.erase && !current) OutlinedButton(onClick = onErase, enabled = !busy) {
                     Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
-                    Text(" 本文を消去", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.canvas_history_erase_text_2), color = MaterialTheme.colorScheme.error)
                 }
                 if (rights.edit && !current) Button(onClick = onRestore, enabled = !busy) {
                     Icon(Icons.Outlined.Restore, null, modifier = Modifier.size(16.dp))
-                    Text(" この版に戻す")
+                    Text(stringResource(R.string.canvas_history_restore_this_version_3))
                 }
             }
         }
         HorizontalDivider(Modifier.padding(top = 8.dp))
         val muted = MaterialTheme.colorScheme.onSurfaceVariant
         when {
-            erased -> Text("この版の本文は消去されています。", color = muted, modifier = Modifier.padding(16.dp))
-            view == VIEW_CURRENT && current -> Text("これが現在の版です。", color = muted, modifier = Modifier.padding(16.dp))
+            erased -> Text(stringResource(R.string.canvas_history_this_versions_text_has_been_erased), color = muted, modifier = Modifier.padding(16.dp))
+            view == VIEW_CURRENT && current -> Text(stringResource(R.string.canvas_history_this_is_the_current_version), color = muted, modifier = Modifier.padding(16.dp))
             view == VIEW_BODY -> if (body == null) Loading() else RevisionBody(controller, body)
-            rows == null -> if (otherErased) Text("比べる版の本文は消去されています。", color = muted, modifier = Modifier.padding(16.dp)) else Loading()
+            rows == null -> if (otherErased) Text(stringResource(R.string.canvas_history_the_text_of_the_version_being), color = muted, modifier = Modifier.padding(16.dp)) else Loading()
             else -> DiffView(rows)
         }
     }
@@ -435,8 +438,8 @@ private fun RevisionBody(controller: AppController, body: String) {
     val version by store.version.collectAsState()
     val inline = bodyInline(store.users, customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations, groups = store.groups, version = version)
     val blocks = remember(body) { parseBlocks(body, canvas = true) }
-    LazyColumn(Modifier.fillMaxSize().semantics { contentDescription = "この版の本文" }, contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)) {
-        if (body.isBlank()) item { Text("まだ何も書かれていません。", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    LazyColumn(Modifier.fillMaxSize().semantics { contentDescription = L10n.str(R.string.canvas_history_this_versions_text) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)) {
+        if (body.isBlank()) item { Text(stringResource(R.string.common_nothing_written_yet), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         itemsIndexed(blocks) { _, block -> Box(Modifier.padding(vertical = 1.dp)) { CanvasBlockView(block, inline, controller, onToggle = null, onEditSection = null) } }
     }
 }
@@ -448,16 +451,16 @@ private fun DiffView(rows: List<CanvasDiff.Row>) {
     val (added, removed) = remember(lines) { CanvasDiff.counts(lines) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     if (added == 0 && removed == 0) {
-        Text("違いはありません。", color = muted, modifier = Modifier.padding(16.dp))
+        Text(stringResource(R.string.canvas_history_no_differences), color = muted, modifier = Modifier.padding(16.dp))
         return
     }
-    LazyColumn(Modifier.fillMaxSize().semantics { contentDescription = "差分" }, contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)) {
+    LazyColumn(Modifier.fillMaxSize().semantics { contentDescription = L10n.str(R.string.canvas_history_diff) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)) {
         item(key = "counts") {
             Text(
                 buildAnnotatedString {
-                    withStyle(SpanStyle(color = ADDED)) { append("+$added 行") }
+                    withStyle(SpanStyle(color = ADDED)) { append(stringResource(R.string.canvas_history_lines, added)) }
                     append(" · ")
-                    withStyle(SpanStyle(color = REMOVED)) { append("−$removed 行") }
+                    withStyle(SpanStyle(color = REMOVED)) { append(stringResource(R.string.canvas_history_lines_2, removed)) }
                 },
                 style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
@@ -465,7 +468,7 @@ private fun DiffView(rows: List<CanvasDiff.Row>) {
         itemsIndexed(rows) { _, row ->
             when (row) {
                 is CanvasDiff.Row.Skip -> Text(
-                    "… ${row.count} 行 …", style = MaterialTheme.typography.labelSmall, color = muted,
+                    stringResource(R.string.canvas_history_lines_3, row.count), style = MaterialTheme.typography.labelSmall, color = muted,
                     modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)).padding(horizontal = 16.dp, vertical = 2.dp),
                 )
                 is CanvasDiff.Row.Text -> DiffLineRow(row.line)
@@ -498,7 +501,7 @@ private fun DiffLineRow(line: CanvasDiff.Line) {
     }
     Row(
         Modifier.fillMaxWidth().background(background).padding(horizontal = 8.dp, vertical = 1.dp)
-            .semantics { contentDescription = (if (line.kind == CanvasDiff.Kind.ADD) "追加: " else if (line.kind == CanvasDiff.Kind.DEL) "削除: " else "") + line.text },
+            .semantics { contentDescription = (if (line.kind == CanvasDiff.Kind.ADD) L10n.str(R.string.canvas_history_added) else if (line.kind == CanvasDiff.Kind.DEL) L10n.str(R.string.common_removed) else "") + line.text },
     ) {
         Text(sign, color = tone, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(16.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -511,19 +514,19 @@ private fun LabelDialog(revision: CanvasRevisionMeta, busy: Boolean, onDismiss: 
     var label by rememberSaveable(revision.id) { mutableStateOf(revision.label ?: "") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("版に名前を付ける") },
+        title = { Text(stringResource(R.string.canvas_history_name_this_version)) },
         text = {
             Column {
-                Text("「提出版」「ゼミ発表前」のように名前を付けた版は、古くなっても整理されずに残ります。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.canvas_history_named_versions_such_as_submitted_or), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.size(8.dp))
-                OutlinedTextField(label, { label = it.take(80) }, singleLine = true, placeholder = { Text("提出版") }, label = { Text("版の名前") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(label, { label = it.take(80) }, singleLine = true, placeholder = { Text(stringResource(R.string.canvas_history_submitted)) }, label = { Text(stringResource(R.string.canvas_history_version_name)) }, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)) {
-                if (revision.label != null) TextButton(enabled = !busy, onClick = { onSave(null) }) { Text("名前を外す") }
-                TextButton(onClick = onDismiss) { Text("キャンセル") }
-                TextButton(enabled = !busy && label.isNotBlank(), onClick = { onSave(label.trim()) }) { Text("保存") }
+                if (revision.label != null) TextButton(enabled = !busy, onClick = { onSave(null) }) { Text(stringResource(R.string.canvas_history_remove_name)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+                TextButton(enabled = !busy && label.isNotBlank(), onClick = { onSave(label.trim()) }) { Text(stringResource(R.string.common_save)) }
             }
         },
     )

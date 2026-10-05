@@ -1,6 +1,8 @@
 package jp.chikuwachat.android.ui
 
 import jp.chikuwachat.android.api.InviteLabPreview
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** Invite links (M12h): `<server>/invite/<token>`; the token is 20-128 URL-safe characters. */
 object Invite {
@@ -31,20 +33,20 @@ object Invite {
         }
         val who = listOfNotNull(
             affiliation?.let { if (step != null) "$it ($step)" else it },
-            lab.supervisorName?.ifBlank { null }?.let { "指導教員 $it" },
+            lab.supervisorName?.ifBlank { null }?.let { L10n.str(R.string.invite_supervisor, it) },
         )
-        val roster = if (who.isEmpty()) "研究室の名簿に載ります。" else "研究室の名簿に ${who.joinToString("・")} として載ります。"
-        return if (lab.times) roster + "times を作ります。" else roster
+        val roster = if (who.isEmpty()) L10n.str(R.string.invite_you_will_be_listed_in_the) else "研究室の名簿に ${who.joinToString("・")} として載ります。"
+        return if (lab.times) roster + L10n.str(R.string.invite_a_times_channel_will_be_created) else roster
     }
 
     /** Invite failures in words; null for anything that is not invite specific. */
     fun errorText(code: String): String? = when (code) {
-        "invite_not_found" -> "この招待リンクは無効です"
-        "invite_expired" -> "この招待リンクは期限切れです"
-        "invite_exhausted" -> "この招待リンクはすでに使われています"
-        "invite_revoked" -> "この招待リンクは取り消されています"
-        "username_taken" -> "このユーザー名はすでに使われています"
-        "validation_error" -> "入力内容を確認してください"
+        "invite_not_found" -> L10n.str(R.string.invite_this_invite_link_is_not_valid)
+        "invite_expired" -> L10n.str(R.string.invite_this_invite_link_has_expired)
+        "invite_exhausted" -> L10n.str(R.string.invite_this_invite_link_has_already_been)
+        "invite_revoked" -> L10n.str(R.string.invite_this_invite_link_has_been_revoked)
+        "username_taken" -> L10n.str(R.string.invite_this_username_is_already_taken)
+        "validation_error" -> L10n.str(R.string.invite_check_what_you_entered)
         else -> null
     }
 }

@@ -5,6 +5,8 @@ import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.MessageState
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** L4 (M31): asking those who have not acknowledged a message (DATA_MODEL.md reminders, 確認のお願い). */
 object AckReminders {
@@ -13,7 +15,7 @@ object AckReminders {
         me != null && message.ackRequested && pendingCount > 0 && (me.id == message.senderId || me.role == "admin")
 
     /** The notice after 「未確認の人にリマインド」: 0 means everyone pending already has an open request. */
-    fun notice(reminded: Int): String = if (reminded == 0) "リマインド済みの人だけです" else "$reminded 人にリマインドしました"
+    fun notice(reminded: Int): String = if (reminded == 0) L10n.str(R.string.owners_everyone_has_already_been_reminded) else L10n.plural(R.plurals.owners_reminded_person_reminded_people, reminded, reminded)
 
     /** What 「未確認の人にリマインド」 did, as the line under the button: the notice, or the error text (`failed`). */
     data class Outcome(val text: String, val failed: Boolean)
@@ -38,7 +40,7 @@ object ChannelOwners {
         }
     }
 
-    fun actionLabel(action: String): String = if (action == "owner") "オーナーにする" else "オーナーから外す"
+    fun actionLabel(action: String): String = if (action == "owner") L10n.str(R.string.owners_make_owner) else L10n.str(R.string.owners_remove_as_owner)
 
     /**
      * 「非公開チャンネルに変換」 for owners and admins of a public channel; 「公開チャンネルに変換」 only for an admin who is a

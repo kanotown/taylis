@@ -87,6 +87,9 @@ import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.CanvasEditors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /*
  * M46: a conversation's 「キャンバス」 tab on Android (CANVAS.md §4.1 / §5), matching the desktop's M43 screen: its
@@ -137,16 +140,16 @@ fun CanvasPane(controller: AppController, channel: ChannelState, version: Int, c
     }
 
     when {
-        hub == null || !hub.available -> CanvasEmpty("キャンバスを使えません", "サーバがキャンバスに対応していません。")
+        hub == null || !hub.available -> CanvasEmpty(stringResource(R.string.canvas_pane_canvases_unavailable), stringResource(R.string.canvas_pane_the_server_doesnt_support_canvases))
         list == null && selectedId == null && listError != null -> CanvasLoadFailed(controller, listError) { scope.launch { hub.loadList(channel.id) } }
-        list == null && selectedId == null -> CanvasEmpty("読み込み中…", null, loading = true)
+        list == null && selectedId == null -> CanvasEmpty(stringResource(R.string.common_loading), null, loading = true)
         selectedId == null -> CanvasEmpty(
-            "この会話にはまだキャンバスがありません",
-            "議事録・週報・チェックリストなど、会話のメンバーで一緒に書く文書です。",
+            stringResource(R.string.canvas_pane_this_conversation_has_no_canvas_yet),
+            stringResource(R.string.canvas_pane_documents_the_conversations_members),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (createRights.create) Button(onClick = { dialog = "new" }) { Icon(Icons.Outlined.Add, null); Text(" キャンバスを作成") }
-                OutlinedButton(onClick = { dialog = "trash" }) { Icon(Icons.Outlined.Delete, null); Text(" ゴミ箱") }
+                if (createRights.create) Button(onClick = { dialog = "new" }) { Icon(Icons.Outlined.Add, null); Text(stringResource(R.string.canvas_pane_create_canvas)) }
+                OutlinedButton(onClick = { dialog = "trash" }) { Icon(Icons.Outlined.Delete, null); Text(stringResource(R.string.canvas_pane_trash)) }
             }
         }
         else -> key(selectedId) {
@@ -177,11 +180,11 @@ private fun CanvasEmpty(title: String, text: String?, loading: Boolean = false, 
 @Composable
 private fun CanvasLoadFailed(controller: AppController, error: Throwable, onRetry: () -> Unit) {
     if (CanvasHub.serverLacksCanvases(error)) {
-        CanvasEmpty("このサーバはまだキャンバスに対応していません", "サーバの更新後に使えるようになります。")
+        CanvasEmpty(stringResource(R.string.canvas_pane_this_server_doesnt_support_canvases_yet), stringResource(R.string.canvas_pane_available_after_the_server_is_updated))
         return
     }
-    CanvasEmpty("キャンバスを読み込めませんでした", controller.describe(error)) {
-        Button(onClick = onRetry) { Icon(Icons.Outlined.Refresh, null); Text(" 再読み込み") }
+    CanvasEmpty(stringResource(R.string.common_couldnt_load_the_canvas), controller.describe(error)) {
+        Button(onClick = onRetry) { Icon(Icons.Outlined.Refresh, null); Text(stringResource(R.string.canvas_pane_reload)) }
     }
 }
 
@@ -189,8 +192,8 @@ private fun CanvasLoadFailed(controller: AppController, error: Throwable, onRetr
 @Composable
 private fun LoadFailedLine(onRetry: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("読み込めませんでした。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        TextButton(onClick = onRetry) { Text("再読み込み") }
+        Text(stringResource(R.string.common_couldnt_load_2), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = onRetry) { Text(stringResource(R.string.common_reload)) }
     }
 }
 
@@ -207,7 +210,7 @@ private fun OpenCanvas(
         saver = held
         onDispose { release() }
     }
-    val open = saver ?: return CanvasEmpty("読み込み中…", null, loading = true)
+    val open = saver ?: return CanvasEmpty(stringResource(R.string.common_loading), null, loading = true)
     CanvasView(controller, channel, version, canvasId, list, open, onOpenList, onTrashed, onOpenThread)
 }
 
@@ -247,7 +250,7 @@ private fun CanvasView(
     } else null
     val text = remember(revision) { saver.text }
     val headings = remember(text) { CanvasText.outline(text) }
-    val title = meta?.title ?: "キャンバス"
+    val title = meta?.title ?: stringResource(R.string.common_canvas)
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     // M58 (§4.13): the comments are the shared message's thread; a canvas never shared is shared first (a message is
@@ -278,7 +281,7 @@ private fun CanvasView(
         }
     } else null
     val onShare: (() -> Unit)? = if (meta != null && !shared && rights.share) ({
-        scope.launch { if (controller.shareCanvas(meta.id) != null) controller.notice = "会話に共有しました" }
+        scope.launch { if (controller.shareCanvas(meta.id) != null) controller.notice = L10n.str(R.string.canvas_pane_shared_to_the_conversation) }
     }) else null
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -289,7 +292,7 @@ private fun CanvasView(
             // The bar: the canvas's name (its list), ⋮; then the save state, 閲覧 | 編集 and the outline.
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 0.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
-                    TextButton(onClick = onOpenList, modifier = Modifier.semantics { contentDescription = "キャンバスの一覧: $title" }) {
+                    TextButton(onClick = onOpenList, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.canvas_pane_canvas_list, title) }) {
                         Icon(Icons.Outlined.Description, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f, fill = false))
@@ -305,7 +308,7 @@ private fun CanvasView(
                     IconButton(onClick = ::openComments, enabled = !opening) {
                         Icon(
                             Icons.Outlined.ChatBubbleOutline,
-                            contentDescription = if (shared) "コメント (共有したメッセージのスレッド)" else "コメント (会話に共有してスレッドを開きます)",
+                            contentDescription = if (shared) stringResource(R.string.canvas_pane_comments_thread_of_the_shared_message) else stringResource(R.string.canvas_pane_comments_shares_to_the_conversation_and),
                         )
                     }
                 }
@@ -327,7 +330,7 @@ private fun CanvasView(
             if (loadError == null) CanvasNotice(controller, channel, rights, saver, status)
             when {
                 loadError != null -> CanvasLoadFailed(controller, loadError) { saver.load() }
-                status == CanvasSaveStatus.LOADING -> CanvasEmpty("読み込み中…", null, loading = true)
+                status == CanvasSaveStatus.LOADING -> CanvasEmpty(stringResource(R.string.common_loading), null, loading = true)
                 editing && wide -> Row(Modifier.fillMaxSize()) {
                     CanvasEditorField(controller, saver, null, Modifier.weight(1f).fillMaxHeight())
                     VerticalDivider()
@@ -385,13 +388,13 @@ private fun CanvasEditing(controller: AppController, canvasId: String, modifier:
         }
     }
     if (editors.isEmpty()) return
-    fun nameOf(id: String) = store.users[id]?.displayName ?: "メンバー"
+    fun nameOf(id: String) = store.users[id]?.displayName ?: L10n.str(R.string.common_member)
     val label = CanvasEditors.label(editors.map { nameOf(it.userId) })
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
         Row(
             Modifier
-                .clickable(role = Role.Button, onClickLabel = "編集中の人と見出し") { open = true }
+                .clickable(role = Role.Button, onClickLabel = stringResource(R.string.canvas_pane_people_editing_and_headings)) { open = true }
                 .heightIn(min = 28.dp)
                 .semantics(mergeDescendants = true) { contentDescription = label; liveRegion = LiveRegionMode.Polite },
             verticalAlignment = Alignment.CenterVertically,
@@ -433,7 +436,7 @@ private suspend fun scrollToHeading(state: LazyListState, text: String, line: In
 @Composable
 private fun ModeSwitch(mode: CanvasMode, onChange: (CanvasMode) -> Unit) {
     SingleChoiceSegmentedButtonRow(Modifier.height(36.dp)) {
-        listOf(CanvasMode.VIEW to "閲覧", CanvasMode.EDIT to "編集").forEachIndexed { index, (value, label) ->
+        listOf(CanvasMode.VIEW to stringResource(R.string.canvas_pane_view), CanvasMode.EDIT to stringResource(R.string.common_edit)).forEachIndexed { index, (value, label) ->
             SegmentedButton(
                 selected = mode == value,
                 onClick = { onChange(value) },
@@ -451,16 +454,16 @@ private fun SaveState(saver: CanvasSaver, onOpenConflict: () -> Unit) {
     val revision by saver.revision.collectAsState()
     val status = remember(revision) { saver.status }
     val unread = remember(revision) { saver.loadError != null && status != CanvasSaveStatus.GONE }
-    val (label, tone) = if (unread) "読み込めません" to MaterialTheme.colorScheme.error else when (status) {
-        CanvasSaveStatus.LOADING -> "読み込み中…" to MaterialTheme.colorScheme.onSurfaceVariant
-        CanvasSaveStatus.SAVED -> "保存済み" to MaterialTheme.colorScheme.onSurfaceVariant
-        CanvasSaveStatus.EDITING -> "編集中" to MaterialTheme.colorScheme.onSurfaceVariant
-        CanvasSaveStatus.SAVING -> "保存中…" to MaterialTheme.colorScheme.onSurfaceVariant
-        CanvasSaveStatus.OFFLINE -> "オフライン" to MaterialTheme.colorScheme.tertiary
-        CanvasSaveStatus.RETRYING -> "再試行中…" to MaterialTheme.colorScheme.tertiary
-        CanvasSaveStatus.CONFLICT, CanvasSaveStatus.EXPIRED -> "競合" to MaterialTheme.colorScheme.error
-        CanvasSaveStatus.BLOCKED -> "保存できません" to MaterialTheme.colorScheme.error
-        CanvasSaveStatus.GONE -> "ゴミ箱" to MaterialTheme.colorScheme.onSurfaceVariant
+    val (label, tone) = if (unread) stringResource(R.string.canvas_pane_cant_load) to MaterialTheme.colorScheme.error else when (status) {
+        CanvasSaveStatus.LOADING -> stringResource(R.string.common_loading) to MaterialTheme.colorScheme.onSurfaceVariant
+        CanvasSaveStatus.SAVED -> stringResource(R.string.common_saved) to MaterialTheme.colorScheme.onSurfaceVariant
+        CanvasSaveStatus.EDITING -> stringResource(R.string.canvas_pane_editing) to MaterialTheme.colorScheme.onSurfaceVariant
+        CanvasSaveStatus.SAVING -> stringResource(R.string.common_saving) to MaterialTheme.colorScheme.onSurfaceVariant
+        CanvasSaveStatus.OFFLINE -> stringResource(R.string.common_offline) to MaterialTheme.colorScheme.tertiary
+        CanvasSaveStatus.RETRYING -> stringResource(R.string.canvas_pane_retrying) to MaterialTheme.colorScheme.tertiary
+        CanvasSaveStatus.CONFLICT, CanvasSaveStatus.EXPIRED -> stringResource(R.string.canvas_pane_conflict) to MaterialTheme.colorScheme.error
+        CanvasSaveStatus.BLOCKED -> stringResource(R.string.canvas_pane_cant_save) to MaterialTheme.colorScheme.error
+        CanvasSaveStatus.GONE -> stringResource(R.string.canvas_pane_trash_2) to MaterialTheme.colorScheme.onSurfaceVariant
     }
     val icon = if (unread) Icons.Outlined.ErrorOutline else when (status) {
         CanvasSaveStatus.OFFLINE -> Icons.Outlined.CloudOff
@@ -472,8 +475,8 @@ private fun SaveState(saver: CanvasSaver, onOpenConflict: () -> Unit) {
     }
     val choice = status == CanvasSaveStatus.CONFLICT || status == CanvasSaveStatus.EXPIRED
     val hint = if (unread) label else when (status) {
-        CanvasSaveStatus.OFFLINE -> "オフラインです。つながったら保存します"
-        CanvasSaveStatus.RETRYING -> "サーバが混み合っています。自動で保存し直します"
+        CanvasSaveStatus.OFFLINE -> stringResource(R.string.canvas_pane_offline_it_will_be_saved_once)
+        CanvasSaveStatus.RETRYING -> stringResource(R.string.canvas_pane_the_server_is_busy_it_will)
         else -> label
     }
     Row(
@@ -481,7 +484,7 @@ private fun SaveState(saver: CanvasSaver, onOpenConflict: () -> Unit) {
             .then(if (choice) Modifier.clickable(role = Role.Button, onClick = onOpenConflict) else Modifier)
             .heightIn(min = 36.dp)
             .padding(horizontal = 6.dp)
-            .semantics { contentDescription = "保存の状態: $hint" },
+            .semantics { contentDescription = L10n.str(R.string.canvas_pane_save_status, hint) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, tint = tone, modifier = Modifier.size(15.dp))
@@ -504,7 +507,7 @@ private fun OfflineCopyNotice(fetchedAt: Long, onRetry: () -> Unit) {
         Icon(Icons.Outlined.CloudOff, null, tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(6.dp))
         Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.weight(1f))
-        TextButton(onClick = onRetry) { Text("再読み込み", style = MaterialTheme.typography.labelMedium) }
+        TextButton(onClick = onRetry) { Text(stringResource(R.string.common_reload), style = MaterialTheme.typography.labelMedium) }
     }
 }
 
@@ -514,12 +517,12 @@ private fun CanvasNotice(controller: AppController, channel: ChannelState, right
     // `status` is passed (not read from the saver here): the saver is the same object throughout, so strong skipping
     // would keep this line as it was drawn while loading (CANVAS.md §5 Android: pass what the composable shows).
     val (text, warn) = when {
-        status == CanvasSaveStatus.GONE -> "このキャンバスはゴミ箱に移されたか、見られなくなりました。手元の本文はコピーできます。" to true
-        status == CanvasSaveStatus.BLOCKED -> "保存できませんでした: ${saver.error?.let { controller.describe(it) } ?: ""}" to true
-        channel.channel.archived -> "アーカイブされた会話のキャンバスは閲覧だけです。" to false
+        status == CanvasSaveStatus.GONE -> stringResource(R.string.canvas_pane_this_canvas_was_moved_to_the) to true
+        status == CanvasSaveStatus.BLOCKED -> stringResource(R.string.canvas_pane_couldnt_save, saver.error?.let { controller.describe(it) } ?: "") to true
+        channel.channel.archived -> stringResource(R.string.canvas_pane_canvases_in_archived_conversations_are) to false
         status == CanvasSaveStatus.LOADING -> return
-        rights.tickOnly -> "チェックだけ付けられます。本文を変更できるのは作成者・オーナー・管理者です。" to false
-        !rights.tick -> "閲覧のみです。" to false
+        rights.tickOnly -> stringResource(R.string.canvas_pane_you_can_only_tick_checkboxes_only) to false
+        !rights.tick -> stringResource(R.string.canvas_pane_view_only) to false
         else -> return
     }
     Row(
@@ -534,7 +537,7 @@ private fun CanvasNotice(controller: AppController, channel: ChannelState, right
         )
         if (warn) TextButton(onClick = { controller.copyCanvasText(saver.text) }) {
             Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(14.dp))
-            Text(" 本文をコピー", style = MaterialTheme.typography.labelMedium)
+            Text(stringResource(R.string.canvas_pane_copy_text), style = MaterialTheme.typography.labelMedium)
         }
     }
 }
@@ -558,10 +561,10 @@ private fun CanvasReader(
         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations,
         onNeedEmojiImage = { controller.loadEmojiImage(it) }, groups = store.groups, version = version,
     )
-    LazyColumn(modifier.semantics { contentDescription = if (preview) "キャンバスのプレビュー" else "キャンバスの内容" }, state = listState, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    LazyColumn(modifier.semantics { contentDescription = if (preview) L10n.str(R.string.canvas_pane_canvas_preview) else L10n.str(R.string.canvas_pane_canvas_content) }, state = listState, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         item(key = "title") {
             Column(Modifier.canvasColumn()) {
-                if (preview) Text("プレビュー", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+                if (preview) Text(stringResource(R.string.common_preview), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
                 else {
                     Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     if (meta != null) Byline(controller, meta)
@@ -569,8 +572,8 @@ private fun CanvasReader(
                 }
                 if (text.isBlank()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("まだ何も書かれていません。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (rights.edit && !preview) TextButton(onClick = onStartWriting) { Text("書き始める") }
+                        Text(stringResource(R.string.common_nothing_written_yet), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (rights.edit && !preview) TextButton(onClick = onStartWriting) { Text(stringResource(R.string.canvas_pane_start_writing)) }
                     }
                 }
             }
@@ -587,14 +590,14 @@ private fun CanvasReader(
 /** 「最終更新: 名前 · 10:23」, the task progress, the tab and who edits. */
 @Composable
 private fun Byline(controller: AppController, canvas: CanvasMeta) {
-    val who = controller.store.users[canvas.updatedBy]?.displayName ?: "メンバー"
+    val who = controller.store.users[canvas.updatedBy]?.displayName ?: stringResource(R.string.common_member)
     val progress = CanvasText.taskProgress(canvas.taskTotal, canvas.taskDone)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(top = 2.dp)) {
         val muted = MaterialTheme.colorScheme.onSurfaceVariant
-        Text("最終更新: $who · ${YouSettings.lastUsedLabel(canvas.updatedAt)}", style = MaterialTheme.typography.bodySmall, color = muted)
+        Text(stringResource(R.string.canvas_pane_last_updated, who, YouSettings.lastUsedLabel(canvas.updatedAt)), style = MaterialTheme.typography.bodySmall, color = muted)
         if (progress != null) Text("✓ $progress", style = MaterialTheme.typography.bodySmall, color = muted)
-        if (canvas.isChannelTab) Text("会話のキャンバス", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-        if (canvas.editPolicy == "owners") Text("編集: 作成者・オーナー・管理者", style = MaterialTheme.typography.bodySmall, color = muted)
+        if (canvas.isChannelTab) Text(stringResource(R.string.canvas_pane_conversation_canvas), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        if (canvas.editPolicy == "owners") Text(stringResource(R.string.canvas_pane_editing_creator_owners_administrators), style = MaterialTheme.typography.bodySmall, color = muted)
     }
 }
 
@@ -602,7 +605,7 @@ private fun Byline(controller: AppController, canvas: CanvasMeta) {
 private fun OutlineMenu(headings: List<CanvasText.OutlineEntry>, onPick: (CanvasText.OutlineEntry) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.AutoMirrored.Outlined.List, contentDescription = "目次") }
+        IconButton(onClick = { open = true }) { Icon(Icons.AutoMirrored.Outlined.List, contentDescription = stringResource(R.string.canvas_pane_contents)) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             headings.forEach { entry ->
                 DropdownMenuItem(
@@ -617,7 +620,7 @@ private fun OutlineMenu(headings: List<CanvasText.OutlineEntry>, onPick: (Canvas
 @Composable
 private fun OutlineColumn(headings: List<CanvasText.OutlineEntry>, modifier: Modifier, onPick: (CanvasText.OutlineEntry) -> Unit) {
     Column(modifier.verticalScroll(rememberScrollState()).padding(vertical = 12.dp)) {
-        Text("目次", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        Text(stringResource(R.string.canvas_pane_contents), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         headings.forEach { entry ->
             Text(
                 entry.text, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
@@ -791,7 +794,7 @@ private fun CanvasEditorField(
             is CanvasTable.WriteBack.Replaced -> apply { CanvasText.Edit(result.text, CanvasTable.endOfLine(result.text, result.range.last)) }
             is CanvasTable.WriteBack.Added -> {
                 apply { CanvasText.Edit(result.text, CanvasTable.endOfLine(result.text, result.range.last)) }
-                controller.notice = "表がほかの人に変更されていたため、編集した表を別の表として入れました"
+                controller.notice = L10n.str(R.string.canvas_pane_the_table_was_changed_by_someone)
             }
         }
         saver.flush() // like leaving the field: the table is saved now
@@ -815,7 +818,7 @@ private fun CanvasEditorField(
     fun insertImages(uris: List<android.net.Uri>, cleanup: () -> Unit = {}) {
         if (uris.isEmpty()) return
         if (!CanvasText.imagesFit(saver.text, uploading + uris.size)) {
-            controller.error = ErrorMessages.byCode["too_many_canvas_images"] ?: "画像が多すぎます"
+            controller.error = ErrorMessages.byCode["too_many_canvas_images"] ?: L10n.str(R.string.canvas_pane_too_many_images)
             cleanup()
             return
         }
@@ -850,7 +853,7 @@ private fun CanvasEditorField(
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
                 Spacer(Modifier.width(6.dp))
-                Text("画像をアップロード中… ($uploading)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(L10n.str(R.string.canvas_pane_uploading_images, uploading), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (candidates.isNotEmpty()) {
@@ -889,13 +892,13 @@ private fun CanvasEditorField(
                     focused = state.isFocused
                     if (gained) announce(true)
                 }
-                .semantics { contentDescription = if (section == null) "キャンバスの本文 (Markdown)" else "セクションの本文 (Markdown)" }
+                .semantics { contentDescription = if (section == null) L10n.str(R.string.canvas_pane_canvas_text_markdown) else L10n.str(R.string.canvas_pane_section_text_markdown) }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             decorationBox = { inner ->
                 Box {
                     if (field.text.isEmpty()) {
                         Text(
-                            if (section == null) "# 見出し\n本文を書きます。\n- [ ] チェックリスト\n@名前 でメンション" else "このセクションの本文",
+                            if (section == null) L10n.str(R.string.canvas_pane_heading_nwrite_the_text_here_n) else L10n.str(R.string.canvas_pane_this_sections_text),
                             style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -929,30 +932,30 @@ private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit,
     var imageMenu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Box {
-            IconButton(onClick = { headingMenu = true }) { Icon(Icons.Outlined.Title, contentDescription = "見出し") }
+            IconButton(onClick = { headingMenu = true }) { Icon(Icons.Outlined.Title, contentDescription = stringResource(R.string.common_heading)) }
             DropdownMenu(expanded = headingMenu, onDismissRequest = { headingMenu = false }) {
                 (1..3).forEach { level ->
-                    DropdownMenuItem(text = { Text("見出し $level") }, onClick = { headingMenu = false; apply { CanvasText.setHeading(it, level) } })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.canvas_pane_heading, level)) }, onClick = { headingMenu = false; apply { CanvasText.setHeading(it, level) } })
                 }
             }
         }
-        IconButton(onClick = { apply { CanvasText.toggleWrap(it, "**") } }) { Icon(Icons.Outlined.FormatBold, contentDescription = "太字") }
-        IconButton(onClick = { apply { CanvasText.toggleLinePrefix(it, "- ") } }) { Icon(Icons.AutoMirrored.Outlined.FormatListBulleted, contentDescription = "箇条書き") }
-        IconButton(onClick = { apply { CanvasText.toggleTasks(it) } }) { Icon(Icons.Outlined.Checklist, contentDescription = "チェックリスト") }
-        IconButton(onClick = { apply { CanvasText.toggleLinePrefix(it, "1. ") } }) { Icon(Icons.Outlined.FormatListNumbered, contentDescription = "番号付きリスト") }
-        IconButton(onClick = { apply { CanvasText.toggleLinePrefix(it, "> ") } }) { Icon(Icons.Outlined.FormatQuote, contentDescription = "引用") }
-        IconButton(onClick = { apply { CanvasText.insertLink(it) } }) { Icon(Icons.Outlined.Link, contentDescription = "リンク") }
+        IconButton(onClick = { apply { CanvasText.toggleWrap(it, "**") } }) { Icon(Icons.Outlined.FormatBold, contentDescription = stringResource(R.string.common_bold)) }
+        IconButton(onClick = { apply { CanvasText.toggleLinePrefix(it, "- ") } }) { Icon(Icons.AutoMirrored.Outlined.FormatListBulleted, contentDescription = stringResource(R.string.common_bulleted_list)) }
+        IconButton(onClick = { apply { CanvasText.toggleTasks(it) } }) { Icon(Icons.Outlined.Checklist, contentDescription = stringResource(R.string.canvas_pane_checklist)) }
+        IconButton(onClick = { apply { CanvasText.toggleLinePrefix(it, "1. ") } }) { Icon(Icons.Outlined.FormatListNumbered, contentDescription = stringResource(R.string.common_numbered_list)) }
+        IconButton(onClick = { apply { CanvasText.toggleLinePrefix(it, "> ") } }) { Icon(Icons.Outlined.FormatQuote, contentDescription = stringResource(R.string.common_quote)) }
+        IconButton(onClick = { apply { CanvasText.insertLink(it) } }) { Icon(Icons.Outlined.Link, contentDescription = stringResource(R.string.common_link)) }
         // M58: a photo from the picker, or one taken now (no camera: the picker straight away).
         Box {
-            IconButton(onClick = { if (onCamera == null) onPhotos() else imageMenu = true }) { Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = "画像") }
+            IconButton(onClick = { if (onCamera == null) onPhotos() else imageMenu = true }) { Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = stringResource(R.string.common_image)) }
             DropdownMenu(expanded = imageMenu, onDismissRequest = { imageMenu = false }) {
-                DropdownMenuItem(text = { Text("写真を選ぶ") }, leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, null) }, onClick = { imageMenu = false; onPhotos() })
-                if (onCamera != null) DropdownMenuItem(text = { Text("カメラで撮る") }, leadingIcon = { Icon(Icons.Outlined.PhotoCamera, null) }, onClick = { imageMenu = false; onCamera() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.common_choose_photos)) }, leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, null) }, onClick = { imageMenu = false; onPhotos() })
+                if (onCamera != null) DropdownMenuItem(text = { Text(stringResource(R.string.canvas_pane_take_a_photo)) }, leadingIcon = { Icon(Icons.Outlined.PhotoCamera, null) }, onClick = { imageMenu = false; onCamera() })
             }
         }
-        IconButton(onClick = { apply { CanvasText.insertMention(it) } }) { Icon(Icons.Outlined.AlternateEmail, contentDescription = "メンション") }
-        IconButton(onClick = { apply { CanvasText.insertRule(it) } }) { Icon(Icons.Outlined.HorizontalRule, contentDescription = "区切り線") }
-        IconButton(onClick = onTable) { Icon(Icons.Outlined.TableChart, contentDescription = "表") }
+        IconButton(onClick = { apply { CanvasText.insertMention(it) } }) { Icon(Icons.Outlined.AlternateEmail, contentDescription = stringResource(R.string.common_mention)) }
+        IconButton(onClick = { apply { CanvasText.insertRule(it) } }) { Icon(Icons.Outlined.HorizontalRule, contentDescription = stringResource(R.string.canvas_pane_divider)) }
+        IconButton(onClick = onTable) { Icon(Icons.Outlined.TableChart, contentDescription = stringResource(R.string.canvas_pane_table)) }
     }
 }
 
@@ -966,15 +969,15 @@ private fun SectionSheet(controller: AppController, saver: CanvasSaver, key: Can
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f).imePadding()) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("セクションを編集", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.common_edit_section), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(heading, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 SaveState(saver, onOpenConflict = onDismiss)
-                TextButton(onClick = onDismiss) { Text("完了") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done_2)) }
             }
             CanvasEditing(controller, saver.id, Modifier.padding(horizontal = 16.dp).padding(bottom = 4.dp))
             CanvasEditorField(controller, saver, key, Modifier.fillMaxWidth().weight(1f), autoFocus = true, onSectionGone = {
-                controller.notice = "見出しが変わったため、セクションの編集を閉じました"
+                controller.notice = L10n.str(R.string.canvas_pane_the_heading_changed_so_the_section)
                 onDismiss()
             })
         }
@@ -991,10 +994,10 @@ private fun CanvasListSheet(
     onDismiss: () -> Unit, onPick: (String) -> Unit, onNew: (() -> Unit)?, onTrash: () -> Unit,
 ) {
     val store = controller.store
-    val names = remember(version, list) { list.associate { it.id to (store.users[it.updatedBy]?.displayName ?: "メンバー") } }
+    val names = remember(version, list) { list.associate { it.id to (store.users[it.updatedBy]?.displayName ?: L10n.str(R.string.common_member)) } }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-            Text("この会話のキャンバス", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            Text(stringResource(R.string.canvas_pane_canvases_in_this_conversation), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
                 items(list, key = { it.id }) { canvas ->
                     val progress = CanvasText.taskProgress(canvas.taskTotal, canvas.taskDone)
@@ -1009,7 +1012,7 @@ private fun CanvasListSheet(
                         leadingContent = { Icon(Icons.Outlined.Description, null, tint = if (canvas.id == currentId) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
                         trailingContent = {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (canvas.isChannelTab) Text("タブ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                if (canvas.isChannelTab) Text(stringResource(R.string.common_tab), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                 if (progress != null) Text(progress, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         },
@@ -1018,8 +1021,8 @@ private fun CanvasListSheet(
                 }
             }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            if (onNew != null) ListItem(headlineContent = { Text("新しいキャンバス") }, leadingContent = { Icon(Icons.Outlined.Add, null) }, modifier = Modifier.clickable(onClick = onNew))
-            ListItem(headlineContent = { Text("ゴミ箱") }, leadingContent = { Icon(Icons.Outlined.Delete, null) }, modifier = Modifier.clickable(onClick = onTrash))
+            if (onNew != null) ListItem(headlineContent = { Text(stringResource(R.string.canvas_pane_new_canvas)) }, leadingContent = { Icon(Icons.Outlined.Add, null) }, modifier = Modifier.clickable(onClick = onNew))
+            ListItem(headlineContent = { Text(stringResource(R.string.canvas_pane_trash_2)) }, leadingContent = { Icon(Icons.Outlined.Delete, null) }, modifier = Modifier.clickable(onClick = onTrash))
         }
     }
 }
@@ -1038,18 +1041,18 @@ private fun CanvasMenu(
     val gone = status == CanvasSaveStatus.GONE
     val tabTaken = (controller.store.canvasesOf(channel.id) ?: emptyList()).any { it.isChannelTab && it.id != canvas.id }
     Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "キャンバスの操作") }
+        IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.canvas_pane_canvas_actions)) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             if (rights.manage && !gone) {
-                DropdownMenuItem(text = { Text("題名を変更…") }, onClick = { open = false; onRename() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.canvas_pane_rename)) }, onClick = { open = false; onRename() })
                 if (!tabTaken) DropdownMenuItem(
-                    text = { Text(if (canvas.isChannelTab) "会話のキャンバスから外す" else "会話のキャンバスにする") },
+                    text = { Text(if (canvas.isChannelTab) stringResource(R.string.canvas_pane_remove_as_conversation_canvas) else stringResource(R.string.canvas_pane_make_conversation_canvas)) },
                     onClick = { open = false; scope.launch { controller.updateCanvas(canvas.id, isChannelTab = !canvas.isChannelTab) } },
                 )
                 if (!channel.channel.isDm) {
                     HorizontalDivider()
-                    Text("本文を編集できる人", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                    listOf("members" to "投稿できるメンバー全員", "owners" to "作成者・オーナー・管理者 (チェックは全員)").forEach { (value, label) ->
+                    Text(stringResource(R.string.canvas_pane_who_can_edit_the_text), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                    listOf("members" to stringResource(R.string.canvas_pane_all_members_who_can_post), "owners" to stringResource(R.string.canvas_pane_creator_owners_and_administrators)).forEach { (value, label) ->
                         DropdownMenuItem(
                             text = { Text((if (canvas.editPolicy == value) "✓ " else "    ") + label) },
                             onClick = { open = false; if (canvas.editPolicy != value) scope.launch { controller.updateCanvas(canvas.id, editPolicy = value) } },
@@ -1058,13 +1061,13 @@ private fun CanvasMenu(
                 }
                 HorizontalDivider()
             }
-            if (onShare != null && !gone) DropdownMenuItem(text = { Text("会話に共有") }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { open = false; onShare() })
-            DropdownMenuItem(text = { Text("履歴") }, leadingIcon = { Icon(Icons.Outlined.History, null) }, onClick = { open = false; onHistory() })
-            DropdownMenuItem(text = { Text("本文をコピー") }, leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) }, onClick = { open = false; controller.copyCanvasText(saver.text) })
+            if (onShare != null && !gone) DropdownMenuItem(text = { Text(stringResource(R.string.canvas_pane_share_to_conversation)) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { open = false; onShare() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.common_history)) }, leadingIcon = { Icon(Icons.Outlined.History, null) }, onClick = { open = false; onHistory() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.canvas_pane_copy_text_2)) }, leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) }, onClick = { open = false; controller.copyCanvasText(saver.text) })
             if (rights.trash && !gone) {
                 HorizontalDivider()
                 DropdownMenuItem(
-                    text = { Text("ゴミ箱に移す", color = MaterialTheme.colorScheme.error) },
+                    text = { Text(stringResource(R.string.canvas_pane_move_to_trash), color = MaterialTheme.colorScheme.error) },
                     leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = MaterialTheme.colorScheme.error) },
                     onClick = { open = false; confirmTrash = true },
                 )
@@ -1074,15 +1077,15 @@ private fun CanvasMenu(
     if (confirmTrash) {
         AlertDialog(
             onDismissRequest = { confirmTrash = false },
-            title = { Text("ゴミ箱に移しますか？") },
-            text = { Text("「${canvas.title}」をゴミ箱に移します。30 日以内ならゴミ箱から戻せます。") },
+            title = { Text(stringResource(R.string.canvas_pane_move_to_trash_2)) },
+            text = { Text(stringResource(R.string.canvas_pane_will_be_moved_to_the_trash, canvas.title)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmTrash = false
                     scope.launch { if (controller.trashCanvas(canvas.id, channel.id)) onTrashed() }
-                }) { Text("ゴミ箱に移す", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.canvas_pane_move_to_trash), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { confirmTrash = false }) { Text("キャンセル") } },
+            dismissButton = { TextButton(onClick = { confirmTrash = false }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 }
@@ -1094,8 +1097,8 @@ private fun RenameDialog(controller: AppController, canvas: CanvasMeta, onDismis
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("題名を変更") },
-        text = { OutlinedTextField(title, { title = it.take(200) }, singleLine = true, label = { Text("題名") }) },
+        title = { Text(stringResource(R.string.canvas_pane_rename_2)) },
+        text = { OutlinedTextField(title, { title = it.take(200) }, singleLine = true, label = { Text(stringResource(R.string.common_title)) }) },
         confirmButton = {
             TextButton(enabled = !busy && title.isNotBlank(), onClick = {
                 val trimmed = title.trim()
@@ -1106,9 +1109,9 @@ private fun RenameDialog(controller: AppController, canvas: CanvasMeta, onDismis
                     busy = false
                     if (ok) onDismiss()
                 }
-            }) { Text("変更") }
+            }) { Text(stringResource(R.string.common_change)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -1125,10 +1128,10 @@ private fun NewCanvasDialog(controller: AppController, channel: ChannelState, li
     LaunchedEffect(Unit) { templates = controller.canvasTemplates() ?: emptyList() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("新しいキャンバス") },
+        title = { Text(stringResource(R.string.canvas_pane_new_canvas)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text("空白から、またはテンプレートから作ります。日付や名前はテンプレートに入ります。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.canvas_pane_start_blank_or_from_a_template), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 @Composable
                 fun option(key: String, name: String, description: String?) {
@@ -1144,21 +1147,21 @@ private fun NewCanvasDialog(controller: AppController, channel: ChannelState, li
                         }
                     }
                 }
-                option("", "空白のキャンバス", null)
+                option("", stringResource(R.string.canvas_pane_blank_canvas), null)
                 val loaded = templates
-                if (loaded == null) Text("テンプレートを読み込んでいます…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (loaded == null) Text(stringResource(R.string.canvas_pane_loading_templates), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else loaded.forEach { option(it.key, it.name, it.description) }
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     title, { title = it.take(200) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("題名") },
-                    placeholder = { Text(if (choice.isNotEmpty()) "空欄ならテンプレートの題名" else "空欄なら「無題のキャンバス」") },
+                    label = { Text(stringResource(R.string.common_title)) },
+                    placeholder = { Text(if (choice.isNotEmpty()) stringResource(R.string.canvas_pane_leave_empty_for_the_templates_title) else stringResource(R.string.canvas_pane_leave_empty_for_untitled_canvas)) },
                 )
                 if (!hasTab) {
                     Row(Modifier.fillMaxWidth().selectable(selected = asTab, role = Role.Checkbox, onClick = { asTab = !asTab }).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = asTab, onCheckedChange = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("会話のキャンバスにする (「キャンバス」タブで最初に開きます)", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.canvas_pane_make_it_the_conversation_canvas_opens), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -1171,9 +1174,9 @@ private fun NewCanvasDialog(controller: AppController, channel: ChannelState, li
                     busy = false
                     if (created != null) onCreated(created)
                 }
-            }) { Text("作成") }
+            }) { Text(stringResource(R.string.common_create)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -1193,26 +1196,26 @@ private fun TrashDialog(controller: AppController, channel: ChannelState, onDism
     val me = controller.store.me
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("キャンバスのゴミ箱") },
+        title = { Text(stringResource(R.string.canvas_pane_canvas_trash)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text("ゴミ箱のキャンバスは 30 日後に完全に削除されます。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.canvas_pane_canvases_in_the_trash_are_permanently), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 val loaded = rows
                 when {
                     failed -> LoadFailedLine { tries += 1 }
-                    loaded == null -> Text("読み込み中…", style = MaterialTheme.typography.bodyMedium)
-                    loaded.isEmpty() -> Text("ゴミ箱は空です。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    loaded == null -> Text(stringResource(R.string.common_loading), style = MaterialTheme.typography.bodyMedium)
+                    loaded.isEmpty() -> Text(stringResource(R.string.canvas_pane_the_trash_is_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     else -> loaded.forEach { canvas ->
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(canvas.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("削除: " + YouSettings.lastUsedLabel(canvas.deletedAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.common_removed) + YouSettings.lastUsedLabel(canvas.deletedAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             if (CanvasRights.of(channel, me?.id, me?.role, canvas).trash) {
                                 OutlinedButton(onClick = { scope.launch { controller.restoreCanvas(canvas.id)?.let(onRestored) } }) {
                                     Icon(Icons.Outlined.Restore, null, modifier = Modifier.size(16.dp))
-                                    Text(" 戻す")
+                                    Text(stringResource(R.string.canvas_pane_restore))
                                 }
                             }
                         }
@@ -1220,7 +1223,7 @@ private fun TrashDialog(controller: AppController, channel: ChannelState, onDism
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }
 
@@ -1232,34 +1235,34 @@ private fun ConflictDialog(controller: AppController, saver: CanvasSaver, tickOn
     val shown = conflicts.take(5)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("同じ箇所がほかの人にも変更されました") },
+        title = { Text(L10n.str(R.string.canvas_pane_someone_else_changed_the_same_part)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    if (tickOnly) "相手の版を残して、チェックを付け直してください。" else "重なった箇所だけ、どちらを残すか選んでください。ほかの変更はどちらも残ります。",
+                    if (tickOnly) stringResource(R.string.canvas_pane_keep_their_version_and_tick_the) else stringResource(R.string.canvas_pane_choose_which_to_keep_only_where),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (timedOut) Text("文書が大きく、細かく比べられませんでした。文書全体をひとつの箇所として扱います。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+                if (timedOut) Text(stringResource(R.string.canvas_pane_the_document_is_too_large_to), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
                 shown.forEach { conflict ->
                     Column(
                         Modifier.fillMaxWidth().padding(top = 10.dp)
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp)).padding(8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        ConflictSide("自分の版", names(conflict.ours), mine = true)
-                        ConflictSide("相手の版", names(conflict.theirs), mine = false)
-                        if (conflict.base.isNotBlank()) Text("元の文: " + names(conflict.base).take(200), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ConflictSide(stringResource(R.string.canvas_pane_my_version), names(conflict.ours), mine = true)
+                        ConflictSide(stringResource(R.string.canvas_pane_their_version), names(conflict.theirs), mine = false)
+                        if (conflict.base.isNotBlank()) Text(stringResource(R.string.canvas_pane_original) + names(conflict.base).take(200), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                if (conflicts.size > shown.size) Text("ほか ${conflicts.size - shown.size} 箇所", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 6.dp))
+                if (conflicts.size > shown.size) Text(stringResource(R.string.canvas_pane_more, conflicts.size - shown.size), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 6.dp))
             }
         },
         confirmButton = {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)) {
-                TextButton(onClick = onDismiss) { Text("あとで") }
-                if (!tickOnly) TextButton(onClick = { onDismiss(); saver.resolveConflict("both") }) { Text("両方残す") }
-                TextButton(onClick = { onDismiss(); saver.resolveConflict("theirs") }) { Text("相手の版") }
-                if (!tickOnly) Button(onClick = { onDismiss(); saver.resolveConflict("ours") }) { Text("自分の版") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.canvas_pane_later)) }
+                if (!tickOnly) TextButton(onClick = { onDismiss(); saver.resolveConflict("both") }) { Text(stringResource(R.string.canvas_pane_keep_both)) }
+                TextButton(onClick = { onDismiss(); saver.resolveConflict("theirs") }) { Text(stringResource(R.string.canvas_pane_their_version)) }
+                if (!tickOnly) Button(onClick = { onDismiss(); saver.resolveConflict("ours") }) { Text(stringResource(R.string.canvas_pane_my_version)) }
             }
         },
     )
@@ -1273,7 +1276,7 @@ private fun ConflictSide(label: String, text: String, mine: Boolean) {
             .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
         Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(text.ifEmpty { "(削除)" }, style = MaterialTheme.typography.bodyMedium)
+        Text(text.ifEmpty { stringResource(R.string.canvas_pane_deleted) }, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -1284,19 +1287,19 @@ private fun ExpiredDialog(controller: AppController, saver: CanvasSaver, head: C
     fun names(text: String) = Mentions.toNames(CanvasMarkers.strip(text), store.users, store.groups) // M83: markers hidden
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("編集の元にした版がなくなりました") },
+        title = { Text(L10n.str(R.string.canvas_pane_the_version_you_edited_from_is)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("長くオフラインだった間に版が整理されました。自分の本文と今の本文を見比べて選んでください。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                ConflictSide("自分の本文", names(saver.text), mine = true)
-                ConflictSide("今の本文", names(head.body), mine = false)
+                Text(stringResource(R.string.canvas_pane_versions_were_tidied_up_while_you), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ConflictSide(stringResource(R.string.canvas_pane_my_text), names(saver.text), mine = true)
+                ConflictSide(stringResource(R.string.canvas_pane_current_text), names(head.body), mine = false)
             }
         },
         confirmButton = {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)) {
-                TextButton(onClick = { controller.copyCanvasText(saver.text) }) { Text("自分の本文をコピー") }
-                TextButton(onClick = { onDismiss(); saver.resolveExpired(mine = false) }) { Text("今の本文にする") }
-                if (canOverwrite) Button(onClick = { onDismiss(); saver.resolveExpired(mine = true) }) { Text("自分の本文で上書き") }
+                TextButton(onClick = { controller.copyCanvasText(saver.text) }) { Text(stringResource(R.string.canvas_pane_copy_my_text)) }
+                TextButton(onClick = { onDismiss(); saver.resolveExpired(mine = false) }) { Text(stringResource(R.string.canvas_pane_use_the_current_text)) }
+                if (canOverwrite) Button(onClick = { onDismiss(); saver.resolveExpired(mine = true) }) { Text(stringResource(R.string.canvas_pane_overwrite_with_my_text)) }
             }
         },
     )

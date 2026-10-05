@@ -27,6 +27,8 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * The profile card (M11d): display name, @username, title, custom status, presence, and 「メッセージを送る」; for people on
@@ -44,20 +46,20 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("プロフィール") },
+        title = { Text(stringResource(R.string.profile_dialog_profile)) },
         text = {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Avatar(userId, user?.displayName ?: "?", size = 56.dp, presence = presence)
                     Column(Modifier.padding(start = 14.dp)) {
                         Text(user?.displayName ?: "?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        if (user?.role == "guest") Text("ゲスト (参加したチャンネルだけ見えます)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (user?.role == "bot") Text("受信 Webhook の bot", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (user?.role == "guest") Text(stringResource(R.string.profile_dialog_guest_sees_only_channels_theyve_joined), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (user?.role == "bot") Text(stringResource(R.string.profile_dialog_incoming_webhook_bot), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         // The roster label is the title too (LAB.md 「肩書と名簿」): 「M2 · 研究室長」.
                         Text("@" + (user?.username ?: "") + (Roster.displayTitle(user?.title, line)?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (Dnd.isActive(user)) {
-                            Text("🔕 通知を一時停止中" + (user?.quietHours?.let { " · " + Dnd.label(it) } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.profile_dialog_notifications_paused) + (user?.quietHours?.let { " · " + Dnd.label(it) } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -69,7 +71,7 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
                             Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         }
                         line.researchTopic?.takeIf { it.isNotBlank() }?.let {
-                            Text("研究テーマ: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.profile_dialog_research_topic, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -81,27 +83,27 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
                         expiryLabel(user?.statusExpiresAt)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 }
-                if (user?.deactivatedAt != null) Text("無効化されたアカウント", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                if (user?.deactivatedAt != null) Text(stringResource(R.string.profile_dialog_deactivated_account), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                 // M104 (MODERATION.md §4): private; the person is not told.
                 if (!isMe && user != null) {
                     val blocked = remember(version, userId) { store.isBlocked(userId) }
-                    if (blocked) Text("ブロック中 (メッセージは折りたたまれ、通知されません)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                    if (blocked) Text(stringResource(R.string.profile_dialog_blocked_their_messages_are_collapsed_and), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                     TextButton(
                         onClick = { scope.launch { controller.setUserBlocked(userId, !blocked) } },
                         modifier = Modifier.padding(top = 4.dp),
-                    ) { Text(if (blocked) "ブロックを解除" else "ブロック", color = if (blocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
+                    ) { Text(if (blocked) stringResource(R.string.profile_dialog_unblock) else stringResource(R.string.profile_dialog_block), color = if (blocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
                 }
             }
         },
         confirmButton = {
             if (isMe) {
                 // M40: the 自分 tab's 「ステータスを更新」 screen (the main screen opens it there).
-                TextButton(onClick = { onDismiss(); controller.pendingSettings = SettingsPage.STATUS }) { Text("ステータスを設定") }
+                TextButton(onClick = { onDismiss(); controller.pendingSettings = SettingsPage.STATUS }) { Text(stringResource(R.string.profile_dialog_set_status)) }
             } else if (user?.deactivatedAt == null) {
-                Button(onClick = { scope.launch { controller.openDmWith(userId)?.let { onDismiss(); onOpenDm(it) } } }) { Text("メッセージを送る") }
+                Button(onClick = { scope.launch { controller.openDmWith(userId)?.let { onDismiss(); onOpenDm(it) } } }) { Text(stringResource(R.string.profile_dialog_send_a_message)) }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("閉じる") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }
 

@@ -1,6 +1,8 @@
 package jp.chikuwachat.android.ui
 
 import jp.chikuwachat.android.api.NavItem
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M111 (MOBILE_UI.md §14): which home tiles show and in what order, mine on every device (UserMe.nav_items). The
@@ -14,18 +16,18 @@ object NavItems {
     private val BOTH = listOf(Platform.DESKTOP, Platform.MOBILE)
 
     val catalogue: List<Entry> = listOf(
-        Entry("threads", "スレッド", visible = true, platforms = BOTH),
-        Entry("activity", "アクティビティ", visible = true, platforms = listOf(Platform.DESKTOP)),
+        Entry("threads", L10n.str(R.string.common_thread), visible = true, platforms = BOTH),
+        Entry("activity", L10n.str(R.string.common_activity), visible = true, platforms = listOf(Platform.DESKTOP)),
         Entry("times-feed", "Times", visible = true, platforms = listOf(Platform.MOBILE)),
-        Entry("drafts", "下書き", visible = true, platforms = BOTH),
-        Entry("saved", "保存済み", mobileLabel = "保存", visible = true, platforms = BOTH),
-        Entry("reminders", "リマインダー", visible = true, platforms = BOTH),
-        Entry("files", "ファイル", visible = true, platforms = BOTH),
-        Entry("canvases", "キャンバス", visible = true, platforms = BOTH),
-        Entry("calendar", "カレンダー", visible = true, platforms = BOTH),
-        Entry("tasks", "タスク", visible = true, platforms = BOTH),
-        Entry("deadlines", "締切", visible = true, platforms = BOTH),
-        Entry("reservations", "予約", visible = true, platforms = BOTH),
+        Entry("drafts", L10n.str(R.string.common_drafts), visible = true, platforms = BOTH),
+        Entry("saved", L10n.str(R.string.common_saved), mobileLabel = L10n.str(R.string.common_save), visible = true, platforms = BOTH),
+        Entry("reminders", L10n.str(R.string.common_reminders), visible = true, platforms = BOTH),
+        Entry("files", L10n.str(R.string.common_files), visible = true, platforms = BOTH),
+        Entry("canvases", L10n.str(R.string.common_canvas), visible = true, platforms = BOTH),
+        Entry("calendar", L10n.str(R.string.common_calendar), visible = true, platforms = BOTH),
+        Entry("tasks", L10n.str(R.string.common_tasks), visible = true, platforms = BOTH),
+        Entry("deadlines", L10n.str(R.string.common_deadlines), visible = true, platforms = BOTH),
+        Entry("reservations", L10n.str(R.string.common_reservations), visible = true, platforms = BOTH),
     )
 
     val order: Map<Platform, List<String>> = mapOf(

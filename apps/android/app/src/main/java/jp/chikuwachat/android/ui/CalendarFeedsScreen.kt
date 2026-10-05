@@ -66,6 +66,8 @@ import jp.chikuwachat.android.api.CalendarFeedOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.CalendarFeeds
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * M69 (CALENDAR.md §10.6, §10.9): 「カレンダーを購読 (iCal)」 from the calendar's ⋮, as the desktop's CalendarFeedsDialog.
@@ -123,15 +125,15 @@ fun CalendarFeedsScreen(controller: AppController, feeds: CalendarFeeds, onDismi
         deleting?.let { feed ->
             AlertDialog(
                 onDismissRequest = { deleting = null },
-                title = { Text("購読 URL を削除しますか？") },
-                text = { Text("「${CalendarFeeds.scopeLabel(feed.scope)}」の URL は、すぐに使えなくなります。この URL を登録したカレンダーには、もう予定が届きません。") },
+                title = { Text(stringResource(R.string.calendar_feeds_screen_delete_this_subscription_url)) },
+                text = { Text(stringResource(R.string.calendar_feeds_screen_the_url_for_stops_working_right, CalendarFeeds.scopeLabel(feed.scope))) },
                 confirmButton = {
                     TextButton(onClick = {
                         deleting = null
                         controller.scope.launch { feeds.delete(feed.id) }
-                    }) { Text("削除", color = MaterialTheme.colorScheme.error) }
+                    }) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }
                 },
-                dismissButton = { TextButton(onClick = { deleting = null }) { Text("キャンセル") } },
+                dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.common_cancel)) } },
             )
         }
     }
@@ -144,22 +146,22 @@ private fun FeedsBody(
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = "閉じる") }
-            Text("カレンダーを購読 (iCal)", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+            IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close)) }
+            Text(stringResource(R.string.common_subscribe_to_the_calendar_ical), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
         }
         HorizontalDivider()
         Column(
             Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Google カレンダーや Apple のカレンダーに、このアプリの予定を表示します (読み取り専用)。", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.calendar_feeds_screen_show_this_apps_events_in_google), style = MaterialTheme.typography.bodyMedium)
             Text(
-                "購読 URL を知っている人は、ログインしなくても誰でも予定を見られます。人に教えないでください。漏れたら削除して作り直してください。",
+                stringResource(R.string.calendar_feeds_screen_anyone_who_knows_the_subscription_url),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(8.dp)).padding(12.dp),
             )
-            Text("範囲", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.calendar_feeds_screen_scope), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.selectableGroup()) {
                 CalendarFeeds.SCOPE_CHOICES.forEach { (value, label) ->
                     Row(
@@ -171,30 +173,30 @@ private fun FeedsBody(
                     }
                 }
             }
-            Button(onClick = onCreate, enabled = available && !state.busy) { Text("購読 URL を作る") }
+            Button(onClick = onCreate, enabled = available && !state.busy) { Text(stringResource(R.string.calendar_feeds_screen_create_subscription_url)) }
             state.made?.let { url ->
                 Column(
                     Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)).padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("購読 URL", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.calendar_feeds_screen_subscription_url), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     SelectionContainer { Text(url, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace) }
                     FilledTonalButton(onClick = { onCopy(url) }) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Text(if (copied) " コピーしました" else " コピー")
+                        Text(if (copied) stringResource(R.string.calendar_feeds_screen_copied) else stringResource(R.string.calendar_feeds_screen_copy))
                     }
                     Text(
-                        "この URL はいまだけ表示します。閉じると再表示できません (必要なら作り直してください)。",
+                        stringResource(R.string.calendar_feeds_screen_this_url_is_shown_only_now),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
             state.error?.let { Text(describe(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-            Text("作った購読 URL", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.calendar_feeds_screen_subscription_urls_you_made), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val list = state.feeds
             when {
-                list == null -> Text(if (available) "読み込み中…" else "接続すると表示します", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                list.isEmpty() -> Text("まだありません", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                list == null -> Text(if (available) stringResource(R.string.common_loading) else stringResource(R.string.calendar_feeds_screen_shown_when_connected), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                list.isEmpty() -> Text(stringResource(R.string.calendar_feeds_screen_none_yet), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> Column(Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))) {
                     list.forEachIndexed { index, feed ->
                         if (index > 0) HorizontalDivider()
@@ -204,17 +206,17 @@ private fun FeedsBody(
                                 Text(CalendarFeeds.feedLine(feed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             IconButton(onClick = { onDelete(feed) }, enabled = !state.busy) {
-                                Icon(Icons.Default.Delete, contentDescription = "この購読 URL を削除", tint = MaterialTheme.colorScheme.error)
+                                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.calendar_feeds_screen_delete_this_subscription_url_2), tint = MaterialTheme.colorScheme.error)
                             }
                         }
                     }
                 }
             }
-            Text("使い方", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.calendar_feeds_screen_how_to_use), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             listOf(
-                "Google カレンダー: パソコンのブラウザで、左の「他のカレンダー」の「＋」→「URL で追加」に URL を貼り付けて「カレンダーを追加」(スマホのアプリからは追加できません)。",
-                "Apple のカレンダー: iPhone は「設定」→「カレンダー」→「アカウント」→「アカウントを追加」→「その他」→「照会するカレンダーを追加」。Mac は「ファイル」→「新規カレンダー照会…」。",
-                "反映はカレンダーのアプリが読みに来たとき (数分〜数時間ごと) です。90 日前から 400 日先までの予定が入ります。",
+                stringResource(R.string.calendar_feeds_screen_google_calendar_in_a_computers_browser),
+                stringResource(R.string.calendar_feeds_screen_apple_calendar_on_iphone_settings),
+                stringResource(R.string.calendar_feeds_screen_changes_appear_when_the_calendar_app),
             ).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }

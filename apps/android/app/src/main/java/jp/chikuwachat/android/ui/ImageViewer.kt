@@ -37,6 +37,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.min
 import java.nio.ByteBuffer
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 /** Keep decoded images bounded even when the attachment is a very large panorama. */
 internal fun imageSampleSize(width: Int, height: Int): Int {
@@ -93,7 +96,7 @@ fun ImageViewer(attachment: AttachmentOut, controller: AppController, onDismiss:
                     }
                 }
             }
-            if (image == null) error = "この画像を表示できませんでした"
+            if (image == null) error = L10n.str(R.string.image_viewer_couldnt_show_this_image)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -104,17 +107,17 @@ fun ImageViewer(attachment: AttachmentOut, controller: AppController, onDismiss:
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "画像を閉じる") }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.image_viewer_close_image)) }
                     Text(attachment.filename, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, "他のアプリで開く") }
+                    IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val bitmap = image
                     if (bitmap != null) ZoomableImage(bitmap, attachment.filename)
                     else if (error != null) Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("画像を読み込めませんでした", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.image_viewer_couldnt_load_the_image), style = MaterialTheme.typography.titleMedium)
                         Text(error!!, Modifier.padding(vertical = 12.dp))
-                        Button(onClick = { attempt += 1 }) { Text("再試行") }
+                        Button(onClick = { attempt += 1 }) { Text(stringResource(R.string.common_retry)) }
                     } else CircularProgressIndicator()
                 }
             }
@@ -149,8 +152,8 @@ private fun ZoomableImage(image: ImageBitmap, filename: String) {
             }
             .semantics {
                 customActions = listOf(
-                    CustomAccessibilityAction("拡大") { transform(scale * 1.5f, offset); true },
-                    CustomAccessibilityAction("全体を表示") { transform(1f, Offset.Zero); true },
+                    CustomAccessibilityAction(L10n.str(R.string.image_viewer_zoom_in)) { transform(scale * 1.5f, offset); true },
+                    CustomAccessibilityAction(L10n.str(R.string.image_viewer_fit_to_screen)) { transform(1f, Offset.Zero); true },
                 )
             },
     ) {

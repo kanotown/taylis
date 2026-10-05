@@ -67,6 +67,9 @@ import jp.chikuwachat.android.sync.MyCanvasesState
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
 import java.time.ZonedDateTime
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** M78 (CANVAS.md §21.2): one row of the home's 「キャンバス」. */
 data class MyCanvasRow(
@@ -109,36 +112,36 @@ object MyCanvases {
 
     fun row(canvas: CanvasMeta, store: Store, now: ZonedDateTime): MyCanvasRow = MyCanvasRow(
         canvas = canvas,
-        where = store.channel(canvas.channelId)?.let { channelTitle(it, store) } ?: "会話",
-        editor = store.users[canvas.updatedBy]?.displayName?.takeIf { it.isNotBlank() } ?: "メンバー",
+        where = store.channel(canvas.channelId)?.let { channelTitle(it, store) } ?: L10n.str(R.string.common_conversation),
+        editor = store.users[canvas.updatedBy]?.displayName?.takeIf { it.isNotBlank() } ?: L10n.str(R.string.common_member),
         updated = Timeline.sinceLabel(canvas.updatedAt, now) ?: "",
         progress = CanvasText.taskProgress(canvas.taskTotal, canvas.taskDone),
     )
 
-    fun title(canvas: CanvasMeta): String = canvas.title.ifBlank { "無題のキャンバス" }
+    fun title(canvas: CanvasMeta): String = canvas.title.ifBlank { L10n.str(R.string.canvases_pane_untitled_canvas) }
 
     /** The row's second line: 「#lab · 山田 · 14:05」. */
     fun subtitle(row: MyCanvasRow): String = listOf(row.where, row.editor, row.updated).filter { it.isNotEmpty() }.joinToString(" · ")
 
     /** What TalkBack reads for a row: 「キャンバス「議事録」、#lab、タブ、最後に編集 山田、14:05、タスク 3/5」. */
     fun spoken(row: MyCanvasRow): String = buildList {
-        add("キャンバス「${title(row.canvas)}」")
+        add(L10n.str(R.string.canvases_pane_canvas, title(row.canvas)))
         add(row.where)
-        if (row.canvas.isChannelTab) add("タブ")
-        add("最後に編集 ${row.editor}")
+        if (row.canvas.isChannelTab) add(L10n.str(R.string.common_tab))
+        add(L10n.str(R.string.canvases_pane_last_edited_by, row.editor))
         if (row.updated.isNotEmpty()) add(row.updated)
-        row.progress?.let { add("タスク $it") }
-    }.joinToString("、")
+        row.progress?.let { add(L10n.str(R.string.canvases_pane_tasks, it)) }
+    }.joinToString(L10n.str(R.string.common_fmt_6))
 
     /** The text of an empty list: [headline, detail]. */
     fun empty(query: String, offline: Boolean): Pair<String, String> = when {
-        query.isNotBlank() -> "題名に一致するキャンバスはありません" to "本文の語は「本文も検索する」で探せます。"
-        offline -> "この端末にあるキャンバスはありません" to "オンラインになると一覧を読み込みます。"
-        else -> "まだキャンバスはありません" to "会話の「キャンバス」タブから作れます。"
+        query.isNotBlank() -> L10n.str(R.string.canvases_pane_no_canvases_match_the_title) to L10n.str(R.string.canvases_pane_use_search_text_too_to_find)
+        offline -> L10n.str(R.string.canvases_pane_no_canvases_on_this_device) to L10n.str(R.string.canvases_pane_the_list_loads_when_youre_online)
+        else -> L10n.str(R.string.canvases_pane_no_canvases_yet) to L10n.str(R.string.canvases_pane_create_one_from_a_conversations_canvas)
     }
 
     /** The notice over a list read from the device. */
-    const val OFFLINE_NOTICE = "オフライン — この端末にある一覧を表示しています"
+    val OFFLINE_NOTICE: String get() = L10n.str(R.string.canvases_pane_offline_showing_the_list_on_this)
 
     /**
      * A row tapped: a conversation I am in opens on its 「キャンバス」 tab with that canvas, pushed onto the home stack
@@ -195,12 +198,12 @@ fun CanvasesPane(
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(
             query, { query = it }, singleLine = true,
-            placeholder = { Text("題名で絞り込む") },
+            placeholder = { Text(stringResource(R.string.canvases_pane_filter_by_title)) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { submit() }),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
-                .semantics { contentDescription = "題名で絞り込む。検索キーで本文も検索" },
+                .semantics { contentDescription = L10n.str(R.string.canvases_pane_filter_by_title_press_search_to) },
         )
         if (state.offline) OfflineStrip(onRetry = { scope.launch { list.refresh() } })
         PullToRefreshBox(
@@ -216,7 +219,7 @@ fun CanvasesPane(
                 when {
                     items == null -> item(key = "loading") {
                         Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(Modifier.size(28.dp).semantics { contentDescription = "読み込み中" })
+                            CircularProgressIndicator(Modifier.size(28.dp).semantics { contentDescription = L10n.str(R.string.canvases_pane_loading) })
                         }
                     }
                     rows.isEmpty() -> item(key = "empty") {
@@ -230,7 +233,7 @@ fun CanvasesPane(
                         if (query.isNotBlank()) {
                             item(key = "bodies") {
                                 TextButton(onClick = submit, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                    Text("「${query.trim()}」をキャンバスの本文からも検索")
+                                    Text(stringResource(R.string.canvases_pane_search_canvas_text_for, query.trim()))
                                 }
                             }
                         }
@@ -248,11 +251,11 @@ private fun CanvasListRow(row: MyCanvasRow, onClick: () -> Unit) {
     val spoken = MyCanvases.spoken(row)
     Row(
         Modifier.fillMaxWidth().heightIn(min = 56.dp)
-            .clickable(role = Role.Button, onClickLabel = "開く", onClick = onClick)
+            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.common_open), onClick = onClick)
             .clearAndSetSemantics {
                 contentDescription = spoken
                 role = Role.Button
-                onClick(label = "開く") { onClick(); true }
+                onClick(label = L10n.str(R.string.common_open)) { onClick(); true }
             }
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -270,7 +273,7 @@ private fun CanvasListRow(row: MyCanvasRow, onClick: () -> Unit) {
                 if (row.canvas.isChannelTab) {
                     Spacer(Modifier.width(6.dp))
                     Surface(shape = RoundedCornerShape(6.dp), color = colors.secondaryContainer) {
-                        Text("タブ", style = MaterialTheme.typography.labelSmall, color = colors.onSecondaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
+                        Text(stringResource(R.string.common_tab), style = MaterialTheme.typography.labelSmall, color = colors.onSecondaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
                     }
                 }
             }
@@ -294,7 +297,7 @@ private fun OfflineStrip(onRetry: () -> Unit) {
         Icon(Icons.Outlined.CloudOff, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
         Text(MyCanvases.OFFLINE_NOTICE, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, modifier = Modifier.weight(1f))
-        TextButton(onClick = onRetry) { Text("再読み込み") }
+        TextButton(onClick = onRetry) { Text(stringResource(R.string.common_reload)) }
     }
 }
 
@@ -307,9 +310,9 @@ private fun EmptyCanvases(query: String, state: MyCanvasesState, controller: App
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         if (failure != null && !state.offline) {
-            Text("キャンバスを読み込めませんでした", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.common_couldnt_load_the_canvas), style = MaterialTheme.typography.titleSmall)
             Text(controller.describe(failure), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-            OutlinedButton(onClick = onRetry, modifier = Modifier.padding(top = 8.dp)) { Text("再読み込み") }
+            OutlinedButton(onClick = onRetry, modifier = Modifier.padding(top = 8.dp)) { Text(stringResource(R.string.common_reload)) }
             return@Column
         }
         val (headline, detail) = MyCanvases.empty(query, state.offline)
@@ -319,7 +322,7 @@ private fun EmptyCanvases(query: String, state: MyCanvasesState, controller: App
             OutlinedButton(onClick = onSearchBodies, modifier = Modifier.padding(top = 8.dp)) {
                 Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("本文も検索する")
+                Text(stringResource(R.string.canvases_pane_search_text_too))
             }
         }
     }
@@ -331,14 +334,14 @@ private fun MoreRow(state: MyCanvasesState, controller: AppController, manual: B
     val failure = state.failure
     when {
         state.loadingMore -> Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(Modifier.size(24.dp).semantics { contentDescription = "さらに読み込み中" })
+            CircularProgressIndicator(Modifier.size(24.dp).semantics { contentDescription = L10n.str(R.string.canvases_pane_loading_more) })
         }
         state.offline -> Unit
         failure != null && state.nextCursor != null -> Column(Modifier.fillMaxWidth().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(controller.describe(failure), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
-            TextButton(onClick = onMore) { Text("もう一度読み込む") }
+            TextButton(onClick = onMore) { Text(stringResource(R.string.common_load_again)) }
         }
-        manual && state.nextCursor != null -> TextButton(onClick = onMore, modifier = Modifier.fillMaxWidth()) { Text("さらに読み込む") }
+        manual && state.nextCursor != null -> TextButton(onClick = onMore, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_load_more)) }
         else -> Spacer(Modifier.size(1.dp))
     }
 }

@@ -17,6 +17,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import java.time.ZonedDateTime
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * 「リマインド」 (M12e): a preset time and an optional note about the message. 「日時を指定…」 picks any time, as on iOS and
@@ -32,33 +34,33 @@ fun ReminderDialog(onDismiss: () -> Unit, onPick: (ZonedDateTime, String?) -> Un
     var tooSoon by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("リマインド") },
+        title = { Text(stringResource(R.string.reminder_dialog_remind_me)) },
         text = {
             Column {
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
                     presets.forEach { preset -> FilterChip(selected = chosen.key == preset.key, onClick = { chosen = preset; tooSoon = false }, label = { Text(preset.label) }) }
                     val custom = chosen.key == Schedule.CUSTOM
-                    FilterChip(selected = custom, onClick = { picking = true }, label = { Text(if (custom) chosen.label else "日時を指定…") })
+                    FilterChip(selected = custom, onClick = { picking = true }, label = { Text(if (custom) chosen.label else stringResource(R.string.common_pick_a_date_and_time)) })
                 }
                 Text(
-                    if (tooSoon) "1 分以上先の時刻を選んでください" else Schedule.label(chosen.at) + " にリマインドします",
+                    if (tooSoon) stringResource(R.string.common_choose_a_time_at_least_1) else Schedule.label(chosen.at) + " にリマインドします",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (tooSoon) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),
                 )
-                OutlinedTextField(note, { note = it.take(200) }, singleLine = true, label = { Text("メモ (任意)") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                OutlinedTextField(note, { note = it.take(200) }, singleLine = true, label = { Text(stringResource(R.string.reminder_dialog_note_optional)) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 if (chosen.at.isAfter(ZonedDateTime.now().plusMinutes(1))) onPick(chosen.at, note.trim().ifEmpty { null }) else tooSoon = true
-            }) { Text("設定") }
+            }) { Text(stringResource(R.string.common_settings)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
     if (picking) {
         ScheduleDialog(
-            onDismiss = { picking = false }, title = "リマインド", confirm = "決定",
+            onDismiss = { picking = false }, title = stringResource(R.string.reminder_dialog_remind_me), confirm = stringResource(R.string.common_done),
             describe = { Schedule.label(it) + " にリマインドします" },
         ) { at ->
             chosen = Schedule.customReminder(at)

@@ -31,6 +31,9 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** The server's limits (messages/schemas.py PollCreate): 2-10 options of 1-80 characters, a question of 1-200. */
 object PollForm {
@@ -40,9 +43,9 @@ object PollForm {
     fun problem(question: String, options: List<String>): String? {
         val filled = options.map { it.trim() }.filter { it.isNotEmpty() }
         return when {
-            question.isBlank() -> "質問を入れてください"
-            filled.size < 2 -> "選択肢を 2 つ以上入れてください"
-            filled.map { it.lowercase() }.toSet().size != filled.size -> "同じ選択肢が複数あります"
+            question.isBlank() -> L10n.str(R.string.poll_dialog_enter_a_question)
+            filled.size < 2 -> L10n.str(R.string.poll_dialog_enter_at_least_2_options)
+            filled.map { it.lowercase() }.toSet().size != filled.size -> L10n.str(R.string.poll_dialog_some_options_are_the_same)
             else -> null
         }
     }
@@ -77,37 +80,37 @@ fun PollDialog(
     val problem = PollForm.problem(question, options)
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("アンケートを作成") },
+        title = { Text(stringResource(R.string.poll_dialog_create_poll)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    question, { if (it.length <= 200) question = it }, label = { Text("質問") }, singleLine = true,
+                    question, { if (it.length <= 200) question = it }, label = { Text(stringResource(R.string.poll_dialog_question)) }, singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 options.forEachIndexed { index, option ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
-                            option, { if (it.length <= 80) options[index] = it }, label = { Text("選択肢 ${index + 1}") }, singleLine = true,
+                            option, { if (it.length <= 80) options[index] = it }, label = { Text(stringResource(R.string.poll_dialog_option, index + 1)) }, singleLine = true,
                             modifier = Modifier.weight(1f),
                         )
                         if (options.size > 2) {
-                            IconButton(onClick = { options.removeAt(index) }) { Icon(Icons.Default.Close, contentDescription = "選択肢 ${index + 1} を削除") }
+                            IconButton(onClick = { options.removeAt(index) }) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.poll_dialog_delete_option, index + 1)) }
                         }
                     }
                 }
                 if (options.size < PollForm.MAX_OPTIONS) {
                     TextButton(onClick = { options.add("") }) {
                         Icon(Icons.Default.Add, contentDescription = null)
-                        Text("選択肢を追加", modifier = Modifier.padding(start = 4.dp))
+                        Text(stringResource(R.string.poll_dialog_add_option), modifier = Modifier.padding(start = 4.dp))
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = multiple, onCheckedChange = { multiple = it })
-                    Text("複数選択を許可する")
+                    Text(stringResource(R.string.poll_dialog_allow_multiple_choices))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = anonymous, onCheckedChange = { anonymous = it })
-                    Text("匿名にする (誰が投票したか表示しない)", modifier = Modifier.padding(start = 8.dp))
+                    Text(stringResource(R.string.poll_dialog_anonymous_dont_show_who_voted), modifier = Modifier.padding(start = 8.dp))
                 }
                 if (tried && problem != null) Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
@@ -122,8 +125,8 @@ fun PollDialog(
                     busy = false
                     if (made) onDismiss()
                 }
-            }) { Text(if (busy) "作成中…" else "作成") }
+            }) { Text(if (busy) stringResource(R.string.common_creating) else stringResource(R.string.common_create)) }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

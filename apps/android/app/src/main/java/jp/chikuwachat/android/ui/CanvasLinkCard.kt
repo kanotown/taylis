@@ -38,6 +38,9 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.CanvasLinkState
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 /**
  * M58 (CANVAS.md §4.13, the desktop's CanvasLinkCard.tsx): a `<server>/c/<id>` link on a line of its own in a message
@@ -116,12 +119,12 @@ fun CanvasLinkCard(controller: AppController, canvasId: String, version: Int) {
     when {
         canvas != null -> {
             val channel = store.channel(canvas.channelId)
-            val where = channel?.let { channelTitle(it, store) } ?: "会話"
-            val who = store.users[canvas.updatedBy]?.displayName ?: "メンバー"
+            val where = channel?.let { channelTitle(it, store) } ?: stringResource(R.string.common_conversation)
+            val who = store.users[canvas.updatedBy]?.displayName ?: stringResource(R.string.common_member)
             val share = CanvasCards.progress(canvas.taskTotal, canvas.taskDone)
             Row(
-                frame.clickable(onClickLabel = "キャンバスを開く", onClick = open).padding(horizontal = 12.dp, vertical = 10.dp)
-                    .semantics { contentDescription = "キャンバス: ${canvas.title}" },
+                frame.clickable(onClickLabel = stringResource(R.string.common_open_canvas), onClick = open).padding(horizontal = 12.dp, vertical = 10.dp)
+                    .semantics { contentDescription = L10n.str(R.string.canvas_link_card_canvas, canvas.title) },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -129,7 +132,7 @@ fun CanvasLinkCard(controller: AppController, canvasId: String, version: Int) {
                 Column(Modifier.weight(1f)) {
                     Text(canvas.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        "$where · キャンバス · 更新: $who ${YouSettings.lastUsedLabel(canvas.updatedAt)}",
+                        stringResource(R.string.canvas_link_card_canvas_updated, where, who, YouSettings.lastUsedLabel(canvas.updatedAt)),
                         style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                     if (share != null) {
@@ -139,7 +142,7 @@ fun CanvasLinkCard(controller: AppController, canvasId: String, version: Int) {
                             }
                             Text(
                                 "${canvas.taskDone}/${canvas.taskTotal}", style = MaterialTheme.typography.labelSmall, color = muted,
-                                modifier = Modifier.padding(start = 8.dp).semantics { contentDescription = "タスク ${canvas.taskDone}/${canvas.taskTotal}" },
+                                modifier = Modifier.padding(start = 8.dp).semantics { contentDescription = L10n.str(R.string.canvas_link_card_tasks, canvas.taskDone, canvas.taskTotal) },
                             )
                         }
                     }
@@ -148,24 +151,24 @@ fun CanvasLinkCard(controller: AppController, canvasId: String, version: Int) {
         }
         link == null -> Row(frame.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Badge(Icons.Outlined.Description, muted, MaterialTheme.colorScheme.surfaceVariant)
-            Text("キャンバスを読み込み中…", style = MaterialTheme.typography.bodyMedium, color = muted)
+            Text(stringResource(R.string.canvas_link_card_loading_canvas), style = MaterialTheme.typography.bodyMedium, color = muted)
         }
         link == CanvasLinkState.Forbidden -> Row(frame.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Badge(Icons.Outlined.Lock, muted, MaterialTheme.colorScheme.surfaceVariant)
             Column(Modifier.weight(1f)) {
-                Text("メンバーではありません", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                Text("このキャンバスの会話に参加している人だけが見られます。", style = MaterialTheme.typography.labelSmall, color = muted)
+                Text(stringResource(R.string.canvas_link_card_not_a_member), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.canvas_link_card_only_people_in_this_canvass_conversation), style = MaterialTheme.typography.labelSmall, color = muted)
             }
         }
         else -> Row(
-            frame.clickable(onClickLabel = "もう一度開く", onClick = open).padding(horizontal = 12.dp, vertical = 10.dp),
+            frame.clickable(onClickLabel = stringResource(R.string.canvas_link_card_open_again), onClick = open).padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Badge(Icons.Outlined.WarningAmber, muted, MaterialTheme.colorScheme.surfaceVariant)
             Column(Modifier.weight(1f)) {
-                Text("表示できないキャンバス", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.canvas_link_card_canvas_cant_be_shown), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                 Text(
-                    if (link == CanvasLinkState.Missing) "ゴミ箱に移されたか、削除されました。" else "読み込めませんでした。タップでもう一度試します。",
+                    if (link == CanvasLinkState.Missing) stringResource(R.string.canvas_link_card_it_was_moved_to_the_trash) else stringResource(R.string.canvas_link_card_couldnt_load_tap_to_try_again),
                     style = MaterialTheme.typography.labelSmall, color = muted,
                 )
             }

@@ -7,12 +7,14 @@ import jp.chikuwachat.android.sync.ChannelState
 import java.time.Instant
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** M86: how the header's chip looks — the day itself or the next (red), within a week (amber), later (grey). */
 enum class DeadlineTone { SOON, WEEK, LATER }
 
 /** 「締切」's sections, in order. */
-enum class DeadlineGroupKey(val label: String) { WEEK("今週"), MONTH("今月"), LATER("それ以降"), PAST("過ぎたもの") }
+enum class DeadlineGroupKey(val label: String) { WEEK(L10n.str(R.string.deadline_rules_this_week)), MONTH(L10n.str(R.string.deadline_rules_this_month)), LATER(L10n.str(R.string.deadline_rules_later)), PAST(L10n.str(R.string.deadline_rules_past)) }
 
 data class DeadlineGroup(val key: DeadlineGroupKey, val tasks: List<TaskOut>) {
     val label: String get() = key.label
@@ -38,9 +40,9 @@ object DeadlineRules {
 
     /** 「当日」 / 「前日」 / 「3 日前」. */
     fun noticeLabel(days: Int): String = when (days) {
-        0 -> "当日"
-        1 -> "前日"
-        else -> "$days 日前"
+        0 -> L10n.str(R.string.deadline_rules_on_the_day)
+        1 -> L10n.str(R.string.deadline_rules_day_before)
+        else -> L10n.str(R.string.deadline_rules_days_before, days)
     }
 
     /** The days as the server keeps them (distinct, largest first). */
@@ -49,7 +51,7 @@ object DeadlineRules {
     /** 「7 日前・3 日前・前日・当日」, largest first; 「通知しない」 for none. */
     fun noticeSummary(days: List<Int>?): String {
         val sorted = normalize(days ?: emptyList())
-        return if (sorted.isEmpty()) "通知しない" else sorted.joinToString("・") { noticeLabel(it) }
+        return if (sorted.isEmpty()) L10n.str(R.string.common_dont_notify) else sorted.joinToString(L10n.str(R.string.common_fmt_5)) { noticeLabel(it) }
     }
 
     fun sameNoticeDays(a: List<Int>?, b: List<Int>?): Boolean = normalize(a ?: emptyList()) == normalize(b ?: emptyList())
@@ -87,9 +89,9 @@ object DeadlineRules {
         val days = daysBetween(today, day) ?: return ""
         val time = task.dueAt?.let { runCatching { " " + CalendarDates.clock(it) }.getOrNull() } ?: ""
         return when {
-            days <= 0 -> "今日$time"
-            days == 1L -> "明日$time"
-            else -> "あと $days 日"
+            days <= 0 -> L10n.str(R.string.deadline_rules_today, time)
+            days == 1L -> L10n.str(R.string.deadline_rules_tomorrow, time)
+            else -> L10n.str(R.string.deadline_rules_days_left, days)
         }
     }
 
@@ -109,7 +111,7 @@ object DeadlineRules {
     fun whenText(task: TaskOut, today: String): String {
         val day = day(task) ?: return ""
         val date = runCatching { LocalDate.parse(day) }.getOrNull() ?: return day
-        val label = if (day == today) "今日" else "${TaskRules.dueLabel(day, today)} (${"日月火水木金土"[CalendarDates.weekdayIndex(date)]})"
+        val label = if (day == today) L10n.str(R.string.common_today) else "${TaskRules.dueLabel(day, today)} (${"日月火水木金土"[CalendarDates.weekdayIndex(date)]})"
         return task.dueAt?.let { at -> runCatching { "$label ${CalendarDates.clock(at)}" }.getOrNull() } ?: label
     }
 

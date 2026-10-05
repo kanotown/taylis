@@ -28,6 +28,9 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.MessageState
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /**
  * 「別のチャンネルに共有」(M13c): pick a conversation, add a comment, post the quote and permalink there. `version` (M28c):
@@ -41,7 +44,7 @@ fun ShareDialog(controller: AppController, message: MessageState, version: Int, 
     fun label(state: ChannelState): String {
         val channel = state.channel
         return if (channel.type == "dm" || channel.type == "group_dm") {
-            (channel.dmUserIds ?: emptyList()).filter { it != me }.mapNotNull { store.users[it]?.displayName }.joinToString(", ").ifEmpty { "自分" }
+            (channel.dmUserIds ?: emptyList()).filter { it != me }.mapNotNull { store.users[it]?.displayName }.joinToString(", ").ifEmpty { L10n.str(R.string.common_you) }
         } else (if (channel.type == "private") "🔒" else "#") + (channel.name ?: "")
     }
     val targets = remember(version) { store.channels.values.filter { it.isMember && !it.channel.archived && it.id != message.channelId }.sortedBy { label(it) } }
@@ -50,10 +53,10 @@ fun ShareDialog(controller: AppController, message: MessageState, version: Int, 
     var busy by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("別のチャンネルに共有") },
+        title = { Text(stringResource(R.string.share_dialog_share_to_another_channel)) },
         text = {
             Column {
-                OutlinedTextField(comment, { comment = it }, label = { Text("コメント (任意)") }, modifier = Modifier.fillMaxWidth(), maxLines = 3)
+                OutlinedTextField(comment, { comment = it }, label = { Text(stringResource(R.string.share_dialog_comment_optional)) }, modifier = Modifier.fillMaxWidth(), maxLines = 3)
                 LazyColumn(Modifier.heightIn(max = 280.dp).padding(top = 8.dp)) {
                     items(targets, key = { it.id }) { state ->
                         Row(Modifier.fillMaxWidth().clickable { targetId = state.id }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -61,7 +64,7 @@ fun ShareDialog(controller: AppController, message: MessageState, version: Int, 
                             Text(label(state), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                    if (targets.isEmpty()) item { Text("共有先になる会話がありません", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    if (targets.isEmpty()) item { Text(stringResource(R.string.share_dialog_no_conversations_to_share_to), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
         },
@@ -69,8 +72,8 @@ fun ShareDialog(controller: AppController, message: MessageState, version: Int, 
             TextButton(enabled = !busy && targetId != null, onClick = {
                 val id = targetId ?: return@TextButton
                 scope.launch { busy = true; if (controller.shareMessage(message, id, comment)) onDismiss(); busy = false }
-            }) { Text("共有する") }
+            }) { Text(stringResource(R.string.share_dialog_share)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

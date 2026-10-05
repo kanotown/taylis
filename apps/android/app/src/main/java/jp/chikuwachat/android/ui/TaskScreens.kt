@@ -95,6 +95,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.util.UUID
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** M56: the task form to show: a task (null = a new one from `init`). */
 data class TaskForm(val task: TaskOut?, val init: TaskCreateInit?)
@@ -107,8 +110,8 @@ fun taskVersion(hub: TaskHub?): Int {
 }
 
 private fun listNote(state: TaskListState?, available: Boolean): String? = when {
-    !available || state == TaskListState.UNSUPPORTED -> "このサーバはタスクに対応していません"
-    state == TaskListState.FAILED -> "タスクを読み込めませんでした。再接続すると読み直します"
+    !available || state == TaskListState.UNSUPPORTED -> L10n.str(R.string.common_this_server_doesnt_support_tasks)
+    state == TaskListState.FAILED -> L10n.str(R.string.common_couldnt_load_tasks_they_will_reload)
     else -> null
 }
 
@@ -205,12 +208,12 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
             }
             if (canAddDeadline) {
                 IconButton(onClick = { controller.taskForm = TaskForm(null, DeadlineRules.createInit(channel.id, emptyList())) }) {
-                    Icon(Icons.Outlined.AlarmAdd, contentDescription = "締切を追加")
+                    Icon(Icons.Outlined.AlarmAdd, contentDescription = stringResource(R.string.common_add_deadline))
                 }
             }
             if (canEditColumns) {
                 Box {
-                    IconButton(onClick = { boardMenu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "列を編集") }
+                    IconButton(onClick = { boardMenu = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.task_screens_edit_columns)) }
                     DropdownMenu(expanded = boardMenu, onDismissRequest = { boardMenu = false }) { columnMenu(column) { boardMenu = false } }
                 }
             }
@@ -222,7 +225,7 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
                 item(key = "empty") {
                     val loading = hub?.available == true && (board == null || board.state == TaskListState.LOADING)
                     Text(
-                        if (loading) "読み込み中…" else "${column.name}のタスクはありません",
+                        if (loading) stringResource(R.string.common_loading) else stringResource(R.string.task_screens_no_tasks_in, column.name),
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 16.dp, horizontal = 4.dp),
                     )
@@ -236,18 +239,18 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
                         if (canEdit) {
                             columns.filter { it.id != column.id }.forEach { target ->
                                 DropdownMenuItem(
-                                    text = { Text("「${target.name}」へ移動") },
+                                    text = { Text(stringResource(R.string.task_screens_move_to, target.name)) },
                                     onClick = { dismiss(); move(task, target, TaskNeighbors.NONE) },
                                 )
                             }
                             val up = TaskRules.moveWithin(cards, task.id, -1)
                             val down = TaskRules.moveWithin(cards, task.id, 1)
-                            DropdownMenuItem(text = { Text("上へ") }, enabled = up != null, onClick = { dismiss(); up?.let { move(task, column, it) } })
-                            DropdownMenuItem(text = { Text("下へ") }, enabled = down != null, onClick = { dismiss(); down?.let { move(task, column, it) } })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.common_move_up)) }, enabled = up != null, onClick = { dismiss(); up?.let { move(task, column, it) } })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.common_move_down)) }, enabled = down != null, onClick = { dismiss(); down?.let { move(task, column, it) } })
                         }
                         if (task.canDelete) {
                             DropdownMenuItem(
-                                text = { Text("削除", color = MaterialTheme.colorScheme.error) },
+                                text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
                                 onClick = { dismiss(); confirmDelete = task },
                             )
                         }
@@ -258,7 +261,7 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
             val doneCount = tasks.count { it.status == TaskStatus.DONE }
             if (column.status == TaskStatus.DONE && board != null && !board.allDone && doneCount >= TaskRules.BOARD_DONE_LIMIT) {
                 item(key = "all-done") {
-                    TextButton(onClick = { controller.scope.launch { hub?.openBoard(channel.id, allDone = true) } }) { Text("完了をすべて表示") }
+                    TextButton(onClick = { controller.scope.launch { hub?.openBoard(channel.id, allDone = true) } }) { Text(stringResource(R.string.task_screens_show_all_done)) }
                 }
             }
             if (canEdit && hub != null) {
@@ -288,16 +291,16 @@ fun ChannelTasksPane(controller: AppController, channel: ChannelState, version: 
     deleteColumn?.let { target ->
         AlertDialog(
             onDismissRequest = { deleteColumn = null },
-            title = { Text("列「${target.name}」を削除しますか？") },
+            title = { Text(stringResource(R.string.task_screens_delete_column, target.name)) },
             text = { Text(TaskRules.deleteColumnText(target, columns)) },
             confirmButton = {
                 TextButton(onClick = {
                     deleteColumn = null
                     if (column.id == target.id) TaskRules.builtinFor(columns, target.status)?.let { select(it) }
                     columnChange { it.removeColumn(channel.id, target.id) }
-                }) { Text("削除", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { deleteColumn = null }) { Text("キャンセル") } },
+            dismissButton = { TextButton(onClick = { deleteColumn = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 }
@@ -319,7 +322,7 @@ private fun ColumnSwitch(label: String, selected: Boolean, onClick: () -> Unit, 
                 .heightIn(min = TouchTarget.MIN)
                 .combinedClickable(
                     role = Role.Tab, onClick = onClick,
-                    onLongClickLabel = if (menu != null) "列の操作" else null, onLongClick = if (menu != null) ({ open = true }) else null,
+                    onLongClickLabel = if (menu != null) stringResource(R.string.task_screens_column_actions) else null, onLongClick = if (menu != null) ({ open = true }) else null,
                 )
                 .semantics { this.selected = selected },
         ) {
@@ -342,15 +345,15 @@ private fun ColumnMenuItems(
 ) {
     val left = TaskRules.columnMoveTarget(columns, column.id, -1)
     val right = TaskRules.columnMoveTarget(columns, column.id, 1)
-    DropdownMenuItem(text = { Text("「${column.name}」の名前を変更") }, onClick = { dismiss(); onRename() })
-    DropdownMenuItem(text = { Text("左へ") }, enabled = left != null, onClick = { dismiss(); left?.let(onMove) })
-    DropdownMenuItem(text = { Text("右へ") }, enabled = right != null, onClick = { dismiss(); right?.let(onMove) })
+    DropdownMenuItem(text = { Text(stringResource(R.string.task_screens_rename, column.name)) }, onClick = { dismiss(); onRename() })
+    DropdownMenuItem(text = { Text(stringResource(R.string.task_screens_left)) }, enabled = left != null, onClick = { dismiss(); left?.let(onMove) })
+    DropdownMenuItem(text = { Text(stringResource(R.string.task_screens_right)) }, enabled = right != null, onClick = { dismiss(); right?.let(onMove) })
     if (!column.builtin) {
-        DropdownMenuItem(text = { Text("列を削除", color = MaterialTheme.colorScheme.error) }, onClick = { dismiss(); onDelete() })
+        DropdownMenuItem(text = { Text(stringResource(R.string.common_delete_column), color = MaterialTheme.colorScheme.error) }, onClick = { dismiss(); onDelete() })
     }
     HorizontalDivider()
     DropdownMenuItem(
-        text = { Text(if (columns.size >= TaskRules.MAX_COLUMNS) "列を追加 (${TaskRules.MAX_COLUMNS} 列まで)" else "列を追加") },
+        text = { Text(if (columns.size >= TaskRules.MAX_COLUMNS) stringResource(R.string.task_screens_add_column_up_to, TaskRules.MAX_COLUMNS) else stringResource(R.string.task_screens_add_column)) },
         enabled = columns.size < TaskRules.MAX_COLUMNS, onClick = { dismiss(); onAdd() },
     )
 }
@@ -369,7 +372,7 @@ private fun ColumnNameDialog(
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     fun save() {
-        val problem = TaskRules.columnNameProblem(name) ?: if (column == null && atLimit) "列は ${TaskRules.MAX_COLUMNS} 列までです" else null
+        val problem = TaskRules.columnNameProblem(name) ?: if (column == null && atLimit) L10n.str(R.string.task_screens_up_to_columns, TaskRules.MAX_COLUMNS) else null
         if (problem != null) {
             error = problem
             return
@@ -390,16 +393,16 @@ private fun ColumnNameDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (column == null) "列を追加" else "列の名前を変更") },
+        title = { Text(if (column == null) stringResource(R.string.task_screens_add_column) else stringResource(R.string.task_screens_rename_column)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    value = name, onValueChange = { name = it.take(TaskRules.MAX_COLUMN_NAME); error = null }, label = { Text("名前") },
-                    placeholder = { Text("レビュー待ち") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    value = name, onValueChange = { name = it.take(TaskRules.MAX_COLUMN_NAME); error = null }, label = { Text(stringResource(R.string.common_name)) },
+                    placeholder = { Text(stringResource(R.string.task_screens_awaiting_review)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { save() }),
                 )
                 if (column == null) {
-                    Text("種類", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.common_type), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Column(Modifier.selectableGroup()) {
                         TaskStatus.all.forEach { kind ->
                             Row(
@@ -412,13 +415,13 @@ private fun ColumnNameDialog(
                         }
                     }
                 } else {
-                    Text("種類: ${TaskRules.label(column.status)} (変えられません)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.task_screens_type_cant_be_changed, TaskRules.label(column.status)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
             }
         },
-        confirmButton = { TextButton(enabled = !busy, onClick = ::save) { Text(if (column == null) "追加" else "保存") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        confirmButton = { TextButton(enabled = !busy, onClick = ::save) { Text(if (column == null) stringResource(R.string.common_add) else stringResource(R.string.common_save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -427,8 +430,8 @@ private fun ColumnNameDialog(
 fun DeleteTaskDialog(controller: AppController, task: TaskOut, onDismiss: () -> Unit, onDeleted: () -> Unit = {}) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("タスクを削除しますか？") },
-        text = { Text("「${task.title}」を削除します。" + if (task.channelId != null) "ボードのメンバー全員から消えます。" else "") },
+        title = { Text(L10n.str(R.string.common_delete_this_task)) },
+        text = { Text(L10n.str(R.string.common_will_be_deleted, task.title) + if (task.channelId != null) L10n.str(R.string.common_it_will_disappear_for_all_members) else "") },
         confirmButton = {
             TextButton(onClick = {
                 onDismiss()
@@ -443,9 +446,9 @@ fun DeleteTaskDialog(controller: AppController, task: TaskOut, onDismiss: () -> 
                         controller.report(e)
                     }
                 }
-            }) { Text("削除", color = MaterialTheme.colorScheme.error) }
+            }) { Text(L10n.str(R.string.common_delete), color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(L10n.str(R.string.common_cancel)) } },
     )
 }
 
@@ -462,7 +465,7 @@ fun InlineAdd(controller: AppController, add: suspend (String) -> Unit) {
     if (!open) {
         TextButton(onClick = { open = true }) {
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(" 追加")
+            Text(stringResource(R.string.task_screens_add))
         }
         return
     }
@@ -488,12 +491,12 @@ fun InlineAdd(controller: AppController, add: suspend (String) -> Unit) {
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
-            value = text, onValueChange = { text = it.take(TaskRules.MAX_TITLE) }, placeholder = { Text("タスクの題名") }, singleLine = true,
+            value = text, onValueChange = { text = it.take(TaskRules.MAX_TITLE) }, placeholder = { Text(stringResource(R.string.task_screens_task_title)) }, singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { submit() }),
             modifier = Modifier.weight(1f).focusRequester(focus),
         )
-        TextButton(enabled = !busy && text.isNotBlank(), onClick = ::submit) { Text("追加") }
-        IconButton(onClick = { open = false; text = "" }) { Icon(Icons.Default.Close, contentDescription = "閉じる") }
+        TextButton(enabled = !busy && text.isNotBlank(), onClick = ::submit) { Text(stringResource(R.string.common_add)) }
+        IconButton(onClick = { open = false; text = "" }) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close)) }
     }
 }
 
@@ -519,20 +522,20 @@ fun TaskCard(
     val deadline = task.kind == TaskKind.DEADLINE
     val names = remember(version, task.assigneeIds) { task.assigneeIds.map { store.users[it]?.displayName ?: "?" } }
     val summary = buildString {
-        if (deadline) append("締切、")
+        if (deadline) append(stringResource(R.string.task_screens_deadline))
         append(task.title)
-        if (done) append("、完了")
-        badge?.let { append("、").append(it) }
+        if (done) append(stringResource(R.string.task_screens_done))
+        badge?.let { append(stringResource(R.string.common_fmt_6)).append(it) }
         if (task.dueOn != null) {
-            append("、").append(TaskRules.cardDueText(task, today))
-            if (overdue) append(" (過ぎています)")
+            append(stringResource(R.string.common_fmt_6)).append(TaskRules.cardDueText(task, today))
+            if (overdue) append(stringResource(R.string.task_screens_overdue))
         }
-        if (task.rrule != null) append("、繰り返し")
-        progress?.let { append("、サブタスク ${it.first}/${it.second} 完了") }
-        if (names.isNotEmpty()) append("、担当 ").append(names.joinToString("、"))
-        if (!task.notes.isNullOrBlank()) append("、メモあり")
-        if (task.source?.messageId != null) append("、元のメッセージあり")
-        if (task.canvasSource?.canvasId != null) append("、元のキャンバスあり")
+        if (task.rrule != null) append(stringResource(R.string.task_screens_repeats))
+        progress?.let { append(stringResource(R.string.task_screens_subtasks_done, it.first, it.second)) }
+        if (names.isNotEmpty()) append(stringResource(R.string.task_screens_assigned_to)).append(names.joinToString(stringResource(R.string.common_fmt_6)))
+        if (!task.notes.isNullOrBlank()) append(stringResource(R.string.task_screens_has_notes))
+        if (task.source?.messageId != null) append(stringResource(R.string.task_screens_has_original_message))
+        if (task.canvasSource?.canvasId != null) append(stringResource(R.string.task_screens_has_original_canvas))
     }
     Surface(
         shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -540,7 +543,7 @@ fun TaskCard(
     ) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN)
-                .combinedClickable(onClickLabel = "開く", onLongClickLabel = if (menu != null) "タスクの操作" else null, onLongClick = if (menu != null) ({ menuOpen = true }) else null, onClick = onOpen)
+                .combinedClickable(onClickLabel = stringResource(R.string.common_open), onLongClickLabel = if (menu != null) stringResource(R.string.task_screens_task_actions) else null, onLongClick = if (menu != null) ({ menuOpen = true }) else null, onClick = onOpen)
                 .padding(start = if (leading != null) 0.dp else 12.dp, top = 8.dp, bottom = 8.dp, end = if (menu != null) 0.dp else 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -596,9 +599,9 @@ fun TaskCard(
                         // M73: made from a canvas's checklist item — a tap opens that canvas (the desktop's card button).
                         if (canvasId != null) {
                             Icon(
-                                Icons.AutoMirrored.Outlined.Article, contentDescription = "元のキャンバスを開く", tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                Icons.AutoMirrored.Outlined.Article, contentDescription = stringResource(R.string.task_screens_open_original_canvas), tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier
-                                    .clickable(role = Role.Button, onClickLabel = "元のキャンバスを開く") { controller.scope.launch { controller.openCanvasLink(canvasId) } }
+                                    .clickable(role = Role.Button, onClickLabel = stringResource(R.string.task_screens_open_original_canvas)) { controller.scope.launch { controller.openCanvasLink(canvasId) } }
                                     .padding(4.dp)
                                     .size(15.dp),
                             )
@@ -610,7 +613,7 @@ fun TaskCard(
             }
             if (menu != null) {
                 Box {
-                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "タスクの操作") }
+                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.task_screens_task_actions)) }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) { menu { menuOpen = false } }
                 }
             }
@@ -684,7 +687,7 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
         if (open.isEmpty() && done.isEmpty() && empty != null) {
             item(key = "$key:empty") {
                 Text(
-                    if (loading) "読み込み中…" else empty, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (loading) stringResource(R.string.common_loading) else empty, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                 )
             }
@@ -695,7 +698,7 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
             val expanded = key in shownDone
             item(key = "$key:done") {
                 Row(
-                    Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = if (expanded) "畳む" else "表示") {
+                    Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = if (expanded) stringResource(R.string.task_screens_collapse) else stringResource(R.string.common_show)) {
                         shownDone = if (expanded) shownDone - key else shownDone + key
                     }.padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -704,7 +707,7 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
                         if (expanded) Icons.Default.ExpandMore else Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
                         modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(" 完了 (${done.size})", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.task_screens_done_2, done.size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (expanded) items(done, key = { "$key:${it.id}" }) { task -> MineCard(controller, task, today, version, onToggle = ::toggle) }
@@ -715,20 +718,20 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
         Column(Modifier.fillMaxSize()) {
             listNote(list?.state, hub?.available == true)?.let { NoteStrip(it) }
             LazyColumn(Modifier.fillMaxWidth().weight(1f), contentPadding = PaddingValues(bottom = 88.dp)) {
-                item(key = "h:personal") { SectionHeader("自分のタスク", "自分だけに表示") }
+                item(key = "h:personal") { SectionHeader(stringResource(R.string.common_my_tasks), stringResource(R.string.task_screens_only_visible_to_you)) }
                 taskList(
-                    "personal", personal, "個人用のタスクはまだありません",
+                    "personal", personal, L10n.str(R.string.task_screens_no_personal_tasks_yet),
                     footer = if (hub?.available == true) ({
                         InlineAdd(controller) { title ->
                             hub.create(TaskCreate(title = title, clientTaskId = UUID.randomUUID().toString(), tz = ZoneId.systemDefault().id))
                         }
                     }) else null,
                 )
-                item(key = "h:assigned") { SectionHeader("自分の担当", null) }
+                item(key = "h:assigned") { SectionHeader(stringResource(R.string.task_screens_assigned_to_me), null) }
                 if (groups.isEmpty()) {
                     item(key = "assigned:empty") {
                         Text(
-                            if (loading) "読み込み中…" else "担当のタスクはありません", style = MaterialTheme.typography.bodyMedium,
+                            if (loading) stringResource(R.string.common_loading) else stringResource(R.string.task_screens_no_assigned_tasks), style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         )
                     }
@@ -740,13 +743,13 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
                         val dm = controller.store.channel(group.channelId)?.channel?.isDm == true
                         Row(
                             Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN)
-                                .clickable(onClickLabel = if (dm) "${group.channelName} との DM を開く" else "#${group.channelName} のタスクを開く") {
+                                .clickable(onClickLabel = if (dm) stringResource(R.string.task_screens_open_dm_with, group.channelName) else stringResource(R.string.task_screens_open_tasks_in, group.channelName)) {
                                     if (dm) controller.pendingChannelId = group.channelId else onOpenBoard(group.channelId)
                                 }
                                 .padding(horizontal = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            if (private) Icon(Icons.Outlined.Lock, contentDescription = "非公開", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (private) Icon(Icons.Outlined.Lock, contentDescription = stringResource(R.string.task_screens_private), modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 (if (private) " " else if (dm) "" else "# ") + group.channelName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -757,12 +760,12 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
                     taskList("g:${group.channelId}", group.tasks, null)
                 }
                 // L9 (REVIEWS.md §2.3): the shared tasks I made for someone else, open ones by due date.
-                item(key = "h:requested") { SectionHeader("自分が依頼した", null) }
+                item(key = "h:requested") { SectionHeader(stringResource(R.string.task_screens_requested_by_me), null) }
                 val (requestedOpen, requestedDone) = requestedRows
                 if (requestedOpen.isEmpty() && requestedDone.isEmpty()) {
                     item(key = "requested:empty") {
                         Text(
-                            if (requestedLoading) "読み込み中…" else "依頼したタスクはありません", style = MaterialTheme.typography.bodyMedium,
+                            if (requestedLoading) stringResource(R.string.common_loading) else stringResource(R.string.task_screens_no_requested_tasks), style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         )
                     }
@@ -772,7 +775,7 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
                     val expanded = "requested" in shownDone
                     item(key = "r:done") {
                         Row(
-                            Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = if (expanded) "畳む" else "表示") {
+                            Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = if (expanded) stringResource(R.string.task_screens_collapse) else stringResource(R.string.common_show)) {
                                 shownDone = if (expanded) shownDone - "requested" else shownDone + "requested"
                             }.padding(horizontal = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -781,7 +784,7 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
                                 if (expanded) Icons.Default.ExpandMore else Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
                                 modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Text(" 完了 (${requestedDone.size})", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.task_screens_done_2, requestedDone.size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     if (expanded) items(requestedDone, key = { "r:${it.id}" }) { task -> RequestedCard(controller, task, today, version) }
@@ -792,7 +795,7 @@ fun MyTasksPane(controller: AppController, version: Int, onOpenBoard: (String) -
             FloatingActionButton(
                 onClick = { controller.taskForm = TaskForm(null, TaskCreateInit(channelId = null)) },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-            ) { Icon(Icons.Default.Add, contentDescription = "タスクを追加") }
+            ) { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.common_add_task)) }
         }
     }
 }
@@ -827,7 +830,7 @@ private fun MineCard(controller: AppController, task: TaskOut, today: String, ve
         leading = {
             Checkbox(
                 checked = done, enabled = editable && controller.tasks?.available == true, onCheckedChange = { onToggle(task) },
-                modifier = Modifier.semantics { contentDescription = if (done) "「${task.title}」を未完了に戻す" else "「${task.title}」を完了にする" },
+                modifier = Modifier.semantics { contentDescription = if (done) L10n.str(R.string.task_screens_mark_not_done, task.title) else L10n.str(R.string.task_screens_mark_done, task.title) },
             )
         },
     )
@@ -838,18 +841,18 @@ private fun MineCard(controller: AppController, task: TaskOut, today: String, ve
 fun TaskDayRow(task: TaskOut, onOpen: (TaskOut) -> Unit, showBoard: Boolean = true) {
     val done = task.status == TaskStatus.DONE
     val color = Color(CalendarDates.channelColor(task.channelId))
-    val board = if (task.channelId == null) "自分" else TaskRules.placeLabel(task)
+    val board = if (task.channelId == null) stringResource(R.string.common_you) else TaskRules.placeLabel(task)
     // M84: a due time shows before the title (「☐ 14:00 題名」).
     val time = TaskRules.calendarTime(task)
     Row(
-        Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = "開く") { onOpen(task) }
+        Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN).clickable(onClickLabel = stringResource(R.string.common_open)) { onOpen(task) }
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = "期限 " + (if (time.isNotEmpty()) "$time " else "") + "${task.title}、$board" + if (done) "、完了" else ""
+                contentDescription = L10n.str(R.string.common_due_2) + (if (time.isNotEmpty()) "$time " else "") + L10n.str(R.string.common_fmt_8, task.title, board) + if (done) L10n.str(R.string.task_screens_done) else ""
             },
         verticalAlignment = Alignment.Top,
     ) {
-        Text("期限", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(92.dp).padding(top = 2.dp))
+        Text(stringResource(R.string.common_due), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(92.dp).padding(top = 2.dp))
         Text(if (done) "☑" else "☐", color = color, style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.width(8.dp))
         if (time.isNotEmpty()) {

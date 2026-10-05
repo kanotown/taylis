@@ -8,6 +8,8 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** 「後で送信」 presets and labels (M12d). Times are local; the server stores UTC. */
 object Schedule {
@@ -33,13 +35,13 @@ object Schedule {
     /** Slack-like choices that are always in the future relative to `now`. */
     fun presets(now: ZonedDateTime = ZonedDateTime.now()): List<Preset> {
         val list = ArrayList<Preset>()
-        list += Preset("1h", "1 時間後", now.plusHours(1).withSecond(0).withNano(0))
+        list += Preset("1h", L10n.str(R.string.common_in_1_hour), now.plusHours(1).withSecond(0).withNano(0))
         val today18 = now.withHour(18).withMinute(0).withSecond(0).withNano(0)
-        if (today18.isAfter(now.plusMinutes(5))) list += Preset("today18", "今日 18:00", today18)
-        list += Preset("tomorrow9", "明日 9:00", now.plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0))
+        if (today18.isAfter(now.plusMinutes(5))) list += Preset("today18", L10n.str(R.string.schedule_today_18_00), today18)
+        list += Preset("tomorrow9", L10n.str(R.string.schedule_tomorrow_9_00), now.plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0))
         var toMonday = ((DayOfWeek.MONDAY.value - now.dayOfWeek.value) + 7) % 7
         if (toMonday == 0) toMonday = 7 // next Monday, never today
-        list += Preset("monday9", "来週月曜 9:00", now.plusDays(toMonday.toLong()).withHour(9).withMinute(0).withSecond(0).withNano(0))
+        list += Preset("monday9", L10n.str(R.string.schedule_next_monday_9_00), now.plusDays(toMonday.toLong()).withHour(9).withMinute(0).withSecond(0).withNano(0))
         return list
     }
 
@@ -47,14 +49,14 @@ object Schedule {
     fun reminderPresets(now: ZonedDateTime = ZonedDateTime.now()): List<Preset> {
         fun soon(minutes: Long) = now.plusMinutes(minutes).withSecond(0).withNano(0)
         val list = arrayListOf(
-            Preset("20m", "20 分後", soon(20)),
-            Preset("1h", "1 時間後", soon(60)),
-            Preset("3h", "3 時間後", soon(180)),
-            Preset("tomorrow9", "明日 9:00", now.plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0)),
+            Preset("20m", L10n.str(R.string.schedule_in_20_minutes), soon(20)),
+            Preset("1h", L10n.str(R.string.common_in_1_hour), soon(60)),
+            Preset("3h", L10n.str(R.string.schedule_in_3_hours), soon(180)),
+            Preset("tomorrow9", L10n.str(R.string.schedule_tomorrow_9_00), now.plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0)),
         )
         var toMonday = ((DayOfWeek.MONDAY.value - now.dayOfWeek.value) + 7) % 7
         if (toMonday == 0) toMonday = 7
-        list += Preset("monday9", "来週月曜 9:00", now.plusDays(toMonday.toLong()).withHour(9).withMinute(0).withSecond(0).withNano(0))
+        list += Preset("monday9", L10n.str(R.string.schedule_next_monday_9_00), now.plusDays(toMonday.toLong()).withHour(9).withMinute(0).withSecond(0).withNano(0))
         return list
     }
 
@@ -70,8 +72,8 @@ object Schedule {
     fun label(at: ZonedDateTime, now: ZonedDateTime = ZonedDateTime.now()): String {
         val time = "${at.hour}:" + "%02d".format(at.minute)
         val days = ChronoUnit.DAYS.between(now.toLocalDate(), at.withZoneSameInstant(now.zone).toLocalDate())
-        if (days == 0L) return "今日 $time"
-        if (days == 1L) return "明日 $time"
+        if (days == 0L) return L10n.str(R.string.schedule_today, time)
+        if (days == 1L) return L10n.str(R.string.schedule_tomorrow, time)
         val year = if (at.year != now.year) "${at.year}年" else ""
         return "$year${at.monthValue}月${at.dayOfMonth}日(${DAYS[at.dayOfWeek.value - 1]}) $time"
     }

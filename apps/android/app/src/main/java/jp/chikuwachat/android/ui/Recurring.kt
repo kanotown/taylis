@@ -18,6 +18,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneId
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * L6 (M60, RECURRING.md): recurring posts and their collections — the summaries, the form's draft and its checks, the
@@ -43,9 +45,9 @@ object Recurring {
 
     /** A day of a month as the form and the list say it: 「1 日」, 「30 日 (ない月は末日)」, 「末日」. */
     fun dayLabel(day: Int): String = when {
-        day == 31 -> "末日"
-        day >= 29 -> "$day 日 (ない月は末日)"
-        else -> "$day 日"
+        day == 31 -> L10n.str(R.string.recurring_last_day)
+        day >= 29 -> L10n.str(R.string.recurring_day_last_day_in_shorter_months, day)
+        else -> L10n.str(R.string.common_day, day)
     }
 
     /** 「毎週 月・木 9:00」, 「毎日 9:00」, 「毎月 1 日 9:00」, 「毎月 末日 18:00」; the zone when it is not this device's. */
@@ -53,12 +55,12 @@ object Recurring {
         val text = when (schedule.kind) {
             "weekly" -> {
                 val days = schedule.weekdays.filter { it in 0..6 }.distinct().sorted()
-                if (days.size == 7) "毎日 ${clockLabel(schedule.time)}"
+                if (days.size == 7) L10n.str(R.string.recurring_daily, clockLabel(schedule.time))
                 else "毎週 ${days.joinToString("・") { WEEKDAY_LABELS[it] }} ${clockLabel(schedule.time)}"
             }
-            "monthly" -> "毎月 ${dayLabel(schedule.day)} ${clockLabel(schedule.time)}"
+            "monthly" -> L10n.str(R.string.recurring_monthly, dayLabel(schedule.day), clockLabel(schedule.time))
             // A kind a newer server added: its time at least.
-            else -> "${clockLabel(schedule.time)} (このアプリでは表示できない予定)"
+            else -> L10n.str(R.string.recurring_a_schedule_this_app_cant_show, clockLabel(schedule.time))
         }
         return if (!tz.isNullOrEmpty() && !localTz.isNullOrEmpty() && tz != localTz) "$text ($tz)" else text
     }
@@ -84,9 +86,9 @@ object Recurring {
 
     /** Whom it collects from, as one line (names from the caller). */
     fun targetsSummary(spec: CollectSpec, groupName: (String) -> String?, userName: (String) -> String?): String {
-        if (spec.targets.allMembers) return "チャンネルの全員"
+        if (spec.targets.allMembers) return L10n.str(R.string.common_everyone_in_the_channel)
         val names = spec.targets.groupIds.map { "@${groupName(it) ?: "グループ"}" } + spec.targets.userIds.map { userName(it) ?: "?" }
-        return if (names.size > 4) names.take(4).joinToString("、") + " ほか ${names.size - 4}" else names.joinToString("、")
+        return if (names.size > 4) names.take(4).joinToString(L10n.str(R.string.common_fmt_6)) + L10n.str(R.string.recurring_fmt, names.size - 4) else names.joinToString(L10n.str(R.string.common_fmt_6))
     }
 
     /** Owners and the administrators among the members of a channel (not a DM) manage its recurring posts (§7). */
@@ -125,17 +127,17 @@ object Recurring {
     /** What keeps the draft from being saved, in words; null when it can be. The server checks the same. */
     fun problem(draft: RecurringDraft): String? {
         val name = draft.name.trim().split(SPACES).filter { it.isNotEmpty() }.joinToString(" ")
-        if (name.isEmpty()) return "名前を入力してください"
-        if (name.codePointCount(0, name.length) > MAX_NAME) return "名前は $MAX_NAME 文字までです"
-        if (draft.body.isBlank()) return "本文を入力してください"
-        if (draft.body.length > MAX_BODY) return "本文は $MAX_BODY 文字までです"
-        if (draft.kind == "weekly" && draft.weekdays.isEmpty()) return "曜日を 1 つ以上選んでください"
-        if (draft.kind == "monthly" && draft.day !in 1..31) return "日は 1〜31 で選んでください"
-        if (!TIME.matches(draft.time)) return "時刻を選んでください"
+        if (name.isEmpty()) return L10n.str(R.string.recurring_enter_a_name)
+        if (name.codePointCount(0, name.length) > MAX_NAME) return L10n.str(R.string.recurring_the_name_can_be_up_to, MAX_NAME)
+        if (draft.body.isBlank()) return L10n.str(R.string.recurring_enter_the_text)
+        if (draft.body.length > MAX_BODY) return L10n.str(R.string.recurring_the_text_can_be_up_to, MAX_BODY)
+        if (draft.kind == "weekly" && draft.weekdays.isEmpty()) return L10n.str(R.string.common_choose_at_least_one_day_of)
+        if (draft.kind == "monthly" && draft.day !in 1..31) return L10n.str(R.string.recurring_choose_a_day_from_1_to)
+        if (!TIME.matches(draft.time)) return L10n.str(R.string.recurring_choose_a_time)
         if (draft.collect) {
-            if (!draft.allMembers && draft.groupIds.isEmpty() && draft.userIds.isEmpty()) return "提出する人を選んでください"
-            if (draft.afterDays !in 0..MAX_AFTER_DAYS) return "締切は 0〜$MAX_AFTER_DAYS 日後で選んでください"
-            if (!TIME.matches(draft.dueTime)) return "締切の時刻を選んでください"
+            if (!draft.allMembers && draft.groupIds.isEmpty() && draft.userIds.isEmpty()) return L10n.str(R.string.recurring_choose_who_submits)
+            if (draft.afterDays !in 0..MAX_AFTER_DAYS) return L10n.str(R.string.recurring_the_deadline_must_be_0_days, MAX_AFTER_DAYS)
+            if (!TIME.matches(draft.dueTime)) return L10n.str(R.string.recurring_choose_the_deadline_time)
         }
         return null
     }
@@ -191,7 +193,7 @@ object Recurring {
         val date = Templates.expand("{date}", today)
         val weekday = Templates.expand("{weekday}", today)
         val week = Templates.expand("{week}", today)
-        return "{date} → $date、{weekday} → $weekday、{week} → 週番号 (例 $week)。投稿した日に置き換わります"
+        return L10n.str(R.string.recurring_date_weekday_week_week_number_e, date, weekday, week)
     }
 
     // --- the chip under a collecting post ------------------------------------------------------------------------
@@ -210,7 +212,7 @@ object Recurring {
         val date = shortDateTime(collection.dueAt, zone)
         val due = instant(collection.dueAt)
         return ChipState(
-            label = "提出 $submitted/${collection.targetCount}" + if (date.isNotEmpty()) " · 締切 $date" else "",
+            label = L10n.str(R.string.recurring_submitted, submitted, collection.targetCount) + if (date.isNotEmpty()) L10n.str(R.string.recurring_due, date) else "",
             mine = if (!isTarget) null else if (meId in collection.submittedUserIds) Mine.SUBMITTED else Mine.PENDING,
             overdue = due != null && !due.isAfter(now),
             complete = collection.targetCount > 0 && submitted >= collection.targetCount,
@@ -225,8 +227,8 @@ object Recurring {
 
     /** The reminders list's mark for a reminder someone else's action made (null for my own). */
     fun reminderBadge(kind: String): String? = when (kind) {
-        "ack" -> "確認のお願い"
-        "collect" -> "提出のお願い"
+        "ack" -> L10n.str(R.string.recurring_please_acknowledge)
+        "collect" -> L10n.str(R.string.recurring_please_submit)
         else -> null
     }
 }

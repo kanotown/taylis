@@ -47,6 +47,8 @@ import androidx.compose.ui.window.DialogProperties
 import jp.chikuwachat.android.platform.AvatarPhoto
 import kotlin.math.min
 import kotlin.math.roundToInt
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /** Choose the square of a picked photo for the profile picture (M16g): drag to move; pinch or the slider to zoom. */
 @Composable
@@ -63,9 +65,9 @@ fun AvatarCropDialog(bitmap: Bitmap, onCancel: () -> Unit, onDone: (ByteArray) -
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onCancel) { Text("キャンセル") }
-                    Text("写真の範囲を選ぶ", Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium)
-                    TextButton(onClick = { onDone(AvatarPhoto.render(bitmap, crop, frame)) }, enabled = frame > 1f) { Text("設定する") }
+                    TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
+                    Text(stringResource(R.string.avatar_crop_dialog_choose_the_photo_area), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium)
+                    TextButton(onClick = { onDone(AvatarPhoto.render(bitmap, crop, frame)) }, enabled = frame > 1f) { Text(stringResource(R.string.avatar_crop_dialog_set)) }
                 }
                 Box(
                     Modifier
@@ -120,7 +122,7 @@ fun AvatarCropDialog(bitmap: Bitmap, onCancel: () -> Unit, onDone: (ByteArray) -
                     Text("＋", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(
-                    "ドラッグで動かし、ピンチやスライダーで拡大できます",
+                    stringResource(R.string.avatar_crop_dialog_drag_to_move_pinch_or_use),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,

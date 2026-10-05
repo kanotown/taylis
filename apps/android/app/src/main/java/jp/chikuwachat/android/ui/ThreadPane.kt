@@ -51,6 +51,9 @@ import jp.chikuwachat.android.sync.toOut
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.time.ZoneId
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 
 /** Thread list rows (SYNC_PROTOCOL.md §10.2, §10.3): the parent and the reply count line come before the replies. */
 object ThreadRows {
@@ -286,7 +289,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
                     item(key = "parent") { ThreadMessage(parent, store, controller, version) }
                     item(key = "divider") {
                         Text(
-                            if (replies.isEmpty()) "返信はまだありません" else "${replies.size} 件の返信",
+                            if (replies.isEmpty()) stringResource(R.string.common_no_replies_yet) else pluralStringResource(R.plurals.common_reply_replies, replies.size, replies.size),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -294,7 +297,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
                         HorizontalDivider()
                     }
                 } else {
-                    item { Text("メッセージが見つかりません", modifier = Modifier.padding(16.dp)) }
+                    item { Text(stringResource(R.string.thread_pane_message_not_found), modifier = Modifier.padding(16.dp)) }
                 }
                 items(replies, key = { it.rowKey }) { reply ->
                     Column {
@@ -307,7 +310,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
                 ExtendedFloatingActionButton(
                     onClick = { scope.launch { listState.animateScrollToItem(header + replies.size - 1) } },
                     icon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
-                    text = { Text("新着 $unseenBelow 件") },
+                    text = { Text(stringResource(R.string.common_new, unseenBelow)) },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
                 )
             }
@@ -336,7 +339,7 @@ private fun NewRepliesDivider() {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.error.copy(alpha = 0.6f)))
         Text(
-            "  新しい返信",
+            stringResource(R.string.thread_pane_new_replies),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.error,
             fontWeight = FontWeight.Bold,

@@ -2,6 +2,8 @@ package jp.chikuwachat.android.ui
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M57 (CANVAS.md §17): the canvas table editor's text rules — reading a Markdown table into a header, rows and column
@@ -136,7 +138,7 @@ object CanvasTable {
         return Range(start, end)
     }
 
-    val NEW_TABLE = Table(listOf(null, null, null), listOf("列1", "列2", "列3"), listOf(listOf("", "", ""), listOf("", "", "")))
+    val NEW_TABLE = Table(listOf(null, null, null), listOf(L10n.str(R.string.canvas_table_column_1), L10n.str(R.string.canvas_table_column_2), L10n.str(R.string.canvas_table_column_3)), listOf(listOf("", "", ""), listOf("", "", "")))
 
     /** The text with a table in it and that table's lines. */
     data class Insertion(val text: String, val range: Range)
@@ -172,7 +174,7 @@ object CanvasTable {
     /** A blank column inserted at `index` (0..columns), its header 「列N」 with N the new count. */
     fun addColumn(t: Table, index: Int): Table = Table(
         align = t.align.toMutableList().apply { add(index, null) },
-        header = t.header.toMutableList().apply { add(index, "列${t.columns + 1}") },
+        header = t.header.toMutableList().apply { add(index, L10n.str(R.string.common_column, t.columns + 1)) },
         rows = t.rows.map { it.toMutableList().apply { add(index, "") } },
     )
 

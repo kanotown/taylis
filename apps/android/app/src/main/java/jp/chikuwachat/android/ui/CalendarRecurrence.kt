@@ -2,23 +2,25 @@ package jp.chikuwachat.android.ui
 
 import java.net.URLEncoder
 import java.time.LocalDate
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** M69 (CALENDAR.md §10.9): 「繰り返し」's choice. The presets repeat every day / week / month / year; カスタム has an interval. */
 enum class RepeatKind(val label: String) {
-    NONE("しない"),
-    DAILY("毎日"),
-    WEEKLY("毎週"),
-    MONTHLY("毎月"),
-    YEARLY("毎年"),
-    CUSTOM("カスタム"),
+    NONE(L10n.str(R.string.calendar_recurrence_never)),
+    DAILY(L10n.str(R.string.calendar_recurrence_daily)),
+    WEEKLY(L10n.str(R.string.common_weekly)),
+    MONTHLY(L10n.str(R.string.common_monthly)),
+    YEARLY(L10n.str(R.string.calendar_recurrence_yearly)),
+    CUSTOM(L10n.str(R.string.common_custom)),
 }
 
 /** What a rule repeats every (`label`: カスタム's unit, 「N 日 / 週 / か月 / 年ごと」). */
 enum class RepeatFreq(val label: String) {
-    DAILY("日"),
-    WEEKLY("週"),
-    MONTHLY("か月"),
-    YEARLY("年"),
+    DAILY(L10n.str(R.string.calendar_recurrence_days)),
+    WEEKLY(L10n.str(R.string.calendar_recurrence_weeks)),
+    MONTHLY(L10n.str(R.string.calendar_recurrence_months)),
+    YEARLY(L10n.str(R.string.calendar_recurrence_years)),
 }
 
 /** 毎月: the same date (「10 日」), the month's last day (「月末」), the nth weekday (「第 2 火曜日」) or the last such weekday (「最終 金曜日」). */
@@ -26,9 +28,9 @@ enum class MonthlyMode { DAY, MONTH_END, NTH, LAST }
 
 /** 終了: なし / 日付 (the day included) / 回数. */
 enum class RepeatEnd(val label: String) {
-    NEVER("なし"),
-    UNTIL("日付"),
-    COUNT("回数"),
+    NEVER(L10n.str(R.string.common_none)),
+    UNTIL(L10n.str(R.string.calendar_recurrence_on_date)),
+    COUNT(L10n.str(R.string.common_times)),
 }
 
 /** The picker's state. Weekdays are 0 = Sunday … 6 = Saturday (as CalendarDates.weekdayIndex). */
@@ -59,9 +61,9 @@ data class ParsedRule(
 
 /** 「この予定」「これ以降すべて」「すべての予定」 (the API's `scope`). */
 enum class OccurrenceScope(val wire: String, val label: String) {
-    THIS("this", "この予定"),
-    FOLLOWING("following", "これ以降すべて"),
-    ALL("all", "すべての予定"),
+    THIS("this", L10n.str(R.string.calendar_recurrence_this_event)),
+    FOLLOWING("following", L10n.str(R.string.calendar_recurrence_this_and_following)),
+    ALL("all", L10n.str(R.string.calendar_recurrence_all_events)),
 }
 
 /**
@@ -193,20 +195,20 @@ object CalendarRecurrence {
         return repeatToRrule(draft, start) != before
     }
 
-    private fun weekdayList(days: List<Int>): String = MONDAY_FIRST.filter { it in days }.joinToString("・") { NAMES[it] }
+    private fun weekdayList(days: List<Int>): String = MONDAY_FIRST.filter { it in days }.joinToString(L10n.str(R.string.common_fmt_5)) { NAMES[it] }
 
-    private fun longDay(day: LocalDate): String = "${day.year}年${day.monthValue}月${day.dayOfMonth}日"
+    private fun longDay(day: LocalDate): String = L10n.str(R.string.calendar_recurrence_fmt, day.year, day.monthValue, day.dayOfMonth)
 
     /**
      * A rule in words: 「毎日」「3 日ごと」「毎週 火・木曜日」「2 週間ごと 月曜日」「毎月 10 日」「毎月 月末」「毎月 第 2 火曜日」「毎月 最終 金曜日」
      * 「毎年 1月10日」, then 「、2026年12月20日まで」 or 「、10 回」. `start` is the occurrence's day (its date, its weekday).
      */
     fun describeRrule(rrule: String?, start: LocalDate): String {
-        if (rrule == null) return "繰り返さない"
-        val rule = parseRrule(rrule) ?: return "繰り返し"
-        fun every(unit: String, one: String) = if (rule.interval == 1) one else "${rule.interval} ${unit}ごと"
+        if (rrule == null) return L10n.str(R.string.calendar_recurrence_does_not_repeat)
+        val rule = parseRrule(rrule) ?: return L10n.str(R.string.common_repeat)
+        fun every(unit: String, one: String) = if (rule.interval == 1) one else L10n.str(R.string.calendar_recurrence_every, rule.interval, unit)
         var text = when (rule.freq) {
-            RepeatFreq.DAILY -> every("日", "毎日")
+            RepeatFreq.DAILY -> every(L10n.str(R.string.calendar_recurrence_days), L10n.str(R.string.calendar_recurrence_daily))
             RepeatFreq.WEEKLY -> {
                 val days = rule.byday.map { it.second }.ifEmpty { listOf(weekday(start)) }
                 "${every("週間", "毎週")} ${weekdayList(days)}曜日"
@@ -215,15 +217,15 @@ object CalendarRecurrence {
                 val nth = rule.byday.firstOrNull()
                 val which = when {
                     nth != null && nth.first != null -> "${if (nth.first!! < 0) "最終" else "第 ${nth.first}"} ${NAMES[nth.second]}曜日"
-                    rule.bymonthday == -1 -> "月末"
-                    else -> "${rule.bymonthday ?: start.dayOfMonth} 日"
+                    rule.bymonthday == -1 -> L10n.str(R.string.calendar_recurrence_end_of_month)
+                    else -> L10n.str(R.string.common_day, rule.bymonthday ?: start.dayOfMonth)
                 }
                 "${every("か月", "毎月")} $which"
             }
             RepeatFreq.YEARLY -> "${every("年", "毎年")} ${start.monthValue}月${start.dayOfMonth}日"
         }
-        if (rule.until != null) text += "、${longDay(rule.until)}まで"
-        else if (rule.count != null && rule.count != 0) text += "、${rule.count} 回"
+        if (rule.until != null) text += L10n.str(R.string.calendar_recurrence_until, longDay(rule.until))
+        else if (rule.count != null && rule.count != 0) text += L10n.str(R.string.calendar_recurrence_times, rule.count)
         return text
     }
 
@@ -233,23 +235,23 @@ object CalendarRecurrence {
     fun monthlyChoices(start: LocalDate): List<MonthlyChoice> {
         val (n, last) = nthOfMonth(start)
         val name = NAMES[weekday(start)]
-        val choices = mutableListOf(MonthlyChoice(MonthlyMode.DAY, "毎月 ${start.dayOfMonth} 日"))
-        if (start.dayOfMonth == start.lengthOfMonth()) choices += MonthlyChoice(MonthlyMode.MONTH_END, "毎月 月末")
-        if (n <= 4) choices += MonthlyChoice(MonthlyMode.NTH, "毎月 第 $n ${name}曜日")
-        if (last) choices += MonthlyChoice(MonthlyMode.LAST, "毎月 最終 ${name}曜日")
+        val choices = mutableListOf(MonthlyChoice(MonthlyMode.DAY, L10n.str(R.string.calendar_recurrence_monthly_on_day, start.dayOfMonth)))
+        if (start.dayOfMonth == start.lengthOfMonth()) choices += MonthlyChoice(MonthlyMode.MONTH_END, L10n.str(R.string.calendar_recurrence_monthly_on_the_last_day))
+        if (n <= 4) choices += MonthlyChoice(MonthlyMode.NTH, L10n.str(R.string.calendar_recurrence_monthly_on_of_week, n, name))
+        if (last) choices += MonthlyChoice(MonthlyMode.LAST, L10n.str(R.string.calendar_recurrence_monthly_on_the_last, name))
         return choices
     }
 
     /** What stops the picker from being saved, or null. */
     fun repeatProblem(draft: RepeatDraft, start: LocalDate): String? {
         if (draft.kind == RepeatKind.NONE) return null
-        if (draft.kind == RepeatKind.CUSTOM && draft.interval !in 1..MAX_INTERVAL) return "間隔は 1〜$MAX_INTERVAL にしてください"
-        if (freqOf(draft) == RepeatFreq.WEEKLY && draft.weekdays.isEmpty()) return "曜日を選んでください"
+        if (draft.kind == RepeatKind.CUSTOM && draft.interval !in 1..MAX_INTERVAL) return L10n.str(R.string.calendar_recurrence_the_interval_must_be_1, MAX_INTERVAL)
+        if (freqOf(draft) == RepeatFreq.WEEKLY && draft.weekdays.isEmpty()) return L10n.str(R.string.calendar_recurrence_choose_the_days_of_the_week)
         if (draft.end == RepeatEnd.UNTIL) {
-            val until = draft.until ?: return "終了日を入れてください"
-            if (until.isBefore(start)) return "終了日は開始日より後にしてください"
+            val until = draft.until ?: return L10n.str(R.string.calendar_recurrence_enter_the_end_date)
+            if (until.isBefore(start)) return L10n.str(R.string.common_the_end_date_must_be_after)
         }
-        if (draft.end == RepeatEnd.COUNT && draft.count !in 1..MAX_COUNT) return "回数は 1〜$MAX_COUNT にしてください"
+        if (draft.end == RepeatEnd.COUNT && draft.count !in 1..MAX_COUNT) return L10n.str(R.string.calendar_recurrence_the_count_must_be_1, MAX_COUNT)
         return null
     }
 

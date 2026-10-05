@@ -5,6 +5,8 @@ import jp.chikuwachat.android.api.Codec
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M33 (MOBILE_UI.md §9 Android): a page of the phone's main screen. The screen is a back stack of these, the channel
@@ -119,10 +121,10 @@ sealed interface Route {
  * `filter` being GET /activity's. M34's stage A (a server before M39) shows only [メンション | スレッド] ([stageA]).
  */
 enum class ActivitySegment(val label: String, val filter: String) {
-    ALL("すべて", "all"),
-    MENTIONS("メンション", "mentions"),
-    THREADS("スレッド", "threads"),
-    REACTIONS("リアクション", "reactions"),
+    ALL(L10n.str(R.string.common_all), "all"),
+    MENTIONS(L10n.str(R.string.common_mention), "mentions"),
+    THREADS(L10n.str(R.string.common_thread), "threads"),
+    REACTIONS(L10n.str(R.string.main_nav_reactions), "reactions"),
     ;
 
     companion object {

@@ -20,11 +20,13 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** M52: the calendar's two phone views (CALENDAR.md §7): the agenda from today and the month with dots. */
 enum class CalendarMode(val label: String) {
-    LIST("一覧"),
-    MONTH("月"),
+    LIST(L10n.str(R.string.calendar_dates_list)),
+    MONTH(L10n.str(R.string.calendar_dates_month)),
 }
 
 /**
@@ -178,7 +180,7 @@ object CalendarDates {
     fun clock(time: LocalTime): String = "${time.hour}:${pad(time.minute)}"
 
     /** "10月1日 (木)". */
-    fun dayLabel(day: LocalDate): String = "${day.monthValue}月${day.dayOfMonth}日 (${WEEKDAYS[weekdayIndex(day)]})"
+    fun dayLabel(day: LocalDate): String = L10n.str(R.string.common_fmt_3, day.monthValue, day.dayOfMonth, WEEKDAYS[weekdayIndex(day)])
 
     fun weekdayLabel(index: Int): String = WEEKDAYS[index]
 
@@ -187,33 +189,33 @@ object CalendarDates {
     /** The header of a mode's range: 「2026年10月」, 「10月1日 (木) から」. */
     fun rangeTitle(mode: CalendarMode, anchor: LocalDate): String = when (mode) {
         CalendarMode.MONTH -> monthLabel(anchor)
-        CalendarMode.LIST -> "${dayLabel(anchor)} から"
+        CalendarMode.LIST -> L10n.str(R.string.calendar_dates_from, dayLabel(anchor))
     }
 
     /** What a row says of the time on `day`: 「終日」, 「14:00〜15:30」, 「〜15:30」 (began earlier), 「14:00〜」 (ends later). */
     fun timeOnDay(event: CalendarEventOut, day: LocalDate): String {
-        if (event.allDay) return "終日"
+        if (event.allDay) return L10n.str(R.string.common_all_day)
         val (first, last) = eventDays(event)
         val start = if (first == day) clock(event.startsAt!!) else ""
         val end = if (last == day) clock(event.endsAt!!) else ""
-        if (start.isEmpty() && end.isEmpty()) return "終日"
-        return "$start〜$end"
+        if (start.isEmpty() && end.isEmpty()) return L10n.str(R.string.common_all_day)
+        return L10n.str(R.string.calendar_dates_fmt, start, end)
     }
 
     /** The whole time of an event: 「10月1日 (木) 14:00〜15:00」, 「10月1日 (木)〜10月3日 (土) 終日」. */
     fun eventWhen(event: CalendarEventOut): String {
         val (first, last) = eventDays(event)
-        if (event.allDay) return if (first == last) "${dayLabel(first)} 終日" else "${dayLabel(first)}〜${dayLabel(last)} 終日"
+        if (event.allDay) return if (first == last) L10n.str(R.string.common_all_day_2, dayLabel(first)) else L10n.str(R.string.calendar_dates_all_day, dayLabel(first), dayLabel(last))
         val startDay = localDay(event.startsAt!!)
         val endDay = localDay(event.endsAt!!)
         val start = "${dayLabel(startDay)} ${clock(event.startsAt)}"
         val end = if (endDay == startDay) clock(event.endsAt) else "${dayLabel(endDay)} ${clock(event.endsAt)}"
-        return "$start〜$end"
+        return L10n.str(R.string.calendar_dates_fmt, start, end)
     }
 
     /** What an alarm says when it fires while the app is open, as the server's push does (PUSH_NOTIFICATIONS.md). */
     fun alarmText(event: CalendarEventOut): String {
-        val whenText = if (event.allDay) "終日" else clock(event.startsAt!!)
+        val whenText = if (event.allDay) L10n.str(R.string.common_all_day) else clock(event.startsAt!!)
         return "$whenText ${event.title}" + (event.channelName?.let { " (#$it)" } ?: "")
     }
 
@@ -223,7 +225,7 @@ object CalendarDates {
      * no channel), never another occurrence's title or time.
      */
     fun alarmText(event: CalendarEventOut?, channelName: String?): String {
-        if (event == null) return "予定の通知があります" + (channelName?.let { " (#$it)" } ?: "")
+        if (event == null) return L10n.str(R.string.calendar_dates_you_have_an_event_notification) + (channelName?.let { " (#$it)" } ?: "")
         return alarmText(if (event.channelName == null && channelName != null) event.copy(channelName = channelName) else event)
     }
 
@@ -249,26 +251,26 @@ object CalendarDates {
     data class AlarmChoice(val value: Int?, val label: String)
 
     val TIMED_ALARMS = listOf(
-        AlarmChoice(null, "なし"),
-        AlarmChoice(0, "開始時"),
-        AlarmChoice(5, "5 分前"),
-        AlarmChoice(10, "10 分前"),
-        AlarmChoice(15, "15 分前"),
-        AlarmChoice(30, "30 分前"),
-        AlarmChoice(60, "1 時間前"),
-        AlarmChoice(1440, "前日 (24 時間前)"),
+        AlarmChoice(null, L10n.str(R.string.common_none)),
+        AlarmChoice(0, L10n.str(R.string.calendar_dates_at_start)),
+        AlarmChoice(5, L10n.str(R.string.calendar_dates_5_min_before)),
+        AlarmChoice(10, L10n.str(R.string.calendar_dates_10_min_before)),
+        AlarmChoice(15, L10n.str(R.string.calendar_dates_15_min_before)),
+        AlarmChoice(30, L10n.str(R.string.calendar_dates_30_min_before)),
+        AlarmChoice(60, L10n.str(R.string.calendar_dates_1_hour_before)),
+        AlarmChoice(1440, L10n.str(R.string.calendar_dates_day_before_24_hours_before)),
     )
 
     /** An all-day event's alarm goes out at 8:00: the day before (1440) or on the day (-480). */
     val ALL_DAY_ALARMS = listOf(
-        AlarmChoice(null, "なし"),
-        AlarmChoice(1440, "前日 8:00"),
-        AlarmChoice(-480, "当日 8:00"),
+        AlarmChoice(null, L10n.str(R.string.common_none)),
+        AlarmChoice(1440, L10n.str(R.string.calendar_dates_day_before_at_8_00)),
+        AlarmChoice(-480, L10n.str(R.string.calendar_dates_same_day_at_8_00)),
     )
 
     fun alarmChoices(allDay: Boolean): List<AlarmChoice> = if (allDay) ALL_DAY_ALARMS else TIMED_ALARMS
 
-    fun alarmLabel(minutes: Int?, allDay: Boolean): String = alarmChoices(allDay).firstOrNull { it.value == minutes }?.label ?: "なし"
+    fun alarmLabel(minutes: Int?, allDay: Boolean): String = alarmChoices(allDay).firstOrNull { it.value == minutes }?.label ?: L10n.str(R.string.common_none)
 
     /** The alarm kept when the event turns all-day or back (the server does the same, CALENDAR.md §2). */
     fun remapAlarm(minutes: Int?, allDay: Boolean): Int? {
@@ -326,20 +328,20 @@ object CalendarDates {
     /** What stops the form from being saved (the server's rules, said first here), or null. */
     fun draftProblem(draft: EventDraft): String? {
         val title = draft.title.trim()
-        if (title.isEmpty()) return "題名を入れてください"
-        if (title.length > MAX_TITLE) return "題名は $MAX_TITLE 文字までです"
-        if (draft.location.trim().length > MAX_LOCATION) return "場所は $MAX_LOCATION 文字までです"
-        if (draft.description.trim().length > MAX_DESCRIPTION) return "説明は $MAX_DESCRIPTION 文字までです"
+        if (title.isEmpty()) return L10n.str(R.string.common_enter_a_title)
+        if (title.length > MAX_TITLE) return L10n.str(R.string.common_the_title_can_be_up_to, MAX_TITLE)
+        if (draft.location.trim().length > MAX_LOCATION) return L10n.str(R.string.calendar_dates_the_location_can_be_up_to, MAX_LOCATION)
+        if (draft.description.trim().length > MAX_DESCRIPTION) return L10n.str(R.string.calendar_dates_the_description_can_be_up_to, MAX_DESCRIPTION)
         CalendarRecurrence.repeatProblem(draft.repeat, draft.startDay)?.let { return it }
         if (draft.allDay) {
-            if (draft.endDay.isBefore(draft.startDay)) return "終了日は開始日より後にしてください"
-            if (ChronoUnit.DAYS.between(draft.startDay, draft.endDay) >= MAX_ALL_DAY_DAYS) return "終日の予定は $MAX_ALL_DAY_DAYS 日までです"
+            if (draft.endDay.isBefore(draft.startDay)) return L10n.str(R.string.common_the_end_date_must_be_after)
+            if (ChronoUnit.DAYS.between(draft.startDay, draft.endDay) >= MAX_ALL_DAY_DAYS) return L10n.str(R.string.calendar_dates_all_day_events_can_be_up, MAX_ALL_DAY_DAYS)
             return null
         }
         val start = at(draft.startDay, draft.startTime)
         val end = at(draft.endDay, draft.endTime)
-        if (!end.isAfter(start)) return "終了は開始より後にしてください"
-        if (Duration.between(start, end) > Duration.ofDays(MAX_TIMED_DAYS)) return "時刻の予定は $MAX_TIMED_DAYS 日までです"
+        if (!end.isAfter(start)) return L10n.str(R.string.calendar_dates_the_end_must_be_after_the)
+        if (Duration.between(start, end) > Duration.ofDays(MAX_TIMED_DAYS)) return L10n.str(R.string.calendar_dates_timed_events_can_be_up_to, MAX_TIMED_DAYS)
         return null
     }
 

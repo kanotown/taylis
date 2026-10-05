@@ -27,6 +27,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 const val PASSWORD_MIN_LENGTH = 8
 
@@ -38,8 +40,8 @@ fun ChangePasswordScreen(controller: AppController) {
     var confirm by rememberSaveable { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val hint = when {
-        new.isNotEmpty() && new.length < PASSWORD_MIN_LENGTH -> "パスワードは $PASSWORD_MIN_LENGTH 文字以上にしてください"
-        confirm.isNotEmpty() && confirm != new -> "確認用パスワードが一致しません"
+        new.isNotEmpty() && new.length < PASSWORD_MIN_LENGTH -> stringResource(R.string.common_passwords_must_be_at_least_characters, PASSWORD_MIN_LENGTH)
+        confirm.isNotEmpty() && confirm != new -> stringResource(R.string.common_the_passwords_dont_match)
         else -> null
     }
     val canSubmit = !controller.busy && current.isNotEmpty() && new.length >= PASSWORD_MIN_LENGTH && confirm == new
@@ -49,19 +51,19 @@ fun ChangePasswordScreen(controller: AppController) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("パスワードの変更", style = MaterialTheme.typography.headlineSmall)
-        Text("初回ログインのため、新しいパスワードを設定してください。", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.common_change_password), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.change_password_screen_this_is_your_first_sign_in), style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(24.dp))
-        OutlinedTextField(current, { current = it }, label = { Text("現在のパスワード") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(current, { current = it }, label = { Text(stringResource(R.string.common_current_password)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(new, { new = it }, label = { Text("新しいパスワード") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(new, { new = it }, label = { Text(stringResource(R.string.change_password_screen_new_password)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(confirm, { confirm = it }, label = { Text("新しいパスワード（確認）") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(confirm, { confirm = it }, label = { Text(stringResource(R.string.change_password_screen_new_password_confirm)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(16.dp))
         (hint ?: controller.error)?.let { Text(it, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(8.dp)) }
         if (controller.busy) CircularProgressIndicator() else {
-            Button(onClick = { scope.launch { controller.changePassword(current, new) } }, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) { Text("変更する") }
-            TextButton(onClick = { scope.launch { controller.logout() } }) { Text("ログアウト") }
+            Button(onClick = { scope.launch { controller.changePassword(current, new) } }, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_change_2)) }
+            TextButton(onClick = { scope.launch { controller.logout() } }) { Text(stringResource(R.string.common_sign_out)) }
         }
     }
 }

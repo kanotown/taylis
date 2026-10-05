@@ -117,6 +117,9 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /**
  * Shared composer: drafts and in-flight uploads stay bound to the original conversation.
@@ -197,7 +200,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
     fun uploadPicked(uris: List<android.net.Uri>, cleanup: () -> Unit = {}) {
         if (uris.isEmpty()) return
         if (pendingUploads.size + uploading + uris.size > maxAttachments) {
-            controller.error = "添付は${maxAttachments}件までです"
+            controller.error = L10n.str(R.string.composer_you_can_attach_up_to_files, maxAttachments)
             cleanup()
             return
         }
@@ -272,7 +275,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.clickable { runWorkflow(workflow, draft) }) {
                         val command = if (workflow.name.any { it.isWhitespace() }) "/wf " + workflow.name else "/" + workflow.name
                         Text(
-                            workflowEmoji(workflow) + " " + command + "  " + workflow.description.ifBlank { "ワークフロー" } + if (!workflow.canRun) " (使えません)" else "",
+                            workflowEmoji(workflow) + " " + command + "  " + workflow.description.ifBlank { stringResource(R.string.common_workflow) } + if (!workflow.canRun) stringResource(R.string.composer_unavailable) else "",
                             style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.widthIn(max = 320.dp).padding(horizontal = 10.dp, vertical = 6.dp),
                         )
@@ -301,7 +304,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         if (canShare) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp)) {
                 Checkbox(checked = alsoInChannel, onCheckedChange = { alsoInChannel = it })
-                Text(if (channel?.channel?.isDm == true) "会話にも送信" else "#${channel?.channel?.name ?: ""} にも送信", style = MaterialTheme.typography.bodySmall)
+                Text(if (channel?.channel?.isDm == true) stringResource(R.string.composer_also_send_to_the_conversation) else stringResource(R.string.composer_also_send_to, channel?.channel?.name ?: ""), style = MaterialTheme.typography.bodySmall)
             }
         }
         // M15e: priority and "ask for acknowledgement" for a top-level post; cleared after each send.
@@ -311,10 +314,10 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         if (priority != null || ackRequested) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(start = 16.dp, top = 6.dp)) {
                 priority?.let { PriorityLabel(it) }
-                if (ackRequested) Text("確認を求める", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (ackRequested) Text(stringResource(R.string.composer_ask_for_acknowledgement), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 // M28c: a 48 dp touch target around the small link.
                 Text(
-                    "外す", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
+                    stringResource(R.string.common_remove), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.touchTarget { source -> Modifier.clickable(interactionSource = source, indication = null) { priority = null; ackRequested = false } },
                 )
             }
@@ -353,7 +356,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             val body = Mentions.encode(draft.trim(), store.users.values, store.groups.values)
             val ids = pendingUploads.map { it.id }
             if (!canSchedule) return
-            if (at.isBefore(ZonedDateTime.now().plusMinutes(1))) { controller.error = "1 分以上先の時刻を選んでください"; return }
+            if (at.isBefore(ZonedDateTime.now().plusMinutes(1))) { controller.error = L10n.str(R.string.common_choose_a_time_at_least_1); return }
             val what = listOf(channelId, parentId, body, ids).toString()
             val key = scheduleKey?.takeIf { it.second == what }?.first ?: java.util.UUID.randomUUID().toString()
             scheduleKey = key to what
@@ -385,21 +388,21 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                                     val workflow = Workflows.findCommand(command.name, command.args, list)
                                     when {
                                         workflow != null -> runWorkflow(workflow, typed)
-                                        command.name == "wf" && command.args.isBlank() -> controller.error = "/wf の後にワークフローの名前を続けてください"
-                                        command.name == "wf" -> controller.error = "「${command.args}」というワークフローはこのチャンネルにありません"
-                                        else -> controller.error = "/${command.name} というコマンドはありません (/help で一覧)"
+                                        command.name == "wf" && command.args.isBlank() -> controller.error = L10n.str(R.string.composer_put_the_workflows_name_after_wf)
+                                        command.name == "wf" -> controller.error = L10n.str(R.string.composer_this_channel_has_no_workflow_called, command.args)
+                                        else -> controller.error = L10n.str(R.string.common_there_is_no_command_help_lists, command.name)
                                     }
                                 }
                                 .onFailure {
                                     // A server before M94 has no list (404): the name is simply no command there.
                                     if (it is jp.chikuwachat.android.api.ApiException.Api && it.status == 404 && command.name != "wf") {
-                                        controller.error = "/${command.name} というコマンドはありません (/help で一覧)"
+                                        controller.error = L10n.str(R.string.common_there_is_no_command_help_lists, command.name)
                                     } else controller.report(it)
                                 }
                         }
                         return
                     }
-                    controller.error = "/${command.name} というコマンドはありません (/help で一覧)"
+                    controller.error = L10n.str(R.string.common_there_is_no_command_help_lists, command.name)
                     return
                 }
                 // M54: /日程 opens the scheduling poll's form, with the dates (and times) typed after it as the candidates;
@@ -423,7 +426,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             val ids = pendingUploads.map { it.id }
             if (uploading > 0 || (body.isEmpty() && ids.isEmpty())) return
             val maxLength = store.limits?.maxMessageLength ?: 20_000
-            if (body.length > maxLength) { controller.error = "本文は%,d文字までです".format(maxLength); return }
+            if (body.length > maxLength) { controller.error = L10n.str(R.string.composer_the_message_can_be_up_to).format(maxLength); return }
             store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
             val options = SendOptions(
                 alsoInChannel = canShare && alsoInChannel,
@@ -447,11 +450,11 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                     Box(
                         Modifier.size(size).alpha(if (canSend) 1f else 0.35f).clip(CircleShape).background(MaterialTheme.colorScheme.primary)
                             .combinedClickable(
-                                enabled = canSend, onClickLabel = "送信", onLongClickLabel = "後で送信",
+                                enabled = canSend, onClickLabel = stringResource(R.string.common_send), onLongClickLabel = stringResource(R.string.common_send_later),
                                 onLongClick = { if (canSchedule) { haptics.performHapticFeedback(HapticFeedbackType.LongPress); scheduleOpen = true } },
                                 onClick = ::send,
                             )
-                            .semantics { contentDescription = "送信" },
+                            .semantics { contentDescription = L10n.str(R.string.common_send) },
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Outlined.ArrowUpward, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(size * 0.62f)) }
                 }
@@ -481,7 +484,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             if (!focused) {
                 IconButton(enabled = uploading == 0, onClick = { plusOpen = true }, modifier = Modifier.size(44.dp)) {
                     Icon(
-                        Icons.Filled.AddCircle, contentDescription = "添付など",
+                        Icons.Filled.AddCircle, contentDescription = stringResource(R.string.composer_attach_and_more),
                         tint = if (uploading == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(34.dp),
                     )
@@ -528,14 +531,14 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             // Under the input while typing (iOS toolRow): ＋, @, emoji, Aa, /, 🚩 (top-level posts); send on the right.
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 val tint = MaterialTheme.colorScheme.onSurfaceVariant
-                IconButton(enabled = uploading == 0, onClick = { plusOpen = true }) { Icon(Icons.Outlined.AddCircleOutline, contentDescription = "添付など", tint = tint) }
+                IconButton(enabled = uploading == 0, onClick = { plusOpen = true }) { Icon(Icons.Outlined.AddCircleOutline, contentDescription = stringResource(R.string.composer_attach_and_more), tint = tint) }
                 IconButton(onClick = { edit(ComposerText.mention(field.text, field.selection.start, field.selection.end)) }) {
-                    Icon(Icons.Outlined.AlternateEmail, contentDescription = "メンション", tint = tint)
+                    Icon(Icons.Outlined.AlternateEmail, contentDescription = stringResource(R.string.common_mention), tint = tint)
                 }
-                IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字", tint = tint) }
+                IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = stringResource(R.string.common_emoji), tint = tint) }
                 Box {
                     var formatOpen by remember { mutableStateOf(false) }
-                    IconButton(onClick = { formatOpen = true }, modifier = Modifier.semantics { contentDescription = "書式" }) {
+                    IconButton(onClick = { formatOpen = true }, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.composer_formatting) }) {
                         Text("Aa", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = tint)
                     }
                     FormatMenu(formatOpen, onDismiss = { formatOpen = false }) { format ->
@@ -546,12 +549,12 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 // `/`: the commands and templates, offered as at the start of the input (M13b, M30).
                 IconButton(
                     onClick = { if (draft.isBlank()) edit(ComposerFormat.Result("/", 1, 1)) else insertAtCursor("/") },
-                    modifier = Modifier.semantics { contentDescription = "コマンド" },
+                    modifier = Modifier.semantics { contentDescription = L10n.str(R.string.composer_commands) },
                 ) { Text("/", style = MaterialTheme.typography.titleLarge, color = tint) }
                 if (parentId == null) {
                     Box {
                         IconButton(onClick = { priorityOpen = true }) {
-                            Icon(Icons.Outlined.Flag, contentDescription = "重要度", tint = if (priority != null || ackRequested) MaterialTheme.colorScheme.primary else tint)
+                            Icon(Icons.Outlined.Flag, contentDescription = stringResource(R.string.composer_priority), tint = if (priority != null || ackRequested) MaterialTheme.colorScheme.primary else tint)
                         }
                         PriorityMenu(priorityOpen, { priorityOpen = false }, priority, ackRequested, onPriority = { priority = it }, onToggleAck = { ackRequested = !ackRequested })
                     }
@@ -615,7 +618,7 @@ fun rememberCameraCapture(controller: AppController, onPhoto: (uri: android.net.
         } catch (_: ActivityNotFoundException) {
             cameraFile = null
             file.delete()
-            controller.error = "カメラを開けませんでした"
+            controller.error = L10n.str(R.string.composer_couldnt_open_the_camera)
         }
     }
 }
@@ -665,15 +668,15 @@ private fun PlusSheet(
             }
             if (showingWorkflows && workflows != null) {
                 // M95: read each time it opens (kept a minute); a greyed row says why it cannot run.
-                item("ワークフロー", Icons.AutoMirrored.Outlined.ArrowBack) { showingWorkflows = false }
+                item(stringResource(R.string.common_workflow), Icons.AutoMirrored.Outlined.ArrowBack) { showingWorkflows = false }
                 HorizontalDivider()
                 workflows { workflow -> close { onWorkflow(workflow) } }
             } else if (showingTemplates) {
-                item("テンプレート", Icons.AutoMirrored.Outlined.ArrowBack) { showingTemplates = false }
+                item(stringResource(R.string.common_templates), Icons.AutoMirrored.Outlined.ArrowBack) { showingTemplates = false }
                 HorizontalDivider()
                 if (templates.isEmpty()) {
                     Text(
-                        "テンプレートはありません (デスクトップの設定で作れます)", style = MaterialTheme.typography.bodyMedium,
+                        stringResource(R.string.composer_no_templates_create_them_in_the), style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp),
                     )
                 }
@@ -687,15 +690,15 @@ private fun PlusSheet(
                     }
                 }
             } else {
-                item("写真・動画", Icons.Outlined.PhotoLibrary) { close(onPhotos) }
-                if (hasCamera) item("カメラ", Icons.Outlined.PhotoCamera) { close(onCamera) }
-                item("ファイル", Icons.AutoMirrored.Outlined.InsertDriveFile) { close(onFile) }
-                item("アンケート", Icons.Outlined.Poll) { close(onPoll) }
-                item("日程調整", Icons.Outlined.EventAvailable) { close(onSchedulePoll) }
-                item("テンプレート", Icons.Outlined.PostAdd) { showingTemplates = true }
-                if (workflows != null) item("ワークフロー", Icons.Outlined.Bolt) { showingWorkflows = true }
+                item(stringResource(R.string.composer_photos_videos), Icons.Outlined.PhotoLibrary) { close(onPhotos) }
+                if (hasCamera) item(stringResource(R.string.composer_camera), Icons.Outlined.PhotoCamera) { close(onCamera) }
+                item(stringResource(R.string.common_files), Icons.AutoMirrored.Outlined.InsertDriveFile) { close(onFile) }
+                item(stringResource(R.string.composer_poll), Icons.Outlined.Poll) { close(onPoll) }
+                item(stringResource(R.string.common_scheduling_poll), Icons.Outlined.EventAvailable) { close(onSchedulePoll) }
+                item(stringResource(R.string.common_templates), Icons.Outlined.PostAdd) { showingTemplates = true }
+                if (workflows != null) item(stringResource(R.string.common_workflow), Icons.Outlined.Bolt) { showingWorkflows = true }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                item("後で送信…", Icons.Outlined.Schedule, enabled = canSchedule) { close(onSchedule) }
+                item(stringResource(R.string.composer_send_later), Icons.Outlined.Schedule, enabled = canSchedule) { close(onSchedule) }
             }
         }
     }
@@ -731,7 +734,7 @@ private fun ComposerFormat.icon(): ImageVector = when (this) {
 @Composable
 private fun PriorityMenu(expanded: Boolean, onDismiss: () -> Unit, priority: String?, ackRequested: Boolean, onPriority: (String?) -> Unit, onToggleAck: () -> Unit) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        listOf(null to "通常", "important" to "重要", "urgent" to "緊急").forEach { (value, label) ->
+        listOf(null to stringResource(R.string.composer_normal), "important" to stringResource(R.string.composer_important), "urgent" to stringResource(R.string.composer_urgent)).forEach { (value, label) ->
             DropdownMenuItem(
                 text = { if (value == null) Text(label) else PriorityLabel(value) },
                 onClick = { onPriority(value); onDismiss() },
@@ -739,7 +742,7 @@ private fun PriorityMenu(expanded: Boolean, onDismiss: () -> Unit, priority: Str
             )
         }
         HorizontalDivider()
-        DropdownMenuItem(text = { Text("確認を求める") }, onClick = onToggleAck, leadingIcon = { Checkbox(checked = ackRequested, onCheckedChange = null) })
+        DropdownMenuItem(text = { Text(stringResource(R.string.composer_ask_for_acknowledgement)) }, onClick = onToggleAck, leadingIcon = { Checkbox(checked = ackRequested, onCheckedChange = null) })
     }
 }
 
@@ -748,13 +751,13 @@ private fun PriorityMenu(expanded: Boolean, onDismiss: () -> Unit, priority: Str
 private fun ScheduleMenu(expanded: Boolean, onDismiss: () -> Unit, onPick: (ZonedDateTime) -> Unit, onCustom: () -> Unit) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, modifier = Modifier.widthIn(min = 200.dp)) {
         Text(
-            "後で送信", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            stringResource(R.string.common_send_later), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         )
         Schedule.presets().forEach { preset ->
             DropdownMenuItem(text = { Text(Schedule.choice(preset)) }, onClick = { onDismiss(); onPick(preset.at) })
         }
         HorizontalDivider()
-        DropdownMenuItem(text = { Text("日時を指定…") }, onClick = { onDismiss(); onCustom() })
+        DropdownMenuItem(text = { Text(stringResource(R.string.common_pick_a_date_and_time)) }, onClick = { onDismiss(); onCustom() })
     }
 }

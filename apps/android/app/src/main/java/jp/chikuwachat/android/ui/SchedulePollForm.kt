@@ -65,6 +65,9 @@ import androidx.core.view.WindowCompat
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 /** What the form starts with: empty, or what `/日程 題名 日付 …` read. */
 data class SchedulePollInitial(val question: String = "", val slots: List<SlotDraft> = emptyList()) {
@@ -148,9 +151,9 @@ fun SchedulePollForm(
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(enabled = !busy, onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "閉じる") }
-                    Text("日程調整を作成", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-                    TextButton(enabled = !busy, onClick = ::submit) { Text(if (busy) "作成中…" else "作成") }
+                    IconButton(enabled = !busy, onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close)) }
+                    Text(stringResource(R.string.schedule_poll_form_create_scheduling_poll), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+                    TextButton(enabled = !busy, onClick = ::submit) { Text(if (busy) stringResource(R.string.common_creating) else stringResource(R.string.common_create)) }
                 }
                 HorizontalDivider()
                 Column(
@@ -159,18 +162,18 @@ fun SchedulePollForm(
                 ) {
                     OutlinedTextField(
                         value = question, onValueChange = { question = it.take(SchedulePolls.MAX_QUESTION) },
-                        label = { Text("題名") }, placeholder = { Text("例: M2 中間発表の練習") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.common_title)) }, placeholder = { Text(stringResource(R.string.schedule_poll_form_e_g_m2_midterm_presentation_rehearsal)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     )
-                    Text("候補の日を選ぶと、メンバーが ○ △ × で答えます", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.schedule_poll_form_pick_candidate_dates_and_members_answer), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     PickMonth(
                         month = shownMonth, today = today, picked = slots.map { it.day }.toSet(),
                         onMonth = { month = CalendarDates.addMonths(shownMonth, it).toString() },
                         onToggle = { day -> setSlots(SchedulePolls.toggleDay(slots, day, allDay, startTime, minutes)) },
                     )
 
-                    Text("時刻 (すべての候補)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.schedule_poll_form_time_all_candidates), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        listOf(false to "時刻を決める", true to "終日").forEachIndexed { index, (value, label) ->
+                        listOf(false to stringResource(R.string.schedule_poll_form_set_a_time), true to stringResource(R.string.common_all_day)).forEachIndexed { index, (value, label) ->
                             SegmentedButton(
                                 selected = allDay == value, onClick = { if (allDay != value) applyToAll(nextAllDay = value) },
                                 shape = SegmentedButtonDefaults.itemShape(index, 2), label = { Text(label) },
@@ -179,17 +182,17 @@ fun SchedulePollForm(
                     }
                     if (!allDay) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { picking = ALL }, modifier = Modifier.semantics { contentDescription = "開始時刻 ${CalendarDates.clock(startTime)}" }) {
+                            OutlinedButton(onClick = { picking = ALL }, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.schedule_poll_form_start_time, CalendarDates.clock(startTime)) }) {
                                 Text(CalendarDates.clock(startTime))
                             }
-                            Text("から", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            LengthChoice(minutes, label = "長さ") { applyToAll(nextMinutes = it) }
+                            Text(stringResource(R.string.schedule_poll_form_for), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            LengthChoice(minutes, label = stringResource(R.string.schedule_poll_form_duration)) { applyToAll(nextMinutes = it) }
                         }
                     }
-                    Text("カレンダーで日を選ぶと候補に入ります (もう一度押すと外れます)。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.schedule_poll_form_tap_dates_in_the_calendar_to), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                     Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("候補", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.schedule_poll_form_candidates), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                         Text(
                             "${slots.size} / ${SchedulePolls.MAX_SLOTS}", style = MaterialTheme.typography.labelMedium,
                             color = if (slots.size > SchedulePolls.MAX_SLOTS) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -197,7 +200,7 @@ fun SchedulePollForm(
                     }
                     if (slots.isEmpty()) {
                         Text(
-                            "カレンダーで日を選んでください", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            stringResource(R.string.schedule_poll_form_pick_dates_in_the_calendar), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)).padding(14.dp),
                         )
                     }
@@ -209,18 +212,18 @@ fun SchedulePollForm(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                                 IconButton(onClick = { setSlots(slots.filterIndexed { i, _ -> i != index }) }) {
-                                    Icon(Icons.Default.Close, contentDescription = "$label を削除")
+                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.schedule_poll_form_remove, label))
                                 }
                             }
                             if (!slot.allDay) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedButton(onClick = { picking = index }, modifier = Modifier.semantics { contentDescription = "$label の開始時刻" }) {
+                                    OutlinedButton(onClick = { picking = index }, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.schedule_poll_form_start_time_of, label) }) {
                                         Text(CalendarDates.clock(slot.start))
                                     }
-                                    LengthChoice(slot.minutes, label = "$label の長さ") { change(index, slot.copy(minutes = it)) }
-                                    TextButton(onClick = { setSlots(SchedulePolls.addAfter(slots, index, zone)) }, modifier = Modifier.semantics { contentDescription = "$label の後に同じ日の候補を追加" }) {
+                                    LengthChoice(slot.minutes, label = stringResource(R.string.schedule_poll_form_length_of, label)) { change(index, slot.copy(minutes = it)) }
+                                    TextButton(onClick = { setSlots(SchedulePolls.addAfter(slots, index, zone)) }, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.schedule_poll_form_add_a_same_day_candidate_after, label) }) {
                                         Icon(Icons.Default.Add, contentDescription = null)
-                                        Text("時刻を追加")
+                                        Text(stringResource(R.string.schedule_poll_form_add_time))
                                     }
                                 }
                             }
@@ -231,17 +234,17 @@ fun SchedulePollForm(
                         Modifier.fillMaxWidth().padding(top = 4.dp).toggleable(value = anonymous, role = Role.Switch, onValueChange = { anonymous = it }),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("匿名にする (誰が答えたか表示しない)", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.schedule_poll_form_anonymous_dont_show_who_answered), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                         Switch(checked = anonymous, onCheckedChange = null)
                     }
-                    Text("タイムゾーン: ${zone.id}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.common_time_zone, zone.id), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (tried && problem != null) Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
         picking?.let { which ->
             val time = if (which == ALL) startTime else slots.getOrNull(which)?.start ?: startTime
-            TimePickDialog(time.hour, time.minute, title = "開始時刻", onDismiss = { picking = null }) { h, m ->
+            TimePickDialog(time.hour, time.minute, title = stringResource(R.string.common_start_time), onDismiss = { picking = null }) { h, m ->
                 val picked = LocalTime.of(h, m)
                 if (which == ALL) applyToAll(nextStart = picked) else slots.getOrNull(which)?.let { change(which, it.copy(start = picked)) }
                 picking = null
@@ -256,9 +259,9 @@ private fun PickMonth(month: LocalDate, today: LocalDate, picked: Set<LocalDate>
     val weeks = remember(month) { CalendarDates.monthGrid(month) }
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { onMonth(-1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "前の月") }
+            IconButton(onClick = { onMonth(-1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = stringResource(R.string.schedule_poll_form_previous_month)) }
             Text(CalendarDates.monthLabel(month), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
-            IconButton(onClick = { onMonth(1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "次の月") }
+            IconButton(onClick = { onMonth(1) }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.schedule_poll_form_next_month)) }
         }
         Row(Modifier.fillMaxWidth()) {
             (0 until 7).forEach { index ->
@@ -279,7 +282,7 @@ private fun PickMonth(month: LocalDate, today: LocalDate, picked: Set<LocalDate>
                     if (chosen) cell = cell.background(MaterialTheme.colorScheme.primary, shape)
                     else if (day == today) cell = cell.border(1.5.dp, MaterialTheme.colorScheme.primary, shape)
                     Box(
-                        cell.clickable(enabled = chosen || !past, onClickLabel = if (chosen) "候補から外す" else "候補に入れる") { onToggle(day) }
+                        cell.clickable(enabled = chosen || !past, onClickLabel = if (chosen) stringResource(R.string.schedule_poll_form_remove_from_candidates) else stringResource(R.string.schedule_poll_form_add_to_candidates)) { onToggle(day) }
                             .semantics { contentDescription = CalendarDates.dayLabel(day); selected = chosen },
                         contentAlignment = Alignment.Center,
                     ) {

@@ -10,6 +10,8 @@ import java.net.URLDecoder
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M48: Google sign-in (docs/SSO.md §3, §6). The app opens the server's start URL in a Custom Tab with `challenge` =
@@ -89,15 +91,15 @@ object Sso {
     fun buttonText(domains: List<String>, label: String?): GoogleButtonText {
         val allowed = domains.filter { it.isNotBlank() }
         val first = allowed.firstOrNull() ?: return GoogleButtonText.GOOGLE
-        val org = label?.trim()?.takeIf { it.isNotEmpty() } ?: if (allowed.size > 1) "$first など" else first
-        return GoogleButtonText("$org のアカウントでログイン", "組織の Google Workspace アカウント")
+        val org = label?.trim()?.takeIf { it.isNotEmpty() } ?: if (allowed.size > 1) L10n.str(R.string.sso_etc, first) else first
+        return GoogleButtonText(L10n.str(R.string.sso_sign_in_with_your_account, org), L10n.str(R.string.sso_your_organizations_google_workspace))
     }
 }
 
 /** What the Google button says; `subtitle` is set when the button names the organisation. */
 data class GoogleButtonText(val title: String, val subtitle: String?) {
     companion object {
-        val GOOGLE = GoogleButtonText("Google でログイン", null)
+        val GOOGLE = GoogleButtonText(L10n.str(R.string.sso_sign_in_with_google), null)
     }
 }
 

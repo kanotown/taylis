@@ -31,6 +31,8 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.MessageState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * L9 (M64, REVIEWS.md §2.2): one chip per shared task made from the message (MessageOut.tasks), 「レビュー依頼 · 加納 ·
@@ -54,7 +56,7 @@ fun MessageTaskChips(message: MessageState, controller: AppController, version: 
             }
             Surface(
                 color = background, contentColor = content, shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClickLabel = "開く") { open(controller, task.id) },
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClickLabel = stringResource(R.string.common_open)) { open(controller, task.id) },
             ) {
                 Row(Modifier.heightIn(min = 32.dp).padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(

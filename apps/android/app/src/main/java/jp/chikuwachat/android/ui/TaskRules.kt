@@ -25,6 +25,8 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** The task form's fields (TASKS.md §6). `dueOn` "" = none. */
 data class TaskDraft(
@@ -125,7 +127,7 @@ data class TaskNoticeText(val body: String, val taskId: String, val channelId: S
  * (sync/Tasks.kt) and the screens share them, and TaskRulesTest reads them. Dates are "YYYY-MM-DD" strings (they sort).
  */
 object TaskRules {
-    val STATUS_LABELS: Map<String, String> = mapOf(TaskStatus.TODO to "未着手", TaskStatus.DOING to "進行中", TaskStatus.DONE to "完了")
+    val STATUS_LABELS: Map<String, String> = mapOf(TaskStatus.TODO to L10n.str(R.string.task_rules_to_do), TaskStatus.DOING to L10n.str(R.string.task_rules_in_progress), TaskStatus.DONE to L10n.str(R.string.common_done_2))
     const val MAX_TITLE = 200
     const val MAX_NOTES = 4000
     /** A board brings this many completed cards (then 「完了をすべて表示」 reads them all). */
@@ -140,13 +142,13 @@ object TaskRules {
     // --- L9: kinds and the chips under a message (REVIEWS.md §2.2) ----------------------------------
 
     /** A review request's states: 依頼中 / 対応中 / 完了. */
-    val REVIEW_LABELS: Map<String, String> = mapOf(TaskStatus.TODO to "依頼中", TaskStatus.DOING to "対応中", TaskStatus.DONE to "完了")
+    val REVIEW_LABELS: Map<String, String> = mapOf(TaskStatus.TODO to L10n.str(R.string.task_rules_requested), TaskStatus.DOING to L10n.str(R.string.task_rules_in_review), TaskStatus.DONE to L10n.str(R.string.common_done_2))
 
     /** A status in its kind's words (a review: 依頼中 / 対応中 / 完了; a task: 未着手 / 進行中 / 完了). */
     fun label(kind: String, status: String): String = if (kind == TaskKind.REVIEW) REVIEW_LABELS[status] ?: status else label(status)
 
     /** The chip's first word: 「レビュー依頼」 or 「タスク」. */
-    fun kindLabel(kind: String): String = if (kind == TaskKind.REVIEW) "レビュー依頼" else "タスク"
+    fun kindLabel(kind: String): String = if (kind == TaskKind.REVIEW) L10n.str(R.string.common_review_request) else L10n.str(R.string.common_tasks)
 
     /** Names on a chip before 「ほか N 人」. */
     const val CHIP_NAMES = 2
@@ -161,14 +163,14 @@ object TaskRules {
     fun chipAt(task: MessageTaskOut, today: String, now: Instant, nameOf: (String) -> String?): TaskChip {
         val names = task.assigneeIds.take(CHIP_NAMES).map { nameOf(it) ?: "?" }
         val rest = task.assigneeIds.size - names.size
-        val who = names.joinToString("、") + if (rest > 0) " ほか $rest 人" else ""
+        val who = names.joinToString(L10n.str(R.string.common_fmt_6)) + if (rest > 0) L10n.str(R.string.common_and_others, rest) else ""
         val done = task.status == TaskStatus.DONE
         val parts = buildList {
             add(kindLabel(task.kind))
             if (who.isNotEmpty()) add(who)
             add(label(task.kind, task.status))
             // M84: with its time when it has one (「10/9 14:00 まで」).
-            if (!done && task.dueOn != null) dueText(task.dueOn, task.dueAt, today).let { due -> add(if (due == "今日") "今日まで" else "$due まで") }
+            if (!done && task.dueOn != null) dueText(task.dueOn, task.dueAt, today).let { due -> add(if (due == L10n.str(R.string.common_today)) L10n.str(R.string.task_rules_due_today) else L10n.str(R.string.common_until, due)) }
         }
         val overdue = !done && overdue(task.dueOn, task.dueAt, today, now)
         return TaskChip(task.id, parts.joinToString(" · "), if (done) TaskChipTone.DONE else if (overdue) TaskChipTone.OVERDUE else TaskChipTone.OPEN)
@@ -184,7 +186,7 @@ object TaskRules {
         }
     }
 
-    fun quickLabel(status: String): String = if (status == TaskStatus.DOING) "対応を始める" else "完了にする"
+    fun quickLabel(status: String): String = if (status == TaskStatus.DOING) L10n.str(R.string.task_rules_start) else L10n.str(R.string.task_rules_mark_done)
 
     /** 「自分が依頼した」: a shared task I made with someone else assigned (the server's GET /tasks/requested rule). */
     fun isRequested(task: TaskOut, me: String?): Boolean =
@@ -195,7 +197,7 @@ object TaskRules {
      * name, the other people of that DM (`dmTitle`; 「DM」 when not known here).
      */
     fun placeLabel(task: TaskOut, dmTitle: (String) -> String? = { null }): String {
-        val channelId = task.channelId ?: return "自分のタスク"
+        val channelId = task.channelId ?: return L10n.str(R.string.common_my_tasks)
         task.channelName?.let { return "#$it" }
         return dmTitle(channelId) ?: "DM"
     }
@@ -306,7 +308,7 @@ object TaskRules {
 
     /** 「種類」 of a new column: the status its cards get. */
     val COLUMN_KIND_LABELS: Map<String, String> = mapOf(
-        TaskStatus.TODO to "未着手 (まだ始めていない)", TaskStatus.DOING to "進行中", TaskStatus.DONE to "完了 (カードは完了になる)",
+        TaskStatus.TODO to L10n.str(R.string.task_rules_to_do_not_started), TaskStatus.DOING to L10n.str(R.string.task_rules_in_progress), TaskStatus.DONE to L10n.str(R.string.task_rules_done_the_card_is_marked_done),
     )
 
     /** Whether these are the fallback columns (ids = statuses: no adding, renaming or moving columns). */
@@ -339,8 +341,8 @@ object TaskRules {
     fun columnNameProblem(name: String): String? {
         val cleaned = cleanTitle(name)
         return when {
-            cleaned.isEmpty() -> "列の名前を入れてください"
-            cleaned.length > MAX_COLUMN_NAME -> "列の名前は $MAX_COLUMN_NAME 文字までです"
+            cleaned.isEmpty() -> L10n.str(R.string.task_rules_enter_a_column_name)
+            cleaned.length > MAX_COLUMN_NAME -> L10n.str(R.string.task_rules_column_names_can_be_up_to, MAX_COLUMN_NAME)
             else -> null
         }
     }
@@ -361,7 +363,7 @@ object TaskRules {
 
     /** 「カードは『未着手』へ移ります」: where a deleted column's cards go. */
     fun deleteColumnText(column: TaskColumnOut, columns: List<TaskColumnOut>): String =
-        "カードは『${builtinFor(columns, column.status)?.name ?: label(column.status)}』へ移ります"
+        L10n.str(R.string.task_rules_cards_move_to, builtinFor(columns, column.status)?.name ?: label(column.status))
 
     // --- M84: checklists ---------------------------------------------------------------------------
 
@@ -425,9 +427,9 @@ object TaskRules {
 
     /** A card's due line: 「期限 10/9 14:00」 (a review request's 「希望日 …」). */
     fun cardDueText(task: TaskOut, today: String): String = when (task.kind) {
-        TaskKind.REVIEW -> "希望日 "
-        TaskKind.DEADLINE -> "締切 "
-        else -> "期限 "
+        TaskKind.REVIEW -> L10n.str(R.string.task_rules_preferred)
+        TaskKind.DEADLINE -> L10n.str(R.string.task_rules_deadline)
+        else -> L10n.str(R.string.common_due_2)
     } + dueText(task, today)
 
     private val HHMM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -445,7 +447,7 @@ object TaskRules {
 
     /** A card's due date: 「今日」, else M/D (with the year when not this year's). */
     fun dueLabel(dueOn: String, today: String): String {
-        if (dueOn == today) return "今日"
+        if (dueOn == today) return L10n.str(R.string.common_today)
         val date = runCatching { LocalDate.parse(dueOn) }.getOrNull() ?: return dueOn
         val md = "${date.monthValue}/${date.dayOfMonth}"
         return if (dueOn.take(4) == today.take(4)) md else "${date.year}/$md"
@@ -513,12 +515,12 @@ object TaskRules {
 
     /** The strip over a board: why it cannot be read, or why I cannot change it (null: nothing to say). */
     fun boardNote(unsupported: Boolean, failed: Boolean, channel: ChannelState, canEdit: Boolean): String? = when {
-        unsupported -> "このサーバはタスクに対応していません"
-        failed -> "タスクを読み込めませんでした。再接続すると読み直します"
+        unsupported -> L10n.str(R.string.common_this_server_doesnt_support_tasks)
+        failed -> L10n.str(R.string.common_couldnt_load_tasks_they_will_reload)
         canEdit -> null
-        channel.channel.archived -> "アーカイブされたチャンネルのタスクは変更できません"
+        channel.channel.archived -> L10n.str(R.string.task_rules_tasks_in_archived_channels_cant_be)
         !channel.isMember -> null
-        else -> "このボードを変更できるのは、チャンネルのオーナーと管理者だけです"
+        else -> L10n.str(R.string.task_rules_only_the_channels_owners_and)
     }
 
     // --- 「自分のタスク」 --------------------------------------------------------------------------
@@ -587,15 +589,15 @@ object TaskRules {
     fun draftProblem(draft: TaskDraft, review: Boolean = false, deadline: Boolean = false): String? {
         val title = cleanTitle(draft.title)
         return when {
-            review && draft.assigneeIds.isEmpty() -> "依頼先を選んでください"
-            title.isEmpty() -> "題名を入れてください"
-            deadline && draft.dueOn.isEmpty() -> "締切の日付を入れてください"
-            title.length > MAX_TITLE -> "題名は $MAX_TITLE 文字までです"
-            draft.notes.length > MAX_NOTES -> "メモは $MAX_NOTES 文字までです"
+            review && draft.assigneeIds.isEmpty() -> L10n.str(R.string.task_rules_choose_a_reviewer)
+            title.isEmpty() -> L10n.str(R.string.common_enter_a_title)
+            deadline && draft.dueOn.isEmpty() -> L10n.str(R.string.task_rules_enter_the_deadline_date)
+            title.length > MAX_TITLE -> L10n.str(R.string.common_the_title_can_be_up_to, MAX_TITLE)
+            draft.notes.length > MAX_NOTES -> L10n.str(R.string.task_rules_notes_can_be_up_to_characters, MAX_NOTES)
             // M84: a rule needs a due date to start from; the checklist's limits are the server's.
-            draft.repeat.kind != RepeatKind.NONE && draft.dueOn.isEmpty() -> "繰り返すには期限を入れてください"
-            subtasksBody(draft.subtasks).size > MAX_SUBTASKS -> "サブタスクは $MAX_SUBTASKS 個までです"
-            draft.subtasks.any { cleanTitle(it.title).length > MAX_TITLE } -> "サブタスクは $MAX_TITLE 文字までです"
+            draft.repeat.kind != RepeatKind.NONE && draft.dueOn.isEmpty() -> L10n.str(R.string.task_rules_set_a_due_date_to_repeat)
+            subtasksBody(draft.subtasks).size > MAX_SUBTASKS -> L10n.str(R.string.task_rules_up_to_subtasks, MAX_SUBTASKS)
+            draft.subtasks.any { cleanTitle(it.title).length > MAX_TITLE } -> L10n.str(R.string.task_rules_subtasks_can_be_up_to_characters, MAX_TITLE)
             else -> runCatching { LocalDate.parse(draft.dueOn) }.getOrNull()?.let { CalendarRecurrence.repeatProblem(draft.repeat, it) }
         }
     }
@@ -730,7 +732,7 @@ object TaskRules {
         val line = messageLine(body, contentTypes, users, groups, MAX_TITLE)
         val others = if (channel.channel.isDm) (channel.channel.dmUserIds ?: emptyList()).filter { it != me } else emptyList()
         return TaskCreateInit(
-            channelId = channel.id, title = ("レビュー: $line").take(MAX_TITLE).trim(), sourceMessageId = messageId,
+            channelId = channel.id, title = (L10n.str(R.string.task_rules_review, line)).take(MAX_TITLE).trim(), sourceMessageId = messageId,
             sourceExcerpt = line.ifEmpty { null }, boardChoices = listOf(channel.id), kind = TaskKind.REVIEW,
             assigneeIds = others.takeIf { it.size == 1 } ?: emptyList(),
         )
@@ -747,11 +749,11 @@ object TaskRules {
 
     /** task.assigned while the app is open, worded like the push (TASKS.md §5). */
     fun assignedText(data: TaskAssigned, nameOf: (String) -> String?): TaskNoticeText {
-        val who = nameOf(data.byUserId) ?: "メンバー"
+        val who = nameOf(data.byUserId) ?: L10n.str(R.string.common_member)
         // A DM's task has no channel name to show (L9).
         val where = if (data.channelName.isNotEmpty()) " (#${data.channelName})" else ""
-        val what = if (data.kind == TaskKind.REVIEW) "レビューを依頼しました" else "タスクを割り当てました"
-        return TaskNoticeText("$who が$what: ${data.title}$where", data.taskId, data.channelId)
+        val what = if (data.kind == TaskKind.REVIEW) L10n.str(R.string.common_review_requested) else L10n.str(R.string.task_rules_assigned_you_a_task)
+        return TaskNoticeText(L10n.str(R.string.task_rules_fmt, who, what, data.title, where), data.taskId, data.channelId)
     }
 
     /** L9 task.review_done while the app is open: 「〇〇 がレビューを完了しました: 題名」 (REVIEWS.md §4). */

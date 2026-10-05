@@ -54,6 +54,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.TextStyle
 import jp.chikuwachat.android.api.UserPublic
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** Renders the light markdown subset (DATA_MODEL.md "本文の形式"); mentions resolve to display names. */
 @Composable
@@ -232,11 +235,11 @@ fun bodyInline(
                         withLink(LinkAnnotation.Clickable("message:$internal", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenMessage(internal) }) {
                             val label = token.label?.takeIf { it != token.url }
                             if (citations && label != null) append("[$label]")
-                            else append("💬 " + (label ?: "メッセージを表示"))
+                            else append("💬 " + (label ?: L10n.str(R.string.message_body_view_message)))
                         }
                     } else if (canvas != null && onOpenCanvas != null) {
                         withLink(LinkAnnotation.Clickable("canvas:$canvas", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenCanvas(canvas) }) {
-                            append("📄 " + (token.label?.takeIf { it != token.url } ?: "キャンバスを開く"))
+                            append("📄 " + (token.label?.takeIf { it != token.url } ?: L10n.str(R.string.common_open_canvas)))
                         }
                     } else withLink(
                     LinkAnnotation.Url(token.url, TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))),
@@ -245,7 +248,7 @@ fun bodyInline(
                 is BodyToken.Mention -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) {
                     append("@" + (users[token.userId]?.displayName ?: "unknown"))
                 }
-                is BodyToken.MentionGroup -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) { append("@" + (groups[token.groupId]?.name ?: "グループ")) }
+                is BodyToken.MentionGroup -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) { append("@" + (groups[token.groupId]?.name ?: L10n.str(R.string.common_group))) }
                 is BodyToken.MentionAll -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) { append("@" + token.target) }
                 BodyToken.Newline -> append("\n")
             }
@@ -324,7 +327,7 @@ fun BodyBlockView(block: BodyBlock, inline: BodyInline) {
                 }
             }
         }
-        is BodyBlock.Image -> Text("🖼 " + block.alt.ifEmpty { "画像" }, style = MaterialTheme.typography.bodyMedium, color = muted)
+        is BodyBlock.Image -> Text("🖼 " + block.alt.ifEmpty { stringResource(R.string.common_image) }, style = MaterialTheme.typography.bodyMedium, color = muted)
         BodyBlock.Rule -> HorizontalDivider(Modifier.padding(vertical = 8.dp))
     }
 }

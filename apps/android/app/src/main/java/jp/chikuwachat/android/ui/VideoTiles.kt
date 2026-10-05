@@ -4,6 +4,8 @@ import jp.chikuwachat.android.api.AttachmentOut
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M82 (the phone side of M79, IMPLEMENTATION_PLAN.md M79 row): how a video attachment shows in a message, kept apart
@@ -55,7 +57,7 @@ object VideoTiles {
 
     /** What a screen reader says for the tile: 「動画 clip.mp4、0:42」. */
     fun description(attachment: AttachmentOut): String =
-        "動画 ${attachment.filename}" + (formatDuration(attachment.durationMs)?.let { "、$it" } ?: "")
+        L10n.str(R.string.video_tiles_video, attachment.filename) + (formatDuration(attachment.durationMs)?.let { L10n.str(R.string.common_fmt, it) } ?: "")
 
     /** The player's frame before the clip reports its own size: the server's shape, else 16:9. */
     fun aspectRatio(attachment: AttachmentOut): Float {

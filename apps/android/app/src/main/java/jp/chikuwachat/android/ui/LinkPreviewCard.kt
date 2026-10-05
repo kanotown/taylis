@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.AiStatusOut
 import jp.chikuwachat.android.api.LinkPreviewOut
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /** The first http(s) link in a body, outside code (M11g); null when there is none. */
 object Links {
@@ -88,7 +90,7 @@ fun LinkPreviewCard(controller: AppController, url: String, messageId: String, a
     val preview = controller.linkPreviews[url]
     if (preview == null) {
         // Asked for by a tap: the row keeps its place (and height) while loading, and says so when there is nothing.
-        if (!auto) PlainLinkRow(url, status = if (controller.linkPreviews.containsKey(url)) "プレビューはありません" else "読み込み中…")
+        if (!auto) PlainLinkRow(url, status = if (controller.linkPreviews.containsKey(url)) stringResource(R.string.link_preview_card_no_preview) else stringResource(R.string.common_loading))
         return
     }
     PreviewCard(preview)
@@ -105,10 +107,10 @@ private fun PlainLinkRow(url: String, status: String? = null, onShow: (() -> Uni
         Text(
             url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis,
             textDecoration = TextDecoration.Underline,
-            modifier = Modifier.weight(1f, fill = false).clickable(onClickLabel = "リンクを開く") { runCatching { uriHandler.openUri(url) } },
+            modifier = Modifier.weight(1f, fill = false).clickable(onClickLabel = stringResource(R.string.link_preview_card_open_link)) { runCatching { uriHandler.openUri(url) } },
         )
         if (onShow != null) {
-            TextButton(onClick = onShow, modifier = Modifier.padding(start = 4.dp)) { Text("プレビューを表示", style = MaterialTheme.typography.labelMedium) }
+            TextButton(onClick = onShow, modifier = Modifier.padding(start = 4.dp)) { Text(stringResource(R.string.link_preview_card_show_preview), style = MaterialTheme.typography.labelMedium) }
         } else if (status != null) {
             Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.padding(start = 12.dp))
         }

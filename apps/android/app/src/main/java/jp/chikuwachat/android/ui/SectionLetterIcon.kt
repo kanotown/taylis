@@ -18,6 +18,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.text.Normalizer
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * M114 (docs/DATA_MODEL.md sidebar_sections): a section's letter badge, `letter:<text>:<colour>`: one or two ASCII
@@ -32,8 +34,8 @@ data class SectionLetterIcon(val text: String, val color: String) {
 
         /** The palette keys in the server's order (apps/shared/text-emoji.json), with the names the picker says. */
         val COLORS: List<Pair<String, String>> = listOf(
-            "gray" to "グレー", "red" to "赤", "orange" to "オレンジ", "yellow" to "黄",
-            "green" to "緑", "blue" to "青", "purple" to "紫", "pink" to "ピンク",
+            "gray" to L10n.str(R.string.section_letter_icon_gray), "red" to L10n.str(R.string.section_letter_icon_red), "orange" to L10n.str(R.string.section_letter_icon_orange), "yellow" to L10n.str(R.string.section_letter_icon_yellow),
+            "green" to L10n.str(R.string.section_letter_icon_green), "blue" to L10n.str(R.string.section_letter_icon_blue), "purple" to L10n.str(R.string.section_letter_icon_purple), "pink" to L10n.str(R.string.section_letter_icon_pink),
         )
 
         private val TEXT = Regex("[A-Za-z0-9]{1,2}|[\\u3005\\u3041-\\u309f\\u30a0-\\u30ff\\u3400-\\u4dbf\\u4e00-\\u9fff]")

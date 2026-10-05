@@ -62,6 +62,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.width
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** One heading of the picker: 「よく使う」, a category, or 「カスタム」; `cells` are glyphs or `:name:` for custom emoji. */
 data class EmojiSection(val key: String, val label: String, val cells: List<String>)
@@ -90,9 +93,9 @@ object EmojiPicker {
     fun sections(recent: List<String>, customNames: List<String>, packs: List<EmojiSection> = emptyList()): List<EmojiSection> {
         val frequent = frequent(recent, customNames.toSet() + packs.flatMap { p -> p.cells.mapNotNull { customName(it) } })
         return buildList {
-            if (frequent.isNotEmpty()) add(EmojiSection(FREQUENT, "よく使う", frequent))
+            if (frequent.isNotEmpty()) add(EmojiSection(FREQUENT, L10n.str(R.string.emoji_picker_sheet_frequently_used), frequent))
             EmojiData.categories.forEach { (key, label) -> add(EmojiSection(key, label, EmojiData.all.filter { it.category == key }.map { it.glyph })) }
-            if (customNames.isNotEmpty()) add(EmojiSection(CUSTOM, "カスタム", customNames.map { ":$it:" }))
+            if (customNames.isNotEmpty()) add(EmojiSection(CUSTOM, L10n.str(R.string.common_custom), customNames.map { ":$it:" }))
             addAll(packs)
         }
     }
@@ -196,9 +199,9 @@ fun EmojiPickerSheet(
         Column(Modifier.fillMaxWidth().fillMaxHeight().imePadding()) {
             OutlinedTextField(
                 query, { query = it }, singleLine = true,
-                placeholder = { Text("絵文字を検索 (例: tada、乾杯、ありがとう)") },
+                placeholder = { Text(stringResource(R.string.emoji_picker_sheet_search_emoji_e_g_tada_cheers)) },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                trailingIcon = if (query.isEmpty()) null else ({ IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Close, contentDescription = "検索語を消す") } }),
+                trailingIcon = if (query.isEmpty()) null else ({ IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.emoji_picker_sheet_clear_search)) } }),
                 shape = RoundedCornerShape(24.dp),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
@@ -270,7 +273,7 @@ fun EmojiPickerSheet(
                             val emoji = EmojiPicker.customName(item.glyph)?.let { customByName[it] }
                             val big = emoji != null && !emoji.isText && item.section.startsWith(EmojiPicker.PACK_PREFIX)
                             Box(
-                                Modifier.height(if (big) 80.dp else 44.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = "選ぶ") { pick(item.glyph) }
+                                Modifier.height(if (big) 80.dp else 44.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = stringResource(R.string.emoji_picker_sheet_choose)) { pick(item.glyph) }
                                     .semantics { contentDescription = emoji?.label ?: item.glyph },
                                 contentAlignment = Alignment.Center,
                             ) {
@@ -294,7 +297,7 @@ fun EmojiPickerSheet(
                 if (searching && items.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(
-                            "見つかりません", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            stringResource(R.string.common_nothing_found), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center,
                         )
                     }

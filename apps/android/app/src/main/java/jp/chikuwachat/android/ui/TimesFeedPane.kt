@@ -33,6 +33,8 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.MessageState
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * L8 (docs/TIMES_FEED.md §5, §7): the top-level posts of the times I am in and have not muted, newest at the top (not
@@ -144,15 +146,15 @@ fun TimesFeedPane(
             when {
                 !feed.loaded -> item(key = "state") {
                     when {
-                        !online -> Notice("オフラインです", "接続が戻ると読み込みます。")
-                        failed -> LoadFailedRow("フィードを読み込めませんでした") { scope.launch { refresh() } }
+                        !online -> Notice(stringResource(R.string.times_feed_pane_offline), stringResource(R.string.common_it_will_load_when_the_connection))
+                        failed -> LoadFailedRow(stringResource(R.string.times_feed_pane_couldnt_load_the_feed)) { scope.launch { refresh() } }
                         else -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(24.dp), strokeWidth = 2.dp) }
                     }
                 }
                 feed.rows.isEmpty() -> item(key = "empty") {
                     // §7's text when I follow no times at all; joined times without posts yet say just that.
                     val following = store.channels.values.any { TimesFeed.isFeedChannel(it) }
-                    if (following) Notice("まだ投稿はありません", null) else Notice(null, TimesFeed.EMPTY_TEXT)
+                    if (following) Notice(stringResource(R.string.times_feed_pane_no_posts_yet), null) else Notice(null, TimesFeed.EMPTY_TEXT)
                 }
                 else -> {
                     items(feed.rows, key = { it.id }) { message ->
@@ -162,7 +164,7 @@ fun TimesFeedPane(
                     if (feed.nextCursor != null) item(key = "more") {
                         // Composed as the end comes near: the next page (once per cursor; a failure offers a retry).
                         LaunchedEffect(feed.nextCursor, moreFailed, online) { if (online && !moreFailed) loadMore() }
-                        if (moreFailed) LoadFailedRow("続きを読み込めませんでした") { moreFailed = false }
+                        if (moreFailed) LoadFailedRow(stringResource(R.string.times_feed_pane_couldnt_load_more)) { moreFailed = false }
                         else Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.width(20.dp), strokeWidth = 2.dp) }
                     }
                 }

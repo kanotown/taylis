@@ -21,6 +21,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.text.Normalizer
 import java.time.LocalDate
 import java.util.UUID
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** One field's value in the form: text (also dates, times and choices), people, or a checkbox. */
 sealed interface FieldValue {
@@ -52,11 +54,11 @@ object Workflows {
     private val WEEKDAYS = listOf("月", "火", "水", "木", "金", "土", "日") // 0 = Monday
 
     val VALUE_ERROR_TEXT = mapOf(
-        "required" to "入力してください",
-        "invalid" to "形式が正しくありません",
-        "too_long" to "長すぎます",
-        "not_an_option" to "選択肢から選んでください",
-        "user_not_found" to "選べない人が含まれています",
+        "required" to L10n.str(R.string.workflows_required),
+        "invalid" to L10n.str(R.string.workflows_invalid_format),
+        "too_long" to L10n.str(R.string.workflows_too_long),
+        "not_an_option" to L10n.str(R.string.workflows_choose_from_the_options),
+        "user_not_found" to L10n.str(R.string.workflows_includes_people_who_cant_be_chosen),
     )
 
     // JavaScript's `\s` spelled out: the JVM's `\s` is ASCII only, and Android's ICU patterns refuse `(?U)`.
@@ -92,7 +94,7 @@ object Workflows {
     /** 「2026年7月28日 (火)」 for `YYYY-MM-DD`; "" when it is not a date. */
     fun dateLabel(value: String): String {
         val day = parseDate(value) ?: return ""
-        return "${day.year}年${day.monthValue}月${day.dayOfMonth}日 (${WEEKDAYS[weekdayOf(day)]})"
+        return L10n.str(R.string.workflows_fmt, day.year, day.monthValue, day.dayOfMonth, WEEKDAYS[weekdayOf(day)])
     }
 
     private fun validDatetime(value: String): Boolean {
@@ -180,7 +182,7 @@ object Workflows {
     fun escapeText(value: String): String = MENTION_START.replace(value, "＜")
 
     fun formatValue(field: WorkflowField, value: FieldValue?): String {
-        if (field.type == "checkbox") return if ((value as? FieldValue.Flag)?.on == true) "はい" else "いいえ"
+        if (field.type == "checkbox") return if ((value as? FieldValue.Flag)?.on == true) L10n.str(R.string.workflows_yes) else L10n.str(R.string.workflows_no)
         if (field.type == "user") return (value as? FieldValue.Users)?.ids.orEmpty().joinToString(" ") { "<@$it>" }
         val text = (value as? FieldValue.Text)?.text.orEmpty()
         if (text.isEmpty()) return ""
@@ -302,10 +304,10 @@ object Workflows {
 
     /** Why I cannot submit it, for the menu (the desktop's runBlockedText); null when I can. `target` is 「#送り先」. */
     fun runBlockedText(runBlocked: String?, target: String): String? = when (runBlocked) {
-        "disabled" -> "停止中"
-        "archived" -> "$target はアーカイブ済みです"
-        "not_a_member" -> "$target に参加すると使えます"
-        "posting_restricted" -> "$target はオーナーと管理者だけが投稿できます"
+        "disabled" -> L10n.str(R.string.common_paused)
+        "archived" -> L10n.str(R.string.workflows_is_archived, target)
+        "not_a_member" -> L10n.str(R.string.workflows_join_to_use_it, target)
+        "posting_restricted" -> L10n.str(R.string.workflows_only_owners_and_administrators_can_post, target)
         else -> null
     }
 
@@ -363,7 +365,7 @@ class WorkflowSession(
         val cleaned = checked.values
         if (cleaned == null) {
             errors = checked.errors.orEmpty()
-            problem = "入力を確認してください"
+            problem = L10n.str(R.string.workflows_check_what_you_entered)
             return null
         }
         busy = true

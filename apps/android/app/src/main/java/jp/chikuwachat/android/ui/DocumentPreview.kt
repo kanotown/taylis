@@ -70,6 +70,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /**
  * M108 (docs/PREVIEWS.md §5): how a PDF's or Office file's card looks, apart from Compose so it can be unit tested.
@@ -90,11 +93,11 @@ object DocumentCards {
         return minOf(MAX_THUMB_HEIGHT, Math.round(CARD_WIDTH.toFloat() * h / w))
     }
 
-    fun pagesLabel(pages: Int?): String? = pages?.takeIf { it > 0 }?.let { "$it ページ" }
+    fun pagesLabel(pages: Int?): String? = pages?.takeIf { it > 0 }?.let { L10n.str(R.string.document_preview_pages, it) }
 
     /** The card's second line: 「プレビューを作成中…」 while the server works, else the size and page count. */
     fun detail(attachment: AttachmentOut): String =
-        if (attachment.preview?.isPending == true) "プレビューを作成中…"
+        if (attachment.preview?.isPending == true) L10n.str(R.string.document_preview_creating_preview)
         else listOfNotNull(formatSize(attachment.sizeBytes), pagesLabel(attachment.preview?.pages)).joinToString(" · ")
 
     /** Where the preview PDF is kept for the viewer: the attachment's folder under the cache's `previews/`. */
@@ -116,8 +119,8 @@ internal fun DocumentCard(attachment: AttachmentOut, controller: AppController) 
         if (height != null) {
             Box(
                 Modifier.fillMaxWidth().height(height.dp).background(Color.White)
-                    .clickable(onClickLabel = "プレビュー") { viewing = true }
-                    .semantics { contentDescription = "${attachment.filename} のプレビュー" },
+                    .clickable(onClickLabel = stringResource(R.string.common_preview)) { viewing = true }
+                    .semantics { contentDescription = L10n.str(R.string.document_preview_preview_of, attachment.filename) },
                 contentAlignment = Alignment.Center,
             ) {
                 val image = thumb
@@ -138,7 +141,7 @@ internal fun DocumentCard(attachment: AttachmentOut, controller: AppController) 
                 Text(attachment.filename, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(DocumentCards.detail(attachment), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, "他のアプリで開く") }
+            IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
         }
     }
     if (viewing) PdfPreviewViewer(attachment, controller, onDismiss = { viewing = false })
@@ -226,7 +229,7 @@ internal fun PdfPreviewViewer(attachment: AttachmentOut, controller: AppControll
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            error = if (e is java.io.IOException || e is SecurityException) "このプレビューを表示できませんでした" else controller.describe(e)
+            error = if (e is java.io.IOException || e is SecurityException) L10n.str(R.string.document_preview_couldnt_show_this_preview) else controller.describe(e)
         }
     }
     val current = pages
@@ -235,21 +238,21 @@ internal fun PdfPreviewViewer(attachment: AttachmentOut, controller: AppControll
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "プレビューを閉じる") }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.document_preview_close_preview)) }
                     Column(Modifier.weight(1f)) {
                         Text(attachment.filename, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         val count = current?.sizes?.size ?: attachment.preview?.pages
                         DocumentCards.pagesLabel(count)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
-                    IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, "他のアプリで開く") }
+                    IconButton(onClick = { controller.openAttachment(attachment) }) { Icon(Icons.Outlined.OpenInNew, stringResource(R.string.common_open_in_another_app)) }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
                     when {
                         current != null -> PdfPageList(current)
                         error != null -> Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("プレビューを読み込めませんでした", style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.document_preview_couldnt_load_the_preview), style = MaterialTheme.typography.titleMedium)
                             Text(error!!, Modifier.padding(vertical = 12.dp))
-                            Button(onClick = { attempt += 1 }) { Text("再試行") }
+                            Button(onClick = { attempt += 1 }) { Text(stringResource(R.string.common_retry)) }
                         }
                         else -> CircularProgressIndicator()
                     }
@@ -270,7 +273,7 @@ private fun PdfPageList(pages: PdfPages) {
                 val ratio = if (w > 0 && h > 0) w.toFloat() / h else 0.707f
                 Box(
                     Modifier.fillMaxWidth().aspectRatio(ratio).background(Color.White)
-                        .semantics { contentDescription = "${index + 1} ページ目" },
+                        .semantics { contentDescription = L10n.str(R.string.document_preview_page, index + 1) },
                     contentAlignment = Alignment.Center,
                 ) {
                     val image = bitmap

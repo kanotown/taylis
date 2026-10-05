@@ -6,14 +6,16 @@ import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import java.time.temporal.IsoFields
 import java.util.Locale
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * Post templates and /日程 (M30, DATA_MODEL.md message_templates): the rules the three clients share, tested against
  * apps/shared/templates.json. Dates are the device's local date; nothing here talks to the server.
  */
 object Templates {
-    const val SCHEDULE_QUESTION = "日程調整"
-    const val SCHEDULE_USAGE = "/日程 [題名] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)"
+    val SCHEDULE_QUESTION: String get() = L10n.str(R.string.common_scheduling_poll)
+    val SCHEDULE_USAGE: String get() = L10n.str(R.string.templates_title_dates_e_g_seminar_10)
     private const val MAX_RANGE_DAYS = 14L
     private const val MIN_OPTIONS = 2
     private const val MAX_OPTIONS = 10
@@ -66,7 +68,7 @@ object Templates {
     }
 
     /** What the lists say beside the name (the workspace's and mine may share a name). */
-    fun kindLabel(template: TemplateOut): String = if (template.scope == "user") "個人のテンプレート" else "テンプレート"
+    fun kindLabel(template: TemplateOut): String = if (template.scope == "user") L10n.str(R.string.templates_personal_template) else L10n.str(R.string.common_templates)
 
     /** Templates whose name starts with what follows the `/` (case-insensitive), in [ordered] order. */
     fun candidates(templates: List<TemplateOut>, prefix: String): List<TemplateOut> =
@@ -128,7 +130,7 @@ object Templates {
         read.entries.forEach { entry ->
             var text = dateLabel(entry.day, today)
             entry.from?.let { text += " " + label(it) }
-            entry.to?.let { text += "〜" + label(it) }
+            entry.to?.let { text += L10n.str(R.string.templates_fmt) + label(it) }
             labels += text
         }
         if (labels.size < MIN_OPTIONS || labels.size > MAX_OPTIONS) return null

@@ -53,6 +53,8 @@ import jp.chikuwachat.android.app.GoogleButtonText
 import jp.chikuwachat.android.app.Workspaces
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun LoginScreen(controller: AppController) {
@@ -102,35 +104,35 @@ fun LoginScreen(controller: AppController) {
             WorkspaceTile(entry, entry.name, 48.dp)
             Spacer(Modifier.height(12.dp))
         }
-        Text(if (adding) "ワークスペースを追加" else entry?.name ?: "Taylis", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+        Text(if (adding) stringResource(R.string.common_add_workspace) else entry?.name ?: "Taylis", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
         when {
-            adding -> Text("別の Taylis サーバにログインします", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            entry?.signedOut == true -> Text("もう一度ログインしてください", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            adding -> Text(stringResource(R.string.login_screen_sign_in_to_another_taylis_server), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            entry?.signedOut == true -> Text(stringResource(R.string.login_screen_please_sign_in_again), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(24.dp))
-        OutlinedTextField(server, { server = it }, label = { Text("サーバ URL") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        OutlinedTextField(server, { server = it }, label = { Text(stringResource(R.string.login_screen_server_url)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("https://chat.example.com") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next))
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(username, { username = it }, label = { Text("ユーザー名") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        OutlinedTextField(username, { username = it }, label = { Text(stringResource(R.string.login_screen_username)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next))
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(password, { password = it }, label = { Text("パスワード") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        OutlinedTextField(password, { password = it }, label = { Text(stringResource(R.string.common_password)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done))
         if (needsCode) {
             Spacer(Modifier.height(8.dp))
-            Text("2 要素認証: 認証アプリのコードを入力してください", style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(totpCode, { totpCode = it }, label = { Text("6 桁のコード (または回復コード)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            Text(stringResource(R.string.login_screen_two_factor_authentication_enter_the_code), style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(totpCode, { totpCode = it }, label = { Text(stringResource(R.string.login_screen_6_digit_code_or_recovery_code)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done))
         }
         Spacer(Modifier.height(16.dp))
         controller.error?.let { Text(it, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(8.dp)) }
-        if (controller.busy) CircularProgressIndicator() else Button(onClick = ::submit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) { Text(if (needsCode) "コードを確認してログイン" else "ログイン") }
+        if (controller.busy) CircularProgressIndicator() else Button(onClick = ::submit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) { Text(if (needsCode) stringResource(R.string.login_screen_verify_code_and_sign_in) else stringResource(R.string.login_screen_sign_in)) }
         google?.let { button ->
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 HorizontalDivider(Modifier.weight(1f))
-                Text("または", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp))
+                Text(stringResource(R.string.login_screen_or), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp))
                 HorizontalDivider(Modifier.weight(1f))
             }
             OutlinedButton(onClick = ::signInWithGoogle, enabled = !controller.busy, modifier = Modifier.fillMaxWidth()) {
@@ -149,11 +151,11 @@ fun LoginScreen(controller: AppController) {
             }
         }
         if (adding) {
-            TextButton(onClick = { controller.cancelAddWorkspace() }) { Text("キャンセル") }
+            TextButton(onClick = { controller.cancelAddWorkspace() }) { Text(stringResource(R.string.common_cancel)) }
         } else {
             // WORKSPACES.md §5.2: a workspace whose session ended does not lock the others away.
-            if (others) TextButton(onClick = { controller.openSwitcher() }) { Text("別のワークスペースに切り替える") }
-            TextButton(onClick = { invite = true }) { Text("招待リンクをお持ちの方はこちら") }
+            if (others) TextButton(onClick = { controller.openSwitcher() }) { Text(stringResource(R.string.login_screen_switch_to_another_workspace)) }
+            TextButton(onClick = { invite = true }) { Text(stringResource(R.string.login_screen_have_an_invite_link_tap_here)) }
         }
     }
 }

@@ -65,6 +65,9 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import jp.chikuwachat.android.app.AppController
 import kotlinx.serialization.Serializable
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /*
  * M57 (CANVAS.md §17): the canvas's table editor on Android — full screen over the Markdown editor. 「行ごと」 (the
@@ -80,14 +83,14 @@ data class TableEditState(val session: CanvasTable.Session, val edited: CanvasTa
 private enum class TableView { ROWS, GRID }
 
 private fun alignLabel(align: CanvasTable.Align?): String = when (align) {
-    null -> "なし"
-    CanvasTable.Align.LEFT -> "左"
-    CanvasTable.Align.CENTER -> "中央"
-    CanvasTable.Align.RIGHT -> "右"
+    null -> L10n.str(R.string.common_none)
+    CanvasTable.Align.LEFT -> L10n.str(R.string.canvas_table_editor_left)
+    CanvasTable.Align.CENTER -> L10n.str(R.string.canvas_table_editor_center)
+    CanvasTable.Align.RIGHT -> L10n.str(R.string.canvas_table_editor_right)
 }
 
 /** A column's name in the row cards: its header, or 「列N」 while the header is blank. */
-private fun columnName(table: CanvasTable.Table, column: Int): String = table.header[column].trim().ifEmpty { "列${column + 1}" }
+private fun columnName(table: CanvasTable.Table, column: Int): String = table.header[column].trim().ifEmpty { L10n.str(R.string.common_column, column + 1) }
 
 @Composable
 fun CanvasTableEditor(
@@ -118,16 +121,16 @@ fun CanvasTableEditor(
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onCancel) { Text("キャンセル") }
+                    TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) }
                     Text(
-                        if (state.session.isNew) "新しい表" else "表を編集",
+                        if (state.session.isNew) stringResource(R.string.canvas_table_editor_new_table) else stringResource(R.string.canvas_table_editor_edit_table),
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f).semantics { heading() }, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
-                    TextButton(onClick = onDone) { Text("完了", fontWeight = FontWeight.SemiBold) }
+                    TextButton(onClick = onDone) { Text(stringResource(R.string.common_done_2), fontWeight = FontWeight.SemiBold) }
                 }
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 8.dp)) {
-                    listOf(TableView.ROWS to "行ごと", TableView.GRID to "表の形").forEachIndexed { index, (value, label) ->
+                    listOf(TableView.ROWS to stringResource(R.string.canvas_table_editor_by_row), TableView.GRID to stringResource(R.string.canvas_table_editor_as_table)).forEachIndexed { index, (value, label) ->
                         SegmentedButton(selected = view == value, onClick = { view = value }, shape = SegmentedButtonDefaults.itemShape(index, 2)) { Text(label) }
                     }
                 }
@@ -141,10 +144,10 @@ fun CanvasTableEditor(
         if (confirmDiscard) {
             AlertDialog(
                 onDismissRequest = { confirmDiscard = false },
-                title = { Text("表の変更を破棄しますか？") },
-                text = { Text("この画面で直した内容は本文に入りません。") },
-                confirmButton = { TextButton(onClick = { confirmDiscard = false; onCancel() }) { Text("破棄", color = MaterialTheme.colorScheme.error) } },
-                dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("編集を続ける") } },
+                title = { Text(stringResource(R.string.canvas_table_editor_discard_the_table_changes)) },
+                text = { Text(stringResource(R.string.canvas_table_editor_what_you_changed_on_this_screen)) },
+                confirmButton = { TextButton(onClick = { confirmDiscard = false; onCancel() }) { Text(stringResource(R.string.common_discard), color = MaterialTheme.colorScheme.error) } },
+                dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.canvas_table_editor_keep_editing)) } },
             )
         }
     }
@@ -164,13 +167,13 @@ private fun RowCards(table: CanvasTable.Table, onChange: (CanvasTable.Table) -> 
         // The header card: each column's name, alignment and its menu (add left / right, delete).
         Card(cardModifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("見出しと列", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.canvas_table_editor_headers_and_columns), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 table.header.forEachIndexed { column, name ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
                             value = name,
                             onValueChange = { onChange(CanvasTable.setHeader(table, column, it)) },
-                            label = { Text("列${column + 1}の見出し") },
+                            label = { Text(stringResource(R.string.canvas_table_editor_column_header, column + 1)) },
                             singleLine = true, keyboardOptions = nextOptions, keyboardActions = next,
                             modifier = Modifier.weight(1f),
                         )
@@ -184,7 +187,7 @@ private fun RowCards(table: CanvasTable.Table, onChange: (CanvasTable.Table) -> 
             Card(cardModifier) {
                 Column(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("行 ${row + 1}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.canvas_table_editor_row, row + 1), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                         RowMenu(table, row, onChange)
                     }
                     Column(Modifier.padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -202,11 +205,11 @@ private fun RowCards(table: CanvasTable.Table, onChange: (CanvasTable.Table) -> 
             }
         }
         if (table.rows.isEmpty()) {
-            Text("見出しだけの表です。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.canvas_table_editor_this_table_has_only_headers), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         OutlinedButton(onClick = { onChange(CanvasTable.addRow(table, table.rows.size)) }) {
             Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(" 行を追加")
+            Text(stringResource(R.string.canvas_table_editor_add_row))
         }
         Spacer(Modifier.height(24.dp))
     }
@@ -217,14 +220,14 @@ private fun RowCards(table: CanvasTable.Table, onChange: (CanvasTable.Table) -> 
 private fun AlignChoice(align: CanvasTable.Align?, column: String, onPick: (CanvasTable.Align?) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        TextButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = "${column}の位置揃え: ${alignLabel(align)}" }) {
+        TextButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.canvas_table_editor_alignment_of, column, alignLabel(align)) }) {
             Text(alignLabel(align))
             Icon(Icons.Outlined.ArrowDropDown, contentDescription = null)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             listOf(null, CanvasTable.Align.LEFT, CanvasTable.Align.CENTER, CanvasTable.Align.RIGHT).forEach { value ->
                 DropdownMenuItem(
-                    text = { Text(if (value == null) "位置揃えなし" else alignLabel(value) + "揃え", fontWeight = if (value == align) FontWeight.SemiBold else null) },
+                    text = { Text(if (value == null) stringResource(R.string.canvas_table_editor_no_alignment) else alignLabel(value) + stringResource(R.string.canvas_table_editor_aligned), fontWeight = if (value == align) FontWeight.SemiBold else null) },
                     onClick = { open = false; onPick(value) },
                 )
             }
@@ -236,12 +239,12 @@ private fun AlignChoice(align: CanvasTable.Align?, column: String, onPick: (Canv
 private fun ColumnMenu(table: CanvasTable.Table, column: Int, onChange: (CanvasTable.Table) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "${columnName(table, column)}の列のメニュー") }
+        IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.canvas_table_editor_menu_for_column, columnName(table, column))) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text("左に列を追加") }, onClick = { open = false; onChange(CanvasTable.addColumn(table, column)) })
-            DropdownMenuItem(text = { Text("右に列を追加") }, onClick = { open = false; onChange(CanvasTable.addColumn(table, column + 1)) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.canvas_table_editor_add_column_left)) }, onClick = { open = false; onChange(CanvasTable.addColumn(table, column)) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.canvas_table_editor_add_column_right)) }, onClick = { open = false; onChange(CanvasTable.addColumn(table, column + 1)) })
             DropdownMenuItem(
-                text = { Text("列を削除", color = if (table.columns > 1) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)) },
+                text = { Text(stringResource(R.string.common_delete_column), color = if (table.columns > 1) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)) },
                 enabled = table.columns > 1,
                 onClick = { open = false; onChange(CanvasTable.deleteColumn(table, column)) },
             )
@@ -253,14 +256,14 @@ private fun ColumnMenu(table: CanvasTable.Table, column: Int, onChange: (CanvasT
 private fun RowMenu(table: CanvasTable.Table, row: Int, onChange: (CanvasTable.Table) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "行 ${row + 1} のメニュー") }
+        IconButton(onClick = { open = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.canvas_table_editor_menu_for_row, row + 1)) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text("上に行を追加") }, onClick = { open = false; onChange(CanvasTable.addRow(table, row)) })
-            DropdownMenuItem(text = { Text("下に行を追加") }, onClick = { open = false; onChange(CanvasTable.addRow(table, row + 1)) })
-            DropdownMenuItem(text = { Text("上へ") }, enabled = row > 0, onClick = { open = false; onChange(CanvasTable.moveRow(table, row, row - 1)) })
-            DropdownMenuItem(text = { Text("下へ") }, enabled = row < table.rows.size - 1, onClick = { open = false; onChange(CanvasTable.moveRow(table, row, row + 1)) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.canvas_table_editor_add_row_above)) }, onClick = { open = false; onChange(CanvasTable.addRow(table, row)) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.canvas_table_editor_add_row_below)) }, onClick = { open = false; onChange(CanvasTable.addRow(table, row + 1)) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.common_move_up)) }, enabled = row > 0, onClick = { open = false; onChange(CanvasTable.moveRow(table, row, row - 1)) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.common_move_down)) }, enabled = row < table.rows.size - 1, onClick = { open = false; onChange(CanvasTable.moveRow(table, row, row + 1)) })
             DropdownMenuItem(
-                text = { Text("行を削除", color = MaterialTheme.colorScheme.error) },
+                text = { Text(stringResource(R.string.canvas_table_editor_delete_row), color = MaterialTheme.colorScheme.error) },
                 onClick = { open = false; onChange(CanvasTable.deleteRow(table, row)) },
             )
         }
@@ -284,8 +287,8 @@ private fun GridPreview(controller: AppController, table: CanvasTable.Table) {
         onNeedEmojiImage = { controller.loadEmojiImage(it) }, groups = store.groups, version = version,
     )
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("キャンバスでの見え方です。マスを直すには「行ごと」に切り替えます。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Box(Modifier.semantics { contentDescription = "表のプレビュー" }) {
+        Text(stringResource(R.string.canvas_table_editor_this_is_how_it_looks_in), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(Modifier.semantics { contentDescription = L10n.str(R.string.canvas_table_editor_table_preview) }) {
             blocks.forEach { BodyBlockView(it, inline) }
         }
     }

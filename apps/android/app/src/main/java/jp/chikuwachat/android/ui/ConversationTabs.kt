@@ -35,18 +35,21 @@ import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.ChannelLinkOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /** M29: what the body of an open conversation shows, picked from the tab row under the app bar. */
 enum class ConversationTab(val label: String) {
-    MESSAGES("メッセージ"),
+    MESSAGES(L10n.str(R.string.common_message)),
     /** M46 (CANVAS.md §4.1): the conversation's canvas (its tab canvas, else the newest), and the others from its list. */
-    CANVAS("キャンバス"),
+    CANVAS(L10n.str(R.string.common_canvas)),
     /** M52 (CALENDAR.md §7): the channel's shared calendar (public and private channels only, never a DM). */
-    EVENTS("予定"),
+    EVENTS(L10n.str(R.string.common_event)),
     /** M56 (TASKS.md §6): the channel's board (public and private channels only, never a DM). */
-    TASKS("タスク"),
-    PINS("ピン留め"),
-    FILES("ファイル"),
+    TASKS(L10n.str(R.string.common_tasks)),
+    PINS(L10n.str(R.string.common_pinned)),
+    FILES(L10n.str(R.string.common_files)),
 }
 
 /**
@@ -118,7 +121,7 @@ fun ConversationTabRow(
             item(key = "add") {
                 TextButton(onClick = { editingLink = true to null }, contentPadding = PaddingValues(horizontal = 8.dp)) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Text(" リンク", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.conversation_tabs_links), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

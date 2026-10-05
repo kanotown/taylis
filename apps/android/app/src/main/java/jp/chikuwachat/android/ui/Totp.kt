@@ -4,6 +4,8 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** Two-factor authentication helpers (M12i). */
 object Totp {
@@ -14,11 +16,11 @@ object Totp {
 
     /** Failures in words; null for anything that is not 2FA specific. */
     fun errorText(code: String): String? = when (code) {
-        "invalid_password" -> "パスワードが違います"
-        "invalid_totp" -> "認証コードが違います"
-        "totp_required" -> "認証アプリのコードを入力してください"
-        "totp_already_enabled" -> "2 要素認証はすでに有効です"
-        "totp_setup_required" -> "先に設定を始めてください"
+        "invalid_password" -> L10n.str(R.string.totp_wrong_password)
+        "invalid_totp" -> L10n.str(R.string.totp_wrong_authentication_code)
+        "totp_required" -> L10n.str(R.string.totp_enter_the_code_from_your_authenticator)
+        "totp_already_enabled" -> L10n.str(R.string.totp_two_factor_authentication_is_already_on)
+        "totp_setup_required" -> L10n.str(R.string.totp_start_the_setup_first)
         else -> null
     }
 
@@ -29,5 +31,5 @@ object Totp {
 
     /** The recovery codes as one text block for the clipboard. */
     fun recoveryCodesText(codes: List<String>): String =
-        (listOf("Taylis の回復コード (各 1 回だけ使えます)", "") + codes).joinToString("\n")
+        (listOf(L10n.str(R.string.totp_taylis_recovery_codes_each_works_once), "") + codes).joinToString("\n")
 }

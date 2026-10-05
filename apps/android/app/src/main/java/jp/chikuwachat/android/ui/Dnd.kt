@@ -5,6 +5,8 @@ import jp.chikuwachat.android.api.UserPublic
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /**
  * Do not disturb (M12c): a manual pause or the daily quiet hours, evaluated in the user's own zone.
@@ -12,7 +14,7 @@ import java.time.ZonedDateTime
  */
 object Dnd {
     val DAY_LABELS = listOf("月", "火", "水", "木", "金", "土", "日")
-    val PAUSE_OPTIONS = listOf("30m" to "30 分", "1h" to "1 時間", "2h" to "2 時間", "tomorrow" to "明日 8:00 まで")
+    val PAUSE_OPTIONS = listOf("30m" to L10n.str(R.string.common_30_minutes), "1h" to L10n.str(R.string.common_1_hour), "2h" to L10n.str(R.string.common_2_hours), "tomorrow" to L10n.str(R.string.dnd_until_8_00_tomorrow))
 
     fun minutes(hhmm: String): Int {
         val parts = hhmm.split(":").mapNotNull { it.toIntOrNull() }
@@ -53,6 +55,6 @@ object Dnd {
     /** "22:00〜07:00 (月〜金)" for the profile card. */
     fun label(hours: QuietHours): String {
         val days = if (hours.days.isEmpty() || hours.days.size == 7) "" else " (" + hours.days.sorted().joinToString("") { DAY_LABELS[it] } + ")"
-        return "${hours.start}〜${hours.end}$days"
+        return L10n.str(R.string.dnd_fmt, hours.start, hours.end, days)
     }
 }

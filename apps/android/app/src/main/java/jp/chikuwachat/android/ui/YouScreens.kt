@@ -116,6 +116,9 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
+import androidx.compose.ui.res.stringResource
 
 /**
  * M40 (MOBILE_UI.md §6.5): the 自分 tab. On a phone its list, or the screen pushed over it ([Route.Settings]); from
@@ -148,7 +151,7 @@ fun YouTab(
                     key(page) { SettingsScreen(controller, version, page, onOpen, onClose) }
                 } else {
                     Text(
-                        "左の一覧から項目を選んでください",
+                        stringResource(R.string.common_choose_an_item_from_the_list),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.align(Alignment.Center).padding(24.dp),
@@ -193,7 +196,7 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
         if (me != null) {
             // (1) Me: the picture, the name, @username · 肩書 (a tap edits the profile).
             Row(
-                Modifier.fillMaxWidth().clickable(onClickLabel = "プロフィールを編集") { onOpen(SettingsPage.PROFILE) }.padding(horizontal = 16.dp, vertical = 16.dp),
+                Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.common_edit_profile)) { onOpen(SettingsPage.PROFILE) }.padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Avatar(me.id, me.displayName, size = 64.dp)
@@ -216,7 +219,7 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
                         ?: Text("😀", style = MaterialTheme.typography.titleMedium)
                     Column(Modifier.padding(start = 10.dp).weight(1f)) {
                         Text(
-                            status?.second?.ifEmpty { null } ?: if (status != null) "ステータス" else "ステータスを更新",
+                            status?.second?.ifEmpty { null } ?: if (status != null) stringResource(R.string.you_screens_status) else stringResource(R.string.common_update_status),
                             color = if (status == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
@@ -235,7 +238,7 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
             fun pause(value: String?) { scope.launch { controller.updateProfile(mapOf("dnd_until" to value)) } }
             Box {
                 SettingsRow(
-                    Icons.Outlined.NotificationsPaused, "通知を一時停止", YouSettings.pauseSummary(dndUntil), chevron = false,
+                    Icons.Outlined.NotificationsPaused, stringResource(R.string.common_pause_notifications), YouSettings.pauseSummary(dndUntil), chevron = false,
                     onClick = { pauseMenu = true },
                 )
                 DropdownMenu(expanded = pauseMenu, onDismissRequest = { pauseMenu = false }, modifier = Modifier.widthIn(min = 200.dp)) {
@@ -253,8 +256,8 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
             if (pickingPause) {
                 ScheduleDialog(
                     onDismiss = { pickingPause = false },
-                    title = "通知を一時停止",
-                    confirm = "停止する",
+                    title = stringResource(R.string.common_pause_notifications),
+                    confirm = stringResource(R.string.you_screens_pause),
                     describe = { Schedule.label(it) + " まで通知を止めます" },
                 ) { at ->
                     pickingPause = false
@@ -262,7 +265,7 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
                 }
             }
             SettingsRow(
-                Icons.Outlined.Bedtime, "おやすみ時間", YouSettings.quietSummary(public?.quietHours),
+                Icons.Outlined.Bedtime, stringResource(R.string.common_quiet_hours), YouSettings.quietSummary(public?.quietHours),
                 selected = selected == SettingsPage.QUIET_HOURS, onClick = { onOpen(SettingsPage.QUIET_HOURS) },
             )
         }
@@ -279,7 +282,7 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
         }
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         // M16c: with several workspaces, say which one this signs out of (the others stay signed in).
-        val logoutLabel = if (controller.workspaces.size > 1) "${controller.workspaceName} からログアウト" else "ログアウト"
+        val logoutLabel = if (controller.workspaces.size > 1) stringResource(R.string.common_sign_out_of, controller.workspaceName) else stringResource(R.string.common_sign_out)
         ListItem(
             headlineContent = { Text(logoutLabel, color = MaterialTheme.colorScheme.error) },
             leadingContent = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
@@ -370,8 +373,8 @@ private fun RadioRow(label: String, selected: Boolean, enabled: Boolean = true, 
     }
 }
 
-private val STATUS_PRESETS = listOf("📅" to "会議中", "🚌" to "移動中", "🤒" to "体調不良", "🌴" to "休暇中", "🏠" to "在宅勤務", "🍱" to "昼休み")
-private val EXPIRY_OPTIONS = listOf("never" to "消さない", "30m" to "30 分後", "1h" to "1 時間後", "4h" to "4 時間後", "today" to "今日の終わり", "week" to "今週の終わり")
+private val STATUS_PRESETS = listOf("📅" to L10n.str(R.string.you_screens_in_a_meeting), "🚌" to L10n.str(R.string.you_screens_commuting), "🤒" to L10n.str(R.string.you_screens_out_sick), "🌴" to L10n.str(R.string.you_screens_on_vacation), "🏠" to L10n.str(R.string.you_screens_working_remotely), "🍱" to L10n.str(R.string.you_screens_lunch_break))
+private val EXPIRY_OPTIONS = listOf("never" to L10n.str(R.string.you_screens_dont_clear), "30m" to L10n.str(R.string.you_screens_in_30_minutes), "1h" to L10n.str(R.string.common_in_1_hour), "4h" to L10n.str(R.string.you_screens_in_4_hours), "today" to L10n.str(R.string.you_screens_end_of_today), "week" to L10n.str(R.string.you_screens_end_of_this_week))
 
 /** 「ステータスを更新」 (M11d): the emoji, the words, when it disappears; presets; クリア. Saved, the screen closes. */
 @Composable
@@ -394,17 +397,17 @@ private fun StatusScreen(controller: AppController, version: Int, onDone: () -> 
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(onClick = { pickingEmoji = true }, modifier = Modifier.size(56.dp), contentPadding = PaddingValues(0.dp),
                 shape = RoundedCornerShape(12.dp)) {
-                if (emoji.isEmpty()) Icon(Icons.Outlined.EmojiEmotions, contentDescription = "絵文字を選ぶ")
-                else Box(Modifier.semantics(mergeDescendants = true) { contentDescription = "絵文字を変更" }) { SectionIcon(controller, emoji, version, size = 28.dp) }
+                if (emoji.isEmpty()) Icon(Icons.Outlined.EmojiEmotions, contentDescription = stringResource(R.string.you_screens_choose_emoji))
+                else Box(Modifier.semantics(mergeDescendants = true) { contentDescription = L10n.str(R.string.you_screens_change_emoji) }) { SectionIcon(controller, emoji, version, size = 28.dp) }
             }
-            if (emoji.isNotEmpty()) TextButton(onClick = { emoji = "" }) { Text("外す") }
+            if (emoji.isNotEmpty()) TextButton(onClick = { emoji = "" }) { Text(stringResource(R.string.common_remove)) }
             Spacer(Modifier.width(8.dp))
-            OutlinedTextField(text, { text = it.take(100) }, modifier = Modifier.weight(1f), label = { Text("今なにしてる？") }, singleLine = true)
+            OutlinedTextField(text, { text = it.take(100) }, modifier = Modifier.weight(1f), label = { Text(stringResource(R.string.you_screens_what_are_you_up_to)) }, singleLine = true)
         }
         FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             STATUS_PRESETS.forEach { (e, t) -> FilterChip(selected = text == t && emoji == e, onClick = { emoji = e; text = t }, label = { Text("$e $t") }) }
         }
-        SectionTitle("消えるタイミング")
+        SectionTitle(stringResource(R.string.you_screens_clear_after))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             EXPIRY_OPTIONS.forEach { (value, label) -> FilterChip(selected = expiry == value, onClick = { expiry = value }, label = { Text(label) }) }
         }
@@ -425,7 +428,7 @@ private fun StatusScreen(controller: AppController, version: Int, onDone: () -> 
                         if (ok) onDone()
                     }
                 },
-            ) { Text("保存") }
+            ) { Text(stringResource(R.string.common_save)) }
             if (current != null) {
                 OutlinedButton(enabled = !busy, onClick = {
                     scope.launch {
@@ -434,7 +437,7 @@ private fun StatusScreen(controller: AppController, version: Int, onDone: () -> 
                         busy = false
                         if (ok) onDone()
                     }
-                }) { Text("クリア") }
+                }) { Text(stringResource(R.string.you_screens_clear)) }
             }
         }
     }
@@ -456,19 +459,19 @@ private fun QuietHoursScreen(controller: AppController, version: Int, onDone: ()
     val draft = YouSettings.quietHours(on, start, end, days, zone)
     val changed = YouSettings.quietHoursChanged(saved, draft)
     ScreenColumn {
-        SwitchRow("おやすみ時間", "毎日この時間帯は通知を止めます", checked = on, onChange = { on = it })
+        SwitchRow(stringResource(R.string.common_quiet_hours), stringResource(R.string.you_screens_pause_notifications_during_these_hours), checked = on, onChange = { on = it })
         if (on) {
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = { picking = "start" }, modifier = Modifier.weight(1f)) { Text("開始 $start") }
-                OutlinedButton(onClick = { picking = "end" }, modifier = Modifier.weight(1f)) { Text("終了 $end") }
+                OutlinedButton(onClick = { picking = "start" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.you_screens_start, start)) }
+                OutlinedButton(onClick = { picking = "end" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.you_screens_end, end)) }
             }
-            SectionTitle("曜日")
+            SectionTitle(stringResource(R.string.common_days_of_the_week))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Dnd.DAY_LABELS.forEachIndexed { day, label ->
                     FilterChip(selected = day in days, onClick = { days = if (day in days) days - day else days + day }, label = { Text(label) })
                 }
             }
-            Hint("タイムゾーン: $zone", Modifier.padding(top = 8.dp))
+            Hint(stringResource(R.string.common_time_zone, zone), Modifier.padding(top = 8.dp))
         }
         problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
         Button(
@@ -486,11 +489,11 @@ private fun QuietHoursScreen(controller: AppController, version: Int, onDone: ()
                     if (ok) onDone()
                 }
             },
-        ) { Text("保存") }
+        ) { Text(stringResource(R.string.common_save)) }
     }
     picking?.let { which ->
         val (h, m) = (if (which == "start") start else end).split(":").map { it.toIntOrNull() ?: 0 }
-        TimePickDialog(h, m, title = if (which == "start") "開始時刻" else "終了時刻", onDismiss = { picking = null }) { hour, minute ->
+        TimePickDialog(h, m, title = if (which == "start") stringResource(R.string.common_start_time) else stringResource(R.string.common_end_time), onDismiss = { picking = null }) { hour, minute ->
             val value = Dnd.hhmm(hour * 60 + minute)
             if (which == "start") start = value else end = value
             picking = null
@@ -507,7 +510,7 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
     val me = remember(version) { meOf(controller) }
     val scope = rememberCoroutineScope()
     ScreenColumn {
-        SectionTitle("通知する内容")
+        SectionTitle(stringResource(R.string.you_screens_what_to_notify))
         val overall = me?.notificationDefault ?: NotificationLevels.MENTIONS
         var savingOverall by remember { mutableStateOf(false) }
         Column(Modifier.selectableGroup()) {
@@ -526,7 +529,7 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
         if (controller.store.activity != null) {
             var savingReactions by remember { mutableStateOf(false) }
             Spacer(Modifier.padding(top = 8.dp))
-            SwitchRow("リアクションのバナー", "オフでもアクティビティに表示されます", checked = me?.notifyReactions ?: false, enabled = !savingReactions) { on ->
+            SwitchRow(stringResource(R.string.you_screens_reaction_banners), stringResource(R.string.you_screens_shown_in_activity_even_when_off), checked = me?.notifyReactions ?: false, enabled = !savingReactions) { on ->
                 scope.launch {
                     savingReactions = true
                     controller.setNotifyReactions(on)
@@ -538,7 +541,7 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
         me?.notifyTasks?.let { notifyTasks ->
             var savingTasks by remember { mutableStateOf(false) }
             Spacer(Modifier.padding(top = 8.dp))
-            SwitchRow("タスク (割り当て・期限)", "担当に加えられたときと、期限の日の 8:00 に通知します", checked = notifyTasks, enabled = !savingTasks) { on ->
+            SwitchRow(stringResource(R.string.you_screens_tasks_assignments_and_due_dates), stringResource(R.string.you_screens_notifies_you_when_youre_assigned_and), checked = notifyTasks, enabled = !savingTasks) { on ->
                 scope.launch {
                     savingTasks = true
                     controller.setNotifyTasks(on)
@@ -546,14 +549,14 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
                 }
             }
         }
-        SectionTitle("通知キーワード")
+        SectionTitle(stringResource(R.string.you_screens_notification_keywords))
         val savedKeywords = me?.notifyKeywords ?: emptyList()
         var keywords by rememberSaveable { mutableStateOf(savedKeywords.joinToString(", ")) }
         val parsed = keywords.split(Regex("[,、\\n]")).map { it.trim() }.filter { it.isNotEmpty() }.take(20)
         var busy by remember { mutableStateOf(false) }
         var saved by remember { mutableStateOf(false) }
-        OutlinedTextField(keywords, { keywords = it; saved = false }, label = { Text("キーワード (コンマ区切り)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Hint("この言葉を含むメッセージはメンションと同じように通知されます", Modifier.padding(top = 4.dp))
+        OutlinedTextField(keywords, { keywords = it; saved = false }, label = { Text(stringResource(R.string.you_screens_keywords_comma_separated)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Hint(stringResource(R.string.you_screens_messages_containing_these_words_notify), Modifier.padding(top = 4.dp))
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
             TextButton(enabled = !busy && parsed != savedKeywords, onClick = {
                 scope.launch {
@@ -561,20 +564,20 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
                     saved = controller.updateProfileJson(buildJsonObject { put("notify_keywords", buildJsonArray { parsed.forEach { add(JsonPrimitive(it)) } }) })
                     busy = false
                 }
-            }) { Text("キーワードを保存") }
-            if (saved) Hint("保存しました")
+            }) { Text(stringResource(R.string.you_screens_save_keywords)) }
+            if (saved) Hint(stringResource(R.string.common_saved_2))
         }
-        SectionTitle("この端末の通知")
+        SectionTitle(stringResource(R.string.you_screens_notifications_on_this_device))
         // Read again when the app comes back from the system's page.
         val permitted = remember(controller.appForeground) { controller.notificationsPermitted }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(if (permitted) "許可されています" else "許可されていません")
-                if (!permitted) Hint("新しいメッセージの通知は届きません")
+                Text(if (permitted) stringResource(R.string.you_screens_allowed) else stringResource(R.string.you_screens_not_allowed))
+                if (!permitted) Hint(stringResource(R.string.you_screens_you_wont_get_notifications_for_new))
             }
         }
         OutlinedButton(onClick = { controller.openNotificationSettings() }, modifier = Modifier.padding(top = 8.dp)) {
-            Text(if (permitted) "端末の通知設定を開く" else "端末の設定で許可する")
+            Text(if (permitted) stringResource(R.string.you_screens_open_device_notification_settings) else stringResource(R.string.you_screens_allow_in_device_settings))
         }
         // PUSH_NOTIFICATIONS.md §15: does a notification reach this phone and my other devices?
         TestNotificationSection(controller, permitted)
@@ -589,19 +592,19 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
 private fun AppearanceScreen(controller: AppController, version: Int) {
     val me = remember(version) { meOf(controller) }
     ScreenColumn {
-        SectionTitle("テーマ")
+        SectionTitle(stringResource(R.string.you_screens_theme))
         Column(Modifier.selectableGroup()) {
             Appearance.entries.forEach { value ->
                 RadioRow(value.label, selected = controller.appearance == value) { controller.changeAppearance(value) }
             }
         }
-        SectionTitle("メッセージ")
+        SectionTitle(stringResource(R.string.common_message))
         SwitchRow(
-            "連続した投稿をまとめる",
-            "オフ: 投稿ごとにアイコンと名前を表示\nオン: 同じ人の続けての投稿をまとめる (チャンネル・DM・スレッド)",
+            stringResource(R.string.you_screens_group_consecutive_posts),
+            stringResource(R.string.you_screens_off_show_the_avatar_and_name),
             checked = controller.groupPosts,
         ) { controller.changeGroupPosts(it) }
-        Hint("この端末だけの設定です", Modifier.padding(top = 4.dp))
+        Hint(stringResource(R.string.you_screens_this_setting_is_only_for_this), Modifier.padding(top = 4.dp))
         // Only against a server that sends the field (null or a list): an older one would drop what is saved here.
         if (me != null && me.knowsQuickReactions) QuickReactionsSection(controller, me)
         // M111: likewise only against a server that knows `nav_items`.
@@ -629,8 +632,8 @@ private fun HomeTilesSection(controller: AppController, me: UserMe) {
         }
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f)) { SectionTitle("ホームのタイル") }
-        TextButton(onClick = { reordering = !reordering }) { Text(if (reordering) "完了" else "並べ替え") }
+        Box(Modifier.weight(1f)) { SectionTitle(stringResource(R.string.you_screens_home_tiles)) }
+        TextButton(onClick = { reordering = !reordering }) { Text(if (reordering) stringResource(R.string.common_done_2) else stringResource(R.string.you_screens_reorder)) }
     }
     shown.forEachIndexed { index, item ->
         val label = NavItems.label(item.key)
@@ -638,18 +641,18 @@ private fun HomeTilesSection(controller: AppController, me: UserMe) {
             Row(Modifier.fillMaxWidth().heightIn(min = TouchTarget.MIN), verticalAlignment = Alignment.CenterVertically) {
                 Text(label, modifier = Modifier.weight(1f), color = if (item.visible) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                 IconButton(enabled = !saving && index > 0, onClick = { save(NavItems.move(full, item.key, -1)) }) {
-                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "$label を上へ")
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.you_screens_move_up, label))
                 }
                 IconButton(enabled = !saving && index < shown.lastIndex, onClick = { save(NavItems.move(full, item.key, 1)) }) {
-                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "$label を下へ")
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.you_screens_move_down, label))
                 }
             }
         } else {
             SwitchRow(label, null, checked = item.visible, enabled = !saving) { save(NavItems.setVisible(full, item.key, it)) }
         }
     }
-    Hint("ホームの上に並ぶタイルです。すべての端末で同じになり、パソコンのサイドバーにも同じ順と表示が使われます。アクティビティは下のタブにいつもあります。", Modifier.padding(top = 6.dp))
-    TextButton(enabled = !saving && stored != null, onClick = { save(null) }) { Text("元に戻す") }
+    Hint(stringResource(R.string.you_screens_the_tiles_at_the_top_of), Modifier.padding(top = 6.dp))
+    TextButton(enabled = !saving && stored != null, onClick = { save(null) }) { Text(stringResource(R.string.you_screens_reset)) }
 }
 
 /**
@@ -671,7 +674,7 @@ private fun QuickReactionsSection(controller: AppController, me: UserMe) {
             saving = false
         }
     }
-    SectionTitle("リアクションの候補")
+    SectionTitle(stringResource(R.string.you_screens_reaction_choices))
     Row(Modifier.fillMaxWidth().widthIn(max = 376.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         repeat(QuickReactions.COUNT) { index ->
             val glyph = slots.getOrNull(index)
@@ -680,7 +683,7 @@ private fun QuickReactionsSection(controller: AppController, me: UserMe) {
                 Modifier.weight(1f).height(52.dp).clip(shape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-                    .clickable(enabled = !saving, role = Role.Button, onClickLabel = "変更") { picking = index }
+                    .clickable(enabled = !saving, role = Role.Button, onClickLabel = stringResource(R.string.common_change)) { picking = index }
                     .semantics { contentDescription = "候補 ${index + 1}: ${glyph ?: "空き"}" },
                 contentAlignment = Alignment.Center,
             ) {
@@ -689,9 +692,9 @@ private fun QuickReactionsSection(controller: AppController, me: UserMe) {
             }
         }
     }
-    Hint("長押しのメニューに並ぶ絵文字です。すべての端末で同じになります。", Modifier.padding(top = 6.dp))
-    if (chosen == null) Hint("いまは最近使った絵文字から並んでいます。", Modifier.padding(top = 2.dp))
-    TextButton(enabled = !saving && chosen != null, onClick = { save(null) }) { Text("元に戻す") }
+    Hint(stringResource(R.string.you_screens_the_emoji_in_the_long_press), Modifier.padding(top = 6.dp))
+    if (chosen == null) Hint(stringResource(R.string.you_screens_showing_your_recently_used_emoji_for), Modifier.padding(top = 2.dp))
+    TextButton(enabled = !saving && chosen != null, onClick = { save(null) }) { Text(stringResource(R.string.you_screens_reset)) }
     picking?.let { index ->
         EmojiPickerSheet(
             recent = QuickReactions.read(controller.prefs), store = controller.store, plainOnly = true,
@@ -723,7 +726,7 @@ private fun UsernameEditor(controller: AppController, current: String, hasPasswo
     OutlinedTextField(
         value,
         { value = it.lowercase().take(32); serverError = null; saved = null },
-        label = { Text("ユーザー名 (3〜32 文字、a-z 0-9 . _ -)") },
+        label = { Text(stringResource(R.string.common_username_3_32_characters_a_z)) },
         prefix = { Text("@") },
         singleLine = true,
         isError = message != null,
@@ -743,9 +746,9 @@ private fun UsernameEditor(controller: AppController, current: String, hasPasswo
                     if (error == null) saved = name
                 }
             },
-        ) { Text("ユーザー名を変更") }
+        ) { Text(stringResource(R.string.you_screens_change_username)) }
         saved?.takeIf { it == current }?.let {
-            Hint("@$it に変更しました" + if (hasPassword) "。次からはこの名前でログインします" else "", Modifier.padding(start = 12.dp))
+            Hint(stringResource(R.string.you_screens_changed_to, it) + if (hasPassword) stringResource(R.string.you_screens_sign_in_with_this_name_from) else "", Modifier.padding(start = 12.dp))
         }
     }
     Hint(UsernameRules.hint(hasPassword) + if (limited) " " + UsernameRules.LIMIT_NOTE else "", Modifier.padding(top = 4.dp))
@@ -789,23 +792,23 @@ private fun ProfileEditScreen(controller: AppController, version: Int) {
             Avatar(me.id, me.displayName, size = 80.dp)
             Column(Modifier.padding(start = 16.dp)) {
                 TextButton(onClick = { avatarPicker.launch("image/*") }, enabled = !loadingPhoto) {
-                    Text(if (loadingPhoto) "写真を読み込んでいます…" else "写真を選ぶ")
+                    Text(if (loadingPhoto) stringResource(R.string.you_screens_loading_photo) else stringResource(R.string.common_choose_photos))
                 }
                 if (me.avatarUpdatedAt != null) {
-                    TextButton(onClick = { scope.launch { controller.deleteAvatar() } }) { Text("写真を削除", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { scope.launch { controller.deleteAvatar() } }) { Text(stringResource(R.string.you_screens_remove_photo), color = MaterialTheme.colorScheme.error) }
                 }
             }
         }
         UsernameEditor(controller, current = controller.store.users[me.id]?.username ?: me.username, hasPassword = me.hasPassword != false, limited = me.role != "admin")
-        OutlinedTextField(displayName, { displayName = it.take(80); saved = false }, label = { Text("表示名") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
-        OutlinedTextField(title, { title = it.take(80); saved = false }, label = { Text("肩書 (任意)") }, placeholder = { Text("例: 研究室長 / TA (学年・職位は自動)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        OutlinedTextField(displayName, { displayName = it.take(80); saved = false }, label = { Text(stringResource(R.string.common_display_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
+        OutlinedTextField(title, { title = it.take(80); saved = false }, label = { Text(stringResource(R.string.you_screens_title_optional)) }, placeholder = { Text(stringResource(R.string.you_screens_e_g_lab_head_ta_year)) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
         if (line != null) {
             OutlinedTextField(
-                topic, { topic = it.take(200); saved = false }, label = { Text("研究テーマ (任意)") }, placeholder = { Text("例: 拡散モデルによる音声合成") },
+                topic, { topic = it.take(200); saved = false }, label = { Text(stringResource(R.string.you_screens_research_topic_optional)) }, placeholder = { Text(stringResource(R.string.you_screens_e_g_speech_synthesis_with_diffusion)) },
                 singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             )
             OutlinedTextField(
-                reading, { reading = it.take(80); saved = false }, label = { Text("よみ (任意、名簿の並び順に使います)") }, placeholder = { Text("例: かのう とおる") },
+                reading, { reading = it.take(80); saved = false }, label = { Text(stringResource(R.string.you_screens_reading_optional_used_to_sort_the)) }, placeholder = { Text(stringResource(R.string.you_screens_e_g)) },
                 singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             )
         }
@@ -823,12 +826,12 @@ private fun ProfileEditScreen(controller: AppController, version: Int) {
                         busy = false
                     }
                 },
-            ) { Text("保存") }
-            if (saved) Hint("保存しました", Modifier.padding(start = 12.dp))
+            ) { Text(stringResource(R.string.common_save)) }
+            if (saved) Hint(stringResource(R.string.common_saved_2), Modifier.padding(start = 12.dp))
         }
-        SectionTitle("在席")
+        SectionTitle(stringResource(R.string.you_screens_presence))
         var savingPresence by remember { mutableStateOf(false) }
-        SwitchRow("在席を隠す", "ほかの人からは常にオフラインに見えます", checked = me.presenceHidden, enabled = !savingPresence) { on ->
+        SwitchRow(stringResource(R.string.you_screens_hide_presence), stringResource(R.string.you_screens_others_always_see_you_as_offline), checked = me.presenceHidden, enabled = !savingPresence) { on ->
             scope.launch {
                 savingPresence = true
                 controller.setPresenceHidden(on)
@@ -872,37 +875,37 @@ private fun AccountScreen(controller: AppController, onOpen: (SettingsPage) -> U
         item(key = "top") {
             Column {
                 val me = meOf(controller)
-                if (me != null) Hint("ユーザー名: @${me.username}")
+                if (me != null) Hint(stringResource(R.string.you_screens_username, me.username))
                 if (hasPassword) {
-                    SectionTitle("パスワード")
+                    SectionTitle(stringResource(R.string.common_password))
                     ListItem(
-                        headlineContent = { Text("パスワードを変更") },
+                        headlineContent = { Text(stringResource(R.string.you_screens_change_password)) },
                         trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         modifier = Modifier.fillMaxWidth().clickable { onOpen(SettingsPage.PASSWORD) },
                     )
-                    SectionTitle("2 要素認証")
+                    SectionTitle(stringResource(R.string.you_screens_two_factor_authentication))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val status = totp
                         Column(Modifier.weight(1f)) {
-                            Text(when { status == null -> "確認中…"; status.enabled -> "有効"; else -> "無効" })
+                            Text(when { status == null -> stringResource(R.string.you_screens_checking); status.enabled -> stringResource(R.string.you_screens_on); else -> stringResource(R.string.you_screens_off) })
                             if (status != null) Hint(
-                                if (status.enabled) "ログイン時に認証アプリのコードが必要です · 回復コード残り ${status.recoveryCodesLeft}" else "パスワードだけでログインできます",
+                                if (status.enabled) stringResource(R.string.you_screens_sign_in_asks_for_a_code, status.recoveryCodesLeft) else stringResource(R.string.you_screens_you_can_sign_in_with_just),
                             )
                         }
-                        if (status != null) TextButton(onClick = { totpDialog = if (status.enabled) "disable" else "setup" }) { Text(if (status.enabled) "無効にする" else "有効にする") }
+                        if (status != null) TextButton(onClick = { totpDialog = if (status.enabled) "disable" else "setup" }) { Text(if (status.enabled) stringResource(R.string.common_turn_off) else stringResource(R.string.you_screens_turn_on)) }
                     }
                 } else {
-                    Hint("Google でログインするアカウントです (パスワードはありません)", Modifier.padding(top = 4.dp))
+                    Hint(stringResource(R.string.you_screens_this_account_signs_in_with_google), Modifier.padding(top = 4.dp))
                 }
-                SectionTitle("ログイン中の端末" + (list?.let { " (${it.size})" } ?: ""))
+                SectionTitle(stringResource(R.string.you_screens_signed_in_devices) + (list?.let { " (${it.size})" } ?: ""))
                 when {
-                    list == null && sessionsError == null -> Hint("読み込み中…")
+                    list == null && sessionsError == null -> Hint(stringResource(R.string.common_loading))
                     list == null -> Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(sessionsError ?: "", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { reload += 1 }) { Text("再読み込み") }
+                        TextButton(onClick = { reload += 1 }) { Text(stringResource(R.string.common_reload)) }
                     }
-                    else -> Hint("ほかの端末をログアウトすると、その端末ではもう一度ログインが必要になります。", Modifier.padding(bottom = 4.dp))
+                    else -> Hint(stringResource(R.string.you_screens_signing_out_another_device_means_it), Modifier.padding(bottom = 4.dp))
                 }
             }
         }
@@ -916,11 +919,11 @@ private fun AccountScreen(controller: AppController, onOpen: (SettingsPage) -> U
         item(key = "moderation") {
             Column {
                 if (controller.store.blockedUsers.isNotEmpty()) {
-                    SectionTitle("ブロック中のユーザー")
+                    SectionTitle(stringResource(R.string.you_screens_blocked_users))
                     BlockedUsersList(controller, storeVersion)
                 }
-                SectionTitle("アカウントを削除")
-                Hint("すべての端末からログアウトし、プロフィールとログイン情報を消去します。投稿したメッセージは「退会したユーザー」として残ります。")
+                SectionTitle(stringResource(R.string.common_delete_account))
+                Hint(stringResource(R.string.you_screens_signs_you_out_of_all_devices))
                 DeleteAccountRow(onClick = { deletingAccount = true })
             }
         }
@@ -929,15 +932,15 @@ private fun AccountScreen(controller: AppController, onOpen: (SettingsPage) -> U
     revoking?.let { session ->
         AlertDialog(
             onDismissRequest = { revoking = null },
-            title = { Text("${YouSettings.deviceLabel(session)} をログアウトしますか？") },
-            text = { Text("その端末では、もう一度ログインが必要になります。") },
+            title = { Text(stringResource(R.string.you_screens_sign_out, YouSettings.deviceLabel(session))) },
+            text = { Text(stringResource(R.string.you_screens_that_device_will_have_to_sign)) },
             confirmButton = {
                 TextButton(onClick = {
                     revoking = null
                     scope.launch { if (controller.revokeSession(session.id)) reload += 1 }
-                }) { Text("ログアウト", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.common_sign_out), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { revoking = null }) { Text("キャンセル") } },
+            dismissButton = { TextButton(onClick = { revoking = null }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
 }
@@ -957,14 +960,14 @@ private fun SessionRow(session: SessionOut, onSignOut: () -> Unit) {
                 Text(YouSettings.deviceLabel(session), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 if (session.current) {
                     Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(6.dp), modifier = Modifier.padding(start = 8.dp)) {
-                        Text("この端末", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                        Text(stringResource(R.string.you_screens_this_device), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                     }
                 }
             }
             val version = session.device.appVersion?.let { " · v$it" } ?: ""
-            Hint("最後に使った時刻: " + YouSettings.lastUsedLabel(session.lastUsedAt) + version)
+            Hint(stringResource(R.string.you_screens_last_used) + YouSettings.lastUsedLabel(session.lastUsedAt) + version)
         }
-        if (YouSettings.canSignOut(session)) TextButton(onClick = onSignOut) { Text("ログアウト", color = MaterialTheme.colorScheme.error) }
+        if (YouSettings.canSignOut(session)) TextButton(onClick = onSignOut) { Text(stringResource(R.string.common_sign_out), color = MaterialTheme.colorScheme.error) }
     }
 }
 
@@ -978,24 +981,24 @@ private fun PasswordScreen(controller: AppController) {
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     ScreenColumn {
-        OutlinedTextField(current, { current = it }, label = { Text("現在のパスワード") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(next, { next = it }, label = { Text("新しいパスワード (8 文字以上)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
-        OutlinedTextField(repeat, { repeat = it }, label = { Text("新しいパスワード (確認)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        OutlinedTextField(current, { current = it }, label = { Text(stringResource(R.string.common_current_password)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(next, { next = it }, label = { Text(stringResource(R.string.you_screens_new_password_at_least_8_characters)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        OutlinedTextField(repeat, { repeat = it }, label = { Text(stringResource(R.string.you_screens_new_password_confirm)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
         message?.let { Text(it, color = if (it.endsWith("しました")) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
         Button(
             enabled = !busy && current.isNotEmpty() && next.length >= 8,
             modifier = Modifier.padding(top = 16.dp),
             onClick = {
-                if (next != repeat) { message = "新しいパスワードが一致しません"; return@Button }
+                if (next != repeat) { message = L10n.str(R.string.you_screens_the_new_passwords_dont_match); return@Button }
                 scope.launch {
                     busy = true
                     val error = controller.changePasswordInSession(current, next)
                     busy = false
-                    message = error ?: "パスワードを変更しました"
+                    message = error ?: L10n.str(R.string.you_screens_password_changed)
                     if (error == null) { current = ""; next = ""; repeat = "" }
                 }
             },
-        ) { Text("変更する") }
+        ) { Text(stringResource(R.string.common_change_2)) }
     }
 }
 
@@ -1006,9 +1009,9 @@ private fun PasswordScreen(controller: AppController) {
 @Composable
 private fun AdminScreen(controller: AppController) {
     ScreenColumn {
-        Text("ユーザー・名簿・グループ・招待・Webhook・チャンネル・絵文字の管理は、Web 版とデスクトップ版の「管理」で行います。")
+        Text(stringResource(R.string.you_screens_users_roster_groups_invites_webhooks))
         controller.serverBase?.let { Hint(it, Modifier.padding(top = 8.dp)) }
-        Button(onClick = { controller.openWebClient() }, modifier = Modifier.padding(top = 16.dp)) { Text("ブラウザで開く") }
+        Button(onClick = { controller.openWebClient() }, modifier = Modifier.padding(top = 16.dp)) { Text(stringResource(R.string.you_screens_open_in_browser)) }
     }
 }
 
@@ -1018,11 +1021,11 @@ fun LogoutConfirmDialog(controller: AppController, onDismiss: () -> Unit) {
     val several = controller.workspaces.size > 1
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (several) "${controller.workspaceName} からログアウトしますか？" else "ログアウトしますか？") },
+        title = { Text(if (several) stringResource(R.string.you_screens_sign_out_of, controller.workspaceName) else stringResource(R.string.you_screens_sign_out_2)) },
         text = {
             Text(
-                "この端末に保存したメッセージと下書きを消します。サーバ上のデータは消えません。" +
-                    if (several) "ほかのワークスペースはログインしたままです。" else "",
+                stringResource(R.string.you_screens_messages_and_drafts_saved_on_this) +
+                    if (several) stringResource(R.string.you_screens_your_other_workspaces_stay_signed_in) else "",
             )
         },
         confirmButton = {
@@ -1030,8 +1033,8 @@ fun LogoutConfirmDialog(controller: AppController, onDismiss: () -> Unit) {
                 onDismiss()
                 // In the controller's scope: the screen goes away with the workspace.
                 controller.scope.launch { controller.logout() }
-            }) { Text("ログアウト", color = MaterialTheme.colorScheme.error) }
+            }) { Text(stringResource(R.string.common_sign_out), color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

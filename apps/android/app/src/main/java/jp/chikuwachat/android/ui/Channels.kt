@@ -7,6 +7,8 @@ import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.NotificationLevels
 import java.time.Instant
+import jp.chikuwachat.android.R
+import jp.chikuwachat.android.L10n
 
 /** Channel-list rules shared by the list, the badge and notifications (Slack / Mattermost conventions). */
 object Channels {
@@ -140,23 +142,23 @@ object GroupUnread {
 
 /** M37 (MOBILE_UI.md §6.1): the home's tiles, in the row's order. */
 enum class HomeTile(val label: String) {
-    THREADS("スレッド"),
+    THREADS(L10n.str(R.string.common_thread)),
     /** L8 (TIMES_FEED.md §7): the Times feed, after スレッド; no number (the feed is read, never marked read by looking). */
     TIMES("Times"),
-    DRAFTS("下書き"),
-    SAVED("保存"),
-    REMINDERS("リマインダー"),
+    DRAFTS(L10n.str(R.string.common_drafts)),
+    SAVED(L10n.str(R.string.common_save)),
+    REMINDERS(L10n.str(R.string.common_reminders)),
     /** M52 (CALENDAR.md §7): the calendar, next to リマインダー; no number. */
-    CALENDAR("カレンダー"),
+    CALENDAR(L10n.str(R.string.common_calendar)),
     /** M56 (TASKS.md §6): 「自分のタスク」 and 「自分の担当」, next to カレンダー; no number. */
-    TASKS("タスク"),
+    TASKS(L10n.str(R.string.common_tasks)),
     /** M86 (DEADLINES.md §8 3.): my channels' deadlines (今週 / 今月 / それ以降 / 過ぎたもの), next to タスク; no number. */
-    DEADLINES("締切"),
+    DEADLINES(L10n.str(R.string.common_deadlines)),
     /** M112 (RESERVATIONS.md §6): the workspace's reservation pools, after 締切; the to-dos due in the pools I operate. */
-    RESERVATIONS("予約"),
-    FILES("ファイル"),
+    RESERVATIONS(L10n.str(R.string.common_reservations)),
+    FILES(L10n.str(R.string.common_files)),
     /** M78 (CANVAS.md §21.2): the canvases of all my conversations, after ファイル (as the desktop's sidebar); no number. */
-    CANVASES("キャンバス"),
+    CANVASES(L10n.str(R.string.common_canvas)),
     ;
 
     /** M111: the key in apps/shared/nav-items.json (UserMe.nav_items). */
@@ -210,12 +212,12 @@ object HomeTiles {
     fun description(state: TileState): String {
         val count = state.count ?: return state.tile.label
         val number = when (state.tile) {
-            HomeTile.THREADS -> "未読 $count 件"
-            HomeTile.REMINDERS -> "通知済み $count 件"
-            HomeTile.RESERVATIONS -> "担当者の作業 $count 件"
-            else -> "$count 件"
+            HomeTile.THREADS -> L10n.str(R.string.common_unread_2, count)
+            HomeTile.REMINDERS -> L10n.str(R.string.channels_notified, count)
+            HomeTile.RESERVATIONS -> L10n.str(R.string.channels_operator_tasks, count)
+            else -> L10n.str(R.string.common_fmt_7, count)
         }
-        return "${state.tile.label}、$number" + if (state.alert && state.tile == HomeTile.THREADS) "、メンションあり" else ""
+        return L10n.str(R.string.common_fmt_8, state.tile.label, number) + if (state.alert && state.tile == HomeTile.THREADS) L10n.str(R.string.common_has_mentions) else ""
     }
 }
 

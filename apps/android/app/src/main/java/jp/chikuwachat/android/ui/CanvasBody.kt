@@ -51,6 +51,9 @@ import jp.chikuwachat.android.api.AttachmentOut
 import jp.chikuwachat.android.app.AppController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import jp.chikuwachat.android.R
+import androidx.compose.ui.res.stringResource
+import jp.chikuwachat.android.L10n
 
 /**
  * M46: one block of a canvas (CANVAS.md §4.2): the message renderer's blocks ([BodyBlockView]) plus tasks with boxes that
@@ -82,7 +85,7 @@ fun CanvasBlockView(
                                 if (makeTask == null) Modifier else Modifier
                                     // Under the box and the links (they take their own taps first): only a long press here.
                                     .pointerInput(item.line) { detectTapGestures(onLongPress = { menu = true }) }
-                                    .semantics { customActions = listOf(CustomAccessibilityAction("タスクにする") { makeTask(item.line); true }) },
+                                    .semantics { customActions = listOf(CustomAccessibilityAction(L10n.str(R.string.common_make_a_task)) { makeTask(item.line); true }) },
                             ),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -90,7 +93,7 @@ fun CanvasBlockView(
                             checked = item.done,
                             onCheckedChange = onToggle?.let { toggle -> { done: Boolean -> toggle(item.line, done) } },
                             enabled = onToggle != null,
-                            modifier = Modifier.semantics { contentDescription = (if (item.done) "完了を取り消す: " else "完了にする: ") + label },
+                            modifier = Modifier.semantics { contentDescription = (if (item.done) L10n.str(R.string.canvas_body_mark_not_done) else L10n.str(R.string.canvas_body_mark_done)) + label },
                         )
                         Text(
                             inline.build(item.tokens),
@@ -104,7 +107,7 @@ fun CanvasBlockView(
                     if (makeTask != null) {
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(
-                                text = { Text("タスクにする") },
+                                text = { Text(stringResource(R.string.common_make_a_task)) },
                                 leadingIcon = { Icon(Icons.Outlined.AddTask, contentDescription = null) },
                                 onClick = { menu = false; makeTask(item.line) },
                             )
@@ -125,7 +128,7 @@ fun CanvasBlockView(
             val line = block.line
             if (onEditSection != null && line != null) {
                 IconButton(onClick = { onEditSection(line) }) {
-                    Icon(Icons.Outlined.Edit, contentDescription = "このセクションを編集: " + visibleText(block.tokens), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.canvas_body_edit_this_section) + visibleText(block.tokens), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -177,7 +180,7 @@ fun CanvasImage(attachmentId: String, alt: String, controller: AppController) {
             ) {
                 Icon(if (failed) Icons.Outlined.BrokenImage else Icons.Outlined.Image, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    if (failed) "表示できない画像" + (alt.takeIf { it.isNotEmpty() }?.let { ": $it" } ?: "") else "画像を読み込んでいます…",
+                    if (failed) stringResource(R.string.canvas_body_image_cant_be_shown) + (alt.takeIf { it.isNotEmpty() }?.let { ": $it" } ?: "") else stringResource(R.string.canvas_body_loading_image),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
