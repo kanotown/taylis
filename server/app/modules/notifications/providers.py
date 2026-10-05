@@ -66,6 +66,15 @@ class FakePushProvider:
         return PushResult("sent")
 
 
+def avatar_url(device: Device, path: object) -> str | None:
+    """§16: the signed avatar path on the address this device reaches the server by; None when
+    either is unknown (the extension then shows the notification without a picture)."""
+    base = (device.base_url or "").rstrip("/")
+    if not base or not isinstance(path, str) or not path.startswith("/"):
+        return None
+    return base + path
+
+
 class APNsPushProvider:
     """APNs HTTP/2 with token-based (.p8) authentication."""
 
@@ -135,6 +144,10 @@ class APNsPushProvider:
         aps: dict[str, Any] = {"alert": alert, "sound": "default", "badge": payload.get("badge", 1)}
         if payload.get("channel_id"):
             aps["thread-id"] = str(payload["channel_id"])
+        if payload.get("kind") == "message" and payload.get("sender_id"):
+            # §16: the Notification Service Extension turns it into a communication notification
+            # (the sender's picture, the app icon small in the corner).
+            aps["mutable-content"] = 1
         body = {
             "aps": aps,
             "kind": payload.get("kind"),
@@ -153,6 +166,14 @@ class APNsPushProvider:
             # kind reservation (M112): the pool (opens the reservations page).
             "pool_id": payload.get("pool_id"),
         }
+        if payload.get("sender_id"):
+            # kind message (§16): the sender and the conversation for the extension.
+            body["sender_id"] = payload.get("sender_id")
+            body["sender_name"] = payload.get("sender_name")
+            body["channel_type"] = payload.get("channel_type")
+            avatar = avatar_url(device, payload.get("sender_avatar_path"))
+            if avatar:
+                body["sender_avatar_url"] = avatar
         return url, headers, body
 
     async def send(self, device: Device, payload: dict[str, Any]) -> PushResult:
@@ -282,6 +303,12 @@ class FCMPushProvider:
                 "badge",
                 "collapse_key",
                 "sent_at",
+                # kind message (§16): MessagingStyle with the sender's picture, which the app
+                # fetches with its own session (no signed URL through Google).
+                "sender_id",
+                "sender_name",
+                "sender_avatar",
+                "channel_type",
             )
             if payload.get(key) is not None
         }

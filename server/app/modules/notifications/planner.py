@@ -16,6 +16,7 @@ from app.core.time import utcnow
 from app.events.envelope import Audience
 from app.events.models import OutboxEvent
 from app.modules.activity.events import REACTION_ADDED
+from app.modules.avatars import signing as avatar_signing
 from app.modules.calendar import service as calendar
 from app.modules.calendar.events import CALENDAR_ALARM_UPDATED
 from app.modules.canvases import repository as canvases_repo
@@ -749,4 +750,25 @@ class PushPlanner:
             badge=max(badge, 1),
             collapse_key=str(channel.id),
             sent_at=utcnow(),
+            **self.sender_fields(channel, sender, sender_name),
         )
+
+    def sender_fields(
+        self, channel: Channel, sender: User | None, sender_name: str
+    ) -> dict[str, Any]:
+        """§16: the sender and the conversation, for the phones' sender-picture notifications.
+
+        The signed picture path goes only with PUSH_INCLUDE_CONTENT (it passes through Apple, and
+        anyone holding it can fetch the picture until it expires); the name is in the title anyway.
+        """
+        updated_at = sender.avatar_updated_at if sender and sender.avatar_key else None
+        path = None
+        if sender is not None and updated_at is not None and self.settings.push_include_content:
+            path = avatar_signing.signed_path(self.settings.secret_key, sender.id, updated_at)
+        return {
+            "sender_id": sender.id if sender else None,
+            "sender_name": sender_name[:120],
+            "sender_avatar": updated_at.isoformat() if updated_at else None,
+            "sender_avatar_path": path,
+            "channel_type": channel.type,
+        }

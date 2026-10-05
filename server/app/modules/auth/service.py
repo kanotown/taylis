@@ -256,12 +256,19 @@ async def revoke_session(db: AsyncSession, context: AuthContext, session_id: uui
 
 
 async def update_device(
-    db: AsyncSession, context: AuthContext, data: DeviceUpdate, *, locale: str | None = None
+    db: AsyncSession,
+    context: AuthContext,
+    data: DeviceUpdate,
+    *,
+    locale: str | None = None,
+    base_url: str | None = None,
 ) -> DeviceOut:
     context = await _lock_current(db, context)
     device = await _require_device(db, context.session)
     if locale is not None:  # M115
         device.locale = locale
+    if base_url is not None:  # PUSH_NOTIFICATIONS.md §16
+        device.base_url = base_url
     if "device_name" in data.model_fields_set:
         device.device_name = data.device_name
     if "app_version" in data.model_fields_set:

@@ -36,6 +36,16 @@ def _locale(request: Request) -> str | None:
     return i18n.from_accept_language(request.headers.get("accept-language"))
 
 
+def _base_url(request: Request) -> str | None:
+    """The address this app reaches the server by (PUBLIC_BASE_URL when set, else the request's,
+    made public by the proxy headers): the iOS push's avatar URL (PUSH_NOTIFICATIONS.md §16)."""
+    configured: str = request.app.state.settings.public_base_url.strip()
+    url = (configured or str(request.base_url)).rstrip("/")
+    if not url.startswith(("https://", "http://")) or len(url) > 255:
+        return None
+    return url
+
+
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(body: LoginRequest, request: Request, response: Response, db: Db) -> TokenResponse:
     limiters: dict[str, RateLimiter] = request.app.state.limiters
@@ -97,7 +107,9 @@ async def revoke_session(session_id: UUID, _: CurrentUser, context: CurrentSessi
 async def update_device(
     _: CurrentUser, context: CurrentSession, body: DeviceUpdate, request: Request, db: Db
 ) -> DeviceOut:
-    return await service.update_device(db, context, body, locale=_locale(request))
+    return await service.update_device(
+        db, context, body, locale=_locale(request), base_url=_base_url(request)
+    )
 
 
 @router.put("/users/me/password", status_code=204, name="auth:password")

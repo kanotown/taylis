@@ -50,6 +50,17 @@ class PushPayload(BaseModel):
     badge: int = 1
     collapse_key: str | None = None
     sent_at: datetime
+    # kind message (§16): who sent it and what conversation it is, so the phones show the sender's
+    # picture (iOS communication notifications, Android MessagingStyle). channel_type: public /
+    # private / dm / group_dm. sender_avatar: the picture's version (avatar_updated_at), None
+    # without one. sender_avatar_path: a signed, short-lived path to it (the iOS extension has no
+    # session), only when PUSH_INCLUDE_CONTENT is on; the APNs provider prefixes the device's
+    # base_url. Android fetches the picture with its own session instead.
+    sender_id: UUID | None = None
+    sender_name: str | None = Field(default=None, max_length=120)
+    sender_avatar: str | None = None
+    sender_avatar_path: str | None = None
+    channel_type: str | None = None
 
 
 # POST /users/me/test-notification (PUSH_NOTIFICATIONS.md §15).
