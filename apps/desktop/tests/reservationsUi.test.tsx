@@ -11,10 +11,13 @@ import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { BookingDialog, PoolSection } from "../src/ui/Reservations";
 import {
+  activeText,
   bookingDays,
   dayLabel,
   durationChoices,
+  durationDefault,
   hourCounts,
+  myActive,
   myReservations,
   poolFormProblem,
   reservationTodoCount,
@@ -136,6 +139,22 @@ describe("the helpers", () => {
     expect(dayLabel(days[1]!, NOW)).toBe("明日");
     expect(dayLabel(days[2]!, NOW)).toBe("10/7 (水)");
     expect(durationChoices(p, new Date(2026, 9, 19, 22), NOW)).toEqual([1, 2]);
+    // the dialog's default: the maximum, else the longest that fits and why
+    expect(durationDefault(p, new Date(2026, 9, 5, 14), NOW)).toEqual({ hours: 6, limit: "max", at: null });
+    expect(durationDefault(p, new Date(2026, 9, 5, 10), NOW)).toEqual({ hours: 3, limit: "full", at: new Date(2026, 9, 5, 13) });
+    expect(durationDefault(p, new Date(2026, 9, 19, 22), NOW)).toEqual({ hours: 2, limit: "horizon", at: new Date(2026, 9, 20, 0) });
+  });
+
+  it("finds my one active reservation and words it", () => {
+    const mine = row({ id: "m1", user_id: ME, start_at: at(16), end_at: at(18) });
+    expect(myActive(pool({ bookings: [B1, mine], my_active_id: "m1" }), ME)?.id).toBe("m1");
+    expect(myActive(pool({ bookings: [B1, mine], my_active_id: null }), ME)).toBeNull();
+    expect(myActive(pool({ bookings: [B1, mine] }), ME)?.id).toBe("m1"); // an older server: from the lists
+    expect(myActive(pool({ bookings: [B1] }), ME)).toBeNull();
+    expect(activeText(mine, NOW)).toBe("予約 16:00〜18:00");
+    expect(activeText({ ...mine, status: "holding" }, NOW)).toBe("予約 16:00〜18:00 · 利用中");
+    expect(activeText(row({ kind: "walkin", status: "waiting" }), NOW)).toBe("今すぐ · 順番待ち");
+    expect(activeText(row({ kind: "walkin", status: "returning" }), NOW)).toBe("今すぐ · 返却済み");
   });
 
   it("words my walk-in, the to-dos and the badge", () => {
@@ -196,11 +215,32 @@ describe("the page", () => {
     fireEvent.click(within(box).getAllByRole("button", { name: "取り消す" }).at(-1)!);
     expect(controller.reservationAction).toHaveBeenCalledWith("m1", "cancel");
     await settle();
-    fireEvent.click(screen.getByRole("button", { name: "今すぐ (順番待ち)" }));
-    expect(controller.reservePool).toHaveBeenCalledWith("p1");
+    // One reservation per person and pool: with a booking, 「今すぐ」 and 「予約する」 are off and say why.
+    const walkin = screen.getByRole("button", { name: "今すぐ (順番待ち)" }) as HTMLButtonElement;
+    expect(walkin.disabled).toBe(true);
+    expect((screen.getByRole("button", { name: /予約する/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(document.querySelector("[data-already-active]")?.textContent).toContain("すでに予約があります（予約 16:00〜18:00）");
+    fireEvent.click(screen.getByRole("button", { name: "自分の予約を見る" }));
     // the timeline draws both bookings (mine stands out)
     expect(document.querySelector('[data-bar="m1"]')).toBeTruthy();
     expect(document.querySelector('[data-bar="b1"]')?.getAttribute("title")).toBe("アリス · 予約 12:00〜15:00");
+  });
+
+  it("offers 「今すぐ」 and 「予約する」 only without a reservation in the pool", async () => {
+    const { controller } = setup(pool({ bookings: [B1], my_active_id: null }));
+    render(<PoolSection controller={controller} pool={controller.store.reservationPools![0]!} onEdit={() => {}} />);
+    expect(document.querySelector("[data-already-active]")).toBeNull();
+    expect((screen.getByRole("button", { name: /予約する/ }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "今すぐ (順番待ち)" }));
+    expect(controller.reservePool).toHaveBeenCalledWith("p1");
+    cleanup();
+    // waiting in the queue: the walk-in button is gone, booking is off
+    const waiting = row({ id: "q1", user_id: ME, kind: "walkin", status: "waiting", step: "wait", position: 2 });
+    const queued = setup(pool({ waiting: [waiting], my_reservation_id: "q1", my_active_id: "q1" }));
+    render(<PoolSection controller={queued.controller} pool={queued.controller.store.reservationPools![0]!} onEdit={() => {}} />);
+    expect(screen.queryByRole("button", { name: "今すぐ (順番待ち)" })).toBeNull();
+    expect((screen.getByRole("button", { name: /予約する/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(document.querySelector("[data-already-active]")?.textContent).toContain("すでに予約があります（今すぐ · 順番待ち）");
   });
 
   it("gives operators the to-do buttons", async () => {
@@ -219,6 +259,23 @@ describe("the page", () => {
     await settle();
     fireEvent.click(within(list).getByRole("button", { name: "外した" }));
     expect(controller.reservationAction).toHaveBeenCalledWith("h1", "remove");
+  });
+
+  it("defaults the length to the pool's maximum, or the longest that fits and why", () => {
+    const p = pool({ bookings: [B1, B2] });
+    const { controller } = setup(p);
+    render(<BookingDialog controller={controller} pool={p} initialDay={new Date(2026, 9, 5)} onClose={() => {}} />);
+    const length = screen.getByLabelText("時間") as HTMLSelectElement;
+    // 10:00 (the first free start): 13:00 is full → 3 hours
+    expect(length.value).toBe("3");
+    expect(document.querySelector("[data-duration-limit]")?.textContent).toBe("13:00 から埋まっているため、最長 3 時間です");
+    fireEvent.change(screen.getByLabelText("開始"), { target: { value: String(new Date(2026, 9, 5, 14).getTime()) } });
+    expect(length.value).toBe("6");
+    expect(document.querySelector("[data-duration-limit]")).toBeNull();
+    // a length picked by hand stays while it fits
+    fireEvent.change(length, { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("開始"), { target: { value: String(new Date(2026, 9, 5, 15).getTime()) } });
+    expect(length.value).toBe("2");
   });
 
   it("books the chosen start and length", async () => {
