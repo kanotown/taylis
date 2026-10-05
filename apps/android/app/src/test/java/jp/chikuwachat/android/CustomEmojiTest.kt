@@ -126,4 +126,46 @@ class CustomEmojiTest {
         val sections = EmojiPicker.sections(emptyList(), ungrouped, packs)
         assertEquals(listOf(EmojiPicker.CUSTOM, "pack:p1"), sections.takeLast(2).map { it.key })
     }
+
+    /** A drawn image stand-in (a JVM test has no Bitmap). */
+    private object Drawn : androidx.compose.ui.graphics.ImageBitmap {
+        override val width = 1
+        override val height = 1
+        override val colorSpace = androidx.compose.ui.graphics.colorspace.ColorSpaces.Srgb
+        override val hasAlpha = true
+        override val config = androidx.compose.ui.graphics.ImageBitmapConfig.Argb8888
+        override fun readPixels(buffer: IntArray, startX: Int, startY: Int, width: Int, height: Int, bufferOffset: Int, stride: Int) {}
+        override fun prepareToDraw() {}
+    }
+
+    private fun emoji(id: String, name: String, kind: String = "text", label: String? = "承認", color: String? = "#2e7d32", packId: String? = null) =
+        CustomEmojiOut(id = id, name = name, contentType = if (kind == "text") "" else "image/png", width = 32, height = 32, createdBy = "u",
+            createdAt = "", kind = kind, label = label, color = color, packId = packId)
+
+    /**
+     * Review v0.1.37 #7: a text emoji changed (or removed) while offline, its emoji.updated missed: the bootstrap's list drops
+     * the drawn pill so it is drawn again with the new label and colour, like the event would. Unchanged ones keep theirs.
+     */
+    @Test fun aBootstrapListDropsTheImagesItChanged() {
+        val store = jp.chikuwachat.android.sync.Store()
+        store.replaceCustomEmoji(listOf(emoji("t1", "ok"), emoji("t2", "same"), emoji("t3", "gone"), emoji("i1", "pic", kind = "image", label = null, color = null),
+            emoji("t4", "moved")))
+        listOf("t1", "t2", "t3", "i1", "t4").forEach { store.setEmojiImage(it, Drawn) }
+        store.replaceCustomEmoji(listOf(emoji("t1", "ok", label = "差戻し", color = "#c62828"), emoji("t2", "same"),
+            emoji("i1", "pic", kind = "image", label = null, color = null), emoji("t4", "moved", packId = "p1")))
+        assertEquals("差戻し", store.customEmoji["ok"]?.label)
+        assertNull(store.emojiImages["t1"]) // label and colour changed: drawn again
+        assertNull(store.emojiImages["t3"]) // removed
+        assertTrue(store.emojiImages["t2"] === Drawn) // unchanged
+        assertTrue(store.emojiImages["i1"] === Drawn) // an image emoji keeps its picture
+        assertTrue(store.emojiImages["t4"] === Drawn) // only its pack moved: the pill looks the same
+        // a kind change swaps pill and picture
+        store.replaceCustomEmoji(listOf(emoji("t2", "same", kind = "image", label = null, color = null)))
+        assertNull(store.emojiImages["t2"])
+        // the event path agrees
+        store.replaceCustomEmoji(listOf(emoji("t5", "ev")))
+        store.setEmojiImage("t5", Drawn)
+        store.applyCustomEmoji(emoji("t5", "ev", color = "#000000"), deleted = false)
+        assertNull(store.emojiImages["t5"])
+    }
 }

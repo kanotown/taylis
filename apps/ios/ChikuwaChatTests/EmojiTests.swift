@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import ChikuwaChat
 
@@ -63,6 +64,36 @@ final class EmojiTests: XCTestCase {
         let row = { (id: String) in CustomEmojiOut(id: id, name: "party", contentType: "image/png", width: 32, height: 32, createdBy: "u", createdAt: "") }
         store.replaceCustomEmoji([row("a"), row("b")])
         XCTAssertEqual(store.customEmoji["party"]?.id, "b")
+    }
+
+    /// Review v0.1.37 #7: a text emoji changed (or removed) while offline, its emoji.updated missed: the bootstrap's list
+    /// drops the drawn pill so it is drawn again with the new label and colour, like the event would. Unchanged ones keep theirs.
+    @MainActor func testABootstrapListDropsTheImagesItChanged() {
+        func emoji(_ id: String, _ name: String, kind: String = "text", label: String? = "承認", color: String? = "#2e7d32", packId: String? = nil) -> CustomEmojiOut {
+            CustomEmojiOut(id: id, name: name, contentType: kind == "text" ? "" : "image/png", width: 32, height: 32, createdBy: "u", createdAt: "",
+                           kind: kind, label: label, color: color, packId: packId)
+        }
+        let drawn = UIImage()
+        let store = Store()
+        store.replaceCustomEmoji([emoji("t1", "ok"), emoji("t2", "same"), emoji("t3", "gone"), emoji("i1", "pic", kind: "image", label: nil, color: nil),
+                                  emoji("t4", "moved")])
+        for id in ["t1", "t2", "t3", "i1", "t4"] { store.emojiImages[id] = drawn }
+        store.replaceCustomEmoji([emoji("t1", "ok", label: "差戻し", color: "#c62828"), emoji("t2", "same"),
+                                  emoji("i1", "pic", kind: "image", label: nil, color: nil), emoji("t4", "moved", packId: "p1")])
+        XCTAssertEqual(store.customEmoji["ok"]?.label, "差戻し")
+        XCTAssertNil(store.emojiImages["t1"]) // label and colour changed: drawn again
+        XCTAssertNil(store.emojiImages["t3"]) // removed
+        XCTAssertTrue(store.emojiImages["t2"] === drawn) // unchanged
+        XCTAssertTrue(store.emojiImages["i1"] === drawn) // an image emoji keeps its picture
+        XCTAssertTrue(store.emojiImages["t4"] === drawn) // only its pack moved: the pill looks the same
+        // a kind change swaps pill and picture
+        store.replaceCustomEmoji([emoji("t2", "same", kind: "image", label: nil, color: nil)])
+        XCTAssertNil(store.emojiImages["t2"])
+        // the event path agrees
+        store.replaceCustomEmoji([emoji("t5", "ev")])
+        store.emojiImages["t5"] = drawn
+        store.applyCustomEmoji(emoji("t5", "ev", color: "#000000"), deleted: false)
+        XCTAssertNil(store.emojiImages["t5"])
     }
 
     func testQueryAndCompletion() {
