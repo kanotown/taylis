@@ -19,6 +19,7 @@ from app.core.time import utcnow
 from app.events.models import OutboxEvent
 from app.modules.groups.models import UserGroup, UserGroupMember
 from app.modules.messages.models import Message
+from app.modules.reservations import repository as reservations_repo
 from app.modules.reservations import service as reservations
 from app.modules.reservations.models import Reservation, ReservationNotice
 from app.modules.reservations.schemas import BookingIn
@@ -27,6 +28,7 @@ from tests.helpers import make_user
 from tests.test_push_planner import add_device, deliveries, relay_with_planner
 
 TOKYO = ZoneInfo("Asia/Tokyo")
+HOUR_ = timedelta(hours=1)
 INCLUDE = {"include": "reservation"}
 
 
@@ -650,3 +652,125 @@ async def test_a_queued_todo_is_not_shown_or_sent_after_the_operator_lost_the_ri
     feed = (await client.get("/api/v1/activity", params=INCLUDE)).json()["items"]
     assert [i["kind"] for i in feed] == ["reservation"]
     assert "alice@example.jp" in feed[0]["reservation"]["text"]
+
+
+# --- review v0.1.37 #5: a booking moves the queue's eviction time forward --------------------
+
+
+async def test_the_queue_grace_is_corrected_for_a_booking_and_back(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """One seat; Bob's guarantee ended an hour before Alice's booking; Carol queues 11 minutes
+    before it. Bob is told he goes after the grace (start + 4 min), then, at the booking's lead,
+    corrected to its start; the booking cancelled gives the queue's time back (told again)."""
+    s = await _setup(client, db, as_user, capacity=1)
+    pid = uuid.UUID(s["pid"])
+    start = _hour(5)
+    guarantee = start - HOUR_
+    bob_row = Reservation(
+        pool_id=pid,
+        user_id=s["bob"].id,
+        kind="walkin",
+        status="holding",
+        requested_at=guarantee - 6 * HOUR_,
+        assigned_at=guarantee - 6 * HOUR_,
+        guarantee_until=guarantee,
+    )
+    booking = Reservation(
+        pool_id=pid,
+        user_id=s["alice"].id,
+        kind="booking",
+        status="booked",
+        requested_at=utcnow(),
+        start_at=start,
+        end_at=start + HOUR_,
+    )
+    queued = start - timedelta(minutes=11)
+    carol_row = Reservation(
+        pool_id=pid, user_id=s["carol"].id, kind="walkin", status="waiting", requested_at=queued
+    )
+    db.add_all([bob_row, booking, carol_row])
+    await db.commit()
+    bob_id, booking_id = bob_row.id, booking.id
+
+    async def bob() -> Reservation:
+        stmt = (
+            select(Reservation)
+            .where(Reservation.id == bob_id)
+            .execution_options(populate_existing=True)
+        )
+        return (await db.execute(stmt)).scalar_one()
+
+    assert await _tick(app, queued) == 1
+    assert (await bob()).evict_at == queued + timedelta(minutes=15)
+    assert "待っている人がいます" in (await _notices(db, s["bob"]))[-1].text
+    assert await _tick(app, queued + timedelta(seconds=30)) == 0  # nothing new: no repeat
+    # The booking's lead: corrected to its start, Bob told so.
+    assert await _tick(app, start - timedelta(minutes=10)) == 1
+    row = await bob()
+    assert row.evict_at == start and row.evict_notice_at == queued
+    told = await _notices(db, s["bob"])
+    assert len(told) == 2 and "予約の人が使います" in told[-1].text
+    assert await _tick(app, start - timedelta(minutes=9)) == 0
+    # The booking cancelled: back to the queue's time (the grace from the first notice).
+    await db.execute(
+        update(Reservation).where(Reservation.id == booking_id).values(status="cancelled")
+    )
+    await db.commit()
+    assert await _tick(app, start - timedelta(minutes=5)) == 1
+    assert (await bob()).evict_at == queued + timedelta(minutes=15)
+    told = await _notices(db, s["bob"])
+    assert len(told) == 3 and "待っている人がいます" in told[-1].text
+
+
+async def test_the_swap_todo_is_due_at_the_booking_start_not_after_the_grace(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """The review's case without a run at the lead time: told at 11:49 for 12:04; at 12:00 the
+    swap for the booking is due (the operators' page lists it) and Bob's time is 12:00."""
+    s = await _setup(client, db, as_user, capacity=1)
+    pid = uuid.UUID(s["pid"])
+    start = _hour(5)
+    queued = start - timedelta(minutes=11)
+    bob_row = Reservation(
+        pool_id=pid,
+        user_id=s["bob"].id,
+        kind="walkin",
+        status="holding",
+        requested_at=start - 7 * HOUR_,
+        assigned_at=start - 7 * HOUR_,
+        guarantee_until=start - HOUR_,
+        evict_notice_at=queued,
+        evict_at=queued + timedelta(minutes=15),
+    )
+    booking = Reservation(
+        pool_id=pid,
+        user_id=s["alice"].id,
+        kind="booking",
+        status="booked",
+        requested_at=utcnow(),
+        start_at=start,
+        end_at=start + HOUR_,
+    )
+    carol_row = Reservation(
+        pool_id=pid, user_id=s["carol"].id, kind="walkin", status="waiting", requested_at=queued
+    )
+    db.add_all([bob_row, booking, carol_row])
+    await db.commit()
+    bob_id, booking_id = bob_row.id, booking.id
+    assert await _tick(app, start) == 1
+    row = (
+        await db.execute(
+            select(Reservation)
+            .where(Reservation.id == bob_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    assert row.evict_at == start
+    rows = await reservations_repo.active_rows(db, [pid])
+    pool = await reservations_repo.get_pool(db, pid)
+    assert pool is not None
+    plan = reservations._plan(pool, rows, start)
+    assert [t.key for t in plan.todos] == [f"swap:{bob_id}:{booking_id}"]
+    keys = [n.key for n in await _notices(db, s["op"])]
+    assert f"swap:{bob_id}:{booking_id}" in keys

@@ -192,3 +192,52 @@ def test_returned_seat_goes_to_a_started_booking_first() -> None:
     plan = make_plan(1, [back], [booking], [Waiter(_id(9), T0 - 2 * HOUR)], T0)
     assert plan.claimant_pair == {_id(20): _id(1)} and plan.steps[_id(9)] == "wait"
     assert [t.reason for t in plan.todos] == ["returned"]
+
+
+# --- review v0.1.37 #5: the queue's grace never delays a booking ------------------------------
+
+_MIN = timedelta(minutes=1)
+_GRACE = timedelta(minutes=15)
+_G = T0 + 2 * HOUR  # the walk-in's guarantee ends (11:00)
+_B = Booking(_id(20), _G + HOUR, _G + 2 * HOUR)  # a booking 12:00-13:00
+_W = Waiter(_id(9), _G + 49 * _MIN)  # someone queues at 11:49
+
+
+def _told(evict_at: datetime, notice_at: datetime) -> Holder:
+    return _walkin(1, _G, evict_at=evict_at, evict_notice_at=notice_at)
+
+
+def test_a_booking_moves_the_queue_deadline_forward() -> None:
+    at_1149 = _G + 49 * _MIN
+    first = make_plan(1, [_walkin(1, _G)], [_B], [_W], at_1149, grace=_GRACE)
+    assert first.evict == {_id(1): _G + 64 * _MIN}  # 12:04, told now
+    told = _told(_G + 64 * _MIN, at_1149)
+    # 11:50 (the booking's lead): the seat goes at 12:00, for the booking (a correction).
+    lead = make_plan(1, [told], [_B], [_W], _B.start_at - LEAD, grace=_GRACE)
+    assert lead.evict == {_id(1): _B.start_at} and lead.holder_pair[_id(1)] == _B.id
+    assert [t.key for t in lead.upcoming] == [f"booking:{_B.id}"]
+    # 12:00 even without a run at 11:50: the swap to-do is there, not at 12:04.
+    start = make_plan(1, [told], [_B], [_W], _B.start_at, grace=_GRACE)
+    assert start.evict == {_id(1): _B.start_at}
+    assert [t.key for t in start.todos] == [f"swap:{_id(1)}:{_B.id}"]
+    assert {_id(1), _B.id} <= start.ready and start.steps[_W.id] == "wait"
+
+
+def test_the_queue_deadline_comes_back_when_the_booking_is_cancelled() -> None:
+    corrected = _told(_B.start_at, _G + 49 * _MIN)  # told 12:04, then 12:00 for the booking
+    now = _B.start_at - 5 * _MIN
+    plan = make_plan(1, [corrected], [], [_W], now, grace=_GRACE)
+    assert plan.evict == {_id(1): _G + 64 * _MIN}  # the grace from the first notice again
+    assert plan.todos == []
+    # Told first for the booking (11:50), the queue keeps at least the grace from then.
+    by_booking = _told(_B.start_at, _B.start_at - LEAD)
+    plan = make_plan(1, [by_booking], [], [_W], now, grace=_GRACE)
+    assert plan.evict == {_id(1): _B.start_at - LEAD + _GRACE}
+
+
+def test_the_queue_cancelled_leaves_only_the_booking_deadline() -> None:
+    told = _told(_G + 64 * _MIN, _G + 49 * _MIN)
+    before_lead = make_plan(1, [told], [_B], [], _B.start_at - LEAD - _MIN, grace=_GRACE)
+    assert before_lead.evict == {}  # nobody needs the seat yet: they keep it
+    lead = make_plan(1, [told], [_B], [], _B.start_at - LEAD, grace=_GRACE)
+    assert lead.evict == {_id(1): _B.start_at}
