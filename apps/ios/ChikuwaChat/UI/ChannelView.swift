@@ -1185,6 +1185,9 @@ struct MessageRow: View {
                             .buttonStyle(.bordered)
                             .tint(mine ? Color.accentColor : Color.secondary)
                             .controlSize(.mini)
+                            .accessibilityLabel(ReactionChipLabel.text(reaction.emoji, count: reaction.count,
+                                                                       custom: CustomEmoji.name(of: reaction.emoji).flatMap { store.customEmoji[$0] }))
+                            .accessibilityAddTraits(mine ? .isSelected : [])
                         }
                         // M25: one more reaction right there (Slack; the web's 「＋」): the picker the action sheet's
                         // smiley opens.
@@ -1273,6 +1276,16 @@ struct ReactionChipLine<Content: View>: View {
             HStack(spacing: spacing) { content }
         }
         .frame(minHeight: Self.emojiHeight)
+    }
+}
+
+/// Review v0.1.37 (iOS test note): what VoiceOver reads for a reaction chip, in the UI language — 「👍、2 人がリアクション」,
+/// "👍, 2 people reacted". SwiftUI used to join the chip's texts itself (「👍、2」, before the i18n 「👍 2」), and a custom
+/// emoji's image said nothing: it is read by its label (a text emoji's text), else its name.
+enum ReactionChipLabel {
+    static func text(_ emoji: String, count: Int, custom: CustomEmojiOut?) -> String {
+        let name = custom.map { $0.label?.isEmpty == false ? $0.label! : $0.name } ?? CustomEmoji.name(of: emoji) ?? emoji
+        return name + tr("、") + tr("\(count) 人がリアクション")
     }
 }
 

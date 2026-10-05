@@ -112,9 +112,11 @@ final class MessageRowAccessibilityTests: XCTestCase {
             // M28d: the profile too (the avatar and the name take taps VoiceOver cannot make).
             XCTAssertEqual(Set(element.accessibilityCustomActions?.map(\.name) ?? []), ["メッセージの操作", "プロフィール"], element.accessibilityLabel ?? "")
         }
-        // The reaction and the 「＋」 chip after it stay buttons of their own.
-        let reaction = try XCTUnwrap(elements.first { $0.accessibilityLabel == "👍 2" })
+        // The reaction and the 「＋」 chip after it stay buttons of their own. Review v0.1.37: the chip says what it is
+        // in the UI language (unit tests run in Japanese), and that it is mine.
+        let reaction = try XCTUnwrap(elements.first { $0.accessibilityLabel == "👍、2 人がリアクション" }, "\(labels)")
         XCTAssertTrue(reaction.accessibilityTraits.contains(.button))
+        XCTAssertTrue(reaction.accessibilityTraits.contains(.selected)) // "me" is among its people
         let add = try XCTUnwrap(elements.first { $0.accessibilityLabel == "リアクションを追加" })
         XCTAssertTrue(add.accessibilityTraits.contains(.button))
 

@@ -2782,6 +2782,34 @@
         }
       }
     },
+    "%lld 人がリアクション" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld person reacted"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld people reacted"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 人回应"
+          }
+        }
+      }
+    },
     "%lld 人が回答" : {
       "localizations" : {
         "en" : {

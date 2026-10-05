@@ -68,6 +68,16 @@ final class EmojiTests: XCTestCase {
 
     /// Review v0.1.37 #7: a text emoji changed (or removed) while offline, its emoji.updated missed: the bootstrap's list
     /// drops the drawn pill so it is drawn again with the new label and colour, like the event would. Unchanged ones keep theirs.
+    /// Review v0.1.37 (iOS test note): a reaction chip reads its emoji (a custom one by its label, else its name) and its count.
+    @MainActor func testReactionChipLabels() {
+        XCTAssertEqual(ReactionChipLabel.text("👍", count: 2, custom: nil), "👍、2 人がリアクション")
+        let pill = CustomEmojiOut(id: "t", name: "ok", contentType: "", width: 32, height: 32, createdBy: "u", createdAt: "", kind: "text", label: "承認")
+        XCTAssertEqual(ReactionChipLabel.text(":ok:", count: 1, custom: pill), "承認、1 人がリアクション")
+        let plain = CustomEmojiOut(id: "i", name: "parrot", contentType: "image/png", width: 32, height: 32, createdBy: "u", createdAt: "")
+        XCTAssertEqual(ReactionChipLabel.text(":parrot:", count: 3, custom: plain), "parrot、3 人がリアクション")
+        XCTAssertEqual(ReactionChipLabel.text(":gone:", count: 1, custom: nil), "gone、1 人がリアクション")
+    }
+
     @MainActor func testABootstrapListDropsTheImagesItChanged() {
         func emoji(_ id: String, _ name: String, kind: String = "text", label: String? = "承認", color: String? = "#2e7d32", packId: String? = nil) -> CustomEmojiOut {
             CustomEmojiOut(id: id, name: name, contentType: kind == "text" ? "" : "image/png", width: 32, height: 32, createdBy: "u", createdAt: "",
