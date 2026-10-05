@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
+import { AiBadge } from "./ai";
 import { Avatar } from "./Avatar";
 import { selfNotesHint } from "./channels";
 import { pickerChannels, pickerPeople } from "./home";
@@ -37,7 +38,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
   const title = (c: ChannelState) => channelTitle(c, controller).replace(/^#/, "");
   const context = { users: store.users, meId, me, title };
   const { mine, joinable } = pickerChannels(query, store.channels.values(), context);
-  const people = pickerPeople(query, store.users.values(), meId);
+  const { people, bots } = pickerPeople(query, store.users.values(), meId, new Set(store.aiStatus?.agents.map((a) => a.bot_user_id)));
   const myName = myDisplayName(controller);
   const showSelf = !!meId && selected.length === 0 && (!query || matchScore(query, [myName, me?.username ?? ""]) !== null);
   // With people picked, the destination is a DM: the channels step aside.
@@ -72,7 +73,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
   };
 
   const heading = (label: string) => <div className="px-4 pb-1 pt-3 text-[12px] font-semibold text-muted">{label}</div>;
-  const nothing = !showSelf && (!showChannels || (mine.length === 0 && joinable.length === 0)) && people.length === 0;
+  const nothing = !showSelf && (!showChannels || (mine.length === 0 && joinable.length === 0)) && people.length === 0 && bots.length === 0;
 
   return (
     <section role="dialog" aria-label={t("home.newMessage")} className="fixed inset-0 z-40 flex flex-col bg-canvas text-ink" onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
@@ -147,15 +148,16 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
             ))}
           </>
         )}
-        {people.length > 0 && (
-          <>
-            {heading(selected.length ? t("newMessage.peopleGroup") : t("jump.people"))}
-            {people.map((user) => {
+        {[{ key: "people", list: people, label: selected.length ? t("newMessage.peopleGroup") : t("jump.people") }, { key: "bots", list: bots, label: t("jump.bots") }].map(({ key, list, label }) => list.length > 0 && (
+          <div key={key}>
+            {heading(label)}
+            {list.map((user) => {
               const on = selected.includes(user.id);
               return (
                 <button key={user.id} type="button" data-pick="person" aria-pressed={on} onClick={() => toggle(user.id)} className={cn(PICK_ROW, on && "bg-accent-soft/60")}>
                   <Avatar id={user.id} name={user.display_name} size={24} className="rounded-md text-[10px]" presence={store.presenceOf(user.id)} presenceClassName="border border-canvas" />
                   <span className="min-w-0 truncate">{user.display_name}</span>
+                  {key === "bots" && <AiBadge />}
                   <span className="min-w-0 flex-1 truncate text-[13px] text-muted">@{user.username}</span>
                   <span aria-hidden="true" className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full border", on ? "border-accent bg-accent-solid text-white" : "border-line")}>
                     {on && <Check size={13} />}
@@ -163,8 +165,8 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
                 </button>
               );
             })}
-          </>
-        )}
+          </div>
+        ))}
         {nothing && <p className="px-6 py-12 text-center text-sm text-muted">{t("newMessage.noMatch")}</p>}
       </div>
     </section>

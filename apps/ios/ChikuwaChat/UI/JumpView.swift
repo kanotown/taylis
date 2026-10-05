@@ -200,6 +200,8 @@ struct JumpView: View {
         let conversations = JumpMatch.conversations(query, channels: Array(store.channels.values), users: users, me: store.me?.asPublic)
             .compactMap { store.channel($0) }
         let people = JumpMatch.people(query, users: Array(users.values)).compactMap { users[$0] }
+        let bots = JumpMatch.bots(query, users: Array(users.values), aiBotIds: controller.aiHub?.botUserIds ?? [], limit: 10)
+            .compactMap { users[$0] }
         if !conversations.isEmpty {
             Section {
                 ForEach(conversations) { channel in
@@ -221,6 +223,18 @@ struct JumpView: View {
                         .accessibilityHint("ダイレクトメッセージを開きます")
                 }
             } header: { header(tr("人")) }
+        }
+        if !bots.isEmpty {
+            Section {
+                ForEach(bots) { user in
+                    Button { openDm(user.id) } label: { PersonLabel(controller: controller, user: user, rowHeight: Self.rowHeight) }
+                        .buttonStyle(.plain)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(ChannelListView.rowInsets)
+                        .disabled(opening)
+                        .accessibilityHint("ダイレクトメッセージを開きます")
+                }
+            } header: { header(tr("ボット")) }
         }
         Section {
             Button { searchMessages() } label: {
@@ -344,7 +358,13 @@ struct NewMessageView: View {
     @ViewBuilder
     private func peopleRows(_ users: [String: UserPublic]) -> some View {
         let ids = JumpMatch.destinationPeople(text, users: Array(users.values), meId: meId).filter { $0 != meId || selected.isEmpty }
-        let rows = ids.compactMap { users[$0] }
+        let bots = JumpMatch.bots(text, users: Array(users.values), aiBotIds: controller.aiHub?.botUserIds ?? [])
+        personSection(ids.compactMap { users[$0] }, title: selected.isEmpty ? tr("人") : tr("人 (\(selected.count) 人を選択中)"))
+        personSection(bots.compactMap { users[$0] }, title: tr("ボット"))
+    }
+
+    @ViewBuilder
+    private func personSection(_ rows: [UserPublic], title: String) -> some View {
         if !rows.isEmpty {
             Section {
                 ForEach(rows) { user in
@@ -368,7 +388,7 @@ struct NewMessageView: View {
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                     .accessibilityHint(isMe ? "自分だけの DM を開きます" : isSelected ? "宛先から外します" : "宛先に加えます")
                 }
-            } header: { header(selected.isEmpty ? tr("人") : tr("人 (\(selected.count) 人を選択中)")) }
+            } header: { header(title) }
         }
     }
 

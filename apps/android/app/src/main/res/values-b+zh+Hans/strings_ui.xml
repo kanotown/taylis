@@ -1214,6 +1214,7 @@
     <string name="search_or_more">以上</string>
     <string name="search_pane_apply_these_dates">按此期间筛选</string>
     <string name="search_pane_back_to_results">返回搜索结果</string>
+    <string name="search_pane_bots">机器人</string>
     <string name="search_pane_channels_search_within">频道 (在其中搜索)</string>
     <string name="search_pane_choose_dates">指定期间</string>
     <string name="search_pane_clear_filters">清除条件</string>

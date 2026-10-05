@@ -2138,6 +2138,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "popover.blockTitle": "隐藏此用户的消息，并且不接收其通知和私信",
   "popover.block": "屏蔽",
   "jump.recentConversations": "最近的对话",
+  "jump.bots": "机器人",
   "jump.people": "人员",
   "jump.placeholder": "搜索对话、人员、消息",
   "jump.hint": "输入频道或人名即可跳转，输入词语即可搜索消息",

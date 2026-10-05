@@ -75,10 +75,11 @@ describe("names and 移動・検索's lists", () => {
   });
 
   it("人: not deactivated, me too, by the rule, at most 10", () => {
-    expect(jumpPeople("g", users.values()).map((u) => u.id)).toEqual(["u2"]);
-    expect(jumpPeople("kano", users.values()).map((u) => u.id)).toEqual([ME]);
+    expect(jumpPeople("g", users.values()).people.map((u) => u.id)).toEqual(["u2"]);
+    expect(jumpPeople("kano", users.values()).people.map((u) => u.id)).toEqual([ME]);
+    expect(jumpPeople("", users.values())).toEqual({ people: [], bots: [] });
     const many = Array.from({ length: 15 }, (_, i) => user(`p${i}`, `p${String(i).padStart(2, "0")}`, `P ${i}`));
-    expect(jumpPeople("p", many)).toHaveLength(10);
+    expect(jumpPeople("p", many).people).toHaveLength(10);
   });
 });
 
@@ -95,8 +96,19 @@ describe("the new-message picker", () => {
   });
 
   it("people: not me, not deactivated; by name, or by the rule", () => {
-    expect(pickerPeople("", users.values(), ME).map((u) => u.id)).toEqual(["u1", "u2"]);
-    expect(pickerPeople("ebi", users.values(), ME).map((u) => u.id)).toEqual(["u1"]);
+    expect(pickerPeople("", users.values(), ME).people.map((u) => u.id)).toEqual(["u1", "u2"]);
+    expect(pickerPeople("ebi", users.values(), ME).people.map((u) => u.id)).toEqual(["u1"]);
+  });
+
+  it("bots: an AI bot in its own group after the people; no other bot (a webhook, a feed)", () => {
+    const bot = (id: string, name: string): UserPublic => ({ ...user(id, id, name), role: "bot" }) as UserPublic;
+    const all = [...users.values(), bot("ai", "Chikuwa AI"), bot("hook", "GitHub")];
+    const picked = pickerPeople("", all, ME, new Set(["ai"]));
+    expect(picked.people.map((u) => u.id)).toEqual(["u1", "u2"]);
+    expect(picked.bots.map((u) => u.id)).toEqual(["ai"]);
+    expect(pickerPeople("", all, ME).bots).toEqual([]);
+    expect(jumpPeople("git", all, undefined, new Set(["ai"]))).toEqual({ people: [], bots: [] });
+    expect(jumpPeople("chi", all, undefined, new Set(["ai"])).bots.map((u) => u.id)).toEqual(["ai"]);
   });
 });
 

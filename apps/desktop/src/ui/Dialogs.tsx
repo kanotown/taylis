@@ -7,6 +7,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar, presenceLabel } from "./Avatar";
 import { myName, selfNotesHint } from "./channels";
+import { pickerPeople } from "./home";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { compareByRoster, rosterLabel, titleExtra } from "./roster";
 import { Badge, Button, cn, Field, Input, Kbd, Modal } from "./primitives";
@@ -54,7 +55,9 @@ function ErrorText({ error }: { error: string | null }) {
 
 export function NewDmDialog({ controller, onClose, onOpen }: DialogProps) {
   const me = controller.store.me?.id;
-  const users = [...controller.store.users.values()].filter((u) => u.id !== me && !u.deactivated_at).sort((a, b) => a.display_name.localeCompare(b.display_name, "ja"));
+  // Bots only when they answer in a DM (AI bots), after the people (apps/shared/jump-match.json `pick`).
+  const { people, bots } = pickerPeople("", controller.store.users.values(), me ?? null, new Set(controller.store.aiStatus?.agents.map((a) => a.bot_user_id)));
+  const users = [...people, ...bots];
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));

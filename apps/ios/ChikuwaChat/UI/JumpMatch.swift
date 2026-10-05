@@ -101,10 +101,25 @@ enum JumpMatch {
         return Array(rank(query, items).prefix(limit).map(\.id))
     }
 
-    /// 「人」: people who are not deactivated (me too: my DM with myself), ranked; at most `limit`.
+    /// 「人」: people who are not deactivated and not bots (me too: my DM with myself), ranked; at most `limit`.
     static func people(_ query: String, users: [UserPublic], limit: Int = 10) -> [String] {
-        let items = users.filter { $0.deactivatedAt == nil }.map { Item(id: $0.id, title: $0.displayName, names: [$0.displayName, $0.username]) }
-        return Array(rank(query, items).prefix(limit).map(\.id))
+        Array(ranked(query, users.filter { $0.deactivatedAt == nil && $0.role != "bot" }).prefix(limit))
+    }
+
+    /// 「ボット」 (jump-match.json `pick`): a bot is offered for a new DM only when it is an AI bot (`aiBotIds`, GET
+    /// /ai/status: it answers there), after the people; never a webhook, a feed or the reservation bot. Not
+    /// deactivated, ranked with a query, by name without; at most `limit`. An existing DM with any bot stays listed.
+    static func bots(_ query: String, users: [UserPublic], aiBotIds: Set<String>, limit: Int = .max) -> [String] {
+        let bots = users.filter { $0.deactivatedAt == nil && $0.role == "bot" && aiBotIds.contains($0.id) }
+        return Array((normalize(query).isEmpty ? byName(bots) : ranked(query, bots)).prefix(limit))
+    }
+
+    private static func ranked(_ query: String, _ users: [UserPublic]) -> [String] {
+        rank(query, users.map { Item(id: $0.id, title: $0.displayName, names: [$0.displayName, $0.username]) }).map(\.id)
+    }
+
+    private static func byName(_ users: [UserPublic]) -> [String] {
+        users.sorted { a, b in a.displayName != b.displayName ? a.displayName < b.displayName : a.id < b.id }.map(\.id)
     }
 
     // MARK: 「新しいメッセージ」 (M37 (6))
@@ -128,13 +143,11 @@ enum JumpMatch {
     }
 
     /// The people a new message can go to: me first (my DM with myself), then by display name; ranked with a query.
+    /// No bots: the AI bots are `bots(_:users:aiBotIds:)`, after the people.
     static func destinationPeople(_ query: String, users: [UserPublic], meId: String?) -> [String] {
-        let live = users.filter { $0.deactivatedAt == nil }
+        let live = users.filter { $0.deactivatedAt == nil && $0.role != "bot" }
         if !normalize(query).isEmpty { return people(query, users: live, limit: live.count) }
-        let others = live.filter { $0.id != meId }.sorted { a, b in
-            a.displayName != b.displayName ? a.displayName < b.displayName : a.id < b.id
-        }
-        return live.filter { $0.id == meId }.map(\.id) + others.map(\.id)
+        return live.filter { $0.id == meId }.map(\.id) + byName(live.filter { $0.id != meId })
     }
 }
 
