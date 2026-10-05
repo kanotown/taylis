@@ -31,6 +31,16 @@
 		reverse_proxy app:8000
 	}
 
+	# Emoji pack import (M100): a ZIP, or a folder's files, of up to 64 MiB (PACK_UPLOAD_MAX_BYTES), plus the multipart
+	# overhead. The 1 MB below refused any real pack with 413 (Review v0.1.37 #8). Admins only; the app checks every file.
+	@emojipack path /api/v1/emoji/packs/import
+	handle @emojipack {
+		request_body {
+			max_size 70MB
+		}
+		reverse_proxy app:8000
+	}
+
 	handle /api/* {
 		request_body {
 			max_size 1MB
