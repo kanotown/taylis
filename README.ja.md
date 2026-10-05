@@ -10,6 +10,8 @@ Windows・macOS・iOS・Android のアプリと、ブラウザから使います
 > **サポートの保証はありません。** Taylis は作者が自分たちで使うために開発し、そのままの形で公開しています。
 > Issue やプルリクエストは歓迎しますが、対応・修正・今後の予定はお約束できません。[CONTRIBUTING.md](CONTRIBUTING.md) をご覧ください。
 
+![iPhone の Taylis: ホーム、チャンネル、スレッド、予約 (デモのデータ)](docs/images/screenshots-ios.png)
+
 ## 主な機能
 
 - 公開・非公開のチャンネル、DM、グループ DM
@@ -39,7 +41,7 @@ Docker Engine と compose プラグインの入った Linux サーバー (2 vCPU
 ドメイン名 (ポート 80 と 443 を開けたもの) が必要です。
 
 ```sh
-git clone https://github.com/kanotown/chikuwachat.git /srv/chikuwachat
+git clone https://github.com/kanotown/taylis.git /srv/chikuwachat
 cd /srv/chikuwachat/infra
 cp .env.example .env && chmod 600 .env     # SECRET_KEY, POSTGRES_PASSWORD, S3_SECRET_KEY, CHAT_DOMAIN を設定
 docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy up -d --build

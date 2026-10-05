@@ -111,7 +111,7 @@ fi
 if [[ -n "$NOTARY_PROFILE" && -z "$SIGNING_IDENTITY" ]]; then
   fail "TAYLIS_NOTARY_PROFILE needs APPLE_SIGNING_IDENTITY (notarisation needs a Developer ID signature)"
 fi
-SOURCE_REPO="$(cd "$REPO_ROOT" && gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo kanotown/chikuwachat)"
+SOURCE_REPO="$(cd "$REPO_ROOT" && gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo kanotown/taylis)"
 echo "  source: $SOURCE_REPO   key: $KEY   mac signing: ${SIGNING_IDENTITY:-ad-hoc}   notarise: ${NOTARY_PROFILE:-no}"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/taylis-release.XXXXXX")"
