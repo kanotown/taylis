@@ -175,7 +175,7 @@ struct AttachmentFileButton: View {
                     Label(loader.failed ? "再試行" : "開く", systemImage: loader.failed ? "arrow.clockwise" : "doc.text.magnifyingglass")
                         .font(.footnote)
                 }
-                .accessibilityLabel("\(attachment.filename) を\(loader.failed ? "再試行" : "開く")")
+                .accessibilityLabel("\(attachment.filename) を\(loader.failed ? tr("再試行") : tr("開く"))")
             }
         }
         .buttonStyle(.borderless)
@@ -254,7 +254,7 @@ struct VideoTile: View {
         }
         .buttonStyle(.plain)
         .disabled(loader.loading)
-        .accessibilityLabel("動画 \(attachment.filename)\(model.duration.map { " \($0)" } ?? "") を\(loader.failed ? "再試行" : "再生")")
+        .accessibilityLabel("動画 \(attachment.filename)\(model.duration.map { " \($0)" } ?? "") を\(loader.failed ? tr("再試行") : tr("再生"))")
         .fullScreenCover(item: $playing) { url in VideoViewer(attachment: attachment, url: url, poster: poster) }
         // Again when the server fills in the poster later (message.updated, change "attachments": same id).
         .task(id: "\(attachment.id):\(attachment.hasPoster)") { await findShape() }
@@ -517,7 +517,7 @@ private struct PendingTile: View {
     var body: some View {
         Button(action: open) { face }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(item.isImage ? "写真" : item.isVideo ? "動画" : "ファイル") \(item.filename) をプレビュー")
+            .accessibilityLabel("\(item.isImage ? tr("写真") : item.isVideo ? tr("動画") : tr("ファイル")) \(item.filename) をプレビュー")
             .overlay(alignment: .topTrailing) {
                 Button(action: onRemove) {
                     Image(systemName: "xmark.circle.fill")

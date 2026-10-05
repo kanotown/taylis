@@ -19,12 +19,12 @@ struct RevisionsView: View {
                 if let rows {
                     if rows.isEmpty { Section { Text("以前の版は記録されていません (履歴の記録を始める前の編集です)。").foregroundStyle(.secondary) } }
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        Section(Timeline.fullLabel(row.writtenAt) + " の版") {
+                        Section(tr("\(Timeline.fullLabel(row.writtenAt)) の版")) {
                             Text(text(row.body)).textSelection(.enabled)
-                            Text(Timeline.fullLabel(row.replacedAt) + " に編集").font(.caption).foregroundStyle(.secondary)
+                            Text(tr("\(Timeline.fullLabel(row.replacedAt)) に編集")).font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    Section("現在の版" + (message.editedAt.map { " · " + Timeline.fullLabel($0) } ?? "")) {
+                    Section(tr("現在の版") + (message.editedAt.map { " · " + Timeline.fullLabel($0) } ?? "")) {
                         Text(text(message.body)).textSelection(.enabled)
                     }
                 } else if failed {

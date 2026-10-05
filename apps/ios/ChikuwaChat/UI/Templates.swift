@@ -47,7 +47,7 @@ enum Templates {
             return (Day.gregorian.component(.weekday, from: date) + 5) % 7
         }
 
-        var weekdayName: String { String(Array("月火水木金土日")[weekdayIndex]) }
+        var weekdayName: String { String(Array("月火水木金土日")[weekdayIndex]) }  // i18n-ignore
 
         /// ISO 8601 week: the ISO year and the week number.
         var isoWeek: (year: Int, week: Int) {
@@ -125,7 +125,7 @@ enum Templates {
 
     // MARK: /日程
 
-    static let scheduleUsage = "/日程 [題名] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)"
+    static var scheduleUsage: String { tr("/日程 [題名] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)") }
 
     struct Schedule: Equatable {
         let question: String
@@ -135,7 +135,7 @@ enum Templates {
     private struct Invalid: Error {}
 
     private static let datePattern = try! NSRegularExpression(pattern: #"^(?:(\d{4})/)?(\d{1,2})/(\d{1,2})$"#)
-    private static let timePattern = try! NSRegularExpression(pattern: #"^(\d{1,2}):(\d{2})(?:[-〜~](\d{1,2}):(\d{2}))?$"#)
+    private static let timePattern = try! NSRegularExpression(pattern: #"^(\d{1,2}):(\d{2})(?:[-〜~](\d{1,2}):(\d{2}))?$"#)  // i18n-ignore
 
     private static func groups(_ pattern: NSRegularExpression, _ text: String) -> [String?]? {
         let ns = text as NSString
@@ -166,7 +166,7 @@ enum Templates {
 
     /// The days a token names (a date or a range); nil when it is not a date expression at all.
     private static func dateExpression(_ token: String, today: Day) throws -> [Day]? {
-        let pieces = token.split(omittingEmptySubsequences: false) { $0 == "-" || $0 == "〜" || $0 == "~" }.map(String.init)
+        let pieces = token.split(omittingEmptySubsequences: false) { $0 == "-" || $0 == "〜" || $0 == "~" }.map(String.init)  // i18n-ignore
         if pieces.count == 1 { return try date(token, today: today).map { [$0.0] } }
         guard pieces.count == 2, let (start, _) = try date(pieces[0], today: today) else { return nil }
         var end: Day
@@ -240,7 +240,7 @@ enum Templates {
                 }
                 entries += days.map { ScheduleEntry(day: $0, from: at?.from, to: at?.to) }
             }
-            return (question.isEmpty ? "日程調整" : question.joined(separator: " "), entries)
+            return (question.isEmpty ? tr("日程調整") : question.joined(separator: " "), entries)
         } catch {
             return nil
         }
@@ -252,7 +252,7 @@ enum Templates {
         guard let read = readSchedule(args, today: today) else { return nil }
         var options: [String] = []
         for entry in read.entries {
-            let time = entry.from.map { clock($0) + (entry.to.map { "〜" + clock($0) } ?? "") }
+            let time = entry.from.map { clock($0) + (entry.to.map { "〜" + clock($0) } ?? "") }  // i18n-ignore
             let text = label(entry.day, today: today, time: time)
             if !options.contains(text) { options.append(text) }
         }

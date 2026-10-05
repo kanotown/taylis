@@ -4,7 +4,7 @@ import UserNotifications
 
 /// The screens under the 自分 tab (M40, MOBILE_UI.md §6.5).
 enum YouRoute: Hashable {
-    case status, pause, quietHours, notifications, appearance, profile, account, password, workspaces, admin
+    case status, pause, quietHours, notifications, appearance, language, profile, account, password, workspaces, admin
 }
 
 /// M40: the 自分 tab as one list of rows that open screens — who I am, my status, the pause and the quiet hours at the
@@ -21,7 +21,7 @@ struct YouView: View {
     private var me: UserMe? { controller.store.me ?? controller.me }
     private var mePublic: UserPublic? { me.map { controller.store.users[$0.id] ?? $0.asPublic } }
     private var logoutTitle: String {
-        controller.workspaces.count > 1 ? "\(controller.workspaceName) からログアウト" : "ログアウト"
+        controller.workspaces.count > 1 ? tr("\(controller.workspaceName) からログアウト") : tr("ログアウト")
     }
 
     var body: some View {
@@ -35,20 +35,20 @@ struct YouView: View {
                 }
                 Section {
                     NavigationLink(value: YouRoute.pause) {
-                        YouRow(title: "通知を一時停止", symbol: "bell.slash", value: DND.pauseSummary(mePublic?.dndUntil))
+                        YouRow(title: tr("通知を一時停止"), symbol: "bell.slash", value: DND.pauseSummary(mePublic?.dndUntil))
                     }
                     NavigationLink(value: YouRoute.quietHours) {
-                        YouRow(title: "おやすみ時間", symbol: "moon", value: DND.quietSummary(mePublic?.quietHours))
+                        YouRow(title: tr("おやすみ時間"), symbol: "moon", value: DND.quietSummary(mePublic?.quietHours))
                     }
                 }
                 Section {
-                    NavigationLink(value: YouRoute.notifications) { YouRow(title: "通知", symbol: "bell") }
-                    NavigationLink(value: YouRoute.appearance) { YouRow(title: "表示", symbol: "circle.lefthalf.filled", value: theme.label) }
-                    NavigationLink(value: YouRoute.profile) { YouRow(title: "プロフィールを編集", symbol: "person.crop.circle") }
-                    NavigationLink(value: YouRoute.account) { YouRow(title: "アカウント", symbol: "lock") }
-                    NavigationLink(value: YouRoute.workspaces) { YouRow(title: "ワークスペース", symbol: "square.stack", value: controller.workspaceName) }
+                    NavigationLink(value: YouRoute.notifications) { YouRow(title: tr("通知"), symbol: "bell") }
+                    NavigationLink(value: YouRoute.appearance) { YouRow(title: tr("表示"), symbol: "circle.lefthalf.filled", value: theme.label) }
+                    NavigationLink(value: YouRoute.profile) { YouRow(title: tr("プロフィールを編集"), symbol: "person.crop.circle") }
+                    NavigationLink(value: YouRoute.account) { YouRow(title: tr("アカウント"), symbol: "lock") }
+                    NavigationLink(value: YouRoute.workspaces) { YouRow(title: tr("ワークスペース"), symbol: "square.stack", value: controller.workspaceName) }
                     if controller.store.me?.role == "admin" {
-                        NavigationLink(value: YouRoute.admin) { YouRow(title: "管理", symbol: "shield") }
+                        NavigationLink(value: YouRoute.admin) { YouRow(title: tr("管理"), symbol: "shield") }
                     }
                 }
                 Section {
@@ -117,6 +117,7 @@ struct YouView: View {
         case .quietHours: QuietHoursView(controller: controller)
         case .notifications: NotificationSettingsView(controller: controller)
         case .appearance: AppearanceView(controller: controller)
+        case .language: LanguageSettingsView(controller: controller)
         case .profile: ProfileEditView(controller: controller)
         case .account: AccountView(controller: controller)
         case .password: PasswordChangeView(controller: controller)
@@ -165,7 +166,7 @@ struct PauseNotificationsView: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("今の状態", value: paused ? "\(DND.pauseSummary(dndUntil))止めています" : "オフ")
+                LabeledContent("今の状態", value: paused ? tr("\(DND.pauseSummary(dndUntil))止めています") : tr("オフ"))
             } footer: {
                 Text("止めている間はプッシュ通知が届きません。メッセージと未読はそのまま届きます。")
             }
@@ -305,7 +306,7 @@ struct NotificationSettingsView: View {
 
     private var me: UserMe? { controller.store.me ?? controller.me }
     private var parsedKeywords: [String] {
-        Array(keywords.split(whereSeparator: { $0 == "," || $0 == "、" || $0 == "\n" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.prefix(20))
+        Array(keywords.split(whereSeparator: { $0 == "," || $0 == "、" || $0 == "\n" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.prefix(20))  // i18n-ignore
     }
     private var keywordsChanged: Bool { parsedKeywords != (me?.notifyKeywords ?? []) }
 
@@ -396,14 +397,14 @@ struct NotificationSettingsView: View {
     }
 
     private var permissionLabel: String {
-        guard let permission else { return "確認中…" }
+        guard let permission else { return tr("確認中…") }
         switch permission {
-        case .authorized: return "許可されています"
-        case .provisional: return "目立たない形で許可されています"
-        case .ephemeral: return "一時的に許可されています"
-        case .denied: return "オフになっています"
-        case .notDetermined: return "まだ選んでいません"
-        @unknown default: return "不明"
+        case .authorized: return tr("許可されています")
+        case .provisional: return tr("目立たない形で許可されています")
+        case .ephemeral: return tr("一時的に許可されています")
+        case .denied: return tr("オフになっています")
+        case .notDetermined: return tr("まだ選んでいません")
+        @unknown default: return tr("不明")
         }
     }
 
@@ -430,6 +431,11 @@ struct AppearanceView: View {
 
     var body: some View {
         Form {
+            Section {
+                NavigationLink(value: YouRoute.language) {
+                    LabeledContent("言語", value: UILanguage.shared.choice?.nativeName ?? tr("端末に合わせる"))
+                }
+            }
             // M50: a server before M50 leaves `quick_reactions` out of UserMe; it could not keep the choice, so no section.
             themeAndMessages
             // M111: a server before M111 has no `nav_items`: no such row (the tiles stay the defaults).
@@ -479,7 +485,7 @@ struct AppearanceView: View {
         } header: {
             Text("リアクションの候補")
         } footer: {
-            Text("長押しのメニューに並ぶ絵文字です。すべての端末で同じになります。" + (setting == .unset ? "選ぶまでは最近使った絵文字が先に並びます。" : ""))
+            Text(tr("長押しのメニューに並ぶ絵文字です。すべての端末で同じになります。") + (setting == .unset ? tr("選ぶまでは最近使った絵文字が先に並びます。") : ""))
         }
     }
 
@@ -504,6 +510,44 @@ struct AppearanceView: View {
         } footer: {
             Text("オフ: 投稿ごとにアイコンと名前を表示します。オン: 同じ人の続けての投稿をまとめます (チャンネル・DM・スレッド)。この端末だけの設定です。")
         }
+    }
+}
+
+// MARK: - 言語
+
+/// 端末に合わせる / 日本語 / English / 简体中文: the app's texts and what the server sends me (notifications, system
+/// messages, error texts), the same on all my devices (`UserMe.locale`; AppController.setLanguage). The iOS Settings'
+/// per-app language is the same setting (UILanguage).
+struct LanguageSettingsView: View {
+    @Bindable var controller: AppController
+    private var language = UILanguage.shared
+
+    init(controller: AppController) { self.controller = controller }
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("言語", selection: Binding(get: { language.choice }, set: { controller.setLanguage($0) })) {
+                    Text("端末に合わせる (\(language.deviceLanguage.nativeName))").tag(AppLanguage?.none)
+                    ForEach(AppLanguage.allCases) { Text(verbatim: $0.nativeName).tag(AppLanguage?.some($0)) }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } footer: {
+                Text(controller.store.me?.locale.isSupported == true
+                     ? "アプリの表示と、通知などサーバーから届く文の言語です。すべての端末で同じになります。"
+                     : "アプリの表示の言語です。この端末だけの設定です。")
+            }
+            Section {
+                Button("iOS の設定で変更") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+            } footer: {
+                Text("iOS の「設定」→「Taylis」→「言語」でも選べます。")
+            }
+        }
+        .navigationTitle("言語")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -889,17 +933,17 @@ struct PasswordChangeView: View {
                 SecureField("新しいパスワード (確認)", text: $repeated).textContentType(.newPassword)
             } footer: {
                 if let message {
-                    Text(message).foregroundStyle(message.hasSuffix("しました") ? Color.secondary : Color.red)
+                    Text(message).foregroundStyle(message == tr("パスワードを変更しました") ? Color.secondary : Color.red)
                 }
             }
             Section {
                 Button("変更する") {
-                    guard next == repeated else { message = "新しいパスワードが一致しません"; return }
+                    guard next == repeated else { message = tr("新しいパスワードが一致しません"); return }
                     Task {
                         busy = true
                         let error = await controller.changePasswordInSession(current: current, new: next)
                         busy = false
-                        message = error ?? "パスワードを変更しました"
+                        message = error ?? tr("パスワードを変更しました")
                         if error == nil { current = ""; next = ""; repeated = "" }
                     }
                 }

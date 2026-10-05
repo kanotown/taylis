@@ -7,7 +7,7 @@ enum UsernameRules {
     /// groups.schemas.RESERVED_NAMES on the server; `deleted-…` is the anonymized accounts' prefix.
     static let reserved: Set<String> = ["channel", "here", "everyone", "all", "group"]
     static let anonymizedPrefix = "deleted-"
-    static let limitNote = "変更は 24 時間に 3 回までです。"
+    static var limitNote: String { tr("変更は 24 時間に 3 回までです。") }
 
     /// As the field keeps it: lowercase, no surrounding spaces.
     static func normalize(_ value: String) -> String {
@@ -17,17 +17,17 @@ enum UsernameRules {
     /// Why `value` cannot be a username (nil: send it and let the server decide).
     static func problem(_ value: String) -> String? {
         let name = normalize(value)
-        if name.isEmpty { return "ユーザー名を入力してください" }
-        if name.count < 3 || name.count > 32 { return "3〜32 文字にしてください" }
+        if name.isEmpty { return tr("ユーザー名を入力してください") }
+        if name.count < 3 || name.count > 32 { return tr("3〜32 文字にしてください") }
         let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789._-")
-        if !name.allSatisfy({ allowed.contains($0) }) { return "使えるのは a-z、0-9、. _ - だけです" }
-        if reserved.contains(name) || name.hasPrefix(anonymizedPrefix) { return "このユーザー名は予約されているため使えません" }
+        if !name.allSatisfy({ allowed.contains($0) }) { return tr("使えるのは a-z、0-9、. _ - だけです") }
+        if reserved.contains(name) || name.hasPrefix(anonymizedPrefix) { return tr("このユーザー名は予約されているため使えません") }
         return nil
     }
 
     /// What the screen says under the field.
     static func hint(hasPassword: Bool) -> String {
-        (hasPassword ? "パスワードでのログインには新しいユーザー名を使います。" : "")
-            + "過去のメッセージとメンションはそのままです。古いユーザー名はすぐにほかの人が使えるようになります。"
+        (hasPassword ? tr("パスワードでのログインには新しいユーザー名を使います。") : "")
+            + tr("過去のメッセージとメンションはそのままです。古いユーザー名はすぐにほかの人が使えるようになります。")
     }
 }

@@ -221,8 +221,8 @@ struct CanvasMentioned: Decodable, Equatable {
 
     /// The push's words (CANVAS.md §18.1): 「〇〇 が「題名」であなたをメンションしました」.
     func noticeText(nameOf: (String) -> String?) -> String {
-        let who = nameOf(byUserId) ?? "メンバー"
-        let title = title.isEmpty ? "キャンバス" : title
-        return "\(who) が「\(title)」であなたをメンションしました"
+        let who = nameOf(byUserId) ?? tr("メンバー")
+        let title = title.isEmpty ? tr("キャンバス") : title
+        return tr("\(who) が「\(title)」であなたをメンションしました")
     }
 }

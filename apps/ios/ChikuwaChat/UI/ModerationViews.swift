@@ -4,12 +4,12 @@ import SwiftUI
 /// clients are here; the views below use them.
 enum Moderation {
     /// The reasons of 「報告する」, in the order every client shows them (the server's `reason`).
-    static let reasons: [(value: String, label: String)] = [
-        ("spam", "迷惑・スパム"),
-        ("harassment", "嫌がらせ"),
-        ("inappropriate", "不適切な内容"),
-        ("other", "その他"),
-    ]
+    static var reasons: [(value: String, label: String)] { [
+        ("spam", tr("迷惑・スパム")),
+        ("harassment", tr("嫌がらせ")),
+        ("inappropriate", tr("不適切な内容")),
+        ("other", tr("その他")),
+    ] }
 
     /// 「報告する」 is offered on someone else's message once it is stored (not mine, not sending, not deleted, not a
     /// join / leave line).
@@ -176,5 +176,5 @@ struct BlockedUsersSection: View {
         }
     }
 
-    private func name(_ id: String) -> String { controller.store.users[id]?.displayName ?? "不明なユーザー" }
+    private func name(_ id: String) -> String { controller.store.users[id]?.displayName ?? tr("不明なユーザー") }
 }

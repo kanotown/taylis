@@ -10,16 +10,16 @@ enum ComposerFormat: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .bold: "太字"
-        case .italic: "斜体"
-        case .strike: "取り消し線"
-        case .code: "コード"
-        case .codeBlock: "コードブロック"
-        case .heading: "見出し"
-        case .quote: "引用"
-        case .bullet: "箇条書き"
-        case .numbered: "番号付きリスト"
-        case .link: "リンク"
+        case .bold: tr("太字")
+        case .italic: tr("斜体")
+        case .strike: tr("取り消し線")
+        case .code: tr("コード")
+        case .codeBlock: tr("コードブロック")
+        case .heading: tr("見出し")
+        case .quote: tr("引用")
+        case .bullet: tr("箇条書き")
+        case .numbered: tr("番号付きリスト")
+        case .link: tr("リンク")
         }
     }
 

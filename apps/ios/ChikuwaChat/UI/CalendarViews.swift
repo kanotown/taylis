@@ -27,7 +27,7 @@ struct CalendarView: View {
 
     enum Mode: String, CaseIterable {
         case list, month
-        var title: String { self == .list ? "一覧" : "月" }
+        var title: String { self == .list ? tr("一覧") : tr("月") }
     }
 
     @Bindable var controller: AppController
@@ -65,9 +65,9 @@ struct CalendarView: View {
             controls
             Divider()
             if hub == nil {
-                CalendarNote(title: "接続すると表示します", systemImage: "calendar")
+                CalendarNote(title: tr("接続すると表示します"), systemImage: "calendar")
             } else if window?.state == .unsupported {
-                CalendarNote(title: "このサーバはカレンダーに対応していません", systemImage: "calendar", detail: "サーバの更新後に使えるようになります。")
+                CalendarNote(title: tr("このサーバはカレンダーに対応していません"), systemImage: "calendar", detail: tr("サーバの更新後に使えるようになります。"))
             } else if mode == .month {
                 monthView(events, tasks: dueTasks, window: window)
             } else {
@@ -135,8 +135,8 @@ struct CalendarView: View {
 
     private var filterTitle: String {
         switch filter {
-        case .all: "すべて"
-        case .mine: "自分"
+        case .all: tr("すべて")
+        case .mine: tr("自分")
         case .channel(let id): "#" + (controller.store.channel(id)?.channel.name ?? "")
         }
     }
@@ -180,8 +180,8 @@ struct CalendarView: View {
             } else if window?.state == .failed {
                 CalendarLoadFailed { await calendarHub?.reload(Self.windowKey) }
             } else {
-                CalendarNote(title: "これから \(CalendarDates.listDays) 日の予定はありません", systemImage: "calendar",
-                             detail: "右上の＋で予定を追加できます。")
+                CalendarNote(title: tr("これから \(CalendarDates.listDays) 日の予定はありません"), systemImage: "calendar",
+                             detail: tr("右上の＋で予定を追加できます。"))
             }
         } else {
             CalendarAgendaList(days: days, today: now, showCalendar: true, failed: window?.state == .failed, tasks: tasks,
@@ -329,7 +329,7 @@ struct CalendarMonthGrid: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(CalendarDates.dayLabel(day) + (list.isEmpty ? "" : "、予定 \(list.count) 件") + (due.isEmpty ? "" : "、タスク \(due.count) 件"))
+        .accessibilityLabel(CalendarDates.dayLabel(day) + (list.isEmpty ? "" : tr("、予定 \(list.count) 件")) + (due.isEmpty ? "" : tr("、タスク \(due.count) 件")))
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
@@ -398,7 +398,7 @@ struct CalendarEventRow: View {
             RoundedRectangle(cornerRadius: 2).fill(CalendarDates.color(event.channelId)).frame(width: 4)
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.title).font(.subheadline.weight(.medium)).lineLimit(2)
-                let calendar = showCalendar ? (event.channelName.map { "#" + $0 } ?? "自分") : nil
+                let calendar = showCalendar ? (event.channelName.map { "#" + $0 } ?? tr("自分")) : nil
                 if calendar != nil || event.location != nil || event.recurring {
                     HStack(spacing: 8) {
                         if let calendar { Text(calendar).lineLimit(1) }
@@ -472,17 +472,17 @@ struct ChannelEventsPane: View {
             Divider()
             let days = CalendarDates.agenda(window?.events ?? [], from: now, to: end)
             if calendarHub == nil {
-                CalendarNote(title: "接続すると表示します", systemImage: "calendar")
+                CalendarNote(title: tr("接続すると表示します"), systemImage: "calendar")
             } else if window?.state == .unsupported {
-                CalendarNote(title: "このサーバはカレンダーに対応していません", systemImage: "calendar", detail: "サーバの更新後に使えるようになります。")
+                CalendarNote(title: tr("このサーバはカレンダーに対応していません"), systemImage: "calendar", detail: tr("サーバの更新後に使えるようになります。"))
             } else if days.isEmpty {
                 if window == nil || window?.state == .loading {
                     ProgressView("読み込み中…").frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if window?.state == .failed {
                     CalendarLoadFailed { await calendarHub?.reload(key) }
                 } else {
-                    CalendarNote(title: "これからの予定はありません", systemImage: "calendar",
-                                 detail: canAdd ? "ゼミや締切など、このチャンネルのメンバーと共有する予定を追加できます。" : nil)
+                    CalendarNote(title: tr("これからの予定はありません"), systemImage: "calendar",
+                                 detail: canAdd ? tr("ゼミや締切など、このチャンネルのメンバーと共有する予定を追加できます。") : nil)
                 }
             } else {
                 CalendarAgendaList(days: days, today: now, showCalendar: false, failed: window?.state == .failed) { form = .event($0) }

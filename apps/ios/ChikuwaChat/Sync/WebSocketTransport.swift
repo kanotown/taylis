@@ -26,7 +26,9 @@ final class WebSocketTransport: WsTransport {
 
     private init(url: URL) {
         session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-        task = session.webSocketTask(with: url)
+        var request = URLRequest(url: url)
+        request.setValue(UILanguage.shared.acceptLanguage, forHTTPHeaderField: "Accept-Language")
+        task = session.webSocketTask(with: request)
     }
 
     static func connect(url: URL) async throws -> WebSocketTransport {

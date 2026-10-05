@@ -87,12 +87,12 @@ enum ChannelTab: Hashable, CaseIterable {
 
     var title: String {
         switch self {
-        case .messages: "メッセージ"
-        case .canvas: "キャンバス"
-        case .events: "予定"
-        case .tasks: "タスク"
-        case .pins: "ピン留め"
-        case .files: "ファイル"
+        case .messages: tr("メッセージ")
+        case .canvas: tr("キャンバス")
+        case .events: tr("予定")
+        case .tasks: tr("タスク")
+        case .pins: tr("ピン留め")
+        case .files: tr("ファイル")
         }
     }
 

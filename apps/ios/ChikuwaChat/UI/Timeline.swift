@@ -39,9 +39,9 @@ enum Timeline {
     static func attachmentText(_ attachments: [AttachmentOut]) -> String {
         let n = attachments.count
         guard n > 0 else { return "" }
-        if attachments.allSatisfy({ $0.contentType.hasPrefix("image/") }) { return n == 1 ? "画像を送信しました" : "画像を \(n) 枚送信しました" }
-        if attachments.allSatisfy({ $0.contentType.hasPrefix("video/") }) { return n == 1 ? "動画を送信しました" : "動画を \(n) 本送信しました" }
-        return n == 1 ? "ファイルを送信しました" : "ファイルを \(n) 件送信しました"
+        if attachments.allSatisfy({ $0.contentType.hasPrefix("image/") }) { return n == 1 ? tr("画像を送信しました") : tr("画像を \(n) 枚送信しました") }
+        if attachments.allSatisfy({ $0.contentType.hasPrefix("video/") }) { return n == 1 ? tr("動画を送信しました") : tr("動画を \(n) 本送信しました") }
+        return n == 1 ? tr("ファイルを送信しました") : tr("ファイルを \(n) 件送信しました")
     }
 
     /// One line of plain text for a message (thread lists, "replied to a thread" lines, the DM list's preview); without
@@ -84,19 +84,19 @@ enum Timeline {
     }
 
     static let groupWindow: TimeInterval = 5 * 60
-    private static let weekdays = ["日", "月", "火", "水", "木", "金", "土"]
+    private static var weekdays: [String] { AppDates.weekdaysSundayFirst }
 
     /// 今日 / 昨日 / 9月26日 (金) / 2025年12月31日 (水)
     static func dayLabel(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
-        if calendar.isDate(date, inSameDayAs: now) { return "今日" }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) { return "昨日" }
+        if calendar.isDate(date, inSameDayAs: now) { return tr("今日") }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) { return tr("昨日") }
         let parts = calendar.dateComponents([.year, .month, .day, .weekday], from: date)
-        let md = "\(parts.month ?? 0)月\(parts.day ?? 0)日 (\(weekdays[max(0, (parts.weekday ?? 1) - 1) % 7]))"
-        return parts.year == calendar.component(.year, from: now) ? md : "\(parts.year ?? 0)年\(md)"
+        let md = tr("\(parts.month ?? 0)月\(parts.day ?? 0)日 (\(weekdays[max(0, (parts.weekday ?? 1) - 1) % 7]))")
+        return parts.year == calendar.component(.year, from: now) ? md : tr("\(String(parts.year ?? 0))年\(md)")
     }
 
     static func timeLabel(_ iso: String) -> String {
-        guard let date = parseIsoDate(iso) else { return "送信中…" }
+        guard let date = parseIsoDate(iso) else { return tr("送信中…") }
         return date.formatted(date: .omitted, time: .shortened)
     }
 
@@ -106,7 +106,7 @@ enum Timeline {
     static func lastReplyLabel(_ iso: String, now: Date = Date(), calendar: Calendar = .current) -> String? {
         guard let date = parseIsoDate(iso) else { return nil }
         let parts = calendar.dateComponents([.hour, .minute], from: date)
-        return "最終返信 \(dayLabel(date, now: now, calendar: calendar)) " + String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+        return tr("最終返信 \(dayLabel(date, now: now, calendar: calendar)) ") + String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
     }
 
     /// 「2026年10月1日 (木) 14:30」 whatever the device's region (an English region gave 「October 1, 2026 at 2:30 PM」).
@@ -121,10 +121,10 @@ enum Timeline {
 
     private static func fullLabelFormatter(_ calendar: Calendar) -> DateFormatter {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.locale = UILanguage.shared.locale
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "y年M月d日 (E) H:mm"
+        formatter.dateFormat = tr("y年M月d日 (E) H:mm")
         return formatter
     }
 
@@ -233,7 +233,7 @@ enum Timeline {
     /// "HH:mm までミュート" while a mute is active, otherwise nil.
     static func muteLabel(_ mutedUntil: String?, now: Date = Date()) -> String? {
         guard let mutedUntil, let until = parseIsoDate(mutedUntil), until > now else { return nil }
-        return until.formatted(date: .omitted, time: .shortened) + " までミュート"
+        return tr("\(until.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(UILanguage.shared.locale))) までミュート")
     }
 }
 
@@ -376,14 +376,14 @@ enum ReadGate {
         let parts = calendar.dateComponents([.hour, .minute], from: date)
         let time = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
         if calendar.isDate(date, inSameDayAs: now) { return time }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) { return "昨日 " + time }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) { return tr("昨日 ") + time }
         return Timeline.dayLabel(date, now: now, calendar: calendar) + " " + time
     }
 
     /// 「未読 2,000 件 · 10:23 以降」; the count is the server's, grouped with ASCII commas in any locale.
     static func bannerText(_ count: Int, firstUnreadAt: String?, now: Date = Date(), calendar: Calendar = .current) -> String {
         let since = firstUnreadAt.flatMap { sinceLabel($0, now: now, calendar: calendar) }
-        return "未読 \(group3(count)) 件" + (since.map { " · \($0) 以降" } ?? "")
+        return tr("未読 \(group3(count)) 件") + (since.map { tr(" · \($0) 以降") } ?? "")
     }
 
     static func group3(_ n: Int) -> String {

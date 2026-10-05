@@ -75,7 +75,7 @@ struct ConversationLabel: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(channel.channel.isDm ? "DM: \(title)" : "チャンネル: \(String(title.drop { $0 == "#" }))")
-        .accessibilityValue([note, unread ? (badge > 0 ? "未読 \(badge) 件" : "未読あり") : nil].compactMap { $0 }.joined(separator: "、"))
+        .accessibilityValue([note, unread ? (badge > 0 ? tr("未読 \(badge) 件") : tr("未読あり")) : nil].compactMap { $0 }.joined(separator: tr("、")))
     }
 }
 
@@ -134,7 +134,7 @@ struct JumpView: View {
         } else {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    JumpField(prompt: "会話や人に移動、メッセージを検索", text: $text, focused: $focused) { searchMessages() }
+                    JumpField(prompt: tr("会話や人に移動、メッセージを検索"), text: $text, focused: $focused) { searchMessages() }
                     Button("キャンセル") { dismiss() }
                 }
                 .padding(.horizontal, 16)
@@ -166,7 +166,7 @@ struct JumpView: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(ChannelListView.rowInsets)
                 }
-            } header: { header("最近の会話") }
+            } header: { header(tr("最近の会話")) }
         }
         if !recentSearches.isEmpty {
             Section {
@@ -185,7 +185,7 @@ struct JumpView: View {
                     .listRowInsets(ChannelListView.rowInsets)
                     .accessibilityLabel("最近の検索: \(describe(params))")
                 }
-            } header: { header("最近の検索") }
+            } header: { header(tr("最近の検索")) }
         }
         if conversations.isEmpty && recentSearches.isEmpty {
             Text("会話や人の名前を入力すると移動できます。メッセージの検索もここから始められます。")
@@ -208,7 +208,7 @@ struct JumpView: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(ChannelListView.rowInsets)
                 }
-            } header: { header("会話") }
+            } header: { header(tr("会話")) }
         }
         if !people.isEmpty {
             Section {
@@ -220,7 +220,7 @@ struct JumpView: View {
                         .disabled(opening)
                         .accessibilityHint("ダイレクトメッセージを開きます")
                 }
-            } header: { header("人") }
+            } header: { header(tr("人")) }
         }
         Section {
             Button { searchMessages() } label: {
@@ -297,7 +297,7 @@ struct NewMessageView: View {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 8) {
                     if !selected.isEmpty { chips(users) }
-                    JumpField(prompt: "チャンネルか人の名前", text: $text, focused: $focused)
+                    JumpField(prompt: tr("チャンネルか人の名前"), text: $text, focused: $focused)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -331,13 +331,13 @@ struct NewMessageView: View {
             Section {
                 ForEach(rows) { channel in
                     Button { openChannel(channel) } label: {
-                        ConversationLabel(controller: controller, channel: channel, note: channel.isMember ? nil : "未参加", rowHeight: Self.rowHeight)
+                        ConversationLabel(controller: controller, channel: channel, note: channel.isMember ? nil : tr("未参加"), rowHeight: Self.rowHeight)
                     }
                     .buttonStyle(.plain)
                     .listRowSeparator(.hidden)
                     .listRowInsets(ChannelListView.rowInsets)
                 }
-            } header: { header("チャンネル") }
+            } header: { header(tr("チャンネル")) }
         }
     }
 
@@ -352,7 +352,7 @@ struct NewMessageView: View {
                     let isSelected = selected.contains(user.id)
                     Button { tap(user.id) } label: {
                         HStack(spacing: 8) {
-                            PersonLabel(controller: controller, user: user, subtitle: isMe ? "メモや下書きに使える、自分だけの DM" : nil, rowHeight: Self.rowHeight)
+                            PersonLabel(controller: controller, user: user, subtitle: isMe ? tr("メモや下書きに使える、自分だけの DM") : nil, rowHeight: Self.rowHeight)
                             if !isMe {
                                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                                     .font(.title3)
@@ -368,7 +368,7 @@ struct NewMessageView: View {
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                     .accessibilityHint(isMe ? "自分だけの DM を開きます" : isSelected ? "宛先から外します" : "宛先に加えます")
                 }
-            } header: { header(selected.isEmpty ? "人" : "人 (\(selected.count) 人を選択中)") }
+            } header: { header(selected.isEmpty ? tr("人") : tr("人 (\(selected.count) 人を選択中)")) }
         }
     }
 

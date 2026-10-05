@@ -9,9 +9,9 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .system: "端末に合わせる"
-        case .light: "ライト"
-        case .dark: "ダーク"
+        case .system: tr("端末に合わせる")
+        case .light: tr("ライト")
+        case .dark: tr("ダーク")
         }
     }
 
@@ -50,20 +50,20 @@ extension DND {
 
     /// The pause row's value: 「オフ」, or when it ends (「15:30 まで」, 「明日 8:00 まで」, 「10月2日 9:00 まで」).
     static func pauseSummary(_ dndUntil: String?, now: Date = Date(), calendar: Calendar = .current) -> String {
-        guard paused(dndUntil, now: now), let dndUntil, let until = parseIsoDate(dndUntil) else { return "オフ" }
+        guard paused(dndUntil, now: now), let dndUntil, let until = parseIsoDate(dndUntil) else { return tr("オフ") }
         let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: until)
         let time = String(format: "%d:%02d", parts.hour ?? 0, parts.minute ?? 0)
-        if calendar.isDate(until, inSameDayAs: now) { return "\(time) まで" }
+        if calendar.isDate(until, inSameDayAs: now) { return tr("\(time) まで") }
         if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(until, inSameDayAs: tomorrow) {
-            return "明日 \(time) まで"
+            return tr("明日 \(time) まで")
         }
-        let year = calendar.component(.year, from: now) == parts.year ? "" : "\(parts.year ?? 0)年"
-        return "\(year)\(parts.month ?? 0)月\(parts.day ?? 0)日 \(time) まで"
+        let year = calendar.component(.year, from: now) == parts.year ? "" : tr("\(String(parts.year ?? 0))年")
+        return tr("\(year)\(parts.month ?? 0)月\(parts.day ?? 0)日 \(time) まで")
     }
 
     /// The quiet-hours row's value: 「22:00〜07:00」 (with the days when not every day), or 「オフ」.
     static func quietSummary(_ hours: QuietHours?) -> String {
-        hours.map(label) ?? "オフ"
+        hours.map(label) ?? tr("オフ")
     }
 }
 
@@ -90,8 +90,8 @@ enum SessionList {
         switch platform {
         case "ios": "iPhone"
         case "android": "Android"
-        case "desktop": "デスクトップ"
-        case "web": "ブラウザ"
+        case "desktop": tr("デスクトップ")
+        case "web": tr("ブラウザ")
         default: platform
         }
     }
@@ -113,14 +113,14 @@ enum SessionList {
         let time = String(format: "%d:%02d", parts.hour ?? 0, parts.minute ?? 0)
         let when: String
         if calendar.isDate(date, inSameDayAs: now) {
-            when = "今日 \(time)"
+            when = tr("今日 \(time)")
         } else if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
-            when = "昨日 \(time)"
+            when = tr("昨日 \(time)")
         } else if calendar.component(.year, from: now) == parts.year {
-            when = "\(parts.month ?? 0)月\(parts.day ?? 0)日 \(time)"
+            when = tr("\(parts.month ?? 0)月\(parts.day ?? 0)日 \(time)")
         } else {
-            when = "\(parts.year ?? 0)年\(parts.month ?? 0)月\(parts.day ?? 0)日 \(time)"
+            when = tr("\(String(parts.year ?? 0))年\(parts.month ?? 0)月\(parts.day ?? 0)日 \(time)")
         }
-        return "最後に使用: \(when)"
+        return tr("最後に使用: \(when)")
     }
 }

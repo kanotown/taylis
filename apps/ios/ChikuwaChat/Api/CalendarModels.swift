@@ -190,9 +190,9 @@ enum OccurrenceScope: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .this: "この予定"
-        case .following: "これ以降すべて"
-        case .all: "すべての予定"
+        case .this: tr("この予定")
+        case .following: tr("これ以降すべて")
+        case .all: tr("すべての予定")
         }
     }
 }

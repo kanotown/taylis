@@ -6,7 +6,7 @@ import SwiftUI
 /// does not know, or names someone the directory does not have. The web's `systemMessageText`.
 enum SystemMessage {
     /// 「A、B」 as the server writes the list (the Japanese comma, no 「と」).
-    static func joinNames(_ names: [String]) -> String { names.joined(separator: "、") }
+    static func joinNames(_ names: [String]) -> String { names.joined(separator: tr("、")) }
 
     static func text(body: String, event: SystemEvent?, nameOf: (String) -> String?) -> String {
         guard let event, let actor = nameOf(event.actorId) else { return body }
@@ -14,10 +14,10 @@ enum SystemMessage {
         if others.contains(where: { $0 == nil }) { return body }
         let list = joinNames(others.compactMap { $0 })
         switch event.kind {
-        case "member_joined": return "\(actor) が参加しました"
-        case "member_left": return "\(actor) が退出しました"
-        case "members_added": return "\(actor) が \(list) を追加しました"
-        case "member_removed": return "\(actor) が \(list) を外しました"
+        case "member_joined": return tr("\(actor) が参加しました")
+        case "member_left": return tr("\(actor) が退出しました")
+        case "members_added": return tr("\(actor) が \(list) を追加しました")
+        case "member_removed": return tr("\(actor) が \(list) を外しました")
         default: return body
         }
     }

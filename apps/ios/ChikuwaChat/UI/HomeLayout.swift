@@ -119,17 +119,17 @@ struct HomeTile: Identifiable, Equatable {
 
     var title: String {
         switch kind {
-        case .threads: "スレッド"
+        case .threads: tr("スレッド")
         case .times: "Times"
-        case .drafts: "下書き"
-        case .saved: "保存"
-        case .reminders: "リマインダー"
-        case .calendar: "カレンダー"
-        case .tasks: "タスク"
-        case .deadlines: "締切"
-        case .reservations: "予約"
-        case .files: "ファイル"
-        case .canvases: "キャンバス"
+        case .drafts: tr("下書き")
+        case .saved: tr("保存")
+        case .reminders: tr("リマインダー")
+        case .calendar: tr("カレンダー")
+        case .tasks: tr("タスク")
+        case .deadlines: tr("締切")
+        case .reservations: tr("予約")
+        case .files: tr("ファイル")
+        case .canvases: tr("キャンバス")
         }
     }
 
@@ -170,10 +170,10 @@ struct HomeTile: Identifiable, Equatable {
     var accessibilityValue: String {
         guard let count else { return "" }
         switch kind {
-        case .threads: return count == 0 ? "未読なし" : alert ? "未読 \(count) 件、メンションあり" : "未読 \(count) 件"
-        case .reminders: return count == 0 ? "通知済みなし" : "通知済み \(count) 件"
-        case .reservations: return count == 0 ? "作業なし" : "担当者の作業 \(count) 件"
-        default: return "\(count) 件"
+        case .threads: return count == 0 ? tr("未読なし") : alert ? tr("未読 \(count) 件、メンションあり") : tr("未読 \(count) 件")
+        case .reminders: return count == 0 ? tr("通知済みなし") : tr("通知済み \(count) 件")
+        case .reservations: return count == 0 ? tr("作業なし") : tr("担当者の作業 \(count) 件")
+        default: return tr("\(count) 件")
         }
     }
 

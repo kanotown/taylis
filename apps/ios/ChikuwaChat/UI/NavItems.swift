@@ -13,20 +13,20 @@ enum NavItems {
         let platforms: [Platform]
     }
 
-    static let catalogue: [Entry] = [
-        Entry(key: "threads", label: "スレッド", visible: true, platforms: [.desktop, .mobile]),
-        Entry(key: "activity", label: "アクティビティ", visible: true, platforms: [.desktop]),
+    static var catalogue: [Entry] { [
+        Entry(key: "threads", label: tr("スレッド"), visible: true, platforms: [.desktop, .mobile]),
+        Entry(key: "activity", label: tr("アクティビティ"), visible: true, platforms: [.desktop]),
         Entry(key: "times-feed", label: "Times", visible: true, platforms: [.mobile]),
-        Entry(key: "drafts", label: "下書き", visible: true, platforms: [.desktop, .mobile]),
-        Entry(key: "saved", label: "保存済み", mobileLabel: "保存", visible: true, platforms: [.desktop, .mobile]),
-        Entry(key: "reminders", label: "リマインダー", visible: true, platforms: [.desktop, .mobile]),
-        Entry(key: "files", label: "ファイル", visible: true, platforms: [.desktop, .mobile]),
-        Entry(key: "canvases", label: "キャンバス", visible: true, platforms: [.desktop, .mobile]),
-        Entry(key: "calendar", label: "カレンダー", visible: true, platforms: [.desktop, .mobile]),
-        Entry(key: "tasks", label: "タスク", visible: true, platforms: [.desktop, .mobile]),
-        Entry(key: "deadlines", label: "締切", visible: true, platforms: [.desktop, .mobile]),
-        Entry(key: "reservations", label: "予約", visible: true, platforms: [.desktop, .mobile]),
-    ]
+        Entry(key: "drafts", label: tr("下書き"), visible: true, platforms: [.desktop, .mobile]),
+        Entry(key: "saved", label: tr("保存済み"), mobileLabel: tr("保存"), visible: true, platforms: [.desktop, .mobile]),
+        Entry(key: "reminders", label: tr("リマインダー"), visible: true, platforms: [.desktop, .mobile]),
+        Entry(key: "files", label: tr("ファイル"), visible: true, platforms: [.desktop, .mobile]),
+        Entry(key: "canvases", label: tr("キャンバス"), visible: true, platforms: [.desktop, .mobile]),
+        Entry(key: "calendar", label: tr("カレンダー"), visible: true, platforms: [.desktop, .mobile]),
+        Entry(key: "tasks", label: tr("タスク"), visible: true, platforms: [.desktop, .mobile]),
+        Entry(key: "deadlines", label: tr("締切"), visible: true, platforms: [.desktop, .mobile]),
+        Entry(key: "reservations", label: tr("予約"), visible: true, platforms: [.desktop, .mobile]),
+    ] }
 
     static let order: [Platform: [String]] = [
         .desktop: ["threads", "activity", "drafts", "reminders", "files", "canvases", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed"],

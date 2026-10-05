@@ -654,6 +654,7 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(UILanguage.shared.acceptLanguage, forHTTPHeaderField: "Accept-Language")
         if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
         if fromFile == nil { request.httpBody = body }
@@ -1252,6 +1253,8 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         request.httpMethod = method
         if let timeout { request.timeoutInterval = timeout }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // The UI language: the server answers in it (push texts, system lines, error messages).
+        request.setValue(UILanguage.shared.acceptLanguage, forHTTPHeaderField: "Accept-Language")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSON.plainEncoder.encode(body)

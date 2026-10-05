@@ -15,7 +15,7 @@ enum ImageGallery {
     static func position(_ index: Int, of count: Int) -> String? { count > 1 ? "\(index + 1) / \(count)" : nil }
 
     /// What VoiceOver says for the position.
-    static func spokenPosition(_ index: Int, of count: Int) -> String { "\(count)枚中\(index + 1)枚目" }
+    static func spokenPosition(_ index: Int, of count: Int) -> String { tr("\(count)枚中\(index + 1)枚目") }
 
     /// The pages kept loaded: the one shown first, then the next and the previous, so a swipe finds its photo ready.
     /// The others let their decoded photo go (a phone photo is some 48 MB decoded; the file stays on disk).
@@ -150,7 +150,7 @@ struct ImageViewer: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel([current.filename, formatSize(current.sizeBytes),
                                  position == nil ? nil : ImageGallery.spokenPosition(index, of: attachments.count)]
-                .compactMap { $0 }.joined(separator: "、"))
+                .compactMap { $0 }.joined(separator: tr("、")))
         }
     }
 
@@ -337,7 +337,7 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
         pages[index].resetZoom()
         pager.setContentOffset(CGPoint(x: CGFloat(target) * pageWidth, y: 0), animated: false)
         settle()
-        UIAccessibility.post(notification: .pageScrolled, argument: "写真 \(ImageGallery.spokenPosition(index, of: pages.count))")
+        UIAccessibility.post(notification: .pageScrolled, argument: tr("写真 \(ImageGallery.spokenPosition(index, of: pages.count))"))
         return true
     }
 
@@ -350,14 +350,14 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
     private func describePages() {
         for (i, page) in pages.enumerated() {
             let element = page.imageView
-            element.accessibilityLabel = "写真 \(items[i].filename)"
+            element.accessibilityLabel = tr("写真 \(items[i].filename)")
             element.accessibilityValue = pages.count > 1 ? ImageGallery.spokenPosition(i, of: pages.count) : nil
             var actions: [UIAccessibilityCustomAction] = []
             if i + 1 < pages.count {
-                actions.append(UIAccessibilityCustomAction(name: "次の写真") { [weak self] _ in self?.go(by: 1) ?? false })
+                actions.append(UIAccessibilityCustomAction(name: tr("次の写真")) { [weak self] _ in self?.go(by: 1) ?? false })
             }
             if i > 0 {
-                actions.append(UIAccessibilityCustomAction(name: "前の写真") { [weak self] _ in self?.go(by: -1) ?? false })
+                actions.append(UIAccessibilityCustomAction(name: tr("前の写真")) { [weak self] _ in self?.go(by: -1) ?? false })
             }
             element.accessibilityCustomActions = actions
         }
@@ -519,14 +519,14 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
         spinner.color = .white
         spinner.hidesWhenStopped = true
         let message = UILabel()
-        message.text = "画像を読み込めませんでした"
+        message.text = tr("画像を読み込めませんでした")
         message.textColor = .white
         message.font = .preferredFont(forTextStyle: .body)
         message.adjustsFontForContentSizeCategory = true
         message.numberOfLines = 0
         message.textAlignment = .center
         var retry = UIButton.Configuration.borderedProminent()
-        retry.title = "再試行"
+        retry.title = tr("再試行")
         let retryButton = UIButton(configuration: retry, primaryAction: UIAction { [weak self] _ in self?.onRetry() })
         failure.axis = .vertical
         failure.alignment = .center

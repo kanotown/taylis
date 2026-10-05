@@ -30,7 +30,7 @@ struct ProfileSheet: View {
                             if let title = Roster.displayTitle(user?.title, controller.store.roster[userId]) { Text(title).font(.footnote).foregroundStyle(.secondary) }
                             Text(presenceLabel(controller.store.presenceOf(userId))).font(.caption).foregroundStyle(.secondary)
                             if DND.isActive(user) {
-                                Text("🔕 通知を一時停止中" + (user?.quietHours.map { " · " + DND.label($0) } ?? "")).font(.caption).foregroundStyle(.secondary)
+                                Text(tr("🔕 通知を一時停止中") + (user?.quietHours.map { " · " + DND.label($0) } ?? "")).font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -99,8 +99,9 @@ struct ProfileSheet: View {
 /// "まで 15:30" / "9月30日まで".
 func expiryLabel(_ iso: String?) -> String? {
     guard let iso, let date = parseIsoDate(iso) else { return nil }
-    if Calendar.current.isDateInToday(date) { return date.formatted(date: .omitted, time: .shortened) + " まで" }
-    return date.formatted(.dateTime.month().day()) + "まで"
+    let locale = UILanguage.shared.locale
+    if Calendar.current.isDateInToday(date) { return tr("\(date.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(locale))) まで") }
+    return tr("\(date.formatted(Date.FormatStyle().month().day().locale(locale)))まで")
 }
 
 /// Custom status editor (M11d): emoji + text + expiry, quick presets, clear. M40: the status only (the pause and the
@@ -122,12 +123,12 @@ struct StatusEditorView: View {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .never: "消さない"
-            case .halfHour: "30 分後"
-            case .hour: "1 時間後"
-            case .fourHours: "4 時間後"
-            case .today: "今日の終わり"
-            case .week: "今週の終わり"
+            case .never: tr("消さない")
+            case .halfHour: tr("30 分後")
+            case .hour: tr("1 時間後")
+            case .fourHours: tr("4 時間後")
+            case .today: tr("今日の終わり")
+            case .week: tr("今週の終わり")
             }
         }
         func date(from now: Date = Date()) -> Date? {
@@ -147,9 +148,9 @@ struct StatusEditorView: View {
         }
     }
 
-    static let presets: [(emoji: String, text: String)] = [
-        ("📅", "会議中"), ("🚌", "移動中"), ("🤒", "体調不良"), ("🌴", "休暇中"), ("🏠", "在宅勤務"), ("🍱", "昼休み"),
-    ]
+    static var presets: [(emoji: String, text: String)] { [
+        ("📅", tr("会議中")), ("🚌", tr("移動中")), ("🤒", tr("体調不良")), ("🌴", tr("休暇中")), ("🏠", tr("在宅勤務")), ("🍱", tr("昼休み")),
+    ] }
 
     private var current: (emoji: String, text: String)? {
         activeStatus(controller.store.me.map { controller.store.users[$0.id] ?? $0.asPublic })
@@ -261,7 +262,7 @@ struct StatusEmojiView: View {
             }
             .font(.caption)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel([activeStatus(user)?.text, quiet ? "通知を一時停止中" : nil].compactMap { $0 }.joined(separator: " · "))
+            .accessibilityLabel([activeStatus(user)?.text, quiet ? tr("通知を一時停止中") : nil].compactMap { $0 }.joined(separator: " · "))
         }
     }
 }

@@ -76,13 +76,13 @@ final class CanvasHistoryModel {
 
     static func kindLabel(_ kind: String) -> String {
         switch kind {
-        case "create": "作成"
-        case "merge": "同時編集をまとめた版"
-        case "side": "送信した版"
-        case "restore": "復元"
-        case "erased": "本文を消去"
-        case "task": "タスクと連動" // M83: the server's marker or tick for a linked task (CANVAS.md §22)
-        default: "編集"
+        case "create": tr("作成")
+        case "merge": tr("同時編集をまとめた版")
+        case "side": tr("送信した版")
+        case "restore": tr("復元")
+        case "erased": tr("本文を消去")
+        case "task": tr("タスクと連動") // M83: the server's marker or tick for a linked task (CANVAS.md §22)
+        default: tr("編集")
         }
     }
 }
@@ -158,13 +158,13 @@ struct CanvasRevisionRow: View {
 
     var body: some View {
         let author = controller.store.users[revision.authorId]?.displayName
-            ?? (controller.store.me?.id == revision.authorId ? controller.store.me?.displayName : nil) ?? "メンバー"
+            ?? (controller.store.me?.id == revision.authorId ? controller.store.me?.displayName : nil) ?? tr("メンバー")
         HStack(alignment: .top, spacing: 10) {
             AvatarView(id: revision.authorId, name: author, size: 28)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(author).fontWeight(.medium).lineLimit(1)
-                    if head { CanvasBadge(text: "現在の版", tint: .accentColor) }
+                    if head { CanvasBadge(text: tr("現在の版"), tint: .accentColor) }
                 }
                 Text("\(Timeline.fullLabel(revision.createdAt)) · \(CanvasHistoryModel.kindLabel(revision.kind))")
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -213,9 +213,9 @@ struct CanvasRevisionDetail: View {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .previous: "前の版と比較"
-            case .current: "現在の版と比較"
-            case .body: "この版の本文"
+            case .previous: tr("前の版と比較")
+            case .current: tr("現在の版と比較")
+            case .body: tr("この版の本文")
             }
         }
     }
@@ -273,7 +273,7 @@ struct CanvasRevisionDetail: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .navigationTitle(revision.map { CanvasHistoryModel.kindLabel($0.kind) } ?? "版")
+        .navigationTitle(revision.map { CanvasHistoryModel.kindLabel($0.kind) } ?? tr("版"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let revision, CanvasHistoryModel.offersErase(revision, headId: headId, rights: rights) {
@@ -339,11 +339,11 @@ struct CanvasRevisionDetail: View {
 
     private func header(_ revision: CanvasRevisionMeta, head: Bool) -> some View {
         let author = controller.store.users[revision.authorId]?.displayName
-            ?? (controller.store.me?.id == revision.authorId ? controller.store.me?.displayName : nil) ?? "メンバー"
+            ?? (controller.store.me?.id == revision.authorId ? controller.store.me?.displayName : nil) ?? tr("メンバー")
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text(revision.title).font(.headline).lineLimit(2)
-                if head { CanvasBadge(text: "現在の版", tint: .accentColor) }
+                if head { CanvasBadge(text: tr("現在の版"), tint: .accentColor) }
                 if let label = revision.label, !label.isEmpty {
                     Label(label, systemImage: "tag").font(.caption2.weight(.semibold))
                         .padding(.horizontal, 6).padding(.vertical, 1)
@@ -359,9 +359,9 @@ struct CanvasRevisionDetail: View {
     @ViewBuilder
     private func content(erased: Bool, isHead: Bool) -> some View {
         if erased {
-            note("この版の本文は消去されています。")
+            note(tr("この版の本文は消去されています。"))
         } else if mode == .current && isHead {
-            note("これが現在の版です。")
+            note(tr("これが現在の版です。"))
         } else if mode == .body {
             if let text = model.bodies[revisionId] {
                 CanvasBodyView(body: text, controller: controller, onToggleTask: nil)
@@ -371,7 +371,7 @@ struct CanvasRevisionDetail: View {
         } else if let diff {
             CanvasDiffView(rows: diff)
         } else if let otherId, model.revision(otherId)?.kind == "erased" {
-            note("比べる版の本文は消去されています。")
+            note(tr("比べる版の本文は消去されています。"))
         } else {
             ProgressView().frame(maxWidth: .infinity)
         }
@@ -406,7 +406,7 @@ struct CanvasRevisionDetail: View {
         let restored = await controller.restoreCanvasRevision(model.canvasId, revisionId: revisionId)
         busy = false
         guard restored != nil else { return }
-        controller.notice = "この版を復元しました"
+        controller.notice = tr("この版を復元しました")
         dismiss() // back to the list, read again with the new current version on top
     }
 
@@ -417,7 +417,7 @@ struct CanvasRevisionDetail: View {
         guard let erased else { return }
         model.erased(erased)
         diff = nil
-        controller.notice = "この版の本文を消去しました"
+        controller.notice = tr("この版の本文を消去しました")
     }
 
     private func saveLabel(_ label: String?) async {
@@ -481,7 +481,7 @@ struct CanvasDiffView: View {
             .padding(.vertical, 1)
             .background(line.kind == .add ? Color.green.opacity(0.12) : line.kind == .del ? Color.red.opacity(0.10) : Color.clear)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel((line.kind == .add ? "追加: " : line.kind == .del ? "削除: " : "") + (line.text.isEmpty ? "空行" : line.text))
+            .accessibilityLabel((line.kind == .add ? tr("追加: ") : line.kind == .del ? tr("削除: ") : "") + (line.text.isEmpty ? tr("空行") : line.text))
         }
     }
 

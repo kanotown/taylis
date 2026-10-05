@@ -4,14 +4,14 @@ import SwiftUI
 /// (`GET /lab/roster`) and the desktop's (ui/roster.ts). Names compare by code point, as on the server, so every client
 /// lists people alike.
 enum Roster {
-    static let affiliations: [(value: String, label: String)] = [("faculty", "教員"), ("student", "学生"), ("other", "その他"), ("alumni", "卒業生")]
-    static let ranks: [(value: String, label: String)] = [
-        ("professor", "教授"), ("associate_professor", "准教授"), ("lecturer", "講師"), ("assistant_professor", "助教"),
-    ]
+    static var affiliations: [(value: String, label: String)] { [("faculty", tr("教員")), ("student", tr("学生")), ("other", tr("その他")), ("alumni", tr("卒業生"))] }
+    static var ranks: [(value: String, label: String)] { [
+        ("professor", tr("教授")), ("associate_professor", tr("准教授")), ("lecturer", tr("講師")), ("assistant_professor", tr("助教")),
+    ] }
     /// Roster order: from D3 down to B3.
     static let grades = ["D3", "D2", "D1", "M2", "M1", "B4", "B3"]
     /// The heading of the people off the roster, after everyone on it.
-    static let othersHeading = "その他のメンバー"
+    static var othersHeading: String { tr("その他のメンバー") }
 
     private static let affiliationOrder = affiliations.map(\.value)
     private static let rankOrder = ranks.map(\.value)
@@ -77,15 +77,15 @@ enum Roster {
     /// The heading a person's line sits under in a roster-ordered list; nil off the roster.
     static func section(_ profile: LabProfileOut?) -> String? {
         guard let profile else { return nil }
-        if profile.affiliation == "student" { return profile.grade ?? "学生" }
+        if profile.affiliation == "student" { return profile.grade ?? tr("学生") }
         return affiliations.first { $0.value == profile.affiliation }?.label
     }
 
     /// The short label for a line: 教授, M1, 卒業生 … (nil for an affiliation this version does not know).
     static func label(_ profile: LabProfileOut) -> String? {
         switch profile.affiliation {
-        case "faculty": return ranks.first { $0.value == profile.rank }?.label ?? "教員"
-        case "student": return profile.grade ?? "学生"
+        case "faculty": return ranks.first { $0.value == profile.rank }?.label ?? tr("教員")
+        case "student": return profile.grade ?? tr("学生")
         default: return affiliations.first { $0.value == profile.affiliation }?.label
         }
     }
@@ -93,7 +93,7 @@ enum Roster {
     /// 「指導教員: 加納」, or nil without one.
     static func supervisorLabel(_ profile: LabProfileOut, users: [String: UserPublic]) -> String? {
         guard let id = profile.supervisorId, let name = users[id]?.displayName else { return nil }
-        return "指導教員: \(name)"
+        return tr("指導教員: \(name)")
     }
 
     /// 「M1 · 指導教員: 加納」: the label and the supervisor, for the profile card (lists show the label as a badge).

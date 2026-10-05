@@ -91,7 +91,7 @@ struct PollCardView: View {
                 Text(PeopleList.compact(names)).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }
             .padding(.leading, 8)
-            .accessibilityLabel("投票した人: " + names.joined(separator: "、"))
+            .accessibilityLabel(tr("投票した人: ") + names.joined(separator: tr("、")))
         }
     }
 }

@@ -3,13 +3,13 @@ import SwiftUI
 /// The preview's join bar (M27): an archived channel offers no 「参加する」 (the server answers 409 channel_archived).
 enum PreviewJoin {
     /// In place of the button when the channel is archived.
-    static let archivedNote = "アーカイブされたチャンネルです (読むだけ)"
+    static var archivedNote: String { tr("アーカイブされたチャンネルです (読むだけ)") }
 
     static func canJoin(_ channel: ChannelOut) -> Bool { !channel.archived }
 
     /// M89 (MEMBERSHIP.md §5 5.): the panel in place of the messages when the workspace turned the preview off (the
     /// errors.json `preview_disabled` words).
-    static let refusedTitle = "参加するとメッセージを読めます"
+    static var refusedTitle: String { tr("参加するとメッセージを読めます") }
 
     /// Whether the preview shows the panel: the workspace's 「参加前にチャンネルの中を見られる」 is off, or the server
     /// answered 403 preview_disabled (it changed while this device was offline).

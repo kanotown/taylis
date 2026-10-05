@@ -109,7 +109,7 @@ final class CanvasSearchResults {
         for match in imageRef.matches(in: snippet, range: NSRange(location: 0, length: ns.length)) {
             out += ns.substring(with: NSRange(location: last, length: match.range.location - last))
             let alt = ns.substring(with: match.range(at: 1))
-            out += alt.isEmpty ? "[画像]" : "[画像: \(alt)]"
+            out += alt.isEmpty ? tr("[画像]") : tr("[画像: \(alt)]")
             last = match.range.location + match.range.length
         }
         return out + ns.substring(from: last)
@@ -190,11 +190,11 @@ struct CanvasSearchRow: View {
         let store = controller.store
         let canvas = hit.canvas
         let channel = store.channel(canvas.channelId)
-        let editor = store.users[canvas.updatedBy]?.displayName ?? (store.me?.id == canvas.updatedBy ? store.me?.displayName : nil) ?? "メンバー"
+        let editor = store.users[canvas.updatedBy]?.displayName ?? (store.me?.id == canvas.updatedBy ? store.me?.displayName : nil) ?? tr("メンバー")
         let snippet = CanvasSearchResults.readableSnippet(Mentions.toNames(hit.snippet, users: store.users, groups: store.groups))
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
-                Text(channel.map { channelTitle($0, store: store) } ?? "会話").font(.caption.weight(.semibold)).lineLimit(1)
+                Text(channel.map { channelTitle($0, store: store) } ?? tr("会話")).font(.caption.weight(.semibold)).lineLimit(1)
                 Text("· \(editor)").font(.caption).lineLimit(1)
                 Spacer(minLength: 6)
                 Text(SearchResultRow.stamp(canvas.updatedAt)).font(.caption).fixedSize()

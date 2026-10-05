@@ -12,8 +12,8 @@ enum DeadlineRules {
     /// GET /tasks/deadlines brings the deadlines due from this many days ago on (the server's rule).
     static let pastDays = 30
 
-    static let botNote = "「締切」のボットがこのチャンネルに、その日の 9:00 に投稿します"
-    static let deleteNote = "前もっての通知も止まります"
+    static var botNote: String { tr("「締切」のボットがこのチャンネルに、その日の 9:00 に投稿します") }
+    static var deleteNote: String { tr("前もっての通知も止まります") }
 
     static func isDeadline(_ task: TaskOut) -> Bool { task.kind == .deadline }
 
@@ -28,9 +28,9 @@ enum DeadlineRules {
     /// 「当日」 / 「前日」 / 「3 日前」.
     static func noticeLabel(_ days: Int) -> String {
         switch days {
-        case 0: "当日"
-        case 1: "前日"
-        default: "\(days) 日前"
+        case 0: tr("当日")
+        case 1: tr("前日")
+        default: tr("\(days) 日前")
         }
     }
 
@@ -40,7 +40,7 @@ enum DeadlineRules {
     /// 「7 日前・3 日前・前日・当日」, largest first; 「通知しない」 for none.
     static func noticeSummary(_ days: [Int]?) -> String {
         let sorted = normalize(days ?? [])
-        return sorted.isEmpty ? "通知しない" : sorted.map(noticeLabel).joined(separator: "・")
+        return sorted.isEmpty ? tr("通知しない") : sorted.map(noticeLabel).joined(separator: tr("・"))
     }
 
     static func sameNoticeDays(_ a: [Int]?, _ b: [Int]?) -> Bool { normalize(a ?? []) == normalize(b ?? []) }
@@ -78,9 +78,9 @@ enum DeadlineRules {
         guard let day = TaskRules.dueDay(task) else { return "" }
         let days = CalendarDates.daysBetween(today, day)
         let time = task.dueAt.flatMap { parseIsoDate($0) != nil ? " " + CalendarDates.clock($0) : nil } ?? ""
-        if days <= 0 { return "今日" + time }
-        if days == 1 { return "明日" + time }
-        return "あと \(days) 日"
+        if days <= 0 { return tr("今日") + time }
+        if days == 1 { return tr("明日") + time }
+        return tr("あと \(days) 日")
     }
 
     /// 「全国大会 原稿 あと 3 日」.
@@ -104,7 +104,7 @@ enum DeadlineRules {
     /// A row's date: 「10/9 (金)」, 「10/9 (金) 17:00」, 「今日」 / 「今日 17:00」 for today.
     static func when(_ task: TaskOut, today: DayKey) -> String {
         guard let day = TaskRules.dueDay(task) else { return "" }
-        let label = day == today ? "今日" : "\(TaskRules.dueLabel(day, today: today)) (\(CalendarDates.weekdays[CalendarDates.weekday(day)]))"
+        let label = day == today ? tr("今日") : "\(TaskRules.dueLabel(day, today: today)) (\(CalendarDates.weekdays[CalendarDates.weekday(day)]))"
         guard let dueAt = task.dueAt, parseIsoDate(dueAt) != nil else { return label }
         return label + " " + CalendarDates.clock(dueAt)
     }
@@ -116,10 +116,10 @@ enum DeadlineRules {
 
         var label: String {
             switch self {
-            case .week: "今週"
-            case .month: "今月"
-            case .later: "それ以降"
-            case .past: "過ぎたもの"
+            case .week: tr("今週")
+            case .month: tr("今月")
+            case .later: tr("それ以降")
+            case .past: tr("過ぎたもの")
             }
         }
     }

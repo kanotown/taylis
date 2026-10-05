@@ -64,7 +64,7 @@ struct DeadlineChip: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("締切: " + DeadlineRules.chipText(task, today: today))
+        .accessibilityLabel(tr("締切: ") + DeadlineRules.chipText(task, today: today))
         .accessibilityHint("締切を開く")
     }
 }
@@ -157,7 +157,7 @@ struct DeadlinesView: View {
                     .strikethrough(done)
                     .foregroundStyle(done ? Color.secondary : Color.primary)
                     .multilineTextAlignment(.leading)
-                Text(place(task) + (done ? " · 完了" : task.status == .doing ? " · 進行中" : ""))
+                Text(place(task) + (done ? tr(" · 完了") : task.status == .doing ? tr(" · 進行中") : ""))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

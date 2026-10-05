@@ -31,9 +31,9 @@ enum SchedulePoll {
 
         var name: String {
             switch self {
-            case .yes: "参加できる"
-            case .maybe: "未定"
-            case .no: "参加できない"
+            case .yes: tr("参加できる")
+            case .maybe: tr("未定")
+            case .no: tr("参加できない")
             }
         }
 
@@ -51,10 +51,10 @@ enum SchedulePoll {
     /// 「30 分」「1 時間」「1 時間半」「2 時間 15 分」.
     static func durationLabel(_ minutes: Int) -> String {
         let hours = minutes / 60, rest = minutes % 60
-        if hours == 0 { return "\(rest) 分" }
-        if rest == 0 { return "\(hours) 時間" }
-        if rest == 30 { return "\(hours) 時間半" }
-        return "\(hours) 時間 \(rest) 分"
+        if hours == 0 { return tr("\(rest) 分") }
+        if rest == 0 { return tr("\(hours) 時間") }
+        if rest == 30 { return tr("\(hours) 時間半") }
+        return tr("\(hours) 時間 \(rest) 分")
     }
 
     /// The length choices, with a length the candidate already has (from `/日程 … 13:00-14:20`) kept in the list.
@@ -102,7 +102,7 @@ enum SchedulePoll {
 
     /// 「10/3 (土) 14:00〜15:00」, 「10/5 (月) 終日」, past midnight 「22:00〜24:00」 / 「23:00〜翌1:30」 (the server's rule).
     static func slotLabel(_ slot: SlotDraft) -> String {
-        if slot.allDay { return "\(shortDay(slot.day)) 終日" }
+        if slot.allDay { return tr("\(shortDay(slot.day)) 終日") }
         let end = slot.endDate
         let endDay = CalendarDates.dayKey(end)
         let until: String
@@ -111,9 +111,9 @@ enum SchedulePoll {
         } else if endDay == CalendarDates.addDays(slot.day, 1) && CalendarDates.clock(end) == "0:00" {
             until = "24:00"
         } else {
-            until = "翌" + CalendarDates.clock(end)
+            until = tr("翌") + CalendarDates.clock(end)
         }
-        return "\(shortDay(slot.day)) \(CalendarDates.clock(slot.startDate))〜\(until)"
+        return tr("\(shortDay(slot.day)) \(CalendarDates.clock(slot.startDate))〜\(until)")
     }
 
     /// Earliest first; a day's all-day candidate before its times.
@@ -160,14 +160,14 @@ enum SchedulePoll {
 
     /// What stops the form from being sent (the server's rules, said first here), or nil.
     static func problem(question: String, slots: [SlotDraft]) -> String? {
-        if question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "題名を入れてください" }
-        if slots.count < minSlots { return "候補を \(minSlots) つ以上選んでください" }
-        if slots.count > maxSlots { return "候補は \(maxSlots) 個までです" }
+        if question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return tr("題名を入れてください") }
+        if slots.count < minSlots { return tr("候補を \(minSlots) つ以上選んでください") }
+        if slots.count > maxSlots { return tr("候補は \(maxSlots) 個までです") }
         for slot in slots where !slot.allDay {
-            if !(0..<(24 * 60)).contains(slot.start) { return "時刻を入れてください" }
-            if slot.minutes < minMinutes || slot.minutes > maxMinutes { return "時間の長さは 15 分〜12 時間にしてください" }
+            if !(0..<(24 * 60)).contains(slot.start) { return tr("時刻を入れてください") }
+            if slot.minutes < minMinutes || slot.minutes > maxMinutes { return tr("時間の長さは 15 分〜12 時間にしてください") }
         }
-        if Set(slots.map(\.key)).count != slots.count { return "同じ候補が複数あります" }
+        if Set(slots.map(\.key)).count != slots.count { return tr("同じ候補が複数あります") }
         return nil
     }
 
@@ -276,5 +276,5 @@ enum SchedulePoll {
     }
 
     /// 「○ 2 · △ 0 · × 1」 for VoiceOver: 「○ 2 人、△ 0 人、× 1 人」.
-    static func countsLabel(_ counts: Counts) -> String { "○ \(counts.yes) 人、△ \(counts.maybe) 人、× \(counts.no) 人" }
+    static func countsLabel(_ counts: Counts) -> String { tr("○ \(counts.yes) 人、△ \(counts.maybe) 人、× \(counts.no) 人") }
 }

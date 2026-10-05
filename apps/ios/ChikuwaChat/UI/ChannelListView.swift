@@ -76,7 +76,7 @@ struct ChannelListView: View {
             // behind it. As rows they go up with the list, as Slack's do.
             if !layout.unread.isEmpty {
                 Section {
-                    headerRow(plainHeader("未読"))
+                    headerRow(plainHeader(tr("未読")))
                     ForEach(layout.unread) { row($0) }
                 }
             }
@@ -84,17 +84,17 @@ struct ChannelListView: View {
             if !layout.favorites.isEmpty {
                 let fold = folded.contains("favorites")
                 Section {
-                    headerRow(foldHeader("お気に入り", folded: fold) { toggleFold("favorites") })
+                    headerRow(foldHeader(tr("お気に入り"), folded: fold) { toggleFold("favorites") })
                     ForEach(layout.favorites.rows) { row($0) }
                 }
             }
             customSections(layout.custom)
             let channelsFolded = folded.contains("channels")
             Section {
-                headerRow(foldHeader("チャンネル", folded: channelsFolded) { toggleFold("channels") })
+                headerRow(foldHeader(tr("チャンネル"), folded: channelsFolded) { toggleFold("channels") })
                 ForEach(layout.channels.rows) { row($0) }
                 if !channelsFolded {
-                    if layout.channels.isEmpty && !groupUnread { hint("参加中のチャンネルはありません。") }
+                    if layout.channels.isEmpty && !groupUnread { hint(tr("参加中のチャンネルはありません。")) }
                     if !controller.isGuest { addChannelRow }
                 }
             }
@@ -111,11 +111,11 @@ struct ChannelListView: View {
             }
             let dmsFolded = folded.contains("dms")
             Section {
-                headerRow(foldHeader("ダイレクトメッセージ", folded: dmsFolded) { toggleFold("dms") })
+                headerRow(foldHeader(tr("ダイレクトメッセージ"), folded: dmsFolded) { toggleFold("dms") })
                 if layout.notesRow { notesRow }
                 ForEach(layout.dms.rows) { row($0) }
                 if !dmsFolded {
-                    if layout.dms.isEmpty && !layout.notesRow && !groupUnread { hint("右下の ✏️ から相手を選べます。") }
+                    if layout.dms.isEmpty && !layout.notesRow && !groupUnread { hint(tr("右下の ✏️ から相手を選べます。")) }
                     if layout.moreDms { allDmsRow }
                 }
             }
@@ -282,7 +282,7 @@ struct ChannelListView: View {
             Section {
                 headerRow(sectionHeader(entry.section, index: index, count: sections.count))
                 ForEach(entry.rows.rows) { row($0) }
-                if entry.rows.isEmpty && !groupUnread && !entry.section.collapsed { hint("会話を長押し →「セクションに移動」で追加できます。") }
+                if entry.rows.isEmpty && !groupUnread && !entry.section.collapsed { hint(tr("会話を長押し →「セクションに移動」で追加できます。")) }
             }
         }
     }
@@ -352,12 +352,12 @@ struct ChannelListView: View {
 
     /// 「チャンネルを追加」: the browser (M11h), where a channel is joined or created.
     private var addChannelRow: some View {
-        actionRow("チャンネルを追加", icon: "plus") { showBrowser = true }
+        actionRow(tr("チャンネルを追加"), icon: "plus") { showBrowser = true }
     }
 
     /// 「すべての DM」: the home shows the newest few, the DM tab all of them.
     private var allDmsRow: some View {
-        actionRow("すべての DM", icon: "chevron.right", action: onAllDms)
+        actionRow(tr("すべての DM"), icon: "chevron.right", action: onAllDms)
             .accessibilityHint("DM タブを開きます")
     }
 
@@ -407,7 +407,7 @@ struct ChannelListView: View {
 
     /// 「自分の times を作る」 (M24): POST /times, then open it.
     private var makeTimesRow: some View {
-        actionRow("自分の times を作る (作業ログ)", icon: "plus") { makeTimes() }
+        actionRow(tr("自分の times を作る (作業ログ)"), icon: "plus") { makeTimes() }
     }
 
     /// The glyph already says "#", so rows show the bare channel name.

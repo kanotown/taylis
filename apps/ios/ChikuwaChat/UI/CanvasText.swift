@@ -286,7 +286,7 @@ enum CanvasText {
     static func insertLink(_ state: EditState, url: String = "https://") -> EditState {
         let ns = state.text as NSString
         var selected = ns.substring(with: NSRange(location: state.start, length: state.end - state.start))
-        if selected.isEmpty { selected = "リンク" }
+        if selected.isEmpty { selected = tr("リンク") }
         let inserted = "[\(selected)](\(url))"
         let urlStart = state.start + (selected as NSString).length + 3
         let text = ns.replacingCharacters(in: NSRange(location: state.start, length: state.end - state.start), with: inserted)

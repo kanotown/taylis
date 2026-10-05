@@ -125,7 +125,7 @@ extension AppController {
         do {
             try await api.deleteCanvas(id: canvasId)
             engine?.canvases.trashed(canvasId, channelId: channelId)
-            notice = "ゴミ箱に移しました"
+            notice = tr("ゴミ箱に移しました")
             return true
         } catch {
             self.error = describe(error)
@@ -231,12 +231,12 @@ extension AppController {
     /// A canvas's body as a reader sees it (mentions as names, no task markers) on the clipboard.
     func copyCanvasText(_ text: String) {
         UIPasteboard.general.string = Mentions.decode(CanvasMarkers.strip(text), users: store.users, groups: store.groups)
-        notice = "本文をコピーしました"
+        notice = tr("本文をコピーしました")
     }
 
     func copyCanvasLink(_ canvasId: String) {
         guard let api else { return }
         UIPasteboard.general.string = CanvasLink.url(base: api.baseUrl, canvasId: canvasId)
-        notice = "リンクをコピーしました"
+        notice = tr("リンクをコピーしました")
     }
 }

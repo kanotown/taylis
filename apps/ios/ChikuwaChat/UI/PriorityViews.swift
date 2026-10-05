@@ -41,7 +41,7 @@ struct AckBarView: View {
             if let present, !readOnly {
                 // L4: who has and who has not, and (for the author) a reminder to the rest.
                 Button { present(MessageSheet(kind: .acks, message: message)) } label: {
-                    Text(names.isEmpty ? "まだ誰も確認していません" : PeopleList.compact(names) + " が確認")
+                    Text(names.isEmpty ? tr("まだ誰も確認していません") : PeopleList.compact(names) + tr(" が確認"))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 .buttonStyle(.plain)
@@ -53,9 +53,9 @@ struct AckBarView: View {
                 Menu {
                     ForEach(Array(names.enumerated()), id: \.offset) { _, name in Text(name) }
                 } label: {
-                    Text(PeopleList.compact(names) + " が確認").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(PeopleList.compact(names) + tr(" が確認")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
-                .accessibilityLabel("\(names.count) 人が確認: " + names.joined(separator: "、"))
+                .accessibilityLabel(tr("\(names.count) 人が確認: ") + names.joined(separator: tr("、")))
             }
         }
         .padding(.top, 2)

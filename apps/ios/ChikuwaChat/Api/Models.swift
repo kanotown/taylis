@@ -76,6 +76,9 @@ struct UserMe: Codable, Equatable {
     /// (no tasks there: the switch is hidden, and so is 「タスクにする」); on when absent.
     var notifyTasks: Bool? = nil
     var taskNotices: Bool { notifyTasks ?? true }
+    /// The UI language ("ja" / "en" / "zh-Hans"; null = follow the device), the same on every device. A server
+    /// without it leaves the key out (`.unsupported`: the choice stays on this device).
+    var locale: LocaleSetting = .unsupported
 
     var asPublic: UserPublic {
         UserPublic(id: id, username: username, displayName: displayName, role: role, deactivatedAt: deactivatedAt, createdAt: createdAt, updatedAt: updatedAt,
@@ -185,6 +188,45 @@ extension KeyedEncodingContainer {
     }
 }
 
+/// `UserMe.locale`; a missing key (a server that does not know it) differs from null (follow the device).
+enum LocaleSetting: Codable, Equatable {
+    case unsupported
+    case value(String?)
+
+    var isSupported: Bool { self != .unsupported }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self = .value(container.decodeNil() ? nil : try container.decode(String.self))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .unsupported, .value(nil): try container.encodeNil()
+        case .value(let raw?): try container.encode(raw)
+        }
+    }
+}
+
+extension KeyedDecodingContainer {
+    func decode(_ type: LocaleSetting.Type, forKey key: Key) throws -> LocaleSetting {
+        guard contains(key) else { return .unsupported }
+        if try decodeNil(forKey: key) { return .value(nil) }
+        return .value(try decode(String.self, forKey: key))
+    }
+}
+
+extension KeyedEncodingContainer {
+    mutating func encode(_ value: LocaleSetting, forKey key: Key) throws {
+        switch value {
+        case .unsupported: break
+        case .value(nil): try encodeNil(forKey: key)
+        case .value(let raw?): try encode(raw, forKey: key)
+        }
+    }
+}
+
 /// A custom status (M11d) that has not expired: (emoji, text); nil otherwise.
 func activeStatus(_ user: UserPublic?, now: Date = Date()) -> (emoji: String, text: String)? {
     guard let user else { return nil }
@@ -267,7 +309,7 @@ struct GoogleButtonText: Equatable {
     let title: String
     let subtitle: String?
 
-    static let google = GoogleButtonText(title: "Google でログイン", subtitle: nil)
+    static var google: GoogleButtonText { GoogleButtonText(title: tr("Google でログイン"), subtitle: nil) }
 
     init(title: String, subtitle: String?) {
         self.title = title
@@ -281,8 +323,8 @@ struct GoogleButtonText: Equatable {
             return
         }
         let label = label?.trimmingCharacters(in: .whitespaces) ?? ""
-        let org = !label.isEmpty ? label : (domains.count > 1 ? "\(first) など" : first)
-        self.init(title: "\(org) のアカウントでログイン", subtitle: "組織の Google Workspace アカウント")
+        let org = !label.isEmpty ? label : (domains.count > 1 ? tr("\(first) など") : first)
+        self.init(title: tr("\(org) のアカウントでログイン"), subtitle: tr("組織の Google Workspace アカウント"))
     }
 }
 
@@ -470,18 +512,18 @@ enum NotificationRules {
     /// The overall setting's name in the settings picker and in a channel's 「既定 (…)」.
     static func overallLabel(_ overall: String) -> String {
         switch overall {
-        case "all": "すべての新着メッセージ"
-        case "none": "なし"
-        default: "メンションと DM のみ"
+        case "all": tr("すべての新着メッセージ")
+        case "none": tr("なし")
+        default: tr("メンションと DM のみ")
         }
     }
 
     /// A channel's (resolved) level in its menu label.
     static func levelLabel(_ level: String) -> String {
         switch level {
-        case "all": "すべて"
-        case "none": "通知しない"
-        default: "メンションのみ"
+        case "all": tr("すべて")
+        case "none": tr("通知しない")
+        default: tr("メンションのみ")
         }
     }
 
@@ -489,11 +531,11 @@ enum NotificationRules {
     /// 「· ミュート」 or 「· 15:30 までミュート」 while muted.
     static func rowValue(level: String, muted: Bool, timedMute: String?) -> String {
         let base = switch level {
-        case "all": "すべて"
-        case "none": "なし"
-        default: "メンション"
+        case "all": tr("すべて")
+        case "none": tr("なし")
+        default: tr("メンション")
         }
-        if muted { return base + " · ミュート" }
+        if muted { return base + tr(" · ミュート") }
         if let timedMute { return base + " · " + timedMute }
         return base
     }
@@ -501,9 +543,9 @@ enum NotificationRules {
     /// The label of a conversation's notification menu: muted (until unmuted), a timed mute ("15:30 までミュート",
     /// `Timeline.muteLabel`), or the level it notifies me of.
     static func menuLabel(level: String, muted: Bool, timedMute: String?) -> String {
-        if muted { return "通知: ミュート中" }
-        if let timedMute { return "通知 (\(timedMute))" }
-        return "通知: \(levelLabel(level))"
+        if muted { return tr("通知: ミュート中") }
+        if let timedMute { return tr("通知 (\(timedMute))") }
+        return tr("通知: \(levelLabel(level))")
     }
 }
 

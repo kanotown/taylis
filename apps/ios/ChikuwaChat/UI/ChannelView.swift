@@ -583,7 +583,7 @@ struct ChannelView: View {
                             .font(.footnote).foregroundStyle(.secondary).padding()
                     } else {
                         TypingLine(controller: controller, channelId: channelId)
-                        ComposerView(channelId: channelId, users: Array(controller.store.users.values), placeholder: "\(channelTitle(channel, store: controller.store)) へのメッセージ", controller: controller) { body, attachmentIds, options in
+                        ComposerView(channelId: channelId, users: Array(controller.store.users.values), placeholder: tr("\(channelTitle(channel, store: controller.store)) へのメッセージ"), controller: controller) { body, attachmentIds, options in
                             Task { await controller.engine?.send(channelId, body: body, attachmentIds: attachmentIds, options: options) }
                         }
                         // Under the pins / files (M29): SwiftUI's text field stays an accessibility element through a
@@ -735,7 +735,7 @@ struct ChannelView: View {
             if let status = activeStatus(controller.store.users[others[0]]) { return "\(presence) · \(status.emoji) \(status.text)".trimmingCharacters(in: .whitespaces) }
             return presence
         }
-        return channel.isMember && !channel.channel.archived ? "トピックを設定" : nil
+        return channel.isMember && !channel.channel.archived ? tr("トピックを設定") : nil
     }
 }
 
@@ -959,7 +959,7 @@ struct ThreadSummaryLine: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(["\(message.replyCount) 件の返信", last].compactMap { $0 }.joined(separator: "、"))
+        .accessibilityLabel([tr("\(message.replyCount) 件の返信"), last].compactMap { $0 }.joined(separator: tr("、")))
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -1021,7 +1021,7 @@ struct MessageRow: View {
     /// Why the server refused an unsent message (its outbox row keeps the code), in the shared Japanese words.
     private var failureText: String {
         let code = store.outbox.first { $0.clientMsgId == message.clientMsgId }?.failed
-        return code.flatMap { ErrorMessages.byCode[$0] }.map { "送信に失敗しました: \($0)" } ?? "送信に失敗しました"
+        return code.flatMap { ErrorMessages.byCode[$0] }.map { tr("送信に失敗しました: \($0)") } ?? tr("送信に失敗しました")
     }
 
     /// M15c: in the channel a shared reply names its thread (tap opens it); in the thread it says it was shared.
@@ -1032,7 +1032,7 @@ struct MessageRow: View {
             let excerpt = parent.map { Timeline.excerpt($0.body, attachments: $0.attachments, users: store.users, groups: store.groups) }
             Button { onOpenThread() } label: {
                 Label {
-                    CustomEmoji.excerpt("スレッドに返信: \(excerpt ?? "元のメッセージ")", controller: controller, height: 11)
+                    CustomEmoji.excerpt(tr("スレッドに返信: \(excerpt ?? tr("元のメッセージ"))"), controller: controller, height: 11)
                 } icon: {
                     Image(systemName: "bubble.left")
                 }
@@ -1105,7 +1105,7 @@ struct MessageRow: View {
                         }
                     }
                 } else if message.editedAt != nil {
-                    Text(Timeline.fullLabel(message.createdAt) + (message.editedAt != nil ? " (編集済み)" : ""))
+                    Text(Timeline.fullLabel(message.createdAt) + (message.editedAt != nil ? tr(" (編集済み)") : ""))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 if !message.body.isEmpty && !PollCardView.hidesBody(message.body, poll: message.poll) {
@@ -1422,7 +1422,7 @@ struct ComposerView: View {
     let channelId: String
     var parentId: String? = nil
     let users: [UserPublic]
-    var placeholder = "メッセージを入力"
+    var placeholder = tr("メッセージを入力")
     var controller: AppController? = nil
     /// A line of the composer's own above the input (the thread's 「#… にも送信」), inside its top edge.
     var accessory: AnyView? = nil
@@ -1516,7 +1516,7 @@ struct ComposerView: View {
     private func upload(data: Data, filename: String, contentType: String) async {
         guard let controller else { return }
         let store = controller.store
-        guard pending.count < 10 else { controller.error = "添付は10件までです"; return }
+        guard pending.count < 10 else { controller.error = tr("添付は10件までです"); return }
         if let tooLarge = controller.attachmentTooLarge(data.count) { controller.error = tooLarge; return }
         if let uploaded = await controller.uploadAttachment(data: data, filename: filename, contentType: contentType) {
             store.setDraft(channelId, parentId: parentId) { $0.attachments.append(uploaded) }
@@ -1526,7 +1526,7 @@ struct ComposerView: View {
     /// A picked file: checked against the server's size limit first, then streamed from disk (never read whole).
     private func upload(file url: URL) async {
         guard let controller else { return }
-        guard pending.count < 10 else { controller.error = "添付は10件までです"; return }
+        guard pending.count < 10 else { controller.error = tr("添付は10件までです"); return }
         let accessed = url.startAccessingSecurityScopedResource()
         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
@@ -1554,7 +1554,7 @@ struct ComposerView: View {
     /// M12d 「後で送信」: the same draft, posted by the server at the chosen time.
     private func schedule(_ at: Date) {
         guard canSend, let controller else { return }
-        guard at.timeIntervalSinceNow >= 60 else { controller.error = "1 分以上先の時刻を選んでください"; return }
+        guard at.timeIntervalSinceNow >= 60 else { controller.error = tr("1 分以上先の時刻を選んでください"); return }
         let body = Mentions.encode(trimmed, users: users, groups: Array(controller.store.groups.values))
         let ids = pending.map(\.id)
         Task {
@@ -1594,15 +1594,15 @@ struct ComposerView: View {
                         if let workflow = Workflows.command(name: command.name, args: command.args, in: list) {
                             openWorkflow(workflow)
                         } else if command.name == "wf" {
-                            controller.error = command.args.isEmpty ? "/wf の後にワークフローの名前を続けてください"
-                                : "「\(command.args)」というワークフローはこのチャンネルにありません"
+                            controller.error = command.args.isEmpty ? tr("/wf の後にワークフローの名前を続けてください")
+                                : tr("「\(command.args)」というワークフローはこのチャンネルにありません")
                         } else {
-                            controller.error = "/\(command.name) というコマンドはありません (/help で一覧)"
+                            controller.error = tr("/\(command.name) というコマンドはありません (/help で一覧)")
                         }
                     }
                     return
                 }
-                controller.error = "/\(command.name) というコマンドはありません (/help で一覧)"
+                controller.error = tr("/\(command.name) というコマンドはありません (/help で一覧)")
                 return
             }
             if command.name == "poll" && command.args.isEmpty {  // the form instead of the syntax
@@ -1610,7 +1610,7 @@ struct ComposerView: View {
                 showPollForm = true
                 return
             }
-            if command.name == "日程" {  // M54: the scheduling form, with the dates (and times) typed as its candidates
+            if command.name == "日程" {  // M54: the scheduling form, with the dates (and times) typed as its candidates (i18n-ignore)
                 guard let initial = ScheduleFormInitial.reading(command.args, today: .today()) else {
                     controller.error = Templates.scheduleUsage  // nothing opens; what was typed stays to be corrected
                     return
@@ -1625,7 +1625,7 @@ struct ComposerView: View {
         }
         let body = Mentions.encode(trimmed, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [])
         guard canSend else { return }
-        guard body.count <= 20_000, pending.count <= 10 else { controller?.error = "添付は10件、本文は20,000文字までです"; return }
+        guard body.count <= 20_000, pending.count <= 10 else { controller?.error = tr("添付は10件、本文は20,000文字までです"); return }
         let ids = pending.map(\.id)
         controller?.store.setDraft(channelId, parentId: parentId) { $0 = Draft() }
         let options = SendOptions(priority: parentId == nil ? priority : nil, ackRequested: parentId == nil && ackRequested)
@@ -1692,8 +1692,8 @@ struct ComposerView: View {
     private var toolRow: some View {
         HStack(spacing: 6) {
             attachMenu
-            toolButton("at", label: "メンション") { insert("@") }
-            toolButton("face.smiling", label: "絵文字") { showEmojiPicker = true }
+            toolButton("at", label: tr("メンション")) { insert("@") }
+            toolButton("face.smiling", label: tr("絵文字")) { showEmojiPicker = true }
             Menu {
                 ForEach(ComposerFormat.allCases) { format in
                     Button(format.label, systemImage: format.icon) { apply(format) }
@@ -1702,7 +1702,7 @@ struct ComposerView: View {
                 Image(systemName: "textformat").font(.system(size: 20)).frame(width: 36, height: 36)
             }
             .accessibilityLabel("書式")
-            toolButton("clock", label: "後で送信") { showSchedule = true }.disabled(!canSend)
+            toolButton("clock", label: tr("後で送信")) { showSchedule = true }.disabled(!canSend)
             if !templates.isEmpty {
                 Menu { templateItems } label: {
                     Image(systemName: "doc.text").font(.system(size: 20)).frame(width: 36, height: 36)
@@ -1726,7 +1726,7 @@ struct ComposerView: View {
     @ViewBuilder
     private var templateItems: some View {
         ForEach(templates) { template in
-            Button(template.scope == "user" ? "\(template.name) (個人)" : template.name) { insertTemplate(template) }
+            Button(template.scope == "user" ? tr("\(template.name) (個人)") : template.name) { insertTemplate(template) }
         }
     }
 
@@ -1847,7 +1847,7 @@ struct ComposerView: View {
                         ForEach(templateHits) { template in
                             Button { insertTemplate(template, replacing: true) } label: {
                                 Text("/" + template.name).fontWeight(.semibold)
-                                    + Text("  \(template.scope == "user" ? "個人 · " : "")\(Templates.summary(template.body))").foregroundStyle(.secondary)
+                                    + Text("  \(template.scope == "user" ? tr("個人 · ") : "")\(Templates.summary(template.body))").foregroundStyle(.secondary)
                             }
                             .font(.footnote)
                             .buttonStyle(.bordered)
@@ -1857,7 +1857,7 @@ struct ComposerView: View {
                         ForEach(workflowHits) { workflow in
                             Button { openWorkflow(workflow) } label: {
                                 Text("\(workflow.mark) \(Workflows.commandText(workflow))").fontWeight(.semibold)
-                                    + Text("  \(workflow.canRun ? (workflow.description.isEmpty ? "ワークフロー" : workflow.description) : "使えません")")
+                                    + Text("  \(workflow.canRun ? (workflow.description.isEmpty ? tr("ワークフロー") : workflow.description) : tr("使えません"))")
                                         .foregroundStyle(.secondary)
                             }
                             .font(.footnote)
@@ -1913,7 +1913,7 @@ struct ComposerView: View {
             NavigationStack {
                 Form {
                     DatePicker("送信日時", selection: $customSendAt, in: Date().addingTimeInterval(60)..., displayedComponents: [.date, .hourAndMinute])
-                    Text(Schedule.label(customSendAt) + " に送信します").font(.footnote).foregroundStyle(.secondary)
+                    Text(tr("\(Schedule.label(customSendAt)) に送信します")).font(.footnote).foregroundStyle(.secondary)
                 }
                 .navigationTitle("後で送信")
                 .navigationBarTitleDisplayMode(.inline)
@@ -1969,7 +1969,7 @@ struct ComposerView: View {
                 for item in items {
                     if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
                         guard let movie = try? await item.loadTransferable(type: PickedMovie.self) else {
-                            controller?.error = "動画を読み込めませんでした"
+                            controller?.error = tr("動画を読み込めませんでした")
                             continue
                         }
                         await upload(video: movie.url)
@@ -1977,7 +1977,7 @@ struct ComposerView: View {
                     }
                     // Library photos are mostly HEIC: re-encoded as JPEG like the camera's, or the server keeps no thumbnail.
                     guard let data = try? await item.loadTransferable(type: Data.self), let photo = ImageUpload.prepare(data) else {
-                        controller?.error = "写真を読み込めませんでした" // it was dropped without a word (audit 2026-09-29)
+                        controller?.error = tr("写真を読み込めませんでした") // it was dropped without a word (audit 2026-09-29)
                         continue
                     }
                     await upload(data: photo.data, filename: "photo." + photo.ext, contentType: photo.mime)

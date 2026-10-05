@@ -6,7 +6,7 @@ enum Emoji {
     private static let shortcodePattern = try! NSRegularExpression(pattern: #":([a-z0-9_+\-]{1,30}):"#)
     /// ":ta" at the end of the text, at a word start; the query needs at least 2 characters. M100: or a Japanese word
     /// (":ありがとう", "：了解"), one character enough: custom emoji by label / keyword, standard ones by keyword.
-    private static let queryPattern = try! NSRegularExpression(pattern: #"(^|[\s(（「])[:：]([a-z0-9_+\-]{2,30}|[^\s:：\x00-\x7f][^\s:：]{0,19})$"#)
+    private static let queryPattern = try! NSRegularExpression(pattern: #"(^|[\s(（「])[:：]([a-z0-9_+\-]{2,30}|[^\s:：\x00-\x7f][^\s:：]{0,19})$"#)  // i18n-ignore
 
     static func byShortcode(_ shortcode: String) -> EmojiEntry? { byShortcode[shortcode] }
 

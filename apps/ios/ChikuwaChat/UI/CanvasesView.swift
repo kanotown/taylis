@@ -126,28 +126,28 @@ final class CanvasesModel {
 
     static func title(_ canvas: CanvasMeta) -> String {
         let title = canvas.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return title.isEmpty ? "無題のキャンバス" : title
+        return title.isEmpty ? tr("無題のキャンバス") : title
     }
 
     /// Who saved it last (me too; someone this device does not know as 「メンバー」).
     static func editor(_ canvas: CanvasMeta, store: Store) -> String {
-        store.users[canvas.updatedBy]?.displayName ?? (store.me?.id == canvas.updatedBy ? store.me?.displayName : nil) ?? "メンバー"
+        store.users[canvas.updatedBy]?.displayName ?? (store.me?.id == canvas.updatedBy ? store.me?.displayName : nil) ?? tr("メンバー")
     }
 
     static func conversation(_ canvas: CanvasMeta, store: Store) -> String {
-        store.channel(canvas.channelId).map { channelTitle($0, store: store) } ?? "会話"
+        store.channel(canvas.channelId).map { channelTitle($0, store: store) } ?? tr("会話")
     }
 
     /// VoiceOver: the title, the conversation's tab, where, who and when, the tasks.
     static func spoken(_ canvas: CanvasMeta, store: Store, now: Date = Date()) -> String {
         var parts = [title(canvas)]
-        if canvas.isChannelTab { parts.append("会話のタブ") }
+        if canvas.isChannelTab { parts.append(tr("会話のタブ")) }
         parts.append(conversation(canvas, store: store))
-        parts.append("\(editor(canvas, store: store)) が更新")
+        parts.append(tr("\(editor(canvas, store: store)) が更新"))
         let stamp = SearchResultRow.stamp(canvas.updatedAt, now: now)
         if !stamp.isEmpty { parts.append(stamp) }
-        if canvas.taskTotal > 0 { parts.append("タスク \(canvas.taskTotal) 件中 \(canvas.taskDone) 件完了") }
-        return parts.joined(separator: "、")
+        if canvas.taskTotal > 0 { parts.append(tr("タスク \(canvas.taskTotal) 件中 \(canvas.taskDone) 件完了")) }
+        return parts.joined(separator: tr("、"))
     }
 }
 

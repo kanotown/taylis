@@ -65,9 +65,9 @@ struct AiAskBar: View {
 
     private static func state(_ phase: AiAskSession.Phase) -> String {
         switch phase {
-        case .starting, .working: return " (作成中)"
+        case .starting, .working: return tr(" (作成中)")
         case .done: return ""
-        case .failed: return " (失敗)"
+        case .failed: return tr(" (失敗)")
         }
     }
 }
@@ -211,8 +211,8 @@ struct AiAskSheet: View {
 
     private func sourceMeta(_ source: AiSourceOut) -> String {
         let sender = store.users[source.senderId]?.displayName ?? "?"
-        let conversation = store.channel(source.channelId).map { channelTitle($0, store: store) } ?? "会話"
-        return [sender, conversation + (source.parentId != nil ? " · スレッド" : ""), Timeline.fullLabel(source.createdAt)]
+        let conversation = store.channel(source.channelId).map { channelTitle($0, store: store) } ?? tr("会話")
+        return [sender, conversation + (source.parentId != nil ? tr(" · スレッド") : ""), Timeline.fullLabel(source.createdAt)]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
     }
@@ -240,8 +240,8 @@ struct AiAskSheet: View {
                         showingHistory = false
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(run.question ?? "(質問)").lineLimit(2).foregroundStyle(.primary)
-                            Text(Timeline.fullLabel(run.createdAt) + (run.status == "failed" ? " · 失敗" : run.isFinished ? "" : " · 作成中"))
+                            Text(run.question ?? tr("(質問)")).lineLimit(2).foregroundStyle(.primary)
+                            Text(Timeline.fullLabel(run.createdAt) + (run.status == "failed" ? tr(" · 失敗") : run.isFinished ? "" : tr(" · 作成中")))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)

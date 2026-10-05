@@ -123,7 +123,7 @@ struct AiSummarySheet: View {
     private var content: some View {
         switch session.phase {
         case .starting:
-            progress("要約を頼んでいます…")
+            progress(tr("要約を頼んでいます…"))
         case .working(let running):
             progress(AiRules.progressText(running: running))
         case .done(let output, let omitted):

@@ -40,7 +40,7 @@ struct TypingLine: View {
 
     private func label(_ users: [String]) -> String {
         let names = users.map { controller.store.users[$0]?.displayName ?? "…" }
-        if names.count <= 2 { return names.joined(separator: "、") + " が入力中…" }
-        return "\(names[0]) ほか \(names.count - 1) 人が入力中…"
+        if names.count <= 2 { return names.joined(separator: tr("、")) + tr(" が入力中…") }
+        return tr("\(names[0]) ほか \(names.count - 1) 人が入力中…")
     }
 }

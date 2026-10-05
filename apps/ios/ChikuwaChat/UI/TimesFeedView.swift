@@ -8,8 +8,8 @@ struct TimesFeedView: View {
     /// The home stack's list value that shows this view.
     static let selectionId = "times-feed"
     /// §7's empty text, its first sentence as the title.
-    static let emptyTitle = "参加している times がありません"
-    static let emptyText = "チャンネル一覧から times に参加すると、ここに新しい投稿が並びます"
+    static var emptyTitle: String { tr("参加している times がありません") }
+    static var emptyText: String { tr("チャンネル一覧から times に参加すると、ここに新しい投稿が並びます") }
 
     @Bindable var controller: AppController
     /// The message in its channel (the caller reveals it).

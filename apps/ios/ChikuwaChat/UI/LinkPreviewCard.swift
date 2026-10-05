@@ -5,7 +5,7 @@ enum Links {
     private static let fence = try! NSRegularExpression(pattern: "```[\\s\\S]*?```")
     private static let code = try! NSRegularExpression(pattern: "`[^`\\n]*`")
     private static let url = try! NSRegularExpression(pattern: "https?://[^\\s<>)\\]]+")
-    private static let trailing = CharacterSet(charactersIn: ".,!?;:。、」』）")
+    private static let trailing = CharacterSet(charactersIn: ".,!?;:。、」』）")  // i18n-ignore
 
     static func first(in body: String) -> String? {
         var text = body

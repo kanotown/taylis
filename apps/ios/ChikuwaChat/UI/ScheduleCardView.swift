@@ -119,15 +119,15 @@ struct ScheduleCardView: View {
 
     private var footer: String {
         let count = SchedulePoll.respondentCount(poll)
-        if poll.decided != nil { return "決定済み · \(count) 人が回答" }
-        if poll.closedAt != nil { return "締め切りました · \(count) 人が回答" }
-        return "\(count) 人が回答"
+        if poll.decided != nil { return tr("決定済み · \(count) 人が回答") }
+        if poll.closedAt != nil { return tr("締め切りました · \(count) 人が回答") }
+        return tr("\(count) 人が回答")
     }
 
     private func confirmText(_ index: Int) -> String {
         let label = index < poll.options.count ? poll.options[index] : ""
-        let what = isDm ? "スレッドで回答した人に知らせます。" : "チャンネルのカレンダーに予定を作り、スレッドで回答した人に知らせます。"
-        return "\(label)\n\(what)回答は締め切られます (取り消すと再開します)。"
+        let what = isDm ? tr("スレッドで回答した人に知らせます。") : tr("チャンネルのカレンダーに予定を作り、スレッドで回答した人に知らせます。")
+        return tr("\(label)\n\(what)回答は締め切られます (取り消すと再開します)。")
     }
 
     private func decide(_ index: Int, createEvent: Bool) {
@@ -284,7 +284,7 @@ struct ScheduleTableView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("コメント (匿名)").font(.caption.weight(.medium)).foregroundStyle(.secondary)
                             ForEach(Array(comments.enumerated()), id: \.offset) { _, comment in
-                                Text("・" + comment.text).font(.subheadline)
+                                Text(tr("・") + comment.text).font(.subheadline)
                             }
                         }
                     }
@@ -407,7 +407,7 @@ struct ScheduleTableView: View {
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.35)))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("自分の \(label): \(current?.name ?? "未回答") (押すと変わります)")
+            .accessibilityLabel("自分の \(label): \(current?.name ?? tr("未回答")) (押すと変わります)")
         } else {
             mark(current)
         }

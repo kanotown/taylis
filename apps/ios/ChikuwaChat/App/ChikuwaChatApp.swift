@@ -39,10 +39,18 @@ struct RootView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
 
+    /// The UI language (自分 → 表示 → 言語): a change rebuilds the screen in it.
+    private var language = UILanguage.shared
+
     var body: some View {
         screen.preferredColorScheme(theme.colorScheme)
+            .environment(\.locale, language.locale)
+            .id(language.effective)
             .onChange(of: colorScheme, initial: true) { reportAppearance() }
             .onChange(of: scenePhase) { reportAppearance() }
+            // The server's `locale` (chosen on another of my devices) is adopted; a change made in the iOS Settings is
+            // sent to it (AppController.syncLanguage).
+            .onChange(of: controller.store.me?.locale, initial: true) { _, setting in controller.languageSettingChanged(setting) }
     }
 
     private func reportAppearance() {

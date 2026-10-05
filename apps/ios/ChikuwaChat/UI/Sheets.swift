@@ -297,15 +297,15 @@ struct ChannelInfoView: View {
     }
 
     private var convertTitle: String {
-        channel?.channel.type == "public" ? "非公開チャンネルに変換しますか？" : "公開チャンネルに変換しますか？"
+        channel?.channel.type == "public" ? tr("非公開チャンネルに変換しますか？") : tr("公開チャンネルに変換しますか？")
     }
 
     private var convertMessage: String {
         if channel?.channel.type == "public" {
-            return "メンバー以外はこのチャンネルを見つけられなくなり、参加には招待が必要になります。これまでのメッセージもメンバーだけが読めます。"
-                + (isAdmin ? "" : "公開に戻せるのは管理者だけです。")
+            return tr("メンバー以外はこのチャンネルを見つけられなくなり、参加には招待が必要になります。これまでのメッセージもメンバーだけが読めます。")
+                + (isAdmin ? "" : tr("公開に戻せるのは管理者だけです。"))
         }
-        return "ゲスト以外の全員がこのチャンネルを見つけて参加し、これまでのメッセージを含めて読めるようになります。"
+        return tr("ゲスト以外の全員がこのチャンネルを見つけて参加し、これまでのメッセージを含めて読めるようになります。")
     }
 
     private func notificationValue(_ channel: ChannelState) -> String {
@@ -350,7 +350,7 @@ struct ChannelInfoView: View {
                 HStack(alignment: .top, spacing: 6) {
                     if channel.isMember {
                         let starred = store.isFavorite(channelId)
-                        DetailButton(title: starred ? "お気に入り済み" : "お気に入り", systemImage: starred ? "star.fill" : "star", on: starred) {
+                        DetailButton(title: starred ? tr("お気に入り済み") : tr("お気に入り"), systemImage: starred ? "star.fill" : "star", on: starred) {
                             Task { await controller.toggleFavorite(channelId) }
                         }
                         Menu {
@@ -358,13 +358,13 @@ struct ChannelInfoView: View {
                             Divider()
                             NotificationMuteControls(controller: controller, channel: channel, withIcons: true)
                         } label: {
-                            DetailButtonFace(title: muted ? "ミュート中" : "通知", systemImage: muted ? "bell.slash" : "bell", on: muted)
+                            DetailButtonFace(title: muted ? tr("ミュート中") : tr("通知"), systemImage: muted ? "bell.slash" : "bell", on: muted)
                         }
                         .accessibilityLabel("通知設定")
                     }
-                    DetailButton(title: "検索", systemImage: "magnifyingglass") { searching = true }
+                    DetailButton(title: tr("検索"), systemImage: "magnifyingglass") { searching = true }
                     if canAdd {
-                        DetailButton(title: "メンバー追加", systemImage: "person.badge.plus") { showAddMember = true }
+                        DetailButton(title: tr("メンバー追加"), systemImage: "person.badge.plus") { showAddMember = true }
                     }
                 }
                 .buttonStyle(.plain)

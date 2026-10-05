@@ -122,7 +122,7 @@ enum CanvasTable {
         return start...end
     }
 
-    static let newTable = Table(align: [nil, nil, nil], header: ["列1", "列2", "列3"], rows: [["", "", ""], ["", "", ""]])
+    static var newTable: Table { Table(align: [nil, nil, nil], header: [tr("列1"), tr("列2"), tr("列3")], rows: [["", "", ""], ["", "", ""]]) }
 
     /// `table` (a new 3 × 2 one by default) after the caret's line (at the start when the text is empty), with a blank
     /// line between it and any text before or after. The new text and the table's [first, last] line.
@@ -166,7 +166,7 @@ enum CanvasTable {
     static func addColumn(_ t: Table, at index: Int) -> Table {
         var t = t
         let i = max(0, min(index, t.columnCount))
-        t.header.insert("列\(t.columnCount + 1)", at: i)
+        t.header.insert(tr("列\(t.columnCount + 1)"), at: i)
         t.align.insert(nil, at: i)
         for r in t.rows.indices { t.rows[r].insert("", at: min(i, t.rows[r].count)) }
         return t

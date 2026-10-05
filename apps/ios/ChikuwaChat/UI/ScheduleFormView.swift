@@ -125,7 +125,7 @@ struct ScheduleFormView: View {
                 }
             }
             .environment(\.timeZone, CalendarDates.zone)
-            .environment(\.locale, Locale(identifier: "ja_JP"))
+            .environment(\.locale, UILanguage.shared.locale)
             .navigationTitle("日程調整を作成")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

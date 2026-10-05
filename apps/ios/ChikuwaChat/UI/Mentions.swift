@@ -38,8 +38,8 @@ enum Mentions {
 
     /// Mention tokens as display names, for notifications and previews (`@Toru Kano`, `@design`, `@channel`).
     static func toNames(_ text: String, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
-        let step = replace(text, userToken) { match in "@" + (users[match[1]]?.displayName ?? "メンバー") }
-        let withGroups = replace(step, groupToken) { match in "@" + (groups[match[1]]?.name ?? "グループ") }
+        let step = replace(text, userToken) { match in "@" + (users[match[1]]?.displayName ?? tr("メンバー")) }
+        let withGroups = replace(step, groupToken) { match in "@" + (groups[match[1]]?.name ?? tr("グループ")) }
         return replace(withGroups, allToken) { match in "@" + match[1] }
     }
 
@@ -57,8 +57,8 @@ enum Mentions {
         let teams = groups
             .filter { $0.name.lowercased().hasPrefix(q) || ($0.description ?? "").lowercased().contains(q) }
             .sorted { $0.name < $1.name }
-            .map { Candidate(username: $0.name, label: "グループ · \($0.memberIds.count) 人" + ($0.description.map { " · " + $0 } ?? ""), kind: "group") }
-        let special = [Candidate(username: "channel", label: "全員に通知", kind: "all"), Candidate(username: "here", label: "全員に通知", kind: "all")]
+            .map { Candidate(username: $0.name, label: tr("グループ · \($0.memberIds.count) 人") + ($0.description.map { " · " + $0 } ?? ""), kind: "group") }
+        let special = [Candidate(username: "channel", label: tr("全員に通知"), kind: "all"), Candidate(username: "here", label: tr("全員に通知"), kind: "all")]
             .filter { $0.username.hasPrefix(q) }
         return Array((people + teams + special).prefix(limit))
     }

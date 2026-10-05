@@ -17,20 +17,20 @@ enum ActivityRules {
 
     static func filterLabel(_ filter: String) -> String {
         switch filter {
-        case "mentions": "メンション"
-        case "threads": "スレッド"
-        case "reactions": "リアクション"
-        default: "すべて"
+        case "mentions": tr("メンション")
+        case "threads": tr("スレッド")
+        case "reactions": tr("リアクション")
+        default: tr("すべて")
         }
     }
 
     /// An empty list says what would be listed there.
     static func emptyText(_ filter: String) -> String {
         switch filter {
-        case "mentions": "まだメンションはありません"
-        case "threads": "フォロー中のスレッドへの返信はまだありません"
-        case "reactions": "自分の投稿へのリアクションはまだありません"
-        default: "まだアクティビティはありません"
+        case "mentions": tr("まだメンションはありません")
+        case "threads": tr("フォロー中のスレッドへの返信はまだありません")
+        case "reactions": tr("自分の投稿へのリアクションはまだありません")
+        default: tr("まだアクティビティはありません")
         }
     }
 
@@ -87,16 +87,16 @@ enum ActivityRules {
     static func headline(_ item: ActivityItem, nameOf: (String) -> String) -> (who: String, what: String) {
         // M112: a reservation notice — the pool, and whether it is a to-do (an operator's) or news of my own reservation.
         if let reservation = item.reservation {
-            return (reservation.poolName.isEmpty ? "予約" : reservation.poolName, reservation.operator ? " · 担当者の作業" : " · 予約")
+            return (reservation.poolName.isEmpty ? tr("予約") : reservation.poolName, reservation.operator ? tr(" · 担当者の作業") : tr(" · 予約"))
         }
-        let name = item.actorIds.first.map(nameOf) ?? "誰か"
+        let name = item.actorIds.first.map(nameOf) ?? tr("誰か")
         switch item.kind {
-        case "mention": return (name, " がメンション")
-        case "thread_reply": return (name, " がスレッドに返信")
-        case "canvas_mention": return (name, " が「\(canvasTitle(item.canvas))」であなたをメンションしました")
+        case "mention": return (name, tr(" がメンション"))
+        case "thread_reply": return (name, tr(" がスレッドに返信"))
+        case "canvas_mention": return (name, tr(" が「\(canvasTitle(item.canvas))」であなたをメンションしました"))
         default:
             let others = max(0, item.actorIds.count - 1)
-            return others > 0 ? ("\(name) ほか \(others) 人", "が") : (name, " が")
+            return others > 0 ? (tr("\(name) ほか \(others) 人"), tr("が")) : (name, tr(" が"))
         }
     }
 
@@ -109,7 +109,7 @@ enum ActivityRules {
     /// M77: a canvas's title as the rows say it (an untitled one: 「キャンバス」, as the push).
     static func canvasTitle(_ canvas: ActivityCanvas?) -> String {
         let title = canvas?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return title.isEmpty ? "キャンバス" : title
+        return title.isEmpty ? tr("キャンバス") : title
     }
 
     /// The row's last line: the message's opening words, or a canvas item's excerpt (already one plain line, the
@@ -125,7 +125,7 @@ enum ActivityRules {
     /// names, 「画像を送信しました」 without text — the same for every kind (a reaction's no longer in 「」), as
     /// Android's activity and the search results say it.
     static func excerpt(_ message: MessageOut, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
-        if message.deleted { return "(削除されたメッセージ)" }
+        if message.deleted { return tr("(削除されたメッセージ)") }
         return Timeline.excerpt(message.body, attachments: message.attachments, users: users, groups: groups)
     }
 
@@ -150,8 +150,8 @@ enum ActivityRules {
     /// The row's second line: the conversation, 「#c のスレッド」 for a reply, 「#c のキャンバス」 for a canvas.
     static func whereText(_ item: ActivityItem, conversation: String) -> String {
         switch item.kind {
-        case "thread_reply": "\(conversation) のスレッド"
-        case "canvas_mention": "\(conversation) のキャンバス"
+        case "thread_reply": tr("\(conversation) のスレッド")
+        case "canvas_mention": tr("\(conversation) のキャンバス")
         default: conversation
         }
     }

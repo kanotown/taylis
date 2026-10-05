@@ -17,26 +17,29 @@ enum SlashCommands {
         let known: Bool
     }
 
-    static let all: [Command] = [
-        Command(name: "status", usage: "/status [絵文字] 文", description: "ステータスを設定 (/status clear で消す)"),
-        Command(name: "dnd", usage: "/dnd 30m | 1h | 2h | 4h | tomorrow | off", description: "通知を一時停止"),
-        Command(name: "topic", usage: "/topic 文", description: "チャンネルのトピックを変更", channelOnly: true),
-        Command(name: "invite", usage: "/invite @名前 …", description: "メンバーを追加", channelOnly: true),
-        Command(name: "leave", usage: "/leave", description: "チャンネルから退出", channelOnly: true),
-        Command(name: "join", usage: "/join #チャンネル", description: "公開チャンネルに参加"),
-        Command(name: "dm", usage: "/dm @名前", description: "ダイレクトメッセージを開く"),
-        Command(name: "mute", usage: "/mute [1h | 8h | tomorrow]", description: "この会話の通知を止める"),
-        Command(name: "unmute", usage: "/unmute", description: "この会話の通知を再開"),
-        Command(name: "me", usage: "/me 文", description: "動作を斜体で投稿"),
-        Command(name: "shrug", usage: "/shrug [文]", description: "¯\\_(ツ)_/¯ を添えて投稿"),
-        Command(name: "poll", usage: "/poll 質問 | 選択肢 | 選択肢 …", description: "投票を作る"),
+    /// The slash command typed in Japanese (not translated: it is what people type).
+    static let scheduleName = "日程"  // i18n-ignore
+
+    static var all: [Command] { [
+        Command(name: "status", usage: tr("/status [絵文字] 文"), description: tr("ステータスを設定 (/status clear で消す)")),
+        Command(name: "dnd", usage: "/dnd 30m | 1h | 2h | 4h | tomorrow | off", description: tr("通知を一時停止")),
+        Command(name: "topic", usage: tr("/topic 文"), description: tr("チャンネルのトピックを変更"), channelOnly: true),
+        Command(name: "invite", usage: tr("/invite @名前 …"), description: tr("メンバーを追加"), channelOnly: true),
+        Command(name: "leave", usage: "/leave", description: tr("チャンネルから退出"), channelOnly: true),
+        Command(name: "join", usage: tr("/join #チャンネル"), description: tr("公開チャンネルに参加")),
+        Command(name: "dm", usage: tr("/dm @名前"), description: tr("ダイレクトメッセージを開く")),
+        Command(name: "mute", usage: "/mute [1h | 8h | tomorrow]", description: tr("この会話の通知を止める")),
+        Command(name: "unmute", usage: "/unmute", description: tr("この会話の通知を再開")),
+        Command(name: "me", usage: tr("/me 文"), description: tr("動作を斜体で投稿")),
+        Command(name: "shrug", usage: tr("/shrug [文]"), description: tr("¯\\_(ツ)_/¯ を添えて投稿")),
+        Command(name: "poll", usage: tr("/poll 質問 | 選択肢 | 選択肢 …"), description: tr("投票を作る")),
         // M54 (SCHEDULING.md): a scheduling poll; the form opens, with the dates (and times) typed after it as candidates.
-        Command(name: "日程", usage: "/日程 [題名] 日付 …", description: "日程調整を作る (候補に ○ △ × で答える)"),
-        Command(name: "help", usage: "/help", description: "コマンド一覧"),
-    ]
+        Command(name: scheduleName, usage: tr("/日程 [題名] 日付 …"), description: tr("日程調整を作る (候補に ○ △ × で答える)")),
+        Command(name: "help", usage: "/help", description: tr("コマンド一覧")),
+    ] }
 
     /// In a code span, so the underscores do not read as italics (the light markdown has no escapes).
-    static let shrug = "`¯\\_(ツ)_/¯`"
+    static let shrug = "`¯\\_(ツ)_/¯`"  // i18n-ignore
 
     // M30: any script, so `/日報` (a template) and `/日程` are commands too.
     private static let pattern = try! NSRegularExpression(pattern: #"^/([\p{L}\p{N}_-]+)(?:\s+([\s\S]*))?$"#)
@@ -75,7 +78,7 @@ enum SlashCommands {
     /// `30m`, `1h`, `2d`, `tomorrow` (08:00) → when a pause ends; nil for anything else.
     static func duration(_ arg: String, now: Date = Date()) -> Date? {
         let word = arg.trimmingCharacters(in: .whitespaces).lowercased()
-        if word == "tomorrow" || word == "明日" { return tomorrowMorning(now: now) }
+        if word == "tomorrow" || word == "明日" { return tomorrowMorning(now: now) }  // i18n-ignore
         let ns = word as NSString
         guard let match = durationPattern.firstMatch(in: word, range: NSRange(location: 0, length: ns.length)),
               let amount = Double(ns.substring(with: match.range(at: 1))) else { return nil }
