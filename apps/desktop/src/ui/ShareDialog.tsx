@@ -5,6 +5,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState, MessageState } from "../sync/types";
 import { useStoreUpdates } from "./hooks";
 import { Button, cn, Modal, Textarea } from "./primitives";
+import { t } from "../i18n";
 
 /** 「別のチャンネルに共有」(M13c): pick a conversation, add a comment, post the quote and permalink there. */
 export function ShareDialog({ controller, message, onClose }: { controller: AppController; message: MessageState; onClose: () => void }) {
@@ -20,7 +21,7 @@ export function ShareDialog({ controller, message, onClose }: { controller: AppC
 
   function label(channel: ChannelState): string {
     if (channel.type === "dm" || channel.type === "group_dm") {
-      return (channel.dm_user_ids ?? []).filter((id) => id !== me).map((id) => store.users.get(id)?.display_name ?? "?").join(", ") || "自分";
+      return (channel.dm_user_ids ?? []).filter((id) => id !== me).map((id) => store.users.get(id)?.display_name ?? "?").join(", ") || t("calendar.me");
     }
     return channel.name ?? "";
   }
@@ -34,9 +35,9 @@ export function ShareDialog({ controller, message, onClose }: { controller: AppC
   };
 
   return (
-    <Modal onClose={onClose} title="別のチャンネルに共有" description="引用とリンクを付けて、選んだ会話に投稿します。" className="w-[480px]">
+    <Modal onClose={onClose} title={t("share.title")} description={t("share.description")} className="w-[480px]">
       <div className="mt-4 space-y-3">
-        <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="コメント (任意)" rows={2} autoFocus />
+        <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t("share.comment")} rows={2} autoFocus />
         <ul className="max-h-64 overflow-y-auto rounded-xl border border-line">
           {targets.map((channel) => (
             <li key={channel.id}>
@@ -51,11 +52,11 @@ export function ShareDialog({ controller, message, onClose }: { controller: AppC
               </button>
             </li>
           ))}
-          {targets.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">共有先になる会話がありません</li>}
+          {targets.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("share.noTargets")}</li>}
         </ul>
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" size="sm" onClick={onClose}>キャンセル</Button>
-          <Button size="sm" disabled={busy || !targetId} onClick={() => void share()}>共有する</Button>
+          <Button variant="secondary" size="sm" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button size="sm" disabled={busy || !targetId} onClick={() => void share()}>{t("share.share")}</Button>
         </div>
       </div>
     </Modal>

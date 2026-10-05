@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { AVATAR_OUTPUT, clampCrop, type Crop, cropScale, MAX_ZOOM, type Size, sourceRect, zoomAt } from "./avatarCrop";
 import { Button, Modal } from "./primitives";
+import { t } from "../i18n";
 
 /** The crop square on screen (CSS px); the stage around it shows the rest of the picture, dimmed. */
 const FRAME = 240;
@@ -122,9 +123,9 @@ export function AvatarCropDialog({ file, onCancel, onDone }: { file: File; onCan
 
   const scale = size ? cropScale(size, FRAME, crop.zoom) : 1;
   return (
-    <Modal onClose={onCancel} title="写真の範囲を選ぶ" description="ドラッグで動かし、ピンチやスライダーで拡大できます" className="w-[420px]">
+    <Modal onClose={onCancel} title={t("crop.title")} description={t("crop.description")} className="w-[420px]">
       {failed ? (
-        <p className="mt-4 text-sm text-danger">この画像は読み込めませんでした。PNG・JPEG・GIF・WebP の写真を選んでください。</p>
+        <p className="mt-4 text-sm text-danger">{t("crop.failed")}</p>
       ) : (
         <>
           <div
@@ -149,13 +150,13 @@ export function AvatarCropDialog({ file, onCancel, onDone }: { file: File; onCan
               className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[22%] shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] ring-2 ring-white/90"
               style={{ width: FRAME, height: FRAME }}
             />
-            {!image && <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">読み込み中…</div>}
+            {!image && <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">{t("common.loading")}</div>}
           </div>
           <div className="mt-4 flex items-center gap-3 text-muted">
             <Minus size={16} />
             <input
               type="range"
-              aria-label="拡大"
+              aria-label={t("docPreview.zoomIn")}
               min={1}
               max={MAX_ZOOM}
               step={0.01}
@@ -169,8 +170,8 @@ export function AvatarCropDialog({ file, onCancel, onDone }: { file: File; onCan
         </>
       )}
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onCancel}>キャンセル</Button>
-        <Button disabled={!image || failed || busy} onClick={save}>設定する</Button>
+        <Button variant="secondary" onClick={onCancel}>{t("common.cancel")}</Button>
+        <Button disabled={!image || failed || busy} onClick={save}>{t("crop.set")}</Button>
       </div>
     </Modal>
   );
