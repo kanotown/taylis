@@ -1,0 +1,5 @@
+# The documentation site (website/). Pinned so the GitHub Pages build is reproducible:
+#   python -m pip install -r website/requirements.txt && mkdocs build --strict -f website/mkdocs.yml
+mkdocs==1.6.1
+mkdocs-material==9.7.7
+mkdocs-static-i18n==1.3.1
