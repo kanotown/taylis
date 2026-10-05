@@ -95,7 +95,9 @@ uv run --with pyjwt --with cryptography --with httpx python apps/ios/scripts/asc
   テキスト・サポート URL・マーケティング URL (新機能は最初の版なので入れない)、名前 (JSON が null ならそのまま)・
   サブタイトル・プライバシーポリシー URL、カテゴリ (ビジネス / 仕事効率化)、年齢区分の質問の回答、App Review の情報、
   スクリーンショット (iPhone 6.9 インチ = `APP_IPHONE_67`、1320 × 2868。ファイルの一覧と順番は JSON の
-  `screenshots.files`、置き場所は `screenshots.dir`)。
+  `screenshots.files`、置き場所は `screenshots.dir`)。M109 からアプリは iPad にも対応するので、13 インチの iPad の
+  スクリーンショット (2064 × 2752 / 2752 × 2064) も要る。スクリプトはまだ iPhone の 1 組だけなので、iPad の組は手で上げる
+  (docs/store/README.md「スクリーンショット」)。
 - 何度走らせてもよい: 今の値と比べて違うところだけ書く。スクリーンショットは MD5 で比べ、同じものは残し、一覧に無いものは
   消し、足りないものを上げて、JSON の順に並べる。途中で失敗しても直してもう一度走らせればよい。
 - 一部だけ: `--only screenshots` / `--skip age,review` (手順: version, build, texts, appinfo, categories, age, review,
