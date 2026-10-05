@@ -99,7 +99,7 @@ CREATE TABLE users (
   nav_items             jsonb,                  -- M111 サイドバーの項目 / ホームのタイルの順と表示 [{key, visible}] (64 個まで、key は ^[a-z][a-z0-9-]{0,31}$ で重複なし、知らない key もそのまま保存)。NULL = 既定 (apps/shared/nav-items.json、MOBILE_UI.md §14)
   avatar_key         text,                          -- プロフィール画像のオブジェクトキー (avatars/<user_id>/<uuid>、M14a)
   avatar_updated_at  timestamptz,                   -- 画像の版。UserPublic に載り、クライアントはこれでキャッシュする
-  bot_kind              varchar(16),            -- M98 bot の用途。'feed' = チャンネルのフィードのボット (UserPublic.bot_kind、リンクプレビューを自動で取る。SECURITY.md §14)、'reservation' = チャンネルの予約のボット (M99、RESERVATIONS.md)。それ以外の bot と人は NULL
+  bot_kind              varchar(16),            -- M98 bot の用途。'feed' = チャンネルのフィードのボット (UserPublic.bot_kind、リンクプレビューを自動で取る。SECURITY.md §14)、'reservation' = 予約の記録のチャンネルのボット (M99、M112、RESERVATIONS.md)。それ以外の bot と人は NULL
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
   deactivated_at        timestamptz                       -- 無効化 (ログイン不可、表示は残す)
@@ -600,26 +600,30 @@ CREATE TABLE channel_feed_bots (
   有効に戻ってチャンネルに入る。`channel_feeds.bot_user_id` はこのボットと同じ (選び直すと全部書き換える)。
 - 移行 0077 で今あるフィードのボットから作り、それらの `users.bot_kind` を `'feed'` にした (`updated_at` も進める)。
 
-### reservation_pools / reservation_bots / reservations (共有枠の予約、M99、RESERVATIONS.md)
+### reservation_pools / reservation_bots / reservations / reservation_notices (共有枠の予約、M99 → M112、RESERVATIONS.md)
 
 ```sql
-CREATE TABLE reservation_pools (
-  id             uuid PRIMARY KEY,
-  channel_id     uuid NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
-  name           varchar(80) NOT NULL,                 -- 例「Claude Premium シート」
-  capacity       integer NOT NULL CHECK (capacity >= 1),  -- 枠の数 (1〜100)
-  min_hours      integer NOT NULL,                     -- 割り当てからの最低保証 (0〜720 時間、既定 6)
-  grace_minutes  integer NOT NULL,                     -- 保証を過ぎた人への猶予 (0〜1440 分、既定 15)
-  tz             varchar(64) NOT NULL,                 -- ボットの投稿と DM の時刻の書き方 (作った端末のゾーン)
-  operator_ids   uuid[] NOT NULL DEFAULT '{}',         -- 担当者 (チャンネルのメンバー、20 人まで)
-  enabled        boolean NOT NULL DEFAULT true,        -- false: 新しい予約を受け付けない (今の人はそのまま)
-  created_by     uuid NOT NULL REFERENCES users(id),
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  updated_at     timestamptz NOT NULL DEFAULT now()
+CREATE TABLE reservation_pools (                       -- M112: ワークスペースの枠 (チャンネルのものではない、20 個まで)
+  id                     uuid PRIMARY KEY,
+  name                   varchar(80) NOT NULL,                 -- 例「Claude Premium シート」
+  capacity               integer NOT NULL CHECK (capacity >= 1),  -- 枠の数 (1〜100)
+  min_hours              integer NOT NULL,                     -- 今すぐ (walk-in) の割り当てからの保証 (0〜720 時間、既定 6)
+  max_hours              integer NOT NULL DEFAULT 6 CHECK (max_hours >= 1),  -- M112 予約の最長 (1〜24 時間)
+  grace_minutes          integer NOT NULL,                     -- 保証を過ぎた今すぐの人への猶予 (0〜1440 分、既定 15)
+  tz                     varchar(64) NOT NULL,                 -- 予約の格子 (毎時 0 分) と知らせの時刻のゾーン (作った端末の)
+  operator_ids           uuid[] NOT NULL DEFAULT '{}',         -- 担当者 (有効なメンバー、ゲスト・ボット不可、20 人まで)
+  enabled                boolean NOT NULL DEFAULT true,        -- false: 新しい予約・待ちを受け付けない (今の人はそのまま)
+  log_channel_id         uuid REFERENCES channels(id) ON DELETE SET NULL,  -- M112 記録のチャンネル (任意。NULL: どこにも書かない)
+  visibility             varchar(16) NOT NULL DEFAULT 'all'    -- M112 all / channel / group
+                         CHECK (visibility IN ('all', 'channel', 'group')),
+  visibility_channel_id  uuid REFERENCES channels(id) ON DELETE SET NULL,    -- channel: このチャンネルのメンバーに見える
+  visibility_group_id    uuid REFERENCES user_groups(id) ON DELETE SET NULL, -- group: このグループのメンバーに見える
+  created_by             uuid NOT NULL REFERENCES users(id),   -- 作った人 (管理者と同じく設定を変えられる)
+  created_at             timestamptz NOT NULL DEFAULT now(),
+  updated_at             timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX reservation_pools_channel_idx ON reservation_pools (channel_id);
 
-CREATE TABLE reservation_bots (
+CREATE TABLE reservation_bots (                        -- 記録のチャンネルのボット (チャンネルに 1 つ)
   channel_id   uuid PRIMARY KEY REFERENCES channels(id) ON DELETE CASCADE,
   bot_user_id  uuid NOT NULL UNIQUE REFERENCES users(id),   -- role = bot、bot_kind = 'reservation'、名前「予約」
   created_at   timestamptz NOT NULL DEFAULT now()
@@ -628,35 +632,59 @@ CREATE TABLE reservation_bots (
 CREATE TABLE reservations (
   id                 uuid PRIMARY KEY,
   pool_id            uuid NOT NULL REFERENCES reservation_pools(id) ON DELETE CASCADE,
-  channel_id         uuid NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
   user_id            uuid NOT NULL REFERENCES users(id),
-  status             varchar(16) NOT NULL,   -- waiting / holding / returning / done / cancelled
-  requested_at       timestamptz NOT NULL,   -- 順番はこの順 (同じなら id)
+  kind               varchar(8) NOT NULL DEFAULT 'walkin',  -- M112 walkin (今すぐの順番待ち) / booking (時間の予約)
+  status             varchar(16) NOT NULL,   -- waiting / booked / holding / returning / done / cancelled
+  requested_at       timestamptz NOT NULL,   -- 順番待ちはこの順 (同じなら id)
+  start_at           timestamptz,            -- M112 予約の開始 (毎時 0 分)
+  end_at             timestamptz,            -- M112 予約の終わり (延長で動く)
   assigned_at        timestamptz,            -- 「割り当てた」
   assigned_by        uuid REFERENCES users(id),
-  guarantee_until    timestamptz,            -- assigned_at + その時の min_hours (固定)
+  guarantee_until    timestamptz,            -- 今すぐ: min(assigned_at + min_hours, 予約がその枠を必要とする時刻)。予約: end_at
   returned_at        timestamptz,            -- 「返却する」
-  evict_notice_at    timestamptz,            -- 保証を過ぎ、待つ人のために「外す」と知らせた時刻
-  evict_at           timestamptz,            -- その猶予の終わり
-  ready_notified_at  timestamptz,            -- 担当者に「割り当てて / 入れ替えて / 外して」と知らせた (1 回)
+  evict_notice_at    timestamptz,            -- 今すぐの人に「外す」と知らせた時刻
+  evict_at           timestamptz,            -- 外す時刻 (待つ人のため: 知らせ + 猶予、予約のため: その開始)
   ended_at           timestamptz,
   ended_by           uuid REFERENCES users(id),
-  end_reason         varchar(16),            -- cancelled / returned / removed
+  end_reason         varchar(16),            -- cancelled / returned / removed / expired (予約が割り当てられないまま終わった)
   created_at         timestamptz NOT NULL DEFAULT now(),
   updated_at         timestamptz NOT NULL DEFAULT now(),
-  CHECK (status IN ('waiting', 'holding', 'returning', 'done', 'cancelled'))
+  CHECK (status IN ('waiting', 'booked', 'holding', 'returning', 'done', 'cancelled')),
+  CHECK (kind IN ('walkin', 'booking') AND (kind = 'walkin' OR (start_at IS NOT NULL AND end_at > start_at)))
 );
-CREATE UNIQUE INDEX reservations_active_uniq ON reservations (pool_id, user_id)
-  WHERE status IN ('waiting', 'holding', 'returning');          -- 1 人 1 枠
+CREATE UNIQUE INDEX reservations_walkin_uniq ON reservations (pool_id, user_id)
+  WHERE kind = 'walkin' AND status IN ('waiting', 'holding', 'returning');   -- 順番待ちは 1 人 1 枠に 1 つ
 CREATE INDEX reservations_pool_active_idx ON reservations (pool_id, status)
-  WHERE status IN ('waiting', 'holding', 'returning');
+  WHERE status IN ('waiting', 'booked', 'holding', 'returning');
+CREATE INDEX reservations_pool_end_idx ON reservations (pool_id, end_at);
 CREATE INDEX reservations_user_idx ON reservations (user_id);
+
+CREATE TABLE reservation_notices (                     -- M112 アクティビティの項目 (種類 reservation)
+  id              uuid PRIMARY KEY,
+  user_id         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  pool_id         uuid NOT NULL REFERENCES reservation_pools(id) ON DELETE CASCADE,
+  reservation_id  uuid REFERENCES reservations(id) ON DELETE CASCADE,
+  key             varchar(200) NOT NULL,     -- 担当者: assign:<id> / swap:<id>:<id> / remove:<id> / booking:<id>、本人: <id>/assigned など
+  operator        boolean NOT NULL DEFAULT false,  -- 担当者の作業 (全員に同じ key で送り、片付いたら全員の分を済みに)
+  text            text NOT NULL,             -- 日本語の 1 行 (サーバが書く。プッシュの本文も同じ)
+  at              timestamptz NOT NULL,
+  done_at         timestamptz,               -- 担当者の作業が済んだ (誰かが押した、またはもう要らない)
+  done_by         uuid REFERENCES users(id) ON DELETE SET NULL,  -- 押した人 (NULL: ひとりでに)
+  UNIQUE (user_id, key)                      -- 1 人に同じ知らせは 1 回
+);
+CREATE INDEX reservation_notices_user_idx ON reservation_notices (user_id, at DESC);
+CREATE INDEX reservation_notices_open_idx ON reservation_notices (pool_id) WHERE operator AND done_at IS NULL;
 ```
 
-- 枠は 1 チャンネルに 5 個まで。ボットはチャンネルに 1 つで、最初の枠と一緒に作り、枠を消しても残る。
-- 終わった行 (done / cancelled) は履歴として残す。枠を消すと行も消える (ボットの投稿は残る)。
-- 変更はすべて枠の行を `FOR UPDATE` でロックしてから行う (担当者の同時の操作、worker)。順番の決め方は RESERVATIONS.md §4。
-- 変更は `reservation.updated` (channel) で知らせ、端末は読み直す (カードは人ごとに違う)。
+- 1 人 1 枠につき予約は 2 件まで (予約中・利用中)、自分の予約どうしは重ならない (サービスで検査)。枠の数の検査は 1 時間ごと
+  (予約 + 保証のかかる今すぐの人 < 枠の数、RESERVATIONS.md §4)。
+- 記録のチャンネルのボットはチャンネルに 1 つで、そのチャンネルを初めて記録先にしたときに作り、外しても残る。
+- 終わった行 (done / cancelled) は履歴として残す。枠を消すと行と知らせも消える (ボットの投稿は残る)。
+- 変更はすべて枠の行を `FOR UPDATE` でロックしてから行う (同時の予約・担当者の同時の操作、worker)。
+- 変更は `reservation.updated` (all) で知らせ、端末は `GET /reservation-pools` を読み直す (中身は人ごとに違う)。知らせは
+  `reservation_notices` の行と `reservation.notice` (user) を同じトランザクションで書く。済みは `activity.updated`。
+- 移行 0084: 枠の `channel_id` は消え、非公開チャンネルの枠は `visibility = channel` (そのチャンネル)、ほかは `all`。記録の
+  チャンネルは空。`reservations.channel_id` と `ready_notified_at` は消え、今ある行は `kind = walkin`。
 
 ### channel_favorites (お気に入りチャンネル、M12a)
 

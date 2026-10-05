@@ -233,7 +233,7 @@
 | `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count, first_unread_at, reason }` |
 | `bookmark.updated` | user | — | `{ message_id, channel_id, bookmarked }` (M11c)。自分の他端末が保存 / 解除したときに届く |
 | `activity.read` | user | — | `{ read_at }` (M39)。アクティビティの既読位置が進んだ (自分の他端末から)。クライアントはバッジを取り直す |
-| `activity.updated` | user | — | `{ item_ids }` (Review v0.1.22)。持っているアクティビティの項目が書き換わった (今はキャンバスの版の本文の消去で抜粋が空になったとき、CANVAS.md §20.8)。一覧を表示・保持していれば読み直す。バッジは変わらない |
+| `activity.updated` | user | — | `{ item_ids }` (Review v0.1.22)。持っているアクティビティの項目が書き換わった (キャンバスの版の本文の消去で抜粋が空になったとき、CANVAS.md §20.8。M112: 予約の担当者の作業が済んだとき、RESERVATIONS.md §5)。一覧を表示・保持していれば読み直す (予約の項目は「対応済み」に)。M112 からバッジも読み直す (済んだ作業は未読に数えない) |
 | `reaction.added` | user (投稿者) | — | `{ channel_id, message_id, user_id, emoji, at }` (M39)。他の人が自分の投稿にリアクションした。アクティビティのバッジを取り直す (`GET /activity/summary`)。外したときは送らない (一覧は表から作るので消える) |
 | `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く |
 | `block.updated` | user | — | `{ user_id, blocked }` (M104、docs/MODERATION.md §4)。自分がブロック / 解除したとき自分の全端末に届く。ブロックされた人には届かない |
@@ -256,7 +256,8 @@
 | `task.deleted` | channel (自分用: user) | — | `{ id, channel_id }` (M55)。手元から消す |
 | `task.assigned` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id, kind }` (M55。`kind` は L9、M63)。ほかの人が自分を担当に加えた (自分で加えたときは出ない)。DM のタスクの `channel_name` は空文字。アプリ内でも通知する (プッシュは PushPlanner) |
 | `task.review_done` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id }` (L9、M63)。自分が出したレビュー依頼を依頼先が完了にした。アプリ内でも通知する (REVIEWS.md §4) |
-| `reservation.updated` | channel | — | `{ channel_id, pool_id, deleted }` (M99、RESERVATIONS.md §5)。チャンネルの予約の枠が変わった (設定・待ち・利用中、`deleted` なら枠が消えた)。カードは人ごとに違う (自分の状態、担当者だけのアドレス) のでイベントには載せない: その会話の枠を持っている (開いたことがある) か開いている端末は `GET /channels/{id}/reservation-pools` で読み直す。会話を開いたとき・再接続のあとも読む |
+| `reservation.updated` | all | — | `{ pool_id, deleted }` (M99 → M112、RESERVATIONS.md §7)。ワークスペースの予約の枠が変わった (設定・予約・待ち・利用中、`deleted` なら枠が消えた)。中身は人ごとに違う (自分の予約、担当者だけのアドレスと作業) ので載せない。端末は `GET /reservation-pools` で読み直す (続けて届いたものは 300 ms で 1 回にまとめる)。bootstrap のたびにも読む。M99〜M111 の端末は `channel_id` が無いので読まない (`GET /channels/{id}/reservation-pools` はいつも空) |
+| `reservation.notice` | user | — | `{ item_id, pool_id, reservation_id, text, operator, at }` (M112)。自分あての予約の知らせ (担当者の作業か、自分の予約・利用のこと)。アクティビティの項目 (種類 `reservation`、`include=reservation`) が増えたのでバッジを読み直し、開いている端末はバナー / 通知を出す (プッシュは PUSH_NOTIFICATIONS.md §4)。ほかの担当者が対応して済みになった項目は `activity.updated` の `item_ids` に入る |
 | `task.due` | user | — | `{ task_id, channel_id, channel_name, title, due_on }` (M55)。担当 (自分用は自分) の未完了のタスクの期限の日の 8:00。1 回だけ。アプリ内でも通知する |
 | `draft.updated` | user | — | `{ channel_id, parent_id, body, updated_at, deleted }` (M15d)。自分の端末が下書きを保存 / 削除した (`deleted` なら `body` は空)。取り込み方は §8 |
 | `ai.run_updated` | user (頼んだ人) | — | `{ run: AiRunOut }` (M65、docs/AI.md §5)。要約の状態が変わるたび (running、done、failed)。メンションの run は出さない (返事はふつうのメッセージ)。取りこぼしうるので、開いている要約は再接続のあと `GET /ai/runs/{id}` で読み直す |
