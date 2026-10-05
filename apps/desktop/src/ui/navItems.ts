@@ -2,6 +2,7 @@
  * M111: the sidebar's menu items, mine on every device (UserMe.nav_items). The catalogue, the default order and the rule are
  * apps/shared/nav-items.json (the same in the three clients; tests/navItems.test.ts checks this copy against it).
  */
+import { type MessageKey, t } from "../i18n";
 
 export interface NavItem {
   key: string;
@@ -42,8 +43,24 @@ export const DESKTOP_NAV_KEYS: readonly string[] = ["threads", "activity", "draf
 
 const byKey = new Map(NAV_CATALOGUE.map((item) => [item.key, item]));
 
+/** The UI language's name of each item (the catalogue's labels are apps/shared/nav-items.json's, in Japanese). */
+const LABEL_KEYS: Readonly<Record<string, MessageKey>> = {
+  threads: "nav.threads",
+  activity: "nav.activity",
+  drafts: "nav.drafts",
+  saved: "nav.saved",
+  reminders: "nav.reminders",
+  files: "nav.files",
+  canvases: "nav.canvases",
+  calendar: "nav.calendar",
+  tasks: "nav.tasks",
+  deadlines: "nav.deadlines",
+  reservations: "nav.reservations",
+};
+
 export function navLabel(key: string): string {
-  return byKey.get(key)?.label ?? key;
+  const message = LABEL_KEYS[key];
+  return message ? t(message) : byKey.get(key)?.label ?? key;
 }
 
 /**

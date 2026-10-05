@@ -1,7 +1,7 @@
 /** Presentation helpers shared by the timeline, sidebar and dialogs. */
 import type { MessageState } from "../sync/types";
+import { t, weekdayName } from "../i18n";
 
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
 export function dayKey(iso: string, now = new Date()): string {
   const date = new Date(iso);
@@ -17,16 +17,15 @@ export function dateLabel(iso: string, now = new Date()): string {
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   const key = dayKey(iso, now);
-  if (key === today) return "今日";
-  if (key === dayKey(yesterday.toISOString(), now)) return "昨日";
-  const weekday = WEEKDAYS[date.getDay()] ?? "";
-  const md = `${date.getMonth() + 1}月${date.getDate()}日 (${weekday})`;
-  return date.getFullYear() === now.getFullYear() ? md : `${date.getFullYear()}年${md}`;
+  if (key === today) return t("common.today");
+  if (key === dayKey(yesterday.toISOString(), now)) return t("search.date.yesterday");
+  const params = { year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), weekday: weekdayName((date.getDay() + 6) % 7) };
+  return date.getFullYear() === now.getFullYear() ? t("format.dateLabel", params) : t("format.dateLabelYear", params);
 }
 
 export function timeLabel(iso: string): string {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "送信中…";
+  if (Number.isNaN(date.getTime())) return t("format.sending");
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
@@ -37,19 +36,19 @@ export function timeLabel(iso: string): string {
 export function sinceLabel(iso: string, now = new Date()): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  const t = timeLabel(iso);
+  const time = timeLabel(iso);
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   const key = dayKey(iso, now);
-  if (key === dayKey(now.toISOString(), now)) return t;
-  if (key === dayKey(yesterday.toISOString(), now)) return `昨日 ${t}`;
-  return `${dateLabel(iso, now)} ${t}`;
+  if (key === dayKey(now.toISOString(), now)) return time;
+  if (key === dayKey(yesterday.toISOString(), now)) return `${t("search.date.yesterday")} ${time}`;
+  return `${dateLabel(iso, now)} ${time}`;
 }
 
 /** C3: the thread line's 「最終返信 今日 14:05」 (昨日 14:05, 9月26日 (金) 14:05, as the day separators say it). */
 export function lastReplyLabel(iso: string, now = new Date()): string {
   const day = dateLabel(iso, now);
-  return day ? `最終返信 ${day} ${timeLabel(iso)}` : "";
+  return day ? t("timeline.lastReply", { at: `${day} ${timeLabel(iso)}` }) : "";
 }
 
 /** 1234 → "1,234": ASCII commas whatever the locale. */
@@ -62,20 +61,20 @@ export function group3(n: number): string {
  * 「ほか N 人」 (「山田、佐藤、鈴木 ほか 2 人」). The full list is a tap or a hover away wherever this is shown.
  */
 export function compactNames(names: readonly string[], max = 3): string {
-  const shown = names.slice(0, max).join("、");
-  return names.length > max ? `${shown} ほか ${names.length - max} 人` : shown;
+  const shown = names.slice(0, max).join(t("common.listSeparator"));
+  return names.length > max ? t("activity.andOthers", { name: shown, count: names.length - max }) : shown;
 }
 
 /** 「山田、佐藤 が確認」 / 「山田、佐藤、鈴木 ほか 2 人が確認」: who acknowledged a message (M27; empty when nobody did). */
 export function ackLine(names: readonly string[], max = 3): string {
   if (names.length === 0) return "";
-  return names.length > max ? `${compactNames(names, max)}が確認` : `${compactNames(names, max)} が確認`;
+  return names.length > max ? t("format.ackedMany", { names: compactNames(names, max) }) : t("format.acked", { names: compactNames(names, max) });
 }
 
 /** 「未読 2,000 件 · 10:23 以降」; without the time when the server sent none (older servers). */
 export function bannerText(n: number, firstUnreadAt: string | null | undefined, now = new Date()): string {
   const since = firstUnreadAt ? sinceLabel(firstUnreadAt, now) : "";
-  return `未読 ${group3(n)} 件` + (since ? ` · ${since} 以降` : "");
+  return t("format.unreadCount", { count: group3(n) }) + (since ? t("format.since", { since }) : "");
 }
 
 export function fullTimestamp(iso: string): string {
@@ -176,7 +175,7 @@ export function formatMuted(mutedUntil: string | null): string | null {
   if (!mutedUntil) return null;
   const until = new Date(mutedUntil);
   if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now()) return null;
-  return `${timeLabel(mutedUntil)} までミュート`;
+  return t("format.mutedUntil", { time: timeLabel(mutedUntil) });
 }
 
 /**

@@ -10,6 +10,7 @@ import { matchScore } from "./jumpMatch";
 import { ConversationRowBody } from "./JumpView";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { Button, cn, IconButton } from "./primitives";
+import { t } from "../i18n";
 
 /** The most people a group DM takes besides me (as the new-DM dialog). */
 const GROUP_MAX = 8;
@@ -74,15 +75,15 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
   const nothing = !showSelf && (!showChannels || (mine.length === 0 && joinable.length === 0)) && people.length === 0;
 
   return (
-    <section role="dialog" aria-label="新しいメッセージ" className="fixed inset-0 z-40 flex flex-col bg-canvas text-ink" onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
+    <section role="dialog" aria-label={t("home.newMessage")} className="fixed inset-0 z-40 flex flex-col bg-canvas text-ink" onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
       <div className="flex h-[52px] shrink-0 items-center gap-1 border-b border-line pl-2 pr-3">
-        <IconButton label="戻る" className="h-11 w-11" onClick={onClose}>
+        <IconButton label={t("common.back")} className="h-11 w-11" onClick={onClose}>
           <ArrowLeft size={20} />
         </IconButton>
-        <strong className="min-w-0 flex-1 truncate text-[17px]">新しいメッセージ</strong>
+        <strong className="min-w-0 flex-1 truncate text-[17px]">{t("home.newMessage")}</strong>
         {selected.length > 0 && (
           <Button size="sm" disabled={busy || selected.length > GROUP_MAX} onClick={() => void openDm(selected)}>
-            開く
+            {t("dialogs.open")}
           </Button>
         )}
       </div>
@@ -95,7 +96,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
               <span key={id} className="flex items-center gap-1 rounded-lg bg-accent-soft py-0.5 pl-1 pr-1.5 text-[13px] text-ink">
                 <Avatar id={id} name={user?.display_name ?? "?"} size={18} className="rounded text-[8px]" />
                 {user?.display_name ?? "…"}
-                <button type="button" aria-label={`${user?.display_name ?? ""} を外す`} className="rounded text-muted hover:text-ink" onClick={() => toggle(id)}>
+                <button type="button" aria-label={t("workflow.removePerson", { name: user?.display_name ?? "" })} className="rounded text-muted hover:text-ink" onClick={() => toggle(id)}>
                   <X size={13} />
                 </button>
               </span>
@@ -108,12 +109,12 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
             onKeyDown={(e) => {
               if (e.key === "Backspace" && !text && selected.length > 0) setSelected((s) => s.slice(0, -1));
             }}
-            placeholder={selected.length ? "ほかの人を追加" : "宛先: チャンネル名や人の名前"}
-            aria-label="宛先"
+            placeholder={selected.length ? t("newMessage.addMore") : t("newMessage.to")}
+            aria-label={t("newMessage.recipients")}
             className="min-w-24 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-muted"
           />
         </div>
-        {selected.length > GROUP_MAX && <p className="mt-1.5 text-xs text-danger">グループ DM は自分のほかに {GROUP_MAX} 人までです</p>}
+        {selected.length > GROUP_MAX && <p className="mt-1.5 text-xs text-danger">{t("newMessage.groupMax", { max: GROUP_MAX })}</p>}
         {error && <p className="mt-1.5 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-6">
@@ -128,7 +129,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
         )}
         {showChannels && mine.length > 0 && (
           <>
-            {heading("チャンネル")}
+            {heading(t("sidebar.channels"))}
             {mine.map((channel) => (
               <button key={channel.id} type="button" data-pick="channel" onClick={() => onOpen(channel.id)} className={PICK_ROW}>
                 <ConversationRowBody controller={controller} channel={channel} meId={meId} />
@@ -138,7 +139,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
         )}
         {showChannels && joinable.length > 0 && (
           <>
-            {heading("参加できるチャンネル")}
+            {heading(t("sidebar.joinable"))}
             {joinable.map((channel) => (
               <button key={channel.id} type="button" data-pick="joinable" onClick={() => onOpen(channel.id)} className={cn(PICK_ROW, "text-ink/80")}>
                 <ConversationRowBody controller={controller} channel={channel} meId={meId} />
@@ -148,7 +149,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
         )}
         {people.length > 0 && (
           <>
-            {heading(selected.length ? "人 (複数選ぶとグループ DM)" : "人")}
+            {heading(selected.length ? t("newMessage.peopleGroup") : t("jump.people"))}
             {people.map((user) => {
               const on = selected.includes(user.id);
               return (
@@ -164,7 +165,7 @@ export function NewMessageView({ controller, onOpen, onClose }: { controller: Ap
             })}
           </>
         )}
-        {nothing && <p className="px-6 py-12 text-center text-sm text-muted">一致する宛先はありません</p>}
+        {nothing && <p className="px-6 py-12 text-center text-sm text-muted">{t("newMessage.noMatch")}</p>}
       </div>
     </section>
   );
