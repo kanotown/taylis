@@ -40,6 +40,8 @@ async def get_auth_context(
     request.state.user_id = str(context.user.id)
     request.state.session_id = str(context.session.id)
     request.state.user_locale = context.user.locale  # M115: errors in the chosen language
+    # M116 (docs/ANALYTICS.md §2): "last active", throttled in memory and written in batches.
+    request.app.state.activity.touch(context.user.id)
     return context
 
 

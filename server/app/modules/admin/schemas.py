@@ -37,6 +37,9 @@ class AdminUserOut(BaseModel):
     deactivated_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # M116 (docs/ANALYTICS.md §2): the last sign-in and the last use of an app (null = never).
+    last_login_at: datetime | None = None
+    last_active_at: datetime | None = None
 
 
 class AdminUserCreated(BaseModel):
@@ -60,4 +63,6 @@ def to_admin_out(user: User, *, totp_enabled: bool = False) -> AdminUserOut:
         deactivated_at=user.deactivated_at,
         created_at=user.created_at,
         updated_at=user.updated_at,
+        last_login_at=user.last_login_at,
+        last_active_at=user.last_active_at,
     )

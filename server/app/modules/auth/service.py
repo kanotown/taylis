@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, conflict, not_found, unauthorized
@@ -38,6 +39,11 @@ from app.modules.users.models import User
 from app.modules.users.schemas import to_user_me
 
 log = logging.getLogger("app.auth")
+
+_MARK_LOGIN = text(
+    "UPDATE users SET last_login_at = :now, "
+    "last_active_at = GREATEST(COALESCE(last_active_at, :now), :now) WHERE id = :id"
+)
 
 
 @dataclass(frozen=True)
@@ -145,6 +151,9 @@ async def open_session(
         + timedelta(days=min(settings.refresh_token_ttl_days, settings.refresh_token_max_days)),
     )
     db.add(session)
+    # M116 (docs/ANALYTICS.md §2): a sign-in is a new session; refreshing one is not.
+    # Plain SQL: the ORM would also move updated_at (the profile's version) for it.
+    await db.execute(_MARK_LOGIN, {"id": user.id, "now": now})
     await db.commit()
     return _token_response(user, session, device, refresh_token, settings, now)
 

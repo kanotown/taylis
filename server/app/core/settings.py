@@ -171,6 +171,12 @@ class Settings(BaseSettings):
     feed_user_agent: str = "Taylis-Feeds/1.0 (+https://github.com/chikuwachat)"
     session_retention_days: int = 30
     device_retention_days: int = 90
+    # M116 (docs/ANALYTICS.md): users.last_active_at and the hourly activity rows are written at
+    # most once per this many seconds per person (an in-memory throttle), in batches every
+    # activity_flush_interval_seconds; the hourly rows are kept for activity_retention_days.
+    activity_write_interval_seconds: float = 300.0
+    activity_flush_interval_seconds: float = 60.0
+    activity_retention_days: int = 120
 
     # AI (docs/AI.md, M65): the Anthropic API key lives in a secret file only (never the DB or the
     # clients); without it the AI features report unavailable. Budget per calendar month (UTC)
