@@ -360,25 +360,25 @@ async def test_booking_start_end_and_the_walkin_it_replaces(
 ) -> None:
     s = await _setup(client, db, as_user, capacity=1)
     pid = s["pid"]
-    # Alice books 2 hours from the next hour; Bob walks in now.
+    # Alice books 2 hours from the hour after next (well past the 10 minutes); Bob walks in now.
     as_user(s["alice"])
-    pool = (await _book(client, pid, _hour(1), 2)).json()
+    pool = (await _book(client, pid, _hour(2), 2)).json()
     bid = _mine(pool, s["alice"])[0]["id"]
     as_user(s["bob"])
     pool = (await client.post(f"/api/v1/reservation-pools/{pid}/reserve")).json()
     walk = pool["my_reservation_id"]
     waiting = pool["waiting"][0]
     assert waiting["step"] == "assign"
-    assert datetime.fromisoformat(waiting["until"]) == _hour(1)  # 「〜HH:00 まで」
+    assert datetime.fromisoformat(waiting["until"]) == _hour(2)  # 「〜HH:00 まで」
     as_user(s["op"])
     pool = (await client.post(f"/api/v1/reservations/{walk}/assign")).json()
-    assert datetime.fromisoformat(pool["holders"][0]["guarantee_until"]) == _hour(1)
+    assert datetime.fromisoformat(pool["holders"][0]["guarantee_until"]) == _hour(2)
     # Another booking cannot take the walk-in's guaranteed time... but after it, it can.
     as_user(s["carol"])
     taken = await _book(client, pid, _hour(0), 1)
     assert taken.json()["error"]["code"] == "reservation_slot_full"
     # Ten minutes before the booking: the operators hear once, Bob is told when he goes.
-    start = _hour(1)
+    start = _hour(2)
     assert await _tick(app, start - timedelta(minutes=11)) == 0
     assert await _tick(app, start - timedelta(minutes=10)) == 1
     assert await _tick(app, start - timedelta(minutes=9)) == 0
