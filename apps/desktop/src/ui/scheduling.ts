@@ -6,6 +6,7 @@
 import type { PollAnswer, PollOut, ScheduleSlotIn } from "../api/types";
 import { addDays, type DayKey, dayKey, parseDay } from "./calendarDates";
 import type { ScheduleEntry } from "./templates";
+import { t, weekdayName } from "../i18n";
 
 /** The server's limits (messages/schedule.py). */
 export const MIN_SLOTS = 2;
@@ -23,10 +24,10 @@ export const DURATIONS: readonly number[] = [15, 30, 45, 60, 90, 120, 180, 240, 
 export function durationLabel(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  if (hours === 0) return `${rest} 分`;
-  if (rest === 0) return `${hours} 時間`;
-  if (rest === 30) return `${hours} 時間半`;
-  return `${hours} 時間 ${rest} 分`;
+  if (hours === 0) return t("duration.minutes", { minutes: rest });
+  if (rest === 0) return t("duration.hours", { hours });
+  if (rest === 30) return t("duration.hoursHalf", { hours });
+  return t("duration.hoursMinutes", { hours, minutes: rest });
 }
 
 /** One candidate in the form: a day, and its start and length (or the whole day). */
@@ -38,7 +39,6 @@ export interface SlotDraft {
   minutes: number;
 }
 
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 const pad = (n: number) => String(n).padStart(2, "0");
 const TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
@@ -55,20 +55,20 @@ const clock = (date: Date) => `${date.getHours()}:${pad(date.getMinutes())}`;
 /** 「10/3 (土)」. */
 export function shortDay(day: DayKey): string {
   const date = parseDay(day);
-  return `${date.getMonth() + 1}/${date.getDate()} (${WEEKDAYS[date.getDay()]})`;
+  return t("common.monthDayWeekday", { month: date.getMonth() + 1, day: date.getDate(), weekday: weekdayName((date.getDay() + 6) % 7) });
 }
 
 /** 「10/3 (土) 14:00〜15:00」, 「10/5 (月) 終日」, past midnight 「22:00〜24:00」 / 「23:00〜翌1:30」 (the server's rule). */
 export function slotLabel(slot: SlotDraft): string {
-  if (slot.allDay) return `${shortDay(slot.day)} 終日`;
+  if (slot.allDay) return `${shortDay(slot.day)} ${t("calendar.allDay")}`;
   const start = startOf(slot);
   const end = endOf(slot);
   const endDay = dayKey(end);
   let until: string;
   if (endDay === slot.day) until = clock(end);
   else if (endDay === addDays(slot.day, 1) && end.getHours() === 0 && end.getMinutes() === 0) until = "24:00";
-  else until = `翌${clock(end)}`;
-  return `${shortDay(slot.day)} ${clock(start)}〜${until}`;
+  else until = t("schedule.nextDay", { time: clock(end) });
+  return `${shortDay(slot.day)} ${clock(start)}${t("common.rangeTo")}${until}`;
 }
 
 /** Earliest first; a day's all-day candidate before its times. */
@@ -88,15 +88,15 @@ export function slotsForDays(days: readonly DayKey[], allDay: boolean, start: st
 
 /** What stops the form from being sent (the server's rules, said first here), or null. */
 export function scheduleProblem(question: string, slots: readonly SlotDraft[]): string | null {
-  if (!question.trim()) return "題名を入れてください";
-  if (slots.length < MIN_SLOTS) return `候補を ${MIN_SLOTS} つ以上選んでください`;
-  if (slots.length > MAX_SLOTS) return `候補は ${MAX_SLOTS} 個までです`;
+  if (!question.trim()) return t("tasks.check.title");
+  if (slots.length < MIN_SLOTS) return t("schedule.check.minSlots", { min: MIN_SLOTS });
+  if (slots.length > MAX_SLOTS) return t("schedule.check.maxSlots", { max: MAX_SLOTS });
   for (const slot of slots) {
     if (slot.allDay) continue;
-    if (!TIME.test(slot.start)) return "時刻を入れてください";
-    if (slot.minutes < MIN_MINUTES || slot.minutes > MAX_MINUTES) return "時間の長さは 15 分〜12 時間にしてください";
+    if (!TIME.test(slot.start)) return t("calendar.check.time");
+    if (slot.minutes < MIN_MINUTES || slot.minutes > MAX_MINUTES) return t("schedule.check.length");
   }
-  if (new Set(slots.map(slotKey)).size !== slots.length) return "同じ候補が複数あります";
+  if (new Set(slots.map(slotKey)).size !== slots.length) return t("schedule.check.duplicate");
   return null;
 }
 
@@ -196,4 +196,4 @@ export function respondentCount(poll: PollOut): number {
 }
 
 export const ANSWER_MARK: Record<PollAnswer, string> = { yes: "○", maybe: "△", no: "×" };
-export const ANSWER_NAME: Record<PollAnswer, string> = { yes: "参加できる", maybe: "未定", no: "参加できない" };
+export const ANSWER_NAME: Record<PollAnswer, string> = { get yes() { return t("schedule.answer.yes"); }, get maybe() { return t("schedule.answer.maybe"); }, get no() { return t("schedule.answer.no"); } };

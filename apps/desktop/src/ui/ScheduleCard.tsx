@@ -17,6 +17,7 @@ import {
   respondentCount,
   slotCounts,
 } from "./scheduling";
+import { t } from "../i18n";
 
 const ANSWERS: readonly PollAnswer[] = ["yes", "maybe", "no"];
 const NEXT: Record<string, PollAnswer | null> = { none: "yes", yes: "maybe", maybe: "no", no: null };
@@ -37,7 +38,7 @@ export function canDecide(controller: AppController, message: MessageState): boo
 
 function CountLine({ yes, maybe, no, className }: { yes: number; maybe: number; no: number; className?: string }) {
   return (
-    <span className={cn("shrink-0 tabular-nums text-xs text-muted", className)} aria-label={`○ ${yes} 人、△ ${maybe} 人、× ${no} 人`}>
+    <span className={cn("shrink-0 tabular-nums text-xs text-muted", className)} aria-label={t("schedule.counts", { yes, maybe, no })}>
       <span className={MARK_TONE.yes}>○</span> {yes} · <span className={MARK_TONE.maybe}>△</span> {maybe} · × {no}
     </span>
   );
@@ -46,7 +47,7 @@ function CountLine({ yes, maybe, no, className }: { yes: number; maybe: number; 
 /** The three answer buttons of one candidate; pressing my answer again takes it back. */
 function AnswerButtons({ label, current, disabled, onPress }: { label: string; current: PollAnswer | null; disabled: boolean; onPress: (answer: PollAnswer) => void }) {
   return (
-    <div className="flex shrink-0 gap-0.5" role="group" aria-label={`${label} への回答`}>
+    <div className="flex shrink-0 gap-0.5" role="group" aria-label={t("schedule.answerFor", { label })}>
       {ANSWERS.map((answer) => {
         const on = current === answer;
         return (
@@ -86,12 +87,12 @@ function CommentField({ value, disabled, onSave }: { value: string; disabled: bo
         value={text}
         maxLength={MAX_COMMENT}
         disabled={disabled}
-        aria-label="ひとこと"
-        placeholder="ひとこと (例: 午後なら参加できます)"
+        aria-label={t("schedule.comment")}
+        placeholder={t("schedule.commentPlaceholder")}
         onChange={(e) => setText(e.target.value)}
         className="h-8 min-w-0 flex-1 rounded-md border border-line bg-canvas px-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-60"
       />
-      {changed && !disabled && <Button type="submit" size="sm">保存</Button>}
+      {changed && !disabled && <Button type="submit" size="sm">{t("common.save")}</Button>}
     </form>
   );
 }
@@ -127,10 +128,10 @@ export function ScheduleCard({ poll, message, controller, readOnly = false }: { 
     <div className="mt-1.5 max-w-xl rounded-xl border border-line bg-panel/60 p-3 text-sm" data-schedule-poll>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="font-semibold">📅 {poll.question}</span>
-        <span className="text-xs text-muted">日程調整</span>
+        <span className="text-xs text-muted">{t("composer.schedulePoll")}</span>
         {poll.anonymous && (
-          <span className="inline-flex items-center gap-1 self-center rounded-md bg-panel-2 px-1.5 py-px text-[11px] font-medium text-muted" title="誰が答えたかは表示されません">
-            <EyeOff size={11} /> 匿名
+          <span className="inline-flex items-center gap-1 self-center rounded-md bg-panel-2 px-1.5 py-px text-[11px] font-medium text-muted" title={t("schedule.anonymousTitle")}>
+            <EyeOff size={11} /> {t("poll.anonymous")}
           </span>
         )}
       </div>
@@ -138,24 +139,24 @@ export function ScheduleCard({ poll, message, controller, readOnly = false }: { 
       {decided && (
         <div className="mt-2 rounded-lg border border-accent/40 bg-accent-soft/60 px-3 py-2" data-decided>
           <div className="flex items-center gap-1.5 text-xs font-medium text-accent">
-            <CalendarCheck size={14} /> 決定
+            <CalendarCheck size={14} /> {t("schedule.decided")}
           </div>
           <div className="mt-0.5 text-base font-semibold">{poll.options[decided.index]}</div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
             <CountLine {...(counts[decided.index] ?? { yes: 0, maybe: 0, no: 0 })} />
             {decided.event_id && (
               <Button variant="link" size="sm" className="h-6 px-0" onClick={() => void openEvent()}>
-                <CalendarDays size={13} /> 予定を開く
+                <CalendarDays size={13} /> {t("schedule.openEvent")}
               </Button>
             )}
             {decider && (
-              <Button variant="ghost" size="sm" className="ml-auto h-6" onClick={() => void controller.undecideSchedule(message)}>決定を取り消す</Button>
+              <Button variant="ghost" size="sm" className="ml-auto h-6" onClick={() => void controller.undecideSchedule(message)}>{t("schedule.undecide")}</Button>
             )}
           </div>
         </div>
       )}
 
-      <ul className="mt-2 space-y-1" aria-label="候補">
+      <ul className="mt-2 space-y-1" aria-label={t("schedule.candidates")}>
         {poll.options.map((label, index) => {
           const count = counts[index]!;
           const chosen = decided?.index === index;
@@ -166,14 +167,14 @@ export function ScheduleCard({ poll, message, controller, readOnly = false }: { 
               className={cn("flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-2.5 py-1.5", chosen ? "border-accent bg-accent-soft/40" : "border-line bg-canvas", decided && !chosen && "opacity-70")}
             >
               <span className="flex min-w-[8.5rem] flex-1 items-center gap-1">
-                {best.has(index) && <Star size={13} className="shrink-0 fill-amber-400 text-amber-400" aria-label="○ がいちばん多い" />}
+                {best.has(index) && <Star size={13} className="shrink-0 fill-amber-400 text-amber-400" aria-label={t("schedule.mostYes")} />}
                 <span className="truncate">{label}</span>
               </span>
               <CountLine {...count} />
               <AnswerButtons label={label} current={mine[index] ?? null} disabled={disabled} onPress={(answer) => press(index, answer)} />
               {decider && !decided && (
-                <Button size="sm" variant="ghost" className="h-7 text-accent" aria-label={`${label} に決める`} onClick={() => setConfirm(index)}>
-                  決める
+                <Button size="sm" variant="ghost" className="h-7 text-accent" aria-label={t("schedule.decideOn", { label })} onClick={() => setConfirm(index)}>
+                  {t("schedule.decide")}
                 </Button>
               )}
             </li>
@@ -188,21 +189,21 @@ export function ScheduleCard({ poll, message, controller, readOnly = false }: { 
       )}
 
       <div className="mt-2 flex items-center justify-between text-xs text-muted">
-        <span>{decided ? `決定済み · ${respondentCount(poll)} 人が回答` : closed ? `締め切りました · ${respondentCount(poll)} 人が回答` : `${respondentCount(poll)} 人が回答`}</span>
+        <span>{decided ? t("schedule.decidedCount", { count: respondentCount(poll) }) : closed ? t("schedule.closedCount", { count: respondentCount(poll) }) : t("schedule.answeredCount", { count: respondentCount(poll) })}</span>
         <Button size="sm" variant="ghost" onClick={() => setTable(true)}>
-          <Table2 size={13} /> 表で見る
+          <Table2 size={13} /> {t("schedule.table")}
         </Button>
       </div>
 
       {table && <ScheduleTableDialog poll={poll} message={message} controller={controller} readOnly={readOnly} onClose={() => setTable(false)} />}
       {confirm !== null && (
-        <Modal title="この日に決めますか？" description={poll.options[confirm]} onClose={() => setConfirm(null)} className="w-[400px]">
+        <Modal title={t("schedule.decideTitle")} description={poll.options[confirm]} onClose={() => setConfirm(null)} className="w-[400px]">
           <p className="mt-3 text-sm">
-            {dm ? "スレッドで回答した人に知らせます。" : "チャンネルのカレンダーに予定を作り、スレッドで回答した人に知らせます。"}
-            回答は締め切られます (取り消すと再開します)。
+            {dm ? t("schedule.decideNoteDm") : t("schedule.decideNote")}
+            {t("schedule.decideCloses")}
           </p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setConfirm(null)}>キャンセル</Button>
+            <Button variant="secondary" onClick={() => setConfirm(null)}>{t("common.cancel")}</Button>
             <Button
               onClick={() => {
                 const index = confirm;
@@ -210,7 +211,7 @@ export function ScheduleCard({ poll, message, controller, readOnly = false }: { 
                 void controller.decideSchedule(message, index);
               }}
             >
-              決定
+              {t("schedule.decided")}
             </Button>
           </div>
         </Modal>
@@ -246,26 +247,26 @@ export function ScheduleTableDialog({ poll, message, controller, readOnly, onClo
   const cell = "border-b border-line px-2 py-1.5 text-center";
 
   return (
-    <Modal title={poll.question} description="回答の一覧" onClose={onClose} className="w-[min(92vw,960px)]">
+    <Modal title={poll.question} description={t("schedule.answers")} onClose={onClose} className="w-[min(92vw,960px)]">
       <div className="mt-3 overflow-x-auto">
-        <table className="w-full border-collapse text-sm" aria-label="回答の表">
+        <table className="w-full border-collapse text-sm" aria-label={t("schedule.answersTable")}>
           <thead>
             <tr>
-              <th className="sticky left-0 border-b border-line bg-canvas px-2 py-1.5 text-left text-xs font-medium text-muted">名前</th>
+              <th className="sticky left-0 border-b border-line bg-canvas px-2 py-1.5 text-left text-xs font-medium text-muted">{t("reservations.name")}</th>
               {poll.options.map((label, index) => (
                 <th key={index} scope="col" className={cn("min-w-[5.5rem] border-b border-line px-2 py-1.5 text-xs font-medium", poll.decided?.index === index && "bg-accent-soft/60")}>
                   <span className="inline-flex items-center gap-0.5">
-                    {best.has(index) && <Star size={11} className="fill-amber-400 text-amber-400" aria-label="○ がいちばん多い" />}
+                    {best.has(index) && <Star size={11} className="fill-amber-400 text-amber-400" aria-label={t("schedule.mostYes")} />}
                     {label}
                   </span>
                 </th>
               ))}
-              <th className="min-w-[10rem] border-b border-line px-2 py-1.5 text-left text-xs font-medium text-muted">コメント</th>
+              <th className="min-w-[10rem] border-b border-line px-2 py-1.5 text-left text-xs font-medium text-muted">{t("canvas.comments")}</th>
             </tr>
           </thead>
           <tbody>
             <tr data-row="counts">
-              <th scope="row" className="sticky left-0 border-b border-line bg-canvas px-2 py-1.5 text-left text-xs font-medium text-muted">集計</th>
+              <th scope="row" className="sticky left-0 border-b border-line bg-canvas px-2 py-1.5 text-left text-xs font-medium text-muted">{t("schedule.total")}</th>
               {counts.map((count, index) => (
                 <td key={index} className={cn(cell, "whitespace-nowrap text-xs")}>
                   <span className={MARK_TONE.yes}>○</span>{count.yes} <span className={MARK_TONE.maybe}>△</span>{count.maybe} ×{count.no}
@@ -275,11 +276,11 @@ export function ScheduleTableDialog({ poll, message, controller, readOnly, onClo
             </tr>
             {me && (
               <tr data-row="me" className="bg-accent-soft/20">
-                <th scope="row" className="sticky left-0 border-b border-line bg-canvas px-2 py-1.5 text-left font-medium">{name(me)} (自分)</th>
+                <th scope="row" className="sticky left-0 border-b border-line bg-canvas px-2 py-1.5 text-left font-medium">{name(me)} {t("tasks.dialog.me")}</th>
                 {poll.options.map((label, index) => (
                   <td key={index} className={cell}>
                     {editable ? (
-                      <button type="button" aria-label={`自分の ${label}: ${mine[index] ? ANSWER_NAME[mine[index]!] : "未回答"} (押すと変わります)`} className="h-7 w-9 rounded-md border border-line bg-canvas hover:border-accent" onClick={() => cycle(index)}>
+                      <button type="button" aria-label={t("schedule.myAnswer", { label, answer: mine[index] ? ANSWER_NAME[mine[index]!] : t("schedule.noAnswer") })} className="h-7 w-9 rounded-md border border-line bg-canvas hover:border-accent" onClick={() => cycle(index)}>
                         {mark(mine[index] ?? null)}
                       </button>
                     ) : (
@@ -304,13 +305,13 @@ export function ScheduleTableDialog({ poll, message, controller, readOnly, onClo
       </div>
       {poll.anonymous && (poll.comments?.length ?? 0) > 0 && (
         <div className="mt-3">
-          <div className="text-xs font-medium text-muted">コメント (匿名)</div>
+          <div className="text-xs font-medium text-muted">{t("schedule.commentsAnonymous")}</div>
           <ul className="mt-1 list-disc pl-5 text-sm">
             {poll.comments!.map((c, i) => <li key={i}>{c.text}</li>)}
           </ul>
         </div>
       )}
-      {!poll.anonymous && people.length === 0 && <p className="mt-3 text-sm text-muted">まだ誰も答えていません</p>}
+      {!poll.anonymous && people.length === 0 && <p className="mt-3 text-sm text-muted">{t("schedule.noAnswersYet")}</p>}
     </Modal>
   );
 }
