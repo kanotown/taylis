@@ -7,6 +7,7 @@ import { Avatar } from "./Avatar";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { fullTimestamp, sinceLabel } from "./format";
 import { Button, cn, Modal } from "./primitives";
+import { t } from "../i18n";
 
 /**
  * 「リアクションした人」 (M27): every reaction of a message with the names of who added it, in the order they did. A
@@ -17,7 +18,7 @@ export function ReactionsDialog({ controller, message, onClose }: { controller: 
   const store = controller.store;
   const reactions = message.reactions ?? [];
   return (
-    <Modal onClose={onClose} title="リアクションした人" className="w-[420px]">
+    <Modal onClose={onClose} title={t("actions.reactions")} className="w-[420px]">
       <ul className="mt-3 divide-y divide-line">
         {reactions.map((reaction) => {
           const name = customEmojiName(reaction.emoji);
@@ -83,25 +84,25 @@ export function AcksDialog({ controller, message, onClose, readOnly = false }: {
     );
   };
   return (
-    <Modal onClose={onClose} title="確認した人" description={`${acks.length} 人が確認しました`} className="w-[380px]">
+    <Modal onClose={onClose} title={t("who.acked")} description={t("who.ackedCount", { count: acks.length })} className="w-[380px]">
       <ul className="mt-3 space-y-1">{acks.map((ack) => row(ack.user_id, ack.acked_at))}</ul>
       {!readOnly && (
-        <section aria-label="未確認" className="mt-4 border-t border-line pt-3">
+        <section aria-label={t("who.pending")} className="mt-4 border-t border-line pt-3">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-xs font-semibold text-muted">{Array.isArray(pending) ? `未確認 ${pending.length} 人` : "未確認"}</h3>
+            <h3 className="text-xs font-semibold text-muted">{Array.isArray(pending) ? t("ack.pending", { count: pending.length }) : t("who.pending")}</h3>
             {canRemind && Array.isArray(pending) && pending.length > 0 && (
               <Button size="sm" variant="secondary" disabled={reminding} onClick={() => void remind()}>
-                <BellRing size={14} /> 未確認の人にリマインド
+                <BellRing size={14} /> {t("who.remind")}
               </Button>
             )}
           </div>
           {result && <p role={result.ok ? "status" : "alert"} className={cn("mt-1 text-xs", result.ok ? "text-muted" : "text-danger")}>{result.text}</p>}
           {pending === null ? (
-            <p className="py-2 text-sm text-muted">読み込み中…</p>
+            <p className="py-2 text-sm text-muted">{t("common.loading")}</p>
           ) : pending === "failed" ? (
-            <p className="py-2 text-sm text-danger">読み込めませんでした</p>
+            <p className="py-2 text-sm text-danger">{t("common.loadFailed")}</p>
           ) : pending.length === 0 ? (
-            <p className="py-2 text-sm text-muted">全員が確認しました</p>
+            <p className="py-2 text-sm text-muted">{t("who.allAcked")}</p>
           ) : (
             <ul className="mt-1 max-h-60 space-y-1 overflow-y-auto">{pending.map((id) => row(id))}</ul>
           )}

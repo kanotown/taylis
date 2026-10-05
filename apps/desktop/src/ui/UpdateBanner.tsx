@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import type { AppController } from "../state/app";
 import { notesFirstLine, type UpdateChecker, versionLabel } from "../state/updates";
 import { Button } from "./primitives";
+import { t } from "../i18n";
 
 /** Re-render when the update state changes (found, put off, downloading …). */
 export function useUpdates(updates: UpdateChecker): UpdateChecker {
@@ -36,11 +37,11 @@ export function UpdateBanner({ controller }: { controller: AppController }) {
   const note = notesFirstLine(update.body);
   const percent = progressPercent(updates.progress);
   return (
-    <div role="status" aria-label="アップデート" className="fixed bottom-6 right-6 z-40 w-[340px] max-w-[calc(100vw-32px)] rounded-xl border border-line bg-canvas p-4 text-sm text-ink shadow-2xl">
+    <div role="status" aria-label={t("update.label")} className="fixed bottom-6 right-6 z-40 w-[340px] max-w-[calc(100vw-32px)] rounded-xl border border-line bg-canvas p-4 text-sm text-ink shadow-2xl">
       <div className="flex items-start gap-3">
         <Download size={18} className="mt-0.5 shrink-0 text-accent" />
         <div className="min-w-0 flex-1">
-          <div className="font-semibold">新しい版 ({versionLabel(update.version)}) があります</div>
+          <div className="font-semibold">{t("settings.about.available", { version: versionLabel(update.version) })}</div>
           {note && <div className="mt-0.5 line-clamp-2 text-xs text-muted">{note}</div>}
         </div>
       </div>
@@ -48,7 +49,7 @@ export function UpdateBanner({ controller }: { controller: AppController }) {
         <div className="mt-3 space-y-1.5">
           <div
             role="progressbar"
-            aria-label="ダウンロード"
+            aria-label={t("attach.download")}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={percent ?? undefined}
@@ -56,12 +57,12 @@ export function UpdateBanner({ controller }: { controller: AppController }) {
           >
             <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${updates.status === "installing" ? 100 : (percent ?? 5)}%` }} />
           </div>
-          <div className="text-xs text-muted">{updates.status === "installing" ? "インストールして再起動します…" : `ダウンロード中… ${progressLabel(updates.progress)}`}</div>
+          <div className="text-xs text-muted">{updates.status === "installing" ? t("update.installing") : t("update.downloading", { progress: progressLabel(updates.progress) })}</div>
         </div>
       ) : (
         <div className="mt-3 flex justify-end gap-2">
-          <Button size="sm" variant="ghost" onClick={() => updates.later()}>あとで</Button>
-          <Button size="sm" onClick={() => void updates.install(() => controller.prepareForRestart())}>更新して再起動</Button>
+          <Button size="sm" variant="ghost" onClick={() => updates.later()}>{t("common.later")}</Button>
+          <Button size="sm" onClick={() => void updates.install(() => controller.prepareForRestart())}>{t("settings.about.restart")}</Button>
         </div>
       )}
     </div>

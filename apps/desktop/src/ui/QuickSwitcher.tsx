@@ -11,6 +11,7 @@ import { badgeCount, hasUnread, isDmChannel } from "./channels";
 import { jumpConversations } from "./home";
 import { channelTitle } from "./MainScreen";
 import { Badge, Kbd } from "./primitives";
+import { t } from "../i18n";
 
 /**
  * Cmd/Ctrl+K: jump to a channel or DM by typing part of its name. M37: filtered and ordered by the shared jump-match rule
@@ -51,16 +52,16 @@ export function QuickSwitcher({ controller, onOpen, onOpenCanvas, onClose }: {
       <Dialog.Portal>
         <Dialog.Overlay className="rx-overlay fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]" />
         <Dialog.Content className="rx-drop fixed left-1/2 top-[14vh] z-50 w-[540px] max-w-[92vw] -translate-x-1/2 overflow-hidden rounded-2xl border border-line bg-canvas text-ink shadow-2xl focus:outline-none">
-          <Dialog.Title className="sr-only">チャンネルに移動</Dialog.Title>
-          <Dialog.Description className="sr-only">名前を入力して Enter で開きます</Dialog.Description>
-          <Command label="チャンネルに移動" loop shouldFilter={false}>
+          <Dialog.Title className="sr-only">{t("switcher.title")}</Dialog.Title>
+          <Dialog.Description className="sr-only">{t("switcher.description")}</Dialog.Description>
+          <Command label={t("switcher.title")} loop shouldFilter={false}>
             <div className="flex items-center gap-2.5 border-b border-line px-4">
               <Search size={16} className="shrink-0 text-muted" />
-              <Command.Input autoFocus value={query} onValueChange={setQuery} placeholder={onOpenCanvas ? "チャンネル・相手・キャンバスの名前で移動…" : "チャンネルや相手の名前で移動…"} className="h-12 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted" />
+              <Command.Input autoFocus value={query} onValueChange={setQuery} placeholder={onOpenCanvas ? t("switcher.placeholderCanvas") : t("switcher.placeholder")} className="h-12 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted" />
               <Kbd>Esc</Kbd>
             </div>
             <Command.List className="max-h-[52vh] overflow-y-auto p-1.5">
-              <Command.Empty className="px-3 py-8 text-center text-sm text-muted">該当なし</Command.Empty>
+              <Command.Empty className="px-3 py-8 text-center text-sm text-muted">{t("switcher.empty")}</Command.Empty>
               {channels.map((channel) => {
                 const title = channelTitle(channel, controller);
                 const other = isDmChannel(channel) ? (channel.dm_user_ids ?? []).find((id) => id !== me) : undefined;
@@ -86,7 +87,7 @@ export function QuickSwitcher({ controller, onOpen, onOpenCanvas, onClose }: {
                 );
               })}
               {canvasHits.length > 0 && (
-                <Command.Group heading="キャンバス" className="[&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted">
+                <Command.Group heading={t("nav.canvases")} className="[&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted">
                   {canvasHits.map((canvas) => {
                     const channel = store.getChannel(canvas.channel_id);
                     return (
@@ -101,8 +102,8 @@ export function QuickSwitcher({ controller, onOpen, onOpenCanvas, onClose }: {
               )}
             </Command.List>
             <div className="flex items-center gap-3 border-t border-line px-4 py-2 text-[11px] text-muted">
-              <span className="flex items-center gap-1"><Kbd>↑↓</Kbd> 選択</span>
-              <span className="flex items-center gap-1"><Kbd>Enter</Kbd> 開く</span>
+              <span className="flex items-center gap-1"><Kbd>↑↓</Kbd> {t("searchBar.select")}</span>
+              <span className="flex items-center gap-1"><Kbd>Enter</Kbd> {t("dialogs.open")}</span>
             </div>
           </Command>
         </Dialog.Content>
