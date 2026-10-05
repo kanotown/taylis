@@ -788,7 +788,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "reservations.prevDay": "Previous day",
   "reservations.nextDay": "Next day",
   "reservations.date": "Date",
-  "reservations.rules": "Bookings start on the hour, last up to {maxHours, plural, one {# hour} other {# hours}}, up to 2 weeks ahead, 2 per person. “Now” uses a free seat until the next booking starts (guaranteed for up to {minHours, plural, one {# hour} other {# hours}}; after that, if someone is waiting, they swap in {grace} minutes later).",
+  "reservations.rules": "Bookings start on the hour, last up to {maxHours, plural, one {# hour} other {# hours}}, up to 2 weeks ahead; one booking, queue place or seat per person. “Now” uses a free seat until the next booking starts (guaranteed for up to {minHours, plural, one {# hour} other {# hours}}; after that, if someone is waiting, they swap in {grace} minutes later).",
   "reservations.operatorRule": " Operators: press Assigned / Taken out / Swapped after making the change in the admin console.",
   "reservations.dontDo": "Never mind",
   "reservations.assigned": "Assigned",

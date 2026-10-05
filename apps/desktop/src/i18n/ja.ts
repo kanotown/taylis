@@ -787,7 +787,7 @@ export const ja = {
   "reservations.prevDay": "前の日",
   "reservations.nextDay": "次の日",
   "reservations.date": "日付",
-  "reservations.rules": "予約は毎時 0 分から {maxHours} 時間まで、2 週間先まで、1 人 2 件まで。「今すぐ」は空いている枠を次の予約が始まるまで使えます (最長 {minHours} 時間の保証。過ぎた後に待つ人がいれば {grace} 分後に入れ替え)。",
+  "reservations.rules": "予約は毎時 0 分から {maxHours} 時間まで、2 週間先まで。予約・順番待ち・利用中は 1 人 1 つまで。「今すぐ」は空いている枠を次の予約が始まるまで使えます (最長 {minHours} 時間の保証。過ぎた後に待つ人がいれば {grace} 分後に入れ替え)。",
   "reservations.operatorRule": " 担当者の操作 (割り当てた・外した・入れ替えた) は、管理画面で実際に変えた後に押してください。",
   "reservations.dontDo": "やめる",
   "reservations.assigned": "割り当てた",
