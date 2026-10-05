@@ -28,8 +28,8 @@ jobs:
 
   images:
     needs: checks
-    if: github.event_name == 'push'
-    runs-on: [self-hosted, Linux, X64]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -74,12 +74,16 @@ jobs:
 
   deploy:
     needs: images
-    # Also after a skipped build (a redeploy of an existing tag), never after a failed one.
-    if: ${{ !failure() && !cancelled() }}
-    runs-on: [self-hosted, Linux, X64]
-    # One deploy per server: the lab's ChikuwaChat (production) and the taylis server on the
-    # 12 GB VPS. Each environment holds its own SSH secrets; restrict both to v* tags in the repository settings. A
-    # server whose secrets are not set yet is skipped, never failed.
+    # Also after a skipped build (a redeploy of an existing tag), never after a failed one. Only for a v* tag of
+    # the original repository: a fork's tags never reach a deploy job (forks have no deploy secrets anyway).
+    if: >-
+      ${{ !failure() && !cancelled()
+          && startsWith(github.ref, 'refs/tags/v')
+          && !github.event.repository.fork }}
+    runs-on: ubuntu-latest
+    # One deploy per server (environment): production and taylis. Each environment holds its own SSH secrets;
+    # restrict both to v* tags (and add required reviewers if wanted) in the repository settings. A server whose
+    # secrets are not set yet is skipped, never failed.
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -109,8 +113,7 @@ jobs:
           fi
           [ -n "$DEPLOY_HOST" ] && [ -n "$DEPLOY_SSH_KEY" ] && [ -n "$DEPLOY_KNOWN_HOSTS" ] \
             || { echo "set DEPLOY_HOST, DEPLOY_SSH_KEY and DEPLOY_KNOWN_HOSTS in the ${{ matrix.target }} environment" >&2; exit 1; }
-          # The runner is our own VPS: the key goes to this job's temporary folder, which the runner empties,
-          # never to ~/.ssh where it would outlive the job.
+          # The key goes to this job's temporary folder, never to ~/.ssh, and is removed again at the end of the job.
           dir="$RUNNER_TEMP/deploy-ssh"
           install -m 700 -d "$dir"
           printf '%s\n' "$DEPLOY_SSH_KEY" > "$dir/key"
