@@ -477,7 +477,9 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 (`message_rate_limit_per_user` / `ws_max_connections_per_user` / `ws_connect_rate_limit_per_ip`)。
 
 本文サイズは Caddy で制限する (アップロード以外は 1 MB。プロフィール画像は 6 MB、`AVATAR_MAX_BYTES` 5 MB に合わせる。
-クライアントは選んだ範囲を 512px の JPEG にしてから送るので、通常は 100 KB 前後)。
+クライアントは選んだ範囲を 512px の JPEG にしてから送るので、通常は 100 KB 前後)。絵文字セットの取り込み
+（`/api/v1/emoji/packs/import`、管理者のみ）は 70 MB：アプリは ZIP もフォルダーのファイルの合計も 64 MiB
+（`PACK_UPLOAD_MAX_BYTES`）までで、multipart の分を足した値（レビュー v0.1.37 #8。それまでは 1 MB で 413 になっていた）。
 
 ## 6. トランスポートとデプロイ
 

@@ -22,6 +22,8 @@ from app.modules.users.models import User
 
 router = APIRouter(tags=["emoji"])
 
+# A ZIP, or a folder's files together (Review v0.1.37 #8); infra/Caddyfile lets 70 MB through on
+# this path (this plus the multipart overhead), every other /api/* request stays at 1 MB.
 PACK_UPLOAD_MAX_BYTES = 64 * 1024 * 1024
 
 
@@ -148,6 +150,7 @@ async def import_pack(
             raise bad_request("emoji_pack_manifest_invalid", "Send a ZIP or the folder's files")
         if len(files) > service.ARCHIVE_MAX_ENTRIES:
             raise bad_request("emoji_pack_archive_invalid", "Too many files")
+        total = 0
         for upload in files:
             name = upload.filename or ""
             if not service.wanted_file(name):
@@ -161,6 +164,9 @@ async def import_pack(
                     f"{service.file_key(name)} is larger than {limit} bytes",
                     details={"file": service.file_key(name)},
                 )
+            total += len(data)
+            if total > PACK_UPLOAD_MAX_BYTES:
+                raise AppError(413, "emoji_too_large", "The folder is too large")
             service.add_file(found, name, data)
     manifest = service.manifest_from_files(found)
     result = await service.import_pack(
