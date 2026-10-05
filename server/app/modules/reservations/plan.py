@@ -47,6 +47,7 @@ class Holder:
     end_at: datetime | None = None
     returned_at: datetime | None = None
     evict_at: datetime | None = None  # a walk-in told it goes: when
+    evict_notice_at: datetime | None = None  # ...and when it was first told
 
 
 @dataclass(frozen=True)
@@ -83,7 +84,8 @@ class Plan:
     claimant_pair: dict[uuid.UUID, uuid.UUID] = field(default_factory=dict)
     holder_pair: dict[uuid.UUID, uuid.UUID] = field(default_factory=dict)
     # Walk-ins someone needs → when their seat goes. A new entry (the holder has no evict_at yet)
-    # is a notice to send; a holder with evict_at that is not here keeps the seat.
+    # is a notice to send; a different time than the holder's evict_at a correction; a holder
+    # with evict_at that is not here keeps the seat.
     evict: dict[uuid.UUID, datetime] = field(default_factory=dict)
     # Claimants and holders an operator can act on now.
     ready: set[uuid.UUID] = field(default_factory=set)
@@ -231,6 +233,29 @@ def booking_conflict(
     return None
 
 
+def _goes(holder: Holder, booking: Booking | None, now: datetime, grace: timedelta) -> datetime:
+    """When a walk-in past its guarantee leaves for this claimant. For a booking: at its start
+    (they were told `LEAD` before). For the queue: the grace after they were first told, and
+    never before a time they were told (review v0.1.37 #5: computed afresh each time, so a
+    booking that needs the seat earlier than the queue's deadline moves it forward, and a
+    booking cancelled gives the queue's deadline back)."""
+    if booking is not None:
+        return max(holder.guarantee_until or booking.start_at, booking.start_at)
+    if holder.evict_at is None:
+        return now + grace
+    if holder.evict_notice_at is None:
+        return holder.evict_at
+    return max(holder.evict_at, holder.evict_notice_at + grace)
+
+
+def _set_evict(plan: Plan, holder: Holder, claimant: uuid.UUID, goes: datetime) -> None:
+    """The earliest claimant's time wins (and is who the holder is shown to go for)."""
+    kept = plan.evict.get(holder.id)
+    if kept is None or goes < kept:
+        plan.evict[holder.id] = goes
+        plan.holder_pair[holder.id] = claimant
+
+
 def _todo(match: _Match, at: datetime) -> Todo:
     cid = match.claimant
     due = match.booking.start_at if match.booking is not None else at
@@ -285,11 +310,7 @@ def make_plan(
         plan.holder_pair[holder.id] = match.claimant
         ready = True
         if not _released(holder, now):  # a walk-in past its guarantee
-            if match.booking is not None:
-                goes = max(holder.guarantee_until or now, match.booking.start_at)
-            else:
-                goes = holder.evict_at or now + grace
-            plan.evict[holder.id] = holder.evict_at or goes
+            _set_evict(plan, holder, match.claimant, _goes(holder, match.booking, now, grace))
             ready = plan.evict[holder.id] <= now
         if ready:
             plan.ready.update({match.claimant, holder.id})
@@ -325,11 +346,9 @@ def make_plan(
                 )
             )
             holder = match.holder
-            if holder is not None and not _released(holder, soon) and holder.id not in plan.evict:
-                plan.evict[holder.id] = holder.evict_at or max(
-                    holder.guarantee_until or booking.start_at, booking.start_at
-                )
-                plan.holder_pair.setdefault(holder.id, booking.id)
+            if holder is not None and not _released(holder, soon):
+                # Also when the queue has a later time for them already (review v0.1.37 #5).
+                _set_evict(plan, holder, booking.id, _goes(holder, booking, now, grace))
 
     evicting = [h for h in holders if h.id in plan.evict]
     if evicting:

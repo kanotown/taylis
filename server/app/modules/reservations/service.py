@@ -262,6 +262,7 @@ def _holder(row: Reservation) -> Holder:
         end_at=row.end_at,
         returned_at=row.returned_at,
         evict_at=row.evict_at if row.evict_notice_at is not None else None,
+        evict_notice_at=row.evict_notice_at,
     )
 
 
@@ -724,8 +725,20 @@ async def _reconcile(db: AsyncSession, change: _Change) -> bool:
         if row.status not in SEATED_STATUSES or row.kind != "walkin":
             continue
         goes = plan.evict.get(row.id)
-        if goes is not None and row.evict_notice_at is None:
-            row.evict_notice_at, row.evict_at, row.updated_at = now, goes, now
+        first = goes is not None and row.evict_notice_at is None
+        # Review v0.1.37 #5: the time moved (a booking needs the seat before the queue's grace
+        # is over, or that booking was cancelled): kept and told again, unless both are past
+        # (the operators' to-do is there either way).
+        moved = (
+            goes is not None
+            and row.evict_notice_at is not None
+            and row.evict_at != goes
+            and not (row.evict_at is not None and row.evict_at <= now and goes <= now)
+        )
+        if goes is not None and (first or moved):
+            if first:
+                row.evict_notice_at = now
+            row.evict_at, row.updated_at = goes, now
             changed = True
             claimant = by_id.get(plan.holder_pair.get(row.id) or row.id)
             by_booking = claimant is not None and claimant.kind == "booking"
