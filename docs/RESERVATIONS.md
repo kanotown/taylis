@@ -7,7 +7,8 @@
 
 **状態**: M99 (2026-10-04、移行 0078) でチャンネルの枠と順番待ちを実装。M112 (2026-10-05、移行 0084) で利用者の決定
 (2026-10-05) に沿ってワークスペースの「予約」のページ・時間の予約・アクティビティの通知に作り替えた。サーバ・Desktop / Web・
-iOS・Android。枠の設定は Desktop / Web だけ。
+iOS・Android。枠の設定は Desktop / Web だけ。2026-10-06 (移行なし): 1 人 1 枠につき予約・待ち・利用中は 1 つ (§1) と、
+予約の長さの既定を最長に (§6)。
 
 Taylis は外の資源 (Claude の管理画面) を操作しない。**ボタンは「管理画面でそうした」という記録**で、Taylis はその記録から
 順番・保証・知らせを決める。
@@ -22,11 +23,17 @@ Taylis は外の資源 (Claude の管理画面) を操作しない。**ボタン
   管理者だけに見える (閉じる側に倒す)。見えない人には `404 reservation_pool_not_found`。見えなくなった人の待ち・予約は worker が
   取り消す。
 - **予約** (kind `booking`): 開始は枠のタイムゾーン (`tz`) の毎時 0 分、長さは 1 時間〜`max_hours`、今の時間帯から 14 日後の
-  終わりまで。1 人 1 枠につき **予約は 2 件まで** (予約中・利用中)、自分の予約と時間が重なるものは不可。**取り消し**
-  (割り当て前)、**延長** (次の時間が空いていれば 1 時間ずつ、`max_hours` まで)、**返却** (利用中)。
+  終わりまで。**取り消し** (割り当て前)、**延長** (次の時間が空いていれば 1 時間ずつ、`max_hours` まで)、**返却** (利用中)。
+- **1 人 1 枠につき 1 つ** (2026-10-06、利用者の決定。以前の「予約は 2 件まで」を置き換え): 順番待ち・予約中 (これからの
+  予約も)・利用中 (今すぐ・始まった予約)・返却中 (返却を押したが担当者がまだ「外した」を押していない。管理画面ではまだその人に
+  付いているので数える) のどれかがある人は、その枠で「今すぐ」も新しい予約もできない (`409 reservation_already_active`、
+  `details`: `reservation_id`・`kind`・`status`)。予約を持ったまま今すぐを頼んで 2 つの枠を押さえることを防ぐ。検査は枠の行の
+  ロックの中なので、同じ人が 2 台から同時に「今すぐ」と「予約する」を押しても残るのは 1 つ。同じ今すぐ・同じ時間の予約の
+  送り直しは今までどおり何もしない (200)。自分の予約の延長・取り消し・返却はできる。別の枠は別に数える。担当者が代わりに
+  予約する操作は無い (§10)。
 - **今すぐ (順番待ち)** (kind `walkin`、M99 の仕組み): 空いている枠を、**次の予約が始まるまで**使える (「〜13:00 まで」)。
   割り当てからの保証は `min_hours` か、予約がその枠を必要とする時刻の早い方。保証を過ぎた人は、待つ人がいれば猶予の後に
-  入れ替え、予約が始まるときはその時刻に入れ替える (予約の 10 分前に本人へ知らせる)。1 人 1 枠につき順番待ちは 1 つ。
+  入れ替え、予約が始まるときはその時刻に入れ替える (予約の 10 分前に本人へ知らせる)。1 人 1 枠につき 1 つ (上)。
 - **予約が優先**: 枠の数の検査は 1 時間ごとに、その時間の予約 (予約中・利用中・返却中) と、保証がその時間にかかっている今すぐの
   利用者の合計が枠の数を超えないこと。今すぐの保証は予約が必要とする時刻で終わるので、**約束 (予約・保証) が破られることは
   ない**: 予約は開始時に必ず枠があり、今すぐの人は保証の内には外されない。
@@ -67,8 +74,8 @@ booking: booked ──割り当てた (開始の 10 分前から)──▶ holdi
 | `GET /reservation-pools/{id}` | 1 つ |
 | `PATCH /reservation-pools/{id}` | 同じ項目の一部 (`log_channel_id` / `visibility_*` は null で外す)。管理者と作った人 |
 | `DELETE /reservation-pools/{id}` (204) | 予約・待ち・利用中の記録と知らせごと消す。管理画面のシートには触れない |
-| `POST /reservation-pools/{id}/bookings` | `{start_at, hours}` で予約。`400 reservation_booking_invalid` (`details.reason`: grid / past / horizon / duration)、`409 reservation_slot_full` (`details.at`: 最初の満の時間)、`409 too_many_bookings`、`409 reservation_overlap`、停止中は `409 reservation_pool_disabled`。同じ時間の予約がもうあれば何もしない (送り直し) |
-| `POST /reservation-pools/{id}/reserve` | 「今すぐ (順番待ち)」。メンバー (ゲスト不可)。既に待ち・利用中なら何もしない |
+| `POST /reservation-pools/{id}/bookings` | `{start_at, hours}` で予約。`400 reservation_booking_invalid` (`details.reason`: grid / past / horizon / duration)、`409 reservation_slot_full` (`details.at`: 最初の満の時間)、ほかの予約・待ち・利用中があれば `409 reservation_already_active`、停止中は `409 reservation_pool_disabled`。同じ時間の予約がもうあれば何もしない (送り直し) |
+| `POST /reservation-pools/{id}/reserve` | 「今すぐ (順番待ち)」。メンバー (ゲスト不可)。既に今すぐの待ち・利用中なら何もしない、予約があれば `409 reservation_already_active` |
 | `POST /reservations/{id}/extend` | `{hours?: 1}`。予約中・利用中の予約。本人か担当者 |
 | `POST /reservations/{id}/cancel` | 待ちか割り当て前の予約。本人か担当者。取り消し済みなら何もしない |
 | `POST /reservations/{id}/return` | 「返却する」。本人だけ (`403 reservation_not_yours`)。利用中だけ |
@@ -79,7 +86,8 @@ booking: booked ──割り当てた (開始の 10 分前から)──▶ holdi
 
 どの操作も、呼んだ人から見た `PoolOut` を返す。`PoolOut`: `id, name, capacity, min_hours, max_hours, grace_minutes, tz, enabled,
 operator_ids, log_channel_id, visibility, visibility_channel_id, visibility_group_id, holders, waiting, bookings, todos, next_evict_id,
-my_reservation_id, can_manage, can_operate, horizon_days, created_at, updated_at`。`bookings` は今日 (枠のゾーン) 以降の予約
+my_reservation_id, my_active_id, can_manage, can_operate, horizon_days, created_at, updated_at`。`my_active_id` は呼んだ人の
+その枠の 1 つの予約 (待ち・予約中・利用中・返却中、無ければ null。古いサーバは送らないので、端末は一覧から同じものを探す)。`bookings` は今日 (枠のゾーン) 以降の予約
 (予約中・利用中・今日終わったもの)。`todos` は担当者の作業 (`TodoOut {key, action: assign/swap/remove, reason: free/returned/
 booking_ended/guarantee_over, assign_id, remove_id, due_at, upcoming}`、担当者以外は空)。`ReservationOut`: `id, user_id, kind, status,
 requested_at, start_at, end_at, assigned_at, guarantee_until, returned_at, evict_at, email, position, step, pair_id, ready, until,
@@ -102,7 +110,8 @@ can_extend`。`email` は操作できる人にだけ入る。`until` は空き�
   (上限は今 + `min_hours`)。割り当てのときの保証になる。待つ人が 2 人以上空きに当たるときは、前の人がその枠を使う前提で数える。
 - **予約の検査** `booking_conflict`: 1 時間ごとに、重なる予約 + その時間に保証のかかる今すぐの人 + 1 ≤ 枠の数。最初に満たない
   時間を返す (`409 reservation_slot_full` の `details.at`)。延長は延ばす分の時間だけを見る。
-- **並行**: どの変更も枠の行を `FOR UPDATE` でロックしてから読む。最後の 1 枠を 2 人が同時に予約しても後の方は `409`。担当者
+- **並行**: どの変更も枠の行を `FOR UPDATE` でロックしてから読む。最後の 1 枠を 2 人が同時に予約しても後の方は `409`。
+  同じ人の「今すぐ」と「予約する」(や 2 つの予約) が同時に来ても、後の方は `409 reservation_already_active`。担当者
   2 人が同時に押しても順に処理され、2 回目は「済んでいる」ので何もしない。
 - **worker**: リマインダーと同じループ (`SCHEDULED_SEND_INTERVAL_SECONDS`、15 秒、`reservations.tick`)。動いている枠 (待ち・
   予約中・利用中のある枠) ごとに: 見えなくなった人の待ち・予約を取り消す、終わりまで割り当てられなかった予約を `expired` に、
@@ -155,7 +164,8 @@ M99 のボットからの DM とチャンネルの投稿はやめた。知らせ
 |---|---|---|
 | 入口 | サイドバーの「予約」(nav-items の `reservations`、締切の次) と、狭い画面のホームのタイル。数字は担当している枠のすぐできる作業 | ホームのタイル「予約」(iPad のサイドバー、Android のタブレットのホームの一覧にも)。数字は同じ (担当者だけ、赤) |
 | 枠ごと | 名前・枠の数・停止中、「予約する」「今すぐ (順番待ち)」、自分の予約 (延長・取り消す・返却する) と今すぐ (状態・取り消す・返却する)、担当者の作業 (割り当てた / 外した / 入れ替えた、まもなくの予約は開始の 10 分前まで押せない)、日付 (今日〜14 日後、前後の日) と**タイムライン** (横に 0〜24 時、縦に枠の数の行、予約・利用中の予約・今すぐのバー、自分のは縁取り、今の時刻の線)、利用中と順番待ちの一覧 (担当者にはアドレスと他人の待ちの取り消し) | 同じ内容を縦に: ボタン、自分の予約と今すぐ、担当者の作業、日付を選ぶと**時間ごとの一覧** (13:00 2/3 アリス、ボブ (今すぐ))。満の時間は赤 |
-| 予約のダイアログ | 日付・開始 (満の時間は選べない)・長さ (次の満の時間・上限・2 週間で止まる) | シート (iOS) / ダイアログのチップ (Android) で同じ |
+| 予約のダイアログ | 日付・開始 (満の時間は選べない)・長さ (次の満の時間・上限・2 週間で止まる)。**長さの既定は枠の最長** (`max_hours`)。開始から最長まで取れなければ取れるいちばん長い時間にし、理由を出す (「15:00 から埋まっているため、最長 3 時間です」/「予約は 14 日先までのため、最長 2 時間です」)。手で選んだ長さは、開始を変えても入る間は残す | シート (iOS) / ダイアログのチップ (Android) で同じ |
+| 1 人 1 つ | その枠に自分の予約・待ち・利用中があれば「予約する」と「今すぐ (順番待ち)」を押せなくし、「すでに予約があります（予約 10/7 (水) 13:00〜16:00）」(「今すぐ · 順番待ち」など) と「自分の予約を見る」(その行へスクロール) を出す | 同じ (iOS は `ScrollViewReader`、Android は `LazyListState` で行へ) |
 | 設定 | 「枠を追加」(管理者)、枠の ✏️ (管理者と作った人): 名前・枠の数・予約の最長・今すぐの保証・猶予・担当者・見える人 (全員 / チャンネル / グループ)・記録のチャンネル・受付中・削除 | なし |
 | 知らせ | アクティビティの 🎫 の行 (押すと「予約」)、デスクトップの通知 | アクティビティの行、アプリを開いているときのバナー (Android はローカル通知も)、プッシュを押すと「予約」 |
 

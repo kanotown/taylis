@@ -684,7 +684,8 @@ CREATE INDEX reservation_notices_user_idx ON reservation_notices (user_id, at DE
 CREATE INDEX reservation_notices_open_idx ON reservation_notices (pool_id) WHERE operator AND done_at IS NULL;
 ```
 
-- 1 人 1 枠につき予約は 2 件まで (予約中・利用中)、自分の予約どうしは重ならない (サービスで検査)。枠の数の検査は 1 時間ごと
+- 1 人 1 枠につき待ち・予約中・利用中・返却中の行は 1 つ (2026-10-06、サービスが枠の行のロックの中で検査、`409
+  reservation_already_active`。今すぐだけは部分一意索引 `reservations_walkin_uniq` もある)。枠の数の検査は 1 時間ごと
   (予約 + 保証のかかる今すぐの人 < 枠の数、RESERVATIONS.md §4)。
 - 記録のチャンネルのボットはチャンネルに 1 つで、そのチャンネルを初めて記録先にしたときに作り、外しても残る。
 - 終わった行 (done / cancelled) は履歴として残す。枠を消すと行と知らせも消える (ボットの投稿は残る)。
