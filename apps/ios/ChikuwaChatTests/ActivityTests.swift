@@ -334,7 +334,7 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(w.store.activityUpdates, 2)
         XCTAssertEqual(w.store.takeUpdatedActivityItems(), ["i1", "i2", "i3"]) // both events, taken once
         XCTAssertEqual(w.store.takeUpdatedActivityItems(), [])
-        XCTAssertEqual(summaryCalls(w.api), 0) // the badge does not change
+        XCTAssertGreaterThanOrEqual(summaryCalls(w.api), 1) // M112: the badge is read again (a reservation to-do may be done)
         w.engine.stop()
 
         func canvasItem(_ itemId: String, revId: String, excerpt: String) -> ActivityItem {
