@@ -47,7 +47,7 @@ _LIST_MARKER = re.compile(r"^\s*(?:[-*•]|\d{1,3}\.)\s+", re.MULTILINE)
 # character, also inside emphasis.
 _INLINE = re.compile(
     r"(\*\*((?:\\.|[^*\n\\])+?)\*\*)"
-    r"|(`([^`\n]+)`)"
+    r"|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)"
     r"|(\*((?:\\.|[^*\n\\])+)\*)"
     r"|((?<!\w)_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?!\w))"
     r"|(~~((?:\\.|[^~\n\\])+)~~)"
@@ -59,6 +59,21 @@ _INLINE = re.compile(
 _ESCAPED = re.compile(r"\\([_*~`])")
 
 
+_CURLY = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
+
+
+def _code_span(whole: str, single: str | None) -> str:
+    """An inline code span's text (the clients' markdown.ts codeSpan): ``double`` spans may hold
+    a backtick and lose one space at each end when they have one at both; quotes a keyboard
+    curled (U+2018 U+2019 U+201C U+201D) are straight again."""
+    if single is None:
+        inner = whole[2:-2]
+        if len(inner) >= 2 and inner[0] == " " and inner[-1] == " " and inner.strip():
+            inner = inner[1:-1]
+        single = inner
+    return single.translate(_CURLY)
+
+
 def _inline_text(match: re.Match[str]) -> str:
     """What a reader sees of one inline token: emphasis and code without their markers, a link's
     label, an escape's character; URLs and e-mail addresses as they are."""
@@ -66,7 +81,7 @@ def _inline_text(match: re.Match[str]) -> str:
         if match.group(whole) is not None:
             return _ESCAPED.sub(r"\1", match.group(inner))
     if match.group(3) is not None:
-        return match.group(4)
+        return _code_span(match.group(3), match.group(4))
     if match.group(11) is not None:
         return match.group(12)
     if match.group(15) is not None:

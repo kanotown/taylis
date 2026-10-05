@@ -40,11 +40,11 @@ class BodyTokenizerTest {
             BodyBlock.ListBlock(false, 1, listOf(
                 BodyListItem(0, listOf(BodyToken.Text("one "), BodyToken.Bold("strong"))),
                 BodyListItem(0, listOf(BodyToken.Text("two"))),
-                BodyListItem(1, listOf(BodyToken.Text("nested"))),
+                BodyListItem(1, listOf(BodyToken.Text("nested")), marker = "◦"),
             )),
             blocks[1],
         )
-        assertEquals(BodyBlock.ListBlock(true, 1, listOf(BodyListItem(0, listOf(BodyToken.Text("first"))), BodyListItem(0, listOf(BodyToken.Text("second"))))), blocks[2])
+        assertEquals(BodyBlock.ListBlock(true, 1, listOf(BodyListItem(0, listOf(BodyToken.Text("first")), true, 1, "1."), BodyListItem(0, listOf(BodyToken.Text("second")), true, 2, "2."))), blocks[2])
         assertEquals(BodyBlock.Quote(listOf(listOf(BodyToken.Text("quoted "), BodyToken.Italic("q")), listOf(BodyToken.Text("more")))), blocks[3])
         assertEquals(BodyBlock.CodeBlock("const x = 1;", "ts"), blocks[4])
         assertEquals(BodyBlock.Paragraph(listOf(listOf(BodyToken.Text("tail")))), blocks[5])

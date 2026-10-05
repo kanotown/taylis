@@ -36,6 +36,12 @@ describe("「フォント」 (2026-10-05)", () => {
     expect(css).toMatch(/--font-system: -apple-system, [^;]*"Hiragino Sans"[^;]*sans-serif;/);
     expect(css).toContain("font-family: var(--font-ui);");
   });
+
+  it("code is JetBrains Mono, then the system's monospace fonts, then the UI font for Japanese (2026-10-06)", () => {
+    expect(css).toContain('--font-code: "JetBrains Mono Variable", var(--font-mono-system), var(--font-ui), monospace;');
+    expect(css).toContain(':root[data-font="system"] { --font-code: var(--font-mono-system), var(--font-ui), monospace; }');
+    expect(css).toMatch(/\.body code, \.body pre \{ font-family: var\(--font-code\); font-variant-ligatures: none;/);
+  });
 });
 
 describe("「表示」 (M40)", () => {

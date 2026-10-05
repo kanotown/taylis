@@ -30,7 +30,14 @@ sealed class BodyToken {
     data object Newline : BodyToken()
 }
 
-data class BodyListItem(val level: Int, val tokens: List<BodyToken>)
+/** One list item (apps/shared/lists.json): its level (0–2), its kind, its number (0 for a bullet) and the marker drawn. */
+data class BodyListItem(
+    val level: Int,
+    val tokens: List<BodyToken>,
+    val ordered: Boolean = false,
+    val number: Int = 0,
+    val marker: String = "•",
+)
 
 /** A task of the canvas dialect: `line` is its line in the body (0-based), which a tick changes. */
 data class BodyTaskItem(val level: Int, val done: Boolean, val tokens: List<BodyToken>, val line: Int)
@@ -61,7 +68,7 @@ private val RULE_LINE = Regex("""^-{3,}\s*$""")
 // text tokens of their own, so emphasis and escapes are never read inside them.
 private const val INLINE =
     // i18n: keep (inline-format pattern)
-    """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)"""
+    """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)"""
 private val INLINE_PATTERN = Regex(INLINE)
 private val FULL_PATTERN = Regex("""(```([\s\S]*?)```)|$INLINE|(\n)""")
 private val FENCE_OPEN = Regex("""^```([A-Za-z0-9_+#.-]{0,20})\s*$""")
@@ -137,7 +144,7 @@ private fun scan(body: String, pattern: Regex, withBlocks: Boolean): List<BodyTo
         when {
             withBlocks && g[1] != null -> tokens.add(splitFence(g[2]?.value ?: ""))
             group(1) != null -> tokens.add(BodyToken.Bold(unescape(group(2) ?: "")))
-            group(3) != null -> tokens.add(BodyToken.Code(group(4) ?: ""))
+            group(3) != null -> tokens.add(BodyToken.Code(codeSpan(group(3)!!, group(4))))
             group(5) != null -> tokens.add(BodyToken.Bold(unescape(group(6) ?: "")))
             group(7) != null -> tokens.add(BodyToken.Italic(unescape(group(8) ?: "")))
             group(9) != null -> tokens.add(BodyToken.Strike(unescape(group(10) ?: "")))
@@ -160,9 +167,89 @@ private fun splitFence(raw: String): BodyToken.CodeBlock {
     val lines = raw.split("\n")
     val first = lines.first()
     if (lines.size > 1 && first.isNotEmpty() && Regex("""^[A-Za-z0-9_+#.-]{1,20}$""").matches(first)) {
-        return BodyToken.CodeBlock(lines.drop(1).joinToString("\n").removeSuffix("\n"), first.lowercase())
+        return BodyToken.CodeBlock(straightQuotes(lines.drop(1).joinToString("\n").removeSuffix("\n")), first.lowercase())
     }
-    return BodyToken.CodeBlock(raw.trim('\n'))
+    return BodyToken.CodeBlock(straightQuotes(raw.trim('\n')))
+}
+
+/**
+ * The text of an inline code span (apps/shared/inline-format.json, markdown.ts codeSpan): [single] is the text between
+ * single backticks; otherwise [whole] is a ``double`` span, which may hold a backtick and loses one space at each end
+ * when it has one at both ("`` ` ``" is a backtick).
+ */
+fun codeSpan(whole: String, single: String?): String {
+    if (single != null) return straightQuotes(single)
+    var inner = whole.substring(2, whole.length - 2)
+    if (inner.length >= 2 && inner.startsWith(" ") && inner.endsWith(" ") && inner.isNotBlank()) inner = inner.substring(1, inner.length - 1)
+    return straightQuotes(inner)
+}
+
+/**
+ * Code shows the quotes a keyboard curled back straight (2026-10-06): iOS's smart punctuation and the Japanese keyboards
+ * turn ' and " into ‘ ’ “ ”, so `it's` arrived as `it’s`.
+ */
+fun straightQuotes(text: String): String =
+    if (text.none { it == '‘' || it == '’' || it == '“' || it == '”' }) text
+    else text.replace('‘', '\'').replace('’', '\'').replace('“', '"').replace('”', '"')
+
+/** A list line: its indent (a tab is 4 columns), its kind, the number written ("3." → 3) and its text. */
+class ListLine(val indent: Int, val ordered: Boolean, val written: Int, val text: String)
+
+fun listLine(line: String): ListLine? {
+    fun width(indent: String) = indent.replace("\t", "    ").length
+    NUMBERED.matchEntire(line)?.let { m -> return ListLine(width(m.groupValues[1]), true, m.groupValues[2].toIntOrNull() ?: 1, m.groupValues[3]) }
+    BULLET.matchEntire(line)?.let { m -> return ListLine(width(m.groupValues[1]), false, 0, m.groupValues[2]) }
+    return null
+}
+
+private const val LIST_LEVELS = 3
+
+/**
+ * Levels, numbers and markers of consecutive list lines (apps/shared/lists.json, as markdown.ts listItems): an item
+ * indented 2 or more columns past the one before nests one level deeper (2–4 spaces or a tab, three levels at most); a
+ * smaller indent goes back to the level it matches. Each run of items of one kind at one level under one parent is a
+ * list of its own: it starts at the number its first item is written with and counts on by one; a nested list starts
+ * again under every parent item. Numbers are 1. / a. / i. by level, bullets • / ◦ / ▪.
+ */
+fun listItems(rows: List<ListLine>): List<BodyListItem> {
+    val indents = ArrayList<Int>()
+    val counters = ArrayList<Pair<Boolean, Int>?>() // (ordered, next number) by level
+    return rows.map { row ->
+        if (indents.isEmpty()) indents.add(row.indent)
+        else {
+            while (indents.size > 1 && row.indent < indents.last()) indents.removeAt(indents.size - 1)
+            if (row.indent >= indents.last() + 2 && indents.size < LIST_LEVELS) indents.add(row.indent)
+        }
+        val level = indents.size - 1
+        while (counters.size > level + 1) counters.removeAt(counters.size - 1) // the lists deeper than this item end here
+        while (counters.size < level + 1) counters.add(null)
+        val counter = counters[level]
+        val number = if (!row.ordered) 0 else if (counter != null && counter.first) counter.second else row.written
+        counters[level] = row.ordered to number + 1
+        BodyListItem(level, tokenizeInline(row.text), row.ordered, number, listMarker(row.ordered, level, number))
+    }
+}
+
+/** "1." / "a." / "i." by level (a number below 1 stays decimal), "•" / "◦" / "▪" for bullets. */
+fun listMarker(ordered: Boolean, level: Int, number: Int): String {
+    if (!ordered) return listOf("•", "◦", "▪")[minOf(level, 2)]
+    if (level == 1 && number >= 1) {
+        val out = StringBuilder()
+        var k = number
+        while (k > 0) {
+            out.insert(0, ('a' + (k - 1) % 26))
+            k = (k - 1) / 26
+        }
+        return "$out."
+    }
+    if (level >= 2 && number in 1..3999) {
+        val table = listOf(1000 to "m", 900 to "cm", 500 to "d", 400 to "cd", 100 to "c", 90 to "xc", 50 to "l", 40 to "xl", 10 to "x", 9 to "ix", 5 to "v", 4 to "iv", 1 to "i")
+        val out = StringBuilder()
+        var k = number
+        for ((value, letters) in table) while (k >= value) { out.append(letters); k -= value }
+        return "$out."
+    }
+    return "$number."
 }
 
 /** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order; `canvas`: the canvas dialect too. */
@@ -185,7 +272,7 @@ fun parseBlocks(body: String, canvas: Boolean = false): List<BodyBlock> {
         if (opensFence(i)) {
             val lang = FENCE_OPEN.find(line)?.groupValues?.get(1).orEmpty()
             val close = fenceCloseAfter(i)
-            blocks.add(BodyBlock.CodeBlock(lines.subList(i + 1, close).joinToString("\n"), lang.ifEmpty { null }?.lowercase()))
+            blocks.add(BodyBlock.CodeBlock(straightQuotes(lines.subList(i + 1, close).joinToString("\n")), lang.ifEmpty { null }?.lowercase()))
             i = close + 1
             continue
         }
@@ -239,20 +326,21 @@ fun parseBlocks(body: String, canvas: Boolean = false): List<BodyBlock> {
             blocks.add(BodyBlock.Table(align, header.map(::tokenizeInline), rows))
             continue
         }
-        val isBullet = BULLET.matches(line)
-        if (isBullet || NUMBERED.matches(line)) {
-            val ordered = !isBullet
-            val items = ArrayList<BodyListItem>()
-            val start = if (ordered) NUMBERED.find(line)?.groupValues?.get(2)?.toIntOrNull() ?: 1 else 1
-            while (i < lines.size) {
-                val m = (if (ordered) NUMBERED else BULLET).find(lines[i]) ?: break
-                if (isTask(i)) break
-                val indent = m.groupValues[1].replace("\t", "  ").length
-                val text = m.groupValues[if (ordered) 3 else 2]
-                items.add(BodyListItem(if (indent >= 2) 1 else 0, tokenizeInline(text)))
+        if (listLine(line) != null) {
+            val rows = ArrayList<ListLine>()
+            while (i < lines.size && !isTask(i)) {
+                rows.add(listLine(lines[i]) ?: break)
                 i++
             }
-            blocks.add(BodyBlock.ListBlock(ordered, start, items))
+            // A top-level item of the other kind starts a new list (as in CommonMark).
+            val items = listItems(rows)
+            var from = 0
+            for (k in 1..items.size) {
+                if (k < items.size && !(items[k].level == 0 && items[k].ordered != items[from].ordered)) continue
+                val run = items.subList(from, k).toList()
+                blocks.add(BodyBlock.ListBlock(run[0].ordered, if (run[0].ordered) run[0].number else 1, run))
+                from = k
+            }
             continue
         }
         val paragraph = ArrayList<List<BodyToken>>()

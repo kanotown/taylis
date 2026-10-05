@@ -41,9 +41,9 @@ describe("light markdown blocks", () => {
       ordered: false,
       start: 1,
       items: [
-        { level: 0, tokens: [{ kind: "text", text: "one " }, { kind: "bold", text: "strong" }] },
-        { level: 0, tokens: [{ kind: "text", text: "two" }] },
-        { level: 1, tokens: [{ kind: "text", text: "nested" }] },
+        { level: 0, ordered: false, number: 0, marker: "•", tokens: [{ kind: "text", text: "one " }, { kind: "bold", text: "strong" }] },
+        { level: 0, ordered: false, number: 0, marker: "•", tokens: [{ kind: "text", text: "two" }] },
+        { level: 1, ordered: false, number: 0, marker: "◦", tokens: [{ kind: "text", text: "nested" }] },
       ],
     });
     expect(blocks[2]).toMatchObject({ kind: "list", ordered: true, start: 1 });

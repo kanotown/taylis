@@ -6,8 +6,8 @@
  * Inline: **bold** / *bold*, _italic_ (never inside a word, M107), ~~strike~~, `code`, [label](url), bare https?:// links,
  * e-mail addresses (text, never read for emphasis), \_ \* \~ \` escapes,
  * <@user-id>, <@group:group-id> (M12k), <!channel> / <!here>. Blocks: "# " … "### " headings, ``` fences (optional language),
- * "> " quotes, "- " / "* " bullets, "1. " numbered items (two leading spaces nest one level),
- * and (M15g) GFM tables: a "| a | b |" header, a "| --- | :-: |" separator, then "| … |" rows.
+ * "> " quotes, "- " / "* " bullets, "1. " numbered items (nested by indenting 2–4 spaces or a tab, three levels;
+ * numbering and markers in `listItems`, apps/shared/lists.json), and (M15g) GFM tables: a "| a | b |" header, a "| --- | :-: |" separator, then "| … |" rows.
  *
  * The canvas dialect (CANVAS.md §4.2, `{ canvas: true }`) adds tasks ("- [ ] item" / "- [x] item", "*" too, two leading
  * spaces nest), images of the canvas ("![alt](attachment:<uuid>)" on a line of its own; other image URLs stay text) and
@@ -35,13 +35,23 @@ export type Block =
   | { kind: "heading"; level: 1 | 2 | 3; tokens: Token[]; /** canvas: its line in the body */ line?: number }
   | { kind: "paragraph"; lines: Token[][] }
   | { kind: "quote"; lines: Token[][] }
-  | { kind: "list"; ordered: boolean; start: number; items: Array<{ level: number; tokens: Token[] }> }
+  /** `ordered` / `start`: the first item's (a top-level item of the other kind starts a new list). */
+  | { kind: "list"; ordered: boolean; start: number; items: ListItem[] }
   | { kind: "codeblock"; text: string; lang: string | null }
   | { kind: "table"; align: TableAlign[]; header: Token[][]; rows: Token[][][] }
   // The canvas dialect (CANVAS.md §4.2): `line` is the item's line in the body (0-based), which a tick changes.
   | { kind: "task"; items: TaskItem[] }
   | { kind: "image"; alt: string; attachmentId: string; line: number }
   | { kind: "hr" };
+
+/** One list item (apps/shared/lists.json): its level (0–2), its kind, its number (0 for a bullet) and the marker drawn. */
+export interface ListItem {
+  level: number;
+  ordered: boolean;
+  number: number;
+  marker: string;
+  tokens: Token[];
+}
 
 export interface TaskItem {
   level: number;
@@ -69,7 +79,7 @@ export type TableAlign = "left" | "center" | "right" | null;
 // (also inside emphasis). E-mail addresses (and the shrug ¯\_(ツ)_/¯, which keeps its backslash) are text tokens of
 // their own, so emphasis and escapes are never read inside them.
 const INLINE =
-  /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)/gu;
+  /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)/gu;
 const WITH_BLOCKS = new RegExp(`(\`\`\`([\\s\\S]*?)\`\`\`)|${INLINE.source}|(\\n)`, "gu");
 const WORD_BEFORE = /[\p{L}\p{N}_]$/u;
 const ESCAPED = /\\([_*~`])/g;
@@ -110,7 +120,7 @@ function scan(body: string, pattern: RegExp, withBlocks: boolean): Token[] {
       const fenced = splitFence(match[2] ?? "");
       tokens.push({ kind: "codeblock", text: fenced.text, lang: fenced.lang });
     } else if (g(1) !== undefined) tokens.push({ kind: "bold", text: unescape(g(2) ?? "") });
-    else if (g(3) !== undefined) tokens.push({ kind: "code", text: g(4) ?? "" });
+    else if (g(3) !== undefined) tokens.push({ kind: "code", text: codeSpan(g(3) ?? "", g(4)) });
     else if (g(5) !== undefined) tokens.push({ kind: "bold", text: unescape(g(6) ?? "") });
     else if (g(7) !== undefined) tokens.push({ kind: "italic", text: unescape(g(8) ?? "") });
     else if (g(9) !== undefined) tokens.push({ kind: "strike", text: unescape(g(10) ?? "") });
@@ -128,11 +138,31 @@ function scan(body: string, pattern: RegExp, withBlocks: boolean): Token[] {
   return tokens;
 }
 
+/**
+ * The text of an inline code span (apps/shared/inline-format.json): `single` is the text between single backticks;
+ * otherwise `whole` is a ``double`` span, which may hold a backtick, and loses one space at each end when it has one at
+ * both (CommonMark: "`` ` ``" is a backtick).
+ */
+function codeSpan(whole: string, single: string | undefined): string {
+  if (single !== undefined) return straightQuotes(single);
+  const inner = whole.slice(2, -2);
+  const trimmed = inner.length >= 2 && inner.startsWith(" ") && inner.endsWith(" ") && inner.trim() !== "" ? inner.slice(1, -1) : inner;
+  return straightQuotes(trimmed);
+}
+
+/**
+ * Code shows the quotes a keyboard curled back straight (2026-10-06): iOS's smart punctuation and the Japanese keyboards
+ * turn ' and " into ‘ ’ “ ”, so `it's` arrived as `it’s` (apps/shared/inline-format.json, code_blocks too).
+ */
+export function straightQuotes(text: string): string {
+  return /[‘’“”]/.test(text) ? text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"') : text;
+}
+
 /** "lang\ncode" → language tag and code; a fence without a language keeps the whole text. */
 function splitFence(raw: string): { text: string; lang: string | null } {
   const match = /^([A-Za-z0-9_+#.-]{1,20})?\n([\s\S]*)$/.exec(raw);
-  if (match && match[1] !== undefined) return { lang: match[1].toLowerCase(), text: (match[2] ?? "").replace(/\n$/, "") };
-  return { lang: null, text: raw.replace(/^\n|\n$/g, "") };
+  if (match && match[1] !== undefined) return { lang: match[1].toLowerCase(), text: straightQuotes((match[2] ?? "").replace(/\n$/, "")) };
+  return { lang: null, text: straightQuotes(raw.replace(/^\n|\n$/g, "")) };
 }
 
 const BULLET = /^(\s*)[-*•]\s+(.*)$/;
@@ -197,7 +227,7 @@ export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
     if (opensFence(i)) {
       const fence = FENCE.exec(line);
       const close = fenceCloseAfter(i);
-      push({ kind: "codeblock", text: lines.slice(i + 1, close).join("\n"), lang: fence?.[1] ? fence[1].toLowerCase() : null });
+      push({ kind: "codeblock", text: straightQuotes(lines.slice(i + 1, close).join("\n")), lang:fence?.[1] ? fence[1].toLowerCase() : null });
       i = close + 1;
       continue;
     }
@@ -254,22 +284,23 @@ export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
       push({ kind: "table", align, header: header.map((cell) => tokenizeInline(cell)), rows });
       continue;
     }
-    const bullet = BULLET.exec(line);
-    const numbered = NUMBERED.exec(line);
-    if (bullet || numbered) {
-      const ordered = !bullet;
-      const items: Array<{ level: number; tokens: Token[] }> = [];
-      const start = numbered ? Number(numbered[2]) : 1;
-      while (i < lines.length) {
-        const current = lines[i] ?? "";
-        const m = ordered ? NUMBERED.exec(current) : BULLET.exec(current);
-        if (!m || isTask(i)) break;
-        const indent = (m[1] ?? "").replace(/\t/g, "  ").length;
-        const text = ordered ? (m[3] ?? "") : (m[2] ?? "");
-        items.push({ level: indent >= 2 ? 1 : 0, tokens: tokenizeInline(text) });
+    if (listLine(line)) {
+      const rows: ListLine[] = [];
+      while (i < lines.length && !isTask(i)) {
+        const row = listLine(lines[i] ?? "");
+        if (!row) break;
+        rows.push(row);
         i++;
       }
-      push({ kind: "list", ordered, start, items });
+      // A top-level item of the other kind starts a new list (as in CommonMark).
+      const items = listItems(rows);
+      let from = 0;
+      for (let k = 1; k <= items.length; k++) {
+        if (k < items.length && !(items[k]!.level === 0 && items[k]!.ordered !== items[from]!.ordered)) continue;
+        const run = items.slice(from, k);
+        push({ kind: "list", ordered: run[0]!.ordered, start: run[0]!.ordered ? run[0]!.number : 1, items: run });
+        from = k;
+      }
       continue;
     }
     // Paragraph: consecutive ordinary lines (blank lines stay as empty lines inside it).
@@ -283,6 +314,77 @@ export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
     push({ kind: "paragraph", lines: paragraph });
   }
   return blocks;
+}
+
+/** A list line: its indent (a tab is 4 columns), its kind, the number written ("3." → 3) and its text. */
+interface ListLine {
+  indent: number;
+  ordered: boolean;
+  written: number;
+  text: string;
+}
+
+function listLine(line: string): ListLine | null {
+  const numbered = NUMBERED.exec(line);
+  if (numbered) return { indent: indentWidth(numbered[1] ?? ""), ordered: true, written: Number(numbered[2]), text: numbered[3] ?? "" };
+  const bullet = BULLET.exec(line);
+  if (bullet) return { indent: indentWidth(bullet[1] ?? ""), ordered: false, written: 0, text: bullet[2] ?? "" };
+  return null;
+}
+
+const indentWidth = (indent: string) => indent.replace(/\t/g, "    ").length;
+
+/** Three levels: 1. a. i. for numbers, • ◦ ▪ for bullets (apps/shared/lists.json). */
+export const LIST_LEVELS = 3;
+
+/**
+ * Levels, numbers and markers of consecutive list lines (apps/shared/lists.json, the same in the three clients). An item
+ * indented 2 or more columns past the one before nests one level deeper (2–4 spaces or a tab, at most three levels); a
+ * smaller indent goes back to the level it matches. Each run of items at one level under one parent is a list of its
+ * own: it starts at the number its first item is written with ("3." starts at 3) and counts on from there whatever the
+ * others say ("1. 1. 1." is 1, 2, 3); a run of the other kind (bullets among numbers) starts again. Level 1 numbers are
+ * 1. 2. 3., level 2 a. b. c., level 3 i. ii. iii.; bullets • ◦ ▪.
+ */
+function listItems(rows: readonly ListLine[]): ListItem[] {
+  const indents: number[] = [];
+  const counters: Array<{ ordered: boolean; next: number } | undefined> = [];
+  return rows.map((row) => {
+    if (indents.length === 0) indents.push(row.indent);
+    else {
+      while (indents.length > 1 && row.indent < indents[indents.length - 1]!) indents.pop();
+      if (row.indent >= indents[indents.length - 1]! + 2 && indents.length < LIST_LEVELS) indents.push(row.indent);
+    }
+    const level = indents.length - 1;
+    counters.length = level + 1; // the lists deeper than this item end here
+    const counter = counters[level];
+    const number = !row.ordered ? 0 : counter?.ordered ? counter.next : row.written;
+    counters[level] = { ordered: row.ordered, next: number + 1 };
+    return { level, ordered: row.ordered, number, marker: listMarker(row.ordered, level, number), tokens: tokenizeInline(row.text) };
+  });
+}
+
+/** "1." / "a." / "i." by level (a number below 1 stays decimal, as CSS does), "•" / "◦" / "▪" for bullets. */
+export function listMarker(ordered: boolean, level: number, number: number): string {
+  if (!ordered) return ["•", "◦", "▪"][Math.min(level, 2)]!;
+  if (level === 1 && number >= 1) return `${alpha(number)}.`;
+  if (level >= 2 && number >= 1 && number < 4000) return `${roman(number)}.`;
+  return `${number}.`;
+}
+
+/** 1 → a, 26 → z, 27 → aa (CSS lower-alpha). */
+function alpha(n: number): string {
+  let out = "";
+  for (let k = n; k > 0; k = Math.floor((k - 1) / 26)) out = String.fromCharCode(97 + ((k - 1) % 26)) + out;
+  return out;
+}
+
+/** 4 → iv (CSS lower-roman). */
+function roman(n: number): string {
+  const table: Array<[number, string]> = [[1000, "m"], [900, "cm"], [500, "d"], [400, "cd"], [100, "c"], [90, "xc"], [50, "l"], [40, "xl"], [10, "x"], [9, "ix"], [5, "v"], [4, "iv"], [1, "i"]];
+  let out = "";
+  let k = n;
+  for (const [value, letters] of table) for (; k >= value; k -= value) out += letters;
+  return out;
 }
 
 /** How a paragraph block is drawn (apps/shared/body-paragraphs.json, the same in the three clients). */

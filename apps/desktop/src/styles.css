@@ -196,12 +196,17 @@
 :root[data-theme="dark"] .text-emoji { background: var(--te-bg-dark); color: var(--te-fg-dark); }
 
 /* 「フォント」 (2026-10-05, ui/theme.ts): the bundled Noto Sans JP first, then the system's; <html data-font="system">
-   leaves it out (and so never fetches it). Code stays monospace (.body code / pre). */
+   leaves it out (and so never fetches it). Code (2026-10-06, .body code / pre): the bundled JetBrains Mono, then the
+   system's monospace fonts; Japanese in code, which none of them has, falls through to the UI font. The system choice
+   leaves JetBrains Mono out too. */
 :root {
   --font-system: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
   --font-ui: "Noto Sans JP Variable", var(--font-system);
+  --font-mono-system: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono";
+  --font-code: "JetBrains Mono Variable", var(--font-mono-system), var(--font-ui), monospace;
 }
 :root[data-font="system"] { --font-ui: var(--font-system); }
+:root[data-font="system"] { --font-code: var(--font-mono-system), var(--font-ui), monospace; }
 
 @theme inline {
   --font-sans: var(--font-ui);
@@ -275,8 +280,11 @@ body.workspace-dragging, body.workspace-dragging * { cursor: grabbing !important
 
 /* Message bodies (light markdown) */
 .body { white-space: pre-wrap; overflow-wrap: anywhere; }
-.body code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; background: var(--panel-2); padding: 0.1em 0.35em; border-radius: 4px; }
-.body pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; background: var(--panel-2); padding: 8px 10px; border-radius: 8px; overflow-x: auto; margin: 4px 0; }
+/* Code (2026-10-06): JetBrains Mono a little smaller than the text around it (its letters are wide), no programming
+   ligatures (`->` `!=` stay as typed), a soft box with a hairline edge; a block wraps long lines as the text does. */
+.body code, .body pre { font-family: var(--font-code); font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; }
+.body code { font-size: 0.86em; background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); padding: 0.1em 0.38em; border-radius: 5px; }
+.body pre { font-size: 0.88em; line-height: 1.6; background: var(--panel-2); border: 1px solid var(--line); padding: 8px 12px; border-radius: 8px; overflow-x: auto; margin: 4px 0; tab-size: 4; }
 .body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .body .mention { color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 3px; font-weight: 500; }
 mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1px; }

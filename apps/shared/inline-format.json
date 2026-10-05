@@ -1,5 +1,5 @@
 {
-  "_comment": "Inline markup of message bodies (DATA_MODEL.md 「本文の形式」, M107), the same on the three clients and the server: markdown.ts tokenizeInline / plainText, MessageBodyView.swift BodyTokenizer.tokenizeInline + Timeline.plainText, BodyTokenizer.kt tokenizeInline / plainText, server mentions.py notification_text. `_` opens emphasis only when not preceded by a letter, digit or `_` (CJK characters are letters) and closes only when not followed by one (CommonMark), so snake_case and e-mail addresses stay as they are; the text between needs a non-space at both ends. Auto-linked URLs and e-mail addresses are never read for emphasis. `\\_` `\\*` `\\~` `\\`` are the literal character (also inside emphasis; other backslashes stay, and the shrug ¯\\_(ツ)_/¯ keeps its backslash). `*` / `**` / `~~` are unchanged; emphasis does not nest. `tokens`: [kind, text] (adjacent text merged), a link [\"link\", url] or [\"link\", url, label]. `plain`: the one-line text of notifications and previews.",
+  "_comment": "Inline markup of message bodies (DATA_MODEL.md 「本文の形式」, M107), the same on the three clients and the server: markdown.ts tokenizeInline / plainText, MessageBodyView.swift BodyTokenizer.tokenizeInline + Timeline.plainText, BodyTokenizer.kt tokenizeInline / plainText, server mentions.py notification_text. `_` opens emphasis only when not preceded by a letter, digit or `_` (CJK characters are letters) and closes only when not followed by one (CommonMark), so snake_case and e-mail addresses stay as they are; the text between needs a non-space at both ends. Auto-linked URLs and e-mail addresses are never read for emphasis. `\\_` `\\*` `\\~` `\\`` are the literal character (also inside emphasis; other backslashes stay, and the shrug ¯\\_(ツ)_/¯ keeps its backslash). `*` / `**` / `~~` are unchanged; emphasis does not nest. `tokens`: [kind, text] (adjacent text merged), a link [\"link\", url] or [\"link\", url, label]. `plain`: the one-line text of notifications and previews. Code (2026-10-06): `code` or ``code`` (a double span may hold a backtick and loses one space at each end when it has one at both, CommonMark); backslashes stay inside code; quotes a keyboard curled (‘ ’ “ ”, iOS smart punctuation and the Japanese keyboards) are straight again inside inline code and code blocks (`code_blocks`: a body and the text of its first code block).",
   "cases": [
     { "name": "e-mail with two underscores", "line": "first_middle_last@example.com",
       "tokens": [["text", "first_middle_last@example.com"]], "plain": "first_middle_last@example.com" },
@@ -67,6 +67,31 @@
     { "name": "emphasis does not nest", "line": "*_both_*",
       "tokens": [["bold", "_both_"]], "plain": "_both_" },
     { "name": "single asterisks stay as before inside words", "line": "a*b*c",
-      "tokens": [["text", "a"], ["bold", "b"], ["text", "c"]], "plain": "abc" }
+      "tokens": [["text", "a"], ["bold", "b"], ["text", "c"]], "plain": "abc" },
+    { "name": "inline code with single quotes", "line": "`'abc'` and `it's`",
+      "tokens": [["code", "'abc'"], ["text", " and "], ["code", "it's"]], "plain": "'abc' and it's" },
+    { "name": "inline code with double quotes", "line": "say `\"hi\"` 今",
+      "tokens": [["text", "say "], ["code", "\"hi\""], ["text", " 今"]], "plain": "say \"hi\" 今" },
+    { "name": "a lone quote in code", "line": "`'` と `\"`",
+      "tokens": [["code", "'"], ["text", " と "], ["code", "\""]], "plain": "' と \"" },
+    { "name": "curled quotes in code are straight again", "line": "it’s `it’s ‘a’ “b”`",
+      "tokens": [["text", "it’s "], ["code", "it's 'a' \"b\""]], "plain": "it’s it's 'a' \"b\"" },
+    { "name": "double backticks hold a backtick", "line": "``a ` b`` です",
+      "tokens": [["code", "a ` b"], ["text", " です"]], "plain": "a ` b です" },
+    { "name": "double backticks around a lone backtick", "line": "`` ` ``",
+      "tokens": [["code", "`"]], "plain": "`" },
+    { "name": "double backticks with a quote", "line": "``'x'``",
+      "tokens": [["code", "'x'"]], "plain": "'x'" },
+    { "name": "unclosed double backticks stay text", "line": "``abc",
+      "tokens": [["text", "``abc"]], "plain": "``abc" },
+    { "name": "backslashes stay at the end of code", "line": "`C:\\Users\\`",
+      "tokens": [["code", "C:\\Users\\"]], "plain": "C:\\Users\\" },
+    { "name": "an escaped backtick before code", "line": "\\``code`",
+      "tokens": [["text", "`"], ["code", "code"]], "plain": "`code" }
+  ],
+  "code_blocks": [
+    { "name": "curled single quotes in a block", "body": "```\nprint(‘hi’)\nit’s\n```", "text": "print('hi')\nit's" },
+    { "name": "curled double quotes in a block with a language", "body": "```js\nconst s = “x”;\n```", "text": "const s = \"x\";" },
+    { "name": "straight quotes stay", "body": "```\necho 'a' \"b\"\n```", "text": "echo 'a' \"b\"" }
   ]
 }

@@ -44,7 +44,10 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -226,8 +229,9 @@ fun bodyInline(
                 is BodyToken.Bold -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { appendWithEmoji(token.text) }
                 is BodyToken.Italic -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { appendWithEmoji(token.text) }
                 is BodyToken.Strike -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { appendWithEmoji(token.text) }
-                is BodyToken.Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(token.text) }
-                is BodyToken.CodeBlock -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) { append(token.text) }
+                // Thin spaces either side so the background does not touch the letters (as on iOS).
+                is BodyToken.Code -> withStyle(SpanStyle(fontFamily = CodeFont, fontSize = 0.9.em, background = codeBackground)) { append(" " + token.text + " ") }
+                is BodyToken.CodeBlock -> withStyle(SpanStyle(fontFamily = CodeFont)) { append(token.text) }
                 is BodyToken.Link -> {
                     val internal = internalBase?.let { Permalink.messageId(it, token.url) }
                     val canvas = internalBase?.let { Permalink.canvasId(it, token.url) }
@@ -256,6 +260,18 @@ fun bodyInline(
     }
     return BodyInline(::inline, inlineContent)
 }
+
+/**
+ * Code (2026-10-06): JetBrains Mono, bundled (res/font, the Latin subset of the desktop's font as static Regular and
+ * Bold, its programming ligatures left out; THIRD_PARTY_NOTICES.md). Letters it lacks (Japanese) come from the system's
+ * fonts. Inline code at 0.9 of the text around it, code blocks at 13.5 sp on 20 sp lines.
+ */
+val CodeFont = FontFamily(
+    Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
+    Font(R.font.jetbrains_mono_bold, FontWeight.Bold),
+)
+
+private val CodeBlockStyle = TextStyle(fontFamily = CodeFont, fontSize = 13.5.sp, lineHeight = 20.sp)
 
 /**
  * 2026-10-05: blank lines are this gap (about 0.4 of a bodyLarge line), not empty lines — between the runs of a
@@ -301,22 +317,34 @@ fun BodyBlockView(block: BodyBlock, inline: BodyInline) {
             Spacer(Modifier.width(8.dp))
             Text(inline.joined(block.lines), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge, color = muted)
         }
+        // apps/shared/lists.json: each item's marker (1. a. i. / • ◦ ▪) comes from the parser; a wide one ("viii.")
+        // pushes its text over rather than wrapping.
         is BodyBlock.ListBlock -> Column(Modifier.padding(vertical = 1.dp)) {
-            block.items.forEachIndexed { index, item ->
-                Row(Modifier.padding(start = (item.level * 16).dp), verticalAlignment = Alignment.Top) {
-                    val marker = if (block.ordered) "${block.start + index}." else if (item.level > 0) "◦" else "•"
-                    Text(marker, style = MaterialTheme.typography.bodyLarge, color = muted, modifier = Modifier.width(22.dp))
+            block.items.forEach { item ->
+                Row(Modifier.padding(start = (item.level * 20).dp), verticalAlignment = Alignment.Top) {
+                    Text(
+                        item.marker,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = muted,
+                        maxLines = 1,
+                        softWrap = false,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.widthIn(min = 20.dp).padding(end = 6.dp),
+                    )
                     Text(inline.build(item.tokens), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }
         is BodyBlock.Table -> MarkdownTable(block, inline.build, inlineContent)
         is BodyBlock.CodeBlock -> Column(
-            Modifier.fillMaxWidth().padding(vertical = 2.dp).background(codeBackground, RoundedCornerShape(6.dp)).padding(8.dp),
+            Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                .background(codeBackground, RoundedCornerShape(8.dp))
+                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.End,
         ) {
             block.lang?.let { Text(it.uppercase(), style = MaterialTheme.typography.labelSmall, color = muted) }
-            Text(block.text, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth())
+            Text(block.text, style = CodeBlockStyle, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.fillMaxWidth())
         }
         // The canvas dialect only (parseBlocks(canvas = true)); CanvasBody draws these with boxes that tick and images.
         is BodyBlock.Tasks -> Column(Modifier.padding(vertical = 1.dp)) {
