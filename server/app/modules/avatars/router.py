@@ -1,14 +1,15 @@
 from uuid import UUID
 
-from fastapi import APIRouter, File, Request, UploadFile
+from fastapi import APIRouter, File, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.db import Db
 from app.core.errors import not_found, rate_limited
 from app.modules.attachments import service as attachments
 from app.modules.auth.deps import CurrentUser
-from app.modules.avatars import service
+from app.modules.avatars import service, signing
 from app.modules.channels import service as channels  # M13e guest visibility
+from app.modules.users import service as users
 from app.modules.users.schemas import UserMe, to_user_me
 
 router = APIRouter(tags=["users"])
@@ -32,6 +33,42 @@ async def upload_avatar(
 @router.delete("/users/me/avatar", response_model=UserMe)
 async def delete_avatar(request: Request, user: CurrentUser, db: Db) -> UserMe:
     return to_user_me(await service.remove(db, user, request.app.state.blobs))
+
+
+@router.get("/users/{user_id}/avatar/signed")
+async def get_signed_avatar(
+    user_id: UUID,
+    request: Request,
+    db: Db,
+    v: str = Query(max_length=32),
+    exp: int = Query(),
+    sig: str = Query(max_length=64),
+) -> StreamingResponse:
+    """The picture without a session, for a message push's signed URL (PUSH_NOTIFICATIONS.md §16).
+
+    Only with this server's signature for exactly this user and picture version, before its
+    expiry; anything else (a bad or expired signature, a newer or removed picture) is 404.
+    """
+    secret = request.app.state.settings.secret_key
+    if not signing.verify(secret, user_id, v, exp, sig):
+        raise not_found("avatar_not_found", "No picture")
+    user = await users.get_user(db, user_id)
+    if (
+        user is None
+        or not user.avatar_key
+        or user.avatar_updated_at is None
+        or signing.version_of(user.avatar_updated_at) != v
+    ):
+        raise not_found("avatar_not_found", "No picture")
+    return StreamingResponse(
+        attachments.stream(request.app.state.blobs, user.avatar_key),
+        headers={
+            "Content-Type": "image/png",
+            "Content-Disposition": "inline",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, max-age=86400",
+        },
+    )
 
 
 @router.get("/users/{user_id}/avatar")

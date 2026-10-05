@@ -28,6 +28,9 @@ class Device(Base):
     push_token: Mapped[str | None] = mapped_column(Text)
     push_environment: Mapped[str | None] = mapped_column(String(16))  # apns: sandbox | production
     push_token_invalid_reason: Mapped[str | None] = mapped_column(String(32))
+    # The address this device reaches the server by (PUSH_NOTIFICATIONS.md §16): the iOS message
+    # push's signed avatar URL starts with it. Kept at PUT /devices/current.
+    base_url: Mapped[str | None] = mapped_column(String(255))
     enabled: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     disabled_reason: Mapped[str | None] = mapped_column(String(32))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

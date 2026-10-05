@@ -27433,6 +27433,77 @@
         ]
       }
     },
+    "/api/v1/users/{user_id}/avatar/signed": {
+      "get": {
+        "description": "The picture without a session, for a message push's signed URL (PUSH_NOTIFICATIONS.md §16).\n\nOnly with this server's signature for exactly this user and picture version, before its\nexpiry; anything else (a bad or expired signature, a newer or removed picture) is 404.",
+        "operationId": "get_signed_avatar_api_v1_users__user_id__avatar_signed_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "v",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "title": "V",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exp",
+            "required": true,
+            "schema": {
+              "title": "Exp",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sig",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "title": "Sig",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Signed Avatar",
+        "tags": [
+          "users"
+        ]
+      }
+    },
     "/api/v1/users/{user_id}/block": {
       "delete": {
         "operationId": "unblock_user_api_v1_users__user_id__block_delete",
