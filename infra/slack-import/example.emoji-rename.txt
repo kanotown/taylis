@@ -1,0 +1,17 @@
+bump_of_知見=bump_of_chiken
+完了=kanryo
+あと一息=ato_hitoiki
+確認しました=kakunin_shimashita
+確認済=kakunin_zumi
+嬉しいちくわ3=ureshii_chikuwa3
+悲しいちくわ7=kanashii_chikuwa7
+悲しいちくわ0=kanashii_chikuwa0
+悲しいりす1=kanashii_risu1
+悲しいりす2=kanashii_risu2
+ちくわ-005=chikuwa-005
+昇天ちくわ=shoten_chikuwa
+汗だくちくわ=asedaku_chikuwa
+社畜わ=shachikuwa
+悲しいちくわ2=kanashii_chikuwa2
+hanpen029_おなかいっぱい=hanpen029_onakaippai
+hanpen037_ごめんなさい=hanpen037_gomennasai

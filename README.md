@@ -1,42 +1,106 @@
 # Taylis
 
-Taylis (formerly ChikuwaChat; internal IDs keep chikuwachat)
+Taylis is a self-hosted, Slack-like team chat for small organisations such as research labs: one server you run
+yourself, and native clients for Windows, macOS, iOS and Android plus a browser client.
 
-セルフホスト型の Slack ライクなチャットシステム。FastAPI + PostgreSQL (PGroonga) + versitygw (S3 互換オブジェクトストレージ) の
-modular monolith をサーバとし、Desktop (Windows / macOS)、iOS、Android のクライアントを持つ。
+(Formerly "ChikuwaChat"; internal identifiers such as bundle IDs, package names and the `chikuwachat://` URL scheme
+keep the old name.)
 
-開発方針は [CLAUDE.md](CLAUDE.md)、開発の進め方と別の Mac への引き継ぎは [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
-進捗は [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) のマイルストーン表、残りは [docs/BACKLOG.md](docs/BACKLOG.md)。
+> **No support guarantee.** Taylis is developed for the author's own use and published as-is. Issues and pull
+> requests are welcome, but there is no promise of support, fixes, or a roadmap. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-**運用者に見えるもの**: 非公開チャンネルや DM は、admin でもメンバーでなければアプリからは読めない。ただしサーバ・
-データベース・バックアップに触れられる運用者は、技術的にはすべてのメッセージを読める。研究室で使うときは、この点を
-利用者に伝え、admin (とサーバの管理) を教員ではなく技術職員や博士課程の学生に任せる選択肢も検討する (docs/LAB.md J)。
+<!-- Screenshots: docs/images/ (not yet published) -->
 
-## 構成
+## Features
+
+- Public and private channels, direct messages and group DMs
+- Threads, reactions, mentions, editing and deletion, unread state synchronised across devices
+- Reliable delivery: server-side ordering, idempotent sends, catch-up after reconnects (WebSocket + REST,
+  [docs/SYNC_PROTOCOL.md](docs/SYNC_PROTOCOL.md))
+- Push notifications through APNs (iOS) and FCM (Android), sent from a transactional outbox
+- Japanese and English full-text search (PostgreSQL + PGroonga)
+- File attachments in S3-compatible object storage (versitygw by default)
+- Canvas documents, calendar with recurring events and iCal, tasks, workflows, custom emoji
+- Optional sign-in with Google (SSO), invitations, guest accounts
+- Several workspaces (servers) in one client
+- Importers for Mattermost and Slack exports
+- Optional AI bot (answers mentions, private summaries, questions over past messages; [docs/AI.md](docs/AI.md))
+- Backup and restore scripts, automatic deployment from a release tag
+
+## Architecture
+
+A modular monolith: **FastAPI** (Python) + **PostgreSQL** with **PGroonga** + **versitygw** (S3-compatible object
+storage), deployed with Docker Compose behind Caddy (or an existing reverse proxy). No Redis, Kafka or Kubernetes;
+the real-time event bus is an interface so it can be replaced if the server ever needs to scale out.
+Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```
-server/         FastAPI サーバ (modular monolith)
-apps/desktop/   Desktop クライアント (Tauri 2 + React + TypeScript + Tailwind CSS + Radix UI + Lucide、Windows / macOS)。
-                同じバンドルをブラウザ向けにも配信する (infra/web.Dockerfile、M12j)
-apps/ios/       iOS クライアント (Swift / SwiftUI)
-apps/android/   Android クライアント (Kotlin / Jetpack Compose)
-apps/shared/    3 端末とサーバが共有するデータ (絵文字表、エラー文言、未読の規則の検証ベクトル) と生成スクリプト
-infra/          Docker Compose、Caddy、運用手順
-openapi/        コードから生成した OpenAPI と WS イベントスキーマ
-docs/           設計文書
+server/         FastAPI server (modular monolith)
+apps/desktop/   Desktop client (Tauri 2 + React + TypeScript, Windows / macOS); the same bundle is served as the
+                browser client (infra/web.Dockerfile)
+apps/ios/       iOS client (Swift / SwiftUI)
+apps/android/   Android client (Kotlin / Jetpack Compose)
+apps/shared/    Data shared by the clients and the server (emoji table, error texts, test vectors) and generators
+infra/          Docker Compose, Caddy, deployment and operations
+openapi/        OpenAPI and WebSocket event schemas generated from the code
+docs/           Design documents (mostly in Japanese)
 ```
 
-## 設計文書
+## Self-hosting quick start
 
-| 文書 | 内容 |
+You need a Linux server (2 vCPU / 4 GB RAM or more) with Docker Engine and the compose plugin, and a DNS name pointing
+at it with ports 80 and 443 open.
+
+```sh
+git clone https://github.com/kanotown/chikuwachat.git /srv/chikuwachat
+cd /srv/chikuwachat/infra
+cp .env.example .env && chmod 600 .env     # fill in SECRET_KEY, POSTGRES_PASSWORD, S3_SECRET_KEY, CHAT_DOMAIN
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app python -m app.cli create-admin --username admin
+```
+
+Then open `https://<CHAT_DOMAIN>/` in a browser, or enter that URL in a desktop or mobile client. Backups, restores,
+push notification setup (APNs / FCM), running behind an existing reverse proxy, automatic deployment and imports are
+described in [infra/README.md](infra/README.md).
+
+## Clients
+
+| Client | Stack | Notes |
+| --- | --- | --- |
+| Browser | React (served by the server) | `https://<CHAT_DOMAIN>/` |
+| Desktop | Tauri 2 + React | Windows and macOS; in-app updates from the official releases |
+| iOS | SwiftUI | Push via APNs; build with Xcode ([docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)) |
+| Android | Jetpack Compose | Push via FCM; build with Gradle |
+
+Every client talks to the server through the same API ([openapi/openapi.json](openapi/openapi.json)).
+
+## Development
+
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): toolchain, check commands, building forks
+- [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md): milestones; open items in [docs/BACKLOG.md](docs/BACKLOG.md)
+- [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md): the project's engineering principles
+
+| Design document | Topic |
 | --- | --- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 全体構成、モジュール分割、プロセスモデル、エラー分類、拡張経路、設計判断 |
-| [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | テーブル定義、ID と seq の役割、不変条件 |
-| [docs/SYNC_PROTOCOL.md](docs/SYNC_PROTOCOL.md) | REST + WebSocket による同期、再接続、冪等性、既読 |
-| [docs/PUSH_NOTIFICATIONS.md](docs/PUSH_NOTIFICATIONS.md) | APNs / FCM、重複・欠落・遅延への対応 |
-| [docs/SECURITY.md](docs/SECURITY.md) | 認証・認可・添付・デプロイ |
-| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | マイルストーン表 (M0〜M30) とバックログ |
-| [docs/THREADS.md](docs/THREADS.md) | フォロー中スレッド一覧の設計 (M11a で実装) |
-| [docs/WORKSPACES.md](docs/WORKSPACES.md) | 複数ワークスペース (サーバ) の切り替え (M16c) |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | 研究室向けの計画 (2026-09-28 の評価から) と、その番号と実際のマイルストーンの対応 |
-| [docs/LAB.md](docs/LAB.md) / [CANVAS.md](docs/CANVAS.md) / [MOBILE_UI.md](docs/MOBILE_UI.md) | 研究室向け機能 (L0〜L9)・Canvas・スマホ UI の設計 |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Overall structure, modules, process model, error classes, design decisions |
+| [DATA_MODEL.md](docs/DATA_MODEL.md) | Tables, IDs and sequences, invariants |
+| [SYNC_PROTOCOL.md](docs/SYNC_PROTOCOL.md) | REST + WebSocket synchronisation, reconnects, idempotency, read state |
+| [PUSH_NOTIFICATIONS.md](docs/PUSH_NOTIFICATIONS.md) | APNs / FCM, handling duplicated, dropped or delayed pushes |
+| [SECURITY.md](docs/SECURITY.md) | Authentication, authorisation, attachments, deployment |
+| [WORKSPACES.md](docs/WORKSPACES.md) | Several workspaces (servers) in one client |
+
+**What operators can see**: private channels and DMs cannot be read in the apps by admins who are not members, but
+anyone with access to the server, the database or the backups can technically read every message. Tell your users,
+and consider who should hold the admin and server roles ([docs/LAB.md](docs/LAB.md) J).
+
+## Security
+
+Please report vulnerabilities privately; see [SECURITY.md](SECURITY.md).
+
+## License
+
+The source code is licensed under the [Apache License 2.0](LICENSE). Bundled third-party data is listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+The name "Taylis" and the squirrel icon / logo are **not** covered by the Apache License: forks must use another name
+and icon. See [TRADEMARKS.md](TRADEMARKS.md) and [NOTICE](NOTICE).
