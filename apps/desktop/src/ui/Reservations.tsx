@@ -7,7 +7,7 @@
  * weeks ahead). Administrators add pools; they and a pool's creator change its settings (here only, not on phones).
  */
 import { CalendarClock, ChevronLeft, ChevronRight, Pencil, Plus, Ticket, Trash2 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import type { PoolCreate, PoolOut, ReservationOut, TodoOut } from "../api/types";
 import type { AppController } from "../state/app";
@@ -263,8 +263,18 @@ function Timeline({ controller, pool, day, now }: { controller: AppController; p
   const me = controller.store.me?.id;
   const today = dayStart(now).getTime() === day.getTime();
   const nowAt = (now.getTime() - day.getTime()) / (24 * 3_600_000);
+  // A narrow screen scrolls the day sideways: today starts an hour before now, another day at its first bar.
+  const scroller = useRef<HTMLDivElement>(null);
+  const firstBar = bars[0]?.from ?? 0;
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    const at = today ? Math.max(0, nowAt - 1 / 24) : firstBar;
+    el.scrollLeft = at * el.scrollWidth;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day.getTime()]);
   return (
-    <div className="overflow-x-auto rounded-xl border border-line" data-timeline>
+    <div ref={scroller} className="overflow-x-auto rounded-xl border border-line" data-timeline>
       <div className="relative min-w-[720px]">
         <div className="flex border-b border-line text-[10px] text-muted">
           {Array.from({ length: 24 }, (_, h) => (
