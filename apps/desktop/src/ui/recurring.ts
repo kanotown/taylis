@@ -6,8 +6,7 @@ import type { CollectionOut, CollectSpec, RecurringPostCreate, RecurringPostOut,
 import type { ChannelState } from "../sync/types";
 import { t, weekdayName } from "../i18n";
 
-/** 0 = Monday (the server's weekday numbers). */
-export const WEEKDAY_LABELS = ["月", "火", "水", "木", "金", "土", "日"] as const;
+/** The {weekday} placeholder expands on the server in Japanese (shared channel content), so the preview hint does too. */
 const JS_WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 export const MAX_RECURRING_NAME = 40;
 export const MAX_RECURRING_BODY = 4000;
