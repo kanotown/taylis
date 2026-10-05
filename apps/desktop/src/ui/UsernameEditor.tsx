@@ -2,13 +2,14 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { Button, cn, Input } from "./primitives";
 import { normalizeUsername, renameHint, usernameProblem } from "./username";
+import { t } from "../i18n";
 
 /**
  * M96: a username field with its own save button (the profile: my own, 3 times in 24 hours; the admin dialog: anyone's).
  * The local rules show while typing; the server's refusal (taken, reserved, the daily limit) shows under the field.
  * `onSubmit` returns null when done, else the message.
  */
-export function UsernameEditor({ current, hasPassword, onSubmit, limitNote, submitLabel = "ユーザー名を変更", autoFocus, onDone }: {
+export function UsernameEditor({ current, hasPassword, onSubmit, limitNote, submitLabel = t("admin.users.rename"), autoFocus, onDone }: {
   current: string;
   hasPassword: boolean;
   onSubmit: (username: string) => Promise<string | null>;
@@ -49,9 +50,9 @@ export function UsernameEditor({ current, hasPassword, onSubmit, limitNote, subm
   };
 
   return (
-    <form className="space-y-1" onSubmit={submit} aria-label="ユーザー名">
+    <form className="space-y-1" onSubmit={submit} aria-label={t("admin.users.sort.username")}>
       <label className="block space-y-1">
-        <span className="text-xs font-medium text-muted">ユーザー名 (3〜32 文字、a-z 0-9 . _ -)</span>
+        <span className="text-xs font-medium text-muted">{t("admin.users.usernameLabel")}</span>
         <div className="flex items-center gap-2">
           <div className="relative min-w-0 flex-1">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">@</span>
@@ -75,11 +76,11 @@ export function UsernameEditor({ current, hasPassword, onSubmit, limitNote, subm
       {message ? (
         <p role="alert" className="text-xs text-danger">{message}</p>
       ) : saved !== null && !changed ? (
-        <p className="text-xs text-muted">@{saved} に変更しました{hasPassword ? "。次からはこの名前でログインします" : ""}</p>
+        <p className="text-xs text-muted">{t("username.changed", { name: saved })}{hasPassword ? t("username.changedPassword") : ""}</p>
       ) : null}
       <p className="text-xs text-muted">
         {renameHint(hasPassword)}
-        {limitNote ? " 変更は 24 時間に 3 回までです。" : ""}
+        {limitNote ? t("username.limit") : ""}
       </p>
     </form>
   );

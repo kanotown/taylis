@@ -130,7 +130,7 @@ export function tIn(locale: UiLocale, key: MessageKey, params?: Params): string 
  * A `[value, label]` pair for a module-level option list whose label is looked up when read (`t` at load time would
  * keep the start's language). Destructuring, `.map(([v, l]) => …)` and toEqual see an ordinary pair.
  */
-export function labelled<T>(value: T, key: MessageKey): [T, string] {
+export function labelled<const T>(value: T, key: MessageKey): [T, string] {
   const pair: [T, string] = [value, ""];
   Object.defineProperty(pair, 1, { get: () => t(key), enumerable: true });
   return pair;

@@ -4,7 +4,8 @@ import { type FormEvent, useEffect, useState } from "react";
 import { AI_CHARACTER_MAX, AI_EFFORTS, AI_MODELS, AI_PROVIDERS, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiEffort, type AiModel, aiModelLabel, aiProviderLabel, type AiProviderName, aiProviderOf, type AiProviderOut, type AiUsageOut, DEFAULT_AI_MODEL, describeAiError } from "../api/ai";
 import type { AppController } from "../state/app";
 import { Badge, Button, cn, Field, Input, Modal, Textarea } from "./primitives";
-import { USERNAME_HINT } from "./username";
+import { usernameHint } from "./username";
+import { t } from "../i18n";
 
 
 const SELECT = "h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm";
@@ -245,7 +246,7 @@ function AgentEditor({ row, busy, providers, onClose, onSave }: { row: AiAgentOu
               <Input value={`@${row.username}`} disabled readOnly />
             </Field>
           ) : (
-            <Field label="ユーザー名 (3〜32 文字、a-z 0-9 . _ -)" hint={USERNAME_HINT}>
+            <Field label={t("admin.users.usernameLabel")} hint={usernameHint()}>
               <Input value={form.username} pattern="[a-z0-9._-]{3,32}" required placeholder="例: ai-chikuwa" onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase() })} />
             </Field>
           )}

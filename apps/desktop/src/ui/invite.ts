@@ -2,6 +2,7 @@
 
 import { ApiError, describeError } from "../api/errors";
 import type { Affiliation, FacultyRank, Grade, InviteOut, LabPreset } from "../api/types";
+import { t } from "../i18n";
 
 const TOKEN = /^[A-Za-z0-9_-]{20,128}$/;
 
@@ -18,25 +19,25 @@ export function parseInviteLink(text: string): { server: string; token: string }
 }
 
 export const INVITE_STATUS_LABELS: Record<InviteOut["status"], string> = {
-  active: "有効",
-  expired: "期限切れ",
-  exhausted: "使用済み",
-  revoked: "取消済み",
+  get active() { return t("invites.status.active"); },
+  get expired() { return t("invites.status.expired"); },
+  get exhausted() { return t("invites.status.exhausted"); },
+  get revoked() { return t("invites.status.revoked"); },
 };
 
 export function inviteUsesLabel(invite: InviteOut): string {
-  return invite.max_uses === null ? `${invite.use_count} 回使用 (回数無制限)` : `${invite.use_count} / ${invite.max_uses} 回`;
+  return invite.max_uses === null ? t("invites.usesUnlimited", { count: invite.use_count }) : t("invites.uses", { count: invite.use_count, max: invite.max_uses });
 }
 
 const ERROR_TEXT: Record<string, string> = {
-  invite_not_found: "この招待リンクは無効です",
-  invite_expired: "この招待リンクは期限切れです",
-  invite_exhausted: "この招待リンクはすでに使われています",
-  invite_revoked: "この招待リンクは取り消されています",
-  username_taken: "このユーザー名はすでに使われています",
-  password_too_short: "パスワードが短すぎます",
-  validation_error: "入力内容を確認してください",
-  rate_limited: "しばらく待ってからやり直してください",
+  get invite_not_found() { return t("invites.error.notFound"); },
+  get invite_expired() { return t("invites.error.expired"); },
+  get invite_exhausted() { return t("invites.error.exhausted"); },
+  get invite_revoked() { return t("invites.error.revoked"); },
+  get username_taken() { return t("invites.error.usernameTaken"); },
+  get password_too_short() { return t("invites.error.passwordTooShort"); },
+  get validation_error() { return t("workflow.checkInput"); },
+  get rate_limited() { return t("invites.error.rateLimited"); },
 };
 
 /** Invite failures in words; anything else gets the shared Japanese error text (ARCHITECTURE.md §9). */
