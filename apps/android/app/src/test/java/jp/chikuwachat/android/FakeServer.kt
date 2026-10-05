@@ -265,7 +265,13 @@ class FakeServer {
             return activity[userId] ?: throw ApiException.Api(404, "not_found", "no activity before M39")
         }
 
-        override suspend fun reservationPools(): List<PoolOut> { maybeFail(); poolReads += 1; return pools }
+        /** Review v0.1.37 #6: when set, the next GET /reservation-pools answers as the server was then, but only once released. */
+        var poolsHold: Hold? = null
+        override suspend fun reservationPools(): List<PoolOut> {
+            maybeFail(); poolReads += 1
+            poolsHold?.let { hold -> poolsHold = null; return hold.pass { pools } }
+            return pools
+        }
         override suspend fun channelLinks(channelId: String): List<ChannelLinkOut> { maybeFail(); requireMember(channelId, userId); return links[channelId] ?: emptyList() }
         override suspend fun saveDraft(channelId: String, parentId: String?, body: String): DraftOut { maybeFail(); return this@FakeServer.saveDraft(userId, channelId, parentId, body) }
         override suspend fun deleteDraft(channelId: String, parentId: String?) { maybeFail(); this@FakeServer.deleteDraft(userId, channelId, parentId) }
