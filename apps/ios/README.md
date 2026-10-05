@@ -10,10 +10,23 @@ brew install xcodegen            # プロジェクト生成ツール (開発時�
 xcodegen generate                # project.yml から ChikuwaChat.xcodeproj を生成 (生成物はコミット済み)
 open ChikuwaChat.xcodeproj       # Xcode で開き、Team を選んで実機にインストール (App Store は使わない)
 
-# テスト (シミュレータ)
+# テスト (シミュレータ)。テストは日本語の文言で比べるので、テストの言語を日本語にする
 xcodebuild -project ChikuwaChat.xcodeproj -scheme ChikuwaChat \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' CODE_SIGNING_ALLOWED=NO test
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' CODE_SIGNING_ALLOWED=NO -testLanguage ja -testRegion JP test
 ```
+
+## 表示言語 (日本語 / English / 简体中文)
+
+- 文言は `ChikuwaChat/Resources/Localizable.xcstrings` (String Catalog、ソース言語は日本語、キー = 日本語の文)。
+  Info.plist の文言は `InfoPlist.xcstrings`。英語・簡体字中国語の訳語は `apps/shared/i18n/glossary.json` に合わせる。
+- SwiftUI の `Text("…")` / `Button("…")` などはそのまま訳される。それ以外で組み立てる文は `tr("…")` を使う
+  (`String(localized:)` は起動時の言語のままで、アプリ内の切り替えに追従しない)。データの日本語 (コマンド名 `/日程`、
+  解析する語など) には同じ行に `// i18n-ignore` を付ける。
+- アプリ内の切り替え (自分 → 表示 → 言語) は `App/AppLanguage.swift` の `UILanguage`。サーバの `UserMe.locale`
+  と同期し、すべてのリクエストに `Accept-Language` を付ける。
+- 確認: `python3 scripts/i18n_check.py leftovers` (カタログ外の日本語の文字列。ビルドの .stringsdata と照合)、
+  `python3 scripts/i18n_check.py sync` (抽出したキーをカタログへ追加)、`python3 scripts/i18n_check.py missing`
+  (訳のないキー。`LocalizationTests` も同じことを確かめる)。
 
 実サーバに対するエンジンの検証: `TEST_RUNNER_LIVE_URL=http://127.0.0.1:8000 TEST_RUNNER_LIVE_PASS=... xcodebuild ... -only-testing:ChikuwaChatTests/LiveBackendTests test`
 (`dtuser1` / `dtuser2` を CLI で作っておく。シミュレータはホストの `127.0.0.1` に到達できる)。
