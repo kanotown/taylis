@@ -556,3 +556,97 @@ async def test_push_for_notices_skips_done_and_active(
     later = [d for d in await deliveries(db) if d.payload.get("kind") == "reservation"][1:]
     # only Bob's 「割り当てられました」 (op's Bob to-do was done before the relay ran)
     assert [d.payload["body"][:3] for d in later] == ["✅ 「"]
+
+
+# --- review v0.1.37 #2: an operator who lost the right gets no addresses -----------------------
+
+
+async def test_an_operator_made_a_guest_gets_no_new_todo(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """New to-dos go by the API's can_operate: not to an operator made a guest (or deactivated);
+    without any operator who can, to the creator (here the admin who made the pool)."""
+    s = await _setup(client, db, as_user)
+    pid = s["pid"]
+    op_id, op2_id = s["op"].id, s["op2"].id
+    as_user(s["admin"])
+    demoted = await client.patch(f"/api/v1/admin/users/{op_id}", json={"role": "guest"})
+    assert demoted.status_code == 200, demoted.text
+    as_user(s["alice"])
+    reserved = await client.post(f"/api/v1/reservation-pools/{pid}/reserve")
+    rid = reserved.json()["my_reservation_id"]
+    events = (
+        await db.scalars(select(OutboxEvent).where(OutboxEvent.event_type == "reservation.notice"))
+    ).all()
+    assert {e.audience_id for e in events} == {op2_id}
+    assert [n.key for n in await _notices(db, s["op2"])] == [f"assign:{rid}"]
+    assert await _notices(db, s["op"]) == []
+    # op2 deactivated too: Bob's to-do (and Alice's, untold to anyone who can) go to the
+    # pool's creator.
+    as_user(s["admin"])
+    off = await client.patch(f"/api/v1/admin/users/{op2_id}", json={"deactivated": True})
+    assert off.status_code == 200, off.text
+    as_user(s["bob"])
+    await client.post(f"/api/v1/reservation-pools/{pid}/reserve")
+    keys = {n.key for n in await _notices(db, s["admin"])}
+    assert f"assign:{rid}" in keys and len(keys) == 2, keys
+    assert await _notices(db, s["op"]) == []
+    late = await db.scalars(
+        select(OutboxEvent).where(
+            OutboxEvent.event_type == "reservation.notice", OutboxEvent.audience_id == op_id
+        )
+    )
+    assert late.first() is None
+
+
+async def test_a_queued_todo_is_not_shown_or_sent_after_the_operator_lost_the_right(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    test_settings: Settings,
+) -> None:
+    """A to-do written while op and op2 could operate; then op is made a guest and op2 taken off
+    the operators before the relay ran: not in their activity or badge, no WebSocket event, no
+    push. The creator (an admin) is told instead; op2 put back sees the kept to-do again."""
+    s = await _setup(client, db, as_user)
+    pid = s["pid"]
+    op_id, op2_id, admin_id = s["op"].id, s["op2"].id, s["admin"].id
+    op_phone = await add_device(db, s["op"])
+    op2_phone = await add_device(db, s["op2"], "tok2")
+    as_user(s["alice"])
+    await client.post(f"/api/v1/reservation-pools/{pid}/reserve")
+    assert len(await _notices(db, s["op"])) == 1 and len(await _notices(db, s["op2"])) == 1
+    as_user(s["admin"])
+    demoted = await client.patch(f"/api/v1/admin/users/{op_id}", json={"role": "guest"})
+    assert demoted.status_code == 200
+    taken_off = await client.patch(f"/api/v1/reservation-pools/{pid}", json={"operator_ids": []})
+    assert taken_off.status_code == 200, taken_off.text
+    relay = relay_with_planner(app, test_settings)
+    while await relay.process_batch():
+        pass
+    bus: Any = relay.bus
+    sent = [e for e in bus.published if e.event == "reservation.notice"]
+    reached = {uid for e in sent if e.audience is not None for uid in e.audience.ids}
+    assert op_id not in reached and op2_id not in reached
+    pushed = {d.device_id for d in await deliveries(db) if d.payload.get("kind") == "reservation"}
+    assert not pushed & {op_phone.id, op2_phone.id}
+    for who in (op_id, op2_id):
+        as_user(await db.get_one(User, who))
+        feed = (await client.get("/api/v1/activity", params=INCLUDE)).json()["items"]
+        assert all(i["kind"] != "reservation" for i in feed), feed
+        summary = (await client.get("/api/v1/activity/summary", params=INCLUDE)).json()
+        assert summary["unread_count"] == 0
+    # The creator (the admin who pressed it: their copy is silent) holds the to-do now.
+    admin_notices = await _notices(db, await db.get_one(User, admin_id))
+    assert any("alice@example.jp" in n.text for n in admin_notices)
+    # op2 an operator again: the kept to-do is theirs to see again.
+    as_user(await db.get_one(User, admin_id))
+    back = await client.patch(
+        f"/api/v1/reservation-pools/{pid}", json={"operator_ids": [str(op2_id)]}
+    )
+    assert back.status_code == 200, back.text
+    as_user(await db.get_one(User, op2_id))
+    feed = (await client.get("/api/v1/activity", params=INCLUDE)).json()["items"]
+    assert [i["kind"] for i in feed] == ["reservation"]
+    assert "alice@example.jp" in feed[0]["reservation"]["text"]

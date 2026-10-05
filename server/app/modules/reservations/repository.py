@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.groups.models import UserGroupMember
+from app.modules.reservations import access
 from app.modules.reservations.models import (
     ACTIVE_STATUSES,
     Reservation,
@@ -110,11 +111,18 @@ async def notice(db: AsyncSession, user_id: uuid.UUID, key: str) -> ReservationN
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def operator_notice_keys(db: AsyncSession, pool_id: uuid.UUID) -> set[str]:
-    """Every to-do key the pool's operators were ever told of (open or done)."""
+async def operator_notice_keys(
+    db: AsyncSession, pool_id: uuid.UUID, user_ids: list[uuid.UUID]
+) -> set[str]:
+    """Every to-do key these people (the pool's operators now) were ever told of (open or
+    done). A key told only to someone who can no longer operate is told again to who can."""
     stmt = (
         select(ReservationNotice.key)
-        .where(ReservationNotice.pool_id == pool_id, ReservationNotice.operator.is_(True))
+        .where(
+            ReservationNotice.pool_id == pool_id,
+            ReservationNotice.operator.is_(True),
+            ReservationNotice.user_id.in_(user_ids),
+        )
         .distinct()
     )
     return set((await db.execute(stmt)).scalars().all())
@@ -129,28 +137,21 @@ async def open_operator_notices(db: AsyncSession, pool_id: uuid.UUID) -> list[Re
     return list((await db.execute(stmt)).scalars().all())
 
 
-def _mine(user_id: uuid.UUID):  # type: ignore[no-untyped-def]
-    return (
-        select(ReservationNotice, ReservationPool.name)
-        .join(ReservationPool, ReservationPool.id == ReservationNotice.pool_id)
-        .where(ReservationNotice.user_id == user_id)
-    )
-
-
 async def notices_for(
     db: AsyncSession, user_id: uuid.UUID, *, before: datetime | None, limit: int
 ) -> list[tuple[ReservationNotice, str]]:
-    """The activity items of kind reservation, newest first, with the pool's name."""
-    stmt = _mine(user_id).order_by(ReservationNotice.at.desc()).limit(limit)
+    """The activity items of kind reservation, newest first, with the pool's name; an
+    operator's notice only while the reader can operate the pool (access.may_read)."""
+    stmt = access.readable_notices(user_id).order_by(ReservationNotice.at.desc()).limit(limit)
     if before is not None:
         stmt = stmt.where(ReservationNotice.at < before)
-    return [(row[0], row[1]) for row in (await db.execute(stmt)).all()]
+    return [(row[0], row[1].name) for row in (await db.execute(stmt)).all()]
 
 
 def unread_notices(user_id: uuid.UUID, since: datetime):  # type: ignore[no-untyped-def]
-    """Not done, after the read position."""
-    return select(ReservationNotice.id).where(
-        ReservationNotice.user_id == user_id,
-        ReservationNotice.at > since,
-        ReservationNotice.done_at.is_(None),
+    """Not done, after the read position, readable now (access.may_read)."""
+    return (
+        access.readable_notices(user_id)
+        .with_only_columns(ReservationNotice.id)
+        .where(ReservationNotice.at > since, ReservationNotice.done_at.is_(None))
     )

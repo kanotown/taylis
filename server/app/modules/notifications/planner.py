@@ -36,6 +36,7 @@ from app.modules.reads import rules as unread_rules
 from app.modules.reads import service as reads
 from app.modules.reminders import service as reminders
 from app.modules.reminders.events import REMINDER_UPDATED
+from app.modules.reservations import access as reservation_access
 from app.modules.reservations.events import RESERVATION_NOTICE
 from app.modules.reservations.models import ReservationNotice
 from app.modules.tasks import service as tasks
@@ -492,6 +493,8 @@ class PushPlanner:
         item = await db.get(ReservationNotice, uuid.UUID(str(data["item_id"])))
         if item is None or item.done_at is not None:
             return
+        if not await reservation_access.may_deliver(db, item.id, user_id):
+            return  # an operator's to-do for someone who can no longer operate (review v0.1.37 #2)
         devices = await repo.push_devices_for_users(db, [user_id])
         if not devices:
             return

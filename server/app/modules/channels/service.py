@@ -28,6 +28,7 @@ from app.modules.channels.schemas import (
 from app.modules.moderation import blocks
 from app.modules.reads import service as reads
 from app.modules.reads.schemas import ReadMark, ReadStateOut
+from app.modules.reservations import access as reservation_access
 from app.modules.users.models import User
 from app.modules.workspace import service as workspace
 
@@ -99,6 +100,7 @@ def dm_key_for(user_ids: list[uuid.UUID]) -> str:
 USER_EVENTS = ("user.created", "user.updated", "user.deactivated")
 GROUP_UPDATED = "group.updated"  # member lists: not for guests
 ROSTER_UPDATED = "roster.updated"  # the lab roster (M23): not for guests either
+RESERVATION_NOTICE = "reservation.notice"  # re-checked at delivery (review v0.1.37 #2)
 
 
 async def _user_event_audience(db: AsyncSession, subject: uuid.UUID) -> list[uuid.UUID]:
@@ -140,6 +142,12 @@ async def resolve_event_audience(db: AsyncSession, event: OutboxEvent) -> Audien
             return Audience(kind="users", ids=tuple(await _user_event_audience(db, subject)))
         return Audience(kind="all")
     if event.audience_type == "user" and event.audience_id is not None:
+        if event.event_type == RESERVATION_NOTICE and not await reservation_access.may_deliver(
+            db, uuid.UUID(str(event.payload["item_id"])), event.audience_id
+        ):
+            # An operator's to-do (names, addresses) queued for someone who can no longer
+            # operate the pool: not sent (review v0.1.37 #2).
+            return Audience(kind="users", ids=())
         return Audience(kind="users", ids=(event.audience_id,))
     if event.audience_type == "session" and event.audience_id is not None:
         return Audience(kind="sessions", ids=(event.audience_id,))

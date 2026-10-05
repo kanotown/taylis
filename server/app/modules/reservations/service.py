@@ -40,6 +40,7 @@ from app.modules.channels.models import Channel
 from app.modules.groups.models import UserGroup
 from app.modules.messages import service as messages
 from app.modules.messages.schemas import MessageCreate
+from app.modules.reservations import access
 from app.modules.reservations import repository as repo
 from app.modules.reservations.events import (
     RESERVATION_NOTICE,
@@ -198,12 +199,8 @@ async def _audience(db: AsyncSession, pool: ReservationPool) -> _Audience:
     return _Audience(pool, None)
 
 
-def _can_manage(actor: User, pool: ReservationPool) -> bool:
-    return actor.is_admin or (actor.id == pool.created_by and not actor.is_guest)
-
-
-def _can_operate(actor: User, pool: ReservationPool) -> bool:
-    return _can_manage(actor, pool) or (actor.id in pool.operator_ids and not actor.is_guest)
+_can_manage = access.can_manage
+_can_operate = access.can_operate
 
 
 def _pool_not_found() -> AppError:
@@ -543,6 +540,8 @@ async def _notify(
     person = await change.person(db, user_id)
     if person is None or not person.is_active or person.role == "bot":
         return
+    if operator and not access.may_receive_operator_notice(person, change.pool):
+        return  # an operator's to-do names people with their addresses (review v0.1.37 #2)
     if await repo.notice(db, user_id, key) is not None:
         return
     if not isinstance(text, str):
@@ -581,16 +580,22 @@ async def _notify(
 
 
 async def _operator_ids(db: AsyncSession, change: _Change) -> list[uuid.UUID]:
-    """Who the to-dos go to: the pool's active operators; without any, its creator; without
-    them, the administrators."""
+    """Who the to-dos go to: the pool's operators who can operate it now (the API's rule: not a
+    guest, not deactivated); without any, its creator if they can; without them, the
+    administrators. A to-do names people with their addresses (review v0.1.37 #2)."""
     pool = change.pool
     chosen = list(pool.operator_ids)
     found = await users.get_users(db, chosen)
-    active = [uid for uid in chosen if uid in found and found[uid].is_active]
-    if active:
-        return active
+    change.people.update(found)
+    able = [
+        uid
+        for uid in chosen
+        if uid in found and access.may_receive_operator_notice(found[uid], pool)
+    ]
+    if able:
+        return able
     creator = await change.person(db, pool.created_by)
-    if creator is not None and creator.is_active and not creator.is_guest:
+    if creator is not None and access.may_receive_operator_notice(creator, pool):
         return [creator.id]
     return await repo.admin_ids(db)
 
@@ -763,7 +768,7 @@ async def _reconcile(db: AsyncSession, change: _Change) -> bool:
         plan = _plan(pool, rows, now)
 
     # The operators' to-dos: each key once (the page shows it until it is done).
-    told = await repo.operator_notice_keys(db, pool.id)
+    told = await repo.operator_notice_keys(db, pool.id, await _operator_ids(db, change))
     booked = {r.id for r in rows if r.status == "booked"}
     keep = {t.key for t in plan.todos} | {t.key for t in plan.upcoming}
     keep |= {f"booking:{bid}" for bid in booked}
