@@ -1,99 +1,159 @@
 import XCTest
 @testable import ChikuwaChat
 
-/// M99 (docs/RESERVATIONS.md §6): a channel's reservation pools — decoding, the card's words, and live reloads.
+/// M112 (docs/RESERVATIONS.md §6): 「予約」 — decoding, the booking choices, the day's hours, the words, the tile, the
+/// activity item and live reloads.
 @MainActor
 final class ReservationTests: XCTestCase {
-    private func row(_ id: String, user: String, status: String = "waiting", position: Int? = nil, step: String? = nil,
-                     pair: String? = nil, guarantee: String? = nil, evict: String? = nil, ready: Bool = false) -> ReservationOut {
-        ReservationOut(id: id, userId: user, status: status, requestedAt: "2026-10-04T00:00:00Z",
-                       assignedAt: status == "waiting" ? nil : "2026-10-04T00:00:00Z", guaranteeUntil: guarantee, returnedAt: nil,
-                       evictAt: evict, email: nil, position: position, step: step, pairId: pair, ready: ready)
+    private var tokyo: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        return calendar
     }
 
-    private func pool(holders: [ReservationOut], waiting: [ReservationOut], mine: String? = nil, next: String? = nil) -> PoolOut {
-        PoolOut(id: "p1", channelId: "c1", name: "Claude Premium シート", capacity: 1, minHours: 6, graceMinutes: 15, tz: "Asia/Tokyo",
-                enabled: true, operatorIds: [], botUserId: nil, holders: holders, waiting: waiting, nextEvictId: next,
-                myReservationId: mine, canManage: false, canOperate: false, createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z")
+    /// 2026-10-05 (月) 10:20 in Tokyo.
+    private let now = parseIsoDate("2026-10-05T01:20:00Z")!
+
+    /// An hour of 2026-10-05 in Tokyo as ISO (UTC).
+    private func at(_ hour: Int, day: Int = 5) -> String {
+        let date = tokyo.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour))!
+        return ISO8601DateFormatter().string(from: date)
+    }
+
+    private func booking(_ id: String, user: String, from: Int, to: Int, status: String = "booked") -> ReservationOut {
+        ReservationOut(id: id, userId: user, kind: "booking", status: status, requestedAt: "2026-10-04T00:00:00Z", startAt: at(from), endAt: at(to))
     }
 
     func testDecodesTheServersPool() throws {
         let json = """
-        {"id": "p1", "channel_id": "c1", "name": "シート", "capacity": 3, "min_hours": 6, "grace_minutes": 15, "tz": "Asia/Tokyo",
-         "enabled": true, "operator_ids": ["u9"], "bot_user_id": "b1",
-         "holders": [{"id": "r1", "user_id": "u1", "status": "holding", "requested_at": "2026-10-04T00:00:00Z",
-                      "assigned_at": "2026-10-04T00:10:00Z", "guarantee_until": "2026-10-04T06:10:00Z", "returned_at": null,
-                      "evict_at": null, "email": "a@example.jp", "position": null, "step": null, "pair_id": "r2", "ready": false}],
-         "waiting": [{"id": "r2", "user_id": "u2", "status": "waiting", "requested_at": "2026-10-04T01:00:00Z", "assigned_at": null,
-                      "guarantee_until": null, "returned_at": null, "evict_at": null, "email": null, "position": 1, "step": "swap",
-                      "pair_id": "r1", "ready": false}],
-         "next_evict_id": "r1", "my_reservation_id": "r2", "can_manage": false, "can_operate": true,
+        {"id": "p1", "name": "シート", "capacity": 3, "min_hours": 6, "max_hours": 4, "grace_minutes": 15, "tz": "Asia/Tokyo",
+         "enabled": true, "operator_ids": ["u9"], "log_channel_id": null, "visibility": "group", "visibility_channel_id": null,
+         "visibility_group_id": "g1",
+         "holders": [{"id": "r1", "user_id": "u1", "kind": "walkin", "status": "holding", "requested_at": "2026-10-04T00:00:00Z",
+                      "start_at": null, "end_at": null, "assigned_at": "2026-10-04T00:10:00Z", "guarantee_until": "2026-10-04T06:10:00Z",
+                      "returned_at": null, "evict_at": null, "email": "a@example.jp", "position": null, "step": null, "pair_id": null,
+                      "ready": false, "until": null, "can_extend": false}],
+         "waiting": [],
+         "bookings": [{"id": "b1", "user_id": "u2", "kind": "booking", "status": "booked", "requested_at": "2026-10-04T01:00:00Z",
+                       "start_at": "2026-10-05T04:00:00Z", "end_at": "2026-10-05T06:00:00Z", "assigned_at": null, "guarantee_until": null,
+                       "returned_at": null, "evict_at": null, "email": null, "position": null, "step": null, "pair_id": null,
+                       "ready": false, "until": null, "can_extend": true}],
+         "todos": [{"key": "booking:b1", "action": "assign", "reason": "free", "assign_id": "b1", "remove_id": null,
+                    "due_at": "2026-10-05T04:00:00Z", "upcoming": true}],
+         "next_evict_id": null, "my_reservation_id": null, "can_manage": false, "can_operate": true, "horizon_days": 14,
          "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z"}
         """
         let pool = try JSON.snakeDecoder.decode(PoolOut.self, from: Data(json.utf8))
-        XCTAssertEqual(pool.holders.first?.email, "a@example.jp")
-        XCTAssertEqual(pool.waiting.first?.step, "swap")
-        XCTAssertEqual(pool.nextEvictId, "r1")
-        XCTAssertTrue(pool.canOperate)
-        XCTAssertEqual(ReservationRules.summary(pool), "1/3 · 待ち 1")
-        XCTAssertEqual(ReservationRules.myStatus(pool), "待ち 1 番目")
+        XCTAssertEqual(pool.maxHours, 4)
+        XCTAssertEqual(pool.visibility, "group")
+        XCTAssertEqual(pool.bookings.first?.canExtend, true)
+        XCTAssertEqual(pool.todos.first?.upcoming, true)
+        XCTAssertEqual(ReservationRules.todoCount([pool]), 0) // only due to-dos count
     }
 
-    func testWordsForMembersAndHolders() {
-        let when: (String) -> String = { $0 == "2026-10-04T06:00:00Z" ? "15:00" : "15:15" }
-        let holder = row("h1", user: "alice", status: "holding", pair: "w1", guarantee: "2026-10-04T06:00:00Z")
-        let waiter = row("w1", user: "bob", position: 1, step: "swap", pair: "h1")
-        let p = pool(holders: [holder], waiting: [waiter], mine: "h1", next: "h1")
-        XCTAssertEqual(ReservationRules.myStatus(p, when: when), "利用中 (保証 15:00 まで)")
-        XCTAssertFalse(ReservationRules.urgent(p))
-        let told = pool(holders: [row("h1", user: "alice", status: "holding", pair: "w1", guarantee: "2026-10-04T06:00:00Z",
-                                      evict: "2026-10-04T06:15:00Z")], waiting: [waiter], mine: "h1")
-        XCTAssertEqual(ReservationRules.myStatus(told, when: when), "15:15 以降に外されます")
-        XCTAssertTrue(ReservationRules.urgent(told))
-        let name: (String) -> String = { $0 == "alice" ? "アリス" : "ボブ" }
-        XCTAssertEqual(ReservationRules.waiterLine(waiter, pool: p, name: name, when: { _ in "9:00" }), "9:00 に予約 · アリス さんの後")
-        XCTAssertEqual(ReservationRules.holderBadge(holder, pool: p, now: Date(timeIntervalSince1970: 0))?.text, "次に外す")
-        let ready = row("h1", user: "alice", status: "holding", guarantee: "2026-10-04T06:00:00Z", evict: "2026-10-04T06:15:00Z", ready: true)
-        XCTAssertEqual(ReservationRules.holderBadge(ready, pool: p)?.text, "入れ替えできます")
-        XCTAssertEqual(ReservationRules.holderBadge(row("r", user: "x", status: "returning"), pool: p)?.text, "返却済み · 外し待ち")
-        XCTAssertTrue(ReservationRules.early(holder, now: Date(timeIntervalSince1970: 0)))
-        XCTAssertFalse(ReservationRules.early(holder, now: Date(timeIntervalSince1970: 2_000_000_000)))
+    func testStartsDurationsAndHours() {
+        let pool = PoolOut(id: "p1", name: "シート", capacity: 2, bookings: [booking("b1", user: "a", from: 12, to: 15), booking("b2", user: "b", from: 13, to: 14)])
+        let day = tokyo.startOfDay(for: now)
+        let starts = ReservationRules.starts(pool, day: day, now: now, calendar: tokyo)
+        XCTAssertEqual(starts.first.map { ReservationRules.hm($0.start, calendar: tokyo) }, "10:00")
+        XCTAssertEqual(starts.first { ReservationRules.hm($0.start, calendar: tokyo) == "13:00" }?.full, true)
+        let ten = tokyo.date(bySettingHour: 10, minute: 0, second: 0, of: now)!
+        XCTAssertEqual(ReservationRules.durations(pool, start: ten, now: now, calendar: tokyo), [1, 2, 3])
+        let hours = ReservationRules.hours(pool, day: day, now: now, calendar: tokyo)
+        XCTAssertEqual(hours.count, 24)
+        XCTAssertEqual(hours[13].rows.map(\.id), ["b1", "b2"])
+        XCTAssertEqual(hours[15].rows, [])
+        XCTAssertEqual(ReservationRules.bookingDays(now: now, horizonDays: 14, calendar: tokyo).count, 15)
+        XCTAssertEqual(ReservationRules.dayLabel(tokyo.date(byAdding: .day, value: 2, to: day)!, now: now, calendar: tokyo), "10/7 (水)")
+        // a walk-in's guarantee holds its hours
+        let walk = ReservationOut(id: "w", userId: "c", kind: "walkin", status: "holding", requestedAt: at(8), assignedAt: at(9), guaranteeUntil: at(11))
+        let one = PoolOut(id: "p2", name: "x", capacity: 1, holders: [walk])
+        XCTAssertFalse(ReservationRules.fits(one, start: ten, hours: 1, now: now))
+        XCTAssertTrue(ReservationRules.fits(one, start: ten.addingTimeInterval(3600), hours: 1, now: now))
+    }
+
+    func testWordsTodosAndTheTile() {
+        let waiting = ReservationOut(id: "q1", userId: "me", kind: "walkin", status: "waiting", requestedAt: at(9), email: "me@example.jp",
+                                     position: 1, step: "assign", until: at(13))
+        let holder = ReservationOut(id: "w1", userId: "bob", kind: "walkin", status: "holding", requestedAt: at(8), assignedAt: at(9),
+                                    guaranteeUntil: at(12))
+        let todos = [
+            ReservationTodo(key: "assign:q1", action: "assign", reason: "free", assignId: "q1", dueAt: at(10)),
+            ReservationTodo(key: "booking:b1", action: "swap", reason: "guarantee_over", assignId: "b1", removeId: "w1", dueAt: at(12), upcoming: true),
+        ]
+        let pool = PoolOut(id: "p1", name: "シート", capacity: 1, holders: [holder], waiting: [waiting],
+                           bookings: [booking("b1", user: "alice", from: 12, to: 15)], todos: todos, myReservationId: "q1", canOperate: true)
+        let name: (String) -> String = { ["me": "わたし", "bob": "ボブ", "alice": "アリス"][$0] ?? "?" }
+        XCTAssertEqual(ReservationRules.mine(pool, me: "me").walkin?.id, "q1")
+        XCTAssertTrue(ReservationRules.walkinText(waiting, pool: pool, now: now).hasPrefix("空きあり (〜"))
+        XCTAssertEqual(ReservationRules.todoLine(todos[0], pool: pool, name: name, now: now), "わたし さん (me@example.jp) に割り当てる")
+        XCTAssertTrue(ReservationRules.todoLine(todos[1], pool: pool, name: name, now: now).contains("ボブ さん を外して アリス さん に割り当てる (保証時間が終了)"))
+        XCTAssertEqual(ReservationRules.todoCount([pool]), 1)
+        let tiles = HomeTile.tiles(threads: ThreadSummary(unreadCount: 0, mentionCount: 0), drafts: 0, saved: 0, firedReminders: 0,
+                                   reservations: HomeTile.ReservationTile(todos: 1, operates: true))
+        let tile = tiles.first { $0.kind == .reservations }
+        XCTAssertEqual(tile?.count, 1)
+        XCTAssertEqual(tile?.alert, true)
+        XCTAssertEqual(tiles.firstIndex { $0.kind == .reservations }, (tiles.firstIndex { $0.kind == .deadlines } ?? 0) + 1)
+        XCTAssertNil(HomeTile.tiles(threads: ThreadSummary(unreadCount: 0, mentionCount: 0), drafts: 0, saved: 0, firedReminders: 0)
+            .first { $0.kind == .reservations })
+    }
+
+    func testActivityItemOfKindReservation() throws {
+        let json = """
+        {"kind": "reservation", "at": "2026-10-05T01:00:00Z", "message": null, "canvas": null, "actor_ids": [], "emojis": [],
+         "reservation": {"item_id": "n1", "pool_id": "p1", "pool_name": "シート", "reservation_id": "q1",
+                         "text": "🙋 わたし さんに割り当ててください", "operator": true, "done": false, "done_at": null, "done_by": null}}
+        """
+        let item = try JSON.snakeDecoder.decode(ActivityItem.self, from: Data(json.utf8))
+        XCTAssertEqual(item.id, "reservation:n1")
+        XCTAssertEqual(ActivityRules.headline(item, nameOf: { $0 }).who, "シート")
+        XCTAssertEqual(ActivityRules.excerpt(item, users: [:]), "🙋 わたし さんに割り当ててください")
+        XCTAssertEqual(ActivityRules.append([], [item]).count, 1)
+        // another operator handled it: activity.updated marks it done
+        XCTAssertEqual(ActivityRules.blankingExcerpts([item], itemIds: ["n1"]).first?.reservation?.done, true)
     }
 
     func testStorePutsAndDropsPools() {
         let store = Store()
-        let first = pool(holders: [], waiting: [])
-        store.setReservationPools("c1", [first])
+        XCTAssertNil(store.reservationPools)
+        let first = PoolOut(id: "p1", name: "シート", capacity: 1)
+        store.setReservationPools([first])
         var renamed = first
-        renamed.holders = [row("h", user: "u", status: "holding")]
+        renamed.bookings = [booking("b", user: "u", from: 12, to: 13)]
         store.putReservationPool(renamed)
-        XCTAssertEqual(store.poolsOf("c1").first?.holders.count, 1)
-        store.dropReservationPool("c1", "p1")
-        XCTAssertEqual(store.poolsOf("c1"), [])
+        XCTAssertEqual(store.reservationPools?.first?.bookings.count, 1)
+        store.dropReservationPool("p1")
+        XCTAssertEqual(store.reservationPools, [])
     }
 
-    func testPoolsLoadWhenTheConversationOpensAndFollowReservationUpdated() async {
+    func testPoolsLoadAfterBootstrapAndFollowReservationUpdatedAndNotices() async throws {
         let server = FakeServer()
         let alice = server.addUser("alice")
         let bob = server.addUser("bob")
-        let channel = server.createChannel("claude", ownerId: alice.id)
-        server.join(channel.id, bob.id)
-        server.pools[channel.id] = [pool(holders: [], waiting: [])]
+        _ = server.createChannel("general", ownerId: alice.id)
+        server.pools = [PoolOut(id: "p1", name: "シート", capacity: 1)]
         let store = Store()
         var options = EngineOptions()
         options.sleep = { _ in }
         let engine = SyncEngine(api: server.api(for: bob.id), connect: server.connector(for: bob.id), wsUrl: URL(string: "ws://fake")!, store: store,
                                 getAccessToken: { "t" }, options: options)
+        var notices: [String] = []
+        engine.onReservationNotice = { notices.append($0.text) }
         await engine.start()
         await engine.idle()
-        XCTAssertEqual(store.poolsOf(channel.id), []) // not part of bootstrap
-        await engine.openChannel(channel.id)
         for _ in 0..<20 { await Task.yield() }
-        XCTAssertEqual(store.poolsOf(channel.id).first?.waiting.count, 0)
-        server.setPools(channel.id, [pool(holders: [], waiting: [row("w1", user: alice.id, position: 1, step: "assign")])])
+        XCTAssertEqual(store.reservationPools?.map(\.name), ["シート"])
+        let reads = server.poolReads
+        server.setPools([PoolOut(id: "p1", name: "Claude Premium シート", capacity: 1)])
+        server.setPools([PoolOut(id: "p1", name: "Claude Premium シート", capacity: 1)])
         await engine.idle()
-        for _ in 0..<20 { await Task.yield() }
-        XCTAssertEqual(store.poolsOf(channel.id).first?.waiting.map(\.id), ["w1"])
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(store.reservationPools?.map(\.name), ["Claude Premium シート"])
+        XCTAssertEqual(server.poolReads, reads + 1)
+        server.noticeReservation(bob.id, text: "🙋 割り当ててください")
+        await engine.idle()
+        XCTAssertEqual(notices, ["🙋 割り当ててください"])
         engine.stop()
     }
 }

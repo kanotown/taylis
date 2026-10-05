@@ -191,12 +191,19 @@ struct ActivityRowView: View {
         let (who, what) = ActivityRules.headline(item, nameOf: nameOf)
         let conversation = item.channelId.flatMap { store.channel($0) }.map { channelTitle($0, store: store) } ?? ""
         let place = conversation.isEmpty ? "" : ActivityRules.whereText(item, conversation: conversation)
+        // M112: a to-do another operator handled (or no longer needed) is done: dimmed, 「対応済み」.
+        let done = item.reservation?.done == true
         HStack(alignment: .top, spacing: 8) {
             Circle()
-                .fill(unread ? Color.accentColor : Color.clear)
+                .fill(unread && !done ? Color.accentColor : Color.clear)
                 .frame(width: 8, height: 8)
                 .padding(.top, 16)
-            avatars(nameOf)
+            if item.reservation != nil {
+                Text("🎫").font(.system(size: 20)).frame(width: 40, height: 40)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else {
+                avatars(nameOf)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     HStack(spacing: 3) {
@@ -208,6 +215,7 @@ struct ActivityRowView: View {
                     }
                     .font(.subheadline)
                     Spacer(minLength: 4)
+                    if done { Text("対応済み").font(.caption).foregroundStyle(.secondary) }
                     Text(DMList.timeLabel(item.at) ?? "").font(.caption).foregroundStyle(.secondary)
                 }
                 if !place.isEmpty {
@@ -218,14 +226,16 @@ struct ActivityRowView: View {
                     CustomEmoji.excerpt(excerpt, controller: controller)
                         .font(.subheadline)
                         .foregroundStyle(unread ? .primary : .secondary)
-                        .lineLimit(2)
+                        .lineLimit(item.reservation != nil ? 3 : 2)
+                        .strikethrough(done)
                 }
             }
         }
+        .opacity(done ? 0.6 : 1)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel([unread ? "未読" : nil, ActivityRules.headlineText(item, nameOf: nameOf), place.isEmpty ? nil : place,
+        .accessibilityLabel([unread ? "未読" : nil, ActivityRules.headlineText(item, nameOf: nameOf), done ? "対応済み" : nil, place.isEmpty ? nil : place,
                              DMList.timeLabel(item.at), excerpt.isEmpty ? nil : excerpt].compactMap { $0 }.joined(separator: "、"))
         .accessibilityAddTraits(.isButton)
     }

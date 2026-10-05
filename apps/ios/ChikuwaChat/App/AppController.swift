@@ -505,6 +505,7 @@ final class AppController {
         engine.onTaskNotice = { [weak self] notice in self?.sayTaskNotice(notice) }
         // M73: a canvas mention while the app is open, worded like the push; the notice opens the canvas.
         engine.onCanvasMention = { [weak self] mention, _ in self?.sayCanvasMention(mention) }
+        engine.onReservationNotice = { [weak self] notice in self?.sayReservationNotice(notice) }
         // L8: the Times feed keeps its rows with the live message events (TIMES_FEED.md §5).
         timesFeed = TimesFeedModel()
         engine.onTimelineMessage = { [weak self, weak engine] event, message, thread in
@@ -697,6 +698,12 @@ final class AppController {
             // the channel (as a message's conversation), or in the calendar for my own (no channel).
             calendarOpen = CalendarOpen(eventId: eventId, channelId: payload.channelId)
             if payload.channelId == nil { PushCenter.shared.pendingCalendar = true }
+        }
+        if payload.opensReservations {
+            // M112 (PUSH_NOTIFICATIONS.md §4, kind = reservation): 「予約」 on the home tab.
+            PushCenter.shared.pendingReservations = true
+            engine?.reconnectNow()
+            return
         }
         if payload.opensCanvas, let canvasId = payload.canvasId {
             // M73 (CANVAS.md §18.5, kind = canvas): the canvas, in its conversation's 「キャンバス」 tab once the store knows
@@ -1183,7 +1190,25 @@ final class AppController {
         catch { self.error = describe(error); return false }
     }
 
-    // MARK: reservation pools (M99, docs/RESERVATIONS.md §6)
+    // MARK: reservation pools (M99, M112, docs/RESERVATIONS.md §6)
+
+    /// M112: a reservation notice while the app is open: the banner (the activity lists it too).
+    func sayReservationNotice(_ notice: ReservationNotice) {
+        guard !DND.isActive((store.me ?? me)?.asPublic) else { return }
+        self.notice = "🎫 " + notice.text
+    }
+
+    /// A booking (start on the hour, `hours` long).
+    @discardableResult
+    func bookReservation(_ poolId: String, startAt: Date, hours: Int) async -> PoolOut? {
+        await withPool { try await $0.bookReservation(poolId: poolId, startAt: ISO8601DateFormatter().string(from: startAt), hours: hours) }
+    }
+
+    /// 「延長」 by an hour.
+    @discardableResult
+    func extendReservation(_ reservationId: String) async -> PoolOut? {
+        await withPool { try await $0.extendReservation(reservationId: reservationId) }
+    }
 
     /// Runs one call that answers with the pool and puts it in the store; an error goes to the banner.
     @discardableResult
@@ -1196,7 +1221,7 @@ final class AppController {
         } catch { self.error = describe(error); return nil }
     }
 
-    /// 「予約する」.
+    /// 「今すぐ (順番待ち)」.
     @discardableResult
     func reservePool(_ poolId: String) async -> PoolOut? { await withPool { try await $0.reserve(poolId: poolId) } }
 

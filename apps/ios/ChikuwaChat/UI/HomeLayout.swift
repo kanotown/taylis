@@ -102,7 +102,7 @@ enum HomeSections {
 /// still opens its list.
 struct HomeTile: Identifiable, Equatable {
     enum Kind: String {
-        case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, files, canvases
+        case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, reservations, files, canvases
     }
 
     let kind: Kind
@@ -124,6 +124,7 @@ struct HomeTile: Identifiable, Equatable {
         case .calendar: "カレンダー"
         case .tasks: "タスク"
         case .deadlines: "締切"
+        case .reservations: "予約"
         case .files: "ファイル"
         case .canvases: "キャンバス"
         }
@@ -139,6 +140,7 @@ struct HomeTile: Identifiable, Equatable {
         case .calendar: "calendar"
         case .tasks: "checklist"
         case .deadlines: "calendar.badge.exclamationmark"
+        case .reservations: "ticket"
         case .files: "doc.on.doc"
         case .canvases: "doc.text"
         }
@@ -155,6 +157,7 @@ struct HomeTile: Identifiable, Equatable {
         case .calendar: CalendarView.selectionId
         case .tasks: MyTasksView.selectionId
         case .deadlines: DeadlinesView.selectionId
+        case .reservations: ReservationsView.selectionId
         case .files: FilesView.selectionId
         case .canvases: CanvasesView.selectionId
         }
@@ -166,6 +169,7 @@ struct HomeTile: Identifiable, Equatable {
         switch kind {
         case .threads: return count == 0 ? "未読なし" : alert ? "未読 \(count) 件、メンションあり" : "未読 \(count) 件"
         case .reminders: return count == 0 ? "通知済みなし" : "通知済み \(count) 件"
+        case .reservations: return count == 0 ? "作業なし" : "担当者の作業 \(count) 件"
         default: return "\(count) 件"
         }
     }
@@ -174,7 +178,24 @@ struct HomeTile: Identifiable, Equatable {
     /// messages; リマインダー: the reminders that fired, red; カレンダー (M52, CALENDAR.md §7): no number; タスク (M56,
     /// TASKS.md §6): no number; 締切 (M86, DEADLINES.md §8 3.: after タスク): no number; ファイル: no number; Times (L8, TIMES_FEED.md §7: the feed, after スレッド): no number;
     /// キャンバス (M78, CANVAS.md §21.1: after ファイル, as in the desktop's sidebar): no number.
-    static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int) -> [HomeTile] {
+    /// M112: 予約 (after 締切; apps/shared/nav-items.json key "reservations") once the server answered the pools
+    /// (`reservations` non-nil); its number is the to-dos due in the pools I operate (red), none for the others.
+    static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int,
+                      reservations: ReservationTile? = nil) -> [HomeTile] {
+        var row = base(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders)
+        if let reservations, let at = row.firstIndex(where: { $0.kind == .deadlines }) {
+            row.insert(HomeTile(kind: .reservations, count: reservations.operates ? reservations.todos : nil,
+                                alert: reservations.todos > 0), at: at + 1)
+        }
+        return row
+    }
+
+    struct ReservationTile: Equatable {
+        let todos: Int
+        let operates: Bool
+    }
+
+    private static func base(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int) -> [HomeTile] {
         [
             HomeTile(kind: .threads, count: threads.unreadCount, alert: threads.mentionCount > 0),
             HomeTile(kind: .times, count: nil, alert: false),

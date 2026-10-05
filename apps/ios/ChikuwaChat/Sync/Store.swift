@@ -442,19 +442,17 @@ final class Store {
     var channelLinks: [String: [ChannelLinkOut]] = [:]
     func setChannelLinks(_ channelId: String, _ links: [ChannelLinkOut]) { channelLinks[channelId] = links }
     func linksOf(_ channelId: String) -> [ChannelLinkOut] { channelLinks[channelId] ?? [] }
-    /// M99: reservation pools of the conversations opened so far, as the server answered me (not persisted).
-    var reservationPools: [String: [PoolOut]] = [:]
-    func setReservationPools(_ channelId: String, _ pools: [PoolOut]) { reservationPools[channelId] = pools }
+    /// M112 (docs/RESERVATIONS.md §6): the workspace's reservation pools as the server answered me (not persisted); nil
+    /// until first read (after every bootstrap, then on reservation.updated) or with a server before M112.
+    var reservationPools: [PoolOut]?
+    func setReservationPools(_ pools: [PoolOut]?) { reservationPools = pools }
     /// One pool as an action answered it (replaced in place, or added at the end).
     func putReservationPool(_ pool: PoolOut) {
-        var list = reservationPools[pool.channelId] ?? []
+        var list = reservationPools ?? []
         if let index = list.firstIndex(where: { $0.id == pool.id }) { list[index] = pool } else { list.append(pool) }
-        reservationPools[pool.channelId] = list
+        reservationPools = list
     }
-    func dropReservationPool(_ channelId: String, _ poolId: String) {
-        reservationPools[channelId] = (reservationPools[channelId] ?? []).filter { $0.id != poolId }
-    }
-    func poolsOf(_ channelId: String) -> [PoolOut] { reservationPools[channelId] ?? [] }
+    func dropReservationPool(_ poolId: String) { reservationPools = reservationPools?.filter { $0.id != poolId } }
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 

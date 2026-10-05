@@ -360,13 +360,23 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         try await request("DELETE", "/api/v1/channels/\(channelId)/links/\(linkId)")
     }
 
-    // MARK: reservation pools (M99, docs/RESERVATIONS.md §3)
+    // MARK: reservation pools (M99, M112, docs/RESERVATIONS.md §3)
 
-    func reservationPools(channelId: String) async throws -> [PoolOut] {
-        try await request("GET", "/api/v1/channels/\(channelId)/reservation-pools")
+    /// The pools I see, with today's and the coming bookings, the queue, the holders and (operators) the to-do.
+    func reservationPools() async throws -> [PoolOut] { try await request("GET", "/api/v1/reservation-pools") }
+
+    /// A booking: on the hour, 1 h to the pool's max_hours, up to 14 days ahead (409 reservation_slot_full …).
+    func bookReservation(poolId: String, startAt: String, hours: Int) async throws -> PoolOut {
+        try await request("POST", "/api/v1/reservation-pools/\(poolId)/bookings",
+                          body: .object(["start_at": .string(startAt), "hours": .number(Double(hours))]))
     }
 
-    /// 「予約する」: join the queue (pressing again changes nothing).
+    /// 「延長」: a booking grows by `hours` if they have a seat.
+    func extendReservation(reservationId: String, hours: Int = 1) async throws -> PoolOut {
+        try await request("POST", "/api/v1/reservations/\(reservationId)/extend", body: .object(["hours": .number(Double(hours))]))
+    }
+
+    /// 「今すぐ (順番待ち)」: join the walk-in queue (pressing again changes nothing).
     func reserve(poolId: String) async throws -> PoolOut { try await request("POST", "/api/v1/reservation-pools/\(poolId)/reserve") }
 
     /// cancel (取り消す) / return (返却する) / assign (割り当てた) / remove (外した).
@@ -521,7 +531,7 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// M77 (CANVAS.md §20.3): the kinds beyond M39's this build shows, sent on every activity call (the list, the badge,
     /// marking read and bootstrap's `activity_include`) so the badge counts what the list shows. A server before M76
     /// ignores it.
-    static let activityInclude = ["canvas_mention"]
+    static let activityInclude = ["canvas_mention", "reservation"]  // M112: reservation notices
 
     private static var activityIncludeItems: [URLQueryItem] { activityInclude.map { URLQueryItem(name: "include", value: $0) } }
 

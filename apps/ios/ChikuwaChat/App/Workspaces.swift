@@ -107,6 +107,9 @@ struct PushPayload: Equatable, Sendable {
     /// M56: a task's notification opens the task (in its channel's 「タスク」 tab, or in 「自分のタスク」 for my own).
     var opensTask: Bool { kind == "task" && taskId != nil }
 
+    /// M112: a reservation notice opens 「予約」.
+    var opensReservations: Bool { kind == "reservation" }
+
     /// M73: a canvas mention opens that canvas (its conversation's 「キャンバス」 tab).
     var opensCanvas: Bool { kind == "canvas" && canvasId != nil }
 
