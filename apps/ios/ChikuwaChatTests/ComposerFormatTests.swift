@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import ChikuwaChat
 
@@ -37,6 +38,42 @@ final class ComposerFormatTests: XCTestCase {
         XCTAssertNotNil(box.raw(for: "送信する前の文"))
         XCTAssertNil(box.raw(for: ""))
         XCTAssertNil(box.raw(for: "別の文"))
+        box.text = "か\u{3099}" // が as two scalars: equal by `==`, but its indices are not those of "が"
+        XCTAssertNil(box.raw(for: "が"))
+    }
+
+    /// TestFlight build 93 (iOS 27, 2026-10-05): picking an emoji crashed in `utf16Offset(in:)` with a selection whose
+    /// indices were made in a longer text than the one it was paired with. Such indices give nil, never a trap.
+    func testSelectionIndicesFromAnotherTextGiveNilInsteadOfCrashing() {
+        let longer = "abc あいう😀x"
+        let past = longer.index(longer.startIndex, offsetBy: 8)
+        XCTAssertNil(ComposerSelection.offsets(past..<past, in: ""))
+        XCTAssertNil(ComposerSelection.offsets(past..<past, in: "ab"))
+        XCTAssertNil(ComposerSelection.offsets(longer.startIndex..<past, in: "ab"))
+        let bridged = NSString(string: longer) as String
+        let bridgedPast = bridged.index(bridged.startIndex, offsetBy: 9)
+        XCTAssertNil(ComposerSelection.offsets(bridgedPast..<bridgedPast, in: "abc"))
+    }
+
+    func testSelectionIndicesInTheirOwnTextGiveCharacterOffsets() {
+        let text = "abc あいう😀x"
+        func at(_ k: Int) -> String.Index { text.index(text.startIndex, offsetBy: k) }
+        XCTAssertEqual(ComposerSelection.offsets(at(0)..<at(0), in: text), 0..<0)
+        XCTAssertEqual(ComposerSelection.offsets(at(5)..<at(8), in: text), 5..<8) // after the emoji (two UTF-16 units)
+        XCTAssertEqual(ComposerSelection.offsets(at(9)..<at(9), in: text), 9..<9) // the end
+        XCTAssertEqual(ComposerSelection.offsets(text.endIndex..<text.endIndex, in: ""), nil)
+        XCTAssertEqual(ComposerSelection.offsets("".startIndex..<"".endIndex, in: ""), 0..<0)
+    }
+
+    @available(iOS 26.0, *)
+    func testAStoredSelectionPastTheEndOfItsTextIsDropped() {
+        let box = ComposerSelection()
+        let typed = "abc"
+        box.raw = TextSelection(insertionPoint: typed.endIndex)
+        box.text = "ab" // paired with the wrong text
+        XCTAssertNil(box.selection(for: "ab"))
+        box.text = typed
+        XCTAssertNotNil(box.selection(for: typed))
     }
 
     /// 見出し (the web's tool, parity audit 2026-09-29): 「## 」 at the start of the line, the cursor keeping its place.
