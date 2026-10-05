@@ -593,6 +593,19 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
 private fun AppearanceScreen(controller: AppController, version: Int) {
     val me = remember(version) { meOf(controller) }
     ScreenColumn {
+        // docs/I18N.md: the UI language (null follows the device); each language is named in itself.
+        SectionTitle(stringResource(R.string.you_language))
+        Column(Modifier.selectableGroup()) {
+            listOf(
+                null to stringResource(R.string.you_follow_device),
+                "ja" to stringResource(R.string.language_ja),
+                "en" to stringResource(R.string.language_en),
+                "zh-Hans" to stringResource(R.string.language_zh_hans),
+            ).forEach { (value, label) ->
+                RadioRow(label, selected = controller.language == value) { if (controller.language != value) controller.changeLanguage(value) }
+            }
+        }
+        if (me?.knowsLocale == true) Hint(stringResource(R.string.you_language_hint), Modifier.padding(top = 4.dp))
         SectionTitle(stringResource(R.string.you_screens_theme))
         Column(Modifier.selectableGroup()) {
             Appearance.entries.forEach { value ->

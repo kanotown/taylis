@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- User-visible text moved out of the Kotlin sources (i18n). values/ is Japanese (the default). -->
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="activity_screen_and_others">%1$s 等 %2$s 人</string>
     <string name="activity_screen_canvas_in">%1$s 的画布</string>
     <string name="activity_screen_done">已处理</string>
@@ -49,7 +49,7 @@
     <string name="ai_views_writing_the_summary">正在生成总结…</string>
     <string name="ai_views_your_question_and_the_messages_found">你的问题和找到的消息将发送至 %1$s</string>
     <string name="ai_youve_reached_todays_ai_usage_limit">已达到今天的 AI 使用次数上限。请明天再试。</string>
-    <plurals name="app_controller_added_person_added_people">
+    <plurals name="app_controller_added_people">
         <item quantity="other">已添加 %1$s 人</item>
     </plurals>
     <string name="app_controller_blocked">已屏蔽</string>
@@ -570,7 +570,7 @@
     <string name="common_make_a_task">设为任务</string>
     <string name="common_mark_as_read">标记为已读</string>
     <string name="common_member">成员</string>
-    <plurals name="common_member_members">
+    <plurals name="common_members_count">
         <item quantity="other">成员 %1$s 人</item>
     </plurals>
     <string name="common_members">" %1$s 人"</string>
@@ -628,7 +628,7 @@
     <string name="common_remove_from_favorites">取消收藏</string>
     <string name="common_removed">删除：</string>
     <string name="common_repeat">重复</string>
-    <plurals name="common_reply_replies">
+    <plurals name="common_replies_count">
         <item quantity="other">%1$s 条回复</item>
     </plurals>
     <string name="common_report">举报</string>
@@ -677,7 +677,7 @@
     <string name="common_unread_2">%1$s 条未读</string>
     <string name="common_until">至 %1$s</string>
     <string name="common_update_status">更新状态</string>
-    <string name="common_username_3_32_characters_a_z">用户名 (3–32 个字符，a-z 0-9 . _ -)</string>
+    <string tools:ignore="TypographyDashes" name="common_username_3_32_characters_a_z">用户名 (3–32 个字符，a-z 0-9 . _ -)</string>
     <string name="common_view_in_conversation">在会话中查看</string>
     <string name="common_view_in_thread">在话题中查看</string>
     <string name="common_weekly">每周</string>
@@ -709,7 +709,6 @@
     <string name="composer_priority">重要程度</string>
     <string name="composer_put_the_workflows_name_after_wf">请在 /wf 后输入工作流名称</string>
     <string name="composer_send_later">稍后发送…</string>
-    <string name="composer_the_message_can_be_up_to">正文最多 %,d 个字符</string>
     <string name="composer_this_channel_has_no_workflow_called">此频道中没有名为\"%1$s\"的工作流</string>
     <string name="composer_unavailable">" (不可用)"</string>
     <string name="composer_urgent">紧急</string>
@@ -732,7 +731,7 @@
     <string name="deadline_screens_no_deadlines">没有截止日期</string>
     <string name="deadline_screens_open_deadline">打开截止日期</string>
     <string name="deadline_screens_this_server_doesnt_support_deadlines">此服务器不支持截止日期</string>
-    <plurals name="dialogs_add_person_add_people">
+    <plurals name="dialogs_add_people">
         <item quantity="other">添加 %1$s 人</item>
     </plurals>
     <string name="dialogs_adding">正在添加…</string>
@@ -935,7 +934,7 @@
     <string name="notification_labels_mentions_only">仅提及</string>
     <string name="owners_everyone_has_already_been_reminded">只剩已提醒过的人</string>
     <string name="owners_make_owner">设为所有者</string>
-    <plurals name="owners_reminded_person_reminded_people">
+    <plurals name="owners_reminded_people">
         <item quantity="other">已提醒 %1$s 人</item>
     </plurals>
     <string name="owners_remove_as_owner">取消所有者</string>
@@ -1203,7 +1202,6 @@
     <string name="schedule_today_18_00">今天 18:00</string>
     <string name="schedule_tomorrow">明天 %1$s</string>
     <string name="schedule_tomorrow_9_00">明天 9:00</string>
-    <string name="search_d_results">%,d 条</string>
     <string name="search_date_range">%1$s – %2$s</string>
     <string name="search_from">%1$s 之后</string>
     <string name="search_from_2">发送者：</string>
@@ -1415,7 +1413,7 @@
     <string name="task_screens_up_to_columns">最多 %1$s 列</string>
     <string name="templates_range_dash">–</string>
     <string name="templates_personal_template">个人模板</string>
-    <string name="templates_title_dates_e_g_seminar_10">/日程 [标题] 日期 … (例如：/日程 研讨会 10/3 10/5-10/7 13:00)</string>
+    <string tools:ignore="TypographyDashes" name="templates_title_dates_e_g_seminar_10">/日程 [标题] 日期 … (例如：/日程 研讨会 10/3 10/5-10/7 13:00)</string>
     <string name="test_notification_android_push_fcm_is_disabled_on">此服务器已禁用 Android 推送 (FCM)</string>
     <string name="test_notification_android_push_is_disabled_on_this">此服务器已禁用 Android 推送</string>
     <string name="test_notification_browser">浏览器</string>
@@ -1478,7 +1476,7 @@
     <string name="typing_line_and_others_are_typing">%1$s 等 %2$s 人正在输入…</string>
     <string name="typing_line_typing">" 正在输入…"</string>
     <string name="username_rules_enter_a_username">请输入用户名</string>
-    <string name="username_rules_only_a_z_0_9_are">只能使用 a-z、0-9、. _ -</string>
+    <string tools:ignore="TypographyDashes" name="username_rules_only_a_z_0_9_are">只能使用 a-z、0-9、. _ -</string>
     <string name="username_rules_password_sign_in_uses_the_new">使用密码登录时将使用新用户名。</string>
     <string name="username_rules_past_messages_and_mentions_stay_as">以往的消息和提及保持不变。旧用户名将立即可供他人使用。</string>
     <string name="username_rules_this_username_is_reserved_and_cant">此用户名已被保留，无法使用</string>
@@ -1650,7 +1648,7 @@
     <string name="reminders_pane_reminded_at">" · 已于 %1$s 提醒"</string>
     <string name="reminders_pane_reminds_at">" · 将于 %1$s 提醒"</string>
     <string name="revisions_dialog_version_line">%1$s 的版本 · 于 %2$s 编辑</string>
-    <string name="schedule_label_date">%2$s月%3$s日(%4$s) %5$s</string>
+    <string name="schedule_label_date">%1$s月%2$s日(%3$s) %4$s</string>
     <string name="schedule_label_date_year">%1$s年%2$s月%3$s日(%4$s) %5$s</string>
     <string name="schedule_dialog_schedule">定时</string>
     <string name="task_form_screen_dm_with">与 %1$s 的私信</string>
@@ -1683,4 +1681,13 @@
     <string name="you_screens_reaction_choice">候选 %1$s：%2$s</string>
     <string name="you_screens_empty_slot">空</string>
     <string name="main_tabs_dm">私信</string>
+    <string name="notification_channel_messages">消息</string>
+    <string name="you_language">语言</string>
+    <string name="you_language_hint">你的其他设备和服务器发出的通知也将使用此语言</string>
+    <plurals name="composer_message_max_length">
+        <item quantity="other">正文最多 %1$,d 个字符</item>
+    </plurals>
+    <plurals name="search_results_count">
+        <item quantity="other">%1$,d 条</item>
+    </plurals>
 </resources>

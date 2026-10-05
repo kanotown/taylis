@@ -1,7 +1,7 @@
 package jp.chikuwachat.android.app
 
 import jp.chikuwachat.android.api.ApiClient
-import jp.chikuwachat.android.api.ErrorMessages
+import jp.chikuwachat.android.api.ErrorTexts
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -68,7 +68,7 @@ object Sso {
     private fun decode(text: String): String = runCatching { URLDecoder.decode(text, "UTF-8") }.getOrDefault("")
 
     /** The Japanese text of a returned `sso_error` (apps/shared/errors.json). */
-    fun errorText(code: String): String = ErrorMessages.byCode[code] ?: ErrorMessages.byCode["provider_error"] ?: ErrorMessages.UNKNOWN
+    fun errorText(code: String): String = ErrorTexts.code(code) ?: ErrorTexts.code("provider_error") ?: ErrorTexts.unknown
 
     /**
      * The login screen's Google button from GET /auth/methods, null when the server offers none. A server before M48

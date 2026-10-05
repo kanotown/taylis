@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import jp.chikuwachat.android.MainActivity
+import jp.chikuwachat.android.L10n
 import jp.chikuwachat.android.R
 
 /** Local notifications for DMs received while the app is in the background (PUSH_NOTIFICATIONS.md §9). */
@@ -18,8 +19,13 @@ class Notifier(private val context: Context) {
     private val manager = context.getSystemService(NotificationManager::class.java)
 
     init {
+        refreshChannel()
+    }
+
+    /** Creates the channel, or renames it in the UI language (the system keeps the user's settings for the id). */
+    fun refreshChannel() {
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, context.getString(R.string.notification_channel_messages), NotificationManager.IMPORTANCE_HIGH),
+            NotificationChannel(CHANNEL_ID, L10n.str(R.string.notification_channel_messages), NotificationManager.IMPORTANCE_HIGH),
         )
     }
 

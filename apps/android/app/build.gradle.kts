@@ -92,6 +92,13 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+
+    // docs/I18N.md: the in-app language may differ from the device's, so Play must not split the strings by language.
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
 }
 
 dependencies {

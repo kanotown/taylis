@@ -289,7 +289,7 @@ fun ThreadPane(controller: AppController, channelId: String, parentId: String, v
                     item(key = "parent") { ThreadMessage(parent, store, controller, version) }
                     item(key = "divider") {
                         Text(
-                            if (replies.isEmpty()) stringResource(R.string.common_no_replies_yet) else pluralStringResource(R.plurals.common_reply_replies, replies.size, replies.size),
+                            if (replies.isEmpty()) stringResource(R.string.common_no_replies_yet) else pluralStringResource(R.plurals.common_replies_count, replies.size, replies.size),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),

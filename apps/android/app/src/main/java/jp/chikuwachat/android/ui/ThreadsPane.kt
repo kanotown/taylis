@@ -144,7 +144,7 @@ private fun ThreadRow(entry: ThreadEntry, store: Store, version: Int, onNeedEmoj
             )
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    pluralStringResource(R.plurals.common_reply_replies, state.replyCount, state.replyCount),
+                    pluralStringResource(R.plurals.common_replies_count, state.replyCount, state.replyCount),
                     style = MaterialTheme.typography.labelMedium,
                     color = if (unread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal,

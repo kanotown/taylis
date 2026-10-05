@@ -426,7 +426,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             val ids = pendingUploads.map { it.id }
             if (uploading > 0 || (body.isEmpty() && ids.isEmpty())) return
             val maxLength = store.limits?.maxMessageLength ?: 20_000
-            if (body.length > maxLength) { controller.error = L10n.str(R.string.composer_the_message_can_be_up_to).format(maxLength); return }
+            if (body.length > maxLength) { controller.error = L10n.plural(R.plurals.composer_message_max_length, maxLength, maxLength); return }
             store.setDraft(channelId, parentId) { jp.chikuwachat.android.sync.Draft() }
             val options = SendOptions(
                 alsoInChannel = canShare && alsoInChannel,

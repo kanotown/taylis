@@ -188,7 +188,7 @@ fun AddMemberDialog(controller: AppController, channelId: String, onDismiss: () 
                         controller.addMembers(channelId, picked).onSuccess { onDismiss() }.onFailure { error = controller.describe(it) }
                     } finally { busy = false }
                 }
-            }) { Text(if (busy) stringResource(R.string.dialogs_adding) else if (picked.isEmpty()) stringResource(R.string.common_add) else pluralStringResource(R.plurals.dialogs_add_person_add_people, picked.size, picked.size)) }
+            }) { Text(if (busy) stringResource(R.string.dialogs_adding) else if (picked.isEmpty()) stringResource(R.string.common_add) else pluralStringResource(R.plurals.dialogs_add_people, picked.size, picked.size)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )

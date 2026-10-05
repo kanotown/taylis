@@ -10,7 +10,7 @@ import jp.chikuwachat.android.api.AiSummaryIn
 import jp.chikuwachat.android.api.AiSummaryTargetOut
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.Codec
-import jp.chikuwachat.android.api.ErrorMessages
+import jp.chikuwachat.android.api.ErrorTexts
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -393,10 +393,10 @@ class AiHub(
         )
 
         fun describe(e: Throwable): String = when (e) {
-            is ApiException.Api -> ErrorMessages.byCode[e.code] ?: texts[e.code]
-                ?: ErrorMessages.byStatus[if (e.status >= 500) "5xx" else e.status.toString()] ?: ErrorMessages.UNKNOWN
-            is ApiException.Network -> ErrorMessages.NETWORK
-            else -> ErrorMessages.UNKNOWN
+            is ApiException.Api -> ErrorTexts.code(e.code) ?: texts[e.code]
+                ?: ErrorTexts.status(e.status) ?: ErrorTexts.unknown
+            is ApiException.Network -> ErrorTexts.network
+            else -> ErrorTexts.unknown
         }
     }
 }

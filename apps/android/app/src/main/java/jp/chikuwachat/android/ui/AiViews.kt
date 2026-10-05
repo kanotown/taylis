@@ -36,7 +36,7 @@ import jp.chikuwachat.android.api.AiAskTargetOut
 import jp.chikuwachat.android.api.AiRunOut
 import jp.chikuwachat.android.api.AiSourceOut
 import jp.chikuwachat.android.api.AiSummaryTargetOut
-import jp.chikuwachat.android.api.ErrorMessages
+import jp.chikuwachat.android.api.ErrorTexts
 import jp.chikuwachat.android.sync.AiAskState
 import jp.chikuwachat.android.sync.AiHub
 import jp.chikuwachat.android.app.AppController
@@ -103,7 +103,7 @@ object AiTexts {
      */
     fun targetLine(target: AiSummaryTargetOut?): String? {
         target ?: return null
-        if (!target.available) return target.reason?.let { ErrorMessages.byCode[it] } ?: L10n.str(R.string.ai_views_cant_summarize_right_now)
+        if (!target.available) return target.reason?.let { ErrorTexts.code(it) } ?: L10n.str(R.string.ai_views_cant_summarize_right_now)
         val provider = target.provider?.takeIf { it.isNotBlank() } ?: return null
         val name = target.agentName?.takeIf { it.isNotBlank() }
         return if (name != null) L10n.str(R.string.ai_views_the_summary_is_sent_to, name, providerLabel(provider)) else L10n.str(R.string.ai_views_the_summary_is_sent_to_2, providerLabel(provider))
@@ -130,7 +130,7 @@ object AiTexts {
         if (!target.available) return when (val reason = target.reason.orEmpty()) {
             "ai_private_not_allowed" -> L10n.str(R.string.ai_views_this_conversations_bot_cant_read_private)
             "ai_budget_exceeded" -> L10n.str(R.string.ai_views_this_months_ai_usage_limit_has)
-            else -> ErrorMessages.byCode[reason] ?: AiHub.texts[reason] ?: L10n.str(R.string.ai_views_cant_ask_ai_right_now)
+            else -> ErrorTexts.code(reason) ?: AiHub.texts[reason] ?: L10n.str(R.string.ai_views_cant_ask_ai_right_now)
         }
         val provider = target.provider?.takeIf { it.isNotBlank() } ?: return null
         val name = target.agentName?.takeIf { it.isNotBlank() }

@@ -191,7 +191,7 @@ object Search {
     const val ASK_MAX = 200
 
     /** 「123 件」, or 「1,000 件以上」 when the server stopped counting. */
-    fun totalLabel(total: Int, capped: Boolean): String = String.format(Locale.JAPAN, L10n.str(R.string.search_d_results), total) + if (capped) L10n.str(R.string.search_or_more) else ""
+    fun totalLabel(total: Int, capped: Boolean): String = L10n.plural(R.plurals.search_results_count, total, total) + if (capped) L10n.str(R.string.search_or_more) else ""
 
     /** One line for a search: the words, then the filters (「設計」 · 送信者: 田中 · #general · 過去 7 日間). */
     fun describe(params: SearchParams, userName: (String) -> String?, channelName: (String) -> String?): String {

@@ -49,7 +49,7 @@
     <string name="ai_views_writing_the_summary">要約を作成しています…</string>
     <string name="ai_views_your_question_and_the_messages_found">質問と見つかったメッセージは %1$s に送られます</string>
     <string name="ai_youve_reached_todays_ai_usage_limit">今日の AI の利用回数の上限に達しました。明日またお試しください</string>
-    <plurals name="app_controller_added_person_added_people">
+    <plurals name="app_controller_added_people">
         <item quantity="other">%1$s 人を追加しました</item>
     </plurals>
     <string name="app_controller_blocked">ブロックしました</string>
@@ -570,7 +570,7 @@
     <string name="common_make_a_task">タスクにする</string>
     <string name="common_mark_as_read">既読にする</string>
     <string name="common_member">メンバー</string>
-    <plurals name="common_member_members">
+    <plurals name="common_members_count">
         <item quantity="other">メンバー %1$s 人</item>
     </plurals>
     <string name="common_members">" %1$s 人"</string>
@@ -628,7 +628,7 @@
     <string name="common_remove_from_favorites">お気に入りから外す</string>
     <string name="common_removed">"削除: "</string>
     <string name="common_repeat">繰り返し</string>
-    <plurals name="common_reply_replies">
+    <plurals name="common_replies_count">
         <item quantity="other">%1$s 件の返信</item>
     </plurals>
     <string name="common_report">報告する</string>
@@ -677,7 +677,7 @@
     <string name="common_unread_2">未読 %1$s 件</string>
     <string name="common_until">%1$s まで</string>
     <string name="common_update_status">ステータスを更新</string>
-    <string name="common_username_3_32_characters_a_z">ユーザー名 (3〜32 文字、a-z 0-9 . _ -)</string>
+    <string tools:ignore="TypographyDashes" name="common_username_3_32_characters_a_z">ユーザー名 (3〜32 文字、a-z 0-9 . _ -)</string>
     <string name="common_view_in_conversation">会話で表示</string>
     <string name="common_view_in_thread">スレッドで表示</string>
     <string name="common_weekly">毎週</string>
@@ -709,7 +709,6 @@
     <string name="composer_priority">重要度</string>
     <string name="composer_put_the_workflows_name_after_wf">/wf の後にワークフローの名前を続けてください</string>
     <string name="composer_send_later">後で送信…</string>
-    <string name="composer_the_message_can_be_up_to">本文は%,d文字までです</string>
     <string name="composer_this_channel_has_no_workflow_called">「%1$s」というワークフローはこのチャンネルにありません</string>
     <string name="composer_unavailable">" (使えません)"</string>
     <string name="composer_urgent">緊急</string>
@@ -732,7 +731,7 @@
     <string name="deadline_screens_no_deadlines">締切はありません</string>
     <string name="deadline_screens_open_deadline">締切を開く</string>
     <string name="deadline_screens_this_server_doesnt_support_deadlines">このサーバは締切に対応していません</string>
-    <plurals name="dialogs_add_person_add_people">
+    <plurals name="dialogs_add_people">
         <item quantity="other">%1$s 人を追加</item>
     </plurals>
     <string name="dialogs_adding">追加中…</string>
@@ -935,7 +934,7 @@
     <string name="notification_labels_mentions_only">メンションのみ</string>
     <string name="owners_everyone_has_already_been_reminded">リマインド済みの人だけです</string>
     <string name="owners_make_owner">オーナーにする</string>
-    <plurals name="owners_reminded_person_reminded_people">
+    <plurals name="owners_reminded_people">
         <item quantity="other">%1$s 人にリマインドしました</item>
     </plurals>
     <string name="owners_remove_as_owner">オーナーから外す</string>
@@ -1203,7 +1202,6 @@
     <string name="schedule_today_18_00">今日 18:00</string>
     <string name="schedule_tomorrow">明日 %1$s</string>
     <string name="schedule_tomorrow_9_00">明日 9:00</string>
-    <string name="search_d_results">%,d 件</string>
     <string name="search_date_range">%1$s 〜 %2$s</string>
     <string name="search_from">%1$s 以降</string>
     <string name="search_from_2">"送信者: "</string>
@@ -1415,7 +1413,7 @@
     <string name="task_screens_up_to_columns">列は %1$s 列までです</string>
     <string name="templates_range_dash">〜</string>
     <string name="templates_personal_template">個人のテンプレート</string>
-    <string name="templates_title_dates_e_g_seminar_10">/日程 [題名] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)</string>
+    <string tools:ignore="TypographyDashes" name="templates_title_dates_e_g_seminar_10">/日程 [題名] 日付 … (例: /日程 ゼミ 10/3 10/5-10/7 13:00)</string>
     <string name="test_notification_android_push_fcm_is_disabled_on">Android のプッシュ (FCM) はこのサーバでは無効です</string>
     <string name="test_notification_android_push_is_disabled_on_this">このサーバでは Android のプッシュが無効です</string>
     <string name="test_notification_browser">ブラウザ</string>
@@ -1478,7 +1476,7 @@
     <string name="typing_line_and_others_are_typing">%1$s ほか %2$s 人が入力中…</string>
     <string name="typing_line_typing">" が入力中…"</string>
     <string name="username_rules_enter_a_username">ユーザー名を入力してください</string>
-    <string name="username_rules_only_a_z_0_9_are">使えるのは a-z、0-9、. _ - だけです</string>
+    <string tools:ignore="TypographyDashes" name="username_rules_only_a_z_0_9_are">使えるのは a-z、0-9、. _ - だけです</string>
     <string name="username_rules_password_sign_in_uses_the_new">パスワードでのログインには新しいユーザー名を使います。</string>
     <string name="username_rules_past_messages_and_mentions_stay_as">過去のメッセージとメンションはそのままです。古いユーザー名はすぐにほかの人が使えるようになります。</string>
     <string name="username_rules_this_username_is_reserved_and_cant">このユーザー名は予約されているため使えません</string>
@@ -1650,7 +1648,7 @@
     <string name="reminders_pane_reminded_at">" · %1$s にリマインド"</string>
     <string name="reminders_pane_reminds_at">" · %1$s にリマインド予定"</string>
     <string name="revisions_dialog_version_line">%1$s の版 · %2$s に編集</string>
-    <string name="schedule_label_date">%2$s月%3$s日(%4$s) %5$s</string>
+    <string name="schedule_label_date">%1$s月%2$s日(%3$s) %4$s</string>
     <string name="schedule_label_date_year">%1$s年%2$s月%3$s日(%4$s) %5$s</string>
     <string name="schedule_dialog_schedule">予約</string>
     <string name="task_form_screen_dm_with">%1$s との DM</string>
@@ -1683,4 +1681,13 @@
     <string name="you_screens_reaction_choice">候補 %1$s: %2$s</string>
     <string name="you_screens_empty_slot">空き</string>
     <string name="main_tabs_dm">DM</string>
+    <string name="notification_channel_messages">メッセージ</string>
+    <string name="you_language">言語</string>
+    <string name="you_language_hint">ほかの端末とサーバーからの通知も、この言語になります</string>
+    <plurals name="composer_message_max_length">
+        <item quantity="other">本文は%1$,d文字までです</item>
+    </plurals>
+    <plurals name="search_results_count">
+        <item quantity="other">%1$,d 件</item>
+    </plurals>
 </resources>

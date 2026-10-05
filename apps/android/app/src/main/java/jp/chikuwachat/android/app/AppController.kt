@@ -1,5 +1,8 @@
 package jp.chikuwachat.android.app
 
+import jp.chikuwachat.android.AppLanguage
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import android.graphics.Bitmap
 import android.util.Log
 import androidx.compose.ui.graphics.asImageBitmap
@@ -43,7 +46,7 @@ import android.provider.OpenableColumns
 import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.PoolOut
 import jp.chikuwachat.android.api.NavItem
-import jp.chikuwachat.android.api.ErrorMessages
+import jp.chikuwachat.android.api.ErrorTexts
 import jp.chikuwachat.android.api.InvitePreviewOut
 import jp.chikuwachat.android.ui.Invite
 import jp.chikuwachat.android.ui.SlashCommands
@@ -351,9 +354,90 @@ class AppController(private val app: Application) {
         jp.chikuwachat.android.ui.PostGrouping.write(prefs, on)
         groupPosts = on
     }
+
+    /**
+     * The UI language (docs/I18N.md): "ja" / "en" / "zh-Hans", or null to follow the device. Applied on this device at
+     * once (AppLanguage), then saved as my `locale` on the server so my other devices and the server's texts (pushes,
+     * emails) follow.
+     */
+    var language by mutableStateOf(AppLanguage.chosen)
+        private set
+
+    fun changeLanguage(value: String?) {
+        AppLanguage.choose(app, value)
+        languageApplied()
+        languageRecreate?.invoke()
+        val api = api ?: return
+        scope.launch { pushLanguage(api) }
+    }
+
+    /**
+     * The process saw a configuration change or an activity started: the language may have been changed outside the app
+     * (the system's per-app language setting from Android 13, or the device's language).
+     */
+    fun languageMayHaveChanged() {
+        val changed = AppLanguage.refresh(app)
+        languageApplied()
+        if (changed) api?.let { api -> scope.launch { pushLanguage(api) } }
+    }
+
+    private fun languageApplied() {
+        language = AppLanguage.chosen
+        notifier.refreshChannel()
+    }
+
+    private fun languageSyncKey(api: ApiClient): String? = (store.me ?: me)?.id?.let { "locale_synced|${api.baseUrl}|$it" }
+
+    /** Saves this device's choice as my `locale` (a server that does not know the field is left alone). */
+    private suspend fun pushLanguage(api: ApiClient) {
+        val held = store.me ?: me ?: return
+        if (!held.knowsLocale) return
+        val key = languageSyncKey(api) ?: return
+        val value = AppLanguage.chosen
+        attempt { api.updateProfile(buildJsonObject { put("locale", value?.let { JsonPrimitive(it) } ?: JsonNull) }) }
+            .onSuccess { updated ->
+                if (this.api !== api) return@onSuccess
+                prefs.putString(key, value ?: LANGUAGE_DEVICE)
+                me = updated
+                store.setMe(updated)
+            }
+    }
+
+    /**
+     * My `locale` arrived (bootstrap, user.updated): the last value this device and the server agreed on tells which
+     * side changed. A change here (made while offline, or in the system's setting) goes to the server; a change on the
+     * server (another device) is applied here.
+     */
+    private fun reconcileLanguage(api: ApiClient, held: UserMe) {
+        if (!held.knowsLocale) return
+        val key = languageSyncKey(api) ?: return
+        val local = AppLanguage.chosen
+        val server = held.locale?.let(AppLanguage::normalize)
+        val synced = prefs.getString(key)?.let { LanguageSync.Synced(it.takeIf { v -> v != LANGUAGE_DEVICE }) }
+        when (val step = LanguageSync.decide(local, server, synced)) {
+            LanguageSync.Step.Push -> scope.launch { pushLanguage(api) }
+            is LanguageSync.Step.Apply -> applyServerLanguage(key, step.language)
+            LanguageSync.Step.Record -> prefs.putString(key, local ?: LANGUAGE_DEVICE)
+            LanguageSync.Step.None -> Unit
+        }
+    }
+
+    private fun applyServerLanguage(key: String, server: String?) {
+        prefs.putString(key, server ?: LANGUAGE_DEVICE)
+        if (server == AppLanguage.chosen) return
+        AppLanguage.choose(app, server)
+        languageApplied()
+        languageRecreate?.invoke()
+    }
+
+    /** Before Android 13 a new language shows once the activity is recreated (MainActivity sets this). */
+    var languageRecreate: (() -> Unit)? = null
     /** FCM token registration with every signed-in workspace (PUSH_NOTIFICATIONS.md §3); a no-op until Firebase is configured. */
     val push = PushCenter(scope, { fetchFcmToken(app) }, { pushTargets() }, { deleteFcmToken(app) })
-    private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
+    private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS)
+        // docs/I18N.md: every request says the UI language; the server words its errors and texts in it.
+        .addInterceptor { chain -> chain.proceed(chain.request().newBuilder().header("Accept-Language", L10n.language).build()) }
+        .build()
     /** The API client of the workspace on screen (one of [clients]). */
     private var api: ApiClient? = null
     /** One API client per signed-in workspace: its refreshes are serialised (WORKSPACES.md §8, SECURITY.md §2). */
@@ -975,6 +1059,12 @@ class AppController(private val app: Application) {
         fun workspace() = workspaces.firstOrNull { it.serverUrl == workspaceUrl }
         me?.let { known -> updateWorkspace(workspaceUrl) { if (it.userId == null) it.copy(userId = known.id) else it } }
         // M93 (WORKSPACES.md §3.4.1): an admin changed the workspace icon (bootstrap, workspace.settings_updated).
+        // docs/I18N.md: my `locale` (bootstrap, user.updated) and this device's language are kept in step.
+        scope.launch {
+            store.version.map { store.me?.let { it.id to it.locale } }.distinctUntilChanged().collect {
+                if (this@AppController.store === store) store.me?.let { reconcileLanguage(api, it) }
+            }
+        }
         store.onWorkspaceIcon = { version -> scope.launch { if (this@AppController.store === store) updateWorkspace(workspaceUrl) { it.copy(iconVersion = version) } } }
         val engine = SyncEngine(
             api = api,
@@ -1130,7 +1220,7 @@ class AppController(private val app: Application) {
         val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, app.packageName)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { app.startActivity(intent) }.onFailure { error = ErrorMessages.UNKNOWN }
+        runCatching { app.startActivity(intent) }.onFailure { error = ErrorTexts.unknown }
     }
 
     /**
@@ -1296,14 +1386,14 @@ class AppController(private val app: Application) {
      * effect, and the toggle looked as if it had worked. A failure on the way is reported too.
      */
     suspend fun setThreadFollow(parentId: String, following: Boolean): Boolean {
-        if (engineStatus != EngineStatus.ONLINE) { error = ErrorMessages.NETWORK; return false }
+        if (engineStatus != EngineStatus.ONLINE) { error = ErrorTexts.network; return false }
         val engine = engine ?: return false
         return attempt { engine.setThreadFollow(parentId, following) }.onFailure { report(it) }.isSuccess
     }
 
     /** 「ここから未読にする」 (SYNC_PROTOCOL.md §10): the position it now holds, or null; offline it says so (M28c). */
     fun markUnread(channelId: String, seq: Int): Int? {
-        if (engineStatus != EngineStatus.ONLINE) { error = ErrorMessages.NETWORK; return null }
+        if (engineStatus != EngineStatus.ONLINE) { error = ErrorTexts.network; return null }
         return engine?.markUnread(channelId, seq)
     }
 
@@ -1720,7 +1810,7 @@ class AppController(private val app: Application) {
             if (state != jp.chikuwachat.android.sync.CanvasLinkState.Failed) canvasLinks[canvasId] = state
             error = when (state) {
                 jp.chikuwachat.android.sync.CanvasLinkState.Forbidden -> L10n.str(R.string.app_controller_youre_not_a_member_of_this)
-                jp.chikuwachat.android.sync.CanvasLinkState.Missing -> ErrorMessages.byCode["canvas_not_found"] ?: describe(e)
+                jp.chikuwachat.android.sync.CanvasLinkState.Missing -> ErrorTexts.code("canvas_not_found") ?: describe(e)
                 else -> describe(e)
             }
             false
@@ -2331,7 +2421,7 @@ class AppController(private val app: Application) {
     /** M16g: a picked photo, decoded small and upright for the crop dialog; null (the error shown) when unreadable. */
     suspend fun loadAvatarPhoto(uri: Uri): Bitmap? =
         withContext(Dispatchers.Default) { AvatarPhoto.decode(app.contentResolver, uri) }
-            ?: run { error = ErrorMessages.byCode["avatar_not_image"]; null }
+            ?: run { error = ErrorTexts.code("avatar_not_image"); null }
 
     /** M14a / M16g: the cropped square (a 512 px JPEG) becomes my profile picture; the store learns it at once. */
     suspend fun uploadAvatar(jpeg: ByteArray): Boolean = attempt {
@@ -2599,7 +2689,7 @@ class AppController(private val app: Application) {
                 val targets = handles.map { handle -> user(handle) ?: run { error = L10n.str(R.string.app_controller_there_is_no_user_called, handle); return false } }
                 val added = addMembers(channelId, targets.map { it.id })
                 if (added.isFailure) { error = describe(added.exceptionOrNull()!!); return false }
-                notice = L10n.plural(R.plurals.app_controller_added_person_added_people, handles.size, handles.size)
+                notice = L10n.plural(R.plurals.app_controller_added_people, handles.size, handles.size)
                 true
             }
             "join" -> {
@@ -2668,7 +2758,7 @@ class AppController(private val app: Application) {
     fun openWebClient() {
         val base = serverBase ?: return
         val intent = Intent(Intent.ACTION_VIEW, base.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { app.startActivity(intent) }.onFailure { error = ErrorMessages.UNKNOWN }
+        runCatching { app.startActivity(intent) }.onFailure { error = ErrorTexts.unknown }
     }
 
     suspend fun changePasswordInSession(current: String, new: String): String? =
@@ -2687,10 +2777,10 @@ class AppController(private val app: Application) {
      * server's English message or an exception's own text.
      */
     fun describe(e: Throwable): String = when (e) {
-        is ApiException.Api -> ErrorMessages.byCode[e.code] ?: ErrorMessages.byStatus[if (e.status >= 500) "5xx" else e.status.toString()] ?: ErrorMessages.UNKNOWN
-        is ApiException.Network -> ErrorMessages.NETWORK
-        is Refusal -> e.message ?: ErrorMessages.UNKNOWN
-        else -> ErrorMessages.UNKNOWN
+        is ApiException.Api -> ErrorTexts.code(e.code) ?: ErrorTexts.status(e.status) ?: ErrorTexts.unknown
+        is ApiException.Network -> ErrorTexts.network
+        is Refusal -> e.message ?: ErrorTexts.unknown
+        else -> ErrorTexts.unknown
     }
 
     /**
@@ -2735,6 +2825,7 @@ class AppController(private val app: Application) {
 
     private companion object {
         const val SEARCH_PAGE = 30
+        private const val LANGUAGE_DEVICE = "device"
         val NOT_CHIKUWA: String get() = L10n.str(R.string.app_controller_this_is_not_a_taylis_server)
         const val SERVER_KEY = "server"
         const val USERNAME_KEY = "username"
