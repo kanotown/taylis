@@ -614,7 +614,7 @@ async def test_assignment_push(
     assert len(pushes) == 1
     push = pushes[0]
     assert push["title"] == "タスク" and push["kind"] == "task"
-    assert push["body"] == "Alice がタスクを割り当てました: ポスター (#m2-進捗)"
+    assert push["body"] == "Alice がタスクを割り当てました：ポスター (#m2-進捗)"
     assert push["task_id"] == task["id"] and push["channel_id"] == general["id"]
     assert push["collapse_key"] == f"task:{task['id']}"
     # Re-processing plans nothing more.
@@ -774,10 +774,10 @@ async def test_due_alarms_fire_once_and_push(
     assert {e.audience_id for e in events} == {alice.id, bob.id}
     await _drain(_relay(app, test_settings))
     pushes = (await _task_pushes(db))[assigned:]
-    assert {p["body"] for p in pushes} == {"今日が期限: ポスター (#m2-進捗)", "今日が期限: 原稿"}
+    assert {p["body"] for p in pushes} == {"今日が期限：ポスター (#m2-進捗)", "今日が期限：原稿"}
     by_body = {p["body"]: p for p in pushes}
-    assert by_body["今日が期限: 原稿"]["channel_id"] is None
-    assert by_body["今日が期限: ポスター (#m2-進捗)"]["task_id"] == shared["id"]
+    assert by_body["今日が期限：原稿"]["channel_id"] is None
+    assert by_body["今日が期限：ポスター (#m2-進捗)"]["task_id"] == shared["id"]
     await _drain(_relay(app, test_settings))
     assert len(await _task_pushes(db)) == assigned + 2
 

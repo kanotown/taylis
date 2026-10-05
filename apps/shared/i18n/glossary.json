@@ -79,6 +79,6 @@
   "style": {
     "en": "Sentence case for labels and buttons (\"Mark as read\", not \"Mark As Read\"); no full stop on labels and short toasts; straight quotes in code, typographic quotes are fine in text.",
     "zh-Hans": "Full-width punctuation (，。：？！「」 or “”); no space between Chinese and Latin text is required, but keep one around numbers and Latin words where the Japanese text has it for readability; buttons are short verbs (保存, 取消, 删除).",
-    "ja": "The existing texts are the source; half-width space around Latin words and numbers (例: 「AI の要約」「3 件」)."
+    "ja": "The existing texts are the source; half-width space around Latin words and numbers (例：「AI の要約」「3 件」); full-width brackets and colons in Japanese prose (「少なめ（速い）」「タイムゾーン：{tz}」) with no space next to them. Placeholders, URLs, code, times (13:00) and the date-with-weekday formats the server also writes (「10/9 (金)」「10月9日 (金)」) keep ASCII."
   }
 }

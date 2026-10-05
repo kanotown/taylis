@@ -400,7 +400,7 @@ async def test_walkin_queue_todo_is_shared_and_done_for_everyone(
     for op in (s["op"], s["op2"]):
         items = await _notices(db, op)
         assert len(items) == 1 and items[0].key == f"assign:{rid}" and items[0].done_at is None
-        assert items[0].text.startswith("🙋 Alice さん (alice@example.jp) に「Claude Premium")
+        assert items[0].text.startswith("🙋 Alice さん（alice@example.jp） に「Claude Premium")
     assert await _notices(db, s["alice"]) == []
     pushes = await db.execute(
         select(OutboxEvent).where(OutboxEvent.event_type == "reservation.notice")
@@ -492,7 +492,7 @@ async def test_booking_start_end_and_the_walkin_it_replaces(
     keys = [n.key for n in await _notices(db, s["op"])]
     assert f"booking:{bid}" in keys
     told = next(n for n in await _notices(db, s["op"]) if n.key == f"booking:{bid}")
-    assert "Bob さん (bob@example.jp) を外して割り当ててください" in told.text
+    assert "Bob さん（bob@example.jp） を外して割り当ててください" in told.text
     bob_notice = (await _notices(db, s["bob"]))[-1]
     assert "予約の人が使います" in bob_notice.text
     # At the start: no second notice (the page shows the swap to-do).

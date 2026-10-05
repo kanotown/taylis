@@ -48,6 +48,8 @@ known-first-party = ["app"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "RUF"]
 ignore = ["B008"]  # FastAPI Depends()/Query() in defaults
+# Japanese prose uses full-width brackets and colons (（ ） ：), as the UI texts do.
+allowed-confusables = ["（", "）", "："]
 
 [tool.mypy]
 python_version = "3.13"

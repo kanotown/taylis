@@ -165,7 +165,7 @@ async def test_review_pushes(
     await _drain(_relay(app, test_settings))
     pushes = await _task_pushes(db)
     assert [p["body"] for p in pushes] == [
-        "Student がレビューを依頼しました: レビュー: 予稿 (#m2-進捗)"
+        "Student がレビューを依頼しました：レビュー: 予稿 (#m2-進捗)"
     ]
 
     # The requester completing it themselves tells no one; the reviewer completing it does.
@@ -177,7 +177,7 @@ async def test_review_pushes(
     await _move(client, review["id"], {"status": "done"})
     await _drain(_relay(app, test_settings))
     bodies = [p["body"] for p in await _task_pushes(db)]
-    assert bodies[1:] == ["Prof がレビューを完了しました: レビュー: 予稿 (#m2-進捗)"]
+    assert bodies[1:] == ["Prof がレビューを完了しました：レビュー: 予稿 (#m2-進捗)"]
 
 
 async def test_review_fixes_due_leave_and_non_member_chips(

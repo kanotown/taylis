@@ -57,7 +57,7 @@
       "zh-Hans": "已达到今天的 AI 使用次数上限。请明天再试。"
     },
     "ai_private_not_allowed": {
-      "ja": "この AI のボットは公開チャンネルでだけ使えます (非公開チャンネルと DM には参加・要約できません)",
+      "ja": "この AI のボットは公開チャンネルでだけ使えます（非公開チャンネルと DM には参加・要約できません）",
       "en": "This AI bot works in public channels only (it can't join or summarize private channels and DMs).",
       "zh-Hans": "此 AI 机器人只能在公开频道中使用（不能加入或摘要私有频道和私信）。"
     },
@@ -132,7 +132,7 @@
       "zh-Hans": "找不到日程。"
     },
     "calendar_event_too_long": {
-      "ja": "予定が長すぎます (時刻の予定は 14 日、終日の予定は 60 日まで)",
+      "ja": "予定が長すぎます（時刻の予定は 14 日、終日の予定は 60 日まで）",
       "en": "The event is too long (up to 14 days for timed events, 60 days for all-day events).",
       "zh-Hans": "日程太长（定时日程最长 14 天，全天日程最长 60 天）。"
     },
@@ -152,7 +152,7 @@
       "zh-Hans": "此日程不能选择该通知。"
     },
     "calendar_invalid_range": {
-      "ja": "表示する期間の指定が正しくありません (100 日まで)",
+      "ja": "表示する期間の指定が正しくありません（100 日まで）",
       "en": "The date range is invalid (up to 100 days).",
       "zh-Hans": "显示的期间无效（最多 100 天）。"
     },
@@ -172,7 +172,7 @@
       "zh-Hans": "这不是重复日程。"
     },
     "calendar_occurrence_not_found": {
-      "ja": "繰り返しのその回が見つかりません (変更・削除されたかもしれません)",
+      "ja": "繰り返しのその回が見つかりません（変更・削除されたかもしれません）",
       "en": "That occurrence was not found (it may have been changed or deleted).",
       "zh-Hans": "找不到该次重复（可能已被修改或删除）。"
     },
@@ -237,7 +237,7 @@
       "zh-Hans": "此对话已有画布标签页。"
     },
     "canvas_too_large": {
-      "ja": "キャンバスが長すぎます (100,000 文字まで)",
+      "ja": "キャンバスが長すぎます（100,000 文字まで）",
       "en": "The canvas is too long (up to 100,000 characters).",
       "zh-Hans": "画布太长（最多 100,000 个字符）。"
     },
@@ -262,7 +262,7 @@
       "zh-Hans": "已归档的频道不能设为默认频道。"
     },
     "default_channel_not_found": {
-      "ja": "既定のチャンネルに選んだチャンネルが見つかりません (削除されたかもしれません)",
+      "ja": "既定のチャンネルに選んだチャンネルが見つかりません（削除されたかもしれません）",
       "en": "A channel chosen as a default channel was not found (it may have been deleted).",
       "zh-Hans": "找不到被选为默认频道的频道（可能已被删除）。"
     },
@@ -312,12 +312,12 @@
       "zh-Hans": "你没有修改或删除此表情的权限。"
     },
     "emoji_keywords_invalid": {
-      "ja": "検索キーワードが正しくありません (20 個まで、1 つ 32 文字まで)",
+      "ja": "検索キーワードが正しくありません（20 個まで、1 つ 32 文字まで）",
       "en": "The search keywords are invalid (up to 20, each up to 32 characters).",
       "zh-Hans": "搜索关键词无效（最多 20 个，每个最多 32 个字符）。"
     },
     "emoji_label_invalid": {
-      "ja": "絵文字の表示名が正しくありません (文字の絵文字は 12 文字まで)",
+      "ja": "絵文字の表示名が正しくありません（文字の絵文字は 12 文字まで）",
       "en": "The emoji's display name is invalid (up to 12 characters for a text emoji).",
       "zh-Hans": "表情的显示名称无效（文字表情最多 12 个字符）。"
     },
@@ -342,12 +342,12 @@
       "zh-Hans": "请选择 PNG、JPEG、GIF 或 WebP 图片。"
     },
     "emoji_pack_archive_invalid": {
-      "ja": "フォルダ (ZIP) を読めません",
+      "ja": "フォルダ（ZIP）を読めません",
       "en": "The folder (ZIP) can't be read.",
       "zh-Hans": "无法读取文件夹（ZIP）。"
     },
     "emoji_pack_file_missing": {
-      "ja": "pack.json にある画像がフォルダ (ZIP) にありません",
+      "ja": "pack.json にある画像がフォルダ（ZIP）にありません",
       "en": "An image listed in pack.json is missing from the folder (ZIP).",
       "zh-Hans": "pack.json 中列出的图片不在文件夹（ZIP）中。"
     },
@@ -402,7 +402,7 @@
       "zh-Hans": "只有频道所有者和管理员可以重命名订阅源机器人。"
     },
     "feed_bot_unavailable": {
-      "ja": "このボットはフィードのボットにできません (このチャンネルのボットで、ほかの機能が使っていないものだけ)",
+      "ja": "このボットはフィードのボットにできません（このチャンネルのボットで、ほかの機能が使っていないものだけ）",
       "en": "This bot can't be the feed bot (only a bot of this channel not used by another feature).",
       "zh-Hans": "此机器人不能作为订阅源机器人（只能使用本频道中未被其他功能使用的机器人）。"
     },
@@ -562,7 +562,7 @@
       "zh-Hans": "找不到成员。"
     },
     "message_not_found": {
-      "ja": "メッセージが見つかりません (削除された可能性があります)",
+      "ja": "メッセージが見つかりません（削除された可能性があります）",
       "en": "Message not found (it may have been deleted).",
       "zh-Hans": "找不到消息（可能已被删除）。"
     },
@@ -727,17 +727,17 @@
       "zh-Hans": "你在此名额已有预约。每人只能有一个预约、排队或正在使用的名额。"
     },
     "reservation_booking_invalid": {
-      "ja": "その時間は予約できません (開始は毎時 0 分、長さは枠の上限まで、2 週間先まで)",
+      "ja": "その時間は予約できません（開始は毎時 0 分、長さは枠の上限まで、2 週間先まで）",
       "en": "That time can't be booked (start on the hour, no longer than the slot's limit, up to 2 weeks ahead).",
       "zh-Hans": "该时间无法预约（须整点开始，时长不超过名额上限，最多提前 2 周）。"
     },
     "reservation_channel_unsupported": {
-      "ja": "記録先にできるのはチャンネルだけです (ダイレクトメッセージは不可)",
+      "ja": "記録先にできるのはチャンネルだけです（ダイレクトメッセージは不可）",
       "en": "Only a channel can be the log channel (not a direct message).",
       "zh-Hans": "只有频道可以作为记录频道（不能是私信）。"
     },
     "reservation_manage_restricted": {
-      "ja": "予約の枠を作る・変えるのは、管理者 (と枠を作った人) だけです",
+      "ja": "予約の枠を作る・変えるのは、管理者（と枠を作った人）だけです",
       "en": "Only admins (and the person who created the slot) can create or change reservation slots.",
       "zh-Hans": "只有管理员（以及创建该名额的人）可以创建或修改预约名额。"
     },
@@ -752,7 +752,7 @@
       "zh-Hans": "只有正在使用该名额的本人可以归还。"
     },
     "reservation_operator_invalid": {
-      "ja": "担当者にできるのは、メンバー (ゲスト・ボットを除く) だけです",
+      "ja": "担当者にできるのは、メンバー（ゲスト・ボットを除く）だけです",
       "en": "Only members (not guests or bots) can be operators.",
       "zh-Hans": "只有成员（访客和机器人除外）可以担任负责人。"
     },
@@ -897,17 +897,17 @@
       "zh-Hans": "加入和退出的提示不能修改。"
     },
     "task_channel_unsupported": {
-      "ja": "ダイレクトメッセージにはタスクのボードがありません (自分のタスクにしてください)",
+      "ja": "ダイレクトメッセージにはタスクのボードがありません（自分のタスクにしてください）",
       "en": "Direct messages have no task board (make it your own task instead).",
       "zh-Hans": "私信没有任务看板（请改为自己的任务）。"
     },
     "task_column_builtin": {
-      "ja": "最初からある 3 つの列 (未着手・進行中・完了) は削除できません",
+      "ja": "最初からある 3 つの列（未着手・進行中・完了）は削除できません",
       "en": "The three built-in columns (To do, In progress, Done) can't be deleted.",
       "zh-Hans": "不能删除默认的三列（未开始、进行中、已完成）。"
     },
     "task_column_limit": {
-      "ja": "列が多すぎます (1 つのボードに 20 列まで)",
+      "ja": "列が多すぎます（1 つのボードに 20 列まで）",
       "en": "Too many columns (up to 20 per board).",
       "zh-Hans": "列太多（每个看板最多 20 列）。"
     },
@@ -922,7 +922,7 @@
       "zh-Hans": "只有创建者、负责人、频道所有者和管理员可以删除此任务。"
     },
     "task_invalid_assignee": {
-      "ja": "担当者にできるのはチャンネルのメンバーだけです (自分のタスクには担当者を付けられません)",
+      "ja": "担当者にできるのはチャンネルのメンバーだけです（自分のタスクには担当者を付けられません）",
       "en": "Only channel members can be assignees (your own tasks can't have assignees).",
       "zh-Hans": "只有频道成员可以成为负责人（自己的任务不能设置负责人）。"
     },
@@ -932,17 +932,17 @@
       "zh-Hans": "此列不属于此看板。"
     },
     "task_invalid_deadline": {
-      "ja": "この締切は設定できません (チャンネルのボードに、日付を付けて作ります。繰り返しはできません)",
+      "ja": "この締切は設定できません（チャンネルのボードに、日付を付けて作ります。繰り返しはできません）",
       "en": "This deadline can't be set (create it on a channel board with a date; it can't repeat).",
       "zh-Hans": "无法设置此截止日期（需在频道看板中带日期创建，且不能重复）。"
     },
     "task_invalid_range": {
-      "ja": "表示する期間の指定が正しくありません (100 日まで)",
+      "ja": "表示する期間の指定が正しくありません（100 日まで）",
       "en": "The date range is invalid (up to 100 days).",
       "zh-Hans": "显示的期间无效（最多 100 天）。"
     },
     "task_invalid_rrule": {
-      "ja": "この繰り返しは設定できません (期限が必要です。レビュー依頼は繰り返せません)",
+      "ja": "この繰り返しは設定できません（期限が必要です。レビュー依頼は繰り返せません）",
       "en": "This repeat can't be set (it needs a due date; review requests can't repeat).",
       "zh-Hans": "无法设置此重复（需要截止日期；审阅请求不能重复）。"
     },
@@ -952,7 +952,7 @@
       "zh-Hans": "无法从此消息创建本频道的任务。"
     },
     "task_limit_reached": {
-      "ja": "未完了のタスクが多すぎます (1 つのボードに 1000 件まで)",
+      "ja": "未完了のタスクが多すぎます（1 つのボードに 1000 件まで）",
       "en": "Too many open tasks (up to 1000 per board).",
       "zh-Hans": "未完成的任务太多（每个看板最多 1000 个）。"
     },
@@ -1037,7 +1037,7 @@
       "zh-Hans": "一个画布最多可包含 100 个图片或文件。"
     },
     "too_many_canvases": {
-      "ja": "この会話のキャンバスが多すぎます (200 件まで)",
+      "ja": "この会話のキャンバスが多すぎます（200 件まで）",
       "en": "This conversation has too many canvases (up to 200).",
       "zh-Hans": "此对话的画布太多（最多 200 个）。"
     },
@@ -1192,7 +1192,7 @@
       "zh-Hans": "找不到工作流。"
     },
     "workflow_template_invalid": {
-      "ja": "本文の雛形に、無い項目 ({{…}}) が書かれています",
+      "ja": "本文の雛形に、無い項目（{{…}}）が書かれています",
       "en": "The message template uses a field that doesn't exist ({{…}}).",
       "zh-Hans": "消息模板中使用了不存在的字段（{{…}}）。"
     },
