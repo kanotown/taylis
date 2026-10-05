@@ -55,7 +55,7 @@ struct ChannelListView: View {
     private var layout: HomeSections.Layout {
         let store = controller.store
         return HomeSections.build(HomeSections.Input(channels: channels, meId: meId, favorites: store.favorites, sections: store.sidebarSections,
-                                                     groupUnread: groupUnread, folded: folded, title: { channelTitle($0, store: store) }))
+                                                     groupUnread: groupUnread, folded: folded))
     }
 
     var body: some View {
@@ -144,7 +144,7 @@ struct ChannelListView: View {
     nonisolated static func channelSections(_ all: [ChannelState], meId: String?,
                                 include: (ChannelState) -> Bool) -> (channels: [ChannelState], times: [ChannelState]) {
         let rows = all.filter { $0.isMember && !$0.channel.isDm && !$0.channel.archived && include($0) }
-        let byName = { (a: ChannelState, b: ChannelState) in (a.channel.name ?? "") < (b.channel.name ?? "") }
+        let byName = SidebarOrder.byName
         let mine = { (channel: ChannelState) in channel.channel.timesOwnerId == meId }
         return (rows.filter { !$0.channel.isTimes }.sorted(by: byName),
                 rows.filter(\.channel.isTimes).sorted { mine($0) != mine($1) ? mine($0) : byName($0, $1) })
