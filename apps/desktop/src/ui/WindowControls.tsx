@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { titleBarKind, type TitleBarKind } from "../platform/env";
 import { cn } from "./primitives";
+import { t } from "../i18n";
 
 /** The part of Tauri's window API the buttons use (a fake in tests). */
 export interface ControlledWindow {
@@ -81,16 +82,16 @@ export function WindowControls({ tone = "sidebar", source = tauriWindow }: { ton
       .catch((err) => console.warn("window button failed", err));
   };
 
-  const toggleLabel = maximized ? "元に戻す" : "最大化";
+  const toggleLabel = maximized ? t("window.restore") : t("window.maximize");
   return (
-    <div className="flex h-full shrink-0 self-stretch" role="group" aria-label="ウィンドウ">
-      <button type="button" aria-label="最小化" title="最小化" className={cn(BUTTON, TONES[tone])} onClick={run((w) => w.minimize())}>
+    <div className="flex h-full shrink-0 self-stretch" role="group" aria-label={t("window.label")}>
+      <button type="button" aria-label={t("window.minimize")} title={t("window.minimize")} className={cn(BUTTON, TONES[tone])} onClick={run((w) => w.minimize())}>
         <MinimiseGlyph />
       </button>
       <button type="button" aria-label={toggleLabel} title={toggleLabel} className={cn(BUTTON, TONES[tone])} onClick={run((w) => w.toggleMaximize())}>
         {maximized ? <RestoreGlyph /> : <MaximiseGlyph />}
       </button>
-      <button type="button" aria-label="閉じる" title="閉じる" className={cn(BUTTON, TONES[tone], CLOSE)} onClick={run((w) => w.close())}>
+      <button type="button" aria-label={t("common.close")} title={t("common.close")} className={cn(BUTTON, TONES[tone], CLOSE)} onClick={run((w) => w.close())}>
         <CloseGlyph />
       </button>
     </div>

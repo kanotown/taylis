@@ -16,6 +16,7 @@ import { channelTitle } from "./MainScreen";
 import { mentionsToNames } from "./mentions";
 import { Button } from "./primitives";
 import { dateRange, type SearchParams, totalLabel } from "./search";
+import { t } from "../i18n";
 
 const PAGE = 20;
 
@@ -27,7 +28,7 @@ export function canvasQuery(params: SearchParams, now: Date = new Date()) {
 
 /** The server's excerpt is the body's plain text: an image reference reads as 「[画像]」 instead of its id. */
 export function readableSnippet(snippet: string): string {
-  return snippet.replace(/!\[([^\]\n]*)\]\(attachment:[0-9a-fA-F-]*\)?/g, (_, alt: string) => (alt ? `[画像: ${alt}]` : "[画像]"));
+  return snippet.replace(/!\[([^\]\n]*)\]\(attachment:[0-9a-fA-F-]*\)?/g, (_, alt: string) => (alt ? t("canvasSearch.imageAlt", { alt }) : t("canvasSearch.image")));
 }
 
 export function CanvasResults({ controller, params, onOpen }: { controller: AppController; params: SearchParams; onOpen: (canvas: CanvasMeta) => void }) {
@@ -75,23 +76,23 @@ export function CanvasResults({ controller, params, onOpen }: { controller: AppC
   const store = controller.store;
   const mark = (text: string) => highlightPieces(text, keywords).map((piece, i) => (piece.hit ? <mark key={i} className="rounded bg-warning/35 px-0.5 text-ink">{piece.text}</mark> : <span key={i}>{piece.text}</span>));
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" aria-label="キャンバスの検索結果">
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" aria-label={t("canvasSearch.results")}>
       {empty ? (
-        <div className="py-16 text-center text-sm text-muted">語を入れると、キャンバスの題名と本文から探します。</div>
+        <div className="py-16 text-center text-sm text-muted">{t("canvasSearch.hint")}</div>
       ) : (
         <>
           {unresolved.length > 0 && (
             <div className="mb-3 flex max-w-3xl items-start gap-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-              <span>キャンバスには使えない条件があります: {unresolved.join(" ")}</span>
+              <span>{t("canvasSearch.unresolved", { items: unresolved.join(" ") })}</span>
             </div>
           )}
           {loaded && <div className="mb-2 max-w-3xl text-xs text-muted">{totalLabel(total, capped)}</div>}
           {loaded && hits.length === 0 ? (
             <div className="mx-auto flex max-w-md flex-col items-center py-16 text-center">
               <SearchX size={40} className="text-muted/60" />
-              <div className="mt-3 text-base font-semibold">キャンバスは見つかりませんでした</div>
-              <p className="mt-1 text-sm text-muted">自分が参加している会話のキャンバスを、題名と本文から探します。</p>
+              <div className="mt-3 text-base font-semibold">{t("canvasSearch.none")}</div>
+              <p className="mt-1 text-sm text-muted">{t("canvasSearch.scope")}</p>
             </div>
           ) : (
             <ul className="max-w-3xl space-y-1">
@@ -108,8 +109,8 @@ export function CanvasResults({ controller, params, onOpen }: { controller: AppC
                       onClick={() => onOpen(canvas)}
                     >
                       <div className="flex items-center gap-2 text-xs text-muted">
-                        <span className="min-w-0 truncate font-medium">{channel ? channelTitle(channel, controller) : "会話"}</span>
-                        <span className="shrink-0">· {store.users.get(canvas.updated_by)?.display_name ?? "メンバー"}</span>
+                        <span className="min-w-0 truncate font-medium">{channel ? channelTitle(channel, controller) : t("ask.conversation")}</span>
+                        <span className="shrink-0">· {store.users.get(canvas.updated_by)?.display_name ?? t("common.member")}</span>
                         <time className="ml-auto shrink-0">{sinceLabel(canvas.updated_at)}</time>
                       </div>
                       <div className="mt-1 flex items-start gap-2.5">
@@ -121,7 +122,7 @@ export function CanvasResults({ controller, params, onOpen }: { controller: AppC
                           </div>
                           {snippet && <div className="line-clamp-3 whitespace-pre-wrap break-words text-sm text-ink/90">{mark(readableSnippet(mentionsToNames(snippet, store.users, store.groups)))}</div>}
                         </div>
-                        <span className="self-center whitespace-nowrap text-xs text-accent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100">キャンバスを開く</span>
+                        <span className="self-center whitespace-nowrap text-xs text-accent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100">{t("tasks.dialog.openCanvas")}</span>
                       </div>
                     </button>
                   </li>
@@ -129,10 +130,10 @@ export function CanvasResults({ controller, params, onOpen }: { controller: AppC
               })}
             </ul>
           )}
-          {loading && <div className="py-4 text-center text-sm text-muted">{hits.length ? "続きを読み込んでいます…" : "検索しています…"}</div>}
+          {loading && <div className="py-4 text-center text-sm text-muted">{hits.length ? t("search.loadingMore") : t("search.searching")}</div>}
           {hasMore && !loading && (
             <div className="max-w-3xl py-2 text-center">
-              <Button variant="secondary" size="sm" onClick={() => void run(hits.length)}>さらに表示</Button>
+              <Button variant="secondary" size="sm" onClick={() => void run(hits.length)}>{t("canvasSearch.more")}</Button>
             </div>
           )}
         </>

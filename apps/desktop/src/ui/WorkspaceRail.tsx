@@ -10,6 +10,7 @@ import { useReservesTrafficLights } from "../platform/windowState";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
 import { useMediaQuery } from "./hooks";
 import { WorkspaceIcon } from "./workspaceIcons";
+import { t } from "../i18n";
 
 const MENU = "rx-popover z-50 min-w-48 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
 const ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-accent-soft data-[disabled]:opacity-40";
@@ -109,7 +110,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
     const target = Math.max(0, Math.min(entries.length - 1, to));
     if (from < 0 || target === from) return;
     controller.moveWorkspace(entry.serverUrl, target);
-    setAnnouncement(`${entry.name} を ${target + 1} 番目に移動しました`);
+    setAnnouncement(t("rail.moved", { name: entry.name, position: target + 1 }));
     if (keepFocus) setFocusAfterMove(entry.serverUrl);
   };
 
@@ -218,7 +219,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
 
   return (
     <nav
-      aria-label="ワークスペース"
+      aria-label={t("settings.section.workspaces")}
       data-tauri-drag-region
       className="flex w-[68px] shrink-0 flex-col items-center gap-3 overflow-y-auto border-r border-black/20 bg-sidebar-rail py-3"
       style={trafficLights ? { paddingTop: `calc(48px / var(--ui-zoom, 1))`, width: `max(68px, calc(${TRAFFIC_LIGHTS_INSET}px / var(--ui-zoom, 1)))` } : undefined}
@@ -256,8 +257,8 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
       ))}
       <button
         type="button"
-        title="ワークスペースを追加"
-        aria-label="ワークスペースを追加"
+        title={t("settings.workspaces.add")}
+        aria-label={t("settings.workspaces.add")}
         onClick={() => controller.beginAddWorkspace()}
         className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-dashed border-sidebar-strong/30 text-sidebar-strong/70 transition-colors hover:border-sidebar-strong/60 hover:text-sidebar-strong", controller.addingWorkspace && "border-solid border-sidebar-strong bg-sidebar-strong/10 text-sidebar-strong")}
       >
@@ -294,12 +295,12 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
         {announcement}
       </span>
       {leaving && (
-        <Modal title={`${leaving.name} からサインアウトしますか？`} description={`${signInName(leaving)} @ ${hostLabel(leaving.serverUrl)}`} onClose={() => setLeaving(null)}>
-          <p className="mt-3 text-sm text-muted">この端末に保存したこのワークスペースのメッセージと下書きを消し、一覧から外します。サーバ上のデータは消えません。</p>
+        <Modal title={t("settings.workspaces.signOutTitle", { name: leaving.name })} description={`${signInName(leaving)} @ ${hostLabel(leaving.serverUrl)}`} onClose={() => setLeaving(null)}>
+          <p className="mt-3 text-sm text-muted">{t("settings.workspaces.signOutBody")}</p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setLeaving(null)}>キャンセル</Button>
+            <Button variant="secondary" onClick={() => setLeaving(null)}>{t("common.cancel")}</Button>
             <Button variant="danger" onClick={() => { const target = leaving; setLeaving(null); void controller.signOutWorkspace(target.serverUrl); }}>
-              サインアウト
+              {t("settings.workspaces.signOut")}
             </Button>
           </div>
         </Modal>
@@ -334,7 +335,7 @@ function WorkspaceTile({ controller, entry, index, count, tileRef, placeholder, 
   const signedIn = controller.isSignedIn(entry.serverUrl);
   const { badge, unread } = active ? { badge: 0, unread: false } : controller.workspaceUnread(entry.serverUrl);
   const shortcut = index < 9 ? ` (${modKey()}+${index + 1})` : "";
-  const reorderHint = count > 1 ? "\nドラッグ、または Alt+↑/↓ で並べ替え" : "";
+  const reorderHint = count > 1 ? `\n${t("rail.reorderHint")}` : "";
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
@@ -356,7 +357,7 @@ function WorkspaceTile({ controller, entry, index, count, tileRef, placeholder, 
           <button
             type="button"
             data-workspace-tile
-            title={`${entry.name}${shortcut}${signedIn || active ? "" : " — サインインが必要です"}${reorderHint}`}
+            title={`${entry.name}${shortcut}${signedIn || active ? "" : t("rail.signInNeeded")}${reorderHint}`}
             aria-label={entry.name}
             aria-current={active ? "true" : undefined}
             aria-keyshortcuts={count > 1 ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
@@ -392,20 +393,20 @@ function WorkspaceTile({ controller, entry, index, count, tileRef, placeholder, 
           <ContextMenu.Label className="px-2.5 py-1 text-xs text-muted">
             {signInName(entry)} @ {hostLabel(entry.serverUrl)}
           </ContextMenu.Label>
-          <ContextMenu.Item className={ITEM} onSelect={() => void controller.switchWorkspace(entry.serverUrl)}>開く</ContextMenu.Item>
+          <ContextMenu.Item className={ITEM} onSelect={() => void controller.switchWorkspace(entry.serverUrl)}>{t("dialogs.open")}</ContextMenu.Item>
           {count > 1 && (
             <>
               <ContextMenu.Item className={ITEM} disabled={index === 0} onSelect={() => onMove(index - 1)}>
-                <ArrowUp size={14} /> 上へ移動
+                <ArrowUp size={14} /> {t("common.moveUp")}
               </ContextMenu.Item>
               <ContextMenu.Item className={ITEM} disabled={index === count - 1} onSelect={() => onMove(index + 1)}>
-                <ArrowDown size={14} /> 下へ移動
+                <ArrowDown size={14} /> {t("common.moveDown")}
               </ContextMenu.Item>
             </>
           )}
           <ContextMenu.Separator className="my-1 h-px bg-line" />
           <ContextMenu.Item className={cn(ITEM, "text-danger")} onSelect={signedIn || active ? onLeave : () => void controller.signOutWorkspace(entry.serverUrl)}>
-            {signedIn || active ? "サインアウト…" : "一覧から外す"}
+            {signedIn || active ? t("rail.signOutMenu") : t("rail.removeFromList")}
           </ContextMenu.Item>
         </ContextMenu.Content>
       </ContextMenu.Portal>
@@ -431,12 +432,12 @@ export function WorkspaceMenu({ controller }: { controller: AppController }) {
         {entry && <div className="px-2.5 pb-1 pt-1.5 text-xs text-muted">{signInName(entry)} @ {hostLabel(entry.serverUrl)}</div>}
         {controller.multiWorkspace && (
           <MenuItem onSelect={() => controller.beginAddWorkspace()}>
-            <Plus size={15} /> ワークスペースを追加…
+            <Plus size={15} /> {t("home.addWorkspace")}
           </MenuItem>
         )}
         <MenuSeparator />
         <MenuItem className="text-danger" onSelect={() => void controller.logout()}>
-          <LogOut size={15} /> {controller.workspaces.length > 1 ? `${name} からログアウト` : "ログアウト"}
+          <LogOut size={15} /> {controller.workspaces.length > 1 ? t("settings.logoutFrom", { workspace: name }) : t("common.logout")}
         </MenuItem>
       </MenuContent>
     </Menu>

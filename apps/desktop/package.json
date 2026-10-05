@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "i18n:leftovers": "node scripts/i18n-leftovers.mjs",
     "gen:api": "openapi-typescript ../../openapi/openapi.json -o src/api/schema.d.ts",
     "tauri": "tauri",
     "tauri:build": "tauri build --config src-tauri/tauri.no-updater.conf.json",

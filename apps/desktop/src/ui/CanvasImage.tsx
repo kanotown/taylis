@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { formatSize, Lightbox, useAttachmentImage } from "./Attachments";
+import { t } from "../i18n";
 
 export function CanvasImage({ controller, attachmentId, alt }: { controller: AppController; attachmentId: string; alt: string }) {
   const [meta, setMeta] = useState<AttachmentOut | null | undefined>(undefined);
@@ -27,7 +28,7 @@ export function CanvasImage({ controller, attachmentId, alt }: { controller: App
 
   if (meta === undefined) {
     return (
-      <span role="status" aria-label="画像を読み込み中" data-attachment-id={attachmentId} className="my-2 flex h-24 w-40 items-center justify-center rounded-lg border border-line bg-panel text-muted">
+      <span role="status" aria-label={t("attach.loadingImage")} data-attachment-id={attachmentId} className="my-2 flex h-24 w-40 items-center justify-center rounded-lg border border-line bg-panel text-muted">
         <Loader2 size={18} className="animate-spin" />
       </span>
     );
@@ -57,13 +58,13 @@ function Picture({ controller, attachment, alt }: { controller: AppController; a
         type="button"
         data-attachment-id={attachment.id}
         className="my-2 block max-w-full overflow-hidden rounded-lg border border-line bg-panel transition-shadow hover:shadow-md"
-        title={`${alt || attachment.filename} — クリックで拡大`}
+        title={`${alt || attachment.filename} — ${t("attach.clickToZoom")}`}
         onClick={() => setOpen(true)}
       >
         {url ? (
           <img src={url} alt={alt || attachment.filename} onError={onError} className="block max-h-[480px] max-w-full object-contain" style={box} />
         ) : (
-          <span role="status" aria-label="画像を読み込み中" className="flex h-32 w-48 items-center justify-center text-muted">
+          <span role="status" aria-label={t("attach.loadingImage")} className="flex h-32 w-48 items-center justify-center text-muted">
             <Loader2 size={18} className="animate-spin" />
           </span>
         )}
@@ -77,7 +78,7 @@ function Picture({ controller, attachment, alt }: { controller: AppController; a
 function Unavailable({ attachmentId, alt }: { attachmentId: string; alt: string }) {
   return (
     <span data-attachment-id={attachmentId} className="my-2 inline-flex items-center gap-2 rounded-lg border border-dashed border-line px-3 py-2 text-sm text-muted">
-      <ImageOff size={16} /> 表示できない画像{alt ? `: ${alt}` : ""}
+      <ImageOff size={16} /> {t("canvasImage.unavailable")}{alt ? `: ${alt}` : ""}
     </span>
   );
 }

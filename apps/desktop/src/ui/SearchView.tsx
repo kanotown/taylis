@@ -17,6 +17,7 @@ import { EmojiText } from "./UserPopover";
 import { BackButton, BackToList } from "./compact";
 import { Badge, Button, cn, IconButton, Input, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PopoverContent, PopoverRoot, PopoverTrigger, UNDERLINE_TAB, UnderlineTabRow } from "./primitives";
 import { DATE_PRESETS, dateLabel, EMPTY_SEARCH, HAS_FLAGS, HAS_LABELS, hasFilters, isEmptySearch, type SearchParams, type SearchSort, toQuery, totalLabel } from "./search";
+import { t } from "../i18n";
 
 export type SearchTab = "messages" | "files" | "canvases";
 
@@ -154,20 +155,20 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
         <BackButton />
         <span className="text-muted max-md:hidden"><Search size={18} /></span>
         <div className="min-w-0 flex-1 truncate">
-          <strong className="text-[15px]">{words ? `「${words}」の検索結果` : "検索結果"}</strong>
+          <strong className="text-[15px]">{words ? t("search.resultsFor", { words }) : t("search.results")}</strong>
           {tab === "messages" && loaded && <span className="ml-2 text-sm text-muted">{totalLabel(total, capped)}</span>}
         </div>
         {tab !== "files" && <SortMenu sort={words ? params.sort : "newest"} disabled={!words} onChange={(sort) => onChange({ ...params, sort })} />}
         {!back && (
-          <IconButton label="検索を閉じる (Esc)" onClick={onClose}>
+          <IconButton label={t("search.close")} onClick={onClose}>
             <X size={18} />
           </IconButton>
         )}
       </header>
-      <UnderlineTabRow role="tablist" aria-label="検索の対象" className="items-center gap-4 px-4">
-        <TabButton active={tab === "messages"} onClick={() => onTabChange("messages")}>メッセージ</TabButton>
-        <TabButton active={tab === "files"} onClick={() => onTabChange("files")}>ファイル</TabButton>
-        {onOpenCanvas && <TabButton active={tab === "canvases"} onClick={() => onTabChange("canvases")}>キャンバス</TabButton>}
+      <UnderlineTabRow role="tablist" aria-label={t("search.target")} className="items-center gap-4 px-4">
+        <TabButton active={tab === "messages"} onClick={() => onTabChange("messages")}>{t("main.tab.messages")}</TabButton>
+        <TabButton active={tab === "files"} onClick={() => onTabChange("files")}>{t("nav.files")}</TabButton>
+        {onOpenCanvas && <TabButton active={tab === "canvases"} onClick={() => onTabChange("canvases")}>{t("nav.canvases")}</TabButton>}
       </UnderlineTabRow>
       <FilterBar controller={controller} params={params} onChange={onChange} mode={tab} />
       {tab === "files" ? (
@@ -181,7 +182,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
           {unresolved.length > 0 && (
             <div className="mb-3 flex max-w-3xl items-start gap-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-              <span>見つからない条件があります (直すと検索できます): {unresolved.join(" ")}</span>
+              <span>{t("search.unresolved", { items: unresolved.join(" ") })}</span>
             </div>
           )}
           {loaded && hits.length === 0 ? (
@@ -209,7 +210,7 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
             </ul>
           )}
           <div ref={sentinel} className="h-px" />
-          {loading && <div className="py-4 text-center text-sm text-muted">{hits.length ? "続きを読み込んでいます…" : "検索しています…"}</div>}
+          {loading && <div className="py-4 text-center text-sm text-muted">{hits.length ? t("search.loadingMore") : t("search.searching")}</div>}
         </div>
       )}
     </div>
@@ -234,14 +235,14 @@ function SortMenu({ sort, disabled, onChange }: { sort: SearchSort; disabled: bo
   return (
     <Menu>
       <MenuTrigger asChild disabled={disabled}>
-        <Button variant="ghost" size="sm" title={disabled ? "語を入れると関連度順にできます" : "並び順"}>
-          <ArrowUpDown size={14} /> {sort === "relevance" ? "関連度順" : "新しい順"}
+        <Button variant="ghost" size="sm" title={disabled ? t("search.relevanceNeedsWords") : t("admin.users.sortLabel")}>
+          <ArrowUpDown size={14} /> {sort === "relevance" ? t("search.relevance") : t("search.newest")}
         </Button>
       </MenuTrigger>
       <MenuContent>
         <MenuRadioGroup value={sort} onValueChange={(v) => onChange(v as SearchSort)}>
-          <MenuRadioItem value="relevance">関連度順</MenuRadioItem>
-          <MenuRadioItem value="newest">新しい順</MenuRadioItem>
+          <MenuRadioItem value="relevance">{t("search.relevance")}</MenuRadioItem>
+          <MenuRadioItem value="newest">{t("search.newest")}</MenuRadioItem>
         </MenuRadioGroup>
       </MenuContent>
     </Menu>
@@ -264,34 +265,34 @@ function FilterBar({ controller, params, onChange, mode }: { controller: AppCont
       {!filesOnly && (
         <PeoplePicker controller={controller} value={params.fromUserId} onChange={(id) => onChange({ ...params, fromUserId: id })}>
           <Chip active={!!sender} icon={<User size={13} />} onClear={sender ? () => onChange({ ...params, fromUserId: null }) : undefined}>
-            {sender ? `${canvases ? "作成・更新" : "送信者"}: ${sender.display_name}` : canvases ? "作成・更新した人" : "送信者"}
+            {sender ? `${canvases ? t("search.editedBy") : t("search.sender")}: ${sender.display_name}` : canvases ? t("search.editor") : t("search.sender")}
           </Chip>
         </PeoplePicker>
       )}
       <ChannelPicker controller={controller} value={params.channelId} onChange={(id) => onChange({ ...params, channelId: id })}>
         <Chip active={!!channel} icon={<Hash size={13} />} onClear={channel ? () => onChange({ ...params, channelId: null }) : undefined}>
-          {channel ? channelTitle(channel, controller) : "チャンネル"}
+          {channel ? channelTitle(channel, controller) : t("search.channel")}
         </Chip>
       </ChannelPicker>
       {!filesOnly && (
         <>
           <DatePicker value={params.date} onChange={(value) => onChange({ ...params, date: value })}>
             <Chip active={!!date} icon={<Calendar size={13} />} onClear={date ? () => onChange({ ...params, date: null }) : undefined}>
-              {date ?? "期間"}
+              {date ?? t("search.period")}
             </Chip>
           </DatePicker>
           {!canvases && (
             <>
               <KindPicker value={params.has} onChange={(has) => onChange({ ...params, has })}>
                 <Chip active={params.has.length > 0} icon={<Paperclip size={13} />} onClear={params.has.length ? () => onChange({ ...params, has: [] }) : undefined}>
-                  {params.has.length ? params.has.map((f) => HAS_LABELS[f]).join("・") : "種類"}
+                  {params.has.length ? params.has.map((f) => HAS_LABELS[f]).join(t("recurring.daySeparator")) : t("tasks.kind")}
                 </Chip>
               </KindPicker>
               <Chip toggle active={params.isThread} icon={<MessagesSquare size={13} />} onClick={() => onChange({ ...params, isThread: !params.isThread })}>
-                スレッド内
+                {t("search.inThreads")}
               </Chip>
               {/* L8: only times, those I have not joined included (TIMES_FEED.md §6). */}
-              <Chip toggle active={!!params.isTimes} icon={<Newspaper size={13} />} title="times の投稿だけ (is:times)" onClick={() => onChange({ ...params, isTimes: !params.isTimes })}>
+              <Chip toggle active={!!params.isTimes} icon={<Newspaper size={13} />} title={t("search.timesOnly")} onClick={() => onChange({ ...params, isTimes: !params.isTimes })}>
                 Times
               </Chip>
             </>
@@ -300,7 +301,7 @@ function FilterBar({ controller, params, onChange, mode }: { controller: AppCont
       )}
       {(filesOnly ? !!params.channelId : hasFilters(params)) && (
         <button type="button" className="ml-1 text-xs text-accent hover:underline" onClick={() => onChange({ ...EMPTY_SEARCH, q: params.q, sort: params.sort })}>
-          条件をクリア
+          {t("search.clearFilters")}
         </button>
       )}
     </div>
@@ -331,7 +332,7 @@ function Chip({ active, icon, children, onClear, toggle = false, className, ...p
       {onClear ? (
         <span
           role="button"
-          aria-label="この条件を外す"
+          aria-label={t("search.removeFilter")}
           className="-mr-1 rounded-full p-0.5 hover:bg-accent/15"
           onClick={(e) => {
             e.stopPropagation();
@@ -382,7 +383,7 @@ function ListPicker<T>({ children, items, keyOf, render, match, onPick, placehol
               </button>
             </li>
           ))}
-          {shown.length === 0 && <li className="px-2 py-3 text-center text-xs text-muted">見つかりません</li>}
+          {shown.length === 0 && <li className="px-2 py-3 text-center text-xs text-muted">{t("workflow.notFound")}</li>}
         </ul>
       </PopoverContent>
     </PopoverRoot>
@@ -397,7 +398,7 @@ function PeoplePicker({ controller, value, onChange, children }: { controller: A
       items={people}
       keyOf={(u) => u.id}
       selected={value}
-      placeholder="名前で絞り込む"
+      placeholder={t("tasks.dialog.filterPlaceholder")}
       match={(u, needle) => fold(u.display_name).includes(needle) || fold(u.username).includes(needle)}
       onPick={(u) => onChange(u.id === value ? null : u.id)}
       render={(u) => (
@@ -421,7 +422,7 @@ function ChannelPicker({ controller, value, onChange, children }: { controller: 
       items={list}
       keyOf={(c) => c.id}
       selected={value}
-      placeholder="会話の名前で絞り込む"
+      placeholder={t("search.filterConversations")}
       match={(c, needle) => fold(title(c)).includes(needle)}
       onPick={(c) => onChange(c.id === value ? null : c.id)}
       render={(c) => {
@@ -459,14 +460,14 @@ function DatePicker({ value, onChange, children }: { value: SearchParams["date"]
           </button>
         ))}
         <div className="mt-1 border-t border-line px-2 pb-1 pt-2">
-          <div className="mb-1.5 text-xs font-medium text-muted">日付を指定</div>
+          <div className="mb-1.5 text-xs font-medium text-muted">{t("search.pickDates")}</div>
           <div className="flex items-center gap-1.5">
-            <Input type="date" aria-label="開始日" value={from} max={to || undefined} className="h-8 px-2 text-xs" onChange={(e) => setFrom(e.target.value)} />
-            <span className="text-xs text-muted">〜</span>
-            <Input type="date" aria-label="終了日" value={to} min={from || undefined} className="h-8 px-2 text-xs" onChange={(e) => setTo(e.target.value)} />
+            <Input type="date" aria-label={t("calendar.startDate")} value={from} max={to || undefined} className="h-8 px-2 text-xs" onChange={(e) => setFrom(e.target.value)} />
+            <span className="text-xs text-muted">{t("common.rangeTo")}</span>
+            <Input type="date" aria-label={t("calendar.endDate")} value={to} min={from || undefined} className="h-8 px-2 text-xs" onChange={(e) => setTo(e.target.value)} />
           </div>
           <Button size="sm" className="mt-2 w-full" disabled={!from && !to} onClick={() => pick({ from: from || null, to: to || null })}>
-            この期間で絞り込む
+            {t("search.applyDates")}
           </Button>
         </div>
       </PopoverContent>
@@ -512,8 +513,8 @@ function ResultRow({ controller, message, keywords, other, onOpen }: { controlle
       <div className="flex items-center gap-2 text-xs text-muted">
         {channel && (channel.type === "private" ? <Lock size={12} /> : channel.type === "public" ? <Hash size={12} /> : <AtSign size={12} />)}
         <span className="min-w-0 truncate font-medium">{channel ? channelTitle(channel, controller).replace(/^#/, "") : "?"}</span>
-        {message.parent_id && <Badge className="shrink-0 whitespace-nowrap">スレッドの返信</Badge>}
-        {channel && !joined && <Badge className="shrink-0 whitespace-nowrap">{channel.archived ? "未参加・アーカイブ済み" : "未参加"}</Badge>}
+        {message.parent_id && <Badge className="shrink-0 whitespace-nowrap">{t("composer.threadReply")}</Badge>}
+        {channel && !joined && <Badge className="shrink-0 whitespace-nowrap">{channel.archived ? t("search.notJoinedArchived") : t("admin.channels.notJoined")}</Badge>}
         <time className="ml-auto shrink-0">{fullTimestamp(message.created_at)}</time>
       </div>
       <div className="mt-1.5 flex gap-2.5">
@@ -537,7 +538,7 @@ function ResultRow({ controller, message, keywords, other, onOpen }: { controlle
           )}
         </div>
         <span className="self-center whitespace-nowrap text-xs text-accent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100">
-          {message.parent_id ? "スレッドで表示" : "会話で表示"}
+          {message.parent_id ? t("search.showInThread") : t("search.showInConversation")}
         </span>
       </div>
     </button>
@@ -548,13 +549,13 @@ function EmptyResults({ params, onClear }: { params: SearchParams; onClear: () =
   return (
     <div className="mx-auto flex max-w-md flex-col items-center py-16 text-center">
       <SearchX size={40} className="text-muted/60" />
-      <div className="mt-3 text-base font-semibold">見つかりませんでした</div>
+      <div className="mt-3 text-base font-semibold">{t("search.nothingFound")}</div>
       <p className="mt-1 text-sm text-muted">
-        {hasFilters(params) ? "条件を減らすと見つかるかもしれません。" : "別の言葉や、より短い言葉で試してください。"}
+        {hasFilters(params) ? t("search.fewerFilters") : t("search.otherWords")}
       </p>
       {hasFilters(params) && (
         <Button variant="secondary" size="sm" className="mt-4" onClick={onClear}>
-          条件をクリアして検索
+          {t("search.clearAndSearch")}
         </Button>
       )}
     </div>
@@ -587,19 +588,19 @@ function FileResults({ controller, params, onOpen }: { controller: AppController
   return (
     <div data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
       {items === null ? (
-        <div className="py-8 text-center text-sm text-muted">検索しています…</div>
+        <div className="py-8 text-center text-sm text-muted">{t("search.searching")}</div>
       ) : items.length === 0 ? (
         <div className="mx-auto flex max-w-md flex-col items-center py-16 text-center">
           <SearchX size={40} className="text-muted/60" />
-          <div className="mt-3 text-base font-semibold">ファイルは見つかりませんでした</div>
-          <p className="mt-1 text-sm text-muted">ファイル名で探します。</p>
+          <div className="mt-3 text-base font-semibold">{t("search.noFiles")}</div>
+          <p className="mt-1 text-sm text-muted">{t("search.byFileName")}</p>
         </div>
       ) : (
         <ul className="max-w-3xl divide-y divide-line rounded-xl border border-line">
           {items.map((item) => <FileRow key={item.attachment.id} item={item} controller={controller} onOpen={onOpen} />)}
           {cursor && (
             <li className="py-2 text-center">
-              <Button variant="secondary" size="sm" disabled={loading} onClick={() => void load(true)}>さらに読み込む</Button>
+              <Button variant="secondary" size="sm" disabled={loading} onClick={() => void load(true)}>{t("canvasHistory.loadMore")}</Button>
             </li>
           )}
         </ul>

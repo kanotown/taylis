@@ -76,6 +76,7 @@ import { landingTab, landOn, MOBILE_TABS, type MobileTab, tapTab } from "./mobil
 import { SettingsDialog, type SettingsSection } from "./Settings";
 import { TimesFeedView } from "./TimesFeedView";
 import { YouView } from "./YouView";
+import { t } from "../i18n";
 
 // "activity": the wide layout's 「アクティビティ」 (M39; the mentions list for a server before it).
 // "canvases" (M44): the canvases of all my conversations. "calendar" (M51): my calendar and my channels'.
@@ -1019,7 +1020,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       recent={recent}
       onRecentChange={setRecent}
       recentKey={recentStorageKey}
-      placeholder={`${controller.workspaceName} を検索`}
+      placeholder={t("main.searchIn", { workspace: controller.workspaceName })}
     />
   );
   const sidebar = (
@@ -1067,27 +1068,27 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // The channel's own ⋯ items (on a phone they follow the conversation items in the same menu).
   const channelMenuItems = current ? (
     <>
-      {!current.archived && <MenuItem onSelect={() => setDialog("topic")}>トピックを編集</MenuItem>}
-      {canManage && !current.archived && <MenuItem onSelect={() => setDialog("rename")}>名前を変更</MenuItem>}
-      <MenuItem onSelect={() => setDialog("members")}>メンバー</MenuItem>
-      {(current.type === "public" || current.type === "private") && current.isMember && <MenuItem onSelect={() => setDialog("recurring")}>定期投稿…</MenuItem>}
-      {(current.type === "public" || current.type === "private") && <MenuItem onSelect={() => setDialog("feeds")}>フィード…</MenuItem>}
-      {(current.type === "public" || current.type === "private") && <MenuItem onSelect={() => setDialog("workflows")}>ワークフロー…</MenuItem>}
+      {!current.archived && <MenuItem onSelect={() => setDialog("topic")}>{t("channel.editTopic")}</MenuItem>}
+      {canManage && !current.archived && <MenuItem onSelect={() => setDialog("rename")}>{t("channel.rename")}</MenuItem>}
+      <MenuItem onSelect={() => setDialog("members")}>{t("channel.members")}</MenuItem>
+      {(current.type === "public" || current.type === "private") && current.isMember && <MenuItem onSelect={() => setDialog("recurring")}>{t("channel.recurringMenu")}</MenuItem>}
+      {(current.type === "public" || current.type === "private") && <MenuItem onSelect={() => setDialog("feeds")}>{t("channel.feedsMenu")}</MenuItem>}
+      {(current.type === "public" || current.type === "private") && <MenuItem onSelect={() => setDialog("workflows")}>{t("channel.workflowsMenu")}</MenuItem>}
       {(current.type === "public" || current.type === "private") && current.isMember && canEditBoard(current, controller.isAdmin) && !!controller.engine?.tasks?.available && (
-        <MenuItem onSelect={() => setDeadlineInit(newDeadlineInit(controller, current.id))}>締切を追加…</MenuItem>
+        <MenuItem onSelect={() => setDeadlineInit(newDeadlineInit(controller, current.id))}>{t("channel.addDeadline")}</MenuItem>
       )}
-      {canEditLinks(current, controller) && <MenuItem onSelect={() => { setEditingLink(null); setDialog("link"); }}>リンクを追加…</MenuItem>}
+      {canEditLinks(current, controller) && <MenuItem onSelect={() => { setEditingLink(null); setDialog("link"); }}>{t("channel.addLink")}</MenuItem>}
       {canManage && !current.archived && (
         <MenuItem onSelect={() => void controller.setPostingPolicy(current.id, current.posting_policy === "owners" ? "everyone" : "owners")}>
-          {current.posting_policy === "owners" ? "誰でも投稿できるようにする" : current.times_owner_id ? "他の人はスレッドでだけ返信できるようにする" : "投稿をオーナーと管理者に限る"}
+          {current.posting_policy === "owners" ? t("channel.postingEveryone") : current.times_owner_id ? t("channel.postingTimesOwner") : t("channel.postingOwners")}
         </MenuItem>
       )}
-      {canManage && current.type === "public" && <MenuItem onSelect={() => setDialog("convert")}>非公開チャンネルに変換…</MenuItem>}
-      {canMakePublic(current, controller.isAdmin) && <MenuItem onSelect={() => setDialog("convert")}>公開チャンネルに変換…</MenuItem>}
+      {canManage && current.type === "public" && <MenuItem onSelect={() => setDialog("convert")}>{t("channel.convertToPrivate")}</MenuItem>}
+      {canMakePublic(current, controller.isAdmin) && <MenuItem onSelect={() => setDialog("convert")}>{t("channel.convertToPublic")}</MenuItem>}
       <MenuSeparator />
-      <MenuItem onSelect={() => setDialog("leave")}>チャンネルを退出</MenuItem>
-      {canManage && !current.archived && <MenuItem className="text-danger" onSelect={() => setDialog("archive")}>アーカイブ</MenuItem>}
-      {canManage && current.archived && <MenuItem onSelect={() => void controller.unarchiveChannel(current.id)}>アーカイブを解除</MenuItem>}
+      <MenuItem onSelect={() => setDialog("leave")}>{t("channel.leave")}</MenuItem>
+      {canManage && !current.archived && <MenuItem className="text-danger" onSelect={() => setDialog("archive")}>{t("channel.archive")}</MenuItem>}
+      {canManage && current.archived && <MenuItem onSelect={() => void controller.unarchiveChannel(current.id)}>{t("channel.unarchive")}</MenuItem>}
     </>
   ) : null;
   // The thread or the pinned messages: a resizable column on the right, the whole screen on a phone (where the pins are
@@ -1106,9 +1107,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // M43: the wide layout has 「メッセージ | キャンバス」 in the header (its pins and files stay a pane and a view).
   const canvasTab = !!current && current.isMember && !previewing;
   const headerTabs: ReadonlyArray<readonly [ConversationTab, string]> = [
-    ["messages", "メッセージ"],
-    ["canvas", "キャンバス"],
-    ...(isChannel ? [["events", eventsTabLabel(upcomingCount)] as const, ["tasks", "タスク"] as const] : []),
+    ["messages", t("main.tab.messages")],
+    ["canvas", t("main.tab.canvas")],
+    ...(isChannel ? [["events", eventsTabLabel(upcomingCount)] as const, ["tasks", t("main.tab.tasks")] as const] : []),
   ];
   // Too narrow a header moves pins, files, members and the shortcuts button into ⋯ (headerFit).
   const tightHeader = !compact && fit === "tight";
@@ -1133,7 +1134,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     <>
       {banner && (
         <div className={cn("px-4 py-1 text-center text-xs font-medium text-white", banner === "connecting" ? "bg-accent-solid" : "bg-warning")}>
-          {banner === "connecting" ? "サーバに接続しています…" : "オフラインです。再接続を待っています…"}
+          {banner === "connecting" ? t("connection.connectingLong") : t("connection.offlineWaiting")}
         </div>
       )}
       {/* M75: box-less, only to find the centre view's list (useViewScrollMemory). */}
@@ -1207,7 +1208,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
               className="flex shrink-0 items-center gap-1.5 border-b border-line bg-accent-soft/70 px-4 py-1.5 text-left text-xs font-medium text-accent hover:bg-accent-soft"
             >
               <ArrowLeft size={13} />
-              <span className="shrink-0">検索結果に戻る</span>
+              <span className="shrink-0">{t("main.backToResults")}</span>
               <span className="min-w-0 truncate font-normal opacity-80">{describeSearch(controller, search)}</span>
             </button>
           )}
@@ -1222,7 +1223,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
             <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
               {tabbed ? (
                 // M29: the name opens the conversation's details page.
-                <button type="button" className="flex min-w-0 items-center gap-2 rounded-md text-left" title={isChannel ? "チャンネル情報" : "会話の情報"} onClick={openDetails}>
+                <button type="button" className="flex min-w-0 items-center gap-2 rounded-md text-left" title={isChannel ? t("main.channelInfo") : t("main.conversationInfo")} onClick={openDetails}>
                   <span className="text-muted">
                     {isChannel ? (current.type === "private" ? <Lock size={18} /> : <Hash size={18} />) : <AtSign size={18} />}
                   </span>
@@ -1236,17 +1237,17 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   <strong className="min-w-0 truncate text-[15px]" title={channelTitle(current, controller)}>{channelTitle(current, controller).replace(/^#/, "")}</strong>
                 </>
               )}
-              {current.archived && <Badge>アーカイブ済み</Badge>}
+              {current.archived && <Badge>{t("channel.archived")}</Badge>}
               {canvasTab && !compact && fit !== "full" && (
                 // Too narrow for the strip: one button with the shown tab's name opens the same choices.
                 <Menu>
                   <MenuTrigger asChild>
                     <button
                       type="button"
-                      aria-label={`会話の表示: ${headerTabs.find(([value]) => value === shownTab)?.[1] ?? "メッセージ"}`}
+                      aria-label={t("main.viewLabel", { view: headerTabs.find(([value]) => value === shownTab)?.[1] ?? t("main.tab.messages") })}
                       className="ml-1 inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-panel-2 px-2.5 text-xs font-medium text-ink transition-colors hover:bg-ink/6"
                     >
-                      {headerTabs.find(([value]) => value === shownTab)?.[1] ?? "メッセージ"}
+                      {headerTabs.find(([value]) => value === shownTab)?.[1] ?? t("main.tab.messages")}
                       <ChevronDown size={13} className="text-muted" />
                     </button>
                   </MenuTrigger>
@@ -1260,7 +1261,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 </Menu>
               )}
               {canvasTab && !compact && fit === "full" && (
-                <div role="tablist" aria-label="会話の表示" className="ml-1 flex min-w-[6rem] shrink-[4] overflow-x-auto overflow-y-hidden rounded-lg bg-panel-2 p-0.5 text-xs font-medium [scrollbar-width:none]">
+                <div role="tablist" aria-label={t("main.view")} className="ml-1 flex min-w-[6rem] shrink-[4] overflow-x-auto overflow-y-hidden rounded-lg bg-panel-2 p-0.5 text-xs font-medium [scrollbar-width:none]">
                   {headerTabs.map(([value, label]) => (
                     <button
                       key={value}
@@ -1278,7 +1279,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
               {/* M85: the channel's next open deadline (opens it). */}
               {isChannel && current.isMember && !previewing && <DeadlineChip controller={controller} channel={current} onOpen={setTaskDialog} />}
               {isChannel && current.posting_policy === "owners" && (
-                <span className="text-muted" title="アナウンス: 投稿できるのはオーナーと管理者だけです">
+                <span className="text-muted" title={t("main.announcementTitle")}>
                   <Megaphone size={15} />
                 </span>
               )}
@@ -1288,14 +1289,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   type="button"
                   className={cn("min-w-0 shrink-[100] truncate text-sm hover:underline max-md:hidden", current.topic ? "text-muted" : "text-muted/70")}
                   onClick={() => setDialog("topic")}
-                  title="トピックを編集"
+                  title={t("channel.editTopic")}
                 >
-                  {current.topic ? current.topic : "トピックを追加"}
+                  {current.topic ? current.topic : t("channel.addTopic")}
                 </button>
               )}
-              {!isChannel && dmOther.length > 1 && <span className="truncate text-xs text-muted">{dmOther.length + 1} 人</span>}
+              {!isChannel && dmOther.length > 1 && <span className="truncate text-xs text-muted">{t("common.people", { count: dmOther.length + 1 })}</span>}
               {!isChannel && dmOther.length === 1 && dmOther[0] && (
-                <span className="flex items-center gap-1.5 text-xs text-muted" title="プレゼンス">
+                <span className="flex items-center gap-1.5 text-xs text-muted" title={t("main.presence")}>
                   <span className={cn("h-2 w-2 rounded-full", store.presenceOf(dmOther[0]) === "online" ? "bg-success" : store.presenceOf(dmOther[0]) === "away" ? "bg-warning" : "bg-line")} />
                   {presenceLabel(store.presenceOf(dmOther[0]))}
                   {activeStatus(store.users.get(dmOther[0])) && (
@@ -1311,7 +1312,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
               {current.isMember && !compact && (
                 <>
                   <IconButton
-                    label={store.isFavorite(current.id) ? "お気に入りから外す" : "お気に入りに追加"}
+                    label={store.isFavorite(current.id) ? t("channel.unfavorite") : t("channel.favorite")}
                     className={cn(store.isFavorite(current.id) && "text-warning")}
                     onClick={() => void controller.toggleFavorite(current.id)}
                   >
@@ -1319,10 +1320,10 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   </IconButton>
                   {!tightHeader && (
                     <>
-                      <IconButton label="ピン留め" className={cn(pinsOpen && "bg-ink/6 text-warning")} onClick={() => setPinsOpen((open) => !open)}>
+                      <IconButton label={t("main.pins")} className={cn(pinsOpen && "bg-ink/6 text-warning")} onClick={() => setPinsOpen((open) => !open)}>
                         <Pin size={18} />
                       </IconButton>
-                      <IconButton label="ファイル" onClick={() => openFiles(current.id)}>
+                      <IconButton label={t("nav.files")} onClick={() => openFiles(current.id)}>
                         <Files size={18} />
                       </IconButton>
                     </>
@@ -1330,7 +1331,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 </>
               )}
               {isChannel && current.isMember && !compact && !tightHeader && (
-                <IconButton label="メンバー" onClick={() => setDialog("members")}>
+                <IconButton label={t("channel.members")} onClick={() => setDialog("members")}>
                   <Users size={18} />
                 </IconButton>
               )}
@@ -1339,15 +1340,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   <MenuTrigger asChild>
                     <button
                       type="button"
-                      aria-label="通知設定"
-                      title="通知設定"
+                      aria-label={t("main.notificationSettings")}
+                      title={t("main.notificationSettings")}
                       className={cn("inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-ink/6", silenced ? "text-muted" : "text-ink")}
                     >
                       {silenced ? <BellOff size={18} /> : <Bell size={18} />}
                     </button>
                   </MenuTrigger>
                   <MenuContent>
-                    <MenuLabel>通知</MenuLabel>
+                    <MenuLabel>{t("settings.section.notifications")}</MenuLabel>
                     {/* M35: a level change keeps both mutes (the timed one is sent back as it is, `muted` is left out). */}
                     <MenuRadioGroup
                       value={ownLevel ?? FOLLOW_DEFAULT}
@@ -1359,12 +1360,12 @@ export function MainScreen({ controller }: { controller: AppController }) {
                     </MenuRadioGroup>
                     <MenuSeparator />
                     <MenuCheckboxItem checked={!!current.muted} onCheckedChange={(on) => void controller.setNotification(current.id, ownLevel, current.mutedUntil, on === true)}>
-                      ミュート
+                      {t("channel.mute")}
                     </MenuCheckboxItem>
                     {muteLabel ? (
-                      <MenuItem onSelect={() => void controller.setNotification(current.id, ownLevel, null)}>ミュート解除 ({muteLabel})</MenuItem>
+                      <MenuItem onSelect={() => void controller.setNotification(current.id, ownLevel, null)}>{t("channel.unmuteTimed", { until: muteLabel })}</MenuItem>
                     ) : (
-                      <MenuItem onSelect={() => void controller.setNotification(current.id, ownLevel, new Date(Date.now() + 8 * 3600_000).toISOString())}>8 時間ミュート</MenuItem>
+                      <MenuItem onSelect={() => void controller.setNotification(current.id, ownLevel, new Date(Date.now() + 8 * 3600_000).toISOString())}>{t("channel.mute8h")}</MenuItem>
                     )}
                   </MenuContent>
                 </Menu>
@@ -1372,7 +1373,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
               {current.isMember && (isChannel || compact || tightHeader || summaryAvailable(controller)) && (
                 <Menu>
                   <MenuTrigger asChild>
-                    <button type="button" aria-label={isChannel ? "チャンネルの操作" : "会話の操作"} title={isChannel ? "チャンネルの操作" : "会話の操作"} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
+                    <button type="button" aria-label={isChannel ? t("main.channelActions") : t("main.conversationActions")} title={isChannel ? t("main.channelActions") : t("main.conversationActions")} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
                       <MoreHorizontal size={18} />
                     </button>
                   </MenuTrigger>
@@ -1382,18 +1383,18 @@ export function MainScreen({ controller }: { controller: AppController }) {
                     {compact ? (
                       <>
                         <MenuItem onSelect={() => void controller.toggleFavorite(current.id)}>
-                          {store.isFavorite(current.id) ? "お気に入りから外す" : "お気に入りに追加"}
+                          {store.isFavorite(current.id) ? t("channel.unfavorite") : t("channel.favorite")}
                         </MenuItem>
-                        <MenuItem onSelect={openDetails}>{isChannel ? "チャンネル情報" : "会話の情報"}</MenuItem>
+                        <MenuItem onSelect={openDetails}>{isChannel ? t("main.channelInfo") : t("main.conversationInfo")}</MenuItem>
                       </>
                     ) : (
                       <>
                         {/* A narrow header (headerFit "tight"): the buttons it left out. Members are below already. */}
                         {tightHeader && (
                           <>
-                            <MenuItem onSelect={() => setPinsOpen((open) => !open)}>{pinsOpen ? "ピン留めを閉じる" : "ピン留め"}</MenuItem>
-                            <MenuItem onSelect={() => openFiles(current.id)}>ファイル</MenuItem>
-                            <MenuItem onSelect={() => setDialog("shortcuts")}>キーボードショートカット</MenuItem>
+                            <MenuItem onSelect={() => setPinsOpen((open) => !open)}>{pinsOpen ? t("main.closePins") : t("main.pins")}</MenuItem>
+                            <MenuItem onSelect={() => openFiles(current.id)}>{t("nav.files")}</MenuItem>
+                            <MenuItem onSelect={() => setDialog("shortcuts")}>{t("main.shortcuts")}</MenuItem>
                             {isChannel && <MenuSeparator />}
                           </>
                         )}
@@ -1406,7 +1407,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                 </Menu>
               )}
               {!compact && !tightHeader && (
-                <IconButton label={`キーボードショートカット (${modKey()}+/)`} onClick={() => setDialog("shortcuts")}>
+                <IconButton label={t("main.shortcutsKey", { key: `${modKey()}+/` })} onClick={() => setDialog("shortcuts")}>
                   <Keyboard size={18} />
                 </IconButton>
               )}
@@ -1435,15 +1436,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
               )}
               {current.isMember && !current.archived && !canPostTopLevel(current, controller.isAdmin) && (
                 <div className="flex items-center gap-2 border-t border-line px-4 py-3 text-sm text-muted">
-                  <Megaphone size={16} /> このチャンネルに投稿できるのはオーナーと管理者だけです。スレッドでは返信できます。
+                  <Megaphone size={16} /> {t("main.ownersOnly")}
                 </div>
               )}
               {/* Under the input, as in Slack: its line above it left a wide gap over the input (2026-09-29). */}
               {current.isMember && !current.archived && <TypingIndicator controller={controller} channelId={current.id} />}
-              {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">アーカイブされたチャンネルには投稿できません</div>}
+              {current.archived && <div className="border-t border-line px-4 py-3 text-sm text-muted">{t("main.archivedNoPost")}</div>}
             </div>
             {shownTab === "canvas" && (
-              <div role="tabpanel" aria-label="キャンバス" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
+              <div role="tabpanel" aria-label={t("main.tab.canvas")} className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
                 <CanvasPane
                   controller={controller}
                   channel={current}
@@ -1454,22 +1455,22 @@ export function MainScreen({ controller }: { controller: AppController }) {
               </div>
             )}
             {shownTab === "events" && (
-              <div role="tabpanel" aria-label="予定" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
+              <div role="tabpanel" aria-label={t("main.tab.events")} className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
                 <ChannelEvents controller={controller} channel={current} />
               </div>
             )}
             {shownTab === "tasks" && (
-              <div role="tabpanel" aria-label="タスク" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
+              <div role="tabpanel" aria-label={t("main.tab.tasks")} className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
                 <ChannelTasks controller={controller} channel={current} onOpenMessage={openTaskMessage} />
               </div>
             )}
             {shownTab === "pins" && (
-              <div role="tabpanel" aria-label="ピン留め" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
+              <div role="tabpanel" aria-label={t("main.pins")} className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
                 <ChannelPins controller={controller} channel={current} onOpen={revealFromList} />
               </div>
             )}
             {shownTab === "files" && (
-              <div role="tabpanel" aria-label="ファイル" className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
+              <div role="tabpanel" aria-label={t("nav.files")} className="absolute inset-0 flex min-h-0 flex-col bg-canvas">
                 <ChannelFiles controller={controller} channel={current} onOpen={revealFromList} />
               </div>
             )}
@@ -1480,8 +1481,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
             <MessagesSquare size={26} />
           </span>
-          <strong className="text-base">チャンネルを選択してください</strong>
-          <span className="text-sm text-muted">左のリストから選ぶか、{modKey()}+K で移動できます。</span>
+          <strong className="text-base">{t("main.pickChannel")}</strong>
+          <span className="text-sm text-muted">{t("main.pickChannelHint", { key: `${modKey()}+K` })}</span>
         </div>
       )}
       </div>
@@ -1543,12 +1544,12 @@ export function MainScreen({ controller }: { controller: AppController }) {
         />
       )}
       {dialog === "leave" && current && (
-        <Modal onClose={() => setDialog(null)} title={`#${current.name} を退出しますか？`} className="w-[440px]">
-          <p className="mt-3 text-sm text-muted">{current.type === "private" ? "非公開チャンネルなので、戻るには誰かに追加してもらう必要があります。" : "公開チャンネルなので、いつでも再参加できます。"}</p>
+        <Modal onClose={() => setDialog(null)} title={t("channel.leaveTitle", { name: current.name ?? "" })} className="w-[440px]">
+          <p className="mt-3 text-sm text-muted">{current.type === "private" ? t("channel.leavePrivateNote") : t("channel.leavePublicNote")}</p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setDialog(null)}>キャンセル</Button>
+            <Button variant="secondary" onClick={() => setDialog(null)}>{t("common.cancel")}</Button>
             <Button variant="danger" disabled={busyAction} onClick={() => { setBusyAction(true); void controller.leaveChannel(current.id).then((ok) => { setBusyAction(false); setDialog(null); if (ok) { setCurrentId(null); resetConversation(); setPane("list"); } }); }}>
-              退出する
+              {t("channel.leaveConfirm")}
             </Button>
           </div>
         </Modal>
@@ -1685,7 +1686,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
       </div>
       <div data-tauri-drag-region className={cn("col-span-2 flex h-10 items-center gap-2 border-b border-sidebar-edge bg-sidebar pl-3", windowButtons ? "pr-0" : "pr-3")}>
         {/* M67: back / forward between places, beside the search box as in Slack. */}
-        <nav aria-label="履歴" className="flex shrink-0 items-center gap-0.5">
+        <nav aria-label={t("main.history")} className="flex shrink-0 items-center gap-0.5">
           <IconButton tone="sidebar" label={historyLabels.back} disabled={!canGoBack} onClick={() => goHistory(-1)} className="h-7 w-7 disabled:opacity-40">
             <ArrowLeft size={16} />
           </IconButton>
@@ -1702,8 +1703,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
         <div
           role="separator"
           aria-orientation="vertical"
-          aria-label="サイドバーの幅"
-          title="ドラッグで幅を変更、ダブルクリックで元に戻す"
+          aria-label={t("main.sidebarWidth")}
+          title={t("main.resizeHint")}
           onPointerDown={startResize}
           onDoubleClick={() => {
             setSidebarWidth(SIDEBAR_DEFAULT);
@@ -1718,8 +1719,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
           <div
             role="separator"
             aria-orientation="vertical"
-            aria-label="パネルの幅"
-            title="ドラッグで幅を変更、ダブルクリックで元に戻す"
+            aria-label={t("main.paneWidth")}
+            title={t("main.resizeHint")}
             onPointerDown={startPaneResize}
             onDoubleClick={() => {
               setPaneWidth(PANE_DEFAULT);
@@ -1745,17 +1746,17 @@ function ConvertConfirm({ channel, isAdmin, busy, onClose, onConfirm }: {
 }) {
   const toPrivate = channel.type === "public";
   return (
-    <Modal onClose={onClose} title={`#${channel.name} を${toPrivate ? "非公開" : "公開"}チャンネルに変換しますか？`} className="w-[460px]">
+    <Modal onClose={onClose} title={toPrivate ? t("channel.convertPrivateTitle", { name: channel.name ?? "" }) : t("channel.convertPublicTitle", { name: channel.name ?? "" })} className="w-[460px]">
       <p className="mt-3 text-sm text-muted">
         {toPrivate
-          ? "メンバー以外はこのチャンネルを見つけられなくなり、参加には招待が必要になります。これまでのメッセージもメンバーだけが読めます。"
-          : "ゲスト以外の全員がこのチャンネルを見つけて参加し、これまでのメッセージを含めて読めるようになります。"}
+          ? t("channel.convertPrivateNote")
+          : t("channel.convertPublicNote")}
       </p>
-      {toPrivate && !isAdmin && <p className="mt-2 text-sm text-muted">公開に戻せるのは管理者だけです。</p>}
+      {toPrivate && !isAdmin && <p className="mt-2 text-sm text-muted">{t("channel.convertBackAdminOnly")}</p>}
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>キャンセル</Button>
+        <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
         <Button variant="danger" disabled={busy} onClick={() => onConfirm(toPrivate ? "private" : "public")}>
-          {toPrivate ? "非公開にする" : "公開にする"}
+          {toPrivate ? t("channel.makePrivate") : t("channel.makePublic")}
         </Button>
       </div>
     </Modal>

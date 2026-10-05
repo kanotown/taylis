@@ -5,8 +5,9 @@
  * openapi/openapi.json. Switch them to `components["schemas"][…]` (src/api/schema.d.ts, `npm run gen:api`) once the
  * server lands, and keep the names.
  */
-import { ERROR_MESSAGES } from "./errorMessages";
+import { errorMessageFor } from "./errors";
 import { ApiError, describeError } from "./errors";
+import { t } from "../i18n";
 
 export type AiModel = "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-4-5" | "gpt-6.1-sol" | "gpt-6-luna";
 /** docs/AI.md §12: the model decides the provider. */
@@ -185,9 +186,9 @@ export function aiProviderLabel(name: AiProviderName): string {
 export const DEFAULT_AI_MODEL: AiModel = "claude-opus-5-5";
 
 export const AI_EFFORTS: ReadonlyArray<{ value: AiEffort; label: string }> = [
-  { value: "low", label: "少なめ (速い)" },
-  { value: "medium", label: "ふつう" },
-  { value: "high", label: "多め (じっくり)" },
+  { value: "low", get label() { return t("ai.effort.low"); } },
+  { value: "medium", get label() { return t("ai.effort.medium"); } },
+  { value: "high", get label() { return t("ai.effort.high"); } },
 ];
 
 export const AI_CHARACTER_MAX = 4000;
@@ -197,26 +198,26 @@ export function aiModelLabel(model: string): string {
 }
 
 /**
- * The AI codes in Japanese. They are not in apps/shared/errors.json yet (the server and the phones add them in
- * M65/M66); a code that is there wins.
+ * The AI codes' own texts, for a server older than their entries in apps/shared/errors.json (M65/M66); a code that
+ * is there wins.
  */
 export const AI_ERROR_MESSAGES: Readonly<Record<string, string>> = {
-  ai_unavailable: "AI は今使えません (管理者の設定を確認してください)",
-  ai_budget_exceeded: "今月の AI の利用上限に達しました。来月まで要約は使えません",
-  ai_daily_limit: "今日の AI の利用回数の上限に達しました。明日またお試しください",
-  ai_private_not_allowed: "このボットは非公開チャンネルと DM には参加できません (管理画面の「非公開チャンネルと DM を許す」)",
-  ai_run_not_found: "要約が見つかりません",
+  get ai_unavailable() { return t("ai.error.unavailable"); },
+  get ai_budget_exceeded() { return t("ai.error.budgetExceeded"); },
+  get ai_daily_limit() { return t("ai.error.dailyLimit"); },
+  get ai_private_not_allowed() { return t("ai.error.privateNotAllowed"); },
+  get ai_run_not_found() { return t("ai.error.runNotFound"); },
 };
 
 /** The line under the 「要約」 choices: where the summary goes, or why it cannot be asked for (null: nothing to say). */
 export function summaryTargetLine(target: AiSummaryTargetOut): string | null {
   if (!target.available) {
     const reason = target.reason ?? "";
-    return ERROR_MESSAGES[reason] ?? AI_ERROR_MESSAGES[reason] ?? "今は要約できません";
+    return errorMessageFor(reason) ?? AI_ERROR_MESSAGES[reason] ?? t("ai.summary.unavailable");
   }
   if (!target.provider) return null;
   const provider = aiProviderLabel(target.provider);
-  return target.agent_name ? `要約は ${target.agent_name} (${provider}) に送られます` : `要約は ${provider} に送られます`;
+  return target.agent_name ? t("ai.summary.sentToAgent", { agent: target.agent_name, provider }) : t("ai.summary.sentTo", { provider });
 }
 
 /** The caption of a run's result: the provider and model it actually used, e.g. 「OpenAI · gpt-6.1-sol」 (null: unknown). */
@@ -230,14 +231,14 @@ export function aiRunCaption(run: Pick<AiRunOut, "provider" | "model">): string 
 export function askTargetLine(target: AiAskTargetOut): string | null {
   if (!target.available) {
     const reason = target.reason ?? "";
-    if (reason === "ai_private_not_allowed") return "この会話のボットは非公開の会話を読めないため、ここでは聞けません";
-    if (reason === "ai_budget_exceeded") return "今月の AI の利用上限に達しました";
-    return ERROR_MESSAGES[reason] ?? AI_ERROR_MESSAGES[reason] ?? "今は AI に聞けません";
+    if (reason === "ai_private_not_allowed") return t("ai.ask.privateNotAllowed");
+    if (reason === "ai_budget_exceeded") return t("ai.ask.budgetExceeded");
+    return errorMessageFor(reason) ?? AI_ERROR_MESSAGES[reason] ?? t("ai.ask.unavailable");
   }
   if (!target.provider) return null;
   const provider = aiProviderLabel(target.provider);
   const where = target.agent_name ? `${target.agent_name} (${provider})` : provider;
-  return `質問と見つかったメッセージは ${where} に送られます`;
+  return t("ai.ask.sentTo", { where });
 }
 
 /** An answer's citations: [3], [1][4], [1, 4], [1、4]. */
@@ -259,6 +260,6 @@ export function linkCitations(output: string, sources: readonly AiSourceOut[], b
 
 /** What the reader sees for an error of the AI routes: the AI texts above, else the usual ones (describeError). */
 export function describeAiError(err: unknown): string {
-  if (err instanceof ApiError && !ERROR_MESSAGES[err.code] && AI_ERROR_MESSAGES[err.code]) return AI_ERROR_MESSAGES[err.code]!;
+  if (err instanceof ApiError && !errorMessageFor(err.code) && AI_ERROR_MESSAGES[err.code]) return AI_ERROR_MESSAGES[err.code]!;
   return describeError(err);
 }

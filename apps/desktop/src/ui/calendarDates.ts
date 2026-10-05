@@ -6,6 +6,7 @@
  */
 import type { CalendarEventCreate, CalendarEventOut, CalendarEventUpdate } from "../api/types";
 import { noRepeat, type RepeatDraft, repeatProblem, repeatToRrule, rruleToRepeat } from "./calendarRecurrence";
+import { t, weekdayName, intlLocale } from "../i18n";
 
 export type DayKey = string;
 export type CalendarMode = "month" | "week" | "list";
@@ -21,7 +22,6 @@ export const MAX_DESCRIPTION = 4000;
 /** A month cell shows this many events, then 「+N」. */
 export const MONTH_CELL_EVENTS = 3;
 
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -173,16 +173,16 @@ export function clock(iso: string): string {
 /** "10月1日 (木)". */
 export function dayLabel(key: DayKey): string {
   const date = parseDay(key);
-  return `${date.getMonth() + 1}月${date.getDate()}日 (${WEEKDAYS[date.getDay()]})`;
+  return t("calendar.dayLabel", { month: date.getMonth() + 1, day: date.getDate(), weekday: weekdayName((date.getDay() + 6) % 7) });
 }
 
+/** A weekday's short name, Sunday = 0 (the month grid's columns). */
 export function weekdayLabel(index: number): string {
-  return WEEKDAYS[index]!;
+  return weekdayName((index + 6) % 7);
 }
 
 export function monthLabel(key: DayKey): string {
-  const date = parseDay(key);
-  return `${date.getFullYear()}年${date.getMonth() + 1}月`;
+  return parseDay(key).toLocaleDateString(intlLocale(), { year: "numeric", month: "long" });
 }
 
 /** The header of a mode's range: 「2026年10月」, 「10月4日 (日) 〜 10月10日 (土)」, 「10月1日 (木) から」. */
@@ -190,29 +190,29 @@ export function rangeTitle(mode: CalendarMode, anchor: DayKey): string {
   if (mode === "month") return monthLabel(anchor);
   if (mode === "week") {
     const start = weekStart(anchor);
-    return `${dayLabel(start)} 〜 ${dayLabel(addDays(start, 6))}`;
+    return `${dayLabel(start)} ${t("common.rangeTo")} ${dayLabel(addDays(start, 6))}`;
   }
-  return `${dayLabel(anchor)} から`;
+  return t("calendar.from", { day: dayLabel(anchor) });
 }
 
 /** What a row says of the time on `day`: 「終日」, 「14:00〜15:30」, 「〜15:30」 (began earlier), 「14:00〜」 (ends later). */
 export function timeOnDay(event: Timing, day: DayKey): string {
-  if (event.all_day) return "終日";
+  if (event.all_day) return t("calendar.allDay");
   const { first, last } = eventDays(event);
   const start = first === day ? clock(event.starts_at!) : "";
   const end = last === day ? clock(event.ends_at!) : "";
-  if (!start && !end) return "終日";
-  return `${start}〜${end}`;
+  if (!start && !end) return t("calendar.allDay");
+  return `${start}${t("common.rangeTo")}${end}`;
 }
 
 /** The whole time of an event, for its dialog and its row: 「10月1日 (木) 14:00〜15:00」, 「10月1日 (木)〜10月3日 (土) 終日」. */
 export function eventWhen(event: Timing): string {
   const { first, last } = eventDays(event);
-  if (event.all_day) return first === last ? `${dayLabel(first)} 終日` : `${dayLabel(first)}〜${dayLabel(last)} 終日`;
+  if (event.all_day) return first === last ? `${dayLabel(first)} ${t("calendar.allDay")}` : `${dayLabel(first)}${t("common.rangeTo")}${dayLabel(last)} ${t("calendar.allDay")}`;
   const start = `${dayLabel(dayKey(new Date(event.starts_at!)))} ${clock(event.starts_at!)}`;
   const endDay = dayKey(new Date(event.ends_at!));
   const end = endDay === dayKey(new Date(event.starts_at!)) ? clock(event.ends_at!) : `${dayLabel(endDay)} ${clock(event.ends_at!)}`;
-  return `${start}〜${end}`;
+  return `${start}${t("common.rangeTo")}${end}`;
 }
 
 // --- colours -------------------------------------------------------------------------------------
@@ -239,21 +239,21 @@ export interface AlarmChoice {
 }
 
 export const TIMED_ALARMS: AlarmChoice[] = [
-  { value: null, label: "なし" },
-  { value: 0, label: "開始時" },
-  { value: 5, label: "5 分前" },
-  { value: 10, label: "10 分前" },
-  { value: 15, label: "15 分前" },
-  { value: 30, label: "30 分前" },
-  { value: 60, label: "1 時間前" },
-  { value: 1440, label: "前日 (24 時間前)" },
+  { value: null, get label() { return t("workflow.none"); } },
+  { value: 0, get label() { return t("calendar.alarm.atStart"); } },
+  { value: 5, get label() { return t("calendar.alarm.minutesBefore", { count: 5 }); } },
+  { value: 10, get label() { return t("calendar.alarm.minutesBefore", { count: 10 }); } },
+  { value: 15, get label() { return t("calendar.alarm.minutesBefore", { count: 15 }); } },
+  { value: 30, get label() { return t("calendar.alarm.minutesBefore", { count: 30 }); } },
+  { value: 60, get label() { return t("calendar.alarm.hourBefore"); } },
+  { value: 1440, get label() { return t("calendar.alarm.dayBefore"); } },
 ];
 
 /** An all-day event's alarm goes out at 8:00: the day before (1440) or on the day (-480). */
 export const ALL_DAY_ALARMS: AlarmChoice[] = [
-  { value: null, label: "なし" },
-  { value: 1440, label: "前日 8:00" },
-  { value: -480, label: "当日 8:00" },
+  { value: null, get label() { return t("workflow.none"); } },
+  { value: 1440, get label() { return t("calendar.alarm.dayBefore8"); } },
+  { value: -480, get label() { return t("calendar.alarm.sameDay8"); } },
 ];
 
 export function alarmChoices(allDay: boolean): AlarmChoice[] {
@@ -261,7 +261,7 @@ export function alarmChoices(allDay: boolean): AlarmChoice[] {
 }
 
 export function alarmLabel(minutes: number | null | undefined, allDay: boolean): string {
-  return alarmChoices(allDay).find((choice) => choice.value === (minutes ?? null))?.label ?? "なし";
+  return alarmChoices(allDay).find((choice) => choice.value === (minutes ?? null))?.label ?? t("workflow.none");
 }
 
 /** The alarm kept when the event turns all-day or back (the server does the same, CALENDAR.md §6). */
@@ -350,24 +350,24 @@ function instant(day: DayKey, time: string): Date {
 /** What stops the form from being saved (the server's rules, said first here), or null. */
 export function draftProblem(draft: EventDraft): string | null {
   const title = draft.title.trim();
-  if (!title) return "題名を入れてください";
-  if (title.length > MAX_TITLE) return `題名は ${MAX_TITLE} 文字までです`;
-  if (draft.location.trim().length > MAX_LOCATION) return `場所は ${MAX_LOCATION} 文字までです`;
-  if (draft.description.trim().length > MAX_DESCRIPTION) return `説明は ${MAX_DESCRIPTION} 文字までです`;
-  if (!draft.startDay || !draft.endDay) return "日付を入れてください";
+  if (!title) return t("tasks.check.title");
+  if (title.length > MAX_TITLE) return t("tasks.check.titleTooLong", { max: MAX_TITLE });
+  if (draft.location.trim().length > MAX_LOCATION) return t("calendar.check.locationTooLong", { max: MAX_LOCATION });
+  if (draft.description.trim().length > MAX_DESCRIPTION) return t("calendar.check.descriptionTooLong", { max: MAX_DESCRIPTION });
+  if (!draft.startDay || !draft.endDay) return t("calendar.check.date");
   const repeat = draft.repeat ? repeatProblem(draft.repeat, draft.startDay) : null;
   if (repeat) return repeat;
   if (draft.allDay) {
-    if (draft.endDay < draft.startDay) return "終了日は開始日より後にしてください";
-    if (daysBetween(draft.startDay, draft.endDay) >= MAX_ALL_DAY_DAYS) return `終日の予定は ${MAX_ALL_DAY_DAYS} 日までです`;
+    if (draft.endDay < draft.startDay) return t("calendar.check.endAfterStartDay");
+    if (daysBetween(draft.startDay, draft.endDay) >= MAX_ALL_DAY_DAYS) return t("calendar.check.allDayTooLong", { max: MAX_ALL_DAY_DAYS });
     return null;
   }
-  if (!draft.startTime || !draft.endTime) return "時刻を入れてください";
+  if (!draft.startTime || !draft.endTime) return t("calendar.check.time");
   const start = instant(draft.startDay, draft.startTime);
   const end = instant(draft.endDay, draft.endTime);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "日時を正しく入れてください";
-  if (end <= start) return "終了は開始より後にしてください";
-  if (end.getTime() - start.getTime() > MAX_TIMED_DAYS * 86_400_000) return `時刻の予定は ${MAX_TIMED_DAYS} 日までです`;
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return t("calendar.check.dateTime");
+  if (end <= start) return t("calendar.check.endAfterStart");
+  if (end.getTime() - start.getTime() > MAX_TIMED_DAYS * 86_400_000) return t("calendar.check.timedTooLong", { max: MAX_TIMED_DAYS });
   return null;
 }
 

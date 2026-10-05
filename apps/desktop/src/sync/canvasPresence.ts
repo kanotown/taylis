@@ -5,6 +5,7 @@
  * else every REFRESH_MS; `editing: false` when it stops (blur, close, another canvas) — only after a true went out.
  * Receiving: an editor shows until TTL_MS pass without a refresh (or a false arrives).
  */
+import { t } from "../i18n";
 
 export const CANVAS_PRESENCE_REFRESH_MS = 20_000;
 export const CANVAS_PRESENCE_TTL_MS = 45_000;
@@ -88,6 +89,6 @@ export class CanvasEditors {
 /** 「〇〇 が編集中」, 「〇〇、△△ が編集中」, 「〇〇 ほか N 人が編集中」. */
 export function editingLabel(names: readonly string[]): string {
   if (names.length === 0) return "";
-  if (names.length <= 2) return `${names.join("、")} が編集中`;
-  return `${names[0]} ほか ${names.length - 1} 人が編集中`;
+  if (names.length <= 2) return t("canvas.presence.editing", { names: names.join(t("common.listSeparator")) });
+  return t("canvas.presence.editingMany", { name: names[0]!, count: names.length - 1 });
 }

@@ -5,6 +5,7 @@
  * names someone the directory does not have.
  */
 import type { MessageOut } from "../api/types";
+import { t } from "../i18n";
 
 export type SystemEvent = NonNullable<MessageOut["system_event"]>;
 
@@ -18,8 +19,8 @@ export const NAMES_SHOWN = 10;
 
 /** 「A、B」 as the server writes the list (the Japanese comma, no 「と」); 「A、… J ほか N 人」 past NAMES_SHOWN. */
 export function joinNames(names: readonly string[]): string {
-  if (names.length <= NAMES_SHOWN) return names.join("、");
-  return `${names.slice(0, NAMES_SHOWN).join("、")} ほか ${names.length - NAMES_SHOWN} 人`;
+  if (names.length <= NAMES_SHOWN) return names.join(t("common.listSeparator"));
+  return t("activity.andOthers", { name: names.slice(0, NAMES_SHOWN).join(t("common.listSeparator")), count: names.length - NAMES_SHOWN });
 }
 
 export function systemMessageText(message: Pick<MessageOut, "body" | "system_event">, nameOf: (userId: string) => string | undefined): string {
@@ -31,13 +32,13 @@ export function systemMessageText(message: Pick<MessageOut, "body" | "system_eve
   const list = joinNames(others as string[]);
   switch (event.kind) {
     case "member_joined":
-      return `${actor} が参加しました`;
+      return t("system.joined", { actor });
     case "member_left":
-      return `${actor} が退出しました`;
+      return t("system.left", { actor });
     case "members_added":
-      return `${actor} が ${list} を追加しました`;
+      return t("system.added", { actor, list });
     case "member_removed":
-      return `${actor} が ${list} を外しました`;
+      return t("system.removed", { actor, list });
     default:
       return message.body;
   }

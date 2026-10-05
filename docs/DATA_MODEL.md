@@ -97,6 +97,7 @@ CREATE TABLE users (
   notify_tasks          boolean NOT NULL DEFAULT true,    -- M55 タスクの割り当てと期限をプッシュする (TASKS.md §5)
   quick_reactions       text[],                 -- M50 長押しの「リアクションの候補」1〜6 個 (重複なし・普通の絵文字だけ)。NULL = クライアントの規則 (最近使った順、足りなければ既定)
   nav_items             jsonb,                  -- M111 サイドバーの項目 / ホームのタイルの順と表示 [{key, visible}] (64 個まで、key は ^[a-z][a-z0-9-]{0,31}$ で重複なし、知らない key もそのまま保存)。NULL = 既定 (apps/shared/nav-items.json、MOBILE_UI.md §14)
+  locale                text,                   -- M115 UI の言語 'ja' | 'en' | 'zh-Hans'。NULL = 端末に合わせる (Accept-Language)。1 人向けのサーバの文 (エラー・プッシュ・知らせ) もこれ (I18N.md §1)
   avatar_key         text,                          -- プロフィール画像のオブジェクトキー (avatars/<user_id>/<uuid>、M14a)
   avatar_updated_at  timestamptz,                   -- 画像の版。UserPublic に載り、クライアントはこれでキャッシュする
   bot_kind              varchar(16),            -- M98 bot の用途。'feed' = チャンネルのフィードのボット (UserPublic.bot_kind、リンクプレビューを自動で取る。SECURITY.md §14)、'reservation' = 予約の記録のチャンネルのボット (M99、M112、RESERVATIONS.md)。それ以外の bot と人は NULL
@@ -148,6 +149,7 @@ CREATE TABLE devices (
   push_token_invalid_reason text,                             -- 'unregistered' | 'invalid_token' (再登録で消す)
   device_name              text,
   app_version              text,
+  locale                   text,                              -- M115 アプリの言語 (ログイン・更新・SSO・PUT /devices/current の Accept-Language)。users.locale が NULL の時のプッシュの言語 (I18N.md §1)
   enabled                  boolean NOT NULL DEFAULT true,     -- ログアウト / セッション失効 / 管理者操作で false
   disabled_reason          text,
   last_seen_at             timestamptz,

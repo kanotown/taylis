@@ -1,4 +1,5 @@
 /** Pure text-editing helpers for the markdown composer (selection-aware, unit tested). */
+import { t } from "../i18n";
 export interface EditState {
   text: string;
   start: number;
@@ -54,7 +55,7 @@ export function toggleLinePrefix(state: EditState, marker: string | ((index: num
 /** Insert a markdown link around the selection (or an empty template) and select the url part. */
 export function insertLink(state: EditState, url = "https://"): EditState {
   const { text, start, end } = state;
-  const selected = text.slice(start, end) || "リンク";
+  const selected = text.slice(start, end) || t("composer.syntax.link");
   const inserted = `[${selected}](${url})`;
   const urlStart = start + selected.length + 3;
   return { text: text.slice(0, start) + inserted + text.slice(end), start: urlStart, end: urlStart + url.length };

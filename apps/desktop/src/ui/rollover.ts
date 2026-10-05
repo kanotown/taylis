@@ -3,6 +3,7 @@
  * `POST /lab/rollovers` takes. The proposal itself (B3・B4・M1・D1・D2 move up, M2・D3 finish) comes from the preview.
  */
 import type { RolloverAction, RolloverApply, RolloverOut, RolloverPreviewItem } from "../api/types";
+import { t } from "../i18n";
 
 /** The Japanese academic year a day falls in: April to March (2027-03-31 → 2026, 2027-04-01 → 2027). */
 export function academicYear(day: Date): number {
@@ -20,9 +21,9 @@ export interface RolloverChoice {
 /** 進級 (→ M1) / 据え置き / 卒業・修了; no 進級 without a next grade (D3, or no grade: 422 rollover_cannot_advance). */
 export function actionOptions(item: RolloverPreviewItem): Array<[RolloverAction, string]> {
   return [
-    ...(item.next_grade ? [["advance", `進級 (→ ${item.next_grade})`] as [RolloverAction, string]] : []),
-    ["stay", "据え置き"],
-    ["graduate", "卒業・修了"],
+    ...(item.next_grade ? [["advance", t("rollover.advanceTo", { grade: item.next_grade })] as [RolloverAction, string]] : []),
+    ["stay", t("rollover.stay")],
+    ["graduate", t("rollover.graduate")],
   ];
 }
 
@@ -67,5 +68,5 @@ export function rolloverCounts(body: RolloverApply): { advance: number; stay: nu
 
 /** 「進級 3 · 据え置き 1 · 卒業・修了 2」 */
 export function rolloverSummary(out: Pick<RolloverOut, "advanced" | "stayed" | "graduated">): string {
-  return `進級 ${out.advanced} · 据え置き ${out.stayed} · 卒業・修了 ${out.graduated}`;
+  return t("rollover.summary", { advanced: out.advanced, stayed: out.stayed, graduated: out.graduated });
 }

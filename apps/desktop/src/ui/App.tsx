@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { Fragment, useEffect, useState, useSyncExternalStore } from "react";
 
+import { getLocale, setLocalePreference, subscribeLocale } from "../i18n";
 import type { AppController } from "../state/app";
 import { ChangePasswordScreen } from "./ChangePasswordScreen";
 import { useAppVersion } from "./hooks";
@@ -10,6 +11,7 @@ import { MainScreen } from "./MainScreen";
 import { UpdateBanner } from "./UpdateBanner";
 import { ScreenTitleStrip } from "./WindowControls";
 import { RAIL_WIDTH, WorkspaceRail } from "./WorkspaceRail";
+import { t } from "../i18n";
 
 export function App({ controller }: { controller: AppController }) {
   useAppVersion(controller);
@@ -18,11 +20,18 @@ export function App({ controller }: { controller: AppController }) {
   const bump = () => setTick((t) => t + 1);
   // M12h: 「招待リンクで参加」 replaces the login form until the account exists or the user goes back.
   const [invite, setInvite] = useState(false);
+  // M115 (docs/I18N.md): the UI language. My choice comes with UserMe (also from my other devices, user.updated);
+  // undefined = a server older than the field (keep what this device had). A change redraws everything below.
+  const locale = useSyncExternalStore(subscribeLocale, getLocale);
+  const chosen = controller.screen === "main" ? controller.store.me?.locale : undefined;
+  useEffect(() => {
+    if (chosen !== undefined) setLocalePreference(chosen);
+  }, [chosen]);
 
   const screen = (() => {
     switch (controller.screen) {
       case "boot":
-        return <div className="flex h-full items-center justify-center text-sm text-muted">起動中…</div>;
+        return <div className="flex h-full items-center justify-center text-sm text-muted">{t("app.starting")}</div>;
       case "login":
         if (invite || controller.entryInvite) {
           const initialLink = controller.entryInvite ? inviteLink(controller.serverUrl, controller.entryInvite) : undefined;
@@ -46,15 +55,15 @@ export function App({ controller }: { controller: AppController }) {
   // M16c: with two or more workspaces the rail runs down the left edge (WORKSPACES.md §5).
   if (!controller.showsRail) {
     return (
-      <>
+      <Fragment key={locale}>
         {dragStrip}
         {screen}
         <UpdateBanner controller={controller} />
-      </>
+      </Fragment>
     );
   }
   return (
-    <div className="flex h-full min-h-0">
+    <div key={locale} className="flex h-full min-h-0">
       {dragStrip}
       <WorkspaceRail controller={controller} />
       <div className="min-w-0 flex-1">{screen}</div>

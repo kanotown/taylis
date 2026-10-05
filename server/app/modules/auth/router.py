@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 
+from app import i18n
 from app.core.db import Db
 from app.core.errors import AppError, rate_limited, unauthorized
 from app.core.ratelimit import RateLimiter
@@ -30,6 +31,11 @@ def _no_store(response: Response) -> None:
     response.headers["Pragma"] = "no-cache"
 
 
+def _locale(request: Request) -> str | None:
+    """M115: the app's language (Accept-Language), remembered on its device for pushes."""
+    return i18n.from_accept_language(request.headers.get("accept-language"))
+
+
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(body: LoginRequest, request: Request, response: Response, db: Db) -> TokenResponse:
     limiters: dict[str, RateLimiter] = request.app.state.limiters
@@ -41,7 +47,9 @@ async def login(body: LoginRequest, request: Request, response: Response, db: Db
         if not limiter.try_acquire(key):
             raise rate_limited(limiter.retry_after_seconds(key))
     _no_store(response)
-    tokens = await service.login(db, body, request.app.state.settings, _client_ip(request))
+    tokens = await service.login(
+        db, body, request.app.state.settings, _client_ip(request), locale=_locale(request)
+    )
     if web_session.is_web(body.device.platform):
         web_session.issue(response, request, tokens)
     return tokens
@@ -57,7 +65,9 @@ async def refresh(
     if not token:
         raise unauthorized("invalid_token", "Invalid refresh token")
     try:
-        tokens = await service.refresh(db, token, request.app.state.settings, _client_ip(request))
+        tokens = await service.refresh(
+            db, token, request.app.state.settings, _client_ip(request), locale=_locale(request)
+        )
     except AppError as exc:
         if from_cookie and exc.status == 401:
             web_session.clear_on_error(exc)
@@ -85,9 +95,9 @@ async def revoke_session(session_id: UUID, _: CurrentUser, context: CurrentSessi
 
 @router.put("/devices/current", response_model=DeviceOut)
 async def update_device(
-    _: CurrentUser, context: CurrentSession, body: DeviceUpdate, db: Db
+    _: CurrentUser, context: CurrentSession, body: DeviceUpdate, request: Request, db: Db
 ) -> DeviceOut:
-    return await service.update_device(db, context, body)
+    return await service.update_device(db, context, body, locale=_locale(request))
 
 
 @router.put("/users/me/password", status_code=204, name="auth:password")

@@ -3,6 +3,7 @@
  * it back, finding the table at the caret, inserting a new one, and the edits (rows, columns, alignment). A port of
  * apps/shared/gen_canvas_table.py; every client runs the cases in apps/shared/canvas_table.json.
  */
+import { t, t as i18nT } from "../i18n";
 
 export type Align = "left" | "center" | "right" | null;
 
@@ -96,13 +97,16 @@ export function findTable(text: string, caretLine: number): LineRange | null {
   return [start, end];
 }
 
-export const NEW_TABLE: Table = { align: [null, null, null], header: ["列1", "列2", "列3"], rows: [["", "", ""], ["", "", ""]] };
+/** A new 3×2 table, its headers named in the UI language. */
+export function newTable(): Table {
+  return { align: [null, null, null], header: [1, 2, 3].map((n) => t("table.newColumn", { n })), rows: [["", "", ""], ["", "", ""]] };
+}
 
 /**
- * `table` (NEW_TABLE by default) put after the caret's line (at the start when the text is empty), with a blank line
+ * `table` (newTable() by default) put after the caret's line (at the start when the text is empty), with a blank line
  * between it and any text before or after. Returns the new text and the table's [first, last] line.
  */
-export function insertTable(text: string, caretLine: number, table: Table = NEW_TABLE): { text: string; range: LineRange } {
+export function insertTable(text: string, caretLine: number, table: Table = newTable()): { text: string; range: LineRange } {
   const lines = text ? text.split("\n") : [];
   const at = lines.length > 0 ? Math.max(0, Math.min(caretLine + 1, lines.length)) : 0;
   const block = serializeTable(table);
@@ -139,7 +143,7 @@ export function applyTableOp(table: Table, op: TableOp): Table {
       break;
     }
     case "add_column": // a blank column at index (0..n), headed 「列N」 with N the new count
-      t.header.splice(op[1], 0, `列${n + 1}`);
+      t.header.splice(op[1], 0, i18nT("table.newColumn", { n: n + 1 }));
       t.align.splice(op[1], 0, null);
       for (const r of t.rows) r.splice(op[1], 0, "");
       break;

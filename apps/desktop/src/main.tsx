@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 
+import { markStarted } from "./i18n";
 import { App } from "./ui/App";
 import { AppController } from "./state/app";
 import { guardFileDrops } from "./platform/fileDrops";
@@ -22,6 +23,8 @@ applyFont(readFont());
 setUpZoom();
 
 const controller = new AppController();
+// M115: from here on the texts are looked up while rendering (the language can change at runtime).
+markStarted();
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App controller={controller} />

@@ -24,6 +24,7 @@ import type {
   OccurrenceScope,
 } from "../api/types";
 import { clock, compareEvents, localZone, overlapsRange } from "../ui/calendarDates";
+import { t } from "../i18n";
 
 export interface CalendarApi {
   calendarEvents(from: string, to: string, channelId?: string | null): Promise<CalendarEventOut[]>;
@@ -46,8 +47,8 @@ export const seriesOf = (event: Pick<CalendarEventOut, "id" | "series_id">): str
  * (the occurrence is not known here, Review v0.1.22 #9): 「予定の通知があります (#…)」, never another occurrence's title.
  */
 export function calendarAlarmText(event: CalendarEventOut | null, channelName: string | null): string {
-  if (!event) return `予定の通知があります${channelName ? ` (#${channelName})` : ""}`;
-  const when = event.all_day ? "終日" : clock(event.starts_at!);
+  if (!event) return channelName ? t("calendar.alarm.unknownIn", { channel: channelName }) : t("calendar.alarm.unknown");
+  const when = event.all_day ? t("calendar.allDay") : clock(event.starts_at!);
   const name = event.channel_name ?? channelName;
   return `${when} ${event.title}${name ? ` (#${name})` : ""}`;
 }

@@ -1,4 +1,5 @@
 import { isTauri } from "./env";
+import { t } from "../i18n";
 
 /**
  * The device's name in 「ログイン中の端末」 and the test notification's list (device_name, at most 80 characters on the
@@ -39,12 +40,12 @@ export function browserDeviceName(userAgent: string): string {
   const os = osLabel(userAgent);
   const browser = browserLabel(userAgent);
   if (os && browser) return `${os} (${browser})`;
-  return os ?? browser ?? "ブラウザ";
+  return os ?? browser ?? t("device.browser");
 }
 
 /** The desktop app: "Mac (computer name)", or "Mac" alone when the name is not known. */
 export function desktopDeviceName(userAgent: string, computerName: string | null): string {
-  const os = osLabel(userAgent) ?? "デスクトップ";
+  const os = osLabel(userAgent) ?? t("device.desktop");
   const name = computerName?.trim();
   return clip(name ? `${os} (${name})` : os);
 }

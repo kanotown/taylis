@@ -8,6 +8,7 @@
  *   Forward, which the web build's history entries follow).
  * Never during IME composition.
  */
+import { t } from "../i18n";
 
 export const isMacPlatform = (): boolean => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -40,5 +41,5 @@ export function mouseHistoryStep(button: number): -1 | 1 | null {
 
 /** The buttons' tooltips. */
 export function historyShortcutLabels(mac = isMacPlatform()): { back: string; forward: string } {
-  return mac ? { back: "戻る (⌘[)", forward: "進む (⌘])" } : { back: "戻る (Alt + ←)", forward: "進む (Alt + →)" };
+  return mac ? { back: t("history.back", { key: "⌘[" }), forward: t("history.forward", { key: "⌘]" }) } : { back: t("history.back", { key: "Alt + ←" }), forward: t("history.forward", { key: "Alt + →" }) };
 }

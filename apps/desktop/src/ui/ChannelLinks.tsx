@@ -8,6 +8,7 @@ import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { canPostTopLevel } from "./channels";
 import { Button, cn, Input, Modal } from "./primitives";
+import { t } from "../i18n";
 
 const CONTENT = "rx-popover z-50 min-w-52 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
 const ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft";
@@ -36,7 +37,7 @@ export function ChannelLinksBar({ controller, channel, onAdd, onEdit }: {
 }) {
   if (controller.store.linksOf(channel.id).length === 0) return null;
   return (
-    <div className="flex items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-3 py-1" aria-label="リンク">
+    <div className="flex items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-3 py-1" aria-label={t("links.label")}>
       <ChannelLinkChips controller={controller} channel={channel} onAdd={onAdd} onEdit={onEdit} />
     </div>
   );
@@ -73,11 +74,11 @@ export function ChannelLinkChips({ controller, channel, onAdd, onEdit }: {
             <ContextMenu.Trigger asChild>{chip}</ContextMenu.Trigger>
             <ContextMenu.Portal>
               <ContextMenu.Content className={CONTENT}>
-                <ContextMenu.Item className={ITEM} onSelect={() => onEdit(link)}>編集…</ContextMenu.Item>
-                <ContextMenu.Item className={ITEM} disabled={index === 0} onSelect={() => void controller.updateChannelLink(channel.id, link.id, { position: index - 1 })}>左へ移動</ContextMenu.Item>
-                <ContextMenu.Item className={ITEM} disabled={index === links.length - 1} onSelect={() => void controller.updateChannelLink(channel.id, link.id, { position: index + 1 })}>右へ移動</ContextMenu.Item>
+                <ContextMenu.Item className={ITEM} onSelect={() => onEdit(link)}>{t("links.editMenu")}</ContextMenu.Item>
+                <ContextMenu.Item className={ITEM} disabled={index === 0} onSelect={() => void controller.updateChannelLink(channel.id, link.id, { position: index - 1 })}>{t("tasks.board.left")}</ContextMenu.Item>
+                <ContextMenu.Item className={ITEM} disabled={index === links.length - 1} onSelect={() => void controller.updateChannelLink(channel.id, link.id, { position: index + 1 })}>{t("tasks.board.right")}</ContextMenu.Item>
                 <ContextMenu.Separator className="my-1 h-px bg-line" />
-                <ContextMenu.Item className={cn(ITEM, "text-danger")} onSelect={() => void controller.deleteChannelLink(channel.id, link.id)}>削除</ContextMenu.Item>
+                <ContextMenu.Item className={cn(ITEM, "text-danger")} onSelect={() => void controller.deleteChannelLink(channel.id, link.id)}>{t("common.delete")}</ContextMenu.Item>
               </ContextMenu.Content>
             </ContextMenu.Portal>
           </ContextMenu.Root>
@@ -85,7 +86,7 @@ export function ChannelLinkChips({ controller, channel, onAdd, onEdit }: {
       })}
       {editable && (
         <button type="button" className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-muted hover:bg-panel hover:text-ink" onClick={onAdd}>
-          <Plus size={13} /> リンク
+          <Plus size={13} /> {t("links.label")}
         </button>
       )}
     </>
@@ -114,20 +115,20 @@ export function ChannelLinkDialog({ controller, channel, link, onClose }: {
     if (ok) onClose();
   };
   return (
-    <Modal onClose={onClose} title={link ? "リンクを編集" : "リンクを追加"} className="w-[440px]">
+    <Modal onClose={onClose} title={link ? t("links.edit") : t("links.add")} className="w-[440px]">
       <form className="mt-4 space-y-3" onSubmit={(e) => void submit(e)}>
         <label className="block text-xs font-semibold text-muted">
           URL
           <Input className="mt-1" value={url} autoFocus={!link} required placeholder="https://" onChange={(e) => setUrl(e.target.value)} />
         </label>
-        {url.trim() !== "" && !urlOk && <p className="text-xs text-danger">http:// か https:// で始まる URL を入れてください</p>}
+        {url.trim() !== "" && !urlOk && <p className="text-xs text-danger">{t("feeds.check.scheme")}</p>}
         <label className="block text-xs font-semibold text-muted">
-          名前
-          <Input className="mt-1" value={title} maxLength={80} required placeholder="例: デザイン資料" onChange={(e) => setTitle(e.target.value)} />
+          {t("reservations.name")}
+          <Input className="mt-1" value={title} maxLength={80} required placeholder={t("links.namePlaceholder")} onChange={(e) => setTitle(e.target.value)} />
         </label>
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" disabled={busy || !urlOk || !title.trim()}>{link ? "保存" : "追加"}</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" disabled={busy || !urlOk || !title.trim()}>{link ? t("common.save") : t("common.add")}</Button>
         </div>
       </form>
     </Modal>

@@ -15,7 +15,7 @@ import { findDmWith } from "../ui/mobileTabs";
 import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
 import { scheduleLabel } from "../ui/schedule";
-import { orderTemplates, readSchedule, SCHEDULE_USAGE } from "../ui/templates";
+import { orderTemplates, readSchedule, scheduleUsage } from "../ui/templates";
 import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, describeFeatureError, NetworkError, UserMessageError } from "../api/errors";
@@ -42,6 +42,7 @@ import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
 import { readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
 import type { NavItem } from "../ui/navItems";
+import { setLocalePreference, type UiLocale, t } from "../i18n";
 
 export type Screen = "boot" | "login" | "change_password" | "main";
 
@@ -294,7 +295,7 @@ export class AppController {
   private deviceInfo(): DeviceInfo {
     return {
       platform: isWeb() ? "web" : "desktop",
-      device_name: this.deviceName ?? (isWeb() ? "ブラウザ" : "デスクトップ"),
+      device_name: this.deviceName ?? (isWeb() ? t("device.browser") : t("device.desktop")),
       app_version: this.updates.currentVersion ?? FALLBACK_APP_VERSION,
     };
   }
@@ -330,7 +331,7 @@ export class AppController {
   private async resolveServer(input: string): Promise<{ server: string; info: ServerInfoOut | null } | null> {
     const normalized = isWeb() ? location.origin : normalizeServerUrl(input);
     if (!normalized) {
-      this.setScreen("login", "サーバ URL が正しくありません");
+      this.setScreen("login", t("app.badServerUrl"));
       return null;
     }
     // A registered address keeps its spelling: it names the saved credential and the local database.
@@ -347,13 +348,13 @@ export class AppController {
     }
     if (this.addingWorkspace) {
       if (!info) {
-        this.setScreen("login", "Taylis のサーバーではありません");
+        this.setScreen("login", t("app.notTaylisServer"));
         return null;
       }
       const known = this.workspaces.find((e) => (e.workspaceId !== null && e.workspaceId === info!.workspace_id) || sameServer(e.serverUrl, server));
       if (known && this.sessions.has(known.serverUrl)) {
         await this.switchWorkspace(known.serverUrl);
-        this.setNotice(`${known.name} は登録済みです`);
+        this.setNotice(t("app.workspaceKnown", { name: known.name }));
         return null;
       }
       if (known) server = known.serverUrl; // registered but signed out: sign in to it again
@@ -374,7 +375,7 @@ export class AppController {
   }
 
   async beginTotpSetup(password: string): Promise<TotpSetupOut | { error: string }> {
-    if (!this.api) return { error: "ログインしていません" };
+    if (!this.api) return { error: t("app.notLoggedIn") };
     try {
       return await this.api.totpSetup(password);
     } catch (error) {
@@ -383,7 +384,7 @@ export class AppController {
   }
 
   async enableTotp(code: string): Promise<TotpEnabledOut | { error: string }> {
-    if (!this.api) return { error: "ログインしていません" };
+    if (!this.api) return { error: t("app.notLoggedIn") };
     try {
       return await this.api.totpEnable(code);
     } catch (error) {
@@ -393,7 +394,7 @@ export class AppController {
 
   /** Returns the failure text, if any. */
   async disableTotp(password: string): Promise<string | null> {
-    if (!this.api) return "ログインしていません";
+    if (!this.api) return t("app.notLoggedIn");
     try {
       await this.api.totpDisable(password);
       return null;
@@ -410,7 +411,7 @@ export class AppController {
   /** M12h: create the account the link allows and enter the session; returns the failure text, if any. */
   async acceptInvite(server: string, token: string, form: { username: string; display_name: string; password: string }): Promise<string | null> {
     const normalized = isWeb() ? location.origin : normalizeServerUrl(server);
-    if (!normalized) return "サーバ URL が正しくありません";
+    if (!normalized) return t("app.badServerUrl");
     const target = this.workspaces.find((e) => sameServer(e.serverUrl, normalized))?.serverUrl ?? normalized;
     const api = this.createApi(target, form.username);
     try {
@@ -466,7 +467,7 @@ export class AppController {
     const serverUrl = location.origin;
     const verifier = newVerifier();
     if (!saveSsoPending({ serverUrl, verifier })) {
-      this.setScreen("login", "このブラウザの設定では Google でログインできません (サイトのデータの保存を許可してください)");
+      this.setScreen("login", t("app.ssoStorageBlocked"));
       return;
     }
     this.navigate(ssoStartUrl(serverUrl, this.deviceInfo().platform, await challengeFor(verifier)));
@@ -489,7 +490,7 @@ export class AppController {
       console.error("could not open the browser for Google sign-in", err);
       this.ssoFlow = null;
       this.ssoState = "idle";
-      this.setScreen("login", "ブラウザを開けませんでした。もう一度お試しください");
+      this.setScreen("login", t("app.browserOpenFailed"));
     }
   }
 
@@ -671,7 +672,7 @@ export class AppController {
     try {
       const row = await this.api.uploadEmoji(name, file, file.name, extra);
       this.store.applyCustomEmoji(row, false);
-      this.setNotice(`:${row.name}: を追加しました`);
+      this.setNotice(t("app.emojiAdded", { name: row.name }));
       return true;
     } catch (error) {
       this.setError(error);
@@ -685,10 +686,10 @@ export class AppController {
     try {
       const row = await this.api.createTextEmoji(body);
       this.store.applyCustomEmoji(row, false);
-      this.setNotice(`:${row.name}: を追加しました`);
+      this.setNotice(t("app.emojiAdded", { name: row.name }));
       return true;
     } catch (error) {
-      this.setError(describeFeatureError(error, "文字の絵文字"));
+      this.setError(describeFeatureError(error, t("feature.textEmoji")));
       return false;
     }
   }
@@ -701,14 +702,14 @@ export class AppController {
       this.store.applyCustomEmoji(row, false);
       return true;
     } catch (error) {
-      this.setError(describeFeatureError(error, "絵文字の編集"));
+      this.setError(describeFeatureError(error, t("feature.emojiEdit")));
       return false;
     }
   }
 
   /** M100 (admin): import a pack from a folder's files or a ZIP; returns what happened, or why not (the dialog shows it). */
   async importEmojiPack(source: { archive: File } | { files: File[] }): Promise<EmojiPackImportOut | string> {
-    if (!this.api) return "ログインしていません";
+    if (!this.api) return t("app.notLoggedIn");
     try {
       const result = await this.api.importEmojiPack(source);
       this.store.applyEmojiPack(result.pack, false);
@@ -716,7 +717,7 @@ export class AppController {
       this.store.replaceCustomEmoji(await this.api.listEmoji());
       return result;
     } catch (error) {
-      return describeFeatureError(error, "セットの取り込み");
+      return describeFeatureError(error, t("feature.packImport"));
     }
   }
 
@@ -726,7 +727,7 @@ export class AppController {
       this.store.applyEmojiPack(await this.api.updateEmojiPack(packId, patch), false);
       return true;
     } catch (error) {
-      this.setError(describeFeatureError(error, "絵文字のセット"));
+      this.setError(describeFeatureError(error, t("feature.emojiPacks")));
       return false;
     }
   }
@@ -739,7 +740,7 @@ export class AppController {
       const row = this.store.emojiPacks.get(packId);
       if (row) this.store.applyEmojiPack(row, true);
     } catch (error) {
-      this.setError(describeFeatureError(error, "絵文字のセット"));
+      this.setError(describeFeatureError(error, t("feature.emojiPacks")));
     }
   }
 
@@ -760,7 +761,7 @@ export class AppController {
     try {
       const row = await this.api.createReminder(messageId, { remind_at: at.toISOString(), note });
       this.store.applyReminder(row);
-      this.setNotice(`${scheduleLabel(row.remind_at)} にリマインドします`);
+      this.setNotice(t("app.reminderSet", { when: scheduleLabel(row.remind_at) }));
       return true;
     } catch (error) {
       this.setError(error);
@@ -795,7 +796,7 @@ export class AppController {
         send_at: sendAt.toISOString(),
       });
       this.store.applyScheduled(row);
-      this.setNotice(`${scheduleLabel(row.send_at)} に送信します`);
+      this.setNotice(t("app.scheduledSet", { when: scheduleLabel(row.send_at) }));
       return true;
     } catch (error) {
       this.setError(error);
@@ -844,10 +845,10 @@ export class AppController {
     if (!url) return;
     try {
       await copyText(url);
-      this.setNotice("リンクをコピーしました");
+      this.setNotice(t("app.linkCopied"));
     } catch (error) {
       console.warn("copy failed", error);
-      this.setError("クリップボードに書き込めませんでした");
+      this.setError(t("app.clipboardFailed"));
     }
   }
 
@@ -856,10 +857,10 @@ export class AppController {
     if (!this.api) return;
     try {
       await copyText(canvasLink(this.api.baseUrl, canvasId));
-      this.setNotice("リンクをコピーしました");
+      this.setNotice(t("app.linkCopied"));
     } catch (error) {
       console.warn("copy failed", error);
-      this.setError("クリップボードに書き込めませんでした");
+      this.setError(t("app.clipboardFailed"));
     }
   }
 
@@ -867,10 +868,10 @@ export class AppController {
   async copyMessageText(body: string): Promise<void> {
     try {
       await copyText(mentionsToNames(body, this.store.users, this.store.groups));
-      this.setNotice("テキストをコピーしました");
+      this.setNotice(t("app.textCopied"));
     } catch (error) {
       console.warn("copy failed", error);
-      this.setError("クリップボードに書き込めませんでした");
+      this.setError(t("app.clipboardFailed"));
     }
   }
 
@@ -969,7 +970,7 @@ export class AppController {
     try {
       if (on) await this.api.blockUser(userId);
       else await this.api.unblockUser(userId);
-      this.setNotice(on ? "ブロックしました" : "ブロックを解除しました");
+      this.setNotice(on ? t("app.blocked") : t("app.unblocked"));
       return true;
     } catch (error) {
       this.store.setBlocked(userId, before);
@@ -983,7 +984,7 @@ export class AppController {
     if (!this.api) return false;
     try {
       await this.api.reportMessage(messageId, { reason, note: note.trim() || null });
-      this.setNotice("報告しました。管理者が確認します");
+      this.setNotice(t("app.reported"));
       return true;
     } catch (error) {
       this.setError(error);
@@ -996,7 +997,7 @@ export class AppController {
    * server has ended every session; this workspace is signed out here. Returns the error to show in the dialog, or null.
    */
   async deleteAccount(secret: string): Promise<string | null> {
-    if (!this.api || !this.activeServer) return "ログインしていません";
+    if (!this.api || !this.activeServer) return t("app.notLoggedIn");
     const hasPassword = this.store.me?.has_password !== false;
     try {
       await this.api.deleteAccount(hasPassword ? { password: secret } : { confirm_username: secret });
@@ -1266,6 +1267,26 @@ export class AppController {
   }
 
   /**
+   * M115 (docs/I18N.md): my UI language (users.locale), null = follow the device / browser. Applied at once (the app
+   * redraws in it); a refused or failed save puts the previous choice back. My other devices follow (user.updated).
+   */
+  async setUiLocale(locale: UiLocale | null): Promise<boolean> {
+    const before = this.store.me;
+    if (!this.api || !before) {
+      setLocalePreference(locale);
+      return false;
+    }
+    this.store.setMe({ ...before, locale });
+    setLocalePreference(locale);
+    const ok = await this.updateProfile({ locale });
+    if (!ok && this.store.me?.locale === locale) {
+      this.store.setMe({ ...this.store.me, locale: before.locale ?? null });
+      setLocalePreference(before.locale ?? null);
+    }
+    return ok;
+  }
+
+  /**
    * M39: the activity is read up to `readAt` (「すべて既読」: now; the view on screen: its newest item). The badge takes
    * the server's answer; my other devices follow through activity.read.
    */
@@ -1346,7 +1367,7 @@ export class AppController {
       const updated = await this.api.uploadAvatar(file, file.name || "avatar");
       this.me = updated;
       this.store.setMe(updated);
-      this.setNotice("写真を更新しました");
+      this.setNotice(t("app.photoUpdated"));
       return true;
     } catch (error) {
       this.setError(error);
@@ -1372,7 +1393,7 @@ export class AppController {
    * reserved, 3 times in 24 hours, offline …). The saved workspace entry follows through the store (followUsername).
    */
   async renameMe(username: string): Promise<string | null> {
-    if (!this.api) return "ログインしていません";
+    if (!this.api) return t("app.notLoggedIn");
     try {
       const me = await this.api.updateMe({ username });
       this.me = me;
@@ -1405,15 +1426,15 @@ export class AppController {
    */
   async sendTestNotification(): Promise<TestNotificationOut> {
     const session = this.active;
-    if (!session) throw new Error("ログインしていません");
+    if (!session) throw new Error(t("app.notLoggedIn"));
     session.testShownAt = Date.now();
-    void notify(this.notificationTitle(session, TEST_NOTIFICATION_TITLE), TEST_NOTIFICATION_BODY);
+    void notify(this.notificationTitle(session, TEST_NOTIFICATION_TITLE), testNotificationBody());
     return session.api.sendTestNotification();
   }
 
   /** M40 「ログイン中の端末」: GET /auth/sessions (throws; the account screen says why inline). */
   async listSessions(): Promise<SessionOut[]> {
-    if (!this.api) throw new Error("ログインしていません");
+    if (!this.api) throw new Error(t("app.notLoggedIn"));
     return this.api.sessions();
   }
 
@@ -1431,7 +1452,7 @@ export class AppController {
 
   /** Password change from the settings dialog (the forced first-login flow is `changePassword`). */
   async changePasswordInSession(current: string, next: string): Promise<string | null> {
-    if (!this.api) return "ログインしていません";
+    if (!this.api) return t("app.notLoggedIn");
     try {
       await this.api.changePassword(current, next);
       return null;
@@ -1708,7 +1729,7 @@ export class AppController {
       this.editing = null;
       noteVersions(store.users.values());
       this.setScreen("main");
-      if (opened.failure) this.setError("端末に保存したデータを開けませんでした。今回はオフラインでの表示ができません");
+      if (opened.failure) this.setError(t("app.localDbFailed"));
     }
     void engine.start();
     this.reportDeviceOnce(session, engine);
@@ -1764,19 +1785,19 @@ export class AppController {
       onSignedOut: () => { if (session.engine === engine) void this.handleSignedOut(session); },
       onReminder: (reminder) => {
         if (this.quiet(session)) return;
-        void notify(this.notificationTitle(session, "リマインダー"), (reminder.note ? `${reminder.note} — ` : "") + reminder.preview);
+        void notify(this.notificationTitle(session, t("notification.reminder")), (reminder.note ? `${reminder.note} — ` : "") + reminder.preview);
       },
       // M51: my calendar alarm (phones get the server's push; the open app says it too), worded like that push.
       // Review v0.1.22 #9: null when the occurrence it is for is not known here: a neutral line, never another occurrence's.
       onCalendarAlarm: (event, channelId) => {
         if (this.quiet(session)) return;
-        void notify(this.notificationTitle(session, "予定"), calendarAlarmText(event, channelId ? store.getChannel(channelId)?.name ?? null : null));
+        void notify(this.notificationTitle(session, t("notification.calendar")), calendarAlarmText(event, channelId ? store.getChannel(channelId)?.name ?? null : null));
       },
       // M55: assigned to me / due today (TASKS.md §5), worded like the server's push; off with 「タスク」 in the settings.
       onTaskNotice: (notice) => {
         if (this.quiet(session) || (store.me ?? session.me)?.notify_tasks === false) return;
         const { body, taskId, channelId } = taskNoticeText(notice, (id) => store.users.get(id)?.display_name ?? null);
-        void notify(this.notificationTitle(session, "タスク"), body, () => {
+        void notify(this.notificationTitle(session, t("notification.task")), body, () => {
           if (this.active === session) this.requestOpenTask(taskId, channelId);
         });
       },
@@ -1784,16 +1805,16 @@ export class AppController {
       // like the server's push; a click opens the canvas.
       onCanvasMention: (mention, channel) => {
         if (this.quiet(session) || store.isBlocked(mention.by_user_id)) return;
-        const who = store.users.get(mention.by_user_id)?.display_name ?? "メンバー";
+        const who = store.users.get(mention.by_user_id)?.display_name ?? t("common.member");
         const where = channel.type === "public" || channel.type === "private" ? ` (#${channel.name})` : "";
-        void notify(this.notificationTitle(session, "キャンバス"), `${who} が「${mention.title}」であなたをメンションしました${where}`, () => {
+        void notify(this.notificationTitle(session, t("notification.canvas")), t("notification.canvasMention", { who, title: mention.title }) + where, () => {
           if (this.active === session) this.requestOpenCanvas(mention.channel_id, mention.canvas_id);
         });
       },
       // M112: a reservation notice (a to-do as an operator, or news of my own booking); a click opens 「予約」.
       onReservationNotice: (notice) => {
         if (this.quiet(session)) return;
-        void notify(this.notificationTitle(session, "予約"), notice.text, () => {
+        void notify(this.notificationTitle(session, t("notification.reservation")), notice.text, () => {
           if (this.active === session) this.requestOpenReservations();
         });
       },
@@ -1805,8 +1826,8 @@ export class AppController {
       onNotify: (message, channel) => {
         if (this.quiet(session)) return; // M12c: paused / quiet hours
         if (store.isBlocked(message.sender_id)) return; // M104: nothing from someone I blocked
-        const sender = store.users.get(message.sender_id)?.display_name ?? "メンバー";
-        const text = plainText(mentionsToNames(message.body, store.users, store.groups)) || attachmentText(message.attachments) || "新しいメッセージ";
+        const sender = store.users.get(message.sender_id)?.display_name ?? t("common.member");
+        const text = plainText(mentionsToNames(message.body, store.users, store.groups)) || attachmentText(message.attachments) || t("notification.newMessage");
         // A DM is titled by its sender; a channel or group DM by the conversation, with the sender before the text.
         if (channel.type === "dm") void notify(this.notificationTitle(session, sender), text);
         else void notify(this.notificationTitle(session, conversationTitle(channel, store.users, store.me?.id ?? null)), `${sender}: ${text}`);
@@ -1815,11 +1836,11 @@ export class AppController {
       // conversation's level and mute; the activity lists it either way). Titled like the server's push.
       onReaction: (reaction, channel) => {
         if (this.quiet(session) || store.isBlocked(reaction.user_id)) return;
-        const actor = store.users.get(reaction.user_id)?.display_name ?? "メンバー";
+        const actor = store.users.get(reaction.user_id)?.display_name ?? t("common.member");
         const message = store.getMessage(channel.id, reaction.message_id);
         const excerpt = message && !message.deleted ? plainText(mentionsToNames(message.body, store.users, store.groups), 80) : "";
         const where = channel.type === "dm" ? "" : ` · ${conversationTitle(channel, store.users, store.me?.id ?? null)}`;
-        void notify(this.notificationTitle(session, `${actor} がリアクションしました${where}`), excerpt ? `${reactionText(reaction.emoji, store.customEmoji)} 「${excerpt}」` : reactionText(reaction.emoji, store.customEmoji));
+        void notify(this.notificationTitle(session, t("notification.reacted", { who: actor }) + where), excerpt ? t("notification.reactionQuote", { emoji: reactionText(reaction.emoji, store.customEmoji), excerpt }) : reactionText(reaction.emoji, store.customEmoji));
       },
       // A workspace in the background is not being looked at: its server may push to the phone (§6).
       // In use: the open workspace, its window focused, and touched within the last minutes (platform/idle.ts).
@@ -1867,7 +1888,7 @@ export class AppController {
     const body = shareBody(message.body, messagePermalink(this.api.baseUrl, message.id), comment);
     try {
       await this.engine.send(channelId, body, undefined, null, []);
-      this.setNotice("共有しました");
+      this.setNotice(t("app.shared"));
       return true;
     } catch (error) {
       this.setError(error);
@@ -2133,7 +2154,7 @@ export class AppController {
       this.requestOpenCanvas(link.canvas.channel_id, canvasId);
       return true;
     }
-    this.setError(link.state === "forbidden" ? "このキャンバスの会話のメンバーではありません" : link.state === "missing" ? "キャンバスが見つかりません (ゴミ箱に移されたか、削除されました)" : "キャンバスを開けませんでした");
+    this.setError(link.state === "forbidden" ? t("app.canvasForbidden") : link.state === "missing" ? t("app.canvasMissing") : t("app.canvasOpenFailed"));
     return false;
   }
 
@@ -2305,7 +2326,7 @@ export class AppController {
     if (!this.api) return { ok: false, text: describe(new NetworkError("no session")) };
     try {
       const { reminded } = await this.api.ackRemind(message.id);
-      return { ok: true, text: reminded > 0 ? `${reminded} 人にリマインドしました` : "リマインド済みの人だけです" };
+      return { ok: true, text: reminded > 0 ? t("app.ackReminded", { count: reminded }) : t("app.ackAlreadyReminded") };
     } catch (error) {
       return { ok: false, text: describe(error) };
     }
@@ -2412,7 +2433,7 @@ export class AppController {
     if (!this.api) return false;
     try {
       this.applyMyPoll(await this.api.decidePoll(message.id, index));
-      this.setNotice("日程を決定しました");
+      this.setNotice(t("app.scheduleDecided"));
       return true;
     } catch (error) {
       this.setError(error);
@@ -2539,11 +2560,11 @@ export class AppController {
     const isDm = channel.type === "dm" || channel.type === "group_dm";
     const spec = COMMANDS.find((c) => c.name === command.name);
     if (!spec) {
-      this.setError(`/${command.name} というコマンドはありません (/help で一覧)`);
+      this.setError(t("command.unknown", { name: command.name }));
       return false;
     }
     if (spec.channelOnly && isDm) {
-      this.setError(`/${command.name} はチャンネルでだけ使えます`);
+      this.setError(t("command.channelOnly", { name: command.name }));
       return false;
     }
     const byHandle = (handle: string) => {
@@ -2557,24 +2578,24 @@ export class AppController {
         // M30: the templates too, after the commands.
         const templates = orderTemplates(this.store.templates.values()).map((t) => `/${t.name}`);
         const names = [...new Set(templates)];
-        this.setNotice(COMMANDS.map((c) => c.usage).join(" · ") + (names.length > 0 ? ` · テンプレート: ${names.join(" ")}` : ""));
+        this.setNotice(COMMANDS.map((c) => c.usage).join(" · ") + (names.length > 0 ? t("command.helpTemplates", { names: names.join(" ") }) : ""));
         return true;
       }
       case "status": {
         if (!command.args || command.args === "clear") {
           const cleared = await this.updateProfile({ status_text: null, status_emoji: null, status_expires_at: null });
-          if (cleared) this.setNotice("ステータスを消しました");
+          if (cleared) this.setNotice(t("command.statusCleared"));
           return cleared;
         }
         const { emoji, text } = splitStatus(command.args);
         const ok = await this.updateProfile({ status_text: text || null, status_emoji: emoji, status_expires_at: null });
-        if (ok) this.setNotice("ステータスを更新しました");
+        if (ok) this.setNotice(t("command.statusUpdated"));
         return ok;
       }
       case "dnd": {
         if (!command.args || command.args === "off") {
           const ok = await this.updateProfile({ dnd_until: null });
-          if (ok) this.setNotice("通知の一時停止を解除しました");
+          if (ok) this.setNotice(t("command.pauseCleared"));
           return ok;
         }
         const until = parseDuration(command.args);
@@ -2583,7 +2604,7 @@ export class AppController {
           return false;
         }
         const ok = await this.updateProfile({ dnd_until: until.toISOString() });
-        if (ok) this.setNotice(`${scheduleLabel(until.toISOString())} まで通知を止めます`);
+        if (ok) this.setNotice(t("command.pausedUntil", { when: scheduleLabel(until.toISOString()) }));
         return ok;
       }
       case "topic":
@@ -2593,14 +2614,14 @@ export class AppController {
       case "invite": {
         const handles = command.args.split(/\s+/).filter(Boolean);
         if (handles.length === 0) {
-          this.setError("/invite @名前");
+          this.setError(t("command.inviteUsage"));
           return false;
         }
         const ids: string[] = [];
         for (const handle of handles) {
           const user = byHandle(handle);
           if (!user) {
-            this.setError(`${handle} というユーザーはいません`);
+            this.setError(t("command.noSuchUser", { handle }));
             return false;
           }
           ids.push(user.id);
@@ -2611,14 +2632,14 @@ export class AppController {
           this.setError(error);
           return false;
         }
-        this.setNotice(`${handles.length} 人を追加しました`);
+        this.setNotice(t("command.added", { count: handles.length }));
         return true;
       }
       case "join": {
         const name = command.args.replace(/^#/, "").toLowerCase();
         const target = [...this.store.channels.values()].find((c) => c.type === "public" && (c.name ?? "").toLowerCase() === name);
         if (!target) {
-          this.setError(`#${name} という公開チャンネルはありません`);
+          this.setError(t("command.noSuchChannel", { name }));
           return false;
         }
         if (!target.isMember) {
@@ -2635,7 +2656,7 @@ export class AppController {
       case "dm": {
         const user = byHandle(command.args.split(/\s+/)[0] ?? "");
         if (!user) {
-          this.setError("/dm @名前");
+          this.setError(t("command.dmUsage"));
           return false;
         }
         const id = await this.openDmWith(user.id);
@@ -2649,13 +2670,13 @@ export class AppController {
           return false;
         }
         await this.setNotification(channel.id, level, until.toISOString());
-        this.setNotice(`${scheduleLabel(until.toISOString())} まで通知を止めます`);
+        this.setNotice(t("command.pausedUntil", { when: scheduleLabel(until.toISOString()) }));
         return true;
       }
       case "unmute":
         // Ends both mutes: the timed one and the one until unmuted (M35).
         await this.setNotification(channel.id, level, null, false);
-        this.setNotice("通知を再開しました");
+        this.setNotice(t("command.resumed"));
         return true;
       case "me":
         if (!command.args) return false;
@@ -2667,7 +2688,7 @@ export class AppController {
       case "poll": {
         const parts = command.args.split("|").map((p) => p.trim()).filter(Boolean);
         if (parts.length < 3) {
-          this.setError("/poll 質問 | 選択肢 | 選択肢 …");
+          this.setError(t("command.pollUsage"));
           return false;
         }
         return this.createPoll(channel.id, parentId, parts[0]!, parts.slice(1), false);
@@ -2677,7 +2698,7 @@ export class AppController {
         const read = readSchedule(command.args);
         const slots = read ? slotsFromEntries(read.entries) : [];
         if (!read || slots.length < 2 || slots.length > 20) {
-          this.setError(SCHEDULE_USAGE);
+          this.setError(scheduleUsage());
           return false;
         }
         return this.createSchedulePoll(channel.id, parentId, read.question, slots.map(slotToIn), localZone());
@@ -2715,7 +2736,7 @@ export class AppController {
       await withDeadline(local, localMs, () => { throw new Error("timeout"); });
     } catch (error) {
       console.error("restart: the local store could not save", error);
-      throw new UserMessageError("下書きや送信待ちのメッセージをこの端末に保存できなかったため、更新を中止しました。", { cause: error });
+      throw new UserMessageError(t("app.updateAbortedDrafts"), { cause: error });
     }
   }
 
@@ -2818,7 +2839,9 @@ interface Session {
 
 /** The test notification's words (the server's push says the same, PUSH_NOTIFICATIONS.md §15). */
 export const TEST_NOTIFICATION_TITLE = "Taylis";
-export const TEST_NOTIFICATION_BODY = "テスト通知です。この端末に通知が届いています。";
+export function testNotificationBody(): string {
+  return t("notification.testBody");
+}
 const TEST_ECHO_MS = 30_000;
 
 function describe(err: unknown): string {
@@ -2865,5 +2888,5 @@ async function copyText(text: string): Promise<void> {
   area.select();
   const ok = document.execCommand("copy");
   area.remove();
-  if (!ok) throw new Error("クリップボードに書き込めませんでした");
+  if (!ok) throw new Error(t("app.clipboardFailed"));
 }

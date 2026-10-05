@@ -1,4 +1,5 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
+import { acceptLanguage } from "../i18n";
 import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, CustomEmojiUpdate, DeltaOut, EmojiPackImportOut, EmojiPackOut, TextEmojiCreate, DraftOut, FavoriteStateOut, FeedBotOut, FeedBotUpdate, FeedCreate, FeedOut, FeedUpdate, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, PoolCreate, PoolOut, PoolUpdate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate, AdminWorkspaceSettingsOut, WorkspaceSettingsUpdate, DefaultChannelsApplyOut, WorkflowCreate, WorkflowOut, WorkflowSubmit, WorkflowTemplateOut, WorkflowUpdate } from "./types";
 import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
@@ -62,7 +63,9 @@ export class ApiClient {
     public readonly baseUrl: string,
     private readonly options: ApiClientOptions = {},
   ) {
-    this.fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
+    const base: typeof fetch = options.fetchImpl ?? ((input, init) => fetch(input, init));
+    // M115 (docs/I18N.md): every request says the UI language; the server answers errors and writes notices in it.
+    this.fetchImpl = (input, init) => base(input, withAcceptLanguage(init));
   }
 
   get wsUrl(): string {
@@ -1680,4 +1683,15 @@ function toApiError(status: number, payload: unknown): ApiError {
     return new ApiError(status, inner.code ?? `http_${status}`, inner.message ?? "Request failed", inner.details);
   }
   return new ApiError(status, `http_${status}`, "Request failed");
+}
+
+/** `init` with an Accept-Language header (the UI language) unless it has one. */
+function withAcceptLanguage(init: RequestInit | undefined): RequestInit {
+  const given = init?.headers;
+  if (given instanceof Headers || Array.isArray(given)) {
+    const headers = new Headers(given);
+    if (!headers.has("Accept-Language")) headers.set("Accept-Language", acceptLanguage());
+    return { ...init, headers };
+  }
+  return { ...init, headers: { "Accept-Language": acceptLanguage(), ...given } };
 }

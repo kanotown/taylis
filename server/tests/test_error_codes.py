@@ -5,6 +5,8 @@ import json
 import re
 from pathlib import Path
 
+from app.i18n import LOCALES
+
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / "server" / "app"
 PATTERNS = [
@@ -25,3 +27,8 @@ def test_every_server_error_code_has_a_japanese_message() -> None:
             used.update(pattern.findall(text))
     missing = sorted(code for code in used - EXEMPT if code not in table)
     assert missing == [], f"add these codes to apps/shared/errors.json: {missing}"
+    # M115 (docs/I18N.md): in every UI language.
+    untranslated = sorted(
+        code for code, texts in table.items() if not all(texts.get(loc) for loc in LOCALES)
+    )
+    assert untranslated == [], f"add en / zh-Hans texts to apps/shared/errors.json: {untranslated}"

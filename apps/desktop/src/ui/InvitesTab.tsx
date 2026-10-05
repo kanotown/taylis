@@ -8,18 +8,19 @@ import { fullTimestamp } from "./format";
 import { EMPTY_PRESET, INVITE_STATUS_LABELS, type InvitePresetForm, inviteLink, invitePreset, inviteUsesLabel } from "./invite";
 import { Badge, Button, cn, Field, Input } from "./primitives";
 import { AFFILIATIONS, GRADES, invitePresetSummary, RANKS } from "./roster";
+import { t, labelled } from "../i18n";
 
 const SELECT = "h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm";
 
 const USES = [
-  ["1", "1 回 (1 人だけ)"],
-  ["5", "5 回まで"],
-  ["unlimited", "期限内なら何度でも"],
+  labelled("1", "invites.uses.once"),
+  labelled("5", "invites.uses.five"),
+  labelled("unlimited", "invites.uses.unlimited"),
 ] as const;
 const EXPIRY = [
-  ["24", "1 日"],
-  ["168", "7 日"],
-  ["720", "30 日"],
+  labelled("24", "invites.expiry.day"),
+  labelled("168", "invites.expiry.week"),
+  labelled("720", "invites.expiry.month"),
 ] as const;
 
 /** Administration → 招待 (M12h): issue, copy and revoke invite links. */
@@ -101,7 +102,7 @@ export function InvitesTab({ controller }: { controller: AppController }) {
   const copy = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
-      controller.setNotice("招待リンクをコピーしました");
+      controller.setNotice(t("invites.copied"));
     } catch (error) {
       controller.setError(error);
     }
@@ -121,47 +122,47 @@ export function InvitesTab({ controller }: { controller: AppController }) {
     <div className="mt-4 space-y-4">
       {issued && (
         <div className="rounded-xl border border-accent/40 bg-accent-soft/50 p-3 text-sm">
-          <div className="font-medium">招待リンク{issued.note ? ` (${issued.note})` : ""}</div>
+          <div className="font-medium">{t("invites.link")}{issued.note ? ` (${issued.note})` : ""}</div>
           <div className="mt-1 flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate rounded bg-canvas px-2 py-1 font-mono text-xs" title={issued.url}>{issued.url}</code>
             <Button size="sm" variant="secondary" onClick={() => void copy(issued.url)}>
-              <Copy size={14} /> コピー
+              <Copy size={14} /> {t("common.copy")}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setIssued(null)}>閉じる</Button>
+            <Button size="sm" variant="ghost" onClick={() => setIssued(null)}>{t("common.close")}</Button>
           </div>
-          <div className="mt-1 text-xs text-muted">相手に渡すと、ユーザー名とパスワードを自分で決めて参加できます。この表示を閉じるとリンクは再表示できません。</div>
+          <div className="mt-1 text-xs text-muted">{t("invites.issuedNote")}</div>
         </div>
       )}
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted">{invites ? `${invites.length} 件` : "読み込み中…"}</span>
+        <span className="text-sm text-muted">{invites ? t("common.count", { count: invites.length }) : t("common.loading")}</span>
         <Button size="sm" onClick={() => setCreating((open) => !open)}>
-          <Link2 size={14} /> 招待リンクを作成
+          <Link2 size={14} /> {t("invites.create")}
         </Button>
       </div>
       {creating && (
         <form className="grid grid-cols-2 gap-3 rounded-xl border border-line p-3" onSubmit={(e) => void create(e)}>
-          <Field label="メモ (任意、誰向けか)">
+          <Field label={t("invites.note")}>
             <Input value={form.note} maxLength={80} autoFocus onChange={(e) => setForm({ ...form, note: e.target.value })} />
           </Field>
-          <Field label="ロール">
+          <Field label={t("admin.users.role")}>
             <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "member" | "admin" | "guest" })} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
-              <option value="member">メンバー</option>
-              <option value="admin">管理者</option>
-              <option value="guest">ゲスト (参加したチャンネルだけ)</option>
+              <option value="member">{t("admin.users.role.member")}</option>
+              <option value="admin">{t("admin.users.role.admin")}</option>
+              <option value="guest">{t("admin.users.role.guestNote")}</option>
             </select>
           </Field>
-          <Field label="使える回数">
+          <Field label={t("invites.usesLabel")}>
             <select value={form.uses} onChange={(e) => setForm({ ...form, uses: e.target.value as (typeof USES)[number][0] })} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
               {USES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </Field>
-          <Field label="有効期限">
+          <Field label={t("invites.expiryLabel")}>
             <select value={form.expiry} onChange={(e) => setForm({ ...form, expiry: e.target.value as (typeof EXPIRY)[number][0] })} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
               {EXPIRY.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </Field>
           <div className="col-span-2">
-            <div className="text-xs font-medium text-muted">参加時に加わるチャンネル</div>
+            <div className="text-xs font-medium text-muted">{t("invites.channels")}</div>
             <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
               {channels.map((channel) => (
                 <label key={channel.id} className="flex items-center gap-1.5 text-sm">
@@ -169,59 +170,59 @@ export function InvitesTab({ controller }: { controller: AppController }) {
                   <span>{channel.type === "private" ? "🔒" : "#"}{channel.name}</span>
                 </label>
               ))}
-              {channels.length === 0 && <span className="text-xs text-muted">チャンネルがありません</span>}
+              {channels.length === 0 && <span className="text-xs text-muted">{t("invites.noChannels")}</span>}
             </div>
           </div>
           <fieldset className="col-span-2 rounded-lg border border-line p-3">
             <legend className="px-1">
               <label className="flex items-center gap-1.5 text-sm font-medium">
                 <input type="checkbox" checked={preset.on} onChange={(e) => setPreset({ ...preset, on: e.target.checked })} />
-                研究室の名簿に載せる
+                {t("invites.addToRoster")}
               </label>
             </legend>
             {preset.on ? (
               <div className="grid grid-cols-2 gap-3">
-                <Field label="身分">
+                <Field label={t("roster.affiliation")}>
                   <select value={preset.affiliation} onChange={(e) => setPreset({ ...preset, affiliation: e.target.value as Affiliation })} className={SELECT}>
                     {AFFILIATIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </Field>
                 {preset.affiliation === "faculty" && (
-                  <Field label="職位">
+                  <Field label={t("roster.rank")}>
                     <select value={preset.rank} onChange={(e) => setPreset({ ...preset, rank: e.target.value as FacultyRank | "" })} className={SELECT}>
-                      <option value="">指定しない</option>
+                      <option value="">{t("invites.unspecified")}</option>
                       {RANKS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
                   </Field>
                 )}
                 {preset.affiliation === "student" && (
-                  <Field label="学年">
+                  <Field label={t("roster.grade")}>
                     <select value={preset.grade} onChange={(e) => setPreset({ ...preset, grade: e.target.value as Grade | "" })} className={SELECT}>
-                      <option value="">指定しない</option>
+                      <option value="">{t("invites.unspecified")}</option>
                       {[...GRADES].reverse().map((value) => <option key={value} value={value}>{value}</option>)}
                     </select>
                   </Field>
                 )}
-                <Field label="指導教員" hint={faculty.length === 0 ? "先に教員を名簿に載せると選べます" : undefined}>
+                <Field label={t("roster.supervisor")} hint={faculty.length === 0 ? t("invites.supervisorHint") : undefined}>
                   <select value={preset.supervisorId} onChange={(e) => setPreset({ ...preset, supervisorId: e.target.value })} className={SELECT} disabled={faculty.length === 0}>
-                    <option value="">なし</option>
+                    <option value="">{t("workflow.none")}</option>
                     {faculty.map((u) => <option key={u.id} value={u.id}>{u.display_name}</option>)}
                   </select>
                 </Field>
                 <label className={cn("col-span-2 flex items-center gap-1.5 text-sm", form.role === "guest" && "opacity-60")}>
                   <input type="checkbox" checked={form.role !== "guest" && preset.times} disabled={form.role === "guest"} onChange={(e) => setPreset({ ...preset, times: e.target.checked })} />
-                  times を作る
-                  {form.role === "guest" && <span className="text-xs text-muted">(ゲストには作れません)</span>}
+                  {t("invites.createTimes")}
+                  {form.role === "guest" && <span className="text-xs text-muted">{t("invites.noTimesForGuests")}</span>}
                 </label>
               </div>
             ) : (
-              <p className="text-xs text-muted">参加と同時に名簿の行・学年グループ・times を用意します (例: 「2027 年度 B4」)。</p>
+              <p className="text-xs text-muted">{t("invites.rosterNote")}</p>
             )}
           </fieldset>
           {formError && <p role="alert" className="col-span-2 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{formError}</p>}
           <div className="col-span-2 flex justify-end gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => setCreating(false)}>キャンセル</Button>
-            <Button type="submit" size="sm" disabled={busy}>リンクを発行</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setCreating(false)}>{t("common.cancel")}</Button>
+            <Button type="submit" size="sm" disabled={busy}>{t("invites.issue")}</Button>
           </div>
         </form>
       )}
@@ -234,28 +235,28 @@ export function InvitesTab({ controller }: { controller: AppController }) {
                 <Link2 size={16} className="shrink-0 text-muted" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="truncate font-medium">{invite.note || "招待リンク"}</span>
+                    <span className="truncate font-medium">{invite.note || t("invites.link")}</span>
                     <Badge tone={active ? "accent" : "neutral"}>{INVITE_STATUS_LABELS[invite.status]}</Badge>
-                    {invite.role === "admin" && <Badge tone="danger">管理者</Badge>}
-                    {invite.role === "guest" && <Badge>ゲスト</Badge>}
+                    {invite.role === "admin" && <Badge tone="danger">{t("admin.users.role.admin")}</Badge>}
+                    {invite.role === "guest" && <Badge>{t("dialogs.guest")}</Badge>}
                     <span className="text-xs text-muted">{inviteUsesLabel(invite)}</span>
                   </div>
                   <div className="truncate text-[11px] text-muted">
-                    {nameOf(invite.created_by)} が発行 · {active ? "期限" : "期限は"} {fullTimestamp(invite.expires_at)}
+                    {t("invites.issuedBy", { name: nameOf(invite.created_by) })} · {active ? t("invites.expires") : t("invites.expired")} {fullTimestamp(invite.expires_at)}
                     {invite.channel_ids.length > 0 && ` · ${invite.channel_ids.map((id) => store.channels.get(id)?.name).filter(Boolean).map((name) => `#${name}`).join(" ")}`}
-                    {invite.used_by.length > 0 && ` · 参加: ${invite.used_by.map(nameOf).join(", ")}`}
+                    {invite.used_by.length > 0 && t("invites.joined", { names: invite.used_by.map(nameOf).join(", ") })}
                   </div>
-                  {invite.lab && <div className="truncate text-[11px] text-muted">名簿: {invitePresetSummary(invite.lab, store.users)}</div>}
+                  {invite.lab && <div className="truncate text-[11px] text-muted">{t("invites.roster", { summary: invitePresetSummary(invite.lab, store.users) })}</div>}
                 </div>
                 {active && (
-                  <Button size="sm" variant="ghost" className="text-danger" title="このリンクを無効にする" disabled={busy} onClick={() => void run(async () => { await controller.api!.adminRevokeInvite(invite.id); })}>
-                    <Ban size={14} /> 取り消す
+                  <Button size="sm" variant="ghost" className="text-danger" title={t("invites.revokeTitle")} disabled={busy} onClick={() => void run(async () => { await controller.api!.adminRevokeInvite(invite.id); })}>
+                    <Ban size={14} /> {t("invites.revoke")}
                   </Button>
                 )}
               </li>
             );
           })}
-          {invites.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">招待リンクはまだありません</li>}
+          {invites.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("invites.none")}</li>}
         </ul>
       )}
     </div>

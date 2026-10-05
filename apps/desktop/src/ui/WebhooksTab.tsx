@@ -5,6 +5,8 @@ import type { WebhookOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { fullTimestamp } from "./format";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
+import { t } from "../i18n";
+import { tRich } from "../i18n/rich";
 
 /** The URL a tool posts to: `POST <server>/api/v1/hooks/<token>` with `{"text": "..."}`. */
 export function webhookUrl(baseUrl: string, token: string): string {
@@ -52,7 +54,7 @@ export function WebhooksTab({ controller }: { controller: AppController }) {
   const copy = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
-      controller.setNotice("Webhook の URL をコピーしました");
+      controller.setNotice(t("webhooks.copied"));
     } catch (error) {
       controller.setError(error);
     }
@@ -60,30 +62,30 @@ export function WebhooksTab({ controller }: { controller: AppController }) {
 
   const channelName = (id: string) => {
     const channel = store.channels.get(id);
-    return channel ? `${channel.type === "private" ? "🔒" : "#"}${channel.name}` : "(見えないチャンネル)";
+    return channel ? `${channel.type === "private" ? "🔒" : "#"}${channel.name}` : t("webhooks.hiddenChannel");
   };
 
   return (
     <div className="mt-4 space-y-3">
       {issued && (
         <div className="rounded-xl border border-accent/40 bg-accent-soft/50 p-3 text-sm">
-          <div className="font-medium">{issued.name} の URL</div>
+          <div className="font-medium">{t("webhooks.urlOf", { name: issued.name })}</div>
           <div className="mt-1 flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate rounded bg-canvas px-2 py-1 font-mono text-xs" title={issued.url}>{issued.url}</code>
             <Button size="sm" variant="secondary" onClick={() => void copy(issued.url)}>
-              <Copy size={14} /> コピー
+              <Copy size={14} /> {t("common.copy")}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setIssued(null)}>閉じる</Button>
+            <Button size="sm" variant="ghost" onClick={() => setIssued(null)}>{t("common.close")}</Button>
           </div>
           <div className="mt-1 text-xs text-muted">
-            この URL に <code className="font-mono">{"{\"text\": \"…\"}"}</code> を POST すると投稿されます (Slack の Incoming Webhook と同じ形)。この表示を閉じると再表示できません。
+            {tRich("webhooks.issuedNote", { code: (s) => <code className="font-mono">{s}</code> })}
           </div>
         </div>
       )}
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted">CI や監視ツールからチャンネルへ投稿する URL です。{rows && rows.length > 0 && ` ${rows.length} 件`}</span>
+        <span className="text-sm text-muted">{t("webhooks.intro")}{rows && rows.length > 0 && ` ${t("common.count", { count: rows.length })}`}</span>
         <Button size="sm" onClick={() => setEditing("new")}>
-          <Webhook size={14} /> Webhook を作成
+          <Webhook size={14} /> {t("webhooks.create")}
         </Button>
       </div>
       {rows && (
@@ -94,25 +96,25 @@ export function WebhooksTab({ controller }: { controller: AppController }) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-medium">{row.name}</span>
-                  <Badge tone={row.enabled ? "accent" : "neutral"}>{row.enabled ? "有効" : "停止中"}</Badge>
+                  <Badge tone={row.enabled ? "accent" : "neutral"}>{row.enabled ? t("admin.users.filter.active") : t("workflow.paused")}</Badge>
                   <span className="text-xs text-muted">{channelName(row.channel_id)}</span>
                 </div>
                 <div className="truncate text-[11px] text-muted">
-                  {row.post_count} 件の投稿{row.last_post_at ? ` · 最終 ${fullTimestamp(row.last_post_at)}` : ""} · 作成 {fullTimestamp(row.created_at)}
+                  {t("webhooks.posts", { count: row.post_count })}{row.last_post_at ? t("webhooks.last", { at: fullTimestamp(row.last_post_at) }) : ""} · {t("admin.users.createdAt", { at: fullTimestamp(row.created_at) })}
                 </div>
               </div>
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(row)}>
-                <Pencil size={14} /> 編集
+                <Pencil size={14} /> {t("canvas.edit")}
               </Button>
-              <Button size="sm" variant="ghost" disabled={busy} title={row.enabled ? "停止 (URL を無効にする)" : "再開"} onClick={() => void run(async () => { await controller.api!.adminUpdateWebhook(row.id, { enabled: !row.enabled }); })}>
-                <Power size={14} /> {row.enabled ? "停止" : "再開"}
+              <Button size="sm" variant="ghost" disabled={busy} title={row.enabled ? t("webhooks.stopTitle") : t("settings.pause.resume")} onClick={() => void run(async () => { await controller.api!.adminUpdateWebhook(row.id, { enabled: !row.enabled }); })}>
+                <Power size={14} /> {row.enabled ? t("webhooks.stop") : t("settings.pause.resume")}
               </Button>
               <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setDeleting(row)}>
-                <Trash2 size={14} /> 削除
+                <Trash2 size={14} /> {t("common.delete")}
               </Button>
             </li>
           ))}
-          {rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">Webhook はまだありません</li>}
+          {rows.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("webhooks.none")}</li>}
         </ul>
       )}
       {editing && (
@@ -135,12 +137,12 @@ export function WebhooksTab({ controller }: { controller: AppController }) {
         />
       )}
       {deleting && (
-        <Modal onClose={() => setDeleting(null)} title={`${deleting.name} を削除しますか？`} className="w-[420px]">
-          <p className="mt-3 text-sm text-muted">URL は使えなくなり、bot ユーザーは無効になります。これまでの投稿はそのまま残ります。</p>
+        <Modal onClose={() => setDeleting(null)} title={t("aiAdmin.deleteTitle", { name: deleting.name })} className="w-[420px]">
+          <p className="mt-3 text-sm text-muted">{t("webhooks.deleteNote")}</p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setDeleting(null)}>キャンセル</Button>
+            <Button variant="secondary" onClick={() => setDeleting(null)}>{t("common.cancel")}</Button>
             <Button variant="danger" disabled={busy} onClick={() => { const target = deleting; void run(async () => { await controller.api!.adminDeleteWebhook(target.id); }).then((ok) => { if (ok) setDeleting(null); }); }}>
-              削除する
+              {t("common.deleteConfirm")}
             </Button>
           </div>
         </Modal>
@@ -164,19 +166,19 @@ function WebhookEditor({ row, channels, busy, onClose, onSave }: {
     onSave({ name: name.trim(), channelId });
   };
   return (
-    <Modal onClose={onClose} title={row ? `${row.name} を編集` : "Webhook を作成"} className="w-[460px]">
+    <Modal onClose={onClose} title={row ? t("aiAdmin.editTitle", { name: row.name }) : t("webhooks.create")} className="w-[460px]">
       <form className="mt-4 space-y-3" onSubmit={submit}>
-        <Field label="名前 (投稿者として表示されます)">
-          <Input value={name} maxLength={80} required autoFocus placeholder="例: GitHub Actions" onChange={(e) => setName(e.target.value)} />
+        <Field label={t("aiAdmin.nameLabel")}>
+          <Input value={name} maxLength={80} required autoFocus placeholder={t("webhooks.namePlaceholder")} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field label="投稿先チャンネル">
+        <Field label={t("webhooks.channel")}>
           <select value={channelId} onChange={(e) => setChannelId(e.target.value)} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm" required>
             {channels.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
         </Field>
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" size="sm" disabled={busy || !name.trim() || !channelId}>{row ? "保存" : "作成して URL を発行"}</Button>
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" size="sm" disabled={busy || !name.trim() || !channelId}>{row ? t("common.save") : t("webhooks.createAndIssue")}</Button>
         </div>
       </form>
     </Modal>

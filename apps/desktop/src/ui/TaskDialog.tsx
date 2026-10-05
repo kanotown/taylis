@@ -53,6 +53,7 @@ import {
   taskDraftProblem,
   taskPatch,
 } from "./tasks";
+import { t } from "../i18n";
 
 const SELECT =
   "w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-60";
@@ -91,7 +92,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
   const pickerChannelId = task ? task.channel_id : board !== "me" ? board : (init?.shareChannelId ?? null);
   const channel = channelId ? store.getChannel(channelId) : undefined;
   const editable = task ? canEditTask(task, channel, controller.isAdmin) : true;
-  const problem = editable ? (creatingReview && draft.assigneeIds.length === 0 ? "依頼先を選んでください" : taskDraftProblem(draft, kind)) : null;
+  const problem = editable ? (creatingReview && draft.assigneeIds.length === 0 ? t("tasks.dialog.pickReviewer") : taskDraftProblem(draft, kind)) : null;
   const boards = useMemo(() => (init?.boardChoices ?? []).filter((id) => canEditBoard(store.getChannel(id), controller.isAdmin)), [init, store, controller.isAdmin]);
   // M85: a deadline is a channel board's (not from a message, a canvas or a DM).
   const canBeDeadline = !task && !review && !init?.shareChannelId && !init?.sourceMessageId && !init?.sourceCanvasId && boards.length > 0;
@@ -137,7 +138,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
     try {
       if (!task) {
         await hub.create(taskCreateBody(draft, { ...(init ?? { channelId: null, status: draft.status, title: "" }), kind: newKind }, board, clientId.current, localZone()));
-        controller.setNotice(creatingReview ? "レビューを依頼しました" : deadline ? "締切を追加しました" : "タスクを作成しました");
+        controller.setNotice(creatingReview ? t("tasks.dialog.reviewRequested") : deadline ? t("tasks.dialog.deadlineAdded") : t("tasks.dialog.created"));
       } else {
         const patch = taskPatch(task, draft, localZone());
         if (Object.keys(patch).length > 0) await hub.update(task.id, patch);
@@ -176,23 +177,23 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
   };
 
   const boardName = (id: string | null) => {
-    if (!id) return "自分のタスク";
+    if (!id) return t("tasks.myTasks");
     const conversation = store.getChannel(id);
     // L9: a DM's task (no board): the DM by its other members.
-    if (conversation && !hasBoard(conversation)) return `${conversationTitle(conversation, store.users, me, store.me)} との DM`;
+    if (conversation && !hasBoard(conversation)) return t("tasks.dialog.dmWith", { name: conversationTitle(conversation, store.users, me, store.me) });
     if (!conversation && task?.channel_id === id && !task.channel_name) return "DM";
-    return `#${conversation?.name ?? task?.channel_name ?? "?"} のボード`;
+    return t("tasks.dialog.boardOf", { name: conversation?.name ?? task?.channel_name ?? "?" });
   };
   const title = creatingReview
-    ? "レビューを依頼"
+    ? t("tasks.dialog.requestReview")
     : !task
-      ? deadline ? "締切を追加" : "タスクを追加"
+      ? deadline ? t("tasks.dialog.addDeadline") : t("tasks.dialog.addTask")
       : review
-        ? (editable ? "レビュー依頼を編集" : "レビュー依頼")
+        ? (editable ? t("tasks.dialog.editReview") : t("tasks.review"))
         : deadline
-          ? (editable ? "締切を編集" : "締切")
-          : editable ? "タスクを編集" : "タスク";
-  const dueName = review ? "希望日" : deadline ? "締切日" : "期限";
+          ? (editable ? t("tasks.dialog.editDeadline") : t("nav.deadlines"))
+          : editable ? t("tasks.dialog.editTask") : t("tasks.task");
+  const dueName = review ? t("tasks.wantedBy") : deadline ? t("tasks.deadlineDate") : t("tasks.due");
   const source = task ? sourceState(task) : init?.sourceMessageId ? { kind: "link" as const, messageId: init.sourceMessageId, excerpt: init.sourceExcerpt ?? null } : { kind: "none" as const };
   // M72 (CANVAS.md §18.3): the canvas a task came from (a one-way link).
   const canvasSource = task ? canvasSourceState(task) : init?.sourceCanvasId ? { kind: "link" as const, canvasId: init.sourceCanvasId, excerpt: init.sourceCanvasExcerpt ?? null } : { kind: "none" as const };
@@ -201,7 +202,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
     onClose();
     void controller.openCanvasLink(canvasId);
   };
-  const assigneeLabel = review ? "依頼先" : "担当者";
+  const assigneeLabel = review ? t("tasks.reviewers") : t("tasks.assignees");
   const picker = pickerChannelId && (
     <AssigneePicker
       controller={controller}
@@ -224,7 +225,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
         }}
       >
         {canBeDeadline && (
-          <div role="radiogroup" aria-label="種類" className="flex w-full rounded-lg bg-panel-2 p-0.5 text-sm font-medium" data-task-kind>
+          <div role="radiogroup" aria-label={t("tasks.kind")} className="flex w-full rounded-lg bg-panel-2 p-0.5 text-sm font-medium" data-task-kind>
             {(["task", "deadline"] as const).map((value) => (
               <button
                 key={value}
@@ -234,24 +235,24 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
                 onClick={() => chooseKind(value)}
                 className={cn("flex-1 rounded-md px-2.5 py-1.5 transition-colors", newKind === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
               >
-                {value === "task" ? "タスク" : "⏰ 締切"}
+                {value === "task" ? t("tasks.task") : t("tasks.dialog.deadlineKind")}
               </button>
             ))}
           </div>
         )}
         {!task && !review && !init?.shareChannelId && (
-          <Field label="追加先">
-            <select className={SELECT} aria-label="追加先" value={board} disabled={boards.length === 0} onChange={(e) => { setBoard(e.target.value); set({ assigneeIds: [] }); }}>
+          <Field label={t("tasks.dialog.addTo")}>
+            <select className={SELECT} aria-label={t("tasks.dialog.addTo")} value={board} disabled={boards.length === 0} onChange={(e) => { setBoard(e.target.value); set({ assigneeIds: [] }); }}>
               {boards.map((id) => (
                 <option key={id} value={id}>{boardName(id)}</option>
               ))}
-              {!deadline && <option value="me">自分のタスク (自分だけに表示)</option>}
+              {!deadline && <option value="me">{t("tasks.dialog.myTasksOption")}</option>}
             </select>
           </Field>
         )}
         {!task && (creatingReview || init?.shareChannelId) && (
           <div className="text-xs text-muted" data-task-board>
-            {creatingReview ? `${boardName(init?.channelId ?? null)} で共有` : draft.assigneeIds.length > 0 ? `${boardName(init?.shareChannelId ?? null)} で共有` : "担当者を選ぶとこの DM のメンバーに共有します。選ばなければ自分のタスクになります"}
+            {creatingReview ? t("tasks.dialog.sharedIn", { board: boardName(init?.channelId ?? null) }) : draft.assigneeIds.length > 0 ? t("tasks.dialog.sharedIn", { board: boardName(init?.shareChannelId ?? null) }) : t("tasks.dialog.dmShareNote")}
           </div>
         )}
         {task && <div className="text-xs text-muted" data-task-board>{boardName(task.channel_id)}</div>}
@@ -259,27 +260,27 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
           <div className="flex gap-2" data-assignee-actions>
             {task.status === "todo" && (
               <Button type="button" variant="secondary" className="h-11 flex-1 text-[15px]" disabled={busy} onClick={() => void setStatus("doing")}>
-                <PlayCircle size={18} /> 対応を始める
+                <PlayCircle size={18} /> {t("tasks.dialog.start")}
               </Button>
             )}
             <Button type="button" className="h-11 flex-1 text-[15px]" disabled={busy} onClick={() => void setStatus("done")}>
-              <CheckCircle2 size={18} /> 完了にする
+              <CheckCircle2 size={18} /> {t("tasks.dialog.complete")}
             </Button>
           </div>
         )}
         {editable ? (
           <>
             {creatingReview && picker}
-            <Field label="題名">
-              <Input autoFocus={!creatingReview} value={draft.title} maxLength={MAX_TASK_TITLE} placeholder="資料をまとめる" onChange={(e) => set({ title: e.target.value })} />
+            <Field label={t("canvas.titleLabel")}>
+              <Input autoFocus={!creatingReview} value={draft.title} maxLength={MAX_TASK_TITLE} placeholder={t("tasks.dialog.titlePlaceholder")} onChange={(e) => set({ title: e.target.value })} />
             </Field>
-            <Field label="メモ">
-              <Textarea rows={creatingReview ? 3 : 4} value={draft.notes} maxLength={MAX_TASK_NOTES} placeholder={review ? "見てほしいところなど (Markdown で書けます)" : "Markdown で書けます"} onChange={(e) => set({ notes: e.target.value })} />
+            <Field label={t("tasks.notes")}>
+              <Textarea rows={creatingReview ? 3 : 4} value={draft.notes} maxLength={MAX_TASK_NOTES} placeholder={review ? t("tasks.dialog.reviewNotesPlaceholder") : t("tasks.dialog.notesPlaceholder")} onChange={(e) => set({ notes: e.target.value })} />
             </Field>
             {!creatingReview && (
               <div className="space-y-1">
-                <span className="text-xs font-medium text-muted">状態</span>
-                <div role="radiogroup" aria-label="状態" className="flex w-full rounded-lg bg-panel-2 p-0.5 text-sm font-medium">
+                <span className="text-xs font-medium text-muted">{t("tasks.state")}</span>
+                <div role="radiogroup" aria-label={t("tasks.state")} className="flex w-full rounded-lg bg-panel-2 p-0.5 text-sm font-medium">
                   {TASK_STATUSES.map((status) => (
                     <button
                       key={status}
@@ -300,11 +301,11 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
               <div className="flex flex-wrap items-center gap-2">
                 <Input type="date" aria-label={dueName} className="w-44" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value, repeat: repeatForDue(draft.repeat, draft.dueOn, e.target.value), ...(e.target.value ? {} : { dueTime: "" }) })} />
                 {draft.dueOn && (
-                  <Input type="time" aria-label="期限の時刻" title="時刻 (空なら終日)" className="w-32" value={draft.dueTime ?? ""} onChange={(e) => set({ dueTime: e.target.value })} />
+                  <Input type="time" aria-label={t("tasks.dialog.dueTime")} title={t("tasks.dialog.dueTimeTitle")} className="w-32" value={draft.dueTime ?? ""} onChange={(e) => set({ dueTime: e.target.value })} />
                 )}
                 {draft.dueOn && !deadline && (
                   <Button variant="ghost" size="sm" onClick={() => set({ dueOn: "", dueTime: "", repeat: draft.repeat ? { ...draft.repeat, kind: "none" } : draft.repeat })}>
-                    <X size={14} /> {review ? "希望日をなくす" : "期限をなくす"}
+                    <X size={14} /> {review ? t("tasks.dialog.clearWanted") : t("tasks.dialog.clearDue")}
                   </Button>
                 )}
               </div>
@@ -314,7 +315,7 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
               <div className="space-y-1" data-task-repeat>
                 {/* RepeatPicker has its own 「繰り返し」 label */}
                 <RepeatPicker repeat={draft.repeat} start={draft.dueOn} onChange={(repeat) => set({ repeat })} />
-                {draft.repeat.kind !== "none" && <p className="text-xs text-muted">完了にすると、次の回のタスクができます</p>}
+                {draft.repeat.kind !== "none" && <p className="text-xs text-muted">{t("tasks.dialog.repeatNote")}</p>}
               </div>
             )}
             {!creatingReview && <SubtaskEditor items={draft.subtasks ?? []} onChange={(subtasks) => set({ subtasks })} onToggle={toggleSubtask} />}
@@ -327,19 +328,19 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
           <div className="flex items-start gap-2 rounded-lg bg-panel-2 px-3 py-2 text-sm" data-task-source>
             <MessageSquareText size={15} className="mt-0.5 shrink-0 text-muted" />
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium text-muted">元のメッセージ</div>
+              <div className="text-xs font-medium text-muted">{t("timeline.originalMessage")}</div>
               {source.excerpt && <div className="line-clamp-2 break-words">{source.excerpt}</div>}
             </div>
             {task && (
               <Button variant="secondary" size="sm" className="shrink-0" onClick={() => openMessage(source.messageId)}>
-                メッセージを開く
+                {t("tasks.dialog.openMessage")}
               </Button>
             )}
           </div>
         )}
         {source.kind === "deleted" && (
           <div className="flex items-center gap-2 rounded-lg bg-panel-2 px-3 py-2 text-sm text-muted" data-task-source>
-            <MessageSquareText size={15} className="shrink-0" /> 元のメッセージは削除されました
+            <MessageSquareText size={15} className="shrink-0" /> {t("tasks.dialog.messageDeleted")}
           </div>
         )}
         {canvasSource.kind !== "none" && (
@@ -347,35 +348,35 @@ export function TaskDialog({ controller, task, init, onClose, onOpenMessage }: {
             <FileText size={15} className="mt-0.5 shrink-0 text-muted" />
             <div className="min-w-0 flex-1">
               <div className="text-xs font-medium text-muted">
-                {canvasSource.kind === "deleted" ? "元のキャンバスは削除されました" : canvasTitle ? `元のキャンバス: ${canvasTitle}` : "元のキャンバス"}
+                {canvasSource.kind === "deleted" ? t("tasks.dialog.canvasDeleted") : canvasTitle ? t("tasks.dialog.canvasNamed", { title: canvasTitle }) : t("tasks.dialog.canvas")}
               </div>
               {canvasSource.excerpt && <div className="line-clamp-2 break-words">{canvasSource.excerpt}</div>}
             </div>
             {task && canvasSource.kind === "link" && (
               <Button variant="secondary" size="sm" className="shrink-0" onClick={() => openCanvas(canvasSource.canvasId)}>
-                キャンバスを開く
+                {t("tasks.dialog.openCanvas")}
               </Button>
             )}
           </div>
         )}
-        {!hub?.available && <p className="text-sm text-muted">このサーバはタスクに対応していません</p>}
+        {!hub?.available && <p className="text-sm text-muted">{t("tasks.unsupported")}</p>}
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         {confirmDelete ? (
           <div className="flex items-center justify-end gap-2 rounded-lg bg-danger/10 px-3 py-2">
-            <span className="mr-auto text-sm">{review ? "このレビュー依頼を削除しますか？" : deadline ? "この締切を削除しますか？ (前もっての通知も止まります)" : "このタスクを削除しますか？"}</span>
-            <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>キャンセル</Button>
-            <Button variant="danger" size="sm" disabled={busy} onClick={() => void remove()}>削除する</Button>
+            <span className="mr-auto text-sm">{review ? t("tasks.dialog.deleteReview") : deadline ? t("tasks.dialog.deleteDeadline") : t("tasks.dialog.deleteTask")}</span>
+            <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>{t("common.cancel")}</Button>
+            <Button variant="danger" size="sm" disabled={busy} onClick={() => void remove()}>{t("common.deleteConfirm")}</Button>
           </div>
         ) : (
           <div className="flex items-center justify-end gap-2 pt-1">
             {task?.can_delete && (
               <Button variant="ghost" className="mr-auto text-danger" onClick={() => setConfirmDelete(true)}>
-                <Trash2 size={15} /> 削除
+                <Trash2 size={15} /> {t("common.delete")}
               </Button>
             )}
-            <Button variant="secondary" onClick={onClose}>{editable ? "キャンセル" : "閉じる"}</Button>
+            <Button variant="secondary" onClick={onClose}>{editable ? t("common.cancel") : t("common.close")}</Button>
             {editable && (
-              <Button type="submit" disabled={busy || !!problem || !hub?.available}>{task ? "保存" : creatingReview ? "依頼する" : "追加"}</Button>
+              <Button type="submit" disabled={busy || !!problem || !hub?.available}>{task ? t("common.save") : creatingReview ? t("tasks.dialog.request") : t("common.add")}</Button>
             )}
           </div>
         )}
@@ -408,14 +409,14 @@ function AssigneePicker({ controller, channelId, label, excludeMe = false, selec
   const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
   return (
     <div className="space-y-1">
-      <span className="text-xs font-medium text-muted">{label}{selected.length > 0 ? ` (${selected.length} 人)` : ""}</span>
+      <span className="text-xs font-medium text-muted">{label}{selected.length > 0 ? t("tasks.dialog.selectedCount", { count: selected.length }) : ""}</span>
       {members === null ? (
-        <p className="text-sm text-muted">読み込み中…</p>
+        <p className="text-sm text-muted">{t("common.loading")}</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted">選べる人がいません</p>
+        <p className="text-sm text-muted">{t("tasks.dialog.nobodyToPick")}</p>
       ) : (
         <>
-          {rows.length > 8 && <Input value={query} aria-label={`${label}を絞り込む`} placeholder="名前で絞り込む" className="h-8 text-sm" onChange={(e) => setQuery(e.target.value)} />}
+          {rows.length > 8 && <Input value={query} aria-label={t("tasks.dialog.filterLabel", { label })} placeholder={t("tasks.dialog.filterPlaceholder")} className="h-8 text-sm" onChange={(e) => setQuery(e.target.value)} />}
           <ul role="group" aria-label={label} className="max-h-44 divide-y divide-line overflow-y-auto rounded-lg border border-line">
             {shown.map((row) => (
               <li key={row.id}>
@@ -424,7 +425,7 @@ function AssigneePicker({ controller, channelId, label, excludeMe = false, selec
                   <Avatar id={row.id} name={row.name} size={22} />
                   <span className="min-w-0 flex-1 truncate">
                     {row.name}
-                    {row.id === me && <span className="ml-1 text-xs text-muted">(自分)</span>}
+                    {row.id === me && <span className="ml-1 text-xs text-muted">{t("tasks.dialog.me")}</span>}
                   </span>
                 </label>
               </li>
@@ -444,25 +445,25 @@ function ReadOnlyTask({ controller, task }: { controller: AppController; task: T
     <div className="space-y-2.5">
       <div className={cn("break-words text-[15px] font-semibold", task.status === "done" && "text-muted line-through")}>{task.title}</div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
-        <dt className="text-muted">状態</dt>
+        <dt className="text-muted">{t("tasks.state")}</dt>
         <dd>{statusLabel(task.kind, task.status as TaskStatus)}</dd>
-        <dt className="text-muted">{task.kind === "review" ? "希望日" : task.kind === "deadline" ? "締切日" : "期限"}</dt>
-        <dd>{task.due_on ? `${dueText(task, "")}${task.due_on === today ? " (今日)" : ""}` : "なし"}</dd>
+        <dt className="text-muted">{task.kind === "review" ? t("tasks.wantedBy") : task.kind === "deadline" ? t("tasks.deadlineDate") : t("tasks.due")}</dt>
+        <dd>{task.due_on ? `${dueText(task, "")}${task.due_on === today ? t("tasks.dialog.todayParen") : ""}` : t("workflow.none")}</dd>
         {task.kind === "deadline" && (
           <>
-            <dt className="text-muted">事前の通知</dt>
+            <dt className="text-muted">{t("tasks.advanceNotice")}</dt>
             <dd>{noticeSummary(task.notice_days)}</dd>
           </>
         )}
         {task.rrule && (
           <>
-            <dt className="text-muted">繰り返し</dt>
+            <dt className="text-muted">{t("tasks.repeat")}</dt>
             <dd className="inline-flex items-center gap-1"><Repeat size={13} /> {describeRrule(task.rrule, task.due_on ?? today)}</dd>
           </>
         )}
         {subtaskProgress(task) && (
           <>
-            <dt className="text-muted">サブタスク</dt>
+            <dt className="text-muted">{t("tasks.subtasks")}</dt>
             <dd>
               <ul className="space-y-0.5">
                 {(task.subtasks ?? []).map((item) => (
@@ -474,9 +475,9 @@ function ReadOnlyTask({ controller, task }: { controller: AppController; task: T
         )}
         {task.channel_id && (
           <>
-            <dt className="text-muted">{task.kind === "review" ? "依頼先" : "担当者"}</dt>
+            <dt className="text-muted">{task.kind === "review" ? t("tasks.reviewers") : t("tasks.assignees")}</dt>
             <dd className="flex flex-wrap gap-x-3 gap-y-1">
-              {task.assignee_ids.length === 0 && "なし"}
+              {task.assignee_ids.length === 0 && t("workflow.none")}
               {task.assignee_ids.map((id) => (
                 <span key={id} className="inline-flex items-center gap-1">
                   <Avatar id={id} name={users.get(id)?.display_name ?? "?"} size={18} />
@@ -488,7 +489,7 @@ function ReadOnlyTask({ controller, task }: { controller: AppController; task: T
         )}
       </dl>
       {task.notes && <p className="whitespace-pre-wrap break-words rounded-lg bg-panel-2 px-3 py-2 text-sm">{task.notes}</p>}
-      <p className="text-xs text-muted">{task.channel_id && task.channel_name ? "このボードを変更できるのは、チャンネルに投稿できるメンバーです。" : "変更できるのは、この会話のメンバーです。"}</p>
+      <p className="text-xs text-muted">{task.channel_id && task.channel_name ? t("tasks.dialog.editableByPosters") : t("tasks.dialog.editableByMembers")}</p>
     </div>
   );
 }
@@ -512,23 +513,23 @@ function SubtaskEditor({ items, onChange, onToggle }: { items: SubtaskDraft[]; o
   };
   return (
     <div className="space-y-1" data-subtask-editor>
-      <span className="text-xs font-medium text-muted">サブタスク{items.length > 0 ? ` (${done}/${items.length})` : ""}</span>
+      <span className="text-xs font-medium text-muted">{t("tasks.subtasks")}{items.length > 0 ? ` (${done}/${items.length})` : ""}</span>
       {items.length > 0 && (
         <ul className="divide-y divide-line rounded-lg border border-line">
           {items.map((item, index) => (
             <li key={item.id ?? `new-${index}`} className="group/sub flex items-center gap-2 px-2 py-1" data-subtask>
-              <input type="checkbox" className="h-4 w-4 shrink-0 accent-[var(--accent)]" checked={item.done} aria-label={`「${item.title}」を完了`} onChange={() => onToggle(index)} />
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-[var(--accent)]" checked={item.done} aria-label={t("tasks.dialog.completeItem", { title: item.title })} onChange={() => onToggle(index)} />
               <input
                 className={cn("min-w-0 flex-1 bg-transparent text-sm outline-none", item.done && "text-muted line-through")}
                 value={item.title}
                 maxLength={MAX_TASK_TITLE}
-                aria-label="サブタスクの題名"
+                aria-label={t("tasks.dialog.subtaskTitle")}
                 onChange={(e) => update(index, { title: e.target.value })}
               />
               <span className="flex shrink-0 items-center opacity-60 group-hover/sub:opacity-100">
-                <button type="button" className="rounded p-0.5 hover:bg-ink/6 disabled:opacity-30" aria-label="上へ" disabled={index === 0} onClick={() => swap(index, index - 1)}><ArrowUp size={13} /></button>
-                <button type="button" className="rounded p-0.5 hover:bg-ink/6 disabled:opacity-30" aria-label="下へ" disabled={index === items.length - 1} onClick={() => swap(index, index + 1)}><ArrowDown size={13} /></button>
-                <button type="button" className="rounded p-0.5 hover:bg-ink/6" aria-label="サブタスクを削除" onClick={() => onChange(items.filter((_, k) => k !== index))}><X size={13} /></button>
+                <button type="button" className="rounded p-0.5 hover:bg-ink/6 disabled:opacity-30" aria-label={t("common.moveUp")} disabled={index === 0} onClick={() => swap(index, index - 1)}><ArrowUp size={13} /></button>
+                <button type="button" className="rounded p-0.5 hover:bg-ink/6 disabled:opacity-30" aria-label={t("common.moveDown")} disabled={index === items.length - 1} onClick={() => swap(index, index + 1)}><ArrowDown size={13} /></button>
+                <button type="button" className="rounded p-0.5 hover:bg-ink/6" aria-label={t("tasks.dialog.removeSubtask")} onClick={() => onChange(items.filter((_, k) => k !== index))}><X size={13} /></button>
               </span>
             </li>
           ))}
@@ -541,8 +542,8 @@ function SubtaskEditor({ items, onChange, onToggle }: { items: SubtaskDraft[]; o
             className="min-w-0 flex-1 rounded-md bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted focus:bg-panel"
             value={adding}
             maxLength={MAX_TASK_TITLE}
-            placeholder="サブタスクを追加 (Enter)"
-            aria-label="サブタスクを追加"
+            placeholder={t("tasks.dialog.addSubtaskPlaceholder")}
+            aria-label={t("tasks.dialog.addSubtask")}
             onChange={(e) => setAdding(e.target.value)}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return;
@@ -566,8 +567,8 @@ function NoticeDaysPicker({ days, onChange }: { days: number[]; onChange: (days:
   const toggle = (day: number) => onChange(days.includes(day) ? days.filter((d) => d !== day) : [...days, day].sort((a, b) => b - a));
   return (
     <div className="space-y-1" data-notice-days>
-      <span className="text-xs font-medium text-muted">事前の通知</span>
-      <div role="group" aria-label="事前の通知" className="flex flex-wrap gap-x-3 gap-y-1">
+      <span className="text-xs font-medium text-muted">{t("tasks.advanceNotice")}</span>
+      <div role="group" aria-label={t("tasks.advanceNotice")} className="flex flex-wrap gap-x-3 gap-y-1">
         {choices.map((day) => (
           <label key={day} className="inline-flex cursor-pointer items-center gap-1.5 text-sm">
             <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={days.includes(day)} onChange={() => toggle(day)} />
@@ -575,7 +576,7 @@ function NoticeDaysPicker({ days, onChange }: { days: number[]; onChange: (days:
           </label>
         ))}
       </div>
-      <p className="text-xs text-muted">{days.length === 0 ? "チャンネルには知らせません" : "「締切」のボットがこのチャンネルに、その日の 9:00 に投稿します (時刻付きの締切は、その時刻より前のものだけ)"}</p>
+      <p className="text-xs text-muted">{days.length === 0 ? t("tasks.dialog.noNotice") : t("tasks.dialog.noticeNote")}</p>
     </div>
   );
 }

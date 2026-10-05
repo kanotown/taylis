@@ -3,6 +3,7 @@ import { createContext, useContext } from "react";
 
 import { useMediaQuery } from "./hooks";
 import { IconButton } from "./primitives";
+import { t } from "../i18n";
 
 /** Phones: below Tailwind's md breakpoint (48rem, as in the `max-md:` classes) one column shows at a time. */
 export const COMPACT_QUERY = "(max-width: 47.99rem)";
@@ -19,7 +20,7 @@ export function BackButton() {
   const back = useContext(BackToList);
   if (!back) return null;
   return (
-    <IconButton label="戻る" className="-ml-2 shrink-0" onClick={back}>
+    <IconButton label={t("common.back")} className="-ml-2 shrink-0" onClick={back}>
       <ArrowLeft size={20} />
     </IconButton>
   );
@@ -29,7 +30,7 @@ export function BackButton() {
 export function PaneBackButton({ onClick }: { onClick: () => void }) {
   if (!useCompact()) return null;
   return (
-    <IconButton label="戻る" className="-ml-2 shrink-0" onClick={onClick}>
+    <IconButton label={t("common.back")} className="-ml-2 shrink-0" onClick={onClick}>
       <ArrowLeft size={20} />
     </IconButton>
   );
@@ -39,7 +40,7 @@ export function PaneBackButton({ onClick }: { onClick: () => void }) {
 export function PaneCloseButton({ onClick }: { onClick: () => void }) {
   if (useCompact()) return null;
   return (
-    <IconButton label="閉じる (Esc)" onClick={onClick}>
+    <IconButton label={t("attach.closeEsc")} onClick={onClick}>
       <X size={18} />
     </IconButton>
   );

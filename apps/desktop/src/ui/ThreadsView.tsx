@@ -11,6 +11,7 @@ import { mentionsToNames } from "./mentions";
 import { BackButton } from "./compact";
 import { Badge, Button, cn } from "./primitives";
 import { EmojiText } from "./UserPopover";
+import { t } from "../i18n";
 
 /**
  * The centre column of the threads view (THREADS.md §5): the threads I follow, newest reply first.
@@ -48,11 +49,11 @@ export function ThreadsView({ controller, selectedId, onOpen, embedded = false }
             <span className="text-muted max-md:hidden">
               <MessagesSquare size={18} />
             </span>
-            <strong className="shrink-0 whitespace-nowrap text-[15px]">スレッド</strong>
+            <strong className="shrink-0 whitespace-nowrap text-[15px]">{t("nav.threads")}</strong>
           </>
         )}
-        <span className="min-w-0 truncate text-xs text-muted">{summary.unread_count > 0 ? `未読 ${summary.unread_count} 件` : "フォロー中のスレッド"}</span>
-        <div className="ml-auto flex shrink-0 rounded-lg bg-panel p-0.5 text-xs font-medium" role="tablist" aria-label="表示">
+        <span className="min-w-0 truncate text-xs text-muted">{summary.unread_count > 0 ? t("format.unreadCount", { count: summary.unread_count }) : t("threads.following")}</span>
+        <div className="ml-auto flex shrink-0 rounded-lg bg-panel p-0.5 text-xs font-medium" role="tablist" aria-label={t("activity.show")}>
           {(["all", "unread"] as const).map((value) => (
             <button
               key={value}
@@ -62,7 +63,7 @@ export function ThreadsView({ controller, selectedId, onOpen, embedded = false }
               onClick={() => setFilter(value)}
               className={cn("whitespace-nowrap rounded-md px-2.5 py-1 transition-colors", filter === value ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
             >
-              {value === "all" ? "すべて" : "未読"}
+              {value === "all" ? t("admin.users.filter.all") : t("sidebar.unread")}
             </button>
           ))}
         </div>
@@ -73,8 +74,8 @@ export function ThreadsView({ controller, selectedId, onOpen, embedded = false }
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
               <MessagesSquare size={22} />
             </span>
-            <strong className="text-sm">{!store.threadsLoaded ? "読み込んでいます…" : filter === "unread" ? "未読のスレッドはありません" : "フォロー中のスレッドはありません"}</strong>
-            <span className="text-xs text-muted">自分が投稿・返信・メンションされたスレッドはここに集まります。</span>
+            <strong className="text-sm">{!store.threadsLoaded ? t("common.loading") : filter === "unread" ? t("threads.noUnread") : t("threads.none")}</strong>
+            <span className="text-xs text-muted">{t("threads.hint")}</span>
           </div>
         ) : (
           <ul className="divide-y divide-line">
@@ -86,7 +87,7 @@ export function ThreadsView({ controller, selectedId, onOpen, embedded = false }
         {rows.length > 0 && store.threadsHasMore && (
           <div className="flex justify-center py-3">
             <Button variant="secondary" size="sm" onClick={() => void engine?.loadThreads(filter, { more: true }).catch((error) => controller.setError(error))}>
-              さらに表示
+              {t("canvasSearch.more")}
             </Button>
           </div>
         )}
@@ -133,8 +134,8 @@ function ThreadRow({ entry, controller, selected, onOpen }: { entry: ThreadEntry
                 <Avatar key={id} id={id} name={store.users.get(id)?.display_name ?? "?"} size={18} className="rounded-md text-[9px] ring-2 ring-canvas" />
               ))}
             </span>
-            <span className={cn(unread ? "font-semibold text-accent" : "text-muted")}>{state.reply_count} 件の返信</span>
-            {unread && <span className="text-muted">· 未読 {state.unread_count} 件</span>}
+            <span className={cn(unread ? "font-semibold text-accent" : "text-muted")}>{t("timeline.replyCount", { count: state.reply_count })}</span>
+            {unread && <span className="text-muted">· {t("format.unreadCount", { count: state.unread_count })}</span>}
             {unread && <Badge tone={state.mention_count > 0 ? "danger" : "accent"} className="ml-auto">{state.mention_count > 0 ? `@${state.mention_count}` : state.unread_count}</Badge>}
           </div>
         </div>

@@ -15,16 +15,20 @@ a log channel, where the 「予約」 bot writes one line per change (mentions o
 writes nothing anywhere.
 """
 
+import inspect
 import logging
 import secrets
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import partial
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import i18n
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
@@ -36,7 +40,6 @@ from app.modules.channels.models import Channel
 from app.modules.groups.models import UserGroup
 from app.modules.messages import service as messages
 from app.modules.messages.schemas import MessageCreate
-from app.modules.recurring.schedule import WEEKDAYS_JA
 from app.modules.reservations import repository as repo
 from app.modules.reservations.events import (
     RESERVATION_NOTICE,
@@ -113,21 +116,27 @@ def _safe(text: str) -> str:
     return escape_text(text)
 
 
-async def _name(db: AsyncSession, change: _Change, user_id: uuid.UUID) -> str:
+# Texts: a log channel's lines are shared (ja); a notice is for one person, in their language
+# (`lc`, M115, docs/I18N.md; app/i18n/messages.json "reservation.*").
+
+
+async def _name(db: AsyncSession, change: _Change, user_id: uuid.UUID, lc: str = "ja") -> str:
     person = await change.person(db, user_id)
-    return _safe(person.display_name) if person is not None else "(不明)"
+    return _safe(person.display_name) if person is not None else i18n.t("reservation.unknown", lc)
 
 
-async def _who(db: AsyncSession, change: _Change, user_id: uuid.UUID) -> str:
+async def _who(db: AsyncSession, change: _Change, user_id: uuid.UUID, lc: str = "ja") -> str:
     """For the operators: the name and the address (to find the account in the console)."""
     person = await change.person(db, user_id)
     if person is None:
-        return "(不明)"
+        return i18n.t("reservation.unknown", lc)
     name = _safe(person.display_name)
-    return f"{name} さん ({_safe(person.email)})" if person.email else f"{name} さん"
+    if person.email:
+        return i18n.t("reservation.who_email", lc, name=name, email=_safe(person.email))
+    return i18n.t("reservation.who", lc, name=name)
 
 
-def _label(change: _Change, moment: datetime | None) -> str:
+def _label(change: _Change, moment: datetime | None, lc: str = "ja") -> str:
     """「13:00」 today, else 「10/9 (金) 13:00」, in the pool's zone."""
     if moment is None:
         return ""
@@ -135,16 +144,27 @@ def _label(change: _Change, moment: datetime | None) -> str:
     local = moment.astimezone(zone)
     if local.date() == change.now.astimezone(zone).date():
         return f"{local:%H:%M}"
-    return f"{local.month}/{local.day} ({WEEKDAYS_JA[local.weekday()]}) {local:%H:%M}"
+    return i18n.t(
+        "reservation.on_day",
+        lc,
+        month=local.month,
+        day=local.day,
+        weekday=i18n.weekday(local.weekday(), lc),
+        time=f"{local:%H:%M}",
+    )
 
 
-def _span(change: _Change, row: Reservation) -> str:
+def _span(change: _Change, row: Reservation, lc: str = "ja") -> str:
     end = row.end_at.astimezone(ZoneInfo(change.pool.tz)) if row.end_at else None
-    return f"{_label(change, row.start_at)}〜{end:%H:%M}" if end is not None else ""
+    return f"{_label(change, row.start_at, lc)}〜{end:%H:%M}" if end is not None else ""
 
 
-def _pool_name(change: _Change) -> str:
-    return f"「{_safe(change.pool.name)}」"
+def _pool_name(change: _Change, lc: str = "ja") -> str:
+    return i18n.t("reservation.pool", lc, name=_safe(change.pool.name))
+
+
+# A notice's text: fixed, or written for the reader's language.
+NoticeText = str | Callable[[str], str | Awaitable[str]]
 
 
 # --- access -------------------------------------------------------------------------------------
@@ -511,7 +531,7 @@ async def _notify(
     change: _Change,
     user_id: uuid.UUID,
     key: str,
-    text: str,
+    text: NoticeText,
     *,
     operator: bool = False,
     reservation_id: uuid.UUID | None = None,
@@ -519,12 +539,16 @@ async def _notify(
 ) -> None:
     """One activity item (and its push) for one person, once per key. `silent`: the operator
     who pressed the button gets their copy done already, without a push (the key counts as
-    told)."""
+    told). The text is written in the person's language (M115)."""
     person = await change.person(db, user_id)
     if person is None or not person.is_active or person.role == "bot":
         return
     if await repo.notice(db, user_id, key) is not None:
         return
+    if not isinstance(text, str):
+        written = text(await i18n.text_locale(db, person))
+        text = await written if inspect.isawaitable(written) else written
+    assert isinstance(text, str)
     kept = ReservationNotice(
         user_id=user_id,
         pool_id=change.pool.id,
@@ -572,7 +596,7 @@ async def _operator_ids(db: AsyncSession, change: _Change) -> list[uuid.UUID]:
 
 
 async def _notify_operators(
-    db: AsyncSession, change: _Change, key: str, text: str, reservation_id: uuid.UUID | None
+    db: AsyncSession, change: _Change, key: str, text: NoticeText, reservation_id: uuid.UUID | None
 ) -> None:
     for uid in await _operator_ids(db, change):
         await _notify(
@@ -588,51 +612,61 @@ async def _notify_operators(
 
 
 async def _todo_text(
-    db: AsyncSession, change: _Change, todo: Todo, by_id: dict[uuid.UUID, Reservation]
+    db: AsyncSession,
+    change: _Change,
+    todo: Todo,
+    by_id: dict[uuid.UUID, Reservation],
+    lc: str = "ja",
 ) -> str:
-    name = _pool_name(change)
+    name = _pool_name(change, lc)
     target = by_id.get(todo.assign_id) if todo.assign_id else None
     out = by_id.get(todo.remove_id) if todo.remove_id else None
     if todo.key.startswith("booking:") and target is not None:
-        head = (
-            f"🗓 {_label(change, target.start_at)} から {await _who(db, change, target.user_id)}"
-            f" が{name}を予約しています (〜{_span(change, target).split('〜')[-1]})。"
+        head = i18n.t(
+            "reservation.todo.booking",
+            lc,
+            start=_label(change, target.start_at, lc),
+            who=await _who(db, change, target.user_id, lc),
+            pool=name,
+            end=_span(change, target, lc).split("〜")[-1],
         )
         if out is not None:
-            return head + f" {await _who(db, change, out.user_id)} を外して割り当ててください。"
-        return head + " 時間になったら割り当ててください。"
+            who_out = await _who(db, change, out.user_id, lc)
+            return head + i18n.t("reservation.todo.booking_swap", lc, who=who_out)
+        return head + i18n.t("reservation.todo.booking_later", lc)
     if todo.action == "assign" and target is not None:
+        who = await _who(db, change, target.user_id, lc)
         if target.kind == "booking":
-            return (
-                f"🗓 {await _who(db, change, target.user_id)} の予約 ({_span(change, target)}) が"
-                f"始まりました。{name}を割り当ててください。"
-            )
-        return (
-            f"🙋 {await _who(db, change, target.user_id)} に{name}を割り当ててください"
-            " (空きがあります)。"
-        )
+            span = _span(change, target, lc)
+            return i18n.t("reservation.todo.booking_started", lc, who=who, span=span, pool=name)
+        return i18n.t("reservation.todo.assign", lc, who=who, pool=name)
     if todo.action == "swap" and target is not None and out is not None:
-        why = {
-            "returned": "返却済み",
-            "booking_ended": "予約時間が終了",
-            "guarantee_over": "保証時間が終了",
-        }.get(todo.reason, "")
-        return (
-            f"🔁 {name}: {await _who(db, change, out.user_id)} ({why}) を外して"
-            f" {await _who(db, change, target.user_id)} に割り当ててください。"
+        why = (
+            i18n.t(f"reservation.why.{todo.reason}", lc)
+            if todo.reason in ("returned", "booking_ended", "guarantee_over")
+            else ""
+        )
+        return i18n.t(
+            "reservation.todo.swap",
+            lc,
+            pool=name,
+            out=await _who(db, change, out.user_id, lc),
+            why=why,
+            who=await _who(db, change, target.user_id, lc),
         )
     if todo.action == "remove" and out is not None:
+        who = await _who(db, change, out.user_id, lc)
         if todo.reason == "returned":
-            return (
-                f"🔙 {await _who(db, change, out.user_id)} が{name}を返却しました。"
-                "外して「外した」を押してください。"
-            )
-        return (
-            f"⏹ {await _who(db, change, out.user_id)} の{name}の予約時間"
-            f" ({_label(change, out.end_at)} まで) が終わりました。"
-            "外して「外した」を押してください。"
-        )
-    return f"{name}の操作が必要です。"
+            return i18n.t("reservation.todo.returned", lc, who=who, pool=name)
+        end = _label(change, out.end_at, lc)
+        return i18n.t("reservation.todo.ended", lc, who=who, pool=name, end=end)
+    return i18n.t("reservation.todo.other", lc, pool=name)
+
+
+def _expired_text(change: _Change, row: Reservation, lc: str) -> str:
+    return i18n.t(
+        "reservation.expired", lc, pool=_pool_name(change, lc), span=_span(change, row, lc)
+    )
 
 
 async def _emit(db: AsyncSession, pool_id: uuid.UUID, *, deleted: bool = False) -> None:
@@ -674,8 +708,7 @@ async def _reconcile(db: AsyncSession, change: _Change) -> bool:
                 change,
                 row.user_id,
                 f"{row.id}/expired",
-                f"⌛ {_pool_name(change)}の予約 ({_span(change, row)}) は割り当てられないまま"
-                "時間が過ぎました。",
+                partial(_expired_text, change, row),
                 reservation_id=row.id,
             )
     rows = [r for r in rows if r.status in ("waiting", "booked", "holding", "returning")]
@@ -690,18 +723,20 @@ async def _reconcile(db: AsyncSession, change: _Change) -> bool:
             row.evict_notice_at, row.evict_at, row.updated_at = now, goes, now
             changed = True
             claimant = by_id.get(plan.holder_pair.get(row.id) or row.id)
-            if claimant is not None and claimant.kind == "booking":
-                text = (
-                    f"⏳ {_pool_name(change)}は {_label(change, goes)} から予約の人が使います。"
-                    "その時刻に担当者が外します。"
-                )
-            else:
-                text = (
-                    f"⏳ {_pool_name(change)}の保証時間"
-                    f" ({_label(change, row.guarantee_until)} まで) が過ぎ、待っている人がいます。"
-                    f"{_label(change, goes)} 以降に担当者が外します。"
-                    "使い終わっていれば「返却する」を押してください。"
-                )
+            by_booking = claimant is not None and claimant.kind == "booking"
+
+            def text(
+                lc: str,
+                row: Reservation = row,
+                goes: datetime = goes,
+                by_booking: bool = by_booking,
+            ) -> str:
+                pool, at = _pool_name(change, lc), _label(change, goes, lc)
+                if by_booking:
+                    return i18n.t("reservation.evict_booking", lc, pool=pool, at=at)
+                until = _label(change, row.guarantee_until, lc)
+                return i18n.t("reservation.evict_waiting", lc, pool=pool, until=until, at=at)
+
             await _notify(
                 db,
                 change,
@@ -720,7 +755,7 @@ async def _reconcile(db: AsyncSession, change: _Change) -> bool:
                     change,
                     row.user_id,
                     f"{row.id}/keep/{now.isoformat()}",
-                    f"👍 {_pool_name(change)}を待つ人がいなくなったので、そのまま使えます。",
+                    lambda lc: i18n.t("reservation.keep", lc, pool=_pool_name(change, lc)),
                     reservation_id=row.id,
                 )
     if changed:
@@ -737,7 +772,11 @@ async def _reconcile(db: AsyncSession, change: _Change) -> bool:
             continue  # (a booking told of before it started: the page shows the rest)
         reservation_id = todo.assign_id or todo.remove_id
         await _notify_operators(
-            db, change, todo.key, await _todo_text(db, change, todo, by_id), reservation_id
+            db,
+            change,
+            todo.key,
+            partial(_todo_text, db, change, todo, by_id),
+            reservation_id,
         )
         told.add(todo.key)
         changed = True
@@ -1157,13 +1196,19 @@ async def cancel(db: AsyncSession, actor: User, reservation_id: uuid.UUID) -> Po
     else:
         by = await _name(db, change, actor.id)
         text = f"↩️ {by} さんが {name} さんの{_pool_name(change)}{what}を取り消しました"
+        walkin = row.kind == "walkin"
+
+        def cancelled(lc: str) -> str:
+            pool = _pool_name(change, lc)
+            if walkin:
+                return i18n.t("reservation.cancelled_by_operator_walkin", lc, pool=pool, by=by)
+            span = _span(change, row, lc)
+            return i18n.t(
+                "reservation.cancelled_by_operator_booking", lc, pool=pool, span=span, by=by
+            )
+
         await _notify(
-            db,
-            change,
-            row.user_id,
-            f"{row.id}/cancelled",
-            f"↩️ {_pool_name(change)}{what}は担当者 ({by} さん) が取り消しました。",
-            reservation_id=row.id,
+            db, change, row.user_id, f"{row.id}/cancelled", cancelled, reservation_id=row.id
         )
     await _post(db, change, text, f"{row.id}/cancelled")
     return await _finish(db, actor, change)
@@ -1225,16 +1270,16 @@ async def _assign(db: AsyncSession, change: _Change, row: Reservation, actor: Us
     row.evict_notice_at = row.evict_at = None
     row.updated_at = now
     await db.flush()
-    if row.kind == "booking":
-        text = (
-            f"✅ {_pool_name(change)}が割り当てられました (予約 {_span(change, row)})。"
-            "使い終わったら「返却する」を押してください。"
-        )
-    else:
-        text = (
-            f"✅ {_pool_name(change)}が割り当てられました。{_label(change, guarantee)} までは"
-            "外されません。使い終わったら「返却する」を押してください。"
-        )
+
+    def text(lc: str) -> str:
+        pool = _pool_name(change, lc)
+        if row.kind == "booking":
+            return i18n.t(
+                "reservation.assigned_booking", lc, pool=pool, span=_span(change, row, lc)
+            )
+        until = _label(change, guarantee, lc)
+        return i18n.t("reservation.assigned_walkin", lc, pool=pool, until=until)
+
     await _notify(db, change, row.user_id, f"{row.id}/assigned", text, reservation_id=row.id)
 
 
@@ -1244,11 +1289,15 @@ async def _remove(db: AsyncSession, change: _Change, row: Reservation, actor: Us
     row.status, row.ended_at, row.ended_by, row.end_reason = "done", change.now, actor.id, reason
     row.updated_at = change.now
     await db.flush()
-    if reason == "returned":
-        text = f"⏹ {_pool_name(change)}の返却が済みました。ありがとうございました。"
-    else:
-        text = f"⏹ {_pool_name(change)}から外されました。"
-    await _notify(db, change, row.user_id, f"{row.id}/removed", text, reservation_id=row.id)
+    key = "reservation.returned_done" if reason == "returned" else "reservation.removed"
+    await _notify(
+        db,
+        change,
+        row.user_id,
+        f"{row.id}/removed",
+        lambda lc: i18n.t(key, lc, pool=_pool_name(change, lc)),
+        reservation_id=row.id,
+    )
     return reason
 
 

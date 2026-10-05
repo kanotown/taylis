@@ -6,6 +6,7 @@ import type { MessageState } from "../sync/types";
 import { compactNames } from "./format";
 import { Button, cn, HoverList } from "./primitives";
 import { ScheduleCard } from "./ScheduleCard";
+import { t } from "../i18n";
 
 /**
  * The server makes a poll's text 「📊 質問」 for previews, pushes and search (DATA_MODEL.md); under it the card shows the
@@ -53,11 +54,11 @@ export function PollCard({ poll, message, controller, readOnly = false }: { poll
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="font-semibold">📊 {poll.question}</span>
         {poll.anonymous && (
-          <span className="inline-flex items-center gap-1 self-center rounded-md bg-panel-2 px-1.5 py-px text-[11px] font-medium text-muted" title="誰が投票したかは表示されません">
-            <EyeOff size={11} /> 匿名
+          <span className="inline-flex items-center gap-1 self-center rounded-md bg-panel-2 px-1.5 py-px text-[11px] font-medium text-muted" title={t("poll.anonymousTitle")}>
+            <EyeOff size={11} /> {t("poll.anonymous")}
           </span>
         )}
-        {poll.multiple && <span className="text-xs text-muted">複数選択可</span>}
+        {poll.multiple && <span className="text-xs text-muted">{t("poll.multiple")}</span>}
       </div>
       <ul className="mt-2 space-y-1.5">
         {poll.options.map((option, index) => {
@@ -91,9 +92,9 @@ export function PollCard({ poll, message, controller, readOnly = false }: { poll
         })}
       </ul>
       <div className="mt-2 flex items-center justify-between text-xs text-muted">
-        <span>{closed ? `締め切りました · ${total} 票` : `${total} 票`}</span>
+        <span>{closed ? t("poll.closedVotes", { count: total }) : t("poll.votes", { count: total })}</span>
         {canClose && (
-          <Button size="sm" variant="ghost" onClick={() => void controller.closePoll(message)}>締め切る</Button>
+          <Button size="sm" variant="ghost" onClick={() => void controller.closePoll(message)}>{t("poll.close")}</Button>
         )}
       </div>
     </div>

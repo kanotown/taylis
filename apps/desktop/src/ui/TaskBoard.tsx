@@ -53,6 +53,7 @@ import {
   subtaskProgress,
   TASK_STATUSES,
 } from "./tasks";
+import { t } from "../i18n";
 
 export function useTaskHub(controller: AppController): TaskHub | null {
   const hub = controller.engine?.tasks ?? null;
@@ -81,8 +82,8 @@ export function AssigneeStack({ controller, ids }: { controller: AppController; 
   const more = ids.length - shown.length;
   const names = ids.map((id) => users.get(id)?.display_name ?? "?").join("、");
   return (
-    <HoverList content={`担当: ${names}`}>
-    <span className="flex shrink-0 items-center -space-x-1.5" aria-label={`担当: ${names}`} data-assignees={ids.length}>
+    <HoverList content={t("tasks.board.assigned", { names })}>
+    <span className="flex shrink-0 items-center -space-x-1.5" aria-label={t("tasks.board.assigned", { names })} data-assignees={ids.length}>
       {shown.map((id) => (
         <Avatar key={id} id={id} name={users.get(id)?.display_name ?? "?"} size={20} className="rounded-full ring-2 ring-canvas" />
       ))}
@@ -145,7 +146,7 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
       {hasMeta && (
         <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs text-muted">
           {deadline && (
-            <span className="inline-flex items-center gap-0.5 font-medium text-warning" title="締切 (前もってチャンネルに知らせます)" aria-label="締切" data-deadline>
+            <span className="inline-flex items-center gap-0.5 font-medium text-warning" title={t("tasks.board.deadlineTitle")} aria-label={t("nav.deadlines")} data-deadline>
               <AlarmClock size={12} />
             </span>
           )}
@@ -155,36 +156,36 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
             <span
               data-due={task.due_on}
               data-overdue={overdue || undefined}
-              title={`${deadline ? "締切" : "期限"} ${dueText(task, "")}${overdue ? " (過ぎています)" : ""}`}
+              title={`${deadline ? t("nav.deadlines") : t("tasks.due")} ${dueText(task, "")}${overdue ? t("tasks.board.overdue") : ""}`}
               className={cn("inline-flex items-center gap-0.5 tabular-nums", overdue && "font-semibold text-danger", !overdue && due === today && !done && "font-semibold text-ink")}
             >
               <CalendarDays size={12} /> {dueText(task, today)}
             </span>
           )}
           {task.rrule && (
-            <span title={`繰り返し: ${describeRrule(task.rrule, task.due_on ?? today)}`} aria-label="繰り返し" data-repeat>
+            <span title={t("tasks.board.repeatTitle", { rule: describeRrule(task.rrule, task.due_on ?? today) })} aria-label={t("tasks.repeat")} data-repeat>
               <Repeat size={12} />
             </span>
           )}
           {progress && (
             <span
               data-subtasks={`${progress.done}/${progress.total}`}
-              title={`サブタスク ${progress.done}/${progress.total}`}
+              title={`${t("tasks.subtasks")} ${progress.done}/${progress.total}`}
               className={cn("inline-flex items-center gap-0.5 tabular-nums", progress.done === progress.total && "text-success")}
             >
               <CheckSquare size={12} /> {progress.done}/{progress.total}
             </span>
           )}
           {task.notes && (
-            <span title="メモあり" aria-label="メモあり" data-has-notes>
+            <span title={t("tasks.board.hasNotes")} aria-label={t("tasks.board.hasNotes")} data-has-notes>
               <StickyNote size={12} />
             </span>
           )}
           {source.kind === "link" && onOpenMessage && (
             <button
               type="button"
-              title="元のメッセージを開く"
-              aria-label="元のメッセージを開く"
+              title={t("tasks.board.openMessage")}
+              aria-label={t("tasks.board.openMessage")}
               className="rounded p-0.5 hover:bg-ink/6 hover:text-ink"
               onClick={(e) => {
                 e.stopPropagation();
@@ -197,8 +198,8 @@ export function TaskCard({ controller, task, today, onOpen, onOpenMessage, menu,
           {canvasSource.kind === "link" && (
             <button
               type="button"
-              title="元のキャンバスを開く"
-              aria-label="元のキャンバスを開く"
+              title={t("tasks.board.openCanvas")}
+              aria-label={t("tasks.board.openCanvas")}
               data-canvas-source
               className="rounded p-0.5 hover:bg-ink/6 hover:text-ink"
               onClick={(e) => {
@@ -228,7 +229,7 @@ export function dropSlot(container: HTMLElement, clientY: number): number {
 }
 
 /** 「＋ 追加」: a title field at the bottom of a column; Enter adds and keeps it open for the next one, Esc closes it. */
-export function InlineAdd({ label = "追加", placeholder = "題名を入力して Enter", onAdd }: { label?: string; placeholder?: string; onAdd: (title: string) => Promise<boolean> }) {
+export function InlineAdd({ label = t("common.add"), placeholder = t("tasks.board.inlinePlaceholder"), onAdd }: { label?: string; placeholder?: string; onAdd: (title: string) => Promise<boolean> }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -275,7 +276,7 @@ export function InlineAdd({ label = "追加", placeholder = "題名を入力し�
       value={title}
       maxLength={MAX_TASK_TITLE}
       disabled={busy}
-      aria-label="新しいタスクの題名"
+      aria-label={t("tasks.board.newTaskTitle")}
       placeholder={placeholder}
       className="w-full rounded-lg border border-accent bg-canvas px-2.5 py-1.5 text-sm text-ink outline-none ring-2 ring-accent/30 placeholder:text-muted"
       onChange={(e) => setTitle(e.target.value)}
@@ -306,8 +307,8 @@ function CardMenu({ task, column, current, columns, canEdit, onMove, onDelete }:
       <MenuTrigger asChild>
         <button
           type="button"
-          aria-label={`「${task.title}」の操作`}
-          title="操作"
+          aria-label={t("tasks.board.cardActions", { title: task.title })}
+          title={t("tasks.board.actions")}
           className="-mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted opacity-60 hover:bg-ink/6 hover:text-ink group-hover/card:opacity-100 focus-visible:opacity-100"
         >
           <MoreHorizontal size={15} />
@@ -316,22 +317,22 @@ function CardMenu({ task, column, current, columns, canEdit, onMove, onDelete }:
       <MenuContent align="end" className="min-w-40">
         {canEdit && (
           <>
-            <MenuLabel>移動</MenuLabel>
+            <MenuLabel>{t("tasks.board.move")}</MenuLabel>
             {columns.map((target) => (
               <MenuItem key={target.id} disabled={target.id === current.id} onSelect={() => onMove(target, { after_id: null, before_id: null })}>
                 {target.name}
-                {target.id === current.id && <span className="ml-auto text-xs text-muted">いまここ</span>}
+                {target.id === current.id && <span className="ml-auto text-xs text-muted">{t("tasks.board.here")}</span>}
               </MenuItem>
             ))}
             <MenuSeparator />
-            <MenuItem disabled={!up} onSelect={() => up && onMove(current, up)}>上へ</MenuItem>
-            <MenuItem disabled={!down} onSelect={() => down && onMove(current, down)}>下へ</MenuItem>
+            <MenuItem disabled={!up} onSelect={() => up && onMove(current, up)}>{t("common.moveUp")}</MenuItem>
+            <MenuItem disabled={!down} onSelect={() => down && onMove(current, down)}>{t("common.moveDown")}</MenuItem>
           </>
         )}
         {task.can_delete && (
           <>
             {canEdit && <MenuSeparator />}
-            <MenuItem className="text-danger" onSelect={onDelete}>削除</MenuItem>
+            <MenuItem className="text-danger" onSelect={onDelete}>{t("common.delete")}</MenuItem>
           </>
         )}
       </MenuContent>
@@ -344,10 +345,10 @@ export function DeleteTaskConfirm({ controller, task, onClose }: { controller: A
   const hub = controller.engine?.tasks ?? null;
   const [busy, setBusy] = useState(false);
   return (
-    <Modal onClose={onClose} title="このタスクを削除しますか？" className="w-[420px]">
-      <p className="mt-2 break-words text-sm text-muted">「{task.title}」</p>
+    <Modal onClose={onClose} title={t("tasks.dialog.deleteTask")} className="w-[420px]">
+      <p className="mt-2 break-words text-sm text-muted">{t("common.quoted", { text: task.title })}</p>
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>キャンセル</Button>
+        <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
         <Button
           variant="danger"
           disabled={busy || !hub}
@@ -360,7 +361,7 @@ export function DeleteTaskConfirm({ controller, task, onClose }: { controller: A
             });
           }}
         >
-          削除する
+          {t("common.deleteConfirm")}
         </Button>
       </div>
     </Modal>
@@ -368,12 +369,12 @@ export function DeleteTaskConfirm({ controller, task, onClose }: { controller: A
 }
 
 function boardNote(state: string | undefined, channel: ChannelState, canEdit: boolean): string | null {
-  if (state === "unsupported") return "このサーバはタスクに対応していません";
-  if (state === "failed") return "タスクを読み込めませんでした。再接続すると読み直します";
+  if (state === "unsupported") return t("tasks.unsupported");
+  if (state === "failed") return t("tasks.board.loadFailed");
   if (canEdit) return null;
-  if (channel.archived) return "アーカイブされたチャンネルのタスクは変更できません";
+  if (channel.archived) return t("tasks.board.archived");
   if (!channel.isMember) return null;
-  return "このボードを変更できるのは、チャンネルのオーナーと管理者だけです";
+  return t("tasks.board.ownersOnly");
 }
 
 /** A channel's board (its 「タスク」 tab). */
@@ -442,12 +443,12 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" aria-label="タスク">
+    <div className="flex min-h-0 flex-1 flex-col" aria-label={t("nav.tasks")}>
       {note && <div className="border-b border-line bg-warning/10 px-4 py-1.5 text-xs text-muted">{note}</div>}
       {canEdit && (
         <div className="flex shrink-0 justify-end px-3 pt-2">
-          <Button variant="secondary" size="sm" onClick={() => setAddingDeadline(true)} aria-label="締切を追加">
-            <AlarmClock size={14} /> 締切を追加
+          <Button variant="secondary" size="sm" onClick={() => setAddingDeadline(true)} aria-label={t("tasks.dialog.addDeadline")}>
+            <AlarmClock size={14} /> {t("tasks.dialog.addDeadline")}
           </Button>
         </div>
       )}
@@ -500,7 +501,7 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
                   dropOn(target, dropSlot(e.currentTarget, e.clientY));
                 }}
               >
-                {board?.state === "loading" && column.length === 0 && <p className="px-1 py-2 text-xs text-muted">読み込み中…</p>}
+                {board?.state === "loading" && column.length === 0 && <p className="px-1 py-2 text-xs text-muted">{t("common.loading")}</p>}
                 {column.map((task, i) => (
                   <div key={task.id} className="contents">
                     {showIndicator(i) && <div data-drop-indicator aria-hidden className="-my-1 h-0.5 shrink-0 rounded-full bg-accent" />}
@@ -526,11 +527,11 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
                   </div>
                 ))}
                 {showIndicator(column.length) && <div data-drop-indicator aria-hidden className="-mt-1 h-0.5 shrink-0 rounded-full bg-accent" />}
-                {board?.state === "ready" && column.length === 0 && !drop && !canEdit && <p className="px-1 py-2 text-center text-xs text-muted/80">なし</p>}
+                {board?.state === "ready" && column.length === 0 && !drop && !canEdit && <p className="px-1 py-2 text-center text-xs text-muted/80">{t("workflow.none")}</p>}
                 {/* Right under the last card (Trello), inside the column's scroll. */}
                 {doneLimit && (
                   <button type="button" className="w-full shrink-0 rounded-md px-2 py-1 text-left text-xs font-medium text-accent hover:underline" onClick={() => void hub?.openBoard(channel.id, true)}>
-                    完了をすべて表示
+                    {t("tasks.board.showAllDone")}
                   </button>
                 )}
                 {canEdit && <div className="shrink-0 pb-1"><InlineAdd onAdd={(title) => add(target, title)} /></div>}
@@ -545,7 +546,7 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
               className="flex w-full items-center gap-1 rounded-xl border border-dashed border-line px-3 py-2 text-left text-sm text-muted hover:bg-ink/6 hover:text-ink"
               onClick={() => setColumnDialog({ mode: "add" })}
             >
-              <Plus size={14} /> 列を追加
+              <Plus size={14} /> {t("tasks.board.addColumn")}
             </button>
           </div>
         )}
@@ -562,12 +563,12 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
         />
       )}
       {deleting && hub && (
-        <Modal onClose={() => setDeleting(null)} title={`列「${deleting.name}」を削除しますか？`} className="w-[420px]">
+        <Modal onClose={() => setDeleting(null)} title={t("tasks.board.deleteColumnTitle", { name: deleting.name })} className="w-[420px]">
           <p className="mt-2 text-sm text-muted">
-            この列のカードは「{builtinFor(boardColumns, deleting.status)?.name ?? statusLabel("task", deleting.status)}」へ移ります (状態は変わりません)。
+            {t("tasks.board.deleteColumnNote", { name: builtinFor(boardColumns, deleting.status)?.name ?? statusLabel("task", deleting.status) })}
           </p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setDeleting(null)}>キャンセル</Button>
+            <Button variant="secondary" onClick={() => setDeleting(null)}>{t("common.cancel")}</Button>
             <Button
               variant="danger"
               onClick={() => {
@@ -576,7 +577,7 @@ export function ChannelTasks({ controller, channel, onOpenMessage }: {
                 void hub.removeColumn(channel.id, column.id).catch((err: unknown) => controller.setError(err));
               }}
             >
-              削除する
+              {t("common.deleteConfirm")}
             </Button>
           </div>
         </Modal>
@@ -611,21 +612,21 @@ function ColumnMenu({ column, columns, onRename, onMove, onDelete }: {
       <MenuTrigger asChild>
         <button
           type="button"
-          aria-label={`列「${column.name}」の操作`}
-          title="列の操作"
+          aria-label={t("tasks.board.columnActions", { name: column.name })}
+          title={t("tasks.board.columnActionsShort")}
           className="ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md font-normal text-muted opacity-60 hover:bg-ink/6 hover:text-ink group-hover/col:opacity-100 focus-visible:opacity-100"
         >
           <MoreHorizontal size={15} />
         </button>
       </MenuTrigger>
       <MenuContent align="end" className="min-w-40">
-        <MenuItem onSelect={onRename}>名前を変更</MenuItem>
-        <MenuItem disabled={!left} onSelect={() => onMove(-1)}>左へ</MenuItem>
-        <MenuItem disabled={!right} onSelect={() => onMove(1)}>右へ</MenuItem>
+        <MenuItem onSelect={onRename}>{t("channel.rename")}</MenuItem>
+        <MenuItem disabled={!left} onSelect={() => onMove(-1)}>{t("tasks.board.left")}</MenuItem>
+        <MenuItem disabled={!right} onSelect={() => onMove(1)}>{t("tasks.board.right")}</MenuItem>
         {!column.builtin && (
           <>
             <MenuSeparator />
-            <MenuItem className="text-danger" onSelect={onDelete}>列を削除</MenuItem>
+            <MenuItem className="text-danger" onSelect={onDelete}>{t("tasks.board.deleteColumn")}</MenuItem>
           </>
         )}
       </MenuContent>
@@ -660,7 +661,7 @@ function ColumnDialog({ mode, column, onClose, onSave }: {
     }
   };
   return (
-    <Modal onClose={onClose} title={mode === "add" ? "列を追加" : "列の名前を変更"} className="w-[420px]">
+    <Modal onClose={onClose} title={mode === "add" ? t("tasks.board.addColumn") : t("tasks.board.renameColumn")} className="w-[420px]">
       <form
         className="mt-4 space-y-3"
         onSubmit={(e) => {
@@ -668,13 +669,13 @@ function ColumnDialog({ mode, column, onClose, onSave }: {
           void save();
         }}
       >
-        <Field label="名前">
-          <Input autoFocus value={name} maxLength={MAX_COLUMN_NAME} placeholder="レビュー待ち" onChange={(e) => { setName(e.target.value); setError(null); }} />
+        <Field label={t("reservations.name")}>
+          <Input autoFocus value={name} maxLength={MAX_COLUMN_NAME} placeholder={t("tasks.board.columnPlaceholder")} onChange={(e) => { setName(e.target.value); setError(null); }} />
         </Field>
         {mode === "add" && (
           <div className="space-y-1">
-            <span className="text-xs font-medium text-muted">種類</span>
-            <div role="radiogroup" aria-label="種類" className="space-y-1 text-sm">
+            <span className="text-xs font-medium text-muted">{t("tasks.kind")}</span>
+            <div role="radiogroup" aria-label={t("tasks.kind")} className="space-y-1 text-sm">
               {TASK_STATUSES.map((s) => (
                 <label key={s} className="flex cursor-pointer items-center gap-2">
                   <input type="radio" name="column-kind" className="accent-[var(--accent)]" checked={status === s} onChange={() => setStatus(s)} />
@@ -686,8 +687,8 @@ function ColumnDialog({ mode, column, onClose, onSave }: {
         )}
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
-          <Button variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" disabled={busy || !!problem}>{mode === "add" ? "追加" : "保存"}</Button>
+          <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" disabled={busy || !!problem}>{mode === "add" ? t("common.add") : t("common.save")}</Button>
         </div>
       </form>
     </Modal>

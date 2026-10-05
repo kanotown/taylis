@@ -3,6 +3,7 @@
  * Encoding happens on send, decoding when a message is opened for editing.
  */
 import type { GroupOut, UserPublic } from "../api/types";
+import { t } from "../i18n";
 
 export interface MentionCandidate {
   username: string;
@@ -50,9 +51,9 @@ export function mentionsToNames(text: string, users: Map<string, UserPublic>, gr
   return text
     .replace(USER_TOKEN, (whole: string, id: string) => {
       const user = users.get(id);
-      return user ? `@${user.display_name}` : "@メンバー";
+      return user ? `@${user.display_name}` : `@${t("mentions.member")}`;
     })
-    .replace(GROUP_TOKEN, (whole: string, id: string) => `@${groups.get(id)?.name ?? "グループ"}`)
+    .replace(GROUP_TOKEN, (whole: string, id: string) => `@${groups.get(id)?.name ?? t("composer.group")}`)
     .replace(ALL_TOKEN, "@$1");
 }
 
@@ -76,10 +77,10 @@ export function mentionCandidates(query: string, users: UserPublic[], groups: Gr
   const teams: MentionCandidate[] = groups
     .filter((g) => g.name.toLowerCase().startsWith(q) || (g.description ?? "").toLowerCase().includes(q))
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((g) => ({ username: g.name, label: `グループ · ${g.member_ids.length} 人${g.description ? ` · ${g.description}` : ""}`, kind: "group" }));
+    .map((g) => ({ username: g.name, label: `${t("composer.group")} · ${t("common.people", { count: g.member_ids.length })}${g.description ? ` · ${g.description}` : ""}`, kind: "group" }));
   const special: MentionCandidate[] = [
-    { username: "channel", label: "全員に通知", kind: "all" as const },
-    { username: "here", label: "全員に通知", kind: "all" as const },
+    { username: "channel", label: t("mentions.everyone"), kind: "all" as const },
+    { username: "here", label: t("mentions.everyone"), kind: "all" as const },
   ].filter((c) => c.username.startsWith(q));
   return [...people, ...teams, ...special].slice(0, limit);
 }

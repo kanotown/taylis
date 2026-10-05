@@ -8730,6 +8730,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Locale */
+            locale?: ("ja" | "en" | "zh-Hans") | null;
             /** Must Change Password */
             must_change_password: boolean;
             /** Nav Items */
@@ -8830,6 +8832,8 @@ export interface components {
             dnd_until?: string | null;
             /** Email */
             email?: string | null;
+            /** Locale */
+            locale?: ("ja" | "en" | "zh-Hans") | null;
             /** Nav Items */
             nav_items?: components["schemas"]["NavItem"][] | null;
             /** Notification Default */

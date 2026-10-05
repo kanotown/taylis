@@ -7,7 +7,7 @@ import type { TemplateOut } from "../src/api/types";
 import { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { Composer } from "../src/ui/Composer";
-import { SCHEDULE_USAGE } from "../src/ui/templates";
+import { scheduleUsage } from "../src/ui/templates";
 import { FakeServer } from "./fakeServer";
 
 beforeEach(() => {
@@ -158,7 +158,7 @@ describe("/日程 (M30; a scheduling poll since M53)", () => {
     await w.sendKey();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(w.send).not.toHaveBeenCalled();
-    expect(w.setError).toHaveBeenCalledWith(SCHEDULE_USAGE);
+    expect(w.setError).toHaveBeenCalledWith(scheduleUsage());
     expect(w.box().value).toBe("/日程 ゼミ 10/1 10/2 午後");
   });
 

@@ -13,6 +13,7 @@ import { today as todayKey } from "./calendarDates";
 import { cn } from "./primitives";
 import { TaskDialog } from "./TaskDialog";
 import { taskChip } from "./tasks";
+import { t } from "../i18n";
 
 const TONES = {
   open: "border-line bg-panel text-ink hover:border-accent/50",
@@ -49,7 +50,7 @@ export function MessageTaskChips({ controller, tasks, readOnly = false }: { cont
               data-tone={chip.tone}
               disabled={readOnly}
               aria-busy={loading === task.id || undefined}
-              title={readOnly ? chip.text : `${chip.text} (詳細を開く)`}
+              title={readOnly ? chip.text : t("chips.openDetails", { text: chip.text })}
               className={cn("inline-flex h-6 max-w-full items-center gap-1 rounded-full border px-2 text-xs transition-colors disabled:cursor-default", TONES[chip.tone])}
               onClick={() => void show(task.id)}
             >

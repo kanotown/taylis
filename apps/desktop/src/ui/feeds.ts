@@ -2,23 +2,24 @@
 import { ApiError, describeError } from "../api/errors";
 import type { FeedOut } from "../api/types";
 import type { ChannelState } from "../sync/types";
+import { t } from "../i18n";
 
 /** Why a fetch failed (FeedOut.last_error_code, or details.reason of 422 feed_invalid), in words. */
 export const FEED_REASONS: Readonly<Record<string, string>> = {
-  not_a_feed: "RSS / Atom のフィードではありません",
-  unsafe_xml: "安全でない XML (エンティティの宣言) を含みます",
-  http_error: "サイトがエラーを返しました",
-  too_large: "大きすぎます (2 MB まで)",
-  timeout: "サイトが応答しません",
-  dns_failed: "ホストが見つかりません",
-  network: "サイトに接続できません",
-  too_many_redirects: "リダイレクトが多すぎます",
-  url_not_allowed: "この URL には接続できません",
+  get not_a_feed() { return t("feeds.reason.notAFeed"); },
+  get unsafe_xml() { return t("feeds.reason.unsafeXml"); },
+  get http_error() { return t("feeds.reason.httpError"); },
+  get too_large() { return t("feeds.reason.tooLarge"); },
+  get timeout() { return t("feeds.reason.timeout"); },
+  get dns_failed() { return t("feeds.reason.dnsFailed"); },
+  get network() { return t("feeds.reason.network"); },
+  get too_many_redirects() { return t("feeds.reason.tooManyRedirects"); },
+  get url_not_allowed() { return t("feeds.reason.urlNotAllowed"); },
 };
 
 export function feedReason(code: string | null | undefined): string {
   if (!code) return "";
-  return FEED_REASONS[code] ?? "読み込めませんでした";
+  return FEED_REASONS[code] ?? t("common.loadFailed");
 }
 
 /** The add form's error: the Japanese message, and for 422 feed_invalid the reason too. */
@@ -51,19 +52,19 @@ export function feedState(feed: FeedOut): FeedState {
 export function feedStatusLine(feed: FeedOut, when: (iso: string) => string): string {
   if (feed.last_error_code) {
     const raw = feed.last_error && feed.last_error !== feed.last_error_code ? ` (${feed.last_error})` : "";
-    const count = feed.consecutive_failures > 1 ? ` · ${feed.consecutive_failures} 回続けて失敗` : "";
-    return `取得に失敗: ${feedReason(feed.last_error_code)}${raw}${count}`;
+    const count = feed.consecutive_failures > 1 ? t("feeds.failuresInRow", { count: feed.consecutive_failures }) : "";
+    return t("feeds.fetchFailed", { reason: feedReason(feed.last_error_code) }) + raw + count;
   }
-  const parts = [feed.last_fetched_at ? `最終取得 ${when(feed.last_fetched_at)}` : "まだ取得していません"];
-  if (feed.post_count > 0) parts.push(`投稿 ${feed.post_count} 件`);
+  const parts = [feed.last_fetched_at ? t("feeds.lastFetched", { at: when(feed.last_fetched_at) }) : t("feeds.notFetched")];
+  if (feed.post_count > 0) parts.push(t("feeds.posts", { count: feed.post_count }));
   return parts.join(" · ");
 }
 
 /** The URL as typed, trimmed; http(s) only (the server checks the rest). */
 export function feedUrlProblem(url: string): string | null {
   const value = url.trim();
-  if (!value) return "URL を入力してください";
-  if (!/^https?:\/\/[^\s/]+/i.test(value)) return "http:// か https:// で始まる URL を入力してください";
-  if (value.length > 2048) return "URL が長すぎます";
+  if (!value) return t("feeds.check.empty");
+  if (!/^https?:\/\/[^\s/]+/i.test(value)) return t("feeds.check.scheme");
+  if (value.length > 2048) return t("feeds.check.tooLong");
   return null;
 }
