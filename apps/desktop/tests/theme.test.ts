@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { applyPalette, applySidebarTone, applyTheme, DEFAULT_PALETTE, PALETTES, paletteLabel, readPalette, readSidebarTone, readTheme, SIDEBAR_TONES, themeLabel, writePalette, writeSidebarTone, writeTheme } from "../src/ui/theme";
+import { applyFont, applyPalette, applySidebarTone, applyTheme, DEFAULT_PALETTE, FONT_OPTIONS, readFont, writeFont, PALETTES, paletteLabel, readPalette, readSidebarTone, readTheme, SIDEBAR_TONES, themeLabel, writePalette, writeSidebarTone, writeTheme } from "../src/ui/theme";
 
 const css = readFileSync(resolve(__dirname, "../src/styles.css"), "utf8");
 
@@ -12,6 +12,30 @@ afterEach(() => {
   delete document.documentElement.dataset["theme"];
   delete document.documentElement.dataset["palette"];
   delete document.documentElement.dataset["sidebar"];
+  delete document.documentElement.dataset["font"];
+});
+
+describe("「フォント」 (2026-10-05)", () => {
+  it("defaults to the bundled Noto Sans JP and keeps 「システムのフォント」 on this device (<html data-font>)", () => {
+    expect(readFont()).toBe("noto");
+    writeFont("system");
+    expect(readFont()).toBe("system");
+    expect(document.documentElement.dataset["font"]).toBe("system");
+    expect(localStorage.getItem("chikuwa.prefs.font")).toBe("system");
+    writeFont("noto");
+    expect(localStorage.getItem("chikuwa.prefs.font")).toBeNull();
+    expect(document.documentElement.dataset["font"]).toBeUndefined();
+    applyFont("system");
+    expect(document.documentElement.dataset["font"]).toBe("system");
+    expect(FONT_OPTIONS.map(([, label]) => label)).toEqual(["Noto Sans JP", "システムのフォント"]);
+  });
+
+  it("the stylesheet puts Noto Sans JP Variable first, the system's fonts after, and drops it for data-font=system", () => {
+    expect(css).toContain('--font-ui: "Noto Sans JP Variable", var(--font-system);');
+    expect(css).toContain(':root[data-font="system"] { --font-ui: var(--font-system); }');
+    expect(css).toMatch(/--font-system: -apple-system, [^;]*"Hiragino Sans"[^;]*sans-serif;/);
+    expect(css).toContain("font-family: var(--font-ui);");
+  });
 });
 
 describe("「表示」 (M40)", () => {
