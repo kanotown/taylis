@@ -260,6 +260,34 @@ export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
   return blocks;
 }
 
+/** How a paragraph block is drawn (apps/shared/body-paragraphs.json, the same in the three clients). */
+export interface ParagraphLayout {
+  /** Blank lines before / after it: a paragraph gap there, separating it from the block before / after. */
+  gapBefore: boolean;
+  gapAfter: boolean;
+  /** The runs of lines between blank lines; empty when the paragraph is only blank lines (then it is one gap). */
+  groups: Token[][][];
+}
+
+/**
+ * 2026-10-05: one newline is a line break; one or more blank lines are a paragraph gap (about 0.4 of a line) rather
+ * than empty lines, several blank lines collapsing into one gap (as in Slack and markdown). A line of spaces is blank.
+ */
+export function paragraphLayout(lines: Token[][]): ParagraphLayout {
+  const blank = (tokens: Token[]) => tokens.every((token) => token.kind === "text" && token.text.trim() === "");
+  const groups: Token[][][] = [];
+  let current: Token[][] = [];
+  for (const row of lines) {
+    if (blank(row)) {
+      if (current.length > 0) groups.push(current);
+      current = [];
+    } else current.push(row);
+  }
+  if (current.length > 0) groups.push(current);
+  if (groups.length === 0) return { gapBefore: false, gapAfter: false, groups };
+  return { gapBefore: blank(lines[0]!), gapAfter: blank(lines[lines.length - 1]!), groups };
+}
+
 /** One-line plain text for notifications and previews: markers removed, newlines collapsed. */
 export function plainText(body: string, maxLength = 200): string {
   const text = body

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { MessageSquareText } from "lucide-react";
 import type { CustomEmojiOut, GroupOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
-import { type Block, parseBlocks, type Token } from "./markdown";
+import { type Block, paragraphLayout, parseBlocks, type Token } from "./markdown";
 import { replaceShortcodes } from "./emoji";
 import { CustomEmojiImage, splitCustomEmoji } from "./customEmoji";
 import { splitKeywords } from "./keywords";
@@ -91,14 +91,20 @@ export function BlockView({ block, users, options }: { block: Block; users: Map<
       // Blank lines at a paragraph's ends separate it from the block before / after (a heading, a list …): a gap
       // there, the same in the timeline and the composer's preview. A trailing blank line drew nothing before (a <br>
       // at a block's end shows no line) while a leading one drew a whole empty line, so "text\n\n# 見出し\n\ntext" put
-      // the heading straight under the text and a full line under it (2026-10-04). Blank lines inside stay lines.
-      const rows = block.lines;
-      let start = 0;
-      let end = rows.length;
-      while (start < end && blankRow(rows[start]!)) start++;
-      while (end > start && blankRow(rows[end - 1]!)) end--;
-      if (start === end) return <div aria-hidden className="h-2.5" />;
-      return <p className={cn("m-0", start > 0 && "mt-2.5", end < rows.length && "mb-2.5")}>{lines(rows.slice(start, end), users, options)}</p>;
+      // the heading straight under the text and a full line under it (2026-10-04). 2026-10-05: blank lines inside are
+      // the same gap (one <p> per run of lines, several blank lines one gap) instead of a whole empty line.
+      const layout = paragraphLayout(block.lines);
+      if (layout.groups.length === 0) return <div aria-hidden className="h-2.5" />;
+      const last = layout.groups.length - 1;
+      return (
+        <>
+          {layout.groups.map((rows, g) => (
+            <p key={g} className={cn("m-0", (g > 0 || layout.gapBefore) && "mt-2.5", g === last && layout.gapAfter && "mb-2.5")}>
+              {lines(rows, users, options)}
+            </p>
+          ))}
+        </>
+      );
     }
     case "quote":
       return <blockquote className="my-1 border-l-[3px] border-line pl-3 text-muted">{lines(block.lines, users, options)}</blockquote>;
@@ -158,10 +164,6 @@ export interface InlineOptions {
   /** M12g: my notification keywords, highlighted where they occur. */
   keywords?: readonly string[];
   groups?: ReadonlyMap<string, GroupOut>;
-}
-
-function blankRow(tokens: Token[]): boolean {
-  return tokens.every((token) => token.kind === "text" && token.text.trim() === "");
 }
 
 function lines(rows: Token[][], users: Map<string, UserPublic>, options: InlineOptions = {}) {

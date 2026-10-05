@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.GroupOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -253,6 +254,29 @@ fun bodyInline(
     return BodyInline(::inline, inlineContent)
 }
 
+/**
+ * 2026-10-05: blank lines are this gap (about 0.4 of a bodyLarge line), not empty lines — between the runs of a
+ * paragraph and at its ends toward the block before / after; several blank lines are one gap
+ * (apps/shared/body-paragraphs.json).
+ */
+private val PARAGRAPH_GAP = 10.dp
+
+@Composable
+private fun ParagraphView(layout: ParagraphLayout, inline: BodyInline) {
+    if (layout.groups.isEmpty()) {
+        Spacer(Modifier.height(PARAGRAPH_GAP)) // only blank lines between two blocks: one gap
+        return
+    }
+    Column(
+        Modifier.padding(top = if (layout.gapBefore) PARAGRAPH_GAP else 0.dp, bottom = if (layout.gapAfter) PARAGRAPH_GAP else 0.dp),
+        verticalArrangement = Arrangement.spacedBy(PARAGRAPH_GAP),
+    ) {
+        for (group in layout.groups) {
+            Text(inline.joined(group), inlineContent = inline.inlineContent, style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
 /** One block of a body (the canvas draws its tasks, images and headings itself, ui/CanvasBody.kt). */
 @Composable
 fun BodyBlockView(block: BodyBlock, inline: BodyInline) {
@@ -268,7 +292,7 @@ fun BodyBlockView(block: BodyBlock, inline: BodyInline) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 2.dp),
         )
-        is BodyBlock.Paragraph -> Text(inline.joined(block.lines), inlineContent = inlineContent, style = MaterialTheme.typography.bodyLarge)
+        is BodyBlock.Paragraph -> ParagraphView(paragraphLayout(block.lines), inline)
         is BodyBlock.Quote -> Row(Modifier.padding(vertical = 2.dp).height(IntrinsicSize.Min)) {
             Box(Modifier.width(3.dp).fillMaxHeight().background(muted.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))
             Spacer(Modifier.width(8.dp))

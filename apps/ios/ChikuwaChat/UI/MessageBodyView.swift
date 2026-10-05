@@ -271,6 +271,36 @@ enum BodyTokenizer {
         }
         return lined
     }
+
+    /// How a paragraph block is drawn (apps/shared/body-paragraphs.json, the same in the three clients).
+    struct ParagraphLayout: Equatable {
+        /// Blank lines before / after it: a paragraph gap there, separating it from the block before / after.
+        let gapBefore: Bool
+        let gapAfter: Bool
+        /// The runs of lines between blank lines; empty when the paragraph is only blank lines (then it is one gap).
+        let groups: [[[BodyToken]]]
+    }
+
+    /// 2026-10-05: one newline is a line break; one or more blank lines are a paragraph gap (about 0.4 of a line) rather
+    /// than empty lines, several blank lines collapsing into one gap (as in Slack and markdown). A line of spaces is blank.
+    static func paragraphLayout(_ lines: [[BodyToken]]) -> ParagraphLayout {
+        func blank(_ tokens: [BodyToken]) -> Bool {
+            tokens.allSatisfy { if case .text(let s) = $0 { return s.trimmingCharacters(in: .whitespaces).isEmpty } else { return false } }
+        }
+        var groups: [[[BodyToken]]] = []
+        var current: [[BodyToken]] = []
+        for row in lines {
+            if blank(row) {
+                if !current.isEmpty { groups.append(current) }
+                current = []
+            } else {
+                current.append(row)
+            }
+        }
+        if !current.isEmpty { groups.append(current) }
+        guard let first = lines.first, let last = lines.last, !groups.isEmpty else { return ParagraphLayout(gapBefore: false, gapAfter: false, groups: []) }
+        return ParagraphLayout(gapBefore: blank(first), gapAfter: blank(last), groups: groups)
+    }
 }
 
 struct MessageBodyView: View {
@@ -372,7 +402,7 @@ struct MessageBodyView: View {
     }
 
     private var blocks: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Self.blockSpacing) {
             ForEach(Array((preparsed ?? BodyTokenizer.parseBlocks(text)).enumerated()), id: \.offset) { _, block in
                 blockView(block)
                     // M38: every block as wide as the row and as tall as its wrapped text at that width. A quote's
@@ -395,7 +425,7 @@ struct MessageBodyView: View {
             inlineText(tokens, emojiHeight: CustomEmoji.headingHeights[min(max(level, 1), 3) - 1])
                 .font(level == 1 ? .title.bold() : level == 2 ? .title2.bold() : .title3.bold())
         case .paragraph(let lines):
-            joined(lines)
+            paragraphView(BodyTokenizer.paragraphLayout(lines))
         case .quote(let lines):
             // The bar is drawn beside the text rather than laid out with it: in an HStack the bar (a shape, as tall as
             // it is offered) took part in sharing the width, and the text was measured for one width and drawn in
@@ -434,6 +464,31 @@ struct MessageBodyView: View {
             }
             .padding(8)
             .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    /// 2026-10-05: blank lines are this gap (about 0.45 of a body line), not empty lines — between the runs of a
+    /// paragraph, and at its ends (with the blocks' own spacing) toward the block before / after; several blank lines
+    /// are one gap (apps/shared/body-paragraphs.json).
+    static let paragraphGap: CGFloat = 10
+    /// The spacing `blocks` puts between any two blocks.
+    static let blockSpacing: CGFloat = 4
+
+    @ViewBuilder
+    private func paragraphView(_ layout: BodyTokenizer.ParagraphLayout) -> some View {
+        if layout.groups.isEmpty {
+            // Only blank lines between two blocks: one gap, counting the spacing on both sides.
+            Color.clear.frame(height: Self.paragraphGap - 2 * Self.blockSpacing)
+        } else {
+            VStack(alignment: .leading, spacing: Self.paragraphGap) {
+                ForEach(Array(layout.groups.enumerated()), id: \.offset) { _, group in
+                    joined(group)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.top, layout.gapBefore ? Self.paragraphGap - Self.blockSpacing : 0)
+            .padding(.bottom, layout.gapAfter ? Self.paragraphGap - Self.blockSpacing : 0)
         }
     }
 
