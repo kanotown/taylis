@@ -587,6 +587,8 @@ struct AttachmentOut: Codable, Equatable, Identifiable {
     var hasPoster: Bool = false
     /// M79: a video's length; nil when the server does not know it (or is older).
     var durationMs: Int? = nil
+    /// M108 (docs/PREVIEWS.md): a PDF's or Office file's preview; nil without one (or from an older server).
+    var preview: AttachmentPreviewOut? = nil
 
     /// A picture: it has a thumbnail. A video with one (its poster) stays a video (M38).
     var isImage: Bool { hasThumbnail && !isVideo }
@@ -610,7 +612,20 @@ extension AttachmentOut {
         createdAt = try c.decode(String.self, forKey: .createdAt)
         hasPoster = try c.decodeIfPresent(Bool.self, forKey: .hasPoster) ?? false
         durationMs = try c.decodeIfPresent(Int.self, forKey: .durationMs)
+        preview = try c.decodeIfPresent(AttachmentPreviewOut.self, forKey: .preview)
     }
+}
+
+/// M108 (docs/PREVIEWS.md §5): `pending` (the card says 「プレビューを作成中…」), `ready` (the first page at
+/// /preview/thumbnail, width × height pixels, every page at /preview/pdf) or `failed` (a plain file row).
+struct AttachmentPreviewOut: Codable, Equatable {
+    let status: String
+    var pages: Int? = nil
+    var width: Int? = nil
+    var height: Int? = nil
+
+    var isPending: Bool { status == "pending" }
+    var isReady: Bool { status == "ready" }
 }
 
 struct MessageOut: Codable, Identifiable, Equatable {
