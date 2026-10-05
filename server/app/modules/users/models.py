@@ -57,6 +57,9 @@ class User(Base):
     # M111: my sidebar items / home tiles in order, [{"key", "visible"}]; NULL = the defaults
     # (apps/shared/nav-items.json).
     nav_items: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
+    # M115: the UI language I chose ("ja" / "en" / "zh-Hans"); NULL = follow each device
+    # (docs/I18N.md). The server writes my errors, pushes and notices in it.
+    locale: Mapped[str | None] = mapped_column(String(16))
     # Profile picture (M14a): the object key and its version (null = initials only).
     avatar_key: Mapped[str | None] = mapped_column(Text)
     avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -12408,6 +12408,22 @@
             "title": "Id",
             "type": "string"
           },
+          "locale": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ja",
+                  "en",
+                  "zh-Hans"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
           "must_change_password": {
             "title": "Must Change Password",
             "type": "boolean"
@@ -12740,6 +12756,22 @@
               }
             ],
             "title": "Email"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ja",
+                  "en",
+                  "zh-Hans"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
           },
           "nav_items": {
             "anyOf": [

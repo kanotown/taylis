@@ -25,7 +25,7 @@ is for its next occurrence and moves on to the following one when it fires (§10
 
 import secrets
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -34,6 +34,7 @@ from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import i18n
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.security import hash_token
 from app.core.time import utcnow
@@ -116,6 +117,11 @@ class AlarmNotice:
     event_id: uuid.UUID
     channel_id: uuid.UUID | None
     body: str
+    # M115: the body in each UI language (body is the ja one).
+    bodies: dict[str, str] = field(default_factory=dict)
+
+    def text(self, locale: str) -> str:
+        return self.bodies.get(locale) or self.body
 
 
 Timing = CalendarEvent | Occurrence
@@ -253,22 +259,24 @@ def _can_edit(actor: User, seen: _Seen) -> bool:
     return seen.event.owner_id == actor.id or seen.role == "owner" or actor.is_admin
 
 
-def notice_text(event: Timing, channel_name: str | None, tz: str, fire_at: datetime) -> str:
+def notice_text(
+    event: Timing, channel_name: str | None, tz: str, fire_at: datetime, locale: str = "ja"
+) -> str:
     """「14:00 ゼミ (#m2-進捗)」, 「終日 学会 (#…)」; 「明日 …」 or 「10/3 …」 when the alarm goes
-    out on an earlier day."""
+    out on an earlier day (in `locale`, M115)."""
     zone = ZoneInfo(tz)
     if event.all_day:
         assert event.start_date is not None
-        day, when = event.start_date, "終日"
+        day, when = event.start_date, i18n.t("calendar.all_day", locale)
     else:
         assert event.starts_at is not None
         local = event.starts_at.astimezone(zone)
         day, when = local.date(), f"{local.hour}:{local.minute:02d}"
     fire_day = fire_at.astimezone(zone).date()
     if day == fire_day + timedelta(days=1):
-        when = f"明日 {when}"
+        when = i18n.t("calendar.tomorrow", locale, when=when)
     elif day != fire_day:
-        when = f"{day.month}/{day.day} {when}"
+        when = i18n.t("calendar.on_day", locale, month=day.month, day=day.day, when=when)
     text = f"{when} {event.title}"
     return f"{text} (#{channel_name})" if channel_name else text
 
@@ -1281,6 +1289,7 @@ async def alarm_notice(
         event_id=event.id,
         channel_id=event.channel_id,
         body=notice_text(timing, name, alarm.tz, when),
+        bodies={lc: notice_text(timing, name, alarm.tz, when, lc) for lc in i18n.LOCALES},
     )
 
 
