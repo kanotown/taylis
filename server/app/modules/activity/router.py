@@ -19,7 +19,8 @@ router = APIRouter(tags=["activity"])
 Include = Query(
     default=[],
     description=(
-        "Extra kinds this client shows (repeat for several): canvas_mention (M76). "
+        "Extra kinds this client shows (repeat for several): canvas_mention (M76), "
+        "reservation (M112). "
         "Unknown values are ignored."
     ),
 )
@@ -36,7 +37,7 @@ async def list_activity(
 ) -> ActivityListOut:
     """Mentions of me, reactions to my messages and replies in threads I follow, newest first
     (M39); with `include=canvas_mention`, canvases that mention me too (M76, under all and
-    mentions)."""
+    mentions); with `include=reservation`, reservation notices (M112, under all)."""
     return await service.list_activity(
         db, user, kind=filter, cursor=cursor, limit=limit, include=include
     )

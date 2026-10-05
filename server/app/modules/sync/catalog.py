@@ -115,7 +115,12 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     task_events.TASK_COLUMNS_UPDATED: (task_events.TaskColumnsUpdatedData, "channel", False),
     reservation_events.RESERVATION_UPDATED: (
         reservation_events.ReservationUpdatedData,
-        "channel",
+        "all",
+        False,
+    ),
+    reservation_events.RESERVATION_NOTICE: (
+        reservation_events.ReservationNoticeData,
+        "user",
         False,
     ),
     scheduled_events.SCHEDULED_UPDATED: (scheduled_events.ScheduledUpdatedData, "user", False),

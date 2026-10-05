@@ -166,7 +166,8 @@
               "mention",
               "reaction",
               "thread_reply",
-              "canvas_mention"
+              "canvas_mention",
+              "reservation"
             ],
             "title": "Kind",
             "type": "string"
@@ -175,6 +176,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/MessageOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reservation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivityReservation"
               },
               {
                 "type": "null"
@@ -237,6 +248,86 @@
           "read_at"
         ],
         "title": "ActivityReadIn",
+        "type": "object"
+      },
+      "ActivityReservation": {
+        "description": "A reservation item's notice (M112, docs/RESERVATIONS.md §5): it opens the reservations\npage. An operator's to-do is `done` once one of them handled it (or it is no longer\nneeded).",
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "boolean"
+          },
+          "done_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done At"
+          },
+          "done_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done By"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "operator": {
+            "title": "Operator",
+            "type": "boolean"
+          },
+          "pool_id": {
+            "format": "uuid",
+            "title": "Pool Id",
+            "type": "string"
+          },
+          "pool_name": {
+            "title": "Pool Name",
+            "type": "string"
+          },
+          "reservation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Id"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "pool_id",
+          "pool_name",
+          "reservation_id",
+          "text",
+          "operator",
+          "done",
+          "done_at",
+          "done_by"
+        ],
+        "title": "ActivityReservation",
         "type": "object"
       },
       "ActivitySummaryOut": {
@@ -1878,6 +1969,30 @@
           "file"
         ],
         "title": "Body_upload_workspace_icon_api_v1_admin_workspace_settings_icon_post",
+        "type": "object"
+      },
+      "BookingIn": {
+        "additionalProperties": false,
+        "properties": {
+          "hours": {
+            "description": "1 to the pool's max_hours",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "Hours",
+            "type": "integer"
+          },
+          "start_at": {
+            "description": "On the hour in the pool's zone, from the current hour up to 14 days ahead",
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_at",
+          "hours"
+        ],
+        "title": "BookingIn",
         "type": "object"
       },
       "BookmarkItem": {
@@ -5020,6 +5135,20 @@
         "title": "EmojiPackUpdate",
         "type": "object"
       },
+      "ExtendIn": {
+        "additionalProperties": false,
+        "properties": {
+          "hours": {
+            "default": 1,
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "Hours",
+            "type": "integer"
+          }
+        },
+        "title": "ExtendIn",
+        "type": "object"
+      },
       "FavoriteStateOut": {
         "properties": {
           "channel_id": {
@@ -7753,15 +7882,36 @@
           },
           "grace_minutes": {
             "default": 15,
-            "description": "Notice a holder past the guarantee gets before the operators may take the seat for a waiting member",
+            "description": "Notice a walk-in past the guarantee gets before the operators may take the seat for someone in the queue",
             "maximum": 1440.0,
             "minimum": 0.0,
             "title": "Grace Minutes",
             "type": "integer"
           },
+          "log_channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A channel the 「予約」 bot writes a line in for each change (none: no posts)",
+            "title": "Log Channel Id"
+          },
+          "max_hours": {
+            "default": 6,
+            "description": "The longest booking (hours)",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "Max Hours",
+            "type": "integer"
+          },
           "min_hours": {
             "default": 6,
-            "description": "A holder keeps the seat at least this long from assignment",
+            "description": "Walk-ins (「今すぐ」): a holder keeps the seat at least this long from assignment, or until a booking needs it if that comes first",
             "maximum": 720.0,
             "minimum": 0.0,
             "title": "Min Hours",
@@ -7777,7 +7927,7 @@
             "type": "string"
           },
           "operator_ids": {
-            "description": "Members who hand the seats out (notified, see the requesters' email)",
+            "description": "Members who hand the seats out (get the to-dos, see the members' email)",
             "items": {
               "format": "uuid",
               "type": "string"
@@ -7788,10 +7938,45 @@
           },
           "tz": {
             "default": "Asia/Tokyo",
-            "description": "The zone the bot's posts write times in",
+            "description": "The zone of the booking grid (whole hours) and of the notices' times",
             "maxLength": 64,
             "title": "Tz",
             "type": "string"
+          },
+          "visibility": {
+            "default": "all",
+            "description": "all = every member (not guests); channel / group = that channel's or group's members (the operators and administrators always see it)",
+            "enum": [
+              "all",
+              "channel",
+              "group"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          },
+          "visibility_channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility Channel Id"
+          },
+          "visibility_group_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility Group Id"
           }
         },
         "required": [
@@ -7803,36 +7988,27 @@
       },
       "PoolOut": {
         "properties": {
-          "bot_user_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bot User Id"
+          "bookings": {
+            "description": "Bookings from the start of today (the pool's zone) on, not cancelled: booked, on a seat, or done today",
+            "items": {
+              "$ref": "#/components/schemas/ReservationOut"
+            },
+            "title": "Bookings",
+            "type": "array"
           },
           "can_manage": {
-            "description": "May change the settings (channel owners, admins)",
+            "description": "May change the settings (its creator, administrators)",
             "title": "Can Manage",
             "type": "boolean"
           },
           "can_operate": {
-            "description": "May assign / remove / swap / cancel others (operators, channel owners, admins)",
+            "description": "May assign / remove / swap / cancel others (operators, its creator, administrators)",
             "title": "Can Operate",
             "type": "boolean"
           },
           "capacity": {
             "title": "Capacity",
             "type": "integer"
-          },
-          "channel_id": {
-            "format": "uuid",
-            "title": "Channel Id",
-            "type": "string"
           },
           "created_at": {
             "format": "date-time",
@@ -7848,17 +8024,38 @@
             "type": "integer"
           },
           "holders": {
-            "description": "Holding and returning, earliest first",
+            "description": "On a seat (holding, returning)",
             "items": {
               "$ref": "#/components/schemas/ReservationOut"
             },
             "title": "Holders",
             "type": "array"
           },
+          "horizon_days": {
+            "description": "Bookings reach this many days past today",
+            "title": "Horizon Days",
+            "type": "integer"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "log_channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Channel Id"
+          },
+          "max_hours": {
+            "title": "Max Hours",
+            "type": "integer"
           },
           "min_hours": {
             "title": "Min Hours",
@@ -7874,7 +8071,7 @@
                 "type": "null"
               }
             ],
-            "description": "The caller's active reservation",
+            "description": "The caller's active walk-in request",
             "title": "My Reservation Id"
           },
           "name": {
@@ -7891,7 +8088,7 @@
                 "type": "null"
               }
             ],
-            "description": "The holder whose seat goes next while someone waits (「次に外す」)",
+            "description": "The walk-in whose seat goes next while someone waits (「次に外す」)",
             "title": "Next Evict Id"
           },
           "operator_ids": {
@@ -7900,6 +8097,14 @@
               "type": "string"
             },
             "title": "Operator Ids",
+            "type": "array"
+          },
+          "todos": {
+            "description": "The operators' to-do (empty for the others)",
+            "items": {
+              "$ref": "#/components/schemas/TodoOut"
+            },
+            "title": "Todos",
             "type": "array"
           },
           "tz": {
@@ -7911,8 +8116,41 @@
             "title": "Updated At",
             "type": "string"
           },
+          "visibility": {
+            "enum": [
+              "all",
+              "channel",
+              "group"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          },
+          "visibility_channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility Channel Id"
+          },
+          "visibility_group_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility Group Id"
+          },
           "waiting": {
-            "description": "The queue, in order",
+            "description": "The walk-in queue, in order",
             "items": {
               "$ref": "#/components/schemas/ReservationOut"
             },
@@ -7922,21 +8160,27 @@
         },
         "required": [
           "id",
-          "channel_id",
           "name",
           "capacity",
           "min_hours",
+          "max_hours",
           "grace_minutes",
           "tz",
           "enabled",
           "operator_ids",
-          "bot_user_id",
+          "log_channel_id",
+          "visibility",
+          "visibility_channel_id",
+          "visibility_group_id",
           "holders",
           "waiting",
+          "bookings",
+          "todos",
           "next_evict_id",
           "my_reservation_id",
           "can_manage",
           "can_operate",
+          "horizon_days",
           "created_at",
           "updated_at"
         ],
@@ -7945,7 +8189,7 @@
       },
       "PoolUpdate": {
         "additionalProperties": false,
-        "description": "Changes apply from now on: a changed min_hours counts for the next assignments.",
+        "description": "Changes apply from now on: a changed min_hours counts for the next assignments, a lower\nmax_hours for the next bookings. `log_channel_id`, `visibility_*`: null clears them.",
         "properties": {
           "capacity": {
             "anyOf": [
@@ -7983,6 +8227,31 @@
               }
             ],
             "title": "Grace Minutes"
+          },
+          "log_channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Channel Id"
+          },
+          "max_hours": {
+            "anyOf": [
+              {
+                "maximum": 24.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Hours"
           },
           "min_hours": {
             "anyOf": [
@@ -8037,6 +8306,46 @@
               }
             ],
             "title": "Tz"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "enum": [
+                  "all",
+                  "channel",
+                  "group"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          },
+          "visibility_channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility Channel Id"
+          },
+          "visibility_group_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility Group Id"
           }
         },
         "title": "PoolUpdate",
@@ -8731,6 +9040,11 @@
             ],
             "title": "Assigned At"
           },
+          "can_extend": {
+            "description": "The caller's booking can grow by an hour (the next hour has a seat, within max_hours and the 14 days)",
+            "title": "Can Extend",
+            "type": "boolean"
+          },
           "email": {
             "anyOf": [
               {
@@ -8743,6 +9057,18 @@
             "description": "The member's address, only for those who can operate the pool (to find the account in the resource's own console)",
             "title": "Email"
           },
+          "end_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End At"
+          },
           "evict_at": {
             "anyOf": [
               {
@@ -8753,7 +9079,7 @@
                 "type": "null"
               }
             ],
-            "description": "A holder past the guarantee whom a waiting member needs: when the grace period ends (it was told)",
+            "description": "A walk-in someone needs: when the seat goes (it was told)",
             "title": "Evict At"
           },
           "guarantee_until": {
@@ -8766,12 +9092,20 @@
                 "type": "null"
               }
             ],
-            "description": "assigned_at + the pool's min_hours (fixed at assignment)",
+            "description": "A walk-in: assignment + min_hours, or when a booking needs the seat if sooner; a booking: end_at",
             "title": "Guarantee Until"
           },
           "id": {
             "format": "uuid",
             "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "walkin",
+              "booking"
+            ],
+            "title": "Kind",
             "type": "string"
           },
           "pair_id": {
@@ -8784,7 +9118,7 @@
                 "type": "null"
               }
             ],
-            "description": "The reservation on the other side of a swap (a waiter's holder, a holder's waiter)",
+            "description": "The reservation on the other side of a swap (a claimant's holder, a holder's claimant)",
             "title": "Pair Id"
           },
           "position": {
@@ -8796,11 +9130,11 @@
                 "type": "null"
               }
             ],
-            "description": "A waiting member's place in the queue, from 1",
+            "description": "A waiting walk-in's place in the queue, from 1",
             "title": "Position"
           },
           "ready": {
-            "description": "An operator can act now: a waiter's seat is free (or its holder is ready); a holder is returning or past the grace period",
+            "description": "An operator can act on it now",
             "title": "Ready",
             "type": "boolean"
           },
@@ -8821,11 +9155,26 @@
             ],
             "title": "Returned At"
           },
+          "start_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A booking's slot",
+            "title": "Start At"
+          },
           "status": {
             "enum": [
               "waiting",
+              "booked",
               "holding",
-              "returning"
+              "returning",
+              "done"
             ],
             "title": "Status",
             "type": "string"
@@ -8844,8 +9193,21 @@
                 "type": "null"
               }
             ],
-            "description": "A waiting member: assign = a seat is free; swap = takes pair_id's seat; wait = no seat in sight yet",
+            "description": "A waiting walk-in or a started booking: assign = a seat is free; swap = takes pair_id's seat; wait = no seat in sight yet",
             "title": "Step"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A waiting walk-in with a free seat: a booking needs that seat from then (「〜13:00 まで」); null = the full guarantee",
+            "title": "Until"
           },
           "user_id": {
             "format": "uuid",
@@ -8856,8 +9218,11 @@
         "required": [
           "id",
           "user_id",
+          "kind",
           "status",
           "requested_at",
+          "start_at",
+          "end_at",
           "assigned_at",
           "guarantee_until",
           "returned_at",
@@ -8866,7 +9231,9 @@
           "position",
           "step",
           "pair_id",
-          "ready"
+          "ready",
+          "until",
+          "can_extend"
         ],
         "title": "ReservationOut",
         "type": "object"
@@ -10265,13 +10632,13 @@
         "additionalProperties": false,
         "properties": {
           "assign_id": {
-            "description": "The waiting reservation that gets the seat",
+            "description": "The waiting walk-in or the started booking that gets it",
             "format": "uuid",
             "title": "Assign Id",
             "type": "string"
           },
           "remove_id": {
-            "description": "The holding (or returning) reservation taken out",
+            "description": "The reservation on a seat taken out",
             "format": "uuid",
             "title": "Remove Id",
             "type": "string"
@@ -11698,6 +12065,82 @@
           "next_cursor"
         ],
         "title": "TimesFeedOut",
+        "type": "object"
+      },
+      "TodoOut": {
+        "description": "Something an operator does in the resource's console, then presses here.",
+        "properties": {
+          "action": {
+            "enum": [
+              "assign",
+              "swap",
+              "remove"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "assign_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reservation to give a seat (assign, swap)",
+            "title": "Assign Id"
+          },
+          "due_at": {
+            "description": "When it is (or was) due",
+            "format": "date-time",
+            "title": "Due At",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "free",
+              "returned",
+              "booking_ended",
+              "guarantee_over"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "remove_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reservation to take out (remove, swap)",
+            "title": "Remove Id"
+          },
+          "upcoming": {
+            "description": "A booking that starts within 10 minutes: not yet",
+            "title": "Upcoming",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "action",
+          "reason",
+          "assign_id",
+          "remove_id",
+          "due_at",
+          "upcoming"
+        ],
+        "title": "TodoOut",
         "type": "object"
       },
       "TokenResponse": {
@@ -13189,7 +13632,7 @@
   "paths": {
     "/api/v1/activity": {
       "get": {
-        "description": "Mentions of me, reactions to my messages and replies in threads I follow, newest first\n(M39); with `include=canvas_mention`, canvases that mention me too (M76, under all and\nmentions).",
+        "description": "Mentions of me, reactions to my messages and replies in threads I follow, newest first\n(M39); with `include=canvas_mention`, canvases that mention me too (M76, under all and\nmentions); with `include=reservation`, reservation notices (M112, under all).",
         "operationId": "list_activity_api_v1_activity_get",
         "parameters": [
           {
@@ -13238,13 +13681,13 @@
             }
           },
           {
-            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
             "in": "query",
             "name": "include",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
               "items": {
                 "type": "string"
               },
@@ -13292,13 +13735,13 @@
         "operationId": "mark_activity_read_api_v1_activity_read_put",
         "parameters": [
           {
-            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
             "in": "query",
             "name": "include",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
               "items": {
                 "type": "string"
               },
@@ -13356,13 +13799,13 @@
         "operationId": "activity_summary_api_v1_activity_summary_get",
         "parameters": [
           {
-            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
             "in": "query",
             "name": "include",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76). Unknown values are ignored.",
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
               "items": {
                 "type": "string"
               },
@@ -19507,8 +19950,9 @@
     },
     "/api/v1/channels/{channel_id}/reservation-pools": {
       "get": {
-        "description": "The channel's pools, oldest first, with their holders and queue.",
-        "operationId": "list_pools_api_v1_channels__channel_id__reservation_pools_get",
+        "deprecated": true,
+        "description": "Deprecated (M112): pools are no longer a channel's. Always empty, so the clients of\nM99-M111 show no chips; the reservations page reads GET /reservation-pools.",
+        "operationId": "list_channel_pools_api_v1_channels__channel_id__reservation_pools_get",
         "parameters": [
           {
             "in": "path",
@@ -19529,7 +19973,7 @@
                   "items": {
                     "$ref": "#/components/schemas/PoolOut"
                   },
-                  "title": "Response List Pools Api V1 Channels  Channel Id  Reservation Pools Get",
+                  "title": "Response List Channel Pools Api V1 Channels  Channel Id  Reservation Pools Get",
                   "type": "array"
                 }
               }
@@ -19552,64 +19996,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "List Pools",
-        "tags": [
-          "reservations"
-        ]
-      },
-      "post": {
-        "description": "A new pool (channel owners and administrators who are members; at most 5 per channel,\n409 too_many_reservation_pools). The channel's reservation bot joins with the first one.",
-        "operationId": "create_pool_api_v1_channels__channel_id__reservation_pools_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "channel_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Channel Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PoolCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PoolOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Create Pool",
+        "summary": "List Channel Pools",
         "tags": [
           "reservations"
         ]
@@ -23092,9 +23479,85 @@
         ]
       }
     },
+    "/api/v1/reservation-pools": {
+      "get": {
+        "description": "The pools the caller sees, oldest first, with today's and the coming bookings, the queue,\nthe holders and (for operators) the to-do.",
+        "operationId": "list_pools_api_v1_reservation_pools_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PoolOut"
+                  },
+                  "title": "Response List Pools Api V1 Reservation Pools Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Pools",
+        "tags": [
+          "reservations"
+        ]
+      },
+      "post": {
+        "description": "A new pool (administrators; at most 20, 409 too_many_reservation_pools). With a\n`log_channel_id` (a channel the caller is a member of) the 「予約」 bot joins it.",
+        "operationId": "create_pool_api_v1_reservation_pools_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Pool",
+        "tags": [
+          "reservations"
+        ]
+      }
+    },
     "/api/v1/reservation-pools/{pool_id}": {
       "delete": {
-        "description": "The pool and its queue go; the bot's posts stay. Seats handed out in the resource's\nconsole are not touched there.",
+        "description": "The pool, its bookings, its queue and its notices go; log lines stay. Seats handed out in\nthe resource's console are not touched there.",
         "operationId": "delete_pool_api_v1_reservation_pools__pool_id__delete",
         "parameters": [
           {
@@ -23129,6 +23592,52 @@
           }
         ],
         "summary": "Delete Pool",
+        "tags": [
+          "reservations"
+        ]
+      },
+      "get": {
+        "operationId": "get_pool_api_v1_reservation_pools__pool_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Pool",
         "tags": [
           "reservations"
         ]
@@ -23190,9 +23699,68 @@
         ]
       }
     },
+    "/api/v1/reservation-pools/{pool_id}/bookings": {
+      "post": {
+        "description": "A booking: on the hour, 1 h to max_hours, from the current hour to 14 days ahead.\n400 reservation_booking_invalid (details.reason grid / past / horizon / duration), 409\nreservation_slot_full (details.at: the first full hour), too_many_bookings (two at a time),\nreservation_overlap (one of mine at that time). The same slot again: no change.",
+        "operationId": "book_api_v1_reservation_pools__pool_id__bookings_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Book",
+        "tags": [
+          "reservations"
+        ]
+      }
+    },
     "/api/v1/reservation-pools/{pool_id}/reserve": {
       "post": {
-        "description": "「予約する」: join the queue (members, not guests). Already in it or holding a seat: no\nchange. 409 reservation_pool_disabled while the pool is paused.",
+        "description": "「今すぐ (順番待ち)」: join the walk-in queue (members, not guests). Already in it or on a\nseat: no change. 409 reservation_pool_disabled while the pool is paused.",
         "operationId": "reserve_api_v1_reservation_pools__pool_id__reserve_post",
         "parameters": [
           {
@@ -23300,7 +23868,7 @@
     },
     "/api/v1/reservations/{reservation_id}/assign": {
       "post": {
-        "description": "「割り当てた」 (operators): the member got a seat; their guarantee starts now. 409\nreservation_pool_full when every seat is taken.",
+        "description": "「割り当てた」 (operators): the member got a seat. A walk-in's guarantee starts now; a\nbooking's runs to its end (from 10 minutes before its start, else 409\nreservation_too_early). 409 reservation_pool_full when every seat is taken.",
         "operationId": "assign_api_v1_reservations__reservation_id__assign_post",
         "parameters": [
           {
@@ -23349,7 +23917,7 @@
     },
     "/api/v1/reservations/{reservation_id}/cancel": {
       "post": {
-        "description": "「取り消す」: a waiting request (its member, or an operator).",
+        "description": "「取り消す」: a waiting walk-in or a booking not on a seat yet (its member, or an\noperator).",
         "operationId": "cancel_api_v1_reservations__reservation_id__cancel_post",
         "parameters": [
           {
@@ -23391,6 +23959,65 @@
           }
         ],
         "summary": "Cancel",
+        "tags": [
+          "reservations"
+        ]
+      }
+    },
+    "/api/v1/reservations/{reservation_id}/extend": {
+      "post": {
+        "description": "「延長」: a booking (booked or on a seat) grows by `hours` if they have a seat (the booker or\nan operator). 409 reservation_slot_full, 400 reservation_booking_invalid.",
+        "operationId": "extend_api_v1_reservations__reservation_id__extend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reservation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Reservation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtendIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Extend",
         "tags": [
           "reservations"
         ]

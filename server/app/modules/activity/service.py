@@ -18,15 +18,23 @@ from app.modules.activity.schemas import (
     ActivityItem,
     ActivityListOut,
     ActivityReadData,
+    ActivityReservation,
     ActivitySummaryOut,
 )
 from app.modules.messages.service import messages_out
+from app.modules.reservations import repository as reservations_repo
 from app.modules.users.models import User
 
 
 def _item_key(item: ActivityItem) -> tuple[datetime, str, str]:
     """Newest first; ties in a fixed order (kind, then the message or the canvas item)."""
-    ref = item.message.id if item.message else item.canvas.item_id if item.canvas else ""
+    ref: object = ""
+    if item.message:
+        ref = item.message.id
+    elif item.canvas:
+        ref = item.canvas.item_id
+    elif item.reservation:
+        ref = item.reservation.item_id
     return item.at, item.kind, str(ref)
 
 
@@ -58,6 +66,28 @@ async def list_activity(
                         rev_id=row.rev_id,
                     ),
                     actor_ids=[row.actor_id],
+                )
+            )
+    if "reservation" in include and kind == "all":
+        for notice, pool_name in await reservations_repo.notices_for(
+            db, actor.id, before=cursor, limit=limit
+        ):
+            items.append(
+                ActivityItem(
+                    kind="reservation",
+                    at=notice.at,
+                    reservation=ActivityReservation(
+                        item_id=notice.id,
+                        pool_id=notice.pool_id,
+                        pool_name=pool_name,
+                        reservation_id=notice.reservation_id,
+                        text=notice.text,
+                        operator=notice.operator,
+                        done=notice.done_at is not None,
+                        done_at=notice.done_at,
+                        done_by=notice.done_by,
+                    ),
+                    actor_ids=[],
                 )
             )
     if kind in ("all", "mentions"):
@@ -111,7 +141,11 @@ async def summary(
     db: AsyncSession, actor: User, include: Collection[str] = ()
 ) -> ActivitySummaryOut:
     count, mention = await repo.unread(
-        db, actor.id, actor.activity_read_at, canvas="canvas_mention" in include
+        db,
+        actor.id,
+        actor.activity_read_at,
+        canvas="canvas_mention" in include,
+        reservation="reservation" in include,
     )
     return ActivitySummaryOut(
         read_at=actor.activity_read_at, unread_count=count, mention_unread=mention

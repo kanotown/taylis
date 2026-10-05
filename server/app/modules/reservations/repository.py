@@ -1,15 +1,18 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.channels.models import Channel
+from app.modules.groups.models import UserGroupMember
 from app.modules.reservations.models import (
     ACTIVE_STATUSES,
     Reservation,
     ReservationBot,
+    ReservationNotice,
     ReservationPool,
 )
+from app.modules.users.models import User
 
 
 async def get_pool(
@@ -23,22 +26,11 @@ async def get_pool(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def pools_for_channel(db: AsyncSession, channel_id: uuid.UUID) -> list[ReservationPool]:
-    stmt = (
-        select(ReservationPool)
-        .where(ReservationPool.channel_id == channel_id)
-        .order_by(ReservationPool.created_at.asc(), ReservationPool.id.asc())
+async def all_pools(db: AsyncSession) -> list[ReservationPool]:
+    stmt = select(ReservationPool).order_by(
+        ReservationPool.created_at.asc(), ReservationPool.id.asc()
     )
     return list((await db.execute(stmt)).scalars().all())
-
-
-async def count_for_channel(db: AsyncSession, channel_id: uuid.UUID) -> int:
-    stmt = (
-        select(func.count())
-        .select_from(ReservationPool)
-        .where(ReservationPool.channel_id == channel_id)
-    )
-    return int((await db.execute(stmt)).scalar_one())
 
 
 async def get_reservation(db: AsyncSession, reservation_id: uuid.UUID) -> Reservation | None:
@@ -51,7 +43,7 @@ async def get_reservation(db: AsyncSession, reservation_id: uuid.UUID) -> Reserv
 
 
 async def active_rows(db: AsyncSession, pool_ids: list[uuid.UUID]) -> list[Reservation]:
-    """The pools' requests in the queue or holding a seat (fresh from the database)."""
+    """The pools' requests in the queue, booked or on a seat (fresh from the database)."""
     if not pool_ids:
         return []
     stmt = (
@@ -63,28 +55,102 @@ async def active_rows(db: AsyncSession, pool_ids: list[uuid.UUID]) -> list[Reser
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def done_bookings_since(
+    db: AsyncSession, pool_ids: list[uuid.UUID], since: datetime
+) -> list[Reservation]:
+    """Bookings that were used and ended after `since` (today's timeline)."""
+    if not pool_ids:
+        return []
+    stmt = (
+        select(Reservation)
+        .where(
+            Reservation.pool_id.in_(pool_ids),
+            Reservation.kind == "booking",
+            Reservation.status == "done",
+            Reservation.end_reason.in_(("returned", "removed")),
+            Reservation.end_at > since,
+        )
+        .order_by(Reservation.start_at.asc(), Reservation.id.asc())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def bot_row(db: AsyncSession, channel_id: uuid.UUID) -> ReservationBot | None:
     stmt = select(ReservationBot).where(ReservationBot.channel_id == channel_id)
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
 async def pools_to_watch(db: AsyncSession) -> list[uuid.UUID]:
-    """Pools where time may change something: someone waits, or a holder was told they go."""
-    busy = (
-        select(Reservation.pool_id)
-        .where(
-            or_(
-                Reservation.status == "waiting",
-                Reservation.evict_notice_at.is_not(None)
-                & Reservation.status.in_(("holding", "returning")),
-            )
-        )
-        .distinct()
-    )
+    """Pools where time may change something: anyone waiting, booked or on a seat."""
+    busy = select(Reservation.pool_id).where(Reservation.status.in_(ACTIVE_STATUSES)).distinct()
     stmt = (
-        select(ReservationPool.id)
-        .join(Channel, Channel.id == ReservationPool.channel_id)
-        .where(ReservationPool.id.in_(busy), Channel.archived_at.is_(None))
-        .order_by(ReservationPool.id)
+        select(ReservationPool.id).where(ReservationPool.id.in_(busy)).order_by(ReservationPool.id)
     )
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def group_member_ids(db: AsyncSession, group_id: uuid.UUID) -> set[uuid.UUID]:
+    stmt = select(UserGroupMember.user_id).where(UserGroupMember.group_id == group_id)
+    return set((await db.execute(stmt)).scalars().all())
+
+
+async def admin_ids(db: AsyncSession) -> list[uuid.UUID]:
+    stmt = (
+        select(User.id)
+        .where(User.role == "admin", User.deactivated_at.is_(None))
+        .order_by(User.created_at.asc())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def notice(db: AsyncSession, user_id: uuid.UUID, key: str) -> ReservationNotice | None:
+    stmt = select(ReservationNotice).where(
+        ReservationNotice.user_id == user_id, ReservationNotice.key == key
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def operator_notice_keys(db: AsyncSession, pool_id: uuid.UUID) -> set[str]:
+    """Every to-do key the pool's operators were ever told of (open or done)."""
+    stmt = (
+        select(ReservationNotice.key)
+        .where(ReservationNotice.pool_id == pool_id, ReservationNotice.operator.is_(True))
+        .distinct()
+    )
+    return set((await db.execute(stmt)).scalars().all())
+
+
+async def open_operator_notices(db: AsyncSession, pool_id: uuid.UUID) -> list[ReservationNotice]:
+    stmt = select(ReservationNotice).where(
+        ReservationNotice.pool_id == pool_id,
+        ReservationNotice.operator.is_(True),
+        ReservationNotice.done_at.is_(None),
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+def _mine(user_id: uuid.UUID):  # type: ignore[no-untyped-def]
+    return (
+        select(ReservationNotice, ReservationPool.name)
+        .join(ReservationPool, ReservationPool.id == ReservationNotice.pool_id)
+        .where(ReservationNotice.user_id == user_id)
+    )
+
+
+async def notices_for(
+    db: AsyncSession, user_id: uuid.UUID, *, before: datetime | None, limit: int
+) -> list[tuple[ReservationNotice, str]]:
+    """The activity items of kind reservation, newest first, with the pool's name."""
+    stmt = _mine(user_id).order_by(ReservationNotice.at.desc()).limit(limit)
+    if before is not None:
+        stmt = stmt.where(ReservationNotice.at < before)
+    return [(row[0], row[1]) for row in (await db.execute(stmt)).all()]
+
+
+def unread_notices(user_id: uuid.UUID, since: datetime):  # type: ignore[no-untyped-def]
+    """Not done, after the read position."""
+    return select(ReservationNotice.id).where(
+        ReservationNotice.user_id == user_id,
+        ReservationNotice.at > since,
+        ReservationNotice.done_at.is_(None),
+    )
