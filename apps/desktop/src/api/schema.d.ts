@@ -3982,6 +3982,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{user_id}/avatar/signed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Signed Avatar
+         * @description The picture without a session, for a message push's signed URL (PUSH_NOTIFICATIONS.md §16).
+         *
+         *     Only with this server's signature for exactly this user and picture version, before its
+         *     expiry; anything else (a bad or expired signature, a newer or removed picture) is 404.
+         */
+        get: operations["get_signed_avatar_api_v1_users__user_id__avatar_signed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{user_id}/block": {
         parameters: {
             query?: never;
@@ -17386,6 +17409,41 @@ export interface operations {
     get_avatar_api_v1_users__user_id__avatar_get: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_signed_avatar_api_v1_users__user_id__avatar_signed_get: {
+        parameters: {
+            query: {
+                v: string;
+                exp: number;
+                sig: string;
+            };
             header?: never;
             path: {
                 user_id: string;
