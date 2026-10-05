@@ -63,7 +63,7 @@ export function HomeView(props: HomeViewProps) {
   const me = store.me ?? controller.me;
   const meId = me?.id ?? null;
   const channels = [...store.channels.values()];
-  const sections = homeSections(channels, (c) => channelTitle(c, controller), { gatherUnread, favorites: store.favorites, sections: store.sidebarSections, meId });
+  const sections = homeSections(channels, { gatherUnread, favorites: store.favorites, sections: store.sidebarSections, meId });
   const [folded, toggleFolded] = useFoldedDefaults();
   const [confirmReadAll, setConfirmReadAll] = useState(false);
   const [newSection, setNewSection] = useState(false);

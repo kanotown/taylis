@@ -12,12 +12,12 @@ describe("favorites and read-all (M12a)", () => {
     store.upsertChannel({ ...base, id: "g", type: "public", name: "general" } as never, { isMember: true });
     store.upsertChannel({ ...base, id: "r", type: "public", name: "random" } as never, { isMember: true });
     store.upsertChannel({ ...base, id: "d", type: "dm", name: null, dm_user_ids: ["u1", "u2"] } as never, { isMember: true });
-    const title = (c: { id: string }) => c.id;
-    const plain = sectionChannels([...store.channels.values()], title);
+    const plain = sectionChannels([...store.channels.values()]);
     expect(plain.favorites).toEqual([]);
     expect(plain.channels.map((c) => c.id)).toEqual(["g", "r"]);
-    const starred = sectionChannels([...store.channels.values()], title, { favorites: new Set(["r", "d"]) });
-    expect(starred.favorites.map((c) => c.id)).toEqual(["d", "r"]);
+    const starred = sectionChannels([...store.channels.values()], { favorites: new Set(["r", "d"]) });
+    // Channels by name, then DMs (apps/shared/sidebar-order.json).
+    expect(starred.favorites.map((c) => c.id)).toEqual(["r", "d"]);
     expect(starred.channels.map((c) => c.id)).toEqual(["g"]);
     expect(starred.dms).toEqual([]);
   });

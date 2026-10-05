@@ -159,34 +159,67 @@ export interface ChannelSections {
   browse: ChannelState[];
 }
 
+/**
+ * The name order of the sidebar (DATA_MODEL.md sidebar_sections 「セクションの中の並び順」, apps/shared/sidebar-order.json): the
+ * key is the name after NFKC, A-Z lower-cased and katakana folded to hiragana, compared by UTF-16 code unit as on iOS and
+ * Android (no locale collation: localeCompare and the phones' collators disagree).
+ */
+export function nameSortKey(name: string): string {
+  let key = "";
+  for (const ch of name.normalize("NFKC")) {
+    const code = ch.codePointAt(0) ?? 0;
+    key += code >= 0x41 && code <= 0x5a ? String.fromCharCode(code + 0x20) : code >= 0x30a1 && code <= 0x30f6 ? String.fromCharCode(code - 0x60) : ch;
+  }
+  return key;
+}
+
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** Two names by [nameSortKey], equal keys by the raw names. */
+export function compareNames(a: string, b: string): number {
+  return byCodeUnit(nameSortKey(a), nameSortKey(b)) || byCodeUnit(a, b);
+}
+
+type Sortable = Pick<ChannelState, "id" | "name" | "type" | "last_message_at" | "created_at">;
+
+/** Channels by name, then by id. */
+export function compareByName(a: Pick<Sortable, "id" | "name">, b: Pick<Sortable, "id" | "name">): number {
+  return compareNames(a.name ?? "", b.name ?? "") || byCodeUnit(a.id, b.id);
+}
+
+/** DMs newest first: the last message, else when the DM was made (the server's text), then by id. */
+export function compareNewest(a: Pick<Sortable, "id" | "last_message_at" | "created_at">, b: Pick<Sortable, "id" | "last_message_at" | "created_at">): number {
+  return byCodeUnit(b.last_message_at ?? b.created_at ?? "", a.last_message_at ?? a.created_at ?? "") || byCodeUnit(a.id, b.id);
+}
+
+/** Favorites and my own sections: their channels by name, then their DMs newest first. */
+export function sectionOrder<T extends Sortable>(rows: readonly T[]): T[] {
+  const dm = (row: T) => row.type === "dm" || row.type === "group_dm";
+  return [...rows.filter((row) => !dm(row)).sort(compareByName), ...rows.filter(dm).sort(compareNewest)];
+}
+
 /** The sidebar order: channels by name, DMs by recency (my own DM first), joinable public channels by name. */
 export function sectionChannels(
   all: ChannelState[],
-  title: (channel: ChannelState) => string,
   options: { unreadOnly?: boolean; currentId?: string | null; now?: Date; favorites?: ReadonlySet<string>; sections?: readonly SidebarSectionOut[]; meId?: string | null } = {},
 ): ChannelSections {
   const meId = options.meId ?? null;
-  const byTitle = (a: ChannelState, b: ChannelState) => title(a).localeCompare(title(b), "ja");
-  const byRecency = (a: ChannelState, b: ChannelState) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "");
-  const selfFirst = (a: ChannelState, b: ChannelState) => Number(isSelfNotes(b, meId)) - Number(isSelfNotes(a, meId)) || byRecency(a, b);
+  const selfFirst = (a: ChannelState, b: ChannelState) => Number(isSelfNotes(b, meId)) - Number(isSelfNotes(a, meId)) || compareNewest(a, b);
   const keep = (channel: ChannelState) => !options.unreadOnly || channel.id === options.currentId || hasUnread(channel, meId, options.now);
   const isTimes = (channel: ChannelState) => !!channel.times_owner_id;
-  const mineFirst = (a: ChannelState, b: ChannelState) => Number(b.times_owner_id === meId) - Number(a.times_owner_id === meId) || byTitle(a, b);
+  const mineFirst = (a: ChannelState, b: ChannelState) => Number(b.times_owner_id === meId) - Number(a.times_owner_id === meId) || compareByName(a, b);
   const starred = (channel: ChannelState) => options.favorites?.has(channel.id) ?? false;
   const placed = new Map<string, string>();
   for (const section of options.sections ?? []) for (const id of section.channel_ids) placed.set(id, section.id);
   const loose = (channel: ChannelState) => !starred(channel) && !placed.has(channel.id);
   const visible = (channel: ChannelState) => channel.isMember && !channel.archived && keep(channel);
   return {
-    favorites: all.filter((c) => visible(c) && starred(c)).sort(byTitle),
-    custom: (options.sections ?? []).map((section) => {
-      const members = all.filter((c) => visible(c) && !starred(c) && placed.get(c.id) === section.id);
-      return { section, channels: [...members.filter((c) => !isDmChannel(c)).sort(byTitle), ...members.filter(isDmChannel).sort(byRecency)] };
-    }),
-    channels: all.filter((c) => visible(c) && !isDmChannel(c) && !isTimes(c) && loose(c)).sort(byTitle),
+    favorites: sectionOrder(all.filter((c) => visible(c) && starred(c))),
+    custom: (options.sections ?? []).map((section) => ({ section, channels: sectionOrder(all.filter((c) => visible(c) && !starred(c) && placed.get(c.id) === section.id)) })),
+    channels: all.filter((c) => visible(c) && !isDmChannel(c) && !isTimes(c) && loose(c)).sort(compareByName),
     times: all.filter((c) => visible(c) && isTimes(c) && loose(c)).sort(mineFirst),
     dms: all.filter((c) => c.isMember && isDmChannel(c) && keep(c) && loose(c)).sort(selfFirst),
-    browse: options.unreadOnly ? [] : all.filter((c) => !c.isMember && c.type === "public" && !c.archived).sort(byTitle),
+    browse: options.unreadOnly ? [] : all.filter((c) => !c.isMember && c.type === "public" && !c.archived).sort(compareByName),
   };
 }
 

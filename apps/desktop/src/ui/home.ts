@@ -127,11 +127,10 @@ export interface HomeSections {
 
 export function homeSections(
   all: ChannelState[],
-  title: (channel: ChannelState) => string,
   options: { gatherUnread?: boolean; favorites?: ReadonlySet<string>; sections?: readonly SidebarSectionOut[]; meId?: string | null; now?: Date } = {},
 ): HomeSections {
   const meId = options.meId ?? null;
-  const base = sectionChannels(all, title, { favorites: options.favorites, sections: options.sections, meId, now: options.now });
+  const base = sectionChannels(all, { favorites: options.favorites, sections: options.sections, meId, now: options.now });
   const unread: ChannelState[] = [];
   const pick = (list: ChannelState[]) => {
     if (!options.gatherUnread) return list;

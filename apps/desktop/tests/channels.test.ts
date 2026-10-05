@@ -61,11 +61,11 @@ describe("sidebar unread rules", () => {
       channel("dm", { type: "dm", unreadCount: 0, last_message_at: "2026-09-26T00:00:00Z" }),
       channel("public", { isMember: false }),
     ];
-    const sections = sectionChannels(all, (c) => c.name ?? "", { unreadOnly: true, currentId: "general", now });
+    const sections = sectionChannels(all, { unreadOnly: true, currentId: "general", now });
     expect(sections.channels.map((c) => c.id)).toEqual(["general", "random"]);
     expect(sections.dms).toEqual([]);
     expect(sections.browse).toEqual([]);
-    expect(sectionChannels(all, (c) => c.name ?? "", { now }).browse.map((c) => c.id)).toEqual(["public"]);
+    expect(sectionChannels(all, { now }).browse.map((c) => c.id)).toEqual(["public"]);
   });
 
   it("steps through channels and through unread channels with wrap-around", () => {
@@ -101,7 +101,7 @@ describe("custom sidebar sections (M14f)", () => {
       { id: "s1", name: "プロジェクト", position: 0, channel_ids: ["gamma", "d1", "beta"], collapsed: false },
       { id: "s2", name: "空", position: 1, channel_ids: [], collapsed: false },
     ];
-    const result = sectionChannels(all, (c) => c.name ?? "", { sections, favorites: new Set(["beta"]) });
+    const result = sectionChannels(all, { sections, favorites: new Set(["beta"]) });
     expect(result.favorites.map((c) => c.id)).toEqual(["beta"]);
     expect(result.custom.map((g) => [g.section.name, g.channels.map((c) => c.id)])).toEqual([["プロジェクト", ["gamma", "d1"]], ["空", []]]);
     expect(result.channels.map((c) => c.id)).toEqual(["alpha"]);
@@ -153,14 +153,14 @@ describe("my own DM in the home list (a DM with only me)", () => {
   ];
 
   it("comes first in 「ダイレクトメッセージ」, then the others by recency", () => {
-    expect(sectionChannels(all, (c) => c.id, { meId: "me", now }).dms.map((c) => c.id)).toEqual(["notes", "group", "alice", "bob"]);
+    expect(sectionChannels(all, { meId: "me", now }).dms.map((c) => c.id)).toEqual(["notes", "group", "alice", "bob"]);
     // Nobody signed in: no DM is mine, recency only.
-    expect(sectionChannels(all, (c) => c.id, { now }).dms.map((c) => c.id)).toEqual(["group", "alice", "notes", "bob"]);
+    expect(sectionChannels(all, { now }).dms.map((c) => c.id)).toEqual(["group", "alice", "notes", "bob"]);
     // Unread only: it stays out unless unread (or open), like any row.
-    expect(sectionChannels(all, (c) => c.id, { meId: "me", now, unreadOnly: true }).dms.map((c) => c.id)).toEqual(["group"]);
-    expect(sectionChannels(all, (c) => c.id, { meId: "me", now, unreadOnly: true, currentId: "notes" }).dms.map((c) => c.id)).toEqual(["notes", "group"]);
+    expect(sectionChannels(all, { meId: "me", now, unreadOnly: true }).dms.map((c) => c.id)).toEqual(["group"]);
+    expect(sectionChannels(all, { meId: "me", now, unreadOnly: true, currentId: "notes" }).dms.map((c) => c.id)).toEqual(["notes", "group"]);
     // Starred: only among the favorites.
-    const starred = sectionChannels(all, (c) => c.id, { meId: "me", now, favorites: new Set(["notes"]) });
+    const starred = sectionChannels(all, { meId: "me", now, favorites: new Set(["notes"]) });
     expect(starred.favorites.map((c) => c.id)).toEqual(["notes"]);
     expect(starred.dms.map((c) => c.id)).toEqual(["group", "alice", "bob"]);
   });
@@ -215,11 +215,11 @@ describe("unread rules (§10.5, M24 quiet unread)", () => {
       channel("times-me", { name: "times-me", times_owner_id: "me" }),
       channel("times-amy", { name: "times-amy", times_owner_id: "amy", unreadCount: 3 }),
     ];
-    const sections = sectionChannels(all, (c) => c.name ?? "", { meId: "me", now });
+    const sections = sectionChannels(all, { meId: "me", now });
     expect(sections.channels.map((c) => c.id)).toEqual(["general"]);
     expect(sections.times.map((c) => c.id)).toEqual(["times-me", "times-amy", "times-zed"]);
     // Quiet unread stays out of the unread filter.
-    expect(sectionChannels(all, (c) => c.name ?? "", { meId: "me", now, unreadOnly: true }).times).toEqual([]);
+    expect(sectionChannels(all, { meId: "me", now, unreadOnly: true }).times).toEqual([]);
   });
 });
 

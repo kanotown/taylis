@@ -117,10 +117,10 @@ describe("home sections", () => {
 
   it("「未読をまとめる」: unread conversations (DMs too) move into 「未読」, out of their own sections", () => {
     const list = [channel("a"), channel("b", { unreadCount: 1, mentionCount: 1 }), channel("fav", { unreadCount: 3 }), dm("d1", ["u1"], { unreadCount: 1, last_message_at: at(1) }), dm("d2", ["u2"], { last_message_at: at(2) })];
-    const off = homeSections(list, title, { meId: ME, favorites: new Set(["fav"]) });
+    const off = homeSections(list, { meId: ME, favorites: new Set(["fav"]) });
     expect(off.unread).toEqual([]);
     expect(off.channels.map((c) => c.id)).toEqual(["a", "b"]);
-    const on = homeSections(list, title, { meId: ME, favorites: new Set(["fav"]), gatherUnread: true });
+    const on = homeSections(list, { meId: ME, favorites: new Set(["fav"]), gatherUnread: true });
     expect(on.unread.map((c) => c.id)).toEqual(["d1", "fav", "b"]); // newest first (the channels have no message time here)
     expect(on.favorites).toEqual([]);
     expect(on.channels.map((c) => c.id)).toEqual(["a"]);
@@ -130,10 +130,10 @@ describe("home sections", () => {
   it("DMs: my own first, then the 5 newest (and an older unread one); 「すべての DM」 when there are more", () => {
     const self = channel("self", { type: "dm", name: null, dm_user_ids: [ME], last_message_at: at(0) });
     const others = Array.from({ length: 7 }, (_, i) => dm(`d${i}`, [`u${i}`], { last_message_at: at(10 + i), unreadCount: i === 0 ? 1 : 0 }));
-    const sections = homeSections([self, ...others], title, { meId: ME });
+    const sections = homeSections([self, ...others], { meId: ME });
     expect(sections.dms.map((c) => c.id)).toEqual(["self", "d6", "d5", "d4", "d3", "d2", "d0"]);
     expect(sections.moreDms).toBe(true);
-    expect(homeSections([self, ...others.slice(0, 5)], title, { meId: ME }).moreDms).toBe(false);
+    expect(homeSections([self, ...others.slice(0, 5)], { meId: ME }).moreDms).toBe(false);
   });
 });
 
