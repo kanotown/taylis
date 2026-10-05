@@ -41,6 +41,7 @@ import { attachmentText, plainText } from "../ui/markdown";
 import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
 import { readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
+import type { NavItem } from "../ui/navItems";
 
 export type Screen = "boot" | "login" | "change_password" | "main";
 
@@ -1236,6 +1237,19 @@ export class AppController {
     this.store.setMe({ ...before, quick_reactions: list });
     const ok = await this.updateProfile({ quick_reactions: list });
     if (!ok && this.store.me?.quick_reactions === list) this.store.setMe({ ...this.store.me, quick_reactions: before.quick_reactions ?? null });
+    return ok;
+  }
+
+  /**
+   * M111: 「サイドバーの項目」 (users.nav_items, apps/shared/nav-items.json), null = back to the defaults. Shown at once; a
+   * refused or failed save puts the previous list back. My other devices follow as with the quick reactions (user.updated).
+   */
+  async setNavItems(list: NavItem[] | null): Promise<boolean> {
+    const before = this.store.me;
+    if (!this.api || !before) return false;
+    this.store.setMe({ ...before, nav_items: list });
+    const ok = await this.updateProfile({ nav_items: list });
+    if (!ok && this.store.me?.nav_items === list) this.store.setMe({ ...this.store.me, nav_items: before.nav_items ?? null });
     return ok;
   }
 
