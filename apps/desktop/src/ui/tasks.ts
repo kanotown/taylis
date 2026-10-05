@@ -10,11 +10,12 @@ import { clock, type DayKey, dayKey, isoLocal, parseDay, today as todayKey } fro
 import { noRepeat, type RepeatDraft, repeatProblem, repeatToRrule, ruleChanged, rruleToRepeat } from "./calendarRecurrence";
 import { attachmentText, plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
+import { t } from "../i18n";
 
 export const TASK_STATUSES: readonly TaskStatus[] = ["todo", "doing", "done"];
-export const STATUS_LABELS: Readonly<Record<TaskStatus, string>> = { todo: "未着手", doing: "進行中", done: "完了" };
+export const STATUS_LABELS: Readonly<Record<TaskStatus, string>> = { get todo() { return t("tasks.status.todo"); }, get doing() { return t("tasks.status.doing"); }, get done() { return t("tasks.status.done"); } };
 /** L9 (REVIEWS.md §2.2): a review request's states. */
-export const REVIEW_STATUS_LABELS: Readonly<Record<TaskStatus, string>> = { todo: "依頼中", doing: "対応中", done: "完了" };
+export const REVIEW_STATUS_LABELS: Readonly<Record<TaskStatus, string>> = { get todo() { return t("tasks.reviewStatus.todo"); }, get doing() { return t("tasks.reviewStatus.doing"); }, get done() { return t("tasks.status.done"); } };
 export type TaskKind = TaskOut["kind"];
 
 /** A status in the words of the task's kind (a review request: 依頼中 / 対応中 / 完了). */
@@ -55,7 +56,7 @@ export const MAX_SUBTASKS = 50;
  * The three built-in columns before the server's answer, or from a server before M81 (no GET /tasks/columns). Their
  * ids are the statuses: a move into one sends the status alone.
  */
-export const FALLBACK_COLUMNS: readonly BoardColumn[] = TASK_STATUSES.map((status, i) => ({ id: status, name: STATUS_LABELS[status], status, builtin: true, position: i + 1 }));
+export const FALLBACK_COLUMNS: readonly BoardColumn[] = TASK_STATUSES.map((status, i) => ({ id: status, get name() { return STATUS_LABELS[status]; }, status, builtin: true, position: i + 1 }));
 
 /** Whether a board's columns are the fallback ones (ids = statuses: moves send the status alone). */
 export function isFallbackColumns(columns: readonly BoardColumn[]): boolean {
@@ -89,12 +90,12 @@ export function builtinFor(columns: readonly BoardColumn[], status: TaskStatus):
 }
 
 /** What the 「種類」 of a new column says (a column of a status). */
-export const COLUMN_KIND_LABELS: Readonly<Record<TaskStatus, string>> = { todo: "未着手 (まだ始めていない)", doing: "進行中", done: "完了 (カードは完了になる)" };
+export const COLUMN_KIND_LABELS: Readonly<Record<TaskStatus, string>> = { get todo() { return t("tasks.columnKind.todo"); }, get doing() { return t("tasks.status.doing"); }, get done() { return t("tasks.columnKind.done"); } };
 
 export function columnNameProblem(name: string): string | null {
   const cleaned = cleanTitle(name);
-  if (!cleaned) return "列の名前を入れてください";
-  if (cleaned.length > MAX_COLUMN_NAME) return `列の名前は ${MAX_COLUMN_NAME} 文字までです`;
+  if (!cleaned) return t("tasks.check.columnName");
+  if (cleaned.length > MAX_COLUMN_NAME) return t("tasks.check.columnNameTooLong", { max: MAX_COLUMN_NAME });
   return null;
 }
 
@@ -229,7 +230,7 @@ export function dueText(task: Pick<TaskOut, "due_on"> & { due_at?: string | null
 
 /** A card's due date: 「今日」, else M/D (with the year when not this year's). */
 export function dueLabel(dueOn: string, today: DayKey): string {
-  if (dueOn === today) return "今日";
+  if (dueOn === today) return t("common.today");
   const date = parseDay(dueOn);
   const md = `${date.getMonth() + 1}/${date.getDate()}`;
   return dueOn.slice(0, 4) === today.slice(0, 4) ? md : `${date.getFullYear()}/${md}`;
@@ -284,7 +285,7 @@ export function canEditTask(task: Pick<TaskOut, "channel_id">, channel: ChannelS
  * 「自分のタスク」. `dmTitle` names a DM from the store; without it (or the DM unknown) a DM's task says 「DM」.
  */
 export function taskPlace(task: Pick<TaskOut, "channel_id" | "channel_name">, dmTitle?: (channelId: string) => string | null): string {
-  if (task.channel_id === null) return "自分のタスク";
+  if (task.channel_id === null) return t("tasks.myTasks");
   if (task.channel_name) return `#${task.channel_name}`;
   return dmTitle?.(task.channel_id) ?? "DM";
 }
@@ -347,13 +348,13 @@ export type TaskChipTone = "open" | "overdue" | "done";
  * Done is grey, an open one past its due date red.
  */
 export function taskChip(task: MessageTaskOut, nameOf: (userId: string) => string | null, today: DayKey): { text: string; tone: TaskChipTone } {
-  const parts = [task.kind === "review" ? "レビュー依頼" : "タスク"];
+  const parts = [task.kind === "review" ? t("tasks.review") : t("tasks.task")];
   const names = task.assignee_ids.map((id) => nameOf(id) ?? "?");
-  if (names.length > 0) parts.push(names.length > 2 ? `${names.slice(0, 2).join("、")} 他 ${names.length - 2} 人` : names.join("、"));
+  if (names.length > 0) parts.push(names.length > 2 ? t("tasks.namesAndOthers", { names: names.slice(0, 2).join(t("common.listSeparator")), count: names.length - 2 }) : names.join(t("common.listSeparator")));
   parts.push(statusLabel(task.kind, task.status));
   if (task.due_on && task.status !== "done") {
     const due = dueText(task, today);
-    parts.push(due === "今日" ? "今日まで" : `${due} まで`);
+    parts.push(due === t("common.today") ? t("tasks.dueToday") : t("tasks.dueBy", { due }));
   }
   const tone: TaskChipTone = task.status === "done" ? "done" : isOverdue(task, today) ? "overdue" : "open";
   return { text: parts.join(" · "), tone };
@@ -446,18 +447,18 @@ export function cleanTitle(title: string): string {
 
 export function taskDraftProblem(draft: TaskDraft, kind: TaskKind = "task"): string | null {
   const title = cleanTitle(draft.title);
-  if (!title) return "題名を入れてください";
+  if (!title) return t("tasks.check.title");
   // M85: a deadline has a date (and never repeats: the dialog offers no 「繰り返し」).
-  if (kind === "deadline" && !draft.dueOn) return "締切の日付を入れてください";
-  if (title.length > MAX_TASK_TITLE) return `題名は ${MAX_TASK_TITLE} 文字までです`;
-  if (draft.notes.length > MAX_TASK_NOTES) return `メモは ${MAX_TASK_NOTES} 文字までです`;
+  if (kind === "deadline" && !draft.dueOn) return t("tasks.check.deadlineDate");
+  if (title.length > MAX_TASK_TITLE) return t("tasks.check.titleTooLong", { max: MAX_TASK_TITLE });
+  if (draft.notes.length > MAX_TASK_NOTES) return t("tasks.check.notesTooLong", { max: MAX_TASK_NOTES });
   if (draft.repeat && draft.repeat.kind !== "none") {
-    if (!draft.dueOn) return "繰り返すには期限を入れてください";
+    if (!draft.dueOn) return t("tasks.check.repeatNeedsDue");
     const problem = repeatProblem(draft.repeat, draft.dueOn);
     if (problem) return problem;
   }
-  if (subtasksBody(draft.subtasks).length > MAX_SUBTASKS) return `サブタスクは ${MAX_SUBTASKS} 個までです`;
-  if ((draft.subtasks ?? []).some((i) => cleanTitle(i.title).length > MAX_TASK_TITLE)) return `サブタスクは ${MAX_TASK_TITLE} 文字までです`;
+  if (subtasksBody(draft.subtasks).length > MAX_SUBTASKS) return t("tasks.check.subtasksMany", { max: MAX_SUBTASKS });
+  if ((draft.subtasks ?? []).some((i) => cleanTitle(i.title).length > MAX_TASK_TITLE)) return t("tasks.check.subtaskTooLong", { max: MAX_TASK_TITLE });
   return null;
 }
 
@@ -595,7 +596,7 @@ export function messageReviewInit(
   users: Map<string, UserPublic>,
   groups: ReadonlyMap<string, GroupOut>,
 ): TaskCreateInit {
-  const prefix = "レビュー: ";
+  const prefix = t("tasks.reviewPrefix");
   const excerpt = plainText(mentionsToNames(message.body, users, groups), MAX_TASK_TITLE - prefix.length) || attachmentText(message.attachments);
   return {
     channelId: message.channel_id,
@@ -655,11 +656,11 @@ export function taskNoticeText(
   const where = (name: string | null | undefined) => (name ? ` (#${name})` : "");
   if (notice.kind === "assigned" || notice.kind === "review_done") {
     const { data } = notice;
-    const what = notice.kind === "review_done" ? "レビューを完了しました" : notice.data.kind === "review" ? "レビューを依頼しました" : "タスクを割り当てました";
-    return { body: `${nameOf(data.by_user_id) ?? "メンバー"} が${what}: ${data.title}${where(data.channel_name)}`, taskId: data.task_id, channelId: data.channel_id };
+    const key = notice.kind === "review_done" ? "tasks.notice.reviewDone" : notice.data.kind === "review" ? "tasks.notice.reviewRequested" : "tasks.notice.assigned";
+    return { body: t(key, { who: nameOf(data.by_user_id) ?? t("common.member"), title: data.title }) + where(data.channel_name), taskId: data.task_id, channelId: data.channel_id };
   }
   const { data } = notice;
   // M81: a due time (the notification went out at it): 「14:00 が期限: …」.
-  const when = data.due_at ? `${clock(data.due_at)} が期限` : "今日が期限";
-  return { body: `${when}: ${data.title}${data.channel_id ? where(data.channel_name) : ""}`, taskId: data.task_id, channelId: data.channel_id };
+  const when = data.due_at ? t("tasks.notice.dueAt", { time: clock(data.due_at) }) : t("tasks.notice.dueToday");
+  return { body: `${when}${t("tasks.notice.colon")}${data.title}${data.channel_id ? where(data.channel_name) : ""}`, taskId: data.task_id, channelId: data.channel_id };
 }
