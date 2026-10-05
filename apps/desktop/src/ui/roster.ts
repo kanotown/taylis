@@ -3,18 +3,19 @@
  * (`GET /lab/roster`) and the phone apps'. Names compare by code point, as on the server, so every client agrees.
  */
 import type { Affiliation, FacultyRank, Grade, InviteLabPreview, LabPreset, LabProfileOut, UserPublic } from "../api/types";
+import { t, labelled } from "../i18n";
 
 export const AFFILIATIONS: ReadonlyArray<[Affiliation, string]> = [
-  ["faculty", "教員"],
-  ["student", "学生"],
-  ["other", "その他"],
-  ["alumni", "卒業生"],
+  labelled("faculty", "roster.faculty"),
+  labelled("student", "roster.student"),
+  labelled("other", "roster.other"),
+  labelled("alumni", "roster.alumni"),
 ];
 export const RANKS: ReadonlyArray<[FacultyRank, string]> = [
-  ["professor", "教授"],
-  ["associate_professor", "准教授"],
-  ["lecturer", "講師"],
-  ["assistant_professor", "助教"],
+  labelled("professor", "roster.professor"),
+  labelled("associate_professor", "roster.associateProfessor"),
+  labelled("lecturer", "roster.lecturer"),
+  labelled("assistant_professor", "roster.assistantProfessor"),
 ];
 /** Roster order: from D3 down to B3. */
 export const GRADES: readonly Grade[] = ["D3", "D2", "D1", "M2", "M1", "B4", "B3"];
@@ -61,21 +62,21 @@ function step(profile: LabProfileOut): number {
 /** The heading a person's line sits under in a roster-ordered list; null off the roster. */
 export function rosterSection(profile: LabProfileOut | undefined): string | null {
   if (!profile) return null;
-  if (profile.affiliation === "student") return profile.grade ?? "学生";
+  if (profile.affiliation === "student") return profile.grade ?? t("roster.student");
   return AFFILIATIONS.find(([value]) => value === profile.affiliation)?.[1] ?? null;
 }
 
 /** The short label for a line: 教授, M1, 卒業生 … */
 export function rosterLabel(profile: LabProfileOut): string {
-  if (profile.affiliation === "faculty") return RANKS.find(([value]) => value === profile.rank)?.[1] ?? "教員";
-  if (profile.affiliation === "student") return profile.grade ?? "学生";
+  if (profile.affiliation === "faculty") return RANKS.find(([value]) => value === profile.rank)?.[1] ?? t("roster.faculty");
+  if (profile.affiliation === "student") return profile.grade ?? t("roster.student");
   return AFFILIATIONS.find(([value]) => value === profile.affiliation)?.[1] ?? "";
 }
 
 /** 「指導教員: 加納」, or null without one. */
 export function supervisorLabel(profile: LabProfileOut, users: ReadonlyMap<string, UserPublic>): string | null {
   const supervisor = profile.supervisor_id ? users.get(profile.supervisor_id)?.display_name : undefined;
-  return supervisor ? `指導教員: ${supervisor}` : null;
+  return supervisor ? t("roster.supervisorLabel", { name: supervisor }) : null;
 }
 
 /** 「M1 · 指導教員: 加納」: the label and the supervisor, for profile cards (lists show the label as a badge). */
@@ -127,11 +128,11 @@ export function presetRole(line: PresetLine, parenthesized = false): string {
 /** 「学生 B4 · 指導: 加納 · times」: an invite preset in the admin list. */
 export function invitePresetSummary(preset: LabPreset, users: ReadonlyMap<string, UserPublic>): string {
   const supervisor = preset.supervisor_id ? users.get(preset.supervisor_id)?.display_name : undefined;
-  return [presetRole(preset), supervisor && `指導: ${supervisor}`, preset.times && "times"].filter(Boolean).join(" · ");
+  return [presetRole(preset), supervisor && t("roster.supervisorShort", { name: supervisor }), preset.times && "times"].filter(Boolean).join(" · ");
 }
 
 /** 「研究室の名簿に 学生 (B4)・指導教員 加納 として載ります。times を作ります。」: the acceptance screen's line. */
 export function inviteLabLine(lab: InviteLabPreview): string {
-  const who = [presetRole(lab, true), lab.supervisor_name && `指導教員 ${lab.supervisor_name}`].filter(Boolean).join("・");
-  return `研究室の名簿に ${who} として載ります。${lab.times ? "times を作ります。" : ""}`;
+  const who = [presetRole(lab, true), lab.supervisor_name && t("roster.supervisorNamed", { name: lab.supervisor_name })].filter(Boolean).join(t("recurring.daySeparator"));
+  return t("roster.inviteLine", { who }) + (lab.times ? t("roster.inviteTimes") : "");
 }
