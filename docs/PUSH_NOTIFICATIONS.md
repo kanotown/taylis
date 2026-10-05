@@ -172,7 +172,10 @@ Hub は接続した時点を使用中と数える。使っていない状態で�
                                         // クライアントの通知と一行の抜粋 (スレッドの親など) も同じ言葉を使う
   "badge": 3,
   "collapse_key": "<channel_id>",
-  "sent_at": "2026-09-25T13:00:00Z"
+  "sent_at": "2026-09-25T13:00:00Z",
+  // §16 (2026-10-06): 送った人と会話。sender_avatar_path は PUSH_INCLUDE_CONTENT=true のときだけの署名つきのパス
+  "sender_id": "…", "sender_name": "Alice", "sender_avatar": "<avatar_updated_at>",
+  "sender_avatar_path": "/api/v1/users/…/avatar/signed?v=…&exp=…&sig=…", "channel_type": "public"
 }
 ```
 
@@ -186,7 +189,7 @@ data)。`kind = task` (M55) は `task_id` を送る (同じく。自分用のタ
 | 項目 | APNs | FCM (Android) |
 | --- | --- | --- |
 | 種別 | `apns-push-type: alert`、`apns-priority: 10`、`apns-topic: <bundle id>` | data-only メッセージ、`android.priority: HIGH` |
-| 表示 | `aps.alert = {title, subtitle, body}`、`aps.sound = default`、`aps.badge`、`aps.thread-id = channel_id` | アプリが `onMessageReceived` で通知を組み立てる。`tag = channel_id` |
+| 表示 | `aps.alert = {title, subtitle, body}`、`aps.sound = default`、`aps.badge`、`aps.thread-id = channel_id`。人のメッセージは `aps.mutable-content = 1` で Notification Service Extension が送った人のアイコンの通信の通知にする (§16) | アプリが `onMessageReceived` で通知を組み立てる。`tag = channel_id`。人のメッセージは MessagingStyle と会話のショートカット (§16) |
 | 畳み込み | `apns-collapse-id = channel_id` | `android.collapse_key = channel_id` |
 | 有効期限 | `apns-expiration = expires_at (unix)` | `android.ttl = 残り秒数` |
 | データ | `aps` の外に上記 JSON をそのまま | `data` に文字列化して格納 |
@@ -429,3 +432,88 @@ Team ID、Key ID、Bundle ID、鍵の場所はすべて環境変数または秘�
 APNs が無効なサーバ、プロバイダの失敗と失効トークン、DND とミュートを無視、速度制限と本人ごと、未ログイン、セッションの無い端末、
 実サーバの WS で本人にだけ `notification.test`)。Desktop `tests/testNotification.test.tsx`、iOS `TestNotificationTests`、Android `TestNotificationTest`。
 実機での APNs / FCM の受信は未確認。
+
+## 16. 送った人のアイコンを出す通知 (Slack / LINE のように、2026-10-06)
+
+利用者の要望: 人からのメッセージの通知は、送った人のアイコンを大きく、アプリのアイコン (リス) を隅に小さく出したい。
+それまではどの通知もアプリのアイコンだけだった。
+
+### サーバ: ペイロード
+
+`kind = message` の行 (§5) に足す (古いアプリは知らない項目を無視する):
+
+| 項目 | 内容 |
+| --- | --- |
+| `sender_id` | 送った人の id |
+| `sender_name` | 送った人の表示名 (120 文字まで。DM では題と同じ) |
+| `sender_avatar` | アイコンの版 (`avatar_updated_at`)。無ければ null |
+| `sender_avatar_path` | アイコンの**署名つきの短命な**パス (下)。`PUSH_INCLUDE_CONTENT=true` でアイコンがあるときだけ。行に入れておき、APNs のプロバイダが端末の `base_url` を前に付けて `sender_avatar_url` として送る |
+| `channel_type` | `public` / `private` / `dm` / `group_dm` |
+
+| | APNs | FCM |
+| --- | --- | --- |
+| 送るもの | `aps.mutable-content = 1` (`kind = message` で `sender_id` があるとき)、`sender_id`・`sender_name`・`channel_type`・`sender_avatar_url` (端末の `base_url` が分かり、パスがあるとき) | data に `sender_id`・`sender_name`・`sender_avatar` (版)・`channel_type`。**署名つきの URL は送らない** (アプリが自分のセッションで取る) |
+
+- 大きさ: 題・小見出し・名前 120 文字、本文 240 文字がすべて日本語 (UTF-8 で 3 バイト) でも 4 KB に収まる
+  (`tests/test_push_avatars.py` の最悪の場合の試験)。
+- `devices.base_url` (移行 0088): その端末がこのサーバに届くアドレス。`PUT /devices/current` のたびに、`PUBLIC_BASE_URL` が
+  あればそれ、無ければ要求の来た URL (リバースプロキシの転送ヘッダーで公開の https のアドレスになる) を入れる。拡張機能は
+  資格情報もサーバの一覧も持たないので、絶対 URL が要る。複数のワークスペースでも端末行はサーバごとなのでそのまま正しい。
+  NULL (移行の直後、アプリが次に登録するまで) なら URL を送らず、拡張機能はアイコンなしで出す。
+
+### 署名つきのアイコンの URL
+
+`GET /api/v1/users/{user_id}/avatar/signed?v=<版>&exp=<期限 (unix 秒)>&sig=<署名>` はセッション無しで画像を返す。
+
+- 署名: `HMAC-SHA256(SECRET_KEY, "avatar-push\n{user_id}\n{v}\n{exp}")` を base64url (パディングなし)。`v` は
+  `avatar_updated_at` のマイクロ秒。期限は計画の時刻 + 24 時間 (プッシュの有効期限は 10 分なので十分)。
+- 署名が合わない・期限切れ・別の人・**アイコンが変わった / 消えた** (版が今のものでない) は、どれも 404 `avatar_not_found`
+  (違いを教えない)。比較は定数時間。ふつうの `GET /users/{id}/avatar` は今までどおりセッションが要る。
+- 発行するのは、その人がメッセージを送った会話のメンバーへのプッシュだけ (ゲストの見える範囲 M13e の内側)。
+- `PUSH_INCLUDE_CONTENT=false` では発行しない (URL は Apple を通り、持っている人は期限まで画像を取れるため)。
+  名前は今も題 (DM) / 小見出し (チャンネル) に入っているので変えない (この設定は本文を隠すもの)。iOS はそのとき
+  アイコンの代わりに名前の頭文字の丸を出す。Android はアプリのセッションでサーバから直接取るので (Google を通らない)
+  設定にかかわらずアイコンを出す。
+
+### iOS: Notification Service Extension と通信の通知 (Communication Notifications)
+
+- ターゲット `NotificationService` (`jp.chikuwachat.ios.NotificationService`、iOS 17、アプリに埋め込み)。
+  `mutable-content` の付いたプッシュで動き、`CommunicationNotification.update` (`ChikuwaChat/Platform/CommunicationNotification.swift`、
+  アプリと拡張機能の両方に入れ、アプリのテストから確かめる) が:
+  1. `kind = message` で `sender_id` と `channel_id` があるときだけ (それ以外はそのまま返す)。
+  2. `sender_avatar_url` (http / https のみ) を 5 秒・1 MB・`image/*` の制限で取る。
+  3. `INSendMessageIntent` を作る: 送り手は `INPerson` (表示名、`customIdentifier` = 送った人の id、画像)、
+     `conversationIdentifier` = チャンネルの id。チャンネルとグループ DM は `speakableGroupName` = 題 (「#general」/
+     「グループ DM」) と受け手 2 人 (自分と会話) でグループとして、1:1 の DM は送った人の会話として。
+  4. `INInteraction` (incoming) を寄贈し、`content.updating(from: intent)` を返す。
+- どれかが失敗したら (画像が取れない、iOS が断る、時間切れの `serviceExtensionTimeWillExpire`) サーバが書いたままの通知を出す。
+  拡張機能は資格情報を持たない (Keychain の共有も App Group も無い)。
+- アプリ: `com.apple.developer.usernotifications.communication` の entitlement と Info.plist の
+  `NSUserActivityTypes = [INSendMessageIntent]` (拡張機能の Info.plist にも)。
+- 拡張機能の版とビルド番号はアプリと同じにする (`NotificationService/Info.plist` と `project.yml` の 2 つ目の
+  `CFBundleVersion`)。`StoreReleaseTests` と `release-ios.sh` が食い違いを止める (STORE_RELEASE.md §1)。
+- 自分の通知の設定 (「設定」→「通知」→ Taylis) に「通信の通知」が出る。集中モードの「許可された人」にも効く。
+
+### Android: MessagingStyle と会話のショートカット
+
+- data の `sender_id` があるメッセージのプッシュと、アプリが WS から出す新着の通知 (§9) は `Notifier.notifyConversation`:
+  `NotificationCompat.MessagingStyle` (自分 = 「自分」/ You / 我、送った人ごとに `Person` (key = id、名前、アイコン))、
+  チャンネルとグループ DM は `setGroupConversation(true)` と会話名、`CATEGORY_MESSAGE`、小さいアイコンは今までどおり。
+- 長く使う会話のショートカット (`ShortcutInfoCompat`、id = `conv:<ワークスペースの要約>:<channel_id>`、`setLongLived`、`Person`、
+  アイコン、タップでその会話を開く `jp.chikuwachat.android.OPEN_CONVERSATION`) を `pushDynamicShortcut` して通知に付ける
+  (Android 11 以上の「会話」の欄と見た目)。ショートカットに失敗しても通知は出す。Android 10 以下はアイコンを large icon に。
+- アイコン: そのワークスペースのサインイン済みのクライアントで `GET /users/{id}/avatar?v=<版>` を取り (3 秒まで)、128px の丸に
+  切ってキャッシュのディレクトリ (`notification-avatars/`、ファイル名は (ワークスペース, 人, 版) の SHA-256) に置く。無い・失敗・遅いときは
+  名前の頭文字の丸 (人ごとに決まった色)。会話の通知は 1 つずつ順に出す (2 通目が 1 通目を追い越さない)。
+- 同じ会話の通知が出ている間は新しい 6 件までを並べる (同じメッセージが WS と FCM の両方から来ても 1 行)。会話を読んだ・
+  通知を消したら最初から。サインアウトでショートカット・並べた行・アイコンのキャッシュを消す (そのワークスペースの分だけ、最後の 1 つなら全部)。
+
+### 試験
+
+サーバ `tests/test_push_avatars.py` (署名の往復・改ざん・別の人・期限・別のサーバ、認証なしの取得と 404、アイコンの変更・削除で
+古い URL が無効、`base_url` の記録、DM / チャンネル / グループ DM のペイロード、`PUSH_INCLUDE_CONTENT=false` で URL なし、
+APNs の `mutable-content` と絶対 URL・URL なし・他の kind、4 KB の最悪の場合、FCM に署名つきのパスを入れない)。
+iOS `CommunicationNotificationTests` (DM / チャンネル / グループ DM の intent、画像、他の kind・古いサーバ、名前の補い、
+http(s) 以外の URL、失敗時に元の通知)、`StoreReleaseTests` (拡張機能が埋め込まれ版が同じ)。Android `ConversationNotificationTest`
+(ペイロード → 会話、MessagingStyle の Person・グループ・会話名、行の重複と上限、ショートカットの id、キャッシュの名前、頭文字)。
+**実機での見た目は未確認** (シミュレータは APNs を受け取れない。iOS のグループの見た目 (会話名とアイコンの並び) は iOS の版で違う)。

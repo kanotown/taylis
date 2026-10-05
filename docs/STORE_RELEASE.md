@@ -21,7 +21,9 @@ DEVELOPMENT.md §6 (GitHub Releases とアプリ内の更新) のまま。
 | Android | `versionName` (X.Y.Z、**1.0.0**) | `versionCode` (整数。Play へのアップロードのたびに 1 つ上げる。1 から) |
 
 - iOS はどちらも `apps/ios/ChikuwaChat/Info.plist` と `apps/ios/project.yml` の 2 か所を同じにする
-  (DEVELOPMENT.md §4)。スクリプトが食い違いを止める。
+  (DEVELOPMENT.md §4)。2026-10-06 から Notification Service Extension (`apps/ios/NotificationService/Info.plist` と
+  `project.yml` の `NotificationService` の `CFBundleVersion`) も同じ番号にする (App Store Connect が食い違いを警告する)。
+  スクリプトと `StoreReleaseTests` が食い違いを止める。
 - Android は `apps/android/app/build.gradle.kts` の `defaultConfig`。
 - スクリプトは番号を上げない。上げてコミットしてから走らせる (どのビルドがどのコミットかをリポジトリで追えるように)。
   App Store Connect は同じ版の同じビルド番号を、Play はどのトラックでも一度使った `versionCode` を受け付けない。
@@ -47,6 +49,13 @@ DEVELOPMENT.md §6 (GitHub Releases とアプリ内の更新) のまま。
 4. **プッシュ**: APNs は `.p8` (token 認証) なので証明書は要らない。サーバの APNs キーはそのまま
    sandbox と production の両方に使える (PUSH_NOTIFICATIONS.md)。App ID に Push Notifications の機能が
    付いていること (自動署名で付く)。
+   **通信の通知 (2026-10-06、PUSH_NOTIFICATIONS.md §16)**: アプリは埋め込みの拡張機能 `NotificationService`
+   (バンドル ID `jp.chikuwachat.ios.NotificationService`) を持ち、アプリの App ID に **Communication Notifications** の機能が要る。
+   どちらも自動署名が `-allowProvisioningUpdates` で作る / 付ける (アプリの App ID への機能の追加は 2026-10-06 の開発用の
+   アーカイブで済んだ。拡張機能の App ID と App Store 用のプロファイルは最初の書き出しで API キー (App Manager 以上) が作る)。
+   書き出しが「No profiles for 'jp.chikuwachat.ios.NotificationService'」で止まったら、Developer サイトの Identifiers で
+   その App ID を手で作り (機能は無しでよい)、アプリの `jp.chikuwachat.ios` に Communication Notifications が付いているかを見てから
+   もう一度走らせる。拡張機能は App Group も Keychain の共有も使わない。
 5. **App のプライバシー** (App Store Connect の「App のプライバシー」): アプリの `PrivacyInfo.xcprivacy` と同じに答える。
    データはサインインしたワークスペースのサーバ (運用者のサーバ) にだけ送り、開発者や第三者には送らない。
    トラッキングなし。収集するデータ (ユーザに紐付く、目的は「App の機能」): 名前、メールアドレス、ユーザ ID、
