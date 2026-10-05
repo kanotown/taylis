@@ -101,8 +101,11 @@ enum HomeSections {
 /// M37 (MOBILE_UI.md §6.1): the row of tiles over the home's sections. A tile with nothing to count is dimmed but
 /// still opens its list.
 struct HomeTile: Identifiable, Equatable {
-    enum Kind: String {
+    enum Kind: String, CaseIterable {
         case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, files, canvases
+
+        /// M111: the key in apps/shared/nav-items.json (UserMe.nav_items).
+        var navKey: String { self == .times ? "times-feed" : rawValue }
     }
 
     let kind: Kind
@@ -174,6 +177,13 @@ struct HomeTile: Identifiable, Equatable {
     /// messages; リマインダー: the reminders that fired, red; カレンダー (M52, CALENDAR.md §7): no number; タスク (M56,
     /// TASKS.md §6): no number; 締切 (M86, DEADLINES.md §8 3.: after タスク): no number; ファイル: no number; Times (L8, TIMES_FEED.md §7: the feed, after スレッド): no number;
     /// キャンバス (M78, CANVAS.md §21.1: after ファイル, as in the desktop's sidebar): no number.
+    /// M111: in my order without the ones I hid (UserMe.nav_items, NavItems); nil = the defaults (this order, all).
+    static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: [NavItem]?) -> [HomeTile] {
+        let all = tiles(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders)
+        let byKey = Dictionary(uniqueKeysWithValues: all.map { ($0.kind.navKey, $0) })
+        return NavItems.tileKeys(navItems).compactMap { byKey[$0] }
+    }
+
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int) -> [HomeTile] {
         [
             HomeTile(kind: .threads, count: threads.unreadCount, alert: threads.mentionCount > 0),
