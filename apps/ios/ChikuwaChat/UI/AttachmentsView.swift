@@ -95,6 +95,9 @@ struct AttachmentsView: View {
                     if photos.count == 1 { ThumbnailView(attachment: attachment, controller: controller) }
                 } else if attachment.isVideo {
                     VideoTile(attachment: attachment, controller: controller)
+                } else if DocumentFit.showsCard(attachment) {
+                    // M108: a PDF / Office file with a preview (being made, or ready).
+                    DocumentPreviewCard(attachment: attachment, controller: controller, present: present)
                 } else {
                     HStack(spacing: 8) {
                         Image(systemName: attachment.isVideo ? "film" : "doc").foregroundStyle(.secondary)
