@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import ChikuwaChat
 
 final class TimelineTests: XCTestCase {
@@ -148,6 +149,30 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(ChipsLayout.frames([chip, chip, plus], width: 200, spacing: 6).map(\.minY), [0, 0, 0])
         // A chip wider than the row still gets a line of its own.
         XCTAssertEqual(ChipsLayout.frames([chip, CGSize(width: 260, height: 22)], width: 200, spacing: 6).map(\.minY), [0, 28])
+    }
+
+    /// 2026-10-05: the 「＋☺」 chip after the reactions was a little shorter than they were. Both are bordered mini buttons
+    /// around a ReactionChipLine, so they are exactly as high, at any text size.
+    @MainActor
+    func testAddReactionChipIsAsHighAsTheReactionChips() {
+        func height<V: View>(_ label: V, _ size: DynamicTypeSize = .large) -> CGFloat {
+            let chip = Button {} label: { label }.buttonStyle(.bordered).controlSize(.mini).dynamicTypeSize(size)
+            return UIHostingController(rootView: chip).sizeThatFits(in: CGSize(width: 300, height: 300)).height
+        }
+        let unicode = ReactionChipLine {
+            Text("👍").font(.system(size: 15)).fixedSize().frame(minWidth: 16).frame(height: 16)
+            Text("3").font(.caption)
+        }
+        let image = ReactionChipLine {
+            Color.orange.frame(width: 32, height: 16)
+            Text("12").font(.caption)
+        }
+        for size in [DynamicTypeSize.large, .xSmall, .xxxLarge] {
+            let add = height(AddReactionChipLabel(), size)
+            XCTAssertGreaterThan(add, 16)
+            XCTAssertEqual(add, height(unicode, size), "\(size)")
+            XCTAssertEqual(add, height(image, size), "\(size)")
+        }
     }
 
     /// Japanese whatever the device's region.

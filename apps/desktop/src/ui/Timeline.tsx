@@ -1117,7 +1117,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
                   <SmilePlus size={14} />
                 </button>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-auto p-3">
+              <PopoverContent align="start" className="w-auto p-3" onAnchorHidden={() => setChipPicker(false)}>
                 <EmojiPicker
                   recent={recentEmoji}
                   custom={[...store.customEmoji.values()]}
@@ -1151,7 +1151,7 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
                 <SmilePlus size={16} />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-auto p-3">
+            <PopoverContent align="end" className="w-auto p-3" onAnchorHidden={() => setPickerOpen(false)}>
               <EmojiPicker
                 recent={recentEmoji}
                 custom={[...store.customEmoji.values()]}

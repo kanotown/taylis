@@ -267,15 +267,49 @@ function keepScrollInside(node: HTMLElement): () => void {
   };
 }
 
-export function PopoverContent({ className, children, ref, ...props }: ComponentProps<typeof Popover.Content>) {
+/**
+ * Calls `onHidden` once Radix hides the popover because its anchor is out of view (`hideWhenDetached`: floating-ui's
+ * `hide` middleware clips the anchor by its scrolling ancestors, here the timeline, and the popper's wrapper then gets
+ * `visibility: hidden`). Watches the wrapper's style, the only place Radix says so.
+ */
+function closeWhenAnchorHidden(node: HTMLElement, onHidden: () => void): () => void {
+  const wrapper = node.parentElement;
+  if (!wrapper?.hasAttribute("data-radix-popper-content-wrapper")) return () => {};
+  const check = () => {
+    if (wrapper.style.visibility === "hidden") onHidden();
+  };
+  const observer = new MutationObserver(check);
+  observer.observe(wrapper, { attributes: true, attributeFilter: ["style"] });
+  return () => observer.disconnect();
+}
+
+/**
+ * Layers: the app's own floating parts stay at z-40 or below (sticky headers 10, the composer's lists 20, panes over
+ * the conversation 30, overlays and banners 40); everything portalled to the body (popovers, menus, tooltips, dialogs,
+ * toasts) is z-50, above all of them.
+ *
+ * `onAnchorHidden`: for a popover opened from something that scrolls (a message's reaction picker), close it once that
+ * anchor scrolls out of view, as Slack does (2026-10-05: the picker stayed open and was carried away with the
+ * message, off the conversation). A popover whose anchor does not scroll (the composer's) leaves it out.
+ */
+export function PopoverContent({ className, children, ref, onAnchorHidden, ...props }: ComponentProps<typeof Popover.Content> & { onAnchorHidden?: () => void }) {
+  const hidden = useRef(onAnchorHidden);
+  hidden.current = onAnchorHidden;
+  const watch = !!onAnchorHidden;
   const own = useCallback((node: HTMLDivElement | null) => {
     if (typeof ref === "function") ref(node);
     else if (ref) ref.current = node;
-    return node ? keepScrollInside(node) : undefined;
-  }, [ref]);
+    if (!node) return undefined;
+    const release = keepScrollInside(node);
+    const unwatch = watch ? closeWhenAnchorHidden(node, () => hidden.current?.()) : undefined;
+    return () => {
+      release();
+      unwatch?.();
+    };
+  }, [ref, watch]);
   return (
     <Popover.Portal>
-      <Popover.Content ref={own} sideOffset={6} collisionPadding={8} className={cn("rx-popover z-50 max-w-[calc(100vw-16px)] rounded-xl border border-line bg-canvas p-2 text-ink shadow-xl outline-none", className)} {...props}>
+      <Popover.Content ref={own} sideOffset={6} collisionPadding={8} hideWhenDetached={watch || undefined} className={cn("rx-popover z-50 max-w-[calc(100vw-16px)] rounded-xl border border-line bg-canvas p-2 text-ink shadow-xl outline-none", className)} {...props}>
         {children}
       </Popover.Content>
     </Popover.Portal>

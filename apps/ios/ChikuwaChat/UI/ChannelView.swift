@@ -1146,7 +1146,7 @@ struct MessageRow: View {
                             Button { Task { await controller.toggleReaction(message, emoji: reaction.emoji) } } label: {
                                 // One 16 pt box for the emoji of either kind (2026-10-04: a standard emoji was 12 pt
                                 // caption text beside a 16 pt image, and the chips differed in height).
-                                HStack(spacing: 3) {
+                                ReactionChipLine(spacing: 3) {
                                     if let name = CustomEmoji.name(of: reaction.emoji), let custom = store.customEmoji[name] {
                                         // M100: a wide one (at most 3:1) or a text emoji's pill is wider, as high.
                                         let box = CustomEmoji.size(of: custom, height: 16)
@@ -1174,10 +1174,7 @@ struct MessageRow: View {
                         // smiley opens.
                         if !readOnly {
                             Button { show(.reactions) } label: {
-                                HStack(spacing: 1) {
-                                    Image(systemName: "plus").font(.system(size: 8, weight: .bold))
-                                    Image(systemName: "face.smiling").font(.caption)
-                                }
+                                AddReactionChipLabel()
                             }
                             .buttonStyle(.bordered)
                             .tint(Color.secondary)
@@ -1245,6 +1242,34 @@ struct MessageRow: View {
 /// Chips in lines as wide as the row, as many lines as they need. The reactions were an HStack: with many of them it
 /// was wider than the screen, the chips squeezed empty and the 「＋」 past the edge, and the list laid every row out as
 /// wide as that one, so text near it was cut off at the right (testers, 2026-09-29).
+/// A reaction chip's content line: as high as the 16 pt emoji box and the count's `.caption` line, whatever it holds,
+/// so the 「＋☺」 chip after the reactions is exactly as high as they are (2026-10-05: its symbols were ~13 pt high and
+/// it sat shorter, at the top of the row).
+struct ReactionChipLine<Content: View>: View {
+    static var emojiHeight: CGFloat { 16 }
+    var spacing: CGFloat = 3
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            // The count's line height even where there is no count (the add chip), at any text size.
+            Text("0").font(.caption).fixedSize().hidden().frame(width: 0)
+            HStack(spacing: spacing) { content }
+        }
+        .frame(minHeight: Self.emojiHeight)
+    }
+}
+
+/// The 「＋☺」 at the end of a message's reactions (M25), as high as the chips (ReactionChipLine).
+struct AddReactionChipLabel: View {
+    var body: some View {
+        ReactionChipLine(spacing: 1) {
+            Image(systemName: "plus").font(.system(size: 8, weight: .bold))
+            Image(systemName: "face.smiling").font(.caption)
+        }
+    }
+}
+
 struct ChipsLayout: Layout {
     var spacing: CGFloat = 6
 
