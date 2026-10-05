@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto";
 import { useSyncExternalStore } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
 import { ERROR_MESSAGES } from "../src/api/errorMessages";
@@ -133,8 +133,8 @@ describe("login screen", () => {
     expect(screen.queryByRole("button", { name: "Google でログイン" })).toBeNull();
     expect(screen.getByText("組織の Google Workspace アカウント")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "example.ac.jp のアカウントでログイン" }));
-    await flush();
-    expect(navigate).toHaveBeenCalledOnce();
+    // The sign-in start is a chain of awaits (PKCE, the start request): wait for it, not a fixed number of ticks.
+    await waitFor(() => expect(navigate).toHaveBeenCalledOnce());
   });
 
   it("words the Google button from the domains and the label", () => {
