@@ -79,10 +79,11 @@ function LetterIconPicker({ initial, onPick }: { initial: string | null; onPick:
           <div className={cn("mt-1 text-[11px]", text && !valid ? "text-danger" : "text-muted")}>{t("sectionDialog.iconTextRule")}</div>
         </div>
       </div>
-      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("emoji.color")}>
+      {/* Square swatches: a fixed 28 px box (no line box under the badge, never stretched by the row); the selected ring is a box shadow around it. */}
+      <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label={t("emoji.color")}>
         {(Object.keys(TEXT_EMOJI_COLORS) as TextEmojiColor[]).map((key) => (
-          <button key={key} type="button" role="radio" aria-checked={color === key} aria-label={TEXT_EMOJI_COLOR_NAMES[key]} title={TEXT_EMOJI_COLOR_NAMES[key]} onClick={() => setColor(key)} className={cn("rounded-md p-0.5", color === key ? "ring-2 ring-accent" : "")}>
-            <LetterBadge text={valid ? text : "A"} color={key} size={24} />
+          <button key={key} type="button" role="radio" aria-checked={color === key} aria-label={TEXT_EMOJI_COLOR_NAMES[key]} title={TEXT_EMOJI_COLOR_NAMES[key]} onClick={() => setColor(key)} data-swatch={key} className={cn("inline-flex size-7 shrink-0 grow-0 aspect-square items-center justify-center rounded-md p-0 leading-none", color === key ? "ring-2 ring-accent" : "")}>
+            <LetterBadge text={valid ? text : "A"} color={key} size={24} className="block" />
           </button>
         ))}
       </div>
