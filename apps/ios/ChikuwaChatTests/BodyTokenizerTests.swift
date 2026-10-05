@@ -244,3 +244,26 @@ final class BodyTokenizerTests: XCTestCase {
         XCTAssertEqual(Timeline.excerpt("写真です", attachments: files("image/png"), users: [:]), "写真です")
     }
 }
+
+/// 2026-10-06: smart punctuation out of code before sending (apps/shared/composer-code-punctuation.json, as Android's
+/// ComposerCodePunctuationTest reads it).
+final class StraightenCodeTests: XCTestCase {
+    private struct Fixture: Decodable {
+        struct Case: Decodable { let name: String; let input: String; let output: String }
+        let cases: [Case]
+    }
+
+    func testTheSharedCases() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/composer-code-punctuation.json")
+        let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+        XCTAssertFalse(fixture.cases.isEmpty)
+        for c in fixture.cases {
+            XCTAssertEqual(BodyTokenizer.straightenCode(c.input), c.output, c.name)
+        }
+    }
+
+    func testTheCodeStillRendersAsCode() {
+        XCTAssertEqual(BodyTokenizer.tokenizeInline(BodyTokenizer.straightenCode("`it’s` “x”")), [.code("it's"), .text(" “x”")])
+    }
+}

@@ -192,6 +192,52 @@ fun straightQuotes(text: String): String =
     if (text.none { it == '‘' || it == '’' || it == '“' || it == '”' }) text
     else text.replace('‘', '\'').replace('’', '\'').replace('“', '"').replace('”', '"')
 
+/**
+ * The composer's text before it is sent or saved (2026-10-06, apps/shared/composer-code-punctuation.json): Japanese
+ * keyboards type ’ ” for ' " (and iOS's smart punctuation also — for --, – for -). Inside code — inline spans and
+ * fenced blocks, found as [parseBlocks] and the inline pattern find them — those go back to what was typed; the rest of
+ * the text stays as it is. An unclosed backtick or fence is not code. (ー, which a Japanese keyboard types for -, is a
+ * letter and stays.)
+ */
+fun straightenCode(body: String): String {
+    if (body.none { it in "‘’“”—–" }) return body
+    val lines = body.split("\n")
+    val out = mutableListOf<String>()
+    var i = 0
+    while (i < lines.size) {
+        if (FENCE_OPEN.matches(lines[i])) {
+            val close = (i + 1 until lines.size).firstOrNull { FENCE_CLOSE.matches(lines[it]) }
+            if (close != null) {
+                out.add(lines[i])
+                lines.subList(i + 1, close).mapTo(out, ::straightPunctuation)
+                out.add(lines[close])
+                i = close + 1
+                continue
+            }
+        }
+        val line = lines[i]
+        val sb = StringBuilder(line)
+        for (match in INLINE_PATTERN.findAll(line).toList().asReversed()) {
+            val code = match.groups[3] ?: continue
+            sb.replace(code.range.first, code.range.last + 1, straightPunctuation(code.value))
+        }
+        out.add(sb.toString())
+        i++
+    }
+    return out.joinToString("\n")
+}
+
+/** ‘ ’ “ ” — – as typed before a keyboard changed them: ' " -- -. */
+fun straightPunctuation(text: String): String = buildString {
+    for (ch in text) when (ch) {
+        '‘', '’' -> append('\'')
+        '“', '”' -> append('"')
+        '—' -> append("--")
+        '–' -> append('-')
+        else -> append(ch)
+    }
+}
+
 /** A list line: its indent (a tab is 4 columns), its kind, the number written ("3." → 3) and its text. */
 class ListLine(val indent: Int, val ordered: Boolean, val written: Int, val text: String)
 
