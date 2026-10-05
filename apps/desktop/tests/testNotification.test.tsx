@@ -8,7 +8,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../src/api/errors";
 import type { NotificationTest, TestNotificationDevice, TestNotificationOut, UserMe } from "../src/api/types";
-import { AppController, TEST_NOTIFICATION_BODY } from "../src/state/app";
+import { AppController, testNotificationBody } from "../src/state/app";
+
+const TEST_NOTIFICATION_BODY = testNotificationBody();
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import { SettingsDialog } from "../src/ui/Settings";
