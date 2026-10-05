@@ -93,6 +93,12 @@ export function intlLocale(locale: UiLocale = current): string {
   return locale === "ja" ? "ja-JP" : locale === "en" ? "en-US" : "zh-CN";
 }
 
+/** A weekday's name in the current locale; `day` counts from Monday (0) like the server's date.weekday(). */
+export function weekdayName(day: number, style: "long" | "short" = "short", locale: UiLocale = current): string {
+  // 2024-01-01 was a Monday.
+  return new Date(Date.UTC(2024, 0, 1 + (((day % 7) + 7) % 7), 12)).toLocaleDateString(intlLocale(locale), { weekday: style, timeZone: "UTC" });
+}
+
 /** The value of the Accept-Language header: the server writes errors and notices in it. */
 export function acceptLanguage(): string {
   return current;

@@ -4,6 +4,7 @@
  * by apps/shared/workflows.json. Defaults are filled here, on the device that opens the form.
  */
 import type { FieldDefault, WorkflowField, WorkflowFieldType, WorkflowOut } from "../api/types";
+import { t, labelled } from "../i18n";
 
 export type FieldValue = string | string[] | boolean;
 export type Values = Record<string, FieldValue>;
@@ -20,22 +21,22 @@ export const MAX_NAME = 40;
 export const DEFAULT_EMOJI = "⚡";
 
 export const FIELD_TYPES: ReadonlyArray<[WorkflowFieldType, string]> = [
-  ["text", "短文"],
-  ["textarea", "長文"],
-  ["date", "日付"],
-  ["time", "時刻"],
-  ["datetime", "日時"],
-  ["select", "選択"],
-  ["user", "人"],
-  ["checkbox", "チェック"],
+  labelled("text", "workflow.type.text"),
+  labelled("textarea", "workflow.type.textarea"),
+  labelled("date", "workflow.type.date"),
+  labelled("time", "workflow.type.time"),
+  labelled("datetime", "workflow.type.datetime"),
+  labelled("select", "workflow.type.select"),
+  labelled("user", "workflow.type.user"),
+  labelled("checkbox", "workflow.type.checkbox"),
 ];
 
 export const VALUE_ERROR_TEXT: Record<ValueError, string> = {
-  required: "入力してください",
-  invalid: "形式が正しくありません",
-  too_long: "長すぎます",
-  not_an_option: "選択肢から選んでください",
-  user_not_found: "選べない人が含まれています",
+  get required() { return t("workflow.error.required"); },
+  get invalid() { return t("workflow.error.invalid"); },
+  get too_long() { return t("workflow.error.tooLong"); },
+  get not_an_option() { return t("workflow.error.notAnOption"); },
+  get user_not_found() { return t("workflow.error.userNotFound"); },
 };
 
 const PLACEHOLDER = /\{\{\s*([^{}\s]+)\s*\}\}/gu;
@@ -56,7 +57,7 @@ export function validKey(key: string): boolean {
 /** A key made from a label: its letters, digits and `_` (spaces become `_`), not one of `taken`. */
 export function keyFromLabel(label: string, taken: Iterable<string>): string {
   const used = new Set(taken);
-  const base = [...label.normalize("NFC").trim().replace(/\s+/gu, "_")].filter((ch) => /[\p{L}\p{N}_]/u.test(ch)).slice(0, 26).join("") || "項目";
+  const base = [...label.normalize("NFC").trim().replace(/\s+/gu, "_")].filter((ch) => /[\p{L}\p{N}_]/u.test(ch)).slice(0, 26).join("") || t("workflow.field");
   if (!used.has(base)) return base;
   for (let n = 2; ; n++) if (!used.has(`${base}${n}`)) return `${base}${n}`;
 }
@@ -329,13 +330,13 @@ export function workflowCandidates(text: string, workflows: readonly WorkflowOut
 export function runBlockedText(workflow: Pick<WorkflowOut, "run_blocked">, target: string): string | null {
   switch (workflow.run_blocked) {
     case "disabled":
-      return "停止中";
+      return t("workflow.paused");
     case "archived":
-      return `${target} はアーカイブ済みです`;
+      return t("workflow.blocked.archived", { target });
     case "not_a_member":
-      return `${target} に参加すると使えます`;
+      return t("workflow.blocked.notMember", { target });
     case "posting_restricted":
-      return `${target} はオーナーと管理者だけが投稿できます`;
+      return t("workflow.blocked.postingRestricted", { target });
     default:
       return null;
   }
@@ -343,23 +344,23 @@ export function runBlockedText(workflow: Pick<WorkflowOut, "run_blocked">, targe
 
 /** The editor's checks before saving (the server checks them again). */
 export function workflowDraftProblem(draft: { name: string; channelId: string; fields: readonly WorkflowField[]; template: string }): string | null {
-  if (!draft.name.trim()) return "名前を入れてください";
-  if (length(draft.name.trim()) > MAX_NAME) return `名前は ${MAX_NAME} 文字までです`;
-  if (!draft.channelId) return "送り先のチャンネルを選んでください";
-  if (!draft.template.trim()) return "本文の雛形を入れてください";
-  if (length(draft.template) > MAX_TEMPLATE) return `本文の雛形は ${MAX_TEMPLATE} 文字までです`;
+  if (!draft.name.trim()) return t("workflow.check.name");
+  if (length(draft.name.trim()) > MAX_NAME) return t("workflow.check.nameTooLong", { max: MAX_NAME });
+  if (!draft.channelId) return t("workflow.check.channel");
+  if (!draft.template.trim()) return t("workflow.check.template");
+  if (length(draft.template) > MAX_TEMPLATE) return t("workflow.check.templateTooLong", { max: MAX_TEMPLATE });
   const keys = draft.fields.map((f) => f.key);
   for (const field of draft.fields) {
-    if (!validKey(field.key)) return `「${field.label || field.key}」のキーは 30 文字までの文字・数字・_ にしてください`;
-    if (!field.label.trim()) return "項目の名前を入れてください";
+    if (!validKey(field.key)) return t("workflow.check.key", { field: field.label || field.key });
+    if (!field.label.trim()) return t("workflow.check.fieldName");
     if (field.type === "select") {
       const options = field.options ?? [];
-      if (options.length === 0 || options.some((o) => !o.trim())) return `「${field.label}」の選択肢を入れてください`;
-      if (new Set(options).size !== options.length) return `「${field.label}」の選択肢が重複しています`;
+      if (options.length === 0 || options.some((o) => !o.trim())) return t("workflow.check.options", { field: field.label });
+      if (new Set(options).size !== options.length) return t("workflow.check.optionsDuplicate", { field: field.label });
     }
   }
-  if (new Set(keys).size !== keys.length) return "項目のキーが重複しています";
+  if (new Set(keys).size !== keys.length) return t("workflow.check.keysDuplicate");
   const unknown = unknownPlaceholders(draft.template, keys);
-  if (unknown.length > 0) return `雛形の ${unknown.map((k) => `{{${k}}}`).join(" ")} に当たる項目がありません`;
+  if (unknown.length > 0) return t("workflow.check.unknownKeys", { keys: unknown.map((k) => `{{${k}}}`).join(" ") });
   return null;
 }

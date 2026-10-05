@@ -11,7 +11,7 @@ import { zhHans } from "../src/i18n/zhHans";
 
 const BRANCH = /(?:=\d+|zero|one|two|few|many|other)\s*\{/g;
 const PARAM = /\{(\w+)(?=\}|\s*,)/g;
-const params = (text: string) => new Set([...text.replace(BRANCH, "(").matchAll(PARAM)].map((m) => m[1]));
+const params = (text: string) => new Set([...text.replace(/\{\{[^}]*\}\}/g, "").replace(BRANCH, "(").matchAll(PARAM)].map((m) => m[1]));
 
 afterEach(() => setLocale("ja"));
 
