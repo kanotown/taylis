@@ -97,3 +97,35 @@ export function formatDuration(ms: number | null | undefined): string | null {
   const seconds = String(total % 60).padStart(2, "0");
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
 }
+
+/**
+ * M108 (docs/PREVIEWS.md): a PDF's or Office file's preview. `pending` shows 「プレビューを作成中…」 on the file card,
+ * `ready` the first page (and every page in the viewer), anything else (failed, none, an older server without the
+ * field) the plain download row.
+ */
+export type DocumentPreviewState = "pending" | "ready" | null;
+
+export function documentPreviewState(attachment: Partial<Pick<AttachmentOut, "preview">>): DocumentPreviewState {
+  const status = attachment.preview?.status;
+  return status === "pending" || status === "ready" ? status : null;
+}
+
+/** The card's width; the first page is shown this wide, its top up to DOCUMENT_THUMB_MAX_HEIGHT (as Slack). */
+export const DOCUMENT_CARD_WIDTH = 256;
+export const DOCUMENT_THUMB_MAX_HEIGHT = 200;
+
+/**
+ * The thumbnail's box on the card, from the size the server recorded: final before the picture arrives (no jump).
+ * A landscape slide shows whole, a portrait page its top part. `null` when the size is unknown.
+ */
+export function documentThumbBox(attachment: Partial<Pick<AttachmentOut, "preview">>): Box | null {
+  const preview = attachment.preview;
+  if (!preview || preview.status !== "ready" || !preview.width || !preview.height) return null;
+  const height = Math.round((DOCUMENT_CARD_WIDTH * preview.height) / preview.width);
+  return { width: DOCUMENT_CARD_WIDTH, height: Math.max(1, Math.min(DOCUMENT_THUMB_MAX_HEIGHT, height)) };
+}
+
+/** 「12 ページ」, or "" when the count is unknown. */
+export function pageCountLabel(pages: number | null | undefined): string {
+  return pages && pages > 0 ? `${pages} ページ` : "";
+}
