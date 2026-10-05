@@ -25,6 +25,7 @@ import jp.chikuwachat.android.api.ParentThread
 import jp.chikuwachat.android.api.ReadStateOut
 import jp.chikuwachat.android.api.ThreadListOut
 import jp.chikuwachat.android.api.ThreadState
+import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.api.WorkspaceSettingsOut
 import jp.chikuwachat.android.api.ChannelLinkOut
@@ -78,6 +79,8 @@ interface SyncApi {
     suspend fun threadState(messageId: String): ThreadState
     suspend fun markThreadRead(messageId: String, lastReadSeq: Int): ThreadState
     suspend fun setThreadFollow(messageId: String, following: Boolean): ThreadState
+    /** M111: my private settings again (GET /users/me) after another of my devices changed them; fakes may not have it. */
+    suspend fun me(): UserMe = throw UnsupportedOperationException("GET /users/me")
 }
 
 /** Transport as the engine sees it (OkHttp in the app, a fake in tests). Callbacks may come from any thread. */
@@ -91,6 +94,12 @@ interface WsTransport {
 }
 
 typealias WsConnector = suspend (url: String, token: String) -> WsTransport
+
+private fun isNewer(a: String, b: String): Boolean {
+    val instantA = runCatching { java.time.OffsetDateTime.parse(a).toInstant() }.getOrNull()
+    val instantB = runCatching { java.time.OffsetDateTime.parse(b).toInstant() }.getOrNull()
+    return if (instantA != null && instantB != null) instantA > instantB else a > b
+}
 
 enum class EngineStatus { IDLE, CONNECTING, ONLINE, OFFLINE, SIGNED_OUT }
 
@@ -207,6 +216,14 @@ class SyncEngine(
         runCatching { channelApi.channel(channelId) }
             .onSuccess { store.setFetchedLastMessage(channelId, it.lastMessage) }
             .onFailure { Log.w("SyncEngine", "could not refresh the conversation's last message", it) }
+    }
+
+    /** M111: my own settings again (GET /users/me), kept only when still newer than what the store holds. */
+    suspend fun refreshMe() {
+        runCatching { api.me() }.onSuccess { fresh ->
+            val held = store.me ?: return
+            if (held.id == fresh.id && !isNewer(held.updatedAt, fresh.updatedAt)) store.setMe(fresh)
+        }.onFailure { Log.w("SyncEngine", "could not read my settings again", it) }
     }
 
     /** M15f: the conversation's link bar; loaded when it opens and after reconnecting (not in bootstrap). */
@@ -838,6 +855,10 @@ class SyncEngine(
             "user.created", "user.updated", "user.deactivated" -> {
                 val user = Codec.snake.decodeFromJsonElement(UserPublic.serializer(), frame.data["user"] ?: return)
                 store.upsertUser(user)
+                // M111: me, changed on another of my devices (home tiles, quick reactions …): my private settings are not
+                // in the event (it is everyone's), so read them again.
+                val me = store.me
+                if (frame.event == "user.updated" && me != null && user.id == me.id && isNewer(user.updatedAt, me.updatedAt)) post { refreshMe() }
             }
             "read.updated" -> {
                 val channelId = frame.data.str("channel_id") ?: return
