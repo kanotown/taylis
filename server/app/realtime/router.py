@@ -14,6 +14,7 @@ from pydantic import TypeAdapter, ValidationError
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.core.time import utcnow
+from app.modules.analytics.activity import ActivityTracker
 from app.modules.auth import service as auth
 from app.modules.canvases import repository as canvas_repo
 from app.modules.channels import repository as channel_repo
@@ -161,6 +162,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     context = await _authenticate(websocket, settings)
     if context is None:
         return
+    # M116 (docs/ANALYTICS.md §2): connecting is using the app.
+    activity: ActivityTracker = websocket.app.state.activity
+    activity.touch(context.user.id)
 
     visible: frozenset[uuid.UUID] | None = None
     if context.user.is_guest:  # M13e: presence only of the people the guest shares a channel with
@@ -214,6 +218,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 continue
             if isinstance(frame, PingFrame):
                 hub.mark_active(conn, frame.active)
+                if frame.active:  # M116: an app in use, not one left open in the background
+                    activity.touch(context.user.id)
                 conn.offer(PongFrame(server_time=utcnow()).model_dump(mode="json"))
             elif isinstance(frame, TypingFrame):
                 now = time.monotonic()

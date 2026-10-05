@@ -583,6 +583,30 @@
             "title": "Id",
             "type": "string"
           },
+          "last_active_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active At"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
           "must_change_password": {
             "title": "Must Change Password",
             "type": "boolean"
@@ -1654,6 +1678,215 @@
           "by_user"
         ],
         "title": "AiUsageOut",
+        "type": "object"
+      },
+      "AnalyticsMemberOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deactivated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deactivated At"
+          },
+          "devices": {
+            "title": "Devices",
+            "type": "integer"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_active_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active At"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
+          "messages_30d": {
+            "title": "Messages 30D",
+            "type": "integer"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "deactivated"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role",
+          "status",
+          "created_at",
+          "deactivated_at",
+          "last_login_at",
+          "last_active_at",
+          "messages_30d",
+          "devices",
+          "platforms"
+        ],
+        "title": "AnalyticsMemberOut",
+        "type": "object"
+      },
+      "AnalyticsMembersOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsMemberOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "AnalyticsMembersOut",
+        "type": "object"
+      },
+      "AnalyticsOverviewOut": {
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "direct_messages": {
+            "$ref": "#/components/schemas/HiddenConversationsOut"
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "members": {
+            "$ref": "#/components/schemas/MemberTotalsOut"
+          },
+          "messages_in_period": {
+            "title": "Messages In Period",
+            "type": "integer"
+          },
+          "other_private_channels": {
+            "$ref": "#/components/schemas/HiddenConversationsOut"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/DayOut"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "top_channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelStatOut"
+            },
+            "title": "Top Channels",
+            "type": "array"
+          },
+          "top_posters": {
+            "items": {
+              "$ref": "#/components/schemas/PosterOut"
+            },
+            "title": "Top Posters",
+            "type": "array"
+          },
+          "tz": {
+            "title": "Tz",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generated_at",
+          "days",
+          "tz",
+          "start",
+          "end",
+          "members",
+          "messages_in_period",
+          "series",
+          "top_channels",
+          "other_private_channels",
+          "direct_messages",
+          "top_posters"
+        ],
+        "title": "AnalyticsOverviewOut",
         "type": "object"
       },
       "AttachmentOut": {
@@ -4060,6 +4293,50 @@
         "title": "ChannelReadStateOut",
         "type": "object"
       },
+      "ChannelStatOut": {
+        "description": "A public channel, or a private one the asking administrator is a member of.",
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "messages": {
+            "title": "Messages",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "posters": {
+            "title": "Posters",
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "public",
+              "private"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "name",
+          "type",
+          "archived",
+          "messages",
+          "posters"
+        ],
+        "title": "ChannelStatOut",
+        "type": "object"
+      },
       "ChannelUpdate": {
         "properties": {
           "name": {
@@ -4529,6 +4806,36 @@
           }
         },
         "title": "CustomEmojiUpdate",
+        "type": "object"
+      },
+      "DayOut": {
+        "description": "One day of the period in the requested time zone.",
+        "properties": {
+          "active_members": {
+            "title": "Active Members",
+            "type": "integer"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "messages": {
+            "title": "Messages",
+            "type": "integer"
+          },
+          "new_members": {
+            "title": "New Members",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "messages",
+          "active_members",
+          "new_members"
+        ],
+        "title": "DayOut",
         "type": "object"
       },
       "DefaultChannelApplied": {
@@ -5789,6 +6096,25 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HiddenConversationsOut": {
+        "description": "Conversations shown only as a total: how many had posts and how many posts.",
+        "properties": {
+          "conversations": {
+            "title": "Conversations",
+            "type": "integer"
+          },
+          "messages": {
+            "title": "Messages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversations",
+          "messages"
+        ],
+        "title": "HiddenConversationsOut",
+        "type": "object"
+      },
       "HistoryOut": {
         "properties": {
           "channel_last_seq": {
@@ -6760,6 +7086,60 @@
           "role"
         ],
         "title": "MemberRoleUpdate",
+        "type": "object"
+      },
+      "MemberTotalsOut": {
+        "description": "People (bots never count). `accounts`: not deactivated.",
+        "properties": {
+          "accounts": {
+            "title": "Accounts",
+            "type": "integer"
+          },
+          "active_1d": {
+            "title": "Active 1D",
+            "type": "integer"
+          },
+          "active_30d": {
+            "title": "Active 30D",
+            "type": "integer"
+          },
+          "active_7d": {
+            "title": "Active 7D",
+            "type": "integer"
+          },
+          "admins": {
+            "title": "Admins",
+            "type": "integer"
+          },
+          "deactivated": {
+            "title": "Deactivated",
+            "type": "integer"
+          },
+          "guests": {
+            "title": "Guests",
+            "type": "integer"
+          },
+          "never_signed_in": {
+            "title": "Never Signed In",
+            "type": "integer"
+          },
+          "new_in_period": {
+            "title": "New In Period",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accounts",
+          "admins",
+          "guests",
+          "deactivated",
+          "active_1d",
+          "active_7d",
+          "active_30d",
+          "new_in_period",
+          "never_signed_in"
+        ],
+        "title": "MemberTotalsOut",
         "type": "object"
       },
       "MembersAdd": {
@@ -8370,6 +8750,35 @@
           }
         },
         "title": "PoolUpdate",
+        "type": "object"
+      },
+      "PosterOut": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "messages": {
+            "title": "Messages",
+            "type": "integer"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "username",
+          "display_name",
+          "messages"
+        ],
+        "title": "PosterOut",
         "type": "object"
       },
       "PresenceEntry": {
@@ -14188,6 +14597,341 @@
         "summary": "Get Usage",
         "tags": [
           "ai"
+        ]
+      }
+    },
+    "/api/v1/admin/analytics/members": {
+      "get": {
+        "description": "People (no bots) with the last sign-in, the last activity, posts in the last 30 days and\nthe signed-in devices. `inactive_days`: active accounts not used for that many days (or\nnever).",
+        "operationId": "members_api_v1_admin_analytics_members_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "name",
+              "enum": [
+                "name",
+                "role",
+                "status",
+                "created_at",
+                "last_login_at",
+                "last_active_at",
+                "messages_30d"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "deactivated"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inactive_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Inactive Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsMembersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Members",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/analytics/members.csv": {
+      "get": {
+        "description": "The same rows as /members with the same filters, all of them, as CSV (UTF-8 with BOM).",
+        "operationId": "members_csv_api_v1_admin_analytics_members_csv_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "name",
+              "enum": [
+                "name",
+                "role",
+                "status",
+                "created_at",
+                "last_login_at",
+                "last_active_at",
+                "messages_30d"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "deactivated"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inactive_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Inactive Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "The members table as CSV"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Members Csv",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/analytics/overview": {
+      "get": {
+        "description": "Totals, a daily series (messages, active members, new members) of the last `days` days in\nthe time zone `tz` (IANA), the busiest channels and posters. Private channels the\nadministrator is not in and DMs appear only as totals.",
+        "operationId": "overview_api_v1_admin_analytics_overview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "default": "UTC",
+              "maxLength": 64,
+              "title": "Tz",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsOverviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Overview",
+        "tags": [
+          "admin"
         ]
       }
     },

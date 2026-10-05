@@ -70,6 +70,11 @@ class User(Base):
         DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now()
     )
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # M116 (docs/ANALYTICS.md §2): the last sign-in (a new session: password, Google, invite) and
+    # the last use of an app (an authenticated request, a WebSocket that connects or reports
+    # activity), written at most every few minutes. Only administrators see them.
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     @property
     def is_active(self) -> bool:

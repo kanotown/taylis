@@ -25,6 +25,8 @@ from app.modules.admin.router import router as admin_router
 from app.modules.ai import service as ai_service
 from app.modules.ai.llm import AiRuntime
 from app.modules.ai.router import router as ai_router
+from app.modules.analytics import activity as analytics_activity
+from app.modules.analytics.router import router as analytics_router
 from app.modules.attachments import previews
 from app.modules.attachments import service as attachments_service
 from app.modules.attachments.blobstore import build_blobstore
@@ -165,6 +167,13 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
                 )
             if purged_ai:
                 log.info("dropped the input of %d old AI runs", purged_ai)
+            async with app.state.db.session_factory() as session:
+                # M116 (docs/ANALYTICS.md §2): the hourly activity rows past their retention.
+                purged_hours = await analytics_activity.purge_hours(
+                    session, retention_days=settings.activity_retention_days, now=utcnow()
+                )
+            if purged_hours:
+                log.info("purged %d hourly activity rows", purged_hours)
         except Exception:
             log.exception("outbox purge failed")
         try:
@@ -202,6 +211,26 @@ async def _presence_sweep_loop(app: FastAPI, stop: asyncio.Event) -> None:
             await asyncio.wait_for(stop.wait(), timeout=settings.presence_sweep_interval_seconds)
         except TimeoutError:
             app.state.hub.sweep_presence()
+
+
+async def _flush_activity(app: FastAPI) -> None:
+    tracker: analytics_activity.ActivityTracker = app.state.activity
+    try:
+        async with app.state.db.session_factory() as session:
+            await tracker.flush(session)
+    except Exception:
+        log.exception("activity flush failed")
+    tracker.forget_idle()
+
+
+async def _activity_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """M116 (docs/ANALYTICS.md §2): writes who used an app since the last round."""
+    settings: Settings = app.state.settings
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=settings.activity_flush_interval_seconds)
+        except TimeoutError:
+            await _flush_activity(app)
 
 
 async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
@@ -356,6 +385,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(_scheduled_send_loop(app, stop), name="scheduled-send"))
         tasks.append(asyncio.create_task(_ai_loop(app, stop), name="ai-worker"))
         tasks.append(asyncio.create_task(_feed_loop(app, stop), name="feeds"))
+        tasks.append(asyncio.create_task(_activity_loop(app, stop), name="activity"))
         if settings.previews_enabled:
             tasks.append(asyncio.create_task(_preview_loop(app, stop), name="previews"))
     try:
@@ -365,6 +395,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        if settings.run_background_tasks:
+            await _flush_activity(app)  # the last few minutes' notes
         await app.state.db.dispose()
 
 
@@ -409,6 +441,7 @@ def build_api_router() -> APIRouter:
     api.include_router(attachments_router)
     api.include_router(search_router)
     api.include_router(ai_router)
+    api.include_router(analytics_router)
     api.include_router(notifications_router)
     api.include_router(sync_router)
     api.include_router(realtime_router)
@@ -456,6 +489,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openai_key_file=settings.ai_openai_api_key_file,
         monthly_budget_usd=settings.ai_monthly_budget_usd,
         user_daily_runs=settings.ai_user_daily_runs,
+    )
+    # M116 (docs/ANALYTICS.md §2): who used an app lately, noted in memory, written in batches.
+    app.state.activity = analytics_activity.ActivityTracker(
+        settings.activity_write_interval_seconds
     )
     app.state.limiters = {
         "login_ip": RateLimiter(settings.login_rate_limit_per_ip),

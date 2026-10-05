@@ -4,6 +4,7 @@ from app.core.base import Base
 from app.events import models as _event_models
 from app.modules.activity import models as _activity_models
 from app.modules.ai import models as _ai_models
+from app.modules.analytics import models as _analytics_models
 from app.modules.auth import models as _auth_models
 from app.modules.calendar import models as _calendar_models
 from app.modules.canvases import models as _canvas_models
@@ -33,6 +34,7 @@ __all__ = [
     "Base",
     "_activity_models",
     "_ai_models",
+    "_analytics_models",
     "_auth_models",
     "_calendar_models",
     "_canvas_models",
