@@ -488,7 +488,6 @@ save():
 
 - compose の PostgreSQL 17.11 + PGroonga 4.0.9 (Docker VM: 10 CPU、8 GB)
 - スクラッチ DB `canvas_scratch_257fe0a8` を作り、終了後に DROP しました
-- スクリプトと出力: `/tmp/scratch`
 - 本番の VPS (2〜4 vCPU) では、数倍遅い前提で読んでください
 
 データ: docs/*.md (437 段落、日英混在) から合成したキャンバス 5,000 件、合計 4,725 万字 (中央値 7,047 字、p90 18,430 字、最大 81,574 字)、UTF-8 で 74 MB。

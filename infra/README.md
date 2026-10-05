@@ -267,13 +267,13 @@ git tag v1.2.3 → git push origin v1.2.3
 
 ### 初回だけの準備
 
-上から順に行う。例ではホスト名を `chat.example.com`、GitHub のアカウントを `kanotown` とする。
+上から順に行う。例ではホスト名を `chat.example.com`、GitHub のアカウントを `<owner>` (フォークならその持ち主) とする。
 
-**1. Xserver VPS**
+**1. VPS**
 
 - OS は **Debian** (12 または 13)。メモリは 2 GB 以上 (4 GB あると余裕がある。2 GB なら初期設定で
   スワップを足す)。申し込み時に SSH キーを登録しておくと root に鍵でログインできる。
-- VPS パネルの **パケットフィルター** を ON にして、次を許可する:
+- プロバイダのファイアウォール (VPS パネルのパケットフィルターなど) を ON にして、次を許可する:
 
   | 用途 | プロトコル / ポート |
   | --- | --- |
@@ -286,8 +286,8 @@ git tag v1.2.3 → git push origin v1.2.3
 
 **2. ドメイン (DNS)**
 
-- ドメインの DNS を管理しているところ (Xserver ドメインや Xserver レンタルサーバーのネームサーバーなら
-  その管理画面の「DNS レコード設定」、他社ならそちら) で **A レコード**を足す:
+- ドメインの DNS を管理しているところ (レジストラやネームサーバーの管理画面の「DNS レコード設定」など) で
+  **A レコード**を足す:
   ホスト名 `chat`、種別 A、内容 = VPS の IPv4 アドレス。IPv6 でも使うなら AAAA も。
 - Cloudflare で管理している場合はプロキシをオフ (DNS only、灰色の雲) にする。Caddy が自分で証明書を取り、
   WebSocket と 100 MB のアップロードをそのまま通すため。
@@ -309,7 +309,7 @@ VPS に root でログインして実行する (何度実行しても既存の `
 ```sh
 ssh root@<VPS の IP>
 bash /tmp/vps-bootstrap.sh --domain chat.example.com --workspace-name "チーム名" \
-    --registry ghcr.io/kanotown --deploy-key-file /tmp/chikuwa-deploy.pub
+    --registry ghcr.io/<owner> --deploy-key-file /tmp/chikuwa-deploy.pub
 rm /tmp/vps-bootstrap.sh /tmp/deploy-ssh.sh /tmp/.env.example /tmp/deploy.conf.example /tmp/chikuwa-deploy.pub
 ```
 
@@ -340,19 +340,18 @@ root のパスワードログインは、鍵でログインできることを確
    | `DEPLOY_KNOWN_HOSTS` | 表示された `chat.example.com ssh-ed25519 AAAA…` の行 (DEPLOY_HOST を IP にしたなら IP の行) |
    | `DEPLOY_SSH_KEY` | 手元の `chikuwa-deploy` (秘密鍵) の全文 |
 
-   秘密鍵は `gh secret set DEPLOY_SSH_KEY --env production --repo kanotown/chikuwachat < chikuwa-deploy` でも入る。
+   秘密鍵は `gh secret set DEPLOY_SSH_KEY --env production --repo <owner>/chikuwachat < chikuwa-deploy` でも入る。
    入れたら手元の `chikuwa-deploy` は消してよい (再発行は鍵を作り直して `authorized_keys` を差し替える)。
 3. VPS が ARM の場合だけ、Variables に `DEPLOY_PLATFORMS=linux/arm64` を入れる (既定は linux/amd64)。
-4. Actions の無料枠 (非公開リポジトリは月 2,000 分、macOS は 10 倍・Windows は 2 倍で数える) を節約するため、
-   iOS のテスト (`ios.yml`) とデスクトップのインストーラ (`desktop.yml`) は手動実行だけにしている
-   (Actions → Run workflow。以前は iOS のテストだけで月の 7 割を使っていた)。iOS のテストはコミット前に Mac で
-   実行する。Billing の Budgets で Actions / Packages を $0・Stop usage にしておくと、枠を超えても課金されず止まる。
-5. Linux のジョブ (ci の server / desktop / android、release の images / deploy) は自前の VPS の self-hosted
-   runner (`runs-on: [self-hosted, Linux, X64]`) で動き、Actions の分を使わない。runner は専用ユーザー
-   `gh-runner` (docker グループ) で `svc.sh` により常駐 (Settings → Actions → Runners → New self-hosted runner の
-   手順)。この非公開リポジトリ専用にする。デプロイ鍵はジョブの一時フォルダ (`RUNNER_TEMP`) にだけ置き、ジョブの
-   終わりに消す。テスト用 PostgreSQL はホストの空きポートを使う (runner の VPS 自身の 5432 とぶつからない)。
-   runner が止まっているとジョブは待ち続ける。戻すときは `runs-on: ubuntu-latest` に戻す。
+4. iOS のテスト (`ios.yml`) とデスクトップのインストーラ (`desktop.yml`) は手動実行だけにしている
+   (Actions → Run workflow)。非公開のフォークでは macOS は 10 倍・Windows は 2 倍で Actions の分を数えるため。
+   iOS のテストはコミット前に Mac で実行する。非公開のフォークでは Billing の Budgets で Actions / Packages を
+   $0・Stop usage にしておくと、枠を超えても課金されず止まる。
+5. すべてのジョブは GitHub のホストする runner (`ubuntu-latest` など) で動く。テスト用 PostgreSQL (PGroonga) は
+   ジョブの service container。デプロイ鍵はジョブの一時フォルダ (`RUNNER_TEMP`) にだけ置き、ジョブの終わりに消す。
+   deploy ジョブは、フォークではない元のリポジトリの `v*` タグでだけ動く。公開リポジトリでは、外部からの
+   pull request のワークフローに承認を求める設定にする (docs/DEVELOPMENT.md「公開リポジトリの CI」)。
+   本番のサーバーやその上の self-hosted runner で、公開リポジトリのジョブを動かさない。
 
 **5. 最初のリリース**
 
@@ -379,7 +378,7 @@ CHIKUWA_SERVER_IMAGE=$REGISTRY/chikuwachat-server:$(cat .release) CHIKUWA_WEB_IM
 
 - 初期設定に `--behind-proxy` を付ける。`deploy.conf` に `EXTRA_COMPOSE_FILES=docker-compose.behind-proxy.yml`
   が入り、Caddy は `127.0.0.1:18080` (`.env` の `BEHIND_PROXY_PORT` で変更可) の HTTP だけを受ける。Docker が
-  すでにあれば入れ直さず、パッケージは足りないものだけを入れる。上の 1. のパケットフィルターは既存のサイトの
+  すでにあれば入れ直さず、パッケージは足りないものだけを入れる。上の 1. のファイアウォールは既存のサイトの
   設定のままでよい。
 - nginx のサイトは `infra/nginx-site.conf.example` から作る (ドメインを置き換える)。証明書は certbot で取る:
 
@@ -489,7 +488,7 @@ Mattermost 側で行われた編集・削除・リアクションは反映しな
 止める (または読み取り専用にする) 直前に 1 回実行するのがよい。
 
 **前提**: この機能と増分バックアップを含むリリースをデプロイしてから行う (以前の `objects.tgz` 形式のままだと、
-毎晩 7 GB を丸ごと写すことになる)。添付の分だけオブジェクトストアが増える (🍤 チームは約 7 GB)。
+毎晩 7 GB を丸ごと写すことになる)。添付の分だけオブジェクトストアが増える (大きなチームでは数 GB)。
 
 本番サーバー (root。Mattermost の設定とデータは root でしか読めない) での手順:
 
@@ -504,14 +503,14 @@ install -d -m 700 /srv/chikuwachat/import
 docker run --rm --network host --user root -e RUN_MIGRATIONS=false \
   -v /opt/mattermost/config/config.json:/mm/config.json:ro -v /srv/chikuwachat/import:/import \
   "$CHIKUWA_SERVER_IMAGE" \
-  python -m app.cli mattermost-extract --mm-config /mm/config.json --team ebi --out /import/ebi.jsonl
+  python -m app.cli mattermost-extract --mm-config /mm/config.json --team myteam --out /import/myteam.jsonl
 
 # 2. 試し読み (--dry-run: すべて検査して何も書かない。人の対応付け・件数・警告が出る)
 docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml \
   run --rm --no-deps --user root -e RUN_MIGRATIONS=false \
   -v /opt/mattermost/data:/mm-data:ro -v /srv/chikuwachat/import:/import:ro app \
-  python -m app.cli import-mattermost /import/ebi.jsonl --files /mm-data --actor admin \
-  --user alicemm=alice --user bobmm=ebi --user admin_mm=admin --dry-run
+  python -m app.cli import-mattermost /import/myteam.jsonl --files /mm-data --actor admin \
+  --user alice_mm=alice --user bob_mm=bob --user admin_mm=admin --dry-run
 
 # 3. 本番: 2. から --dry-run を外して実行する
 
@@ -525,7 +524,7 @@ rm -rf /srv/chikuwachat/import
 開いているアプリは再起動すると新しい画像になる。
 
 `--actor` は実行する管理者 (監査ログと、作成者が分からない行の作成者になる)。結果には人の対応付け
-(`@kanotown → @kano (--user)` など)、件数 (`posts`、`replies`、`files`、`files_missing` など)、警告 (見つからない
+(`@alice_mm → @alice (--user)` など)、件数 (`posts`、`replies`、`files`、`files_missing` など)、警告 (見つからない
 ファイル、名前の変更など) が出る。`files_over_upload_limit` はアップロードの上限を超えるが読み込んだファイルの数。
 
 リアクションの絵文字は、カスタム絵文字 (移行したもの・既にあるもの) なら `:名前:`、標準の絵文字なら絵文字そのものに
@@ -564,7 +563,7 @@ Slack の無料プランで見えなくなった古いファイル (`hidden_by_l
 2. 前回の移行で対応付けたアカウント
 3. 同じメールアドレスのアカウント (users.json の `profile.email`。書き出しの種類によっては入っていない)。
    `--email-domain-map FROM=TO` (M91、何回でも、大文字小文字は区別しない) があれば、`名前@FROM` を `名前@TO` として
-   探す (Slack は `…@vc.ibaraki.ac.jp`、Taylis の Google ログインは `…@g.ibaraki.ac.jp` のような場合)
+   探す (Slack は `…@mail.example.ac.jp`、Taylis の Google ログインは `…@g.example.ac.jp` のような場合)
 4. それ以外は新しく作る。作るのは投稿かリアクションのある人 (と、5 の人は読み込むチャンネルのメンバーなら投稿が
    無くても)。メールアドレスは 3 で替えたもの (Slack のアドレスはアカウントに残さず、結果の表にだけ出る)、
    ユーザー名はアドレスの @ の前 (学籍番号。アドレスが無ければ Slack のユーザー名)。使用中なら `名前-slack`、
@@ -621,15 +620,16 @@ Slack の無料プランで見えなくなった古いファイル (`hidden_by_l
 その場合は `--channel-prefix slack-` のように前置きを付ける (新しく作るチャンネルがすべて `slack-general` などになる)。
 2 回目以降は前回作ったチャンネルに足すので、前置きは同じでなくてもよい。
 
-**研究室の Slack を taylis に移す (M91)**: 12 GB の VPS の `/srv/chikuwachat` (既存の nginx の後ろ、`--behind-proxy`)。
-Slack は `学籍番号@vc.ibaraki.ac.jp`、taylis は Google でログイン (許可ドメイン `g.ibaraki.ac.jp`、自動作成オン)。
-以下はサーバーで root として。`--actor` は taylis の管理者のユーザー名 (`kano`)。
+**例: 研究室の Slack を Taylis に移す (M91)**: 移行先は `/srv/chikuwachat` のデプロイ (この例では既存のリバース
+プロキシの後ろ、`--behind-proxy`)。Slack のアドレスは `学籍番号@mail.example.ac.jp`、Taylis は Google でログイン
+(許可ドメイン `g.example.ac.jp`、自動作成オン)。以下はサーバーで root として。`--actor` は Taylis の管理者のユーザー名
+(例 `admin`)。
 
 手元の Mac から書き出しを送る:
 
 ```sh
-ssh root@<taylis のサーバー> install -d -m 700 /srv/chikuwachat/import
-scp ~/Downloads/'<ワークスペース> Slack export <期間>.zip' root@<taylis のサーバー>:/srv/chikuwachat/import/slack-export.zip
+ssh root@<Taylis のサーバー> install -d -m 700 /srv/chikuwachat/import
+scp ~/Downloads/'<ワークスペース> Slack export <期間>.zip' root@<Taylis のサーバー>:/srv/chikuwachat/import/slack-export.zip
 ```
 
 サーバーで、最初に一度だけ (イメージは deploy.conf の `REGISTRY` と `.release` のタグ):
@@ -642,18 +642,19 @@ export CHIKUWA_WEB_IMAGE="$REGISTRY/chikuwachat-web:$(cat .release)"
 chmod 600 /srv/chikuwachat/import/slack-export.zip
 ```
 
-研究室の書き出しは Mattermost からのブリッジの投稿 (bot の名前 = Mattermost のユーザー名) と日本語の名前の
-カスタム絵文字を含む (M92)。絵文字の画像の ZIP と付け替えのファイルもサーバーへ送る:
+書き出しが Mattermost からのブリッジの投稿 (bot の名前 = Mattermost のユーザー名) や日本語の名前のカスタム絵文字を
+含むときは (M92)、絵文字の画像の ZIP と付け替えのファイル (`infra/slack-import/example.emoji-rename.txt` の形で作る)
+もサーバーへ送る:
 
 ```sh
-scp ~/Downloads/<絵文字の ZIP>.zip root@<taylis のサーバー>:/srv/chikuwachat/import/emoji.zip
-scp infra/slack-import/kano-lab.emoji-rename.txt root@<taylis のサーバー>:/srv/chikuwachat/import/
+scp ~/Downloads/<絵文字の ZIP>.zip root@<Taylis のサーバー>:/srv/chikuwachat/import/emoji.zip
+scp emoji-rename.txt root@<Taylis のサーバー>:/srv/chikuwachat/import/
 ```
 
 ブリッジの bot の名前ごとに `--bot-as` を 1.〜3. のすべてに付ける (例: `--bot-as 名前=U0123ABCD` (Slack の人)、
 `--bot-as 名前=@ユーザー名` (Taylis の人)、`--bot-as 名前=new:表示名:guest`)。誰かは 1. の表と dry-run の
 「bot」の行で確かめる。絵文字は 2. と 3. に
-`--emoji-dir /import/emoji.zip --emoji-rename-file /import/kano-lab.emoji-rename.txt` を付ける。
+`--emoji-dir /import/emoji.zip --emoji-rename-file /import/emoji-rename.txt` を付ける。
 
 **1.** 人の表だけを見る (`--people-only`、何も書かない)。表は `/srv/chikuwachat/import/people.txt` にも残る
 (横に長いので `less -S` で見る)。`create active` が研究室の人、`create guest` と `create deactivated` が
@@ -663,8 +664,8 @@ scp infra/slack-import/kano-lab.emoji-rename.txt root@<taylis のサーバー>:/
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml --profile proxy \
   run --rm -T --no-deps --user root -e RUN_MIGRATIONS=false -v /srv/chikuwachat/import:/import app \
-  python -m app.cli import-slack /import/slack-export.zip --actor kano \
-  --email-domain-map vc.ibaraki.ac.jp=g.ibaraki.ac.jp --activate-domain g.ibaraki.ac.jp \
+  python -m app.cli import-slack /import/slack-export.zip --actor admin \
+  --email-domain-map mail.example.ac.jp=g.example.ac.jp --activate-domain g.example.ac.jp \
   --people-only 2>&1 | tee /srv/chikuwachat/import/people.txt
 ```
 
@@ -675,9 +676,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compos
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml --profile proxy \
   run --rm -T --no-deps --user root -e RUN_MIGRATIONS=false -v /srv/chikuwachat/import:/import app \
-  python -m app.cli import-slack /import/slack-export.zip --actor kano \
-  --email-domain-map vc.ibaraki.ac.jp=g.ibaraki.ac.jp --activate-domain g.ibaraki.ac.jp \
-  --emoji-dir /import/emoji.zip --emoji-rename-file /import/kano-lab.emoji-rename.txt \
+  python -m app.cli import-slack /import/slack-export.zip --actor admin \
+  --email-domain-map mail.example.ac.jp=g.example.ac.jp --activate-domain g.example.ac.jp \
+  --emoji-dir /import/emoji.zip --emoji-rename-file /import/emoji-rename.txt \
   --download --files-cache /import/files --dry-run 2>&1 | tee /srv/chikuwachat/import/dry-run.txt
 ```
 
@@ -687,14 +688,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compos
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml --profile proxy \
   run --rm -T --no-deps --user root -e RUN_MIGRATIONS=false -v /srv/chikuwachat/import:/import app \
-  python -m app.cli import-slack /import/slack-export.zip --actor kano \
-  --email-domain-map vc.ibaraki.ac.jp=g.ibaraki.ac.jp --activate-domain g.ibaraki.ac.jp \
-  --emoji-dir /import/emoji.zip --emoji-rename-file /import/kano-lab.emoji-rename.txt \
+  python -m app.cli import-slack /import/slack-export.zip --actor admin \
+  --email-domain-map mail.example.ac.jp=g.example.ac.jp --activate-domain g.example.ac.jp \
+  --emoji-dir /import/emoji.zip --emoji-rename-file /import/emoji-rename.txt \
   --download --files-cache /import/files 2>&1 | tee /srv/chikuwachat/import/import.txt
 ```
 
 **4.** Web で管理 →「設定」→「既定のチャンネル」の「今いる人も全員入れる」を押す (読み込んだ人を「全体連絡」などへ)。
-研究室の人は Google (`…@g.ibaraki.ac.jp`) でログインすると、自分のアカウントに Slack の履歴がある状態で入れる。
+研究室の人は Google (`…@g.example.ac.jp`) でログインすると、自分のアカウントに Slack の履歴がある状態で入れる。
 ゲストや無効化済みの人を使えるようにするときは、管理画面で有効にしてチャンネルに入れる。
 
 **5.** 終わったら `rm -rf /srv/chikuwachat/import` (書き出し・キャッシュ・結果に全メッセージとアドレスが入っている)。
@@ -731,7 +732,7 @@ Taylis のカスタム絵文字の名前は英小文字・数字・`_ + -` の 2
 `--emoji-rename-file ファイル` (1 行に `元=先`、`#` から始まる行と空行は読まない) で名前を付け替える (M92):
 Slack の `元` の画像で Taylis のカスタム絵文字 `先` を作り、リアクションと本文の `:元:` (コードの中は除く) は `:先:` になる。
 `先` が Taylis に既にあるカスタム絵文字ならそれを使い (画像は替えない)、結果の「custom emoji」に
-`already a custom emoji here: reused` と出る。研究室の Slack の付け替えは `infra/slack-import/kano-lab.emoji-rename.txt`。
+`already a custom emoji here: reused` と出る。ファイルの例は `infra/slack-import/example.emoji-rename.txt`。
 付け替えの無い不正な名前は今までどおり「reactions not imported」に出る (`--emoji-rename` を促す一言付き)。
 
 数字の囲み (`one`〜`nine`・`zero`・`hash`・`asterisk`。1️⃣ #️⃣ *️⃣) は文字が ASCII で始まるため Taylis のリアクションに

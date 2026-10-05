@@ -48,7 +48,7 @@ async def _imported_bot(db: AsyncSession, cid: str, name: str) -> User:
         db,
         bot,
         uuid.UUID(cid),
-        MessageCreate(client_msg_id=uuid.uuid4(), body="中村の週報 https://kikuchi.example.com/1"),
+        MessageCreate(client_msg_id=uuid.uuid4(), body="中村の週報 https://nakamura.example.com/1"),
         advance_read=False,
         mentions=False,
     )

@@ -408,7 +408,7 @@ async def test_import_continues_after_a_post_made_while_it_ran(
         db,
         dump,
         files_root=None,
-        user_map={"kanotown": "kano", "bobmm": "ebi"},
+        user_map={"alicemm": "kano", "bobmm": "ebi"},
         actor=people["admin"],
         blobs=app.state.blobs,
         settings=settings,
