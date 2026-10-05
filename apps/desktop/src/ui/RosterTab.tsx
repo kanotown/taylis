@@ -7,6 +7,7 @@ import { Avatar } from "./Avatar";
 import { Badge, Button, Field, Input, Modal } from "./primitives";
 import { AFFILIATIONS, compareByRoster, GRADES, RANKS, rosterLabel, supervisorLabel } from "./roster";
 import { RolloverView } from "./RolloverView";
+import { t } from "../i18n";
 
 const SELECT = "h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm";
 
@@ -36,8 +37,8 @@ export function RosterTab({ controller }: { controller: AppController }) {
   };
 
   const switcher = (
-    <div className="flex gap-1" role="group" aria-label="名簿の表示">
-      {([["roster", "名簿"], ["rollover", "年度更新"]] as const).map(([value, label]) => (
+    <div className="flex gap-1" role="group" aria-label={t("roster.view")}>
+      {([["roster", t("admin.tab.roster")], ["rollover", t("roster.rollover")]] as const).map(([value, label]) => (
         <Button key={value} size="sm" variant={view === value ? "primary" : "secondary"} aria-pressed={view === value} onClick={() => setView(value)}>
           {label}
         </Button>
@@ -57,7 +58,7 @@ export function RosterTab({ controller }: { controller: AppController }) {
     <div className="mt-4 space-y-3">
       {switcher}
       <p className="text-sm text-muted">
-        名簿は表示の並び順とグループ分けにだけ使います (権限は変わりません)。名簿に合わせて @faculty @students @alumni @b4 @m1 @m2 @d が自動で保たれます。
+        {t("roster.note")}
       </p>
       <ul className="divide-y divide-line rounded-xl border border-line">
         {people.map((user) => {
@@ -69,7 +70,7 @@ export function RosterTab({ controller }: { controller: AppController }) {
                 <div className="flex items-center gap-2">
                   <span className="truncate font-medium">{user.display_name}</span>
                   <span className="truncate text-xs text-muted">@{user.username}</span>
-                  {line ? <Badge tone="accent">{rosterLabel(line)}</Badge> : <Badge>名簿外</Badge>}
+                  {line ? <Badge tone="accent">{rosterLabel(line)}</Badge> : <Badge>{t("roster.notInRoster")}</Badge>}
                 </div>
                 {line && (line.supervisor_id || line.research_topic) && (
                   <div className="truncate text-[11px] text-muted">
@@ -78,10 +79,10 @@ export function RosterTab({ controller }: { controller: AppController }) {
                 )}
               </div>
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(user)}>
-                {line ? <><Pencil size={14} /> 編集</> : <><UserPlus size={14} /> 名簿に載せる</>}
+                {line ? <><Pencil size={14} /> {t("canvas.edit")}</> : <><UserPlus size={14} /> {t("roster.add")}</>}
               </Button>
               {line && (
-                <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setRemoving(user)} title="名簿から外す (アカウントは残ります)">
+                <Button size="sm" variant="ghost" className="text-danger" disabled={busy} onClick={() => setRemoving(user)} title={t("roster.removeTitle")}>
                   <UserMinus size={14} />
                 </Button>
               )}
@@ -104,10 +105,10 @@ export function RosterTab({ controller }: { controller: AppController }) {
         />
       )}
       {removing && (
-        <Modal onClose={() => setRemoving(null)} title={`${removing.display_name} を名簿から外しますか？`} className="w-[420px]">
-          <p className="mt-2 text-sm text-muted">アカウントとメッセージはそのまま残ります。学年グループからは外れます。</p>
+        <Modal onClose={() => setRemoving(null)} title={t("roster.removeQuestion", { name: removing.display_name })} className="w-[420px]">
+          <p className="mt-2 text-sm text-muted">{t("roster.removeNote")}</p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setRemoving(null)}>キャンセル</Button>
+            <Button variant="secondary" onClick={() => setRemoving(null)}>{t("common.cancel")}</Button>
             <Button
               variant="danger"
               disabled={busy}
@@ -118,7 +119,7 @@ export function RosterTab({ controller }: { controller: AppController }) {
                 }).then((ok) => { if (ok) setRemoving(null); })
               }
             >
-              外す
+              {t("settings.workspaces.remove")}
             </Button>
           </div>
         </Modal>
@@ -167,44 +168,44 @@ function RosterEditor({ controller, user, line, busy, onClose, onSave }: {
   };
 
   return (
-    <Modal onClose={onClose} title={`${user.display_name} の名簿`} className="w-[480px]">
+    <Modal onClose={onClose} title={t("roster.of", { name: user.display_name })} className="w-[480px]">
       <form className="mt-4 space-y-3" onSubmit={submit}>
-        <Field label="身分">
+        <Field label={t("roster.affiliation")}>
           <select value={affiliation} onChange={(e) => setAffiliation(e.target.value as Affiliation)} className={SELECT}>
             {AFFILIATIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </Field>
         {affiliation === "faculty" && (
-          <Field label="職位">
+          <Field label={t("roster.rank")}>
             <select value={rank} onChange={(e) => setRank(e.target.value as FacultyRank | "")} className={SELECT}>
-              <option value="">指定しない</option>
+              <option value="">{t("invites.unspecified")}</option>
               {RANKS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </Field>
         )}
         {affiliation === "student" && (
-          <Field label="学年">
+          <Field label={t("roster.grade")}>
             <select value={grade} onChange={(e) => setGrade(e.target.value as Grade | "")} className={SELECT}>
-              <option value="">指定しない</option>
+              <option value="">{t("invites.unspecified")}</option>
               {[...GRADES].reverse().map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
           </Field>
         )}
-        <Field label="指導教員" hint={faculty.length === 0 ? "先に教員を名簿に載せると選べます" : undefined}>
+        <Field label={t("roster.supervisor")} hint={faculty.length === 0 ? t("invites.supervisorHint") : undefined}>
           <select value={supervisor} onChange={(e) => setSupervisor(e.target.value)} className={SELECT} disabled={faculty.length === 0}>
-            <option value="">なし</option>
+            <option value="">{t("workflow.none")}</option>
             {faculty.map((u) => <option key={u.id} value={u.id}>{u.display_name}</option>)}
           </select>
         </Field>
-        <Field label="研究テーマ (本人も編集できます)">
+        <Field label={t("roster.topic")}>
           <Input value={topic} maxLength={200} onChange={(e) => setTopic(e.target.value)} />
         </Field>
-        <Field label="よみ (並び順に使います)">
-          <Input value={reading} maxLength={80} placeholder="例: かのう とおる" onChange={(e) => setReading(e.target.value)} />
+        <Field label={t("roster.reading")}>
+          <Input value={reading} maxLength={80} placeholder={t("settings.profile.readingPlaceholder")} onChange={(e) => setReading(e.target.value)} />
         </Field>
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>キャンセル</Button>
-          <Button type="submit" disabled={busy}>保存</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" disabled={busy}>{t("common.save")}</Button>
         </div>
       </form>
     </Modal>
