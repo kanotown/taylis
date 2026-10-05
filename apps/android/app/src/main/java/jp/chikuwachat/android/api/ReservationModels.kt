@@ -73,6 +73,8 @@ data class PoolOut(
     val todos: List<ReservationTodo> = emptyList(),
     val nextEvictId: String? = null,
     val myReservationId: String? = null,
+    /** The caller's one active reservation in the pool (waiting, booked, on a seat, returned but not yet removed). */
+    val myActiveId: String? = null,
     val canManage: Boolean = false,
     val canOperate: Boolean = false,
     val horizonDays: Int = 14,

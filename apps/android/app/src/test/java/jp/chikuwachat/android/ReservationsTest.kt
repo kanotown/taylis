@@ -62,6 +62,37 @@ class ReservationsTest {
         assertEquals(0, ReservationRules.todoCount(listOf(pool))) // only due to-dos count
     }
 
+    @Test fun theDefaultLengthIsTheMaximumOrTheLongestThatFits() {
+        val pool = PoolOut(id = "p1", name = "シート", capacity = 2, bookings = listOf(booking("b1", "a", 12, 15), booking("b2", "b", 13, 14)))
+        val ten = Instant.parse(at(10))
+        val full = ReservationRules.durationDefault(pool, ten, now, tokyo)
+        assertEquals(ReservationRules.DurationDefault(3, ReservationRules.Limit.FULL, Instant.parse(at(13))), full)
+        assertEquals("13:00 から埋まっているため、最長 3 時間です", ReservationRules.limitText(full, pool, ten, tokyo))
+        val two = Instant.parse(at(14))
+        val max = ReservationRules.durationDefault(pool, two, now, tokyo)
+        assertEquals(ReservationRules.DurationDefault(6, ReservationRules.Limit.MAX, null), max)
+        assertNull(ReservationRules.limitText(max, pool, two, tokyo))
+        // the last day: the two weeks end at midnight
+        val last = Instant.parse(at(22, day = 19))
+        val horizon = ReservationRules.durationDefault(pool, last, now, tokyo)
+        assertEquals(2, horizon.hours)
+        assertEquals(ReservationRules.Limit.HORIZON, horizon.limit)
+        assertEquals("予約は 14 日先までのため、最長 2 時間です", ReservationRules.limitText(horizon, pool, last, tokyo))
+    }
+
+    @Test fun oneActiveReservationPerPool() {
+        val mine = booking("m1", "me", 16, 18)
+        val other = booking("b1", "a", 12, 15)
+        assertEquals("m1", ReservationRules.active(PoolOut(id = "p", name = "x", capacity = 2, bookings = listOf(other, mine), myActiveId = "m1"), "me")?.id)
+        assertEquals("m1", ReservationRules.active(PoolOut(id = "p", name = "x", capacity = 2, bookings = listOf(other, mine)), "me")?.id)
+        assertNull(ReservationRules.active(PoolOut(id = "p", name = "x", capacity = 2, bookings = listOf(other)), "me"))
+        val waiting = ReservationOut(id = "q1", userId = "me", kind = "walkin", status = "waiting", requestedAt = at(9))
+        assertEquals("q1", ReservationRules.active(PoolOut(id = "p", name = "x", capacity = 2, waiting = listOf(waiting)), "me")?.id)
+        assertEquals("今すぐ · 順番待ち", ReservationRules.activeText(waiting, now, tokyo))
+        assertEquals("予約 16:00〜18:00", ReservationRules.activeText(mine, now, tokyo))
+        assertEquals("予約 16:00〜18:00 · 利用中", ReservationRules.activeText(booking("m2", "me", 16, 18, "holding"), now, tokyo))
+    }
+
     @Test fun startsDurationsAndHours() {
         val pool = PoolOut(id = "p1", name = "シート", capacity = 2, bookings = listOf(booking("b1", "a", 12, 15), booking("b2", "b", 13, 14)))
         val day = LocalDate.of(2026, 10, 5)
