@@ -6,14 +6,15 @@ import type { MessageState } from "../sync/types";
 import { compactNames } from "./format";
 import { cn, HoverList } from "./primitives";
 import { AcksDialog } from "./WhoDialogs";
+import { t } from "../i18n";
 
 /**
  * 「3/8 人が確認」 when who is still to confirm is known (`pending`), else 「3 人が確認」; nothing yet and no total:
  * 「まだ誰も確認していません」.
  */
 export function ackCountLabel(acked: number, pending: number | null): string {
-  if (pending === null) return acked === 0 ? "まだ誰も確認していません" : `${acked} 人が確認`;
-  return `${acked}/${acked + pending} 人が確認`;
+  if (pending === null) return acked === 0 ? t("ack.nobody") : t("ack.count", { count: acked });
+  return t("ack.ratio", { acked, total: acked + pending });
 }
 
 /**
@@ -72,7 +73,7 @@ export function AckBar({ controller, message, readOnly }: { controller: AppContr
   return (
     <div
       role="group"
-      aria-label="確認のお願い"
+      aria-label={t("reminders.ack")}
       data-ack-row={state}
       className={cn(
         "mt-1.5 flex min-w-0 max-w-xl flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg border px-2.5 py-1.5 text-xs",
@@ -80,7 +81,7 @@ export function AckBar({ controller, message, readOnly }: { controller: AppContr
       )}
     >
       <span className="inline-flex shrink-0 items-center gap-1 font-semibold text-accent">
-        <CheckCircle2 size={14} aria-hidden /> 確認のお願い
+        <CheckCircle2 size={14} aria-hidden /> {t("reminders.ack")}
       </span>
       {readOnly ? (
         <span className="flex min-w-0 items-center gap-1">{count}</span>
@@ -90,7 +91,7 @@ export function AckBar({ controller, message, readOnly }: { controller: AppContr
             type="button"
             data-ack-count=""
             className="flex min-w-0 items-center gap-1 rounded text-left hover:underline"
-            aria-label={acks.length > 0 ? `確認した人 (${acks.length} 人)` : undefined}
+            aria-label={acks.length > 0 ? t("ack.who", { count: acks.length }) : undefined}
             onClick={() => setListOpen(true)}
           >
             {count}
@@ -99,22 +100,22 @@ export function AckBar({ controller, message, readOnly }: { controller: AppContr
       )}
       {canChase && pending && pending.length > 0 && (
         <button type="button" data-ack-pending="" className="inline-flex shrink-0 items-center gap-1 rounded font-medium text-ink hover:underline" onClick={() => setListOpen(true)}>
-          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />未確認 {pending.length} 人
+          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warning" />{t("ack.pending", { count: pending.length })}
         </button>
       )}
-      {pending && pending.length === 0 && acks.length > 0 && <span className="shrink-0 font-medium text-muted">全員が確認済み</span>}
+      {pending && pending.length === 0 && acks.length > 0 && <span className="shrink-0 font-medium text-muted">{t("ack.all")}</span>}
       {!own && !readOnly && (
         <button
           type="button"
           aria-pressed={mine}
-          title={mine ? "もう一度押すと取り消します" : undefined}
+          title={mine ? t("ack.undoTitle") : undefined}
           className={cn(
             "ml-auto inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2.5 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
             mine ? "border border-accent/40 bg-canvas text-accent hover:bg-accent-soft" : "bg-accent-solid text-white shadow-sm hover:bg-accent-solid/90",
           )}
           onClick={() => void controller.toggleAck(message)}
         >
-          {mine ? <Check size={14} aria-hidden /> : <CheckCheck size={14} aria-hidden />} {mine ? "確認済み" : "確認しました"}
+          {mine ? <Check size={14} aria-hidden /> : <CheckCheck size={14} aria-hidden />} {mine ? t("ack.done") : t("ack.ack")}
         </button>
       )}
       {listOpen && <AcksDialog controller={controller} message={message} readOnly={readOnly} onClose={() => setListOpen(false)} />}

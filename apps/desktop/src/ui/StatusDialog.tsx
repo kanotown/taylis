@@ -6,6 +6,7 @@ import { EmojiPicker, readRecentEmoji } from "./EmojiPicker";
 import { Button, cn, Field, Input, Modal, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { activeStatus, EXPIRY_OPTIONS, expiryAt, expiryLabel, STATUS_PRESETS, type StatusExpiry } from "./users";
+import { t } from "../i18n";
 
 /**
  * Custom status editor (M11d): emoji + text + expiry, quick presets, clear. Since M40 the status only: pausing
@@ -13,7 +14,7 @@ import { activeStatus, EXPIRY_OPTIONS, expiryAt, expiryLabel, STATUS_PRESETS, ty
  */
 export function StatusDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
   return (
-    <Modal onClose={onClose} title="ステータスを設定" className="w-[440px]">
+    <Modal onClose={onClose} title={t("popover.setStatus")} className="w-[440px]">
       <StatusForm controller={controller} onDone={onClose} onCancel={onClose} className="mt-4" />
     </Modal>
   );
@@ -60,7 +61,7 @@ export function StatusForm({ controller, onDone, onCancel, className }: { contro
       <div className="flex gap-2">
         <PopoverRoot open={picking} onOpenChange={setPicking}>
           <PopoverTrigger asChild>
-            <button type="button" aria-label={emoji ? "絵文字を変更" : "絵文字を選ぶ"} title="絵文字" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-canvas text-muted hover:bg-panel">
+            <button type="button" aria-label={emoji ? t("status.changeEmoji") : t("status.pickEmoji")} title={t("composer.emoji")} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-canvas text-muted hover:bg-panel">
               {emoji ? <SectionIcon controller={controller} emoji={emoji} size={18} /> : <SmilePlus size={16} />}
             </button>
           </PopoverTrigger>
@@ -77,12 +78,12 @@ export function StatusForm({ controller, onDone, onCancel, className }: { contro
             />
             {emoji && (
               <div className="mt-2 border-t border-line pt-2 text-right">
-                <Button type="button" variant="ghost" size="sm" onClick={() => { setEmoji(""); setSaved(false); setPicking(false); }}>絵文字を外す</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setEmoji(""); setSaved(false); setPicking(false); }}>{t("status.removeEmoji")}</Button>
               </div>
             )}
           </PopoverContent>
         </PopoverRoot>
-        <Input value={text} maxLength={100} placeholder="今なにしてる？" aria-label="ステータス" className="flex-1" onChange={(e) => { setText(e.target.value); setSaved(false); }} autoFocus={!!onCancel} />
+        <Input value={text} maxLength={100} placeholder={t("status.placeholder")} aria-label={t("settings.status.label")} className="flex-1" onChange={(e) => { setText(e.target.value); setSaved(false); }} autoFocus={!!onCancel} />
       </div>
       <div className="flex flex-wrap gap-1.5">
         {STATUS_PRESETS.map((preset) => (
@@ -96,7 +97,7 @@ export function StatusForm({ controller, onDone, onCancel, className }: { contro
           </button>
         ))}
       </div>
-      <Field label="消えるタイミング">
+      <Field label={t("status.clearAfter")}>
         <select value={expiry} onChange={(e) => { setExpiry(e.target.value as StatusExpiry); setSaved(false); }} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm">
           {EXPIRY_OPTIONS.map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
@@ -105,11 +106,11 @@ export function StatusForm({ controller, onDone, onCancel, className }: { contro
         {expiry !== "never" && <div className="mt-1 text-xs text-muted">{expiryLabel(expiryAt(expiry))}</div>}
       </Field>
       <div className="flex items-center justify-between gap-2">
-        <Button type="button" variant="ghost" onClick={() => void clear()} disabled={busy || !current}>クリア</Button>
+        <Button type="button" variant="ghost" onClick={() => void clear()} disabled={busy || !current}>{t("status.clear")}</Button>
         <div className="flex items-center gap-2">
-          {saved && !onDone && <span className="text-xs text-muted">保存しました</span>}
-          {onCancel && <Button type="button" variant="secondary" onClick={onCancel}>キャンセル</Button>}
-          <Button type="submit" disabled={busy || (!emoji.trim() && !text.trim())}>保存</Button>
+          {saved && !onDone && <span className="text-xs text-muted">{t("common.saved")}</span>}
+          {onCancel && <Button type="button" variant="secondary" onClick={onCancel}>{t("common.cancel")}</Button>}
+          <Button type="submit" disabled={busy || (!emoji.trim() && !text.trim())}>{t("common.save")}</Button>
         </div>
       </div>
     </form>

@@ -12,6 +12,7 @@ import { dmList, dmTimeLabel, isSelfNotes, showsSelfNotesPlaceholder } from "./m
 import { Badge, cn, IconButton } from "./primitives";
 import { EmojiText, StatusGlyph } from "./UserPopover";
 import { activeStatus } from "./users";
+import { t } from "../i18n";
 
 /**
  * My own DM before it exists (the DM tab's and the sidebar's placeholder row): a tap makes it (POST /dms with only me)
@@ -51,10 +52,10 @@ export function DmListView({ controller, onOpen, onNew }: { controller: AppContr
   const { creating, open: openSelfNotes } = useOpenSelfNotes(controller, meId, onOpen);
   const now = new Date();
   return (
-    <section aria-label="ダイレクトメッセージ" className="flex min-h-0 flex-1 flex-col bg-canvas">
+    <section aria-label={t("sidebar.dms")} className="flex min-h-0 flex-1 flex-col bg-canvas">
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line pl-4 pr-2">
-        <strong className="min-w-0 flex-1 truncate text-[17px]">ダイレクトメッセージ</strong>
-        <IconButton label="新しいメッセージ" className="h-11 w-11" onClick={onNew}>
+        <strong className="min-w-0 flex-1 truncate text-[17px]">{t("sidebar.dms")}</strong>
+        <IconButton label={t("home.newMessage")} className="h-11 w-11" onClick={onNew}>
           <SquarePen size={20} />
         </IconButton>
       </header>
@@ -65,15 +66,15 @@ export function DmListView({ controller, onOpen, onNew }: { controller: AppContr
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="DM を検索"
-            aria-label="DM を名前で絞り込む"
+            placeholder={t("dmList.search")}
+            aria-label={t("dmList.filter")}
             className="min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-muted"
           />
         </label>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 && !placeholder ? (
-          <p className="px-6 py-12 text-center text-sm text-muted">{query.trim() ? "一致する DM はありません" : "まだ DM はありません"}</p>
+          <p className="px-6 py-12 text-center text-sm text-muted">{query.trim() ? t("dmList.noMatch") : t("dmList.none")}</p>
         ) : (
           <ul>
             {placeholder && meId && <SelfNotesPlaceholderRow controller={controller} meId={meId} busy={creating} onOpen={openSelfNotes} />}
@@ -124,7 +125,7 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
   const time = dmTimeLabel(channel.last_message_at, now);
   // M49: the last message (「あなた: …」 / 「佐藤: …」, dmPreview.ts); without one, the status, presence or size as before.
   const preview = previewLine(channel, channel.last_message, meId, store.users);
-  const second = preview || (status ? `${status.emoji ?? ""} ${status.text ?? ""}`.trim() : single ? presenceLabel(presence ?? "offline") : others.length > 1 ? `${others.length + 1} 人` : "");
+  const second = preview || (status ? `${status.emoji ?? ""} ${status.text ?? ""}`.trim() : single ? presenceLabel(presence ?? "offline") : others.length > 1 ? t("common.people", { count: others.length + 1 }) : "");
   return (
     <li>
       <button type="button" onClick={onOpen} className="flex min-h-16 w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-panel active:bg-panel">
@@ -154,9 +155,9 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
             <span data-dm-preview={preview ? "" : undefined} className={cn("min-w-0 flex-1 truncate text-[13px]", preview && unread ? "font-semibold text-ink" : "text-muted")}>
               <EmojiText controller={controller} text={second} />
             </span>
-            {muted && <BellOff size={13} className="shrink-0 text-muted" aria-label="ミュート中" />}
+            {muted && <BellOff size={13} className="shrink-0 text-muted" aria-label={t("home.muted")} />}
             {unread && badge > 0 && <Badge tone="danger">{badge}</Badge>}
-            {unread && badge === 0 && <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-label="未読" />}
+            {unread && badge === 0 && <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-label={t("sidebar.unread")} />}
           </span>
         </span>
       </button>

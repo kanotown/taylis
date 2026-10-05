@@ -8,6 +8,7 @@ import { Badge, Button, Input, Modal } from "./primitives";
 import { compareByRoster, rosterLabel, rosterSection, titleExtra } from "./roster";
 import { EmojiText } from "./UserPopover";
 import { activeStatus } from "./users";
+import { t } from "../i18n";
 
 /**
  * 「メンバー」(M13g): everyone in the workspace, with presence, title and status; a DM is one click away. People on the lab
@@ -40,20 +41,20 @@ export function DirectoryDialog({ controller, onClose, onOpen }: { controller: A
   };
 
   return (
-    <Modal onClose={onClose} title="メンバー" description={`${people.length} 人`} className="w-[560px]">
+    <Modal onClose={onClose} title={t("channel.members")} description={t("common.people", { count: people.length })} className="w-[560px]">
       <div className="mt-3 space-y-3">
         <div className="relative">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={headed ? "名前・ユーザー名・肩書・研究テーマで検索" : "名前・ユーザー名・肩書で検索"} className="pl-8" autoFocus />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={headed ? t("directory.searchLab") : t("directory.search")} className="pl-8" autoFocus />
         </div>
         <ul className="max-h-[60vh] divide-y divide-line overflow-y-auto rounded-xl border border-line">
           {people.map((user, index) => {
             const status = activeStatus(user);
             const presence = store.presenceOf(user.id);
             const line = store.roster.get(user.id);
-            const section = headed ? (rosterSection(line) ?? "その他のメンバー") : null;
+            const section = headed ? (rosterSection(line) ?? t("directory.others")) : null;
             const previous = index > 0 ? people[index - 1] : undefined;
-            const newSection = section !== null && (!previous || (rosterSection(store.roster.get(previous.id)) ?? "その他のメンバー") !== section);
+            const newSection = section !== null && (!previous || (rosterSection(store.roster.get(previous.id)) ?? t("directory.others")) !== section);
             return (
               <li key={user.id} className="text-sm">
                 {newSection && <div className="sticky top-0 z-10 border-b border-line bg-panel px-3 py-1 text-[11px] font-semibold text-muted">{section}</div>}
@@ -64,15 +65,15 @@ export function DirectoryDialog({ controller, onClose, onOpen }: { controller: A
                       <span className="truncate font-medium">{user.display_name}</span>
                       <span className="truncate text-xs text-muted">@{user.username}</span>
                       {line && <Badge>{rosterLabel(line)}</Badge>}
-                      {user.role === "admin" && <Badge tone="accent">管理者</Badge>}
-                      {user.role === "guest" && <Badge>ゲスト</Badge>}
+                      {user.role === "admin" && <Badge tone="accent">{t("admin.users.role.admin")}</Badge>}
+                      {user.role === "guest" && <Badge>{t("dialogs.guest")}</Badge>}
                       {user.role === "bot" && <Badge>{controller.store.aiAgentOf(user.id) ? "AI" : "BOT"}</Badge>}
-                      {user.dnd_until && <span title="通知を一時停止中">🔕</span>}
-                      {user.id === me && <span className="text-xs text-muted">自分</span>}
+                      {user.dnd_until && <span title={t("popover.paused")}>🔕</span>}
+                      {user.id === me && <span className="text-xs text-muted">{t("calendar.me")}</span>}
                     </div>
                     <div className="truncate text-xs text-muted">
                       {/* A custom status emoji as its image (EmojiText), not its `:name:`. */}
-                      <EmojiText controller={controller} text={[titleExtra(user.title, line), line?.research_topic, status ? `${status.emoji} ${status.text}`.trim() : null].filter(Boolean).join(" · ") || (user.role === "bot" ? (controller.store.aiAgentOf(user.id) ? "AI のボット" : "受信 Webhook") : presence === "online" ? "オンライン" : presence === "away" ? "離席中" : "オフライン")} />
+                      <EmojiText controller={controller} text={[titleExtra(user.title, line), line?.research_topic, status ? `${status.emoji} ${status.text}`.trim() : null].filter(Boolean).join(" · ") || (user.role === "bot" ? (controller.store.aiAgentOf(user.id) ? t("directory.aiBot") : t("directory.webhook")) : presence === "online" ? t("connection.online") : presence === "away" ? t("directory.away") : t("connection.offline"))} />
                     </div>
                   </div>
                   {user.id !== me && user.role !== "bot" && (
@@ -84,7 +85,7 @@ export function DirectoryDialog({ controller, onClose, onOpen }: { controller: A
               </li>
             );
           })}
-          {people.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">該当するメンバーがいません</li>}
+          {people.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">{t("directory.noMatch")}</li>}
         </ul>
       </div>
     </Modal>
