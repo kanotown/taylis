@@ -119,6 +119,8 @@ struct PoolOut: Codable, Equatable, Identifiable {
     var todos: [ReservationTodo] = []
     var nextEvictId: String? = nil
     var myReservationId: String? = nil
+    /// The caller's one active reservation in the pool (waiting, booked, on a seat, returned but not yet removed).
+    var myActiveId: String? = nil
     var canManage: Bool = false
     var canOperate: Bool = false
     var horizonDays: Int = 14
@@ -128,7 +130,8 @@ struct PoolOut: Codable, Equatable, Identifiable {
     init(id: String, name: String, capacity: Int, minHours: Int = 6, maxHours: Int = 6, graceMinutes: Int = 15,
          tz: String = "Asia/Tokyo", enabled: Bool = true, operatorIds: [String] = [], holders: [ReservationOut] = [],
          waiting: [ReservationOut] = [], bookings: [ReservationOut] = [], todos: [ReservationTodo] = [],
-         nextEvictId: String? = nil, myReservationId: String? = nil, canManage: Bool = false, canOperate: Bool = false,
+         nextEvictId: String? = nil, myReservationId: String? = nil, myActiveId: String? = nil, canManage: Bool = false,
+         canOperate: Bool = false,
          horizonDays: Int = 14, createdAt: String = "2026-10-01T00:00:00Z", updatedAt: String = "2026-10-01T00:00:00Z") {
         self.id = id
         self.name = name
@@ -145,6 +148,7 @@ struct PoolOut: Codable, Equatable, Identifiable {
         self.todos = todos
         self.nextEvictId = nextEvictId
         self.myReservationId = myReservationId
+        self.myActiveId = myActiveId
         self.canManage = canManage
         self.canOperate = canOperate
         self.horizonDays = horizonDays

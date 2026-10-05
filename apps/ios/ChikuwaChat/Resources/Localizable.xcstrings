@@ -21903,22 +21903,6 @@
         }
       }
     },
-    "毎時 0 分から %lld 時間まで、2 週間先まで、1 人 2 件まで。「今すぐ」は空いている枠を次の予約が始まるまで使えます。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "From the top of the hour for up to %lld hours, up to 2 weeks ahead, 2 per person. “Now” uses a free slot until the next booking starts."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从整点开始，最长 %lld 小时，最多可预约 2 周以内，每人最多 2 个。“立即”可以使用空闲时段直到下一个预约开始。"
-          }
-        }
-      }
-    },
     "毎月" : {
       "localizations" : {
         "en" : {
@@ -27805,6 +27789,134 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "🔕 已暂停通知"
+          }
+        }
+      }
+    },
+    "毎時 0 分から %lld 時間まで、2 週間先まで。予約・順番待ち・利用中は 1 つの枠で 1 人 1 つまで。「今すぐ」は空いている枠を次の予約が始まるまで使えます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From the top of the hour for up to %lld hours, up to 2 weeks ahead. One booking, queue place or seat per person in a slot. “Now” uses a free slot until the next booking starts."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从整点开始，最长 %lld 小时，最多可预约 2 周以内。同一名额中每人只能有一个预约、排队或正在使用。“立即”可以使用空闲时段直到下一个预约开始。"
+          }
+        }
+      }
+    },
+    "%@ から埋まっているため、最長 %lld 時間です" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "At most %2$lld hours: the slot is full from %1$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 起已满，最长 %2$lld 小时"
+          }
+        }
+      }
+    },
+    "予約は %lld 日先までのため、最長 %lld 時間です" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "At most %2$lld hours: bookings reach %1$lld days ahead"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预约最多提前 %1$lld 天，最长 %2$lld 小时"
+          }
+        }
+      }
+    },
+    "予約 %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Booking %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预约 %@"
+          }
+        }
+      }
+    },
+    "今すぐ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Now"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "立即"
+          }
+        }
+      }
+    },
+    "順番待ち" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In the queue"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排队中"
+          }
+        }
+      }
+    },
+    "すでに予約があります（%@）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You already have a reservation (%@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你已有预约（%@）"
+          }
+        }
+      }
+    },
+    "自分の予約を見る" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "See my reservation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看我的预约"
           }
         }
       }

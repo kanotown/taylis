@@ -72,6 +72,37 @@ final class ReservationTests: XCTestCase {
         XCTAssertTrue(ReservationRules.fits(one, start: ten.addingTimeInterval(3600), hours: 1, now: now))
     }
 
+    func testTheDefaultLengthIsTheMaximumOrTheLongestThatFits() {
+        let pool = PoolOut(id: "p1", name: "シート", capacity: 2, bookings: [booking("b1", user: "a", from: 12, to: 15), booking("b2", user: "b", from: 13, to: 14)])
+        let ten = tokyo.date(bySettingHour: 10, minute: 0, second: 0, of: now)!
+        let full = ReservationRules.durationDefault(pool, start: ten, now: now, calendar: tokyo)
+        XCTAssertEqual(full, .init(hours: 3, limit: .full, at: parseIsoDate(at(13))))
+        XCTAssertEqual(ReservationRules.limitText(full, pool: pool, start: ten, calendar: tokyo), "13:00 から埋まっているため、最長 3 時間です")
+        let two = ten.addingTimeInterval(4 * 3600)
+        let max = ReservationRules.durationDefault(pool, start: two, now: now, calendar: tokyo)
+        XCTAssertEqual(max, .init(hours: 6, limit: .max, at: nil))
+        XCTAssertNil(ReservationRules.limitText(max, pool: pool, start: two, calendar: tokyo))
+        // the last day: the two weeks end at midnight
+        let last = tokyo.date(from: DateComponents(year: 2026, month: 10, day: 19, hour: 22))!
+        let horizon = ReservationRules.durationDefault(pool, start: last, now: now, calendar: tokyo)
+        XCTAssertEqual(horizon.hours, 2)
+        XCTAssertEqual(horizon.limit, .horizon)
+        XCTAssertEqual(ReservationRules.limitText(horizon, pool: pool, start: last, calendar: tokyo), "予約は 14 日先までのため、最長 2 時間です")
+    }
+
+    func testOneActiveReservationPerPool() {
+        let mine = booking("m1", user: "me", from: 16, to: 18)
+        let other = booking("b1", user: "a", from: 12, to: 15)
+        XCTAssertEqual(ReservationRules.active(PoolOut(id: "p", name: "x", capacity: 2, bookings: [other, mine], myActiveId: "m1"), me: "me")?.id, "m1")
+        XCTAssertEqual(ReservationRules.active(PoolOut(id: "p", name: "x", capacity: 2, bookings: [other, mine]), me: "me")?.id, "m1")
+        XCTAssertNil(ReservationRules.active(PoolOut(id: "p", name: "x", capacity: 2, bookings: [other]), me: "me"))
+        let waiting = ReservationOut(id: "q1", userId: "me", kind: "walkin", status: "waiting", requestedAt: at(9))
+        XCTAssertEqual(ReservationRules.active(PoolOut(id: "p", name: "x", capacity: 2, waiting: [waiting]), me: "me")?.id, "q1")
+        XCTAssertEqual(ReservationRules.activeText(waiting, now: now), "今すぐ · 順番待ち")
+        XCTAssertTrue(ReservationRules.activeText(mine, now: now).hasPrefix("予約 "))
+        XCTAssertTrue(ReservationRules.activeText(booking("m2", user: "me", from: 16, to: 18, status: "holding"), now: now).hasSuffix(" · 利用中"))
+    }
+
     func testWordsTodosAndTheTile() {
         let waiting = ReservationOut(id: "q1", userId: "me", kind: "walkin", status: "waiting", requestedAt: at(9), email: "me@example.jp",
                                      position: 1, step: "assign", until: at(13))
