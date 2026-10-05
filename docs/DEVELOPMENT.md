@@ -128,3 +128,46 @@ tauri.conf.json を揃える)。公証する場合はステープルしたアプ
 
 手元で `npm run tauri build` すると、更新用のファイルの署名に秘密鍵を求めて最後に失敗する (アプリ自体はできている)。
 鍵なしで作るときは `npm run tauri:build` (`--config src-tauri/tauri.no-updater.conf.json`)。
+
+## 7. 公開リポジトリの CI
+
+このリポジトリは公開 (Apache-2.0) なので、ワークフローはすべて GitHub のホストする runner で動かす
+(`ubuntu-latest`、iOS とデスクトップのインストーラは `macos-latest` / `windows-latest`)。self-hosted runner、
+とくに本番のサーバーの上の runner は使わない: 外部からの pull request がそこで任意のコードを動かせてしまう。
+
+- ci.yml の server ジョブは、テスト用の PostgreSQL + PGroonga を service container
+  (`groonga/pgroonga:latest-alpine-17`、開発用の compose と同じイメージ) で立て、Docker が選んだポートを
+  `TEST_DATABASE_URL` に渡す。
+- 各ワークフローの `permissions:` は既定で `contents: read`。イメージの push (`packages: write`) は release の
+  images / deploy ジョブだけ。
+- release.yml の deploy は、元のリポジトリ (フォークでない) の `v*` タグのときだけ動く。SSH の秘密情報は
+  environment (`production`、`taylis`) にだけ置く。
+
+持ち主が GitHub の設定で行うこと:
+
+1. Settings → Actions → General → "Fork pull request workflows from outside collaborators" を
+   **"Require approval for all outside collaborators"** にする (外部の人の pull request は、持ち主が
+   内容を見て承認するまでワークフローが動かない)。
+2. 同じ画面の "Workflow permissions" は **"Read repository contents and packages permissions"** のままにし、
+   "Allow GitHub Actions to create and approve pull requests" は切っておく。
+3. Settings → Environments の `production` と `taylis` は、Deployment branches and tags で **タグ `v*` だけ**を許可する
+   (必要なら Required reviewers も)。秘密情報 (`DEPLOY_*`) は environment に置き、リポジトリの Secrets には置かない。
+4. Settings → Actions → Runners に以前の self-hosted runner が残っていれば外す (サーバーの runner のサービスも止める)。
+5. Settings → Code security で "Private vulnerability reporting" を有効にする (SECURITY.md)。
+
+## 8. フォークでのビルド (Forks)
+
+「Taylis」の名前とリスのアイコンは Apache-2.0 の対象外 (TRADEMARKS.md)。改変版を配るフォークは、名前・アイコン・
+アプリの ID を自分のものに替える。替える場所:
+
+| 対象 | 場所 |
+| --- | --- |
+| アイコン | `apps/shared/brand/appicon.png` を差し替えて `apps/shared/brand/gen_icons.sh` (§3)。DMG の背景は `gen_dmg_background.py` |
+| iOS の Team ID | `apps/ios/project.yml` の `DEVELOPMENT_TEAM` (今は公式アプリの `3WF4YQB4L6`)。`xcodegen generate` で `ChikuwaChat.xcodeproj` を作り直す。`apps/ios/scripts/release-ios.sh` の `TEAM_ID` も |
+| iOS のバンドル ID | `apps/ios/project.yml` の `bundleIdPrefix` と `PRODUCT_BUNDLE_IDENTIFIER` (`jp.chikuwachat.ios`、テストは `.tests`)。サーバーの `.env` の `PUSH_APNS_BUNDLE_ID`・`PUSH_APNS_TEAM_ID`・`PUSH_APNS_KEY_ID` も合わせる (APNs の topic) |
+| Android | `apps/android/app/build.gradle.kts` の `applicationId` (`jp.chikuwachat.android`。`namespace` はコードのパッケージなので替えなくてよい)。FCM は自分の Firebase プロジェクトの `google-services.json` とサービスアカウント |
+| デスクトップ | `apps/desktop/src-tauri/tauri.conf.json` の `identifier` (`jp.chikuwachat.desktop`)、`productName`。更新は `plugins.updater` の `endpoints` と `pubkey` を自分の鍵・リポジトリに替える (§6。`release-desktop.sh` の `TAYLIS_RELEASES_REPO`)。更新を使わないなら `npm run tauri:build` |
+| 表示名 | 各アプリの表示名 (iOS の `CFBundleDisplayName`、Android の `app_name`、Tauri の `productName`、Web の `<title>`) と、サーバーの `.env` の `WORKSPACE_NAME` |
+
+URL スキーム `chikuwachat://` や内部のパッケージ名は名前の表示ではないので、そのままでも動く (公式アプリと同じ端末に
+入れるなら、URL スキームも替えると取り合いにならない)。

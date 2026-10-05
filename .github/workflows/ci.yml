@@ -17,16 +17,17 @@ on:
 permissions:
   contents: read
 
-# One self-hosted runner takes every job in turn: a newer push to main makes the older run's result
-# moot, so it is cancelled instead of holding up the queue (and a release's deploy) for 20-40 min.
+# A newer push to main or to a pull request makes the older run's result moot, so it is cancelled.
 # Tag releases call this workflow under their own ref and are never cancelled.
+# All jobs run on GitHub-hosted runners: this repository is public, so its jobs (including pull requests from
+# forks) must never run on a self-hosted runner or on a production server.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 jobs:
   server:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: server
@@ -38,7 +39,7 @@ jobs:
           POSTGRES_PASSWORD: chikuwa
           POSTGRES_DB: chikuwa_test
         ports:
-          # Any free host port: the runner is a VPS that may run its own PostgreSQL on 5432.
+          # Any free host port (the test URL below reads the one Docker picked).
           - 5432
         options: >-
           --health-cmd "pg_isready -U chikuwa -d chikuwa_test"
@@ -66,7 +67,7 @@ jobs:
           git diff --exit-code -- ../openapi/
 
   desktop:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/desktop
@@ -87,13 +88,13 @@ jobs:
   android:
     # Not deployed by a release: release.yml only waits for the server and the web client.
     if: ${{ !inputs.release }}
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/android
-    # The runner shares a 12 GB VPS with the taylis server: Gradle (3 GB heap) plus the Kotlin daemon and the test
-    # JVM grew to 4.4 GB resident and the OOM killer took the runner down with it (2026-10-05, twice). On CI: one
-    # Gradle JVM capped at 2 GB, Kotlin compiled inside it, no daemon left behind, two workers.
+    # Keep the build's memory bounded on small runners: Gradle (3 GB heap) plus the Kotlin daemon and the test JVM
+    # grew to 4.4 GB resident and got OOM-killed (2026-10-05). On CI: one Gradle JVM capped at 2 GB, Kotlin compiled
+    # inside it, no daemon left behind, two workers.
     env:
       GRADLE_OPTS: >-
         -Dorg.gradle.jvmargs="-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8"
