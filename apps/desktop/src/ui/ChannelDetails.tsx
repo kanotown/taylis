@@ -13,6 +13,7 @@ import { channelTitle } from "./MainScreen";
 import { Badge, Button, cn, IconButton, Input } from "./primitives";
 import { RecurringPostList } from "./RecurringPosts";
 import { ChannelWorkflowsDialog } from "./WorkflowViews";
+import { t } from "../i18n";
 
 /** What the details page asks MainScreen to open (the existing dialogs). */
 export type DetailsDialog = "rename" | "archive" | "leave" | "convert" | "link" | "add-member";
@@ -44,38 +45,38 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
   const muteLabel = formatMuted(channel.mutedUntil);
   const title = channelTitle(channel, controller);
   return (
-    <section aria-label={isChannel ? "チャンネル情報" : "会話の情報"} className="flex min-h-0 w-full min-w-0 flex-col bg-canvas">
+    <section aria-label={isChannel ? t("main.channelInfo") : t("main.conversationInfo")} className="flex min-h-0 w-full min-w-0 flex-col bg-canvas">
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4">
-        <IconButton label="戻る" className="-ml-2 shrink-0" onClick={onClose}>
+        <IconButton label={t("common.back")} className="-ml-2 shrink-0" onClick={onClose}>
           <ArrowLeft size={20} />
         </IconButton>
         <span className="text-muted">{isChannel ? (channel.type === "private" ? <Lock size={18} /> : <Hash size={18} />) : <AtSign size={18} />}</span>
         <strong className="min-w-0 truncate text-[15px]">{title.replace(/^#/, "")}</strong>
-        {channel.archived && <Badge>アーカイブ済み</Badge>}
+        {channel.archived && <Badge>{t("channel.archived")}</Badge>}
       </header>
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4">
         {isChannel && (
           <TextSetting
-            label="トピック"
+            label={t("dialogs.topic")}
             value={channel.topic}
-            placeholder="例: 週次の進捗共有"
+            placeholder={t("dialogs.topicPlaceholder")}
             editable={canEdit}
             onSave={(text) => controller.updateTopic(channel.id, text)}
           />
         )}
         {isChannel && (
           <TextSetting
-            label="説明"
+            label={t("workflow.description")}
             value={channel.purpose}
-            placeholder="例: デザインレビューの依頼と結果を共有する"
+            placeholder={t("details.purposePlaceholder")}
             editable={canEdit}
             onSave={(text) => controller.updatePurpose(channel.id, text)}
           />
         )}
         {channel.isMember && (
           <section>
-            <h3 className={HEADING}>通知</h3>
-            <div role="radiogroup" aria-label="通知" className="mt-1">
+            <h3 className={HEADING}>{t("settings.section.notifications")}</h3>
+            <div role="radiogroup" aria-label={t("settings.section.notifications")} className="mt-1">
               {notificationChoices(overall).map((choice) => (
                 <label key={choice.value} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-panel">
                   <input
@@ -99,22 +100,22 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
                 onChange={(e) => void controller.setNotification(channel.id, ownLevel, channel.mutedUntil, e.target.checked)}
               />
               <span>
-                ミュート <span className="ml-1 text-xs text-muted">解除するまで通知せず、メンションだけ未読にします</span>
+                {t("channel.mute")} <span className="ml-1 text-xs text-muted">{t("details.muteNote")}</span>
               </span>
             </label>
             {muteLabel ? (
-              <button type="button" className={ROW} onClick={() => void controller.setNotification(channel.id, ownLevel, null)}>ミュート解除 ({muteLabel})</button>
+              <button type="button" className={ROW} onClick={() => void controller.setNotification(channel.id, ownLevel, null)}>{t("channel.unmuteTimed", { until: muteLabel })}</button>
             ) : (
-              <button type="button" className={ROW} onClick={() => void controller.setNotification(channel.id, ownLevel, new Date(Date.now() + 8 * 3600_000).toISOString())}>8 時間ミュート</button>
+              <button type="button" className={ROW} onClick={() => void controller.setNotification(channel.id, ownLevel, new Date(Date.now() + 8 * 3600_000).toISOString())}>{t("channel.mute8h")}</button>
             )}
           </section>
         )}
         <section>
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h3 className={HEADING}>メンバー{members ? ` (${members.length})` : ""}</h3>
+            <h3 className={HEADING}>{members ? t("dialogs.membersCount", { count: members.length }) : t("channel.members")}</h3>
             {isChannel && canEdit && (
               <Button size="sm" variant="secondary" onClick={() => onDialog("add-member")}>
-                <UserPlus size={14} /> メンバーを追加
+                <UserPlus size={14} /> {t("dialogs.addMembers")}
               </Button>
             )}
           </div>
@@ -125,39 +126,39 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
           <MemberList controller={controller} channel={channel} members={members} onChange={setMembers} />
         </section>
         {isChannel && channel.isMember && (
-          <section aria-label="定期投稿">
-            <h3 className={cn(HEADING, "mb-2")}>定期投稿</h3>
+          <section aria-label={t("recurring.title")}>
+            <h3 className={cn(HEADING, "mb-2")}>{t("recurring.title")}</h3>
             <RecurringPostList controller={controller} channel={channel} />
           </section>
         )}
         {isChannel && (
-          <section aria-label="フィード">
-            <h3 className={cn(HEADING, "mb-2")}>フィード</h3>
+          <section aria-label={t("feeds.title")}>
+            <h3 className={cn(HEADING, "mb-2")}>{t("feeds.title")}</h3>
             <FeedList controller={controller} channel={channel} />
           </section>
         )}
         {isChannel && (
-          <section aria-label="ワークフロー" className="space-y-0.5">
-            <h3 className={cn(HEADING, "mb-1")}>ワークフロー</h3>
-            <Action icon={<Zap size={16} />} onClick={() => setWorkflowsOpen(true)}>ワークフロー…</Action>
+          <section aria-label={t("composer.workflow")} className="space-y-0.5">
+            <h3 className={cn(HEADING, "mb-1")}>{t("composer.workflow")}</h3>
+            <Action icon={<Zap size={16} />} onClick={() => setWorkflowsOpen(true)}>{t("channel.workflowsMenu")}</Action>
             {workflowsOpen && <ChannelWorkflowsDialog controller={controller} channel={channel} manage onClose={() => setWorkflowsOpen(false)} />}
           </section>
         )}
         {isChannel && channel.isMember && (
           <section className="space-y-0.5">
-            <h3 className={cn(HEADING, "mb-1")}>設定</h3>
-            {canEditLinks(channel, controller) && <Action icon={<Link2 size={16} />} onClick={() => onDialog("link")}>リンクを追加…</Action>}
+            <h3 className={cn(HEADING, "mb-1")}>{t("settings.title")}</h3>
+            {canEditLinks(channel, controller) && <Action icon={<Link2 size={16} />} onClick={() => onDialog("link")}>{t("channel.addLink")}</Action>}
             {canManage && !channel.archived && (
               <Action icon={<Megaphone size={16} />} onClick={() => void controller.setPostingPolicy(channel.id, channel.posting_policy === "owners" ? "everyone" : "owners")}>
-                {channel.posting_policy === "owners" ? "誰でも投稿できるようにする" : channel.times_owner_id ? "他の人はスレッドでだけ返信できるようにする" : "投稿をオーナーと管理者に限る"}
+                {channel.posting_policy === "owners" ? t("channel.postingEveryone") : channel.times_owner_id ? t("channel.postingTimesOwner") : t("channel.postingOwners")}
               </Action>
             )}
-            {canManage && channel.type === "public" && <Action icon={<Lock size={16} />} onClick={() => onDialog("convert")}>非公開チャンネルに変換…</Action>}
-            {canMakePublic(channel, controller.isAdmin) && <Action icon={<Hash size={16} />} onClick={() => onDialog("convert")}>公開チャンネルに変換…</Action>}
-            {canManage && !channel.archived && <Action icon={<Pencil size={16} />} onClick={() => onDialog("rename")}>名前を変更…</Action>}
-            {canManage && !channel.archived && <Action icon={<Archive size={16} />} danger onClick={() => onDialog("archive")}>アーカイブ…</Action>}
-            {canManage && channel.archived && <Action icon={<ArchiveRestore size={16} />} onClick={() => void controller.unarchiveChannel(channel.id)}>アーカイブを解除</Action>}
-            <Action icon={<LogOut size={16} />} danger onClick={() => onDialog("leave")}>チャンネルを退出…</Action>
+            {canManage && channel.type === "public" && <Action icon={<Lock size={16} />} onClick={() => onDialog("convert")}>{t("channel.convertToPrivate")}</Action>}
+            {canMakePublic(channel, controller.isAdmin) && <Action icon={<Hash size={16} />} onClick={() => onDialog("convert")}>{t("channel.convertToPublic")}</Action>}
+            {canManage && !channel.archived && <Action icon={<Pencil size={16} />} onClick={() => onDialog("rename")}>{t("details.renameMenu")}</Action>}
+            {canManage && !channel.archived && <Action icon={<Archive size={16} />} danger onClick={() => onDialog("archive")}>{t("details.archiveMenu")}</Action>}
+            {canManage && channel.archived && <Action icon={<ArchiveRestore size={16} />} onClick={() => void controller.unarchiveChannel(channel.id)}>{t("channel.unarchive")}</Action>}
+            <Action icon={<LogOut size={16} />} danger onClick={() => onDialog("leave")}>{t("details.leaveMenu")}</Action>
           </section>
         )}
       </div>
@@ -197,19 +198,19 @@ function TextSetting({ label, value, placeholder, editable, onSave }: {
       <div className="flex items-center justify-between gap-2">
         <h3 className={HEADING}>{label}</h3>
         {editable && draft === null && (
-          <Button variant="link" size="sm" aria-label={`${label}を編集`} onClick={() => setDraft(value ?? "")}>
-            編集
+          <Button variant="link" size="sm" aria-label={t("details.editField", { label })} onClick={() => setDraft(value ?? "")}>
+            {t("canvas.edit")}
           </Button>
         )}
       </div>
       {draft === null ? (
-        value ? <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">{value}</p> : <p className="mt-1 text-sm text-muted">未設定</p>
+        value ? <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink">{value}</p> : <p className="mt-1 text-sm text-muted">{t("settings.notifications.notSet")}</p>
       ) : (
         <form className="mt-2" onSubmit={(e) => void save(e)}>
           <Input aria-label={label} value={draft} maxLength={250} autoFocus placeholder={placeholder} onChange={(e) => setDraft(e.target.value)} />
           <div className="mt-2 flex justify-end gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => setDraft(null)}>キャンセル</Button>
-            <Button type="submit" size="sm" disabled={busy}>保存</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setDraft(null)}>{t("common.cancel")}</Button>
+            <Button type="submit" size="sm" disabled={busy}>{t("common.save")}</Button>
           </div>
         </form>
       )}

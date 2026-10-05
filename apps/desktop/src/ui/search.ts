@@ -1,5 +1,6 @@
 /** M16b: the search screen's conditions, date presets, recent searches and as-you-type suggestions. */
 import type { ChannelState, UserPublic } from "../sync/types";
+import { t, intlLocale } from "../i18n";
 
 export type HasFlag = "file" | "link" | "pin" | "reaction" | "poll";
 export type SearchSort = "relevance" | "newest";
@@ -24,19 +25,19 @@ export const EMPTY_SEARCH: SearchParams = { q: "", fromUserId: null, channelId: 
 export const HAS_FLAGS: readonly HasFlag[] = ["file", "link", "pin", "reaction", "poll"];
 
 export const HAS_LABELS: Readonly<Record<HasFlag, string>> = {
-  file: "ファイルあり",
-  link: "リンクあり",
-  pin: "ピン留め",
-  reaction: "リアクションあり",
-  poll: "投票",
+  get file() { return t("search.has.file"); },
+  get link() { return t("search.has.link"); },
+  get pin() { return t("main.pins"); },
+  get reaction() { return t("search.has.reaction"); },
+  get poll() { return t("search.has.poll"); },
 };
 
 export const DATE_PRESETS: ReadonlyArray<{ preset: DatePreset; label: string }> = [
-  { preset: "today", label: "今日" },
-  { preset: "yesterday", label: "昨日" },
-  { preset: "week", label: "過去 7 日間" },
-  { preset: "month", label: "過去 30 日間" },
-  { preset: "year", label: "過去 1 年間" },
+  { preset: "today", get label() { return t("common.today"); } },
+  { preset: "yesterday", get label() { return t("search.date.yesterday"); } },
+  { preset: "week", get label() { return t("search.date.week"); } },
+  { preset: "month", get label() { return t("search.date.month"); } },
+  { preset: "year", get label() { return t("search.date.year"); } },
 ];
 
 export function hasFilters(params: SearchParams): boolean {
@@ -81,9 +82,9 @@ export function dateLabel(date: SearchParams["date"]): string | null {
   if ("preset" in date) return DATE_PRESETS.find((p) => p.preset === date.preset)?.label ?? null;
   const from = date.from?.replaceAll("-", "/");
   const to = date.to?.replaceAll("-", "/");
-  if (from && to) return from === to ? from : `${from} 〜 ${to}`;
-  if (from) return `${from} 以降`;
-  if (to) return `${to} まで`;
+  if (from && to) return from === to ? from : `${from} ${t("common.rangeTo")} ${to}`;
+  if (from) return t("search.date.since", { date: from });
+  if (to) return t("search.date.until", { date: to });
   return null;
 }
 
@@ -150,7 +151,7 @@ export function askQuery(params: SearchParams, usernameOf: (userId: string) => s
 
 /** 「123 件」, or 「1,000 件以上」 when the server stopped counting. */
 export function totalLabel(total: number, capped: boolean): string {
-  return `${total.toLocaleString("ja-JP")} 件${capped ? "以上" : ""}`;
+  return capped ? t("search.countCapped", { count: total.toLocaleString(intlLocale()) }) : t("search.count", { count: total.toLocaleString(intlLocale()) });
 }
 
 // ---- recent searches (per workspace and account, this device only) ----
