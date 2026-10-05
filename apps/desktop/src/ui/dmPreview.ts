@@ -5,6 +5,7 @@
 import type { ChannelOut, GroupOut, LastMessageOut, UserPublic } from "../api/types";
 import { attachmentText, plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
+import { t } from "../i18n";
 
 /** The excerpt's length, the server's (messages/service.py PREVIEW_LENGTH); the row cuts it to one line anyway. */
 export const PREVIEW_LENGTH = 140;
@@ -61,10 +62,10 @@ export function previewLine(
   if (last.type !== "user") return last.excerpt;
   if (meId && last.sender_id === meId) {
     const selfNotes = channel.type === "dm" && (channel.dm_user_ids ?? []).every((id) => id === meId);
-    return selfNotes ? last.excerpt : `あなた: ${last.excerpt}`;
+    return selfNotes ? last.excerpt : t("dmPreview.you", { text: last.excerpt });
   }
   if (channel.type === "dm") return last.excerpt;
-  const name = users.get(last.sender_id)?.display_name?.trim() || "メンバー";
+  const name = users.get(last.sender_id)?.display_name?.trim() || t("common.member");
   return `${name}: ${last.excerpt}`;
 }
 

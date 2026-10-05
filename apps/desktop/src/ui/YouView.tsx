@@ -6,6 +6,7 @@ import type { AppController } from "../state/app";
 import { useStoreUpdates } from "./hooks";
 import { IconButton } from "./primitives";
 import { LogoutConfirm, SECTION_TITLES, SettingsList, SettingsSectionBody, type SettingsSection } from "./Settings";
+import { t } from "../i18n";
 
 /** The history field that holds the pushed screen (the browser's Back returns to the list). */
 const FIELD = "chikuwaYou";
@@ -52,7 +53,7 @@ export function YouView({ controller, popToRoot = 0 }: { controller: AppControll
     return (
       <section aria-label={SECTION_TITLES[section]} data-you-section={section} className="flex min-h-0 flex-1 flex-col bg-canvas">
         <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4">
-          <IconButton label="戻る" className="-ml-2 shrink-0" onClick={back}>
+          <IconButton label={t("common.back")} className="-ml-2 shrink-0" onClick={back}>
             <ArrowLeft size={20} />
           </IconButton>
           <strong className="min-w-0 flex-1 truncate text-[17px]">{SECTION_TITLES[section]}</strong>
@@ -64,9 +65,9 @@ export function YouView({ controller, popToRoot = 0 }: { controller: AppControll
     );
   }
   return (
-    <section aria-label="自分" className="flex min-h-0 flex-1 flex-col bg-canvas">
+    <section aria-label={t("mobileTabs.you")} className="flex min-h-0 flex-1 flex-col bg-canvas">
       <header className="flex h-[52px] shrink-0 items-center border-b border-line px-4">
-        <strong className="min-w-0 flex-1 truncate text-[17px]">自分</strong>
+        <strong className="min-w-0 flex-1 truncate text-[17px]">{t("mobileTabs.you")}</strong>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto bg-panel/50">
         <SettingsList controller={controller} variant="page" onSelect={open} onLogout={() => setConfirmLogout(true)} />

@@ -1,4 +1,5 @@
 import type { AttachmentOut } from "../api/types";
+import { t } from "../i18n";
 
 /**
  * How a message shows its attachments (M38). The layout decisions live here, apart from the React tree, so they can
@@ -127,5 +128,5 @@ export function documentThumbBox(attachment: Partial<Pick<AttachmentOut, "previe
 
 /** 「12 ページ」, or "" when the count is unknown. */
 export function pageCountLabel(pages: number | null | undefined): string {
-  return pages && pages > 0 ? `${pages} ページ` : "";
+  return pages && pages > 0 ? t("attach.pages", { count: pages }) : "";
 }

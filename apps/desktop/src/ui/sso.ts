@@ -5,7 +5,8 @@
  * The Tauri app opens the start page in the system browser and gets `chikuwachat://sso?ticket=…` back through a deep
  * link; it keeps its pending sign-in in memory (AppController).
  */
-import { ERROR_MESSAGES } from "../api/errorMessages";
+import { errorMessageFor } from "../api/errors";
+import { t } from "../i18n";
 
 const PENDING_KEY = "chikuwa.sso";
 const CODE = /^[a-z_]{1,40}$/;
@@ -97,7 +98,7 @@ export function takeSsoReturn(): SsoReturn | null {
 
 /** The Japanese text for a returned `sso_error` code (apps/shared/errors.json). */
 export function ssoErrorText(code: string): string {
-  return ERROR_MESSAGES[code] ?? "Google でのログインに失敗しました。もう一度お試しください";
+  return errorMessageFor(code) ?? t("sso.failed");
 }
 
 /** What the Google button says (App Store guideline 4.8, docs/SSO.md §6). */
@@ -114,8 +115,8 @@ export interface GoogleButtonText {
  */
 export function googleButtonText(method: { domains?: string[]; label?: string | null } | null | undefined): GoogleButtonText {
   const domains = (method?.domains ?? []).filter((domain) => domain.trim());
-  if (domains.length === 0) return { title: "Google でログイン", subtitle: null };
+  if (domains.length === 0) return { title: t("sso.google"), subtitle: null };
   const label = method?.label?.trim();
-  const org = label || (domains.length > 1 ? `${domains[0]} など` : domains[0]);
-  return { title: `${org} のアカウントでログイン`, subtitle: "組織の Google Workspace アカウント" };
+  const org = label || (domains.length > 1 ? t("sso.andOthers", { domain: domains[0] }) : domains[0]);
+  return { title: t("sso.orgTitle", { org }), subtitle: t("sso.orgSubtitle") };
 }

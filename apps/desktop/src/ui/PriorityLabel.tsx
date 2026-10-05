@@ -2,6 +2,7 @@ import { AlertTriangle, Info } from "lucide-react";
 
 import type { Priority } from "../api/types";
 import { cn } from "./primitives";
+import { t } from "../i18n";
 
 /** M15e: 「重要」 / 「緊急」 above a message and in the composer. */
 export function PriorityLabel({ priority, className }: { priority: Priority; className?: string }) {
@@ -15,7 +16,7 @@ export function PriorityLabel({ priority, className }: { priority: Priority; cla
       )}
     >
       {urgent ? <AlertTriangle size={11} /> : <Info size={11} />}
-      {urgent ? "緊急" : "重要"}
+      {urgent ? t("composer.priorityUrgent") : t("composer.priorityImportant")}
     </span>
   );
 }

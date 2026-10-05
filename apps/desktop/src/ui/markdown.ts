@@ -16,6 +16,7 @@
  * in the canvas dialect.
  */
 import { stripTaskMarkers } from "./canvasMarkers";
+import { t } from "../i18n";
 
 export type Token =
   | { kind: "text"; text: string }
@@ -355,7 +356,7 @@ function inlineText(token: Token): string {
 export function attachmentText(attachments: ReadonlyArray<{ content_type: string }> | undefined): string {
   const n = attachments?.length ?? 0;
   if (!attachments || n === 0) return "";
-  if (attachments.every((a) => a.content_type.startsWith("image/"))) return n === 1 ? "画像を送信しました" : `画像を ${n} 枚送信しました`;
-  if (attachments.every((a) => a.content_type.startsWith("video/"))) return n === 1 ? "動画を送信しました" : `動画を ${n} 本送信しました`;
-  return n === 1 ? "ファイルを送信しました" : `ファイルを ${n} 件送信しました`;
+  if (attachments.every((a) => a.content_type.startsWith("image/"))) return n === 1 ? t("sent.image") : t("sent.images", { count: n });
+  if (attachments.every((a) => a.content_type.startsWith("video/"))) return n === 1 ? t("sent.video") : t("sent.videos", { count: n });
+  return n === 1 ? t("sent.file") : t("sent.files", { count: n });
 }
