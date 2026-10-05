@@ -407,7 +407,10 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
   シェルなし、stdin なし、環境変数は `PATH` と `LC_ALL` だけ、出力は JSON 1 行 (4 KB まで)。描画は幅 800 px、
   高さは幅の 2 倍まで、出力は Pillow が作り直した WebP (メタデータを持ち越さない)。読めない PDF (壊れている、
   パスワード付き、時間切れ) は `failed`。
-- **生成物**: キーは `attachments/{id}.preview.pdf` / `.preview.webp` で利用者が決められる部分は無い。
+- **生成物**: キーは `attachments/{id}.preview.{n}.pdf` / `.preview.{n}.webp`（n は claim 番号）で利用者が決められる
+  部分は無い。結果を書けるのは行の claim 番号がまだ自分のものである試行だけで、古い試行は新しい試行の結果も
+  オブジェクトも変えられない。途中まで保存したオブジェクトは失敗・停止のときに消し、残った分は GC が番号から
+  消す（レビュー v0.1.37 #4・#9、PREVIEWS.md §3）。
 - **再試行**: 一時的な失敗は 3 回まで (1 分・10 分・1 時間の間隔)、恒久的な失敗はその場で `failed`。処理中に
   止まった行はリースが切れてから取り直し、試行回数が上限ならもう変換しない (同じ文書でサーバを落とし続けない)。
 - **配信**: `GET /attachments/{id}/preview/thumbnail` (`image/webp`) と `/preview/pdf` (`application/pdf`)。権限は元の

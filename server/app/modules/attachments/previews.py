@@ -5,18 +5,25 @@ preview loop (main._preview_loop, one at a time) claims the oldest due row, down
 a temporary directory, has the converter service (Gotenberg's LibreOffice route) turn an Office
 file into a PDF, renders the PDF's first page to a WebP thumbnail in a child process
 (pdf_render.py, pypdfium2) and stores both in the object store next to the original
-(`attachments/{id}.preview.pdf`, `attachments/{id}.preview.webp`: our names, never the user's).
+(`attachments/{id}.preview.{n}.pdf`, `attachments/{id}.preview.{n}.webp`, n the claim number: our
+names, never the user's).
 
 Reliability (SECURITY.md §4 「文書のプレビュー」):
-- A claim takes the row with FOR UPDATE SKIP LOCKED, counts the attempt and leases it
-  (preview_next_at = now + lease), then commits; a server that stops mid-way leaves a lease that
-  runs out, and the row is tried again. After preview_max_attempts the row is 'failed'.
+- A claim takes the row with FOR UPDATE SKIP LOCKED, counts the attempt, adds 1 to
+  preview_generation (the claim number) and leases it (preview_next_at = now + lease), then
+  commits; a server that stops mid-way leaves a lease that runs out, and the row is tried again.
+  After preview_max_attempts the row is 'failed'.
+- A try owns the row only while preview_generation is still its number (Review v0.1.37 #4): a
+  try that outlived its lease while another claimed the row writes nothing, whichever finishes
+  first, and removes only its own objects (their keys carry its number).
+- The objects a try stored are tracked as each put succeeds and removed when the try fails, is
+  cancelled or lost the row (Review v0.1.37 #9); what a stopped process left behind is removed by
+  a later successful or final try of the row and by the GC (preview_kinds.possible_preview_keys).
 - A temporary failure (the converter unreachable, busy or timing out, the object store) waits
   BACKOFF before the next try; a permanent one (the converter refused the file, a PDF PDFium
   cannot read, too large) fails at once. Failures are recorded (preview_error), never retried
   forever.
-- The result is written only while the row is still 'pending' and not deleted; the stored keys
-  are deterministic, so a repeated try overwrites the same objects (idempotent).
+- The result is written only while the row is still 'pending', not deleted and owned.
 - A preview of a file already in a message moves the message's updated_seq with message.updated
   (change "attachments"), so devices get it through the delta (SYNC_PROTOCOL.md §7.3) or the
   event; the channel row is locked before the attachment row, as a send or a delete does. A send
@@ -49,7 +56,10 @@ from app.modules.attachments.models import Attachment
 from app.modules.attachments.preview_kinds import (
     CONTAINER_TYPES,
     PREVIEW_TYPES,
+    pdf_key,
+    possible_preview_keys,
     source_kind,
+    thumb_key,
     wants,
 )
 from app.modules.channels.models import Channel
@@ -142,16 +152,6 @@ def build_converter(settings: Settings) -> PreviewConverter | None:
     )
 
 
-def pdf_key(attachment_id: uuid.UUID) -> str:
-    # Sibling keys like the thumbnail's (service.thumbnail_key): a posix-backed store cannot hold
-    # an object "attachments/{id}" and a directory of the same name.
-    return f"attachments/{attachment_id}.preview.pdf"
-
-
-def thumb_key(attachment_id: uuid.UUID) -> str:
-    return f"attachments/{attachment_id}.preview.webp"
-
-
 @dataclass(frozen=True)
 class Rendered:
     pages: int
@@ -209,12 +209,16 @@ async def _download(blobs: BlobStore, key: str, dest: Path) -> None:
 
 async def _produce(
     attachment_id: uuid.UUID,
+    generation: int,
     storage_key: str,
     kind: str,
     blobs: BlobStore,
     converter: PreviewConverter | None,
     settings: Settings,
+    stored: list[str],
 ) -> Ready:
+    """Make the preview; each key is added to `stored` before its put, so the caller can
+    remove a partial result (Review v0.1.37 #9). The keys carry the claim number."""
     with tempfile.TemporaryDirectory(prefix="chikuwa-preview-") as tmp:
         workdir = Path(tmp)
         source = workdir / f"source.{kind}"
@@ -227,44 +231,65 @@ async def _produce(
             await converter.to_pdf(source, kind, pdf)
         rendered = await render_pdf(pdf, workdir, settings)
         try:
+            # Tracked before the put: one that raised may still have written (a timeout after
+            # the upload); removing a key that is not there is a no-op.
             if kind != "pdf":
+                key = pdf_key(attachment_id, generation)
+                stored.append(key)
                 with pdf.open("rb") as file:
-                    await blobs.put(pdf_key(attachment_id), file, "application/pdf")
-            await blobs.put(thumb_key(attachment_id), rendered.thumbnail, "image/webp")
+                    await blobs.put(key, file, "application/pdf")
+            key = thumb_key(attachment_id, generation)
+            stored.append(key)
+            await blobs.put(key, rendered.thumbnail, "image/webp")
         except Exception as exc:
             raise PreviewError(f"could not store the preview: {exc}", permanent=False) from exc
     return Ready(rendered=rendered, converted=kind != "pdf")
 
 
-def _still_queued(row: Attachment | None) -> bool:
-    return row is not None and row.status != "deleted" and row.preview_status == "pending"
+def _owned(row: Attachment | None, generation: int) -> bool:
+    """Still queued, not deleted, and still claimed by the try of this number (Review v0.1.37
+    #4: a try whose lease ran out while another claimed the row has lost it)."""
+    return (
+        row is not None
+        and row.status != "deleted"
+        and row.preview_status == "pending"
+        and row.preview_generation == generation
+    )
 
 
 def _in_message(row: Attachment) -> bool:
     return row.status == "attached" and row.message_id is not None and row.canvas_id is None
 
 
+async def _discard(blobs: BlobStore, keys: list[str]) -> None:
+    """Remove a try's own objects; a failure is logged (the GC removes them with the file)."""
+    for key in keys:
+        try:
+            await blobs.delete(key)
+        except Exception:
+            log.warning("could not remove the preview object %s", key, exc_info=True)
+
+
 async def _finish(
     db: AsyncSession,
     blobs: BlobStore,
     attachment_id: uuid.UUID,
+    generation: int,
     apply: Callable[[Attachment], bool],
     stored: list[str],
 ) -> str | None:
-    """Write the outcome (apply returns whether clients see a change) while the row is still
-    queued; announce it when the file is in a message. Returns the preview_status written."""
+    """Write the outcome (apply returns whether clients see a change) while the try still owns
+    the row, checked with the row locked; announce it when the file is in a message. Returns the
+    preview_status written, or None when the try lost the row: then the objects it stored (keys
+    with its own number, never another try's) are removed."""
     for _ in range(2):
         await db.rollback()
         row = await db.get(Attachment, attachment_id, populate_existing=True)
-        if row is None or row.status == "deleted":
-            # Deleted (or purged by the GC) while we worked: what we stored has no owner.
-            await db.rollback()
-            for key in stored:
-                await blobs.delete(key)
-            return None
-        if not _still_queued(row):
-            await db.rollback()
-            return None
+        if not _owned(row, generation):
+            # Deleted or purged, claimed by a newer try, or finished by one: what we stored has
+            # no owner.
+            break
+        assert row is not None
         if _in_message(row):
             assert row.channel_id is not None and row.message_id is not None
             # The channel first, like a send or a delete, then the attachment.
@@ -274,7 +299,7 @@ async def _finish(
             row = await db.get(
                 Attachment, attachment_id, populate_existing=True, with_for_update=True
             )
-            if row is None or not _still_queued(row) or not _in_message(row):
+            if row is None or not _owned(row, generation) or not _in_message(row):
                 continue
             message_id = row.message_id
             assert message_id is not None
@@ -286,7 +311,7 @@ async def _finish(
             await db.commit()
             return status
         row = await db.get(Attachment, attachment_id, populate_existing=True, with_for_update=True)
-        if row is None or not _still_queued(row):
+        if row is None or not _owned(row, generation):
             continue
         if _in_message(row):  # bound meanwhile: go round and take the channel first
             continue
@@ -295,6 +320,7 @@ async def _finish(
         await db.commit()
         return status
     await db.rollback()
+    await _discard(blobs, stored)
     return None
 
 
@@ -306,11 +332,15 @@ async def process_one(
     attachment_id: uuid.UUID,
     *,
     give_up: bool = False,
+    generation: int | None = None,
 ) -> str | None:
-    """Make (or fail) the preview of a claimed row. Returns the preview_status written ('ready',
-    'failed', or 'pending' when it waits for another try), None when the row went away."""
+    """Make (or fail) the preview of a claimed row. `generation` is the claim's number (Claim);
+    None takes the row's current one. Returns the preview_status written ('ready', 'failed', or
+    'pending' when it waits for another try), None when the row went away or was claimed again."""
     row = await db.get(Attachment, attachment_id, populate_existing=True)
-    if not _still_queued(row):
+    if generation is None and row is not None:
+        generation = row.preview_generation
+    if generation is None or not _owned(row, generation):
         await db.rollback()
         return None
     assert row is not None
@@ -331,26 +361,41 @@ async def process_one(
         outcome = PreviewError("the file is too large for a preview", permanent=True)
     else:
         try:
-            outcome = await _produce(attachment_id, storage_key, kind, blobs, converter, settings)
-            stored = [thumb_key(attachment_id)]
-            if outcome.converted:
-                stored.append(pdf_key(attachment_id))
+            outcome = await _produce(
+                attachment_id, generation, storage_key, kind, blobs, converter, settings, stored
+            )
         except PreviewError as exc:
             outcome = exc
         except Exception as exc:  # a bug or the unexpected: recorded and retried, never lost
             log.exception("preview of %s failed", attachment_id)
             outcome = PreviewError(f"unexpected error: {type(exc).__name__}", permanent=False)
+        except BaseException:  # cancelled (shutdown): leave no half-made preview behind
+            await _discard(blobs, stored)
+            raise
+    if not isinstance(outcome, Ready):
+        # A partial result (the PDF stored, the thumbnail not) is never recorded: remove it now
+        # (Review v0.1.37 #9).
+        await _discard(blobs, stored)
+        stored = []
 
+    replaced: list[str] = []
     if isinstance(outcome, Ready):
         ready = outcome
 
         def apply(row: Attachment) -> bool:
+            new_thumb = thumb_key(row.id, generation)
+            new_pdf = pdf_key(row.id, generation) if ready.converted else None
+            replaced[:] = [
+                key
+                for key in (row.preview_thumb_key, row.preview_pdf_key)
+                if key and key not in (new_thumb, new_pdf)
+            ]
             row.preview_status = "ready"
             row.preview_pages = ready.rendered.pages
             row.preview_width = ready.rendered.width
             row.preview_height = ready.rendered.height
-            row.preview_thumb_key = thumb_key(row.id)
-            row.preview_pdf_key = pdf_key(row.id) if ready.converted else None
+            row.preview_thumb_key = new_thumb
+            row.preview_pdf_key = new_pdf
             row.preview_next_at = None
             row.preview_error = None
             return True
@@ -376,7 +421,14 @@ async def process_one(
             row.preview_next_at = utcnow() + wait
             return False
 
-    return await _finish(db, blobs, attachment_id, apply, stored)
+    status = await _finish(db, blobs, attachment_id, generation, apply, stored)
+    if status in ("ready", "failed"):
+        # Done for good: what earlier tries of this row stored and never recorded (a process
+        # that stopped after a partial write, a try that lost its lease and could not clean up)
+        # goes too. No other try can own the row now; the keys below carry older numbers.
+        await _discard(blobs, replaced)
+        await _discard(blobs, possible_preview_keys(attachment_id, generation - 1))
+    return status
 
 
 def _lease(settings: Settings) -> timedelta:
@@ -387,10 +439,18 @@ def _lease(settings: Settings) -> timedelta:
     )
 
 
+@dataclass(frozen=True)
+class Claim:
+    attachment_id: uuid.UUID
+    give_up: bool
+    generation: int  # the try's number (attachments.preview_generation)
+
+
 async def claim_next(
     db: AsyncSession, settings: Settings, now: datetime | None = None
-) -> tuple[uuid.UUID, bool] | None:
-    """(id, give_up) of the oldest due row, now leased to us; None when nothing is due."""
+) -> Claim | None:
+    """The oldest due row, now leased to us under a new claim number; None when nothing is
+    due."""
     now = now or utcnow()
     stmt = (
         select(Attachment)
@@ -410,10 +470,11 @@ async def claim_next(
     give_up = row.preview_attempts >= settings.preview_max_attempts
     if not give_up:
         row.preview_attempts += 1
+    row.preview_generation += 1
     row.preview_next_at = now + _lease(settings)
-    attachment_id = row.id
+    claim = Claim(row.id, give_up, row.preview_generation)
     await db.commit()
-    return attachment_id, give_up
+    return claim
 
 
 async def process_due(
@@ -424,11 +485,18 @@ async def process_due(
 ) -> int:
     """One due preview, if any (the loop calls again at once while there was one)."""
     async with database.session_factory() as db:
-        claimed = await claim_next(db, settings)
-        if claimed is None:
+        claim = await claim_next(db, settings)
+        if claim is None:
             return 0
-        attachment_id, give_up = claimed
-        await process_one(db, blobs, converter, settings, attachment_id, give_up=give_up)
+        await process_one(
+            db,
+            blobs,
+            converter,
+            settings,
+            claim.attachment_id,
+            give_up=claim.give_up,
+            generation=claim.generation,
+        )
         return 1
 
 
@@ -515,9 +583,13 @@ async def generate_stored(
             row.preview_attempts = 1
             row.preview_error = None
             row.preview_next_at = utcnow() + _lease(settings)
+            row.preview_generation += 1
+            generation = row.preview_generation
             await db.commit()
             result.tried += 1
-            status = await process_one(db, blobs, converter, settings, attachment_id)
+            status = await process_one(
+                db, blobs, converter, settings, attachment_id, generation=generation
+            )
             if status == "ready":
                 result.ready += 1
             elif status == "failed":
