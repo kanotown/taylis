@@ -24,7 +24,7 @@ import { ChannelWorkflowsDialog, useChannelWorkflows, WorkflowEmoji, WorkflowRun
 import { findWorkflowCommand, workflowCandidates } from "./workflows";
 import { ScheduleDialog, type ScheduleFormInitial } from "./ScheduleDialog";
 import { slotsFromEntries } from "./scheduling";
-import { appendTemplate, expandTemplate, findTemplate, orderTemplates, readSchedule, SCHEDULE_USAGE, templateCandidates, templateSummary, templateWithText } from "./templates";
+import { appendTemplate, expandTemplate, findTemplate, orderTemplates, readSchedule, scheduleUsage, templateCandidates, templateSummary, templateWithText } from "./templates";
 import { Button, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, modKey, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { t } from "../i18n";
 
@@ -162,7 +162,7 @@ export function Composer({
         const read = command.args ? readSchedule(command.args) : null;
         if (command.args && !read) {
           // Nothing opens; what was typed stays to be corrected.
-          controller.setError(SCHEDULE_USAGE);
+          controller.setError(scheduleUsage());
           return;
         }
         setText("");

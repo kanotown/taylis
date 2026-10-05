@@ -22,6 +22,7 @@ import { continueStructure, type EditState, indentListLine, insertLink, linkFrom
 import { deleteBesideStandIns, stripStandIns, TaskMarkerTable } from "./canvasMarkers";
 import { decodeMentions, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
 import { cn, IconButton, modKey } from "./primitives";
+import { t } from "../i18n";
 
 /** M80: what a cut in a canvas editor keeps besides the plain text — the lines with their task markers. */
 const CUT_TYPE = "application/x-chikuwachat-canvas";
@@ -127,7 +128,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     const images = list.filter((file) => file.type.startsWith("image/"));
     if (images.length === 0) {
       release();
-      if (list.length > 0) controller.setError("キャンバスに入れられるのは画像だけです");
+      if (list.length > 0) controller.setError(t("canvasEditor.imagesOnly"));
       return;
     }
     if (attachmentRefs(saver.text).size + images.length > MAX_CANVAS_IMAGES) {
@@ -258,7 +259,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
       : { ...insertTable(value, anchorLine(value, place.line, place.content), outcome), inserted: false };
     const at = lineStart(out.text, out.range[0]);
     apply({ text: out.text, start: at, end: at });
-    if (out.inserted) controller.setNotice("編集中に表がほかの人に変更されていたので、編集した表はその下に新しい表として入れました");
+    if (out.inserted) controller.setNotice(t("canvasEditor.tableConflict"));
   };
   const closeTable = (outcome: Table | "cancel") => {
     if (tableSession.current) tableSession.current.outcome = outcome;
@@ -283,28 +284,28 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   };
 
   const tools: Array<{ icon: ReactNode; label: string; run: () => void } | "gap"> = [
-    { icon: <Heading1 size={16} />, label: "見出し 1", run: () => edit((s) => setHeading(s, 1)) },
-    { icon: <Heading2 size={16} />, label: "見出し 2", run: () => edit((s) => setHeading(s, 2)) },
-    { icon: <Heading3 size={16} />, label: "見出し 3", run: () => edit((s) => setHeading(s, 3)) },
+    { icon: <Heading1 size={16} />, label: t("canvasEditor.heading", { n: 1 }), run: () => edit((s) => setHeading(s, 1)) },
+    { icon: <Heading2 size={16} />, label: t("canvasEditor.heading", { n: 2 }), run: () => edit((s) => setHeading(s, 2)) },
+    { icon: <Heading3 size={16} />, label: t("canvasEditor.heading", { n: 3 }), run: () => edit((s) => setHeading(s, 3)) },
     "gap",
-    { icon: <Bold size={16} />, label: `太字 (${modKey()}+B)`, run: () => edit((s) => toggleWrap(s, "**")) },
-    { icon: <Italic size={16} />, label: `斜体 (${modKey()}+I)`, run: () => edit((s) => toggleWrap(s, "_")) },
-    { icon: <Strikethrough size={16} />, label: "取り消し線", run: () => edit((s) => toggleWrap(s, "~~")) },
+    { icon: <Bold size={16} />, label: t("composer.format.boldKey", { key: `${modKey()}+B` }), run: () => edit((s) => toggleWrap(s, "**")) },
+    { icon: <Italic size={16} />, label: t("composer.format.italicKey", { key: `${modKey()}+I` }), run: () => edit((s) => toggleWrap(s, "_")) },
+    { icon: <Strikethrough size={16} />, label: t("composer.syntax.strike"), run: () => edit((s) => toggleWrap(s, "~~")) },
     "gap",
-    { icon: <List size={16} />, label: "箇条書き", run: () => edit((s) => toggleLinePrefix(s, "- ")) },
-    { icon: <ListOrdered size={16} />, label: "番号付きリスト", run: () => edit((s) => toggleLinePrefix(s, (i) => `${i + 1}. `)) },
-    { icon: <ListChecks size={16} />, label: "チェックリスト", run: () => edit(toggleTasks) },
-    { icon: <TextQuote size={16} />, label: "引用", run: () => edit((s) => toggleLinePrefix(s, "> ")) },
-    { icon: <Code size={16} />, label: "コード", run: () => edit((s) => toggleWrap(s, "`")) },
+    { icon: <List size={16} />, label: t("composer.format.bullets"), run: () => edit((s) => toggleLinePrefix(s, "- ")) },
+    { icon: <ListOrdered size={16} />, label: t("composer.format.numbered"), run: () => edit((s) => toggleLinePrefix(s, (i) => `${i + 1}. `)) },
+    { icon: <ListChecks size={16} />, label: t("canvasEditor.checklist"), run: () => edit(toggleTasks) },
+    { icon: <TextQuote size={16} />, label: t("composer.format.quote"), run: () => edit((s) => toggleLinePrefix(s, "> ")) },
+    { icon: <Code size={16} />, label: t("canvasEditor.code"), run: () => edit((s) => toggleWrap(s, "`")) },
     "gap",
-    { icon: <LinkIcon size={16} />, label: "リンク", run: () => edit((s) => insertLink(s)) },
-    { icon: <AtSign size={16} />, label: "メンション", run: () => edit((s) => {
+    { icon: <LinkIcon size={16} />, label: t("composer.syntax.link"), run: () => edit((s) => insertLink(s)) },
+    { icon: <AtSign size={16} />, label: t("nav.mentions"), run: () => edit((s) => {
       const lead = s.start > 0 && !/\s/.test(s.text[s.start - 1] ?? "") ? " @" : "@";
       return { text: s.text.slice(0, s.start) + lead + s.text.slice(s.end), start: s.start + lead.length, end: s.start + lead.length };
     }) },
-    { icon: <Minus size={16} />, label: "区切り線", run: () => edit(insertRule) },
-    { icon: <TableIcon size={16} />, label: "表", run: openTable },
-    { icon: <ImagePlus size={16} />, label: "画像 (貼り付け・ドロップでも入れられます)", run: () => { if (isPickBusy(picker.current)) controller.setError("前に選んだ画像を読み込み中です"); else picker.current?.click(); } },
+    { icon: <Minus size={16} />, label: t("canvasEditor.rule"), run: () => edit(insertRule) },
+    { icon: <TableIcon size={16} />, label: t("canvasEditor.table"), run: openTable },
+    { icon: <ImagePlus size={16} />, label: t("canvasEditor.image"), run: () => { if (isPickBusy(picker.current)) controller.setError(t("canvasEditor.stillReading")); else picker.current?.click(); } },
   ];
 
   /** M80: a copy or a cut without the stand-ins; a cut also keeps the stored form (markers) for a paste back. */
@@ -384,7 +385,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
 
   return (
     <div className={cn("relative flex min-h-0 flex-col", className)} style={style}>
-      <div role="toolbar" aria-label="書式" className="flex shrink-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden border-b border-line px-2 py-1 [scrollbar-width:none]">
+      <div role="toolbar" aria-label={t("composer.formatting")} className="flex shrink-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden border-b border-line px-2 py-1 [scrollbar-width:none]">
         {tools.map((tool, index) =>
           tool === "gap" ? (
             <span key={index} aria-hidden className="mx-1 h-4 w-px shrink-0 bg-line" />
@@ -397,9 +398,9 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
       </div>
       <textarea
         ref={area}
-        aria-label="キャンバスの本文 (Markdown)"
+        aria-label={t("canvasEditor.body")}
         className="min-h-0 flex-1 resize-none bg-canvas px-5 py-4 text-[15px] leading-7 text-ink outline-none placeholder:text-muted max-md:px-4"
-        placeholder={"# 見出し\n本文を書きます。\n- [ ] チェックリスト\n@名前 でメンション"}
+        placeholder={t("canvasEditor.placeholder")}
         value={text}
         spellCheck={false}
         onChange={(event) => {
@@ -476,7 +477,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
         accept="image/*"
         multiple
         hidden
-        aria-label="キャンバスに入れる画像"
+        aria-label={t("canvasEditor.imageInput")}
         onChange={(event) => {
           const picked = takePicked(event.target);
           void insertImages(picked.files, picked);
@@ -484,7 +485,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
       />
       {uploading > 0 && (
         <div role="status" className="pointer-events-none absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas px-3 py-1 text-xs text-muted shadow">
-          <Loader2 size={12} className="animate-spin" /> 画像をアップロード中… ({uploading})
+          <Loader2 size={12} className="animate-spin" /> {t("canvasEditor.uploading", { count: uploading })}
         </div>
       )}
       {tableEdit && (
@@ -497,7 +498,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
         />
       )}
       {candidates.length > 0 && (
-        <ul className="absolute bottom-3 left-3 z-20 w-72 max-w-[calc(100%-1.5rem)] rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label="メンションの候補">
+        <ul className="absolute bottom-3 left-3 z-20 w-72 max-w-[calc(100%-1.5rem)] rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label={t("canvasEditor.mentionSuggestions")}>
           {candidates.map((candidate, index) => (
             <li
               key={candidate.username}
