@@ -13,5 +13,5 @@ export default defineConfig({
     proxy: { "/api": { target: process.env.CHIKUWA_API ?? "http://127.0.0.1:8000", ws: true } },
   },
   build: { target: "es2022" },
-  test: { environment: "node", include: ["tests/**/*.test.{ts,tsx}"] },
+  test: { environment: "node", include: ["tests/**/*.test.{ts,tsx}"], setupFiles: ["tests/setup.ts"] },
 });

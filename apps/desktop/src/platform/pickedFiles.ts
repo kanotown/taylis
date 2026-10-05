@@ -11,6 +11,7 @@
  * each `File.size` are checked synchronously first (a refused pick reads nothing), and the copies are made one at a
  * time, each handed on (uploaded) before the next is read, so at most one picked file is held in memory.
  */
+import { t } from "../i18n";
 
 /** The server's default `attachment_max_bytes` (server/app/core/settings.py); the server checks again. */
 export const ATTACHMENT_MAX_BYTES = 100 * 1024 * 1024;
@@ -37,9 +38,9 @@ export function formatMegabytes(bytes: number): string {
  * `size`, never the bytes.
  */
 export function refusePicked(files: readonly File[], limits: PickLimits): string | null {
-  if (files.length > limits.maxFiles) return limits.tooMany ?? `添付は${ATTACHMENT_MAX_COUNT}件までです`;
+  if (files.length > limits.maxFiles) return limits.tooMany ?? t("attach.tooMany", { max: ATTACHMENT_MAX_COUNT });
   const large = files.find((file) => file.size > limits.maxBytes);
-  if (large) return `「${large.name}」は大きすぎます (${formatMegabytes(limits.maxBytes)} まで)`;
+  if (large) return t("attach.tooLarge", { name: large.name, max: formatMegabytes(limits.maxBytes) });
   return null;
 }
 
