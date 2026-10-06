@@ -17,12 +17,17 @@ import { t } from "../i18n";
 export function usePins(controller: AppController, channel: ChannelState): MessageOut[] | null {
   const store = controller.store;
   const [pins, setPins] = useState<MessageOut[] | null>(null);
-  // Pin changes arrive as message.updated (also for old rows outside the loaded timeline); re-read the list when they move.
+  // Pin changes arrive as message.updated / message.deleted (also for old rows outside the loaded timeline); re-read the
+  // list when they move. A deleted pin leaves at once, by anyone (2026-10-06: it stayed until the screen was reloaded
+  // when the store did not hold its row, e.g. revealed from this list); pinsRevision covers those rows.
   const pinnedSignature = store.pinned(channel.id).map((m) => m.id).sort().join(",");
+  const revision = store.pinsRevision(channel.id);
   useEffect(() => {
     if (!controller.api) return;
-    void controller.api.listPins(channel.id).then(setPins, (error) => controller.setError(error));
-  }, [controller.api, channel.id, pinnedSignature]);
+    let current = true; // an answer overtaken by a newer load is dropped
+    void controller.api.listPins(channel.id).then((list) => current && setPins(list), (error) => current && controller.setError(error));
+    return () => { current = false; };
+  }, [controller.api, channel.id, pinnedSignature, revision]);
   return pins;
 }
 

@@ -984,6 +984,51 @@ describe("pins and bookmarks (M11c)", () => {
     expect(store.isBookmarked(message.id)).toBe(true);
     engine.stop();
   });
+
+  it("moves the pins revision when a pinned message is deleted or unpinned, held or not (2026-10-06)", async () => {
+    const { server, alice, channel, store, engine } = await setup();
+    const old = server.post(channel.id, alice.id, "old, pinned").message;
+    const older = server.post(channel.id, alice.id, "old too, pinned").message;
+    server.pin(channel.id, alice.id, old.id, true);
+    server.pin(channel.id, alice.id, older.id, true);
+    for (const body of ["a", "b", "c", "d"]) server.post(channel.id, alice.id, body);
+    const recent = server.post(channel.id, alice.id, "recent").message;
+    await engine.start();
+    await engine.openChannel(channel.id); // a page of 3: the pinned rows stay on the server
+    expect(store.message(channel.id, old.id)).toBeUndefined();
+    let revision = store.pinsRevision(channel.id);
+    const moved = () => {
+      const now = store.pinsRevision(channel.id);
+      const changed = now > revision;
+      revision = now;
+      return changed;
+    };
+
+    // Someone else deletes a pinned row this device does not hold: pinned() cannot see it, the revision can.
+    server.delete(channel.id, alice.id, old.id);
+    await engine.idle();
+    expect(moved()).toBe(true);
+    // ... or unpins one.
+    server.pin(channel.id, alice.id, older.id, false);
+    await engine.idle();
+    expect(moved()).toBe(true);
+
+    // A held row: pinned, then deleted (its pin leaves with it).
+    server.pin(channel.id, alice.id, recent.id, true);
+    await engine.idle();
+    expect(moved()).toBe(true);
+    expect(store.pinned(channel.id).map((m) => m.id)).toEqual([recent.id]);
+    server.delete(channel.id, alice.id, recent.id);
+    await engine.idle();
+    expect(moved()).toBe(true);
+    expect(store.pinned(channel.id)).toEqual([]);
+
+    // Ordinary traffic leaves it alone.
+    server.post(channel.id, alice.id, "chatter");
+    await engine.idle();
+    expect(moved()).toBe(false);
+    engine.stop();
+  });
 });
 
 describe("send queue (§9)", () => {
