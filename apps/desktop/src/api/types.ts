@@ -354,6 +354,63 @@ export interface CanvasMentioned {
   title: string;
   by_user_id: string;
 }
+/**
+ * M121 「ドキュメント」 (WIKI.md §14.2; the server in M120): the pages' tree, a page, its sharing, moving, the trash, the
+ * history, search and the administrators' list. Code names are `wiki`; the UI says 「ドキュメント」.
+ */
+export type WikiLevel = "view" | "edit" | "full";
+export type WikiPrincipalType = "workspace" | "group" | "user";
+export type PageItem = components["schemas"]["PageItem"];
+export type PageMeta = components["schemas"]["PageMeta"];
+export type PageOut = components["schemas"]["PageOut"];
+export type PageContent = components["schemas"]["PageContent"];
+export type PageCreate = components["schemas"]["PageCreate"];
+export type PageUpdate = components["schemas"]["PageUpdate"];
+export type PageMove = components["schemas"]["PageMove"];
+export type PageSaveIn = components["schemas"]["PageContentSave"];
+export type PageSaveOut = components["schemas"]["PageSaveOut"];
+export type PageConflictDetails = components["schemas"]["PageConflictDetails"];
+export type PageRef = components["schemas"]["PageRef"];
+export type PageCrumb = components["schemas"]["Crumb"];
+export type WikiTreeOut = components["schemas"]["TreeOut"];
+export type WikiChangesOut = components["schemas"]["ChangesOut"];
+export type WikiMoveOut = components["schemas"]["MoveOut"];
+export type WikiAccessChange = components["schemas"]["AccessChange"];
+export type WikiAccessOut = components["schemas"]["AccessOut"];
+export type WikiAccessUpdate = components["schemas"]["AccessUpdate"];
+export type WikiGrantIn = components["schemas"]["GrantIn"];
+export type WikiGrantOut = components["schemas"]["GrantOut"];
+export type WikiEffectiveOut = components["schemas"]["EffectiveOut"];
+export type PageRevisionMeta = components["schemas"]["PageRevisionMeta"];
+export type PageRevisionOut = components["schemas"]["PageRevisionOut"];
+export type PageRevisionPage = components["schemas"]["PageRevisionPage"];
+export type PageSearchHit = components["schemas"]["PageSearchHit"];
+export type PageSearchOut = components["schemas"]["PageSearchOut"];
+export type AdminPageOut = components["schemas"]["AdminPageOut"];
+export type ActivityPage = components["schemas"]["ActivityPage"];
+/** wiki.changed (everyone): the tree's change feed moved; read GET /wiki/changes?since= (the data differs per person). */
+export interface WikiChanged {
+  seq: number;
+}
+/** wiki.page.updated (who can read the page): its metadata (`parent_id` always null: places come from the feed). */
+export interface WikiPageUpdated {
+  page: PageMeta;
+  change: "content" | "meta" | "restore" | string;
+}
+/** wiki.mentioned (to me, while I can read the page): a save of the page newly mentions me. */
+export interface WikiMentioned {
+  page_id: string;
+  rev_id: string;
+  title: string;
+  by_user_id: string;
+}
+/** wiki.shared (to me, while I can read the page): someone shared the page with me by name. */
+export interface WikiShared {
+  page_id: string;
+  title: string;
+  level: WikiLevel;
+  by_user_id: string;
+}
 /** POST /users/me/test-notification (PUSH_NOTIFICATIONS.md §15): what happened on each device of mine. */
 export type TestNotificationOut = components["schemas"]["TestNotificationOut"];
 export type TestNotificationDevice = components["schemas"]["TestNotificationDevice"];

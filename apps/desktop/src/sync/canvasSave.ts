@@ -10,13 +10,39 @@
  * `text` is the stored form (`<@uuid>` mentions); the editor shows and edits `@name` and converts (ui/CanvasEditor.tsx).
  */
 import { ApiError, isRetryable, NetworkError } from "../api/errors";
-import type { CanvasConflictDetails, CanvasOnConflict, CanvasOut, CanvasSaveIn, CanvasSaveOut } from "../api/types";
+import type { CanvasConflict, CanvasOnConflict, CanvasOut, CanvasSaveIn } from "../api/types";
 
-export interface CanvasSaveApi {
-  /** null: `knownVersion` is still current (304). */
-  getCanvas(canvasId: string, knownVersion: number | null): Promise<CanvasOut | null>;
-  saveCanvas(canvasId: string, body: CanvasSaveIn): Promise<CanvasSaveOut>;
+/**
+ * M121: what the loop needs of the document it saves — a canvas, or a Docs page (WIKI.md §7.1: the same protocol on
+ * `PUT /wiki/pages/{id}/content`, its 409s named page_conflict / page_base_expired).
+ */
+export interface SavedDoc {
+  body: string;
+  head_rev_id: string;
+  version: number;
 }
+
+/** A save's answer: the document as it is now (merged, maybe) and the version holding exactly what was sent. */
+export interface DocSaveOut<D extends SavedDoc = CanvasOut> {
+  canvas: D;
+  submitted_rev_id: string;
+}
+
+/** 409's details (canvas_conflict / page_conflict, canvas_base_expired / page_base_expired). */
+export interface DocConflictDetails<D extends SavedDoc = CanvasOut> {
+  conflicts?: CanvasConflict[];
+  head?: D;
+  timed_out?: boolean;
+}
+
+export interface CanvasSaveApi<D extends SavedDoc = CanvasOut> {
+  /** null: `knownVersion` is still current (304). */
+  getCanvas(canvasId: string, knownVersion: number | null): Promise<D | null>;
+  saveCanvas(canvasId: string, body: CanvasSaveIn): Promise<DocSaveOut<D>>;
+}
+
+const CONFLICT_CODES = new Set(["canvas_conflict", "page_conflict"]);
+const EXPIRED_CODES = new Set(["canvas_base_expired", "page_base_expired"]);
 
 /**
  * - loading: the first GET has not answered yet
@@ -60,21 +86,21 @@ export interface CanvasSaverOptions {
   persist?: (state: CanvasPendingState | null) => void;
 }
 
-export interface CanvasConflictState {
-  details: CanvasConflictDetails;
+export interface CanvasConflictState<D extends SavedDoc = CanvasOut> {
+  details: DocConflictDetails<D>;
   /** The version the refused save was written on: the choice is sent on it again. */
   baseRevId: string;
 }
 
-export class CanvasSaver {
+export class CanvasSaver<D extends SavedDoc = CanvasOut> {
   status: CanvasSaveStatus = "loading";
   /** The server's canvas as last received (its body is the one of that moment). */
-  canvas: CanvasOut | null = null;
+  canvas: D | null = null;
   /** What the editor holds, in the stored form. */
   text = "";
-  conflict: CanvasConflictState | null = null;
+  conflict: CanvasConflictState<D> | null = null;
   /** canvas_base_expired: the current canvas to compare with. */
-  expired: CanvasOut | null = null;
+  expired: D | null = null;
   /** Why saving stopped (blocked / gone). */
   error: unknown = null;
   /** Bumped on every change (useSyncExternalStore). */
@@ -107,7 +133,7 @@ export class CanvasSaver {
   constructor(
     readonly id: string,
     readonly channelId: string,
-    private readonly api: CanvasSaveApi,
+    private readonly api: CanvasSaveApi<D>,
     options: CanvasSaverOptions = {},
     restored: CanvasPendingState | null = null,
   ) {
@@ -209,7 +235,7 @@ export class CanvasSaver {
 
   private async read(knownVersion: number | null, first: boolean): Promise<void> {
     const before = this.text;
-    let canvas: CanvasOut | null;
+    let canvas: D | null;
     try {
       canvas = await this.api.getCanvas(this.id, knownVersion);
     } catch (err) {
@@ -257,7 +283,7 @@ export class CanvasSaver {
   }
 
   /** The server's version becomes the text (nothing unsaved here). */
-  private adopt(canvas: CanvasOut): void {
+  private adopt(canvas: D): void {
     this.baseRevId = canvas.head_rev_id;
     this.synced = canvas.body;
     if (this.text !== canvas.body) {
@@ -317,7 +343,7 @@ export class CanvasSaver {
     const flight = this.inFlight;
     if (!flight || this.disposed) return;
     this.setStatus("saving");
-    let answer: CanvasSaveOut;
+    let answer: DocSaveOut<D>;
     try {
       answer = await this.api.saveCanvas(this.id, { base_rev_id: flight.baseRevId, body: flight.sent, client_save_id: flight.clientSaveId, on_conflict: flight.onConflict });
     } catch (err) {
@@ -328,7 +354,7 @@ export class CanvasSaver {
     this.landed(flight, answer);
   }
 
-  private landed(flight: InFlight, answer: CanvasSaveOut): void {
+  private landed(flight: InFlight, answer: DocSaveOut<D>): void {
     this.inFlight = null;
     this.attempt = 0;
     this.canvas = answer.canvas;
@@ -359,15 +385,15 @@ export class CanvasSaver {
   }
 
   private failed(flight: InFlight, err: unknown): void {
-    if (err instanceof ApiError && err.status === 409 && (err.code === "canvas_conflict" || err.code === "canvas_base_expired")) {
+    if (err instanceof ApiError && err.status === 409 && (CONFLICT_CODES.has(err.code) || EXPIRED_CODES.has(err.code))) {
       this.inFlight = null;
       this.again = false;
       this.attempt = 0;
-      const details = err.details as CanvasConflictDetails | undefined;
+      const details = err.details as DocConflictDetails<D> | undefined;
       if (details?.head) {
         this.canvas = details.head;
       }
-      if (err.code === "canvas_conflict" && details) {
+      if (CONFLICT_CODES.has(err.code) && details) {
         this.conflict = { details, baseRevId: flight.baseRevId };
         this.setStatus("conflict");
       } else if (details?.head) {
@@ -493,7 +519,7 @@ export class CanvasSaver {
   }
 
   /** The metadata changed (the title, a setting) without a new body: the screen shows it. */
-  applyMeta(canvas: CanvasOut): void {
+  applyMeta(canvas: D): void {
     if (this.disposed) return;
     if (this.canvas && canvas.version < this.canvas.version) return;
     this.canvas = { ...canvas, body: this.canvas?.body ?? canvas.body };

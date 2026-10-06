@@ -7,6 +7,7 @@ import { ApiError, isRetryable } from "../api/errors";
 import { DraftSync } from "./drafts";
 import { CalendarHub, type CalendarApi } from "./calendar";
 import { CanvasHub } from "./canvases";
+import { type WikiApi, WikiHub, type WikiNotice } from "./wiki";
 import { CanvasPresenceSender } from "./canvasPresence";
 import { type TaskApi, TaskHub, type TaskNotice } from "./tasks";
 import { TimesFeedHub } from "./timesFeed";
@@ -104,6 +105,12 @@ export interface SyncApi {
   /** M39: the activity badge (GET /activity/summary) and read position (PUT /activity/read). Optional (older fakes). */
   activitySummary?(): Promise<ActivitySummaryOut>;
   markActivityRead?(readAt: string): Promise<ActivitySummaryOut>;
+  /** M121: 「ドキュメント」 (WIKI.md §14.2). Optional (older fakes). */
+  wikiTree?: WikiApi["wikiTree"];
+  wikiChanges?: WikiApi["wikiChanges"];
+  wikiPage?: WikiApi["wikiPage"];
+  saveWikiPage?: WikiApi["saveWikiPage"];
+  resolveWikiPages?: WikiApi["resolveWikiPages"];
   /** M65: the AI status and summaries (docs/AI.md §5). Optional (older fakes). */
   aiStatus?: AiApi["aiStatus"];
   createAiSummary?: AiApi["createAiSummary"];
@@ -178,6 +185,8 @@ export interface EngineDeps {
   onCanvasMention?: (mention: CanvasMentioned, channel: ChannelState) => void;
   /** M112: reservation.notice, an activity item about reservations for me (the server pushes to phones). */
   onReservationNotice?: (notice: ReservationNotice) => void;
+  /** M121: a Docs page newly mentions me, or was shared with me by name (the server pushes to phones). */
+  onWikiNotice?: (notice: WikiNotice) => void;
   /** PUSH_NOTIFICATIONS.md §15: notification.test, a test notification I asked for (here or on another device). */
   onTestNotification?: (test: NotificationTest) => void;
   /** A channel became fully read (here or on another device). */
@@ -213,6 +222,8 @@ export interface EngineOptions {
   sendRetryMaxMs?: number;
   /** M43: the canvas save loop's pauses (CANVAS.md §4.4). */
   canvasSave?: CanvasSaverOptions;
+  /** M121: the Docs pages' save loops (the canvas's pauses unless set) and the change feed's pause. */
+  wiki?: CanvasSaverOptions & { feedDelayMs?: number; resolveDelayMs?: number };
 }
 
 export class SyncEngine {
@@ -301,6 +312,7 @@ export class SyncEngine {
       sendRetryMinMs: options.sendRetryMinMs ?? 2_000,
       sendRetryMaxMs: options.sendRetryMaxMs ?? 30_000,
       canvasSave: options.canvasSave ?? {},
+      wiki: options.wiki ?? options.canvasSave ?? {},
     };
     const api = deps.api;
     this.canvases = new CanvasHub({
@@ -309,6 +321,20 @@ export class SyncEngine {
         : null,
       store: deps.store,
       options: this.opts.canvasSave,
+    });
+    this.wiki = new WikiHub({
+      api: api.wikiTree && api.wikiChanges && api.wikiPage && api.saveWikiPage && api.resolveWikiPages
+        ? {
+            wikiTree: (etag) => api.wikiTree!(etag),
+            wikiChanges: (since) => api.wikiChanges!(since),
+            wikiPage: (id, etag) => api.wikiPage!(id, etag),
+            saveWikiPage: (id, body) => api.saveWikiPage!(id, body),
+            resolveWikiPages: (ids) => api.resolveWikiPages!(ids),
+          }
+        : null,
+      store: deps.store,
+      options: this.opts.wiki,
+      onNotice: (notice) => deps.onWikiNotice?.(notice),
     });
     this.calendar = new CalendarHub({
       api: api.calendarEvents && api.calendarUpcoming && api.createCalendarEvent && api.updateCalendarEvent && api.deleteCalendarEvent && api.setCalendarAlarm && api.clearCalendarAlarm && api.getCalendarEvent && api.updateCalendarOccurrence && api.deleteCalendarOccurrence
@@ -377,6 +403,8 @@ export class SyncEngine {
   readonly drafts: DraftSync;
   /** M43: the conversations' canvases and the save loops of the open ones (CANVAS.md §4.4 / §4.6). */
   readonly canvases: CanvasHub;
+  /** M121: 「ドキュメント」 — the tree, the open pages' save loops, link titles (WIKI.md §10). */
+  readonly wiki: WikiHub;
   /** M51: the ranges of the calendar on screen and the channels' counts (CALENDAR.md §5). */
   readonly calendar: CalendarHub;
   /** M55: the boards, 「自分のタスク」 and calendar ranges on screen (TASKS.md §4). */
@@ -515,6 +543,7 @@ export class SyncEngine {
       void this.flushOutbox();
       void this.drafts.flush(); // edited while offline (M15d)
       this.canvases.online(); // M43: canvas saves that failed, open canvases read again
+      this.wiki.online(); // M121: page saves that failed, open pages read again
       this.calendar.online(); // M51: the ranges on screen read again (CALENDAR.md §5)
       this.tasks.online(); // M55: the boards and lists on screen read again (TASKS.md §4)
       this.timesFeed.online(); // L8: a feed on screen reads its first page again (TIMES_FEED.md §5)
@@ -574,6 +603,7 @@ export class SyncEngine {
     this.completeThreads.clear();
     this.cancelSendRetry();
     this.canvases.stop();
+    this.wiki.stop();
     this.calendar.stop();
     this.tasks.stop();
     this.timesFeed.stop();
@@ -754,6 +784,7 @@ export class SyncEngine {
     store.replaceSidebarDefaults(bootstrap.sidebar_defaults ?? []);
     this.drafts.applyBootstrap(bootstrap.drafts ?? []);
     this.applyWorkspaceSettings(bootstrap.workspace_settings);
+    this.wiki.applyBootstrap(bootstrap.wiki); // M121: the Docs tree (read, or caught up from its feed)
     void this.loadScheduled();
     void this.loadReminders();
     void this.loadReservationPools();
@@ -897,6 +928,8 @@ export class SyncEngine {
       case "user.updated":
       case "user.deactivated": {
         const data = frame.data as { user: UserPublic };
+        // M121: my role changed (a guest reads only pages shared with them by name): the Docs tree is read again.
+        if (data.user.id === store.me?.id && data.user.role !== store.me.role) this.wiki.accessMayHaveChanged();
         store.upsertUser(data.user);
         // M50: about me and newer than what I hold: another of my devices changed my settings. The event carries only the
         // public fields, so the private ones (quick reactions, notification settings, keywords …) are read again.
@@ -960,6 +993,16 @@ export class SyncEngine {
       case "canvas.deleted":
         this.canvases.applyEvent(frame.event, frame.data);
         return;
+      case "wiki.changed":
+      case "wiki.page.updated":
+        this.wiki.applyEvent(frame.event, frame.data);
+        return;
+      case "wiki.mentioned":
+      case "wiki.shared":
+        // M121: an activity item too (page_mention / page_shared), and a banner while the app is open.
+        this.scheduleActivityRefresh();
+        this.wiki.applyEvent(frame.event, frame.data);
+        return;
       case "calendar.event.updated":
       case "calendar.event.deleted":
       case "calendar.alarm.updated":
@@ -987,6 +1030,7 @@ export class SyncEngine {
       case "group.updated": {
         const data = frame.data as { group: GroupOut; deleted: boolean };
         store.applyGroup(data.group, data.deleted);
+        this.wiki.accessMayHaveChanged(); // M121 (WIKI.md §10): a group's pages may show or hide for me
         return;
       }
       case "reminder.updated": {

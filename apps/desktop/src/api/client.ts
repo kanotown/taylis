@@ -1,6 +1,6 @@
 import { ApiError, isRetryable, NetworkError } from "./errors";
 import { acceptLanguage } from "../i18n";
-import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CallOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, CustomEmojiUpdate, DeltaOut, DmPinStateOut, EmojiPackImportOut, EmojiPackOut, TextEmojiCreate, DraftOut, FavoriteStateOut, FeedBotOut, FeedBotUpdate, FeedCreate, FeedOut, FeedUpdate, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, PoolCreate, PoolOut, PoolUpdate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarDefaultOut, SidebarSort, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate, AdminWorkspaceSettingsOut, WorkspaceSettingsUpdate, DefaultChannelsApplyOut, WorkflowCreate, WorkflowOut, WorkflowSubmit, WorkflowTemplateOut, WorkflowUpdate } from "./types";
+import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut, AckRemindOut, AdminUserCreate, AdminUserCreated, AdminUserOut, AdminUserUpdate, AttachmentOut, AuthMethodsOut, BookmarkListOut, BookmarkStateOut, BootstrapOut, CallOut, CalendarEventCreate, CalendarEventOut, CalendarEventUpdate, CalendarFeedCreated, CalendarFeedOut, CalendarFeedScope, CalendarOccurrenceUpdate, CanvasCreate, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, ChannelOut, ChannelReadStateOut, ChannelUpdate, CustomEmojiOut, CustomEmojiUpdate, DeltaOut, DmPinStateOut, EmojiPackImportOut, EmojiPackOut, TextEmojiCreate, DraftOut, FavoriteStateOut, FeedBotOut, FeedBotUpdate, FeedCreate, FeedOut, FeedUpdate, FileListOut, GroupCreate, GroupOut, GroupUpdate, HistoryOut, InviteAccept, InviteCreate, InviteCreated, InviteOut, InvitePreviewOut, LabProfileOut, LabProfilePut, LinkPreviewOut, MemberOut, MemberRole, MentionListOut, MessageOut, MessageRevisionOut, MyLabProfileUpdate, NotificationLevel, NotificationPreferenceOut, OccurrenceScope, PollAnswersIn, PollCreate, PoolCreate, PoolOut, PoolUpdate, ReadAllScope, ReadStateOut, RecurringPostCreate, RecurringPostOut, RecurringPostUpdate, RecurringRunOut, ReminderCreate, ReminderOut, RolloverApply, RolloverOut, RolloverPreviewOut, ScheduledCreate, ScheduledOut, SearchOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarDefaultOut, SidebarSort, SidebarSectionOut, TemplateCreate, TemplateOut, SubtaskUpdate, TaskColumnCreate, TaskColumnOut, TaskColumnUpdate, TaskCreate, TaskMove, TaskOut, TaskUpdate, TemplateUpdate, TemporaryPasswordOut, ThreadFilter, ThreadListOut, ThreadState, TimesFeedOut, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UnreadSummaryOut, UserMe, UserPublic, UserUpdate, WebhookCreate, WebhookCreated, WebhookOut, WebhookUpdate, AdminWorkspaceSettingsOut, WorkspaceSettingsUpdate, DefaultChannelsApplyOut, WorkflowCreate, WorkflowOut, WorkflowSubmit, WorkflowTemplateOut, WorkflowUpdate, AdminPageOut, PageCreate, PageItem, PageMeta, PageMove, PageOut, PageRef, PageRevisionMeta, PageRevisionOut, PageRevisionPage, PageSaveIn, PageSaveOut, PageSearchOut, PageUpdate, WikiAccessOut, WikiAccessUpdate, WikiChangesOut, WikiMoveOut, WikiTreeOut } from "./types";
 import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
 import type { TestNotificationOut } from "./types";
@@ -11,7 +11,7 @@ import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut }
  * M76 (CANVAS.md §20): the activity kinds this client shows beyond M39's (the server sends canvas_mention items, and
  * counts them in the badge, only to clients that name them; an older server ignores the parameter).
  */
-export const ACTIVITY_INCLUDE = ["canvas_mention", "reservation"] as const;
+export const ACTIVITY_INCLUDE = ["canvas_mention", "reservation", "page_mention", "page_shared"] as const;
 /** M112: ACTIVITY_INCLUDE as repeated query parameters (`include=canvas_mention&include=reservation`). */
 const includeQuery = (name: string): string => ACTIVITY_INCLUDE.map((kind) => `${name}=${kind}`).join("&");
 
@@ -37,7 +37,7 @@ export interface ApiClientOptions {
 }
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-type RequestOptions = { auth?: boolean; retry401?: boolean; headers?: Record<string, string>; timeoutMs?: number };
+type RequestOptions = { auth?: boolean; retry401?: boolean; headers?: Record<string, string>; timeoutMs?: number; /** M121: sees the response's headers (an ETag). */ onResponse?: (response: Response) => void };
 
 /** A JSON request that has not answered by then fails like a network error (the phones' limit too). */
 export const REQUEST_TIMEOUT_MS = 30_000;
@@ -709,6 +709,163 @@ export class ApiClient {
   /** M44: an attachment's metadata (a canvas's image: its name, type and shape). */
   getAttachment(attachmentId: string): Promise<AttachmentOut> {
     return this.request("GET", `/api/v1/attachments/${attachmentId}`);
+  }
+
+  // --- 「ドキュメント」 (wiki, WIKI.md §14.2, M121) ------------------------------------------------
+
+  /** Every page I can read (not database rows) and the change feed's cursor; null when `etag` is still current (304). */
+  async wikiTree(etag: string | null = null): Promise<{ tree: WikiTreeOut; etag: string | null } | null> {
+    let seen: string | null = null;
+    try {
+      const tree = await this.request<WikiTreeOut>("GET", "/api/v1/wiki/tree", undefined, {
+        headers: etag ? { "If-None-Match": etag } : {},
+        onResponse: (response) => { seen = response.headers.get("ETag"); },
+      });
+      return { tree, etag: seen };
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 304) return null;
+      throw err;
+    }
+  }
+
+  /** The tree's change feed after `since` (WIKI.md §10, §14.4). */
+  wikiChanges(since: number): Promise<WikiChangesOut> {
+    return this.request("GET", `/api/v1/wiki/changes?since=${since}`);
+  }
+
+  /** A page with its body, breadcrumbs and child pages; null when `etag` (`"v{version}-{level}"`) is still current. */
+  async wikiPage(pageId: string, etag: string | null = null): Promise<PageOut | null> {
+    try {
+      return await this.request<PageOut>("GET", `/api/v1/wiki/pages/${pageId}`, undefined, etag ? { headers: { "If-None-Match": etag } } : {});
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 304) return null;
+      throw err;
+    }
+  }
+
+  /** A new page (a retry with the same client_save_id answers the first one). */
+  createWikiPage(body: PageCreate): Promise<PageOut> {
+    return this.request("POST", "/api/v1/wiki/pages", body);
+  }
+
+  /** The whole body written on `base_rev_id` (CANVAS.md §4.4); 409 page_conflict / page_base_expired carry the head. */
+  saveWikiPage(pageId: string, body: PageSaveIn): Promise<PageSaveOut> {
+    return this.request("PUT", `/api/v1/wiki/pages/${pageId}/content`, body);
+  }
+
+  /** The web page closing: the same save on a keepalive fetch (as saveCanvasKeepalive). */
+  saveWikiPageKeepalive(pageId: string, body: PageSaveIn): void {
+    if (!this.accessToken) return;
+    try {
+      void this.fetchImpl(`${this.baseUrl}/api/v1/wiki/pages/${pageId}/content`, {
+        method: "PUT",
+        keepalive: true,
+        headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${this.accessToken}` },
+        body: JSON.stringify(body),
+      }).catch(() => {});
+    } catch {
+      /* the page is going away */
+    }
+  }
+
+  /** Title and icon (`icon: ""` removes it). */
+  updateWikiPage(pageId: string, patch: PageUpdate): Promise<PageOut> {
+    return this.request("PATCH", `/api/v1/wiki/pages/${pageId}`, patch);
+  }
+
+  /** Move (or with `dry_run` only say who would gain or lose access). */
+  moveWikiPage(pageId: string, body: PageMove): Promise<WikiMoveOut> {
+    return this.request("POST", `/api/v1/wiki/pages/${pageId}/move`, body);
+  }
+
+  /** The page and the pages below it to the trash. */
+  trashWikiPage(pageId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/wiki/pages/${pageId}`);
+  }
+
+  restoreWikiPage(pageId: string): Promise<PageOut> {
+    return this.request("POST", `/api/v1/wiki/pages/${pageId}/restore`);
+  }
+
+  /** The roots of the trash I have full access to. */
+  wikiTrash(): Promise<PageMeta[]> {
+    return this.request("GET", "/api/v1/wiki/trash");
+  }
+
+  wikiAccess(pageId: string): Promise<WikiAccessOut> {
+    return this.request("GET", `/api/v1/wiki/pages/${pageId}/access`);
+  }
+
+  setWikiAccess(pageId: string, body: WikiAccessUpdate): Promise<WikiAccessOut> {
+    return this.request("PUT", `/api/v1/wiki/pages/${pageId}/access`, body);
+  }
+
+  wikiBacklinks(pageId: string): Promise<PageItem[]> {
+    return this.request("GET", `/api/v1/wiki/pages/${pageId}/backlinks`);
+  }
+
+  /** The titles of the pages I can read among `ids` (the others are left out). */
+  resolveWikiPages(ids: string[]): Promise<PageRef[]> {
+    return this.request("POST", "/api/v1/wiki/pages/resolve", { ids });
+  }
+
+  /** The `[[` suggestions. */
+  lookupWikiPages(q: string, limit = 8): Promise<PageRef[]> {
+    return this.request("GET", `/api/v1/wiki/pages/lookup?${new URLSearchParams({ q, limit: String(limit) })}`);
+  }
+
+  wikiRevisions(pageId: string, cursor: string | null = null, limit = 50): Promise<PageRevisionPage> {
+    const params = new URLSearchParams({ limit: String(limit), ...(cursor ? { cursor } : {}) });
+    return this.request("GET", `/api/v1/wiki/pages/${pageId}/revisions?${params}`);
+  }
+
+  wikiRevision(pageId: string, revisionId: string): Promise<PageRevisionOut> {
+    return this.request("GET", `/api/v1/wiki/pages/${pageId}/revisions/${revisionId}`);
+  }
+
+  restoreWikiRevision(pageId: string, revisionId: string, clientSaveId: string): Promise<PageOut> {
+    return this.request("POST", `/api/v1/wiki/pages/${pageId}/revisions/${revisionId}/restore`, { client_save_id: clientSaveId });
+  }
+
+  labelWikiRevision(pageId: string, revisionId: string, label: string | null): Promise<PageRevisionMeta> {
+    return this.request("PATCH", `/api/v1/wiki/pages/${pageId}/revisions/${revisionId}`, { label });
+  }
+
+  eraseWikiRevision(pageId: string, revisionId: string): Promise<PageRevisionMeta> {
+    return this.request("DELETE", `/api/v1/wiki/pages/${pageId}/revisions/${revisionId}`);
+  }
+
+  /** The page as Markdown (text). */
+  async exportWikiPage(pageId: string): Promise<string> {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
+    const response = await this.rawFetch(`${this.baseUrl}/api/v1/wiki/pages/${pageId}/export`, { headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {} });
+    if (!response.ok) throw toApiError(response.status, parseJson(await response.text().catch(() => "")));
+    return response.text();
+  }
+
+  /** Pages I can read whose title or body matches (WIKI.md §8.1). */
+  searchWikiPages(query: { q: string; in_page?: string | null; from_user_id?: string | null; after?: string | null; before?: string | null; sort?: "relevance" | "newest"; limit?: number; offset?: number }): Promise<PageSearchOut> {
+    const params = new URLSearchParams({ q: query.q, tz_offset_minutes: String(-new Date().getTimezoneOffset()) });
+    for (const key of ["in_page", "from_user_id", "after", "before", "sort", "limit", "offset"] as const) {
+      const value = query[key];
+      if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+    }
+    return this.request("GET", `/api/v1/search/pages?${params}`);
+  }
+
+  /** Administrators: every page's title and who has access (no bodies). */
+  adminWikiPages(): Promise<AdminPageOut[]> {
+    return this.request("GET", "/api/v1/admin/wiki/pages");
+  }
+
+  /** Administrators: full access to the page for me (audited). null: a page in the trash. */
+  adminTakeOverWikiPage(pageId: string): Promise<PageOut | null> {
+    return this.request("POST", `/api/v1/admin/wiki/pages/${pageId}/takeover`);
+  }
+
+  /** Administrators: a page in the trash deleted for good now (audited). */
+  adminPurgeWikiPage(pageId: string): Promise<void> {
+    return this.request("DELETE", `/api/v1/admin/wiki/pages/${pageId}`);
   }
 
   // --- drafts (M15d) ------------------------------------------------------------------------
@@ -1668,6 +1825,7 @@ export class ApiClient {
         body: body === undefined ? undefined : JSON.stringify(body),
         ...(abort ? { signal: abort.signal } : {}),
       });
+      options.onResponse?.(response);
 
       if (response.status === 204) return { data: undefined as T, status: 204 };
       let text: string;
