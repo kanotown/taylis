@@ -118,6 +118,31 @@ async def open_runs(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def typing_mentions(
+    db: AsyncSession, limit: int
+) -> list[tuple[uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID]]:
+    """The open (pending or running) mention runs, oldest first, as (bot user id, channel id,
+    thread id, source message id): the bots shown as typing (docs/AI.md §2.2). No lock."""
+    stmt = (
+        select(AiAgent.bot_user_id, AiRun.channel_id, AiRun.thread_id, AiRun.source_message_id)
+        .join(AiAgent, AiAgent.id == AiRun.agent_id)
+        .where(
+            AiRun.status.in_(("pending", "running")),
+            AiRun.kind == "mention",
+            AiRun.channel_id.is_not(None),
+            AiRun.thread_id.is_not(None),
+            AiRun.source_message_id.is_not(None),
+        )
+        .order_by(AiRun.created_at)
+        .limit(limit)
+    )
+    return [
+        (bot, channel, thread, source)
+        for bot, channel, thread, source in (await db.execute(stmt)).all()
+        if channel is not None and thread is not None and source is not None
+    ]
+
+
 async def due_replies(db: AsyncSession, now: datetime, limit: int) -> list[AiRun]:
     """Finished mention runs whose reply still waits to be posted, locked."""
     stmt = (
