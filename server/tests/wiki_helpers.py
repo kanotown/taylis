@@ -84,3 +84,87 @@ async def assert_acl_consistent(db: AsyncSession) -> None:
     problems = await access.verify(db)
     await db.rollback()
     assert problems == [], problems[:5]
+
+
+# --- databases (M123) ----------------------------------------------------------------------------
+
+
+async def create_database(
+    client: AsyncClient,
+    *,
+    title: str = "Papers",
+    parent_id: str | None = None,
+    access_: str = "workspace",
+) -> dict[str, Any]:
+    page = await create_page(
+        client, title=title, parent_id=parent_id, access_=access_, kind="database"
+    )
+    response = await client.get(f"{API}/wiki/databases/{page['id']}")
+    assert response.status_code == 200, response.text
+    out: dict[str, Any] = response.json()
+    return out
+
+
+async def schema(
+    client: AsyncClient, database: dict[str, Any], *ops: dict[str, Any], expect: int = 200
+) -> dict[str, Any]:
+    """Apply schema ops on the latest version; returns the new DatabaseOut (and updates it)."""
+    current = (await client.get(f"{API}/wiki/databases/{database['page_id']}")).json()
+    response = await client.patch(
+        f"{API}/wiki/databases/{database['page_id']}/schema",
+        json={"base_schema_version": current["schema_version"], "ops": list(ops)},
+    )
+    assert response.status_code == expect, response.text
+    out: dict[str, Any] = response.json()
+    if expect == 200:
+        database.clear()
+        database.update(out)
+    return out
+
+
+def prop_id(database: dict[str, Any], name: str) -> str:
+    return str(next(p["id"] for p in database["properties"] if p["name"] == name))
+
+
+def option_id(database: dict[str, Any], prop: str, name: str) -> str:
+    found = next(p for p in database["properties"] if p["name"] == prop)
+    return str(next(o["id"] for o in found["options"] if o["name"] == name))
+
+
+async def add_row(
+    client: AsyncClient,
+    database: dict[str, Any],
+    title: str,
+    props: dict[str, Any] | None = None,
+    *,
+    expect: int = 201,
+) -> dict[str, Any]:
+    response = await client.post(
+        f"{API}/wiki/databases/{database['page_id']}/rows",
+        json={"title": title, "props": props or {}, "client_save_id": key()},
+    )
+    assert response.status_code == expect, response.text
+    out: dict[str, Any] = response.json()
+    return out["row"] if expect == 201 else out
+
+
+async def set_cells(
+    client: AsyncClient, row_id: str, values: dict[str, Any], *, expect: int = 200
+) -> dict[str, Any]:
+    response = await client.patch(
+        f"{API}/wiki/rows/{row_id}/props", json={"set": values, "client_op_id": key()}
+    )
+    assert response.status_code == expect, response.text
+    out: dict[str, Any] = response.json()
+    return out
+
+
+async def query(client: AsyncClient, database: dict[str, Any], **body: Any) -> dict[str, Any]:
+    response = await client.post(f"{API}/wiki/databases/{database['page_id']}/query", json=body)
+    assert response.status_code == 200, response.text
+    out: dict[str, Any] = response.json()
+    return out
+
+
+async def titles(client: AsyncClient, database: dict[str, Any], **body: Any) -> list[str]:
+    return [r["title"] for r in (await query(client, database, limit=1000, **body))["rows"]]

@@ -23,7 +23,17 @@ from app.events.models import OutboxEvent
 from app.modules.users.models import User
 from app.modules.wiki import events
 from tests.helpers import make_user
-from tests.wiki_helpers import API, Actor, create_page, key, set_access
+from tests.wiki_helpers import (
+    API,
+    Actor,
+    add_row,
+    create_database,
+    create_page,
+    key,
+    prop_id,
+    schema,
+    set_access,
+)
 
 MARK = "SECRET"
 
@@ -45,6 +55,15 @@ class World:
     open_page: dict[str, Any]
     theirs: dict[str, Any]  # a page every outsider has full access to
     image_id: str
+    # M123: a database only alice reads, its row, and an open database whose row links to it.
+    secret_db: str
+    secret_row: str
+    open_db: str
+    open_row: str
+    relation: str
+
+    def hidden_ids(self) -> list[str]:
+        return [str(self.secret["id"]), self.secret_db, self.secret_row]
 
 
 async def _world(client: AsyncClient, db: AsyncSession, as_user: Actor) -> World:
@@ -88,6 +107,28 @@ async def _world(client: AsyncClient, db: AsyncSession, as_user: Actor) -> World
         [("user", str(u.id), "full") for u in (alice, bob, gina, boss)],
     )
     revisions = (await client.get(f"{API}/wiki/pages/{secret['id']}/revisions")).json()
+    secret_db = await create_database(client, title=f"{MARK}-DB", access_="private")
+    secret_row = await add_row(client, secret_db, f"{MARK}-ROW")
+    open_db = await create_database(client, title="Open table")
+    # Every outsider manages the open table (the guest by name); its relation points at the secret.
+    await set_access(
+        client,
+        open_db["page_id"],
+        [("workspace", None, "full"), ("user", str(gina.id), "full")],
+        inherit=False,
+    )
+    await schema(
+        client,
+        open_db,
+        {
+            "op": "add",
+            "name": "Links",
+            "type": "relation",
+            "relation": {"database_id": secret_db["page_id"]},
+        },
+    )
+    relation = prop_id(open_db, "Links")
+    open_row = await add_row(client, open_db, "Open row", {relation: [secret_row["id"]]})
     return World(
         alice=alice,
         outsiders={"member": bob, "guest": gina, "admin": boss},
@@ -98,6 +139,11 @@ async def _world(client: AsyncClient, db: AsyncSession, as_user: Actor) -> World
         open_page=open_page,
         theirs=theirs,
         image_id=image_id,
+        secret_db=secret_db["page_id"],
+        secret_row=secret_row["id"],
+        open_db=open_db["page_id"],
+        open_row=open_row["id"],
+        relation=relation,
     )
 
 
@@ -209,6 +255,70 @@ CASES: dict[str, tuple[Call, bool]] = {
         False,
     ),
     "bootstrap": (lambda c, w: c.get(f"{API}/sync/bootstrap"), False),
+    # M123: databases, rows, relations.
+    "database": (lambda c, w: c.get(f"{API}/wiki/databases/{w.secret_db}"), True),
+    "database schema": (
+        lambda c, w: c.patch(
+            f"{API}/wiki/databases/{w.secret_db}/schema",
+            json={"base_schema_version": 1, "ops": [{"op": "add", "name": "x", "type": "text"}]},
+        ),
+        True,
+    ),
+    "database view": (
+        lambda c, w: c.put(f"{API}/wiki/databases/{w.secret_db}/views/v1", json={}),
+        True,
+    ),
+    "database query": (
+        lambda c, w: c.post(f"{API}/wiki/databases/{w.secret_db}/query", json={}),
+        True,
+    ),
+    "database csv": (lambda c, w: c.get(f"{API}/wiki/databases/{w.secret_db}/export.csv"), True),
+    "add row": (
+        lambda c, w: c.post(
+            f"{API}/wiki/databases/{w.secret_db}/rows", json={"client_save_id": key()}
+        ),
+        True,
+    ),
+    "row": (lambda c, w: c.get(f"{API}/wiki/rows/{w.secret_row}"), True),
+    "row page": (lambda c, w: c.get(f"{API}/wiki/pages/{w.secret_row}"), True),
+    "row props": (
+        lambda c, w: c.patch(
+            f"{API}/wiki/rows/{w.secret_row}/props",
+            json={"set": {"title": "x"}, "client_op_id": key()},
+        ),
+        True,
+    ),
+    "trash row": (lambda c, w: c.delete(f"{API}/wiki/pages/{w.secret_row}"), True),
+    "open table": (lambda c, w: c.get(f"{API}/wiki/databases/{w.open_db}"), False),
+    "open table query": (
+        lambda c, w: c.post(f"{API}/wiki/databases/{w.open_db}/query", json={}),
+        False,
+    ),
+    "open table filtered by the secret row": (
+        lambda c, w: c.post(
+            f"{API}/wiki/databases/{w.open_db}/query",
+            json={
+                "filter": {
+                    "conditions": [{"prop_id": w.relation, "op": "contains", "value": w.secret_row}]
+                }
+            },
+        ),
+        False,
+    ),
+    "open row": (lambda c, w: c.get(f"{API}/wiki/rows/{w.open_row}"), False),
+    "open table csv": (lambda c, w: c.get(f"{API}/wiki/databases/{w.open_db}/export.csv"), False),
+    "relation candidates": (
+        lambda c, w: c.get(f"{API}/wiki/databases/{w.open_db}/properties/{w.relation}/candidates"),
+        False,
+    ),
+    "link to the secret row": (
+        lambda c, w: c.patch(
+            f"{API}/wiki/rows/{w.open_row}/props",
+            json={"set": {w.relation: [w.secret_row]}, "client_op_id": key()},
+        ),
+        False,
+    ),
+    "search rows": (lambda c, w: c.get(f"{API}/search/pages", params={"q": "ROW"}), False),
 }
 
 
@@ -225,7 +335,12 @@ async def test_unreadable_page_does_not_exist(
     as_user(world.outsiders[who])
     call, names_it = CASES[case]
     for response in _texts(await call(client, world)):
-        if names_it:
+        if case == "link to the secret row":
+            # The same answer as a row that is not there.
+            assert response.status_code in (404, 422), (case, response.text)
+            if response.status_code == 422:
+                assert response.json()["error"]["code"] == "wiki_invalid_property_value"
+        elif names_it:
             assert response.status_code == 404, (case, response.status_code, response.text)
             code = response.json()["error"]["code"]
             assert code in ("page_not_found", "attachment_not_found"), code
@@ -237,7 +352,8 @@ async def test_unreadable_page_does_not_exist(
         assert MARK not in response.text, (case, response.text[:300])
         # Not even the id, but in the change feed's `removed` (WIKI.md §10: ids only).
         if case != "changes":
-            assert str(world.secret["id"]) not in response.text, (case, response.text[:300])
+            for hidden in world.hidden_ids():
+                assert hidden not in response.text, (case, response.text[:300])
 
 
 async def test_breadcrumbs_hide_an_unreadable_parent(
@@ -255,7 +371,12 @@ async def test_breadcrumbs_hide_an_unreadable_parent(
     assert MARK not in access_out.text
     assert str(world.secret["id"]) not in access_out.text
     tree = (await client.get(f"{API}/wiki/tree")).json()
-    assert {p["title"] for p in tree["pages"]} == {"Open handbook", "Shared child", "Theirs"}
+    assert {p["title"] for p in tree["pages"]} == {
+        "Open handbook",
+        "Shared child",
+        "Theirs",
+        "Open table",
+    }
     child = next(p for p in tree["pages"] if p["title"] == "Shared child")
     assert child["parent_id"] is None  # shown at the top level, its parent unnamed
 
