@@ -76,6 +76,40 @@ final class CustomEmojiTests: XCTestCase {
         }
     }
 
+    /// 2026-10-06 (「iPhone だけ絵文字が少し上」): standing on the baseline, an inline image's middle was 2 pt above the
+    /// kana's. It is centred on the line now, in body text and in headings (an orange square beside black text).
+    @MainActor
+    func testInlineImageIsCentredOnTheText() throws {
+        let square = CustomEmojiOut(id: "e3", name: "sq", contentType: "image/png", width: 32, height: 32, createdBy: "u", createdAt: "")
+        let image = CustomEmoji.inlineImage(UIGraphicsImageRenderer(size: CGSize(width: 48, height: 48)).image { context in
+            UIColor.orange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 48, height: 48))
+        })
+        let fonts: [(Font, CGFloat)] = [(.body, CustomEmoji.inlineHeight), (.title.bold(), CustomEmoji.headingHeights[0])]
+        for (font, emojiHeight) in fonts {
+            let view = CustomEmoji.text("確認しました:sq:", custom: ["sq": square], images: ["e3": image], onNeed: nil, height: emojiHeight)
+                .font(font).foregroundStyle(.black).padding(4).background(Color.white)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            let cg = try XCTUnwrap(renderer.cgImage)
+            let w = cg.width, h = cg.height
+            var data = [UInt8](repeating: 0, count: w * h * 4)
+            let context = try XCTUnwrap(CGContext(data: &data, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+            var text = (top: Int.max, bottom: -1), emoji = (top: Int.max, bottom: -1)
+            for y in 0..<h {
+                for x in 0..<w {
+                    let p = (y * w + x) * 4
+                    let top = max(data[p], data[p + 1], data[p + 2]), low = min(data[p], data[p + 1], data[p + 2])
+                    if top - low > 60 { emoji = (min(emoji.top, y), max(emoji.bottom, y)) } else if top < 100 { text = (min(text.top, y), max(text.bottom, y)) }
+                }
+            }
+            XCTAssertGreaterThan(emoji.bottom, 0)
+            XCTAssertEqual(CGFloat(emoji.top + emoji.bottom) / 4, CGFloat(text.top + text.bottom) / 4, accuracy: 0.75, "\(font)")
+        }
+    }
+
     // MARK: M100 (docs/EMOJI.md)
 
     func testWideEmojiKeepTheirShapeUpToThreeToOne() {
