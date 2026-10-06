@@ -66,6 +66,9 @@ export function Composer({
   const [selected, setSelected] = useState(0);
   const [preview, setPreview] = useState(false);
 
+  // 「リッチ」 / 「Markdown」 (users.composer_mode, rich when never chosen); both keep the draft as Markdown. A controller
+  // without the setting (the tests' stand-ins) keeps the text area.
+  const rich = (controller.composerMode ?? "markdown") === "rich";
   const fileInput = useRef<HTMLInputElement>(null);
   const mediaInput = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
@@ -92,10 +95,7 @@ export function Composer({
     el.style.height = "auto";
     if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, composerMaxHeight())}px`;
     if (box) box.style.minHeight = held;
-  }, [text, preview, viewportHeight]);
-  // 「リッチ」 / 「Markdown」 (users.composer_mode, rich when never chosen); both keep the draft as Markdown. A controller
-  // without the setting (the tests' stand-ins) keeps the text area.
-  const rich = (controller.composerMode ?? "markdown") === "rich";
+  }, [text, preview, viewportHeight, rich]);
   const richApi = useRef<RichEditorApi | null>(null);
   // The rich editor's line up to the caret (mentions and emoji complete there) and the formats at the caret.
   const [richContext, setRichContext] = useState<{ text: string; caret: number } | null>(null);

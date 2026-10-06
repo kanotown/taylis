@@ -29,6 +29,8 @@ const ALLOWED = [
   ["src/ui/jumpMatch.ts", "SEPARATORS", PATTERN],
   ["src/ui/links.ts", "replace(", PATTERN],
   ["src/ui/markdown.ts", "\\u3000", PATTERN],
+  ["src/ui/richMarkdown.ts", "const PROTECTED", "the shrug kaomoji (ツ), as the renderer reads it (" + PATTERN + ")"],
+  ["src/ui/richMarkdown.ts", '"］"', "a full-width bracket written for a `]` in a link's label (the dialect cannot hold `]` there)"],
   ["src/ui/sectionIcon.ts", "LETTER_TEXT", PATTERN],
   ["src/ui/Settings.tsx", "＋", "a symbol"],
   ["src/ui/Settings.tsx", '"日本語"', "language names are written in their own language"],
