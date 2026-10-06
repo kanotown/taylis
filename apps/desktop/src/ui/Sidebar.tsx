@@ -122,9 +122,11 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   const isMyTimes = (c: ChannelState) => !!me && c.times_owner_id === me.id;
   const timesFolded = folded.has("times");
   const feedFolded = timesFolded && !timesFeedActive && !hasMyTimes;
-  // Dropped on a default section: out of my own section (the conversation goes back where it belongs by kind).
+  // Dropped on a default section: out of my own section or out of お気に入り (the conversation goes back where it
+  // belongs by kind). One place per conversation (DATA_MODEL.md sidebar_sections).
   const backToDefault = (channelId: string) => {
-    if (store.sidebarSections.some((section) => section.channel_ids.includes(channelId))) void controller.moveToSection(channelId, null);
+    if (store.isFavorite(channelId)) void controller.toggleFavorite(channelId);
+    else if (store.sidebarSections.some((section) => section.channel_ids.includes(channelId))) void controller.moveToSection(channelId, null);
   };
   const status = controller.engine?.status ?? "idle";
   // My own sections reorder by dragging a header onto another (before or after it, by the pointer's half); the ⋯ menu's

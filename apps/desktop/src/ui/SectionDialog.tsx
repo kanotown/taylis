@@ -195,7 +195,8 @@ export function SectionDialog({ controller, title, submitLabel, initial, pickCha
             </div>
             <ul className="max-h-60 divide-y divide-line overflow-y-auto rounded-xl border border-line">
               {conversations.map((channel) => {
-                const current = sectionOf.get(channel.id);
+                // One place per conversation: a starred one leaves お気に入り (DATA_MODEL.md sidebar_sections).
+                const current = store.isFavorite(channel.id) ? { name: t("sidebar.favorites") } : sectionOf.get(channel.id);
                 return (
                   <li key={channel.id}>
                     <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-panel">

@@ -89,6 +89,21 @@ describe("sidebar sections (M26, Slack)", () => {
     expect(onSubmit).toHaveBeenCalledWith({ name: "事務連絡", emoji: null, channelIds: [w.random.id, w.general.id] });
   });
 
+  it("one place per conversation: a starred one says it leaves お気に入り, and dropped on 「チャンネル」 it is unstarred", () => {
+    const w = world();
+    w.store.replaceFavorites([w.random.id]);
+    render(<SectionDialog controller={w.controller as unknown as AppController} title="新しいセクション" submitLabel="作成" pickChannels preselected={[w.random.id]} onClose={() => {}} onSubmit={vi.fn(async () => true)} />);
+    expect(screen.getAllByText("お気に入り から移動")).toHaveLength(1);
+    cleanup();
+    w.view();
+    const dataTransfer = { types: ["application/x-chikuwa-channel"], getData: () => w.random.id, dropEffect: "none" };
+    const channels = screen.getByRole("button", { name: /^チャンネル$/ }).closest("section")!;
+    fireEvent.dragOver(channels, { dataTransfer });
+    fireEvent.drop(channels, { dataTransfer });
+    expect(w.controller.toggleFavorite).toHaveBeenCalledWith(w.random.id);
+    expect(w.controller.moveToSection).not.toHaveBeenCalled();
+  });
+
   it("keeps my avatar and the settings button pinned at the top of the scrolling list", () => {
     const w = world();
     render(

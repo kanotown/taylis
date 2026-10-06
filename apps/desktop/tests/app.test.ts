@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiClient } from "../src/api/client";
 import { UNKNOWN_ERROR_MESSAGE } from "../src/api/errorMessages";
+import { ApiError } from "../src/api/errors";
 import type { ScheduledOut } from "../src/api/types";
 import { AppController, profileKey } from "../src/state/app";
 import { SyncEngine } from "../src/sync/engine";
@@ -103,5 +104,57 @@ describe("app controller", () => {
     expect(await controller.createSection("研究", null, [])).toBe(true);
     expect(await controller.createSection("授業", "📚", ["c1"])).toBe(true);
     expect(bodies).toEqual([{ name: "研究" }, { name: "授業", emoji: "📚", channel_ids: ["c1"] }]);
+  });
+
+  describe("one place per conversation: お気に入り or one of my sections (DATA_MODEL.md sidebar_sections)", () => {
+    const section = (channelIds: string[]) => ({ id: "s1", name: "研究", emoji: null, collapsed: false, position: 0, channel_ids: channelIds, sort: "name" as const, manual_order: [] });
+    const setup = (api: Record<string, unknown>) => {
+      const controller = new AppController();
+      controller.api = { baseUrl: "http://one", ...api } as unknown as ApiClient;
+      return { controller, store: controller.store };
+    };
+
+    it("a starred conversation put in a new section leaves お気に入り at once (user report 2026-10-07: nothing seemed to happen)", async () => {
+      const { controller, store } = setup({ createSidebarSection: async () => [section(["c1", "c2"])] });
+      store.replaceFavorites(["c1", "c3"]);
+      expect(await controller.createSection("研究", null, ["c1", "c2"])).toBe(true);
+      expect(store.sectionOf("c1")).toBe("s1");
+      expect([...store.favorites]).toEqual(["c3"]);
+    });
+
+    it("moving a starred conversation into a section unstars it; a refusal keeps the star and shows the error", async () => {
+      let refuse = false;
+      const { controller, store } = setup({
+        placeInSidebarSection: async () => {
+          if (refuse) throw new ApiError(404, "section_not_found", "Section not found");
+          return [section(["c1"])];
+        },
+      });
+      store.replaceFavorites(["c1", "c2"]);
+      expect(await controller.moveToSection("c1", "s1")).toBe(true);
+      expect(store.isFavorite("c1")).toBe(false);
+      refuse = true;
+      expect(await controller.moveToSection("c2", "s1")).toBe(false);
+      expect(store.isFavorite("c2")).toBe(true);
+      expect(controller.error).toBeTruthy();
+    });
+
+    it("starring a conversation takes it out of my section at once, and puts it back when refused", async () => {
+      let refuse = false;
+      const { controller, store } = setup({
+        favoriteChannel: async () => {
+          if (refuse) throw new ApiError(403, "not_a_member", "Not a member");
+          return { channel_id: "c1", favorite: true };
+        },
+      });
+      store.replaceSidebar([section(["c1", "c2"])]);
+      await controller.toggleFavorite("c1");
+      expect(store.isFavorite("c1")).toBe(true);
+      expect(store.sidebarSections[0]!.channel_ids).toEqual(["c2"]);
+      refuse = true;
+      await controller.toggleFavorite("c2");
+      expect(store.isFavorite("c2")).toBe(false);
+      expect(store.sidebarSections[0]!.channel_ids).toEqual(["c2"]);
+    });
   });
 });

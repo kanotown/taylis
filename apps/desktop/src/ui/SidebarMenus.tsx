@@ -17,9 +17,10 @@ const ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-
 export function ChannelContextMenu({ controller, channel, children }: { controller: AppController; channel: ChannelState; children: ReactNode }) {
   const store = controller.store;
   const sections = store.sidebarSections;
-  const current = store.sectionOf(channel.id);
   const [naming, setNaming] = useState(false);
   const starred = store.isFavorite(channel.id);
+  // A starred conversation shows in お気に入り (a server before 2026-10-07 may still have it in a section too).
+  const current = starred ? null : store.sectionOf(channel.id);
   const muted = !!channel.muted || isTimedMuted(channel);
   // M118: DMs and group DMs (my own DM too) pin to the top; not offered by a server before M118 (no dm_pins).
   const pinnable = isDmChannel(channel) && channel.isMember && store.dmPins !== null;

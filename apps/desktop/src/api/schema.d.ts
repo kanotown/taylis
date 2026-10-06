@@ -1727,7 +1727,8 @@ export interface paths {
         get?: never;
         /**
          * Add Favorite
-         * @description Star a channel I belong to (M12a); 201 when it was not starred yet.
+         * @description Star a channel I belong to (M12a); 201 when it was not starred yet. It leaves my sidebar
+         *     section, if it was in one (sidebar.updated): one place per conversation.
          */
         put: operations["add_favorite_api_v1_channels__channel_id__favorite_put"];
         post?: never;
@@ -3589,7 +3590,9 @@ export interface paths {
         put?: never;
         /**
          * Create Section
-         * @description M14f: a new section at the end (at most 20).
+         * @description M14f: a new section at the end (at most 20). M26: the conversations in `channel_ids` move
+         *     here from another section of mine or from お気に入り (they are unstarred: one place per
+         *     conversation).
          */
         post: operations["create_section_api_v1_sidebar_sections_post"];
         delete?: never;
@@ -3633,7 +3636,8 @@ export interface paths {
         get?: never;
         /**
          * Place Channel
-         * @description Put a conversation I belong to in the section (moving it out of any other).
+         * @description Put a conversation I belong to in the section (moving it out of any other). A starred one
+         *     is unstarred (favorite.updated): one place per conversation.
          */
         put: operations["place_channel_api_v1_sidebar_sections__section_id__channels__channel_id__put"];
         post?: never;
