@@ -1,5 +1,5 @@
 import type { AiAgentPublic, AiStatusOut } from "../api/ai";
-import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, EmojiPackOut, GroupOut, MessageOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
+import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, EmojiPackOut, GroupOut, MessageOut, SidebarDefaultOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
 import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
@@ -230,6 +230,8 @@ export class Store {
   }
   /** My sidebar sections (M14f), in order; from bootstrap and sidebar.updated. */
   sidebarSections: SidebarSectionOut[] = [];
+  /** The default sections' sorts (DATA_MODEL.md sidebar_sections 「並べ替え」); empty from a server before it = the defaults. */
+  sidebarDefaults: SidebarDefaultOut[] = [];
   version = 0;
   /**
    * Moves with what every message row may show besides its own message (M21): me, the users, the groups, the custom
@@ -798,6 +800,11 @@ export class Store {
 
   replaceSidebar(rows: SidebarSectionOut[]): void {
     this.sidebarSections = [...rows].sort((a, b) => a.position - b.position);
+    this.emit();
+  }
+
+  replaceSidebarDefaults(rows: SidebarDefaultOut[]): void {
+    this.sidebarDefaults = [...rows];
     this.emit();
   }
 

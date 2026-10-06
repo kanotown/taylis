@@ -21,7 +21,7 @@ import { answersBody, slotsFromEntries, slotToIn } from "../ui/scheduling";
 import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, describeFeatureError, NetworkError, UserMessageError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, signInName, type WorkspaceEntry } from "./workspaces";
-import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, CustomEmojiUpdate, EmojiPackImportOut, TextEmojiCreate, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, SidebarSectionOut, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
+import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, CustomEmojiUpdate, EmojiPackImportOut, TextEmojiCreate, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarSectionOut, SidebarSort, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate } from "../api/types";
 import { saveDownload } from "../platform/download";
 import type { ChannelState, MessageState } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
@@ -936,6 +936,43 @@ export class AppController {
     const ok = await this.sidebarChange((api) => api.updateSidebarSection(sectionId, { position }));
     if (!ok) this.store.replaceSidebar(before);
     return ok;
+  }
+
+  /**
+   * DATA_MODEL.md sidebar_sections 「並べ替え」: a section's sort (one of mine by id, or a default one by key). Choosing
+   * 「手動」 keeps the order shown now (`shownIds`), so nothing jumps. Moves at once here; a failure puts it back.
+   */
+  setSectionSort(target: SortTarget, sort: SidebarSort, shownIds: string[]): Promise<boolean> {
+    return this.applySort(target, sort === "manual" ? { sort, manual_order: shownIds } : { sort });
+  }
+
+  /** A conversation dragged within a section by hand: the section's new order (it stays 「手動」). */
+  reorderSection(target: SortTarget, ids: string[]): Promise<boolean> {
+    return this.applySort(target, { sort: "manual", manual_order: ids });
+  }
+
+  private async applySort(target: SortTarget, patch: { sort: SidebarSort; manual_order?: string[] }): Promise<boolean> {
+    const store = this.store;
+    if ("section" in target) {
+      const before = store.sidebarSections;
+      store.replaceSidebar(before.map((s) => (s.id === target.section ? { ...s, ...patch } : s)));
+      const ok = await this.sidebarChange((api) => api.updateSidebarSection(target.section, patch));
+      if (!ok) store.replaceSidebar(before);
+      return ok;
+    }
+    const before = store.sidebarDefaults;
+    const rest = before.filter((row) => row.key !== target.default);
+    const old = before.find((row) => row.key === target.default);
+    store.replaceSidebarDefaults([...rest, { key: target.default, sort: patch.sort, manual_order: patch.manual_order ?? old?.manual_order ?? [] }]);
+    if (!this.api) return false;
+    try {
+      store.replaceSidebarDefaults(await this.api.updateSidebarDefault(target.default, patch));
+      return true;
+    } catch (error) {
+      store.replaceSidebarDefaults(before);
+      this.setError(error);
+      return false;
+    }
   }
 
   deleteSection(sectionId: string): Promise<boolean> {
@@ -2916,3 +2953,6 @@ async function copyText(text: string): Promise<void> {
   area.remove();
   if (!ok) throw new Error(t("app.clipboardFailed"));
 }
+
+/** Which section a sort belongs to: one of mine by id, or a default one (お気に入り / チャンネル / ダイレクトメッセージ). */
+export type SortTarget = { section: string } | { default: DefaultSectionKey };

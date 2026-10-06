@@ -3377,6 +3377,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sidebar/defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Defaults
+         * @description The sorts of the default sections (お気に入り / チャンネル / ダイレクトメッセージ),
+         *     all three.
+         */
+        get: operations["list_defaults_api_v1_sidebar_defaults_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sidebar/defaults/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Default
+         * @description Change a default section's sort or hand-made order; sidebar.updated carries it.
+         */
+        patch: operations["update_default_api_v1_sidebar_defaults__key__patch"];
+        trace?: never;
+    };
     "/api/v1/sidebar/sections": {
         parameters: {
             query?: never;
@@ -3417,7 +3458,8 @@ export interface paths {
         head?: never;
         /**
          * Update Section
-         * @description Rename, or move to another position (the others shift).
+         * @description Rename, move to another position (the others shift), fold, or change the sort / the
+         *     hand-made order (`manual_order`, the conversation ids in order).
          */
         patch: operations["update_section_api_v1_sidebar_sections__section_id__patch"];
         trace?: never;
@@ -5112,6 +5154,11 @@ export interface components {
              * Format: date-time
              */
             server_time: string;
+            /**
+             * Sidebar Defaults
+             * @default []
+             */
+            sidebar_defaults: components["schemas"]["SidebarDefaultOut"][];
             /**
              * Sidebar Sections
              * @default []
@@ -8219,10 +8266,14 @@ export interface components {
             collapsed?: boolean | null;
             /** Emoji */
             emoji?: string | null;
+            /** Manual Order */
+            manual_order?: string[] | null;
             /** Name */
             name?: string | null;
             /** Position */
             position?: number | null;
+            /** Sort */
+            sort?: ("name" | "recent" | "manual") | null;
         };
         /** ServerInfoOut */
         ServerInfoOut: {
@@ -8272,6 +8323,38 @@ export interface components {
              */
             last_used_at: string;
         };
+        /**
+         * SidebarDefaultOut
+         * @description The sort of a default section (お気に入り / チャンネル / ダイレクトメッセージ); always
+         *     all three.
+         */
+        SidebarDefaultOut: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "favorites" | "channels" | "dms";
+            /**
+             * Manual Order
+             * @default []
+             */
+            manual_order: string[];
+            /**
+             * Sort
+             * @enum {string}
+             */
+            sort: "name" | "recent" | "manual";
+        };
+        /**
+         * SidebarDefaultUpdate
+         * @description Only the fields sent change.
+         */
+        SidebarDefaultUpdate: {
+            /** Manual Order */
+            manual_order?: string[] | null;
+            /** Sort */
+            sort?: ("name" | "recent" | "manual") | null;
+        };
         /** SidebarSectionOut */
         SidebarSectionOut: {
             /** Channel Ids */
@@ -8288,10 +8371,21 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Manual Order
+             * @default []
+             */
+            manual_order: string[];
             /** Name */
             name: string;
             /** Position */
             position: number;
+            /**
+             * Sort
+             * @default name
+             * @enum {string}
+             */
+            sort: "name" | "recent" | "manual";
         };
         /**
          * SlotAnswersOut
@@ -16257,6 +16351,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SidebarSectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_defaults_api_v1_sidebar_defaults_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidebarDefaultOut"][];
+                };
+            };
+        };
+    };
+    update_default_api_v1_sidebar_defaults__key__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: "favorites" | "channels" | "dms";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SidebarDefaultUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidebarDefaultOut"][];
                 };
             };
             /** @description Validation Error */

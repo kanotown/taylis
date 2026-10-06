@@ -869,7 +869,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     const navigationOrder = () => {
       const all = [...controller.store.channels.values()];
       const store = controller.store;
-      const sections = sectionChannels(all, { favorites: store.favorites, sections: store.sidebarSections, meId: store.me?.id ?? null });
+      const sections = sectionChannels(all, { favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId: store.me?.id ?? null, title: (c) => channelTitle(c, controller) });
       return [...sections.favorites, ...sections.custom.flatMap((group) => group.channels), ...sections.channels, ...sections.times, ...sections.dms];
     };
     const onKey = (event: KeyboardEvent) => {

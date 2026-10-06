@@ -254,6 +254,10 @@ export type MessageRevisionOut = components["schemas"]["MessageRevisionOut"];
 
 /** Custom sidebar sections (M14f). */
 export type SidebarSectionOut = components["schemas"]["SidebarSectionOut"];
+/** The default sections' sorts (DATA_MODEL.md sidebar_sections 「並べ替え」). */
+export type SidebarDefaultOut = components["schemas"]["SidebarDefaultOut"];
+export type SidebarSort = SidebarDefaultOut["sort"];
+export type DefaultSectionKey = SidebarDefaultOut["key"];
 
 /** Links pinned to the top of a conversation (M15f). */
 export type ChannelLinkOut = components["schemas"]["ChannelLinkOut"];

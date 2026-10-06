@@ -98,8 +98,8 @@ describe("custom sidebar sections (M14f)", () => {
     const make = (id: string, type: string, extra: Record<string, unknown> = {}) => ({ ...base, id, name: id, type, last_message_at: null, ...extra }) as unknown as ChannelState;
     const all = [make("alpha", "public"), make("beta", "public"), make("gamma", "private"), make("d1", "dm", { last_message_at: "2026-09-27T01:00:00Z" }), make("d2", "dm", { last_message_at: "2026-09-27T02:00:00Z" })];
     const sections = [
-      { id: "s1", name: "プロジェクト", position: 0, channel_ids: ["gamma", "d1", "beta"], collapsed: false },
-      { id: "s2", name: "空", position: 1, channel_ids: [], collapsed: false },
+      { id: "s1", name: "プロジェクト", position: 0, channel_ids: ["gamma", "d1", "beta"], collapsed: false, sort: "name" as const, manual_order: [] },
+      { id: "s2", name: "空", position: 1, channel_ids: [], collapsed: false, sort: "name" as const, manual_order: [] },
     ];
     const result = sectionChannels(all, { sections, favorites: new Set(["beta"]) });
     expect(result.favorites.map((c) => c.id)).toEqual(["beta"]);

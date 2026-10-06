@@ -17,9 +17,9 @@ import { FakeServer } from "./fakeServer";
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 const sections: SidebarSectionOut[] = [
-  { id: "a", name: "研究", emoji: null, collapsed: false, position: 0, channel_ids: [] },
-  { id: "b", name: "授業", emoji: null, collapsed: false, position: 1, channel_ids: [] },
-  { id: "c", name: "雑談", emoji: null, collapsed: false, position: 2, channel_ids: [] },
+  { id: "a", name: "研究", emoji: null, collapsed: false, position: 0, channel_ids: [], sort: "name", manual_order: [] },
+  { id: "b", name: "授業", emoji: null, collapsed: false, position: 1, channel_ids: [], sort: "name", manual_order: [] },
+  { id: "c", name: "雑談", emoji: null, collapsed: false, position: 2, channel_ids: [], sort: "name", manual_order: [] },
 ];
 
 function world() {

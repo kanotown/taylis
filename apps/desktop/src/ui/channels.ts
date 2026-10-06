@@ -1,7 +1,8 @@
 /** Sidebar rules shared by the list, the quick switcher and keyboard navigation. */
 import { isMutedChannel, type NotifyLevel } from "../sync/notifications";
-import type { ChannelState, SidebarSectionOut, UserPublic } from "../sync/types";
+import type { ChannelState, SidebarDefaultOut, SidebarSectionOut, UserPublic } from "../sync/types";
 import { t } from "../i18n";
+import { JIS_KANJI } from "./jisKanji";
 
 export function isDmChannel(channel: ChannelState): boolean {
   return channel.type === "dm" || channel.type === "group_dm";
@@ -159,11 +160,11 @@ export interface ChannelSections {
   browse: ChannelState[];
 }
 
-/**
- * The name order of the sidebar (DATA_MODEL.md sidebar_sections 「セクションの中の並び順」, apps/shared/sidebar-order.json): the
- * key is the name after NFKC, A-Z lower-cased and katakana folded to hiragana, compared by UTF-16 code unit as on iOS and
- * Android (no locale collation: localeCompare and the phones' collators disagree).
- */
+// --- the order inside a section (DATA_MODEL.md sidebar_sections 「セクションの中の並び順」「並べ替え」) -------------
+// The same on every client: apps/shared/sidebar-order.json (desktop tests/sidebarOrder.test.ts, iOS SidebarOrderTests,
+// Android SidebarOrderTest). No platform collator: ICU's ties and the JVM's java.text.Collator differ.
+
+/** The level-2 key: the name after NFKC, A-Z lower-cased and katakana folded to hiragana (compared by UTF-16 code unit). */
 export function nameSortKey(name: string): string {
   let key = "";
   for (const ch of name.normalize("NFKC")) {
@@ -175,36 +176,144 @@ export function nameSortKey(name: string): string {
 
 const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-/** Two names by [nameSortKey], equal keys by the raw names. */
+/** Small kana as the large ones (level 1). */
+const LARGE_KANA: Record<number, number> = {
+  0x3041: 0x3042, 0x3043: 0x3044, 0x3045: 0x3046, 0x3047: 0x3048, 0x3049: 0x304a, 0x3063: 0x3064,
+  0x3083: 0x3084, 0x3085: 0x3086, 0x3087: 0x3088, 0x308e: 0x308f, 0x3095: 0x304b, 0x3096: 0x3051,
+};
+
+let jisIndex: Map<number, number> | null = null;
+function jisRank(code: number): number | undefined {
+  if (!jisIndex) {
+    jisIndex = new Map();
+    let rank = 0;
+    for (const ch of JIS_KANJI) jisIndex.set(ch.codePointAt(0) ?? 0, rank++);
+  }
+  return jisIndex.get(code);
+}
+
+/** One level-1 element: [class, weight, digits]; a run of digits compares by its length, then its digits. */
+type CollationElement = [number, number, string];
+
+const isIdeograph = (c: number) => (c >= 0x3400 && c <= 0x4dbf) || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0x20000 && c <= 0x3ffff);
+
+/** The level-1 elements of a name: NFKD, combining and voicing marks dropped, then classified (see the JSON's comment). */
+export function collationElements(name: string): CollationElement[] {
+  const codes = [...name.normalize("NFKD")].map((ch) => ch.codePointAt(0) ?? 0);
+  const out: CollationElement[] = [];
+  for (let i = 0; i < codes.length; i++) {
+    const c = codes[i]!;
+    if ((c >= 0x300 && c <= 0x36f) || c === 0x3099 || c === 0x309a) continue;
+    if (c >= 0x30 && c <= 0x39) {
+      let j = i;
+      while (j < codes.length && codes[j]! >= 0x30 && codes[j]! <= 0x39) j++;
+      const digits = String.fromCharCode(...codes.slice(i, j)).replace(/^0+/, "") || "0";
+      out.push([1, digits.length, digits]);
+      i = j - 1;
+      continue;
+    }
+    const rank = jisRank(c);
+    if (c >= 0x41 && c <= 0x5a) out.push([2, c + 0x20, ""]);
+    else if (c >= 0x61 && c <= 0x7a) out.push([2, c, ""]);
+    else if ((c >= 0x3041 && c <= 0x3096) || (c >= 0x30a1 && c <= 0x30f6)) {
+      const hiragana = c >= 0x30a1 ? c - 0x60 : c;
+      out.push([3, LARGE_KANA[hiragana] ?? hiragana, ""]);
+    } else if (rank !== undefined) out.push([4, rank, ""]);
+    else if (isIdeograph(c)) out.push([4, 10000 + c, ""]);
+    else if (c < 0x3040 || (c >= 0x309b && c <= 0x30a0) || (c >= 0x30fb && c <= 0x30ff) || (c >= 0xff00 && c <= 0xffef)) out.push([0, c, ""]);
+    else out.push([5, c, ""]);
+  }
+  return out;
+}
+
+const elementCache = new Map<string, CollationElement[]>();
+function cachedElements(name: string): CollationElement[] {
+  let elements = elementCache.get(name);
+  if (!elements) {
+    if (elementCache.size > 4000) elementCache.clear();
+    elements = collationElements(name);
+    elementCache.set(name, elements);
+  }
+  return elements;
+}
+
+function compareElements(a: CollationElement[], b: CollationElement[]): number {
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    const x = a[i]!, y = b[i]!;
+    if (x[0] !== y[0]) return x[0] - y[0];
+    if (x[1] !== y[1]) return x[1] - y[1];
+    if (x[2] !== y[2]) return byCodeUnit(x[2], y[2]);
+  }
+  return a.length - b.length;
+}
+
+/**
+ * Two names in the sidebar's Japanese order: level 1 [collationElements] (kana by gojūon, kanji in JIS X 0208 order,
+ * numbers as numbers, case and voicing ignored), level 2 [nameSortKey], level 3 the raw names by UTF-16 code unit.
+ */
 export function compareNames(a: string, b: string): number {
-  return byCodeUnit(nameSortKey(a), nameSortKey(b)) || byCodeUnit(a, b);
+  return compareElements(cachedElements(a), cachedElements(b)) || byCodeUnit(nameSortKey(a), nameSortKey(b)) || byCodeUnit(a, b);
+}
+
+/** A section's 並べ替え (DATA_MODEL.md sidebar_sections). */
+export type SidebarSort = "name" | "recent" | "manual";
+export type DefaultSectionKey = "favorites" | "channels" | "dms";
+export interface SectionSort {
+  sort?: SidebarSort | null;
+  manual_order?: readonly string[] | null;
+}
+/** The default sections' sorts when I chose none (or the server is older). */
+export const DEFAULT_SORTS: Record<DefaultSectionKey, SidebarSort> = { favorites: "name", channels: "name", dms: "recent" };
+
+/** A default section's sort from the server's list. */
+export function defaultSort(defaults: readonly SidebarDefaultOut[] | undefined, key: DefaultSectionKey): SectionSort {
+  return defaults?.find((row) => row.key === key) ?? { sort: DEFAULT_SORTS[key], manual_order: [] };
 }
 
 type Sortable = Pick<ChannelState, "id" | "name" | "type" | "last_message_at" | "created_at">;
+const isDm = (row: Pick<Sortable, "type">) => row.type === "dm" || row.type === "group_dm";
 
 /** Channels by name, then by id. */
 export function compareByName(a: Pick<Sortable, "id" | "name">, b: Pick<Sortable, "id" | "name">): number {
   return compareNames(a.name ?? "", b.name ?? "") || byCodeUnit(a.id, b.id);
 }
 
-/** DMs newest first: the last message, else when the DM was made (the server's text), then by id. */
+/** Newest first: the last message, else when the conversation was made (the server's text), then by id. */
 export function compareNewest(a: Pick<Sortable, "id" | "last_message_at" | "created_at">, b: Pick<Sortable, "id" | "last_message_at" | "created_at">): number {
   return byCodeUnit(b.last_message_at ?? b.created_at ?? "", a.last_message_at ?? a.created_at ?? "") || byCodeUnit(a.id, b.id);
 }
 
-/** Favorites and my own sections: their channels by name, then their DMs newest first. */
-export function sectionOrder<T extends Sortable>(rows: readonly T[]): T[] {
-  const dm = (row: T) => row.type === "dm" || row.type === "group_dm";
-  return [...rows.filter((row) => !dm(row)).sort(compareByName), ...rows.filter(dm).sort(compareNewest)];
+/**
+ * The rows of a section in its sort: name = channels by name, then DMs by their title (`title`, the client's display
+ * title); recent = all newest first; manual = `manual_order` first, the rest after it by name.
+ */
+export function sectionOrder<T extends Sortable>(rows: readonly T[], sort: SectionSort = {}, title: (row: T) => string = (row) => row.name ?? ""): T[] {
+  if (sort.sort === "recent") return [...rows].sort(compareNewest);
+  if (sort.sort === "manual") {
+    const place = new Map((sort.manual_order ?? []).map((id, index) => [id, index] as const));
+    const placed = rows.filter((row) => place.has(row.id)).sort((a, b) => place.get(a.id)! - place.get(b.id)!);
+    return [...placed, ...sectionOrder(rows.filter((row) => !place.has(row.id)), {}, title)];
+  }
+  const byTitle = (a: T, b: T) => compareNames(title(a), title(b)) || byCodeUnit(a.id, b.id);
+  return [...rows.filter((row) => !isDm(row)).sort(compareByName), ...rows.filter(isDm).sort(byTitle)];
 }
 
-/** The sidebar order: channels by name, DMs by recency (my own DM first), joinable public channels by name. */
+/** The sidebar order: each section in its sort (DMs: my own DM first unless by hand), joinable public channels by name. */
 export function sectionChannels(
   all: ChannelState[],
-  options: { unreadOnly?: boolean; currentId?: string | null; now?: Date; favorites?: ReadonlySet<string>; sections?: readonly SidebarSectionOut[]; meId?: string | null } = {},
+  options: {
+    unreadOnly?: boolean;
+    currentId?: string | null;
+    now?: Date;
+    favorites?: ReadonlySet<string>;
+    sections?: readonly SidebarSectionOut[];
+    defaults?: readonly SidebarDefaultOut[];
+    meId?: string | null;
+    title?: (channel: ChannelState) => string;
+  } = {},
 ): ChannelSections {
   const meId = options.meId ?? null;
-  const selfFirst = (a: ChannelState, b: ChannelState) => Number(isSelfNotes(b, meId)) - Number(isSelfNotes(a, meId)) || compareNewest(a, b);
+  const title = options.title;
   const keep = (channel: ChannelState) => !options.unreadOnly || channel.id === options.currentId || hasUnread(channel, meId, options.now);
   const isTimes = (channel: ChannelState) => !!channel.times_owner_id;
   const mineFirst = (a: ChannelState, b: ChannelState) => Number(b.times_owner_id === meId) - Number(a.times_owner_id === meId) || compareByName(a, b);
@@ -213,12 +322,15 @@ export function sectionChannels(
   for (const section of options.sections ?? []) for (const id of section.channel_ids) placed.set(id, section.id);
   const loose = (channel: ChannelState) => !starred(channel) && !placed.has(channel.id);
   const visible = (channel: ChannelState) => channel.isMember && !channel.archived && keep(channel);
+  const dmSort = defaultSort(options.defaults, "dms");
+  const dms = all.filter((c) => c.isMember && isDmChannel(c) && keep(c) && loose(c));
+  const self = dmSort.sort === "manual" ? [] : dms.filter((c) => isSelfNotes(c, meId));
   return {
-    favorites: sectionOrder(all.filter((c) => visible(c) && starred(c))),
-    custom: (options.sections ?? []).map((section) => ({ section, channels: sectionOrder(all.filter((c) => visible(c) && !starred(c) && placed.get(c.id) === section.id)) })),
-    channels: all.filter((c) => visible(c) && !isDmChannel(c) && !isTimes(c) && loose(c)).sort(compareByName),
+    favorites: sectionOrder(all.filter((c) => visible(c) && starred(c)), defaultSort(options.defaults, "favorites"), title),
+    custom: (options.sections ?? []).map((section) => ({ section, channels: sectionOrder(all.filter((c) => visible(c) && !starred(c) && placed.get(c.id) === section.id), section, title) })),
+    channels: sectionOrder(all.filter((c) => visible(c) && !isDmChannel(c) && !isTimes(c) && loose(c)), defaultSort(options.defaults, "channels"), title),
     times: all.filter((c) => visible(c) && isTimes(c) && loose(c)).sort(mineFirst),
-    dms: all.filter((c) => c.isMember && isDmChannel(c) && keep(c) && loose(c)).sort(selfFirst),
+    dms: [...self, ...sectionOrder(dms.filter((c) => !self.includes(c)), dmSort, title)],
     browse: options.unreadOnly ? [] : all.filter((c) => !c.isMember && c.type === "public" && !c.archived).sort(compareByName),
   };
 }
