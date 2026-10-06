@@ -27,6 +27,7 @@ export const NAV_CATALOGUE: readonly CatalogueItem[] = [
   { key: "reminders", label: "リマインダー", visible: true, platforms: ["desktop", "mobile"] },
   { key: "files", label: "ファイル", visible: true, platforms: ["desktop", "mobile"] },
   { key: "canvases", label: "キャンバス", visible: true, platforms: ["desktop", "mobile"] },
+  { key: "docs", label: "ドキュメント", visible: true, platforms: ["desktop"] },
   { key: "calendar", label: "カレンダー", visible: true, platforms: ["desktop", "mobile"] },
   { key: "tasks", label: "タスク", visible: true, platforms: ["desktop", "mobile"] },
   { key: "deadlines", label: "締切", visible: true, platforms: ["desktop", "mobile"] },
@@ -34,12 +35,12 @@ export const NAV_CATALOGUE: readonly CatalogueItem[] = [
 ];
 
 export const NAV_ORDER: Readonly<Record<NavPlatform, readonly string[]>> = {
-  desktop: ["threads", "activity", "drafts", "reminders", "files", "canvases", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed"],
-  mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "activity"],
+  desktop: ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed"],
+  mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity"],
 };
 
 /** The items this client draws in its sidebar (M112: 「予約」 with its page). */
-export const DESKTOP_NAV_KEYS: readonly string[] = ["threads", "activity", "drafts", "reminders", "files", "canvases", "calendar", "tasks", "deadlines", "reservations", "saved"];
+export const DESKTOP_NAV_KEYS: readonly string[] = ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved"];
 
 const byKey = new Map(NAV_CATALOGUE.map((item) => [item.key, item]));
 
@@ -52,6 +53,7 @@ const LABEL_KEYS: Readonly<Record<string, MessageKey>> = {
   reminders: "nav.reminders",
   files: "nav.files",
   canvases: "nav.canvases",
+  docs: "nav.docs",
   calendar: "nav.calendar",
   tasks: "nav.tasks",
   deadlines: "nav.deadlines",

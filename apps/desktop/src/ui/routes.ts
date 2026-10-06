@@ -1,9 +1,9 @@
-/** The browser build's entry URLs (M12j): a message permalink, a canvas link (M44) or an invite link opened in a browser. */
+/** The browser build's entry URLs (M12j): a message permalink, a canvas link (M44), a Docs page (M121) or an invite link opened in a browser. */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{20,128}$/;
 
-export type EntryRoute = { kind: "message"; id: string } | { kind: "canvas"; id: string } | { kind: "invite"; token: string };
+export type EntryRoute = { kind: "message"; id: string } | { kind: "canvas"; id: string } | { kind: "page"; id: string } | { kind: "invite"; token: string };
 
 /** What `location.pathname` asks for; null for the app root or anything unknown. */
 export function parseEntryPath(pathname: string): EntryRoute | null {
@@ -11,6 +11,7 @@ export function parseEntryPath(pathname: string): EntryRoute | null {
   if (parts.length !== 2) return null;
   if (parts[0] === "m" && UUID.test(parts[1]!)) return { kind: "message", id: parts[1]!.toLowerCase() };
   if (parts[0] === "c" && UUID.test(parts[1]!)) return { kind: "canvas", id: parts[1]!.toLowerCase() };
+  if (parts[0] === "p" && UUID.test(parts[1]!)) return { kind: "page", id: parts[1]!.toLowerCase() };
   if (parts[0] === "invite" && TOKEN.test(parts[1]!)) return { kind: "invite", token: parts[1]! };
   return null;
 }

@@ -102,5 +102,16 @@
     { "name": "a line inserted above", "before": "a\nb\nc", "after": "a\nNEW\nb\nc", "caret": 4, "expected": 8 },
     { "name": "changes above and below: the caret's line is found again", "before": "L1\nL2\nL3\nL4", "after": "X1\nL2\nL3\nX4", "caret": 7, "expected": 7 },
     { "name": "the caret's line itself changed: the end of the change", "before": "one\ntwo\nthree", "after": "one\nTWO!\nthree", "caret": 5, "expected": 8 }
-  ]
+  ],
+  "page_links": {
+    "_comment": "M121 (WIKI.md §2.3): links of the canvas dialect (canvases and Docs pages) to a Docs page `[label](page:<uuid>)` and to a file `[label](attachment:<uuid>)` (not an image line). `links`: every link token of the body in order, as {url, label}. With `canvas: false` (a message) they stay text and `links` is empty. The phones join in M122; the desktop reads this section from M121.",
+    "cases": [
+      {"name": "a page link in a paragraph", "body": "手順は[GPU サーバの予約](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b)を見てください", "links": [{"url": "page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", "label": "GPU サーバの予約"}]},
+      {"name": "page links in a list and a heading; an upper-case id too", "body": "## [研究室マニュアル](page:0199A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B)\n- [予約](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b)\n- [手順書.pdf](attachment:0199a1b2-c3d4-7e5f-8a9b-aaaaaaaaaaaa)", "links": [{"url": "page:0199A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B", "label": "研究室マニュアル"}, {"url": "page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", "label": "予約"}, {"url": "attachment:0199a1b2-c3d4-7e5f-8a9b-aaaaaaaaaaaa", "label": "手順書.pdf"}]},
+      {"name": "an image line stays an image (not a file link)", "body": "![図](attachment:0199a1b2-c3d4-7e5f-8a9b-aaaaaaaaaaaa)\n\n[資料](attachment:0199a1b2-c3d4-7e5f-8a9b-aaaaaaaaaaaa)", "links": [{"url": "attachment:0199a1b2-c3d4-7e5f-8a9b-aaaaaaaaaaaa", "label": "資料"}]},
+      {"name": "not an id: stays text", "body": "[だめ](page:12345) [これも](page:)", "links": []},
+      {"name": "a message keeps them as text", "body": "[予約](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b)", "canvas": false, "links": []},
+      {"name": "a web link beside a page link", "body": "[外](https://example.com/a) と [中](page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b)", "links": [{"url": "https://example.com/a", "label": "外"}, {"url": "page:0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", "label": "中"}]}
+    ]
+  }
 }

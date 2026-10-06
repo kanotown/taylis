@@ -15,6 +15,7 @@ interface Fixture {
   blocks: Array<{ name: string; body: string; canvas?: boolean; blocks: unknown[] }>;
   toggle: Array<{ body: string; line: number; expected: string | null }>;
   caret: Array<{ name: string; before: string; after: string; caret: number; expected: number }>;
+  page_links: { cases: Array<{ name: string; body: string; canvas?: boolean; links: Array<{ url: string; label: string }> }> };
 }
 
 const fixture = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "shared", "canvas_markdown.json"), "utf8")) as Fixture;
@@ -55,6 +56,19 @@ describe("the canvas dialect (apps/shared/canvas_markdown.json)", () => {
 
   it.each(fixture.caret.map((c) => [c.name, c] as const))("caret: %s", (_name, c) => {
     expect(preserveCaret(c.before, c.after, c.caret)).toBe(c.expected);
+  });
+
+  // M121 (WIKI.md §2.3): `page:` and `attachment:` links of the canvas dialect.
+  it.each(fixture.page_links.cases.map((c) => [c.name, c] as const))("links: %s", (_name, c) => {
+    const links: Array<{ url: string; label: string }> = [];
+    const visit = (tokens: Token[]) => tokens.forEach((t) => { if (t.kind === "link") links.push({ url: t.url, label: t.label ?? t.url }); });
+    for (const block of parseBlocks(c.body, { canvas: c.canvas ?? true })) {
+      if (block.kind === "heading") visit(block.tokens);
+      else if (block.kind === "paragraph") block.lines.forEach(visit);
+      else if (block.kind === "list") block.items.forEach((item) => visit(item.tokens));
+      else if (block.kind === "task") block.items.forEach((item) => visit(item.tokens));
+    }
+    expect(links).toEqual(c.links);
   });
 });
 

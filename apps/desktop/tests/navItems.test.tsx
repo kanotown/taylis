@@ -107,7 +107,7 @@ describe("the settings", () => {
   it("lists this client's items in my order with their switch", () => {
     const { controller } = controllerWith([{ key: "calendar", visible: false }]);
     render(<NavItemsSettings controller={controller} />);
-    expect(rows()).toEqual(["calendar", "threads", "activity", "drafts", "reminders", "files", "canvases", "tasks", "deadlines", "reservations", "saved"]);
+    expect(rows()).toEqual(["calendar", "threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "tasks", "deadlines", "reservations", "saved"]);
     expect((screen.getByRole("switch", { name: "カレンダー を表示" }) as HTMLInputElement).checked).toBe(false);
     expect((screen.getByRole("switch", { name: "スレッド を表示" }) as HTMLInputElement).checked).toBe(true);
   });
