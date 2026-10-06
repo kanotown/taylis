@@ -38,10 +38,19 @@ struct EmojiImage: View {
 enum CustomEmoji {
     /// The height of an image in body text: no taller than the text's ascent, as a standard emoji is (2026-10-04,
     /// 「高さが違う」). Text(Image) stands on the baseline, and everything above the ascent (20 pt was 4 more) made its
-    /// line taller than the others; lowering it (`baselineOffset`) only adds the same to the line below.
-    static let inlineHeight: CGFloat = 16
+    /// line taller than the others; lowering a 20 pt one only added the same to the line below. At this height it is
+    /// lowered within the descent to sit centred (`baselineOffset(height:)`). 16 pt at the default text size, scaled
+    /// with it: one size smaller (16 pt body, the testers' phones and the plain iPhone 17 simulator) a 16 pt image was
+    /// above the ascent and its line 0.7 pt taller.
+    static var inlineHeight: CGFloat { scaled(16, .body) }
     /// The same for the headings (.title, .title2, .title3 bold).
-    static let headingHeights: [CGFloat] = [26, 20, 18]
+    static var headingHeights: [CGFloat] { [scaled(26, .title1), scaled(20, .title2), scaled(18, .title3)] }
+
+    /// `value` (at the default text size) at the text size in use, for that text style, in whole points (down, so it
+    /// stays under the ascent): a placeholder's width is rounded (`size(of:height:)`) and must equal the image's.
+    static func scaled(_ value: CGFloat, _ style: UIFont.TextStyle) -> CGFloat {
+        (UIFontMetrics(forTextStyle: style).scaledValue(for: value) + 0.01).rounded(.down)
+    }
     private static let exact = try! NSRegularExpression(pattern: "^:([a-z0-9][a-z0-9_+-]{1,31}):$")
     private static let inline = try! NSRegularExpression(pattern: ":([a-z0-9][a-z0-9_+-]{1,31}):")
 
@@ -150,11 +159,27 @@ enum CustomEmoji {
             case .text(let run): return acc + makeRun(run)
             case .emoji(let name):
                 guard let emoji = custom[name] else { return acc + Text(":\(name):") }
-                if let image = images[emoji.id] { return acc + Text(Image(uiImage: sized(image, height: height))) }
-                onNeed?(emoji)
-                return acc + Text(Image(uiImage: blank(size: size(of: emoji, height: height))))
+                let shown = images[emoji.id].map { sized($0, height: height) } ?? blank(size: size(of: emoji, height: height))
+                if images[emoji.id] == nil { onNeed?(emoji) }
+                return acc + inlineImageText(shown, height: height)
             }
         }
+    }
+
+    /// How far an inline image stands below the baseline, so it is centred on the line as a standard emoji and the kana
+    /// are (2026-10-06, 「iPhone だけ絵文字が少し上」): standing on the baseline, its middle was 2 pt above theirs. Centred on
+    /// the capitals of the font it is sized for (`height` is that font's ascent, 16 for 17 pt): (capHeight - height) / 2,
+    /// -2 pt in body text. It stays inside the line's descent, so the line is no taller (CustomEmojiTests).
+    static func baselineOffset(height: CGFloat) -> CGFloat {
+        let capHeight = UIFont.systemFont(ofSize: height * 17 / 16).capHeight
+        return min(0, (capHeight - height) / 2)
+    }
+
+    /// An inline image lowered by `baselineOffset(height:)`. `.baselineOffset` moves the run's font with it, and the
+    /// body font's descent moved 2 pt lower made the line 2 pt taller; the image's run gets a 1 pt font, whose
+    /// descent stays inside the line's.
+    static func inlineImageText(_ image: UIImage, height: CGFloat) -> Text {
+        Text(Image(uiImage: image)).font(.system(size: 1)).baselineOffset(baselineOffset(height: height))
     }
 
     /// M100 (docs/EMOJI.md §2): a wide image emoji is drawn wider at the same height, at most 3:1.
@@ -242,8 +267,8 @@ enum CustomEmoji {
 extension CustomEmoji {
     /// The height of an inline image in a compact row's `.subheadline` (15 pt) text, no taller than its ascent (see
     /// `inlineHeight`); `.caption` / `.caption2` lines take `captionHeight`.
-    static let subheadlineHeight: CGFloat = 14
-    static let captionHeight: CGFloat = 12
+    static var subheadlineHeight: CGFloat { scaled(14, .subheadline) }
+    static var captionHeight: CGFloat { scaled(12, .caption1) }
 
     /// A one-line excerpt of a message in a compact row (the activity, pins, saved, mentions, search, thread lists, the DM
     /// list, a reply's 「スレッドに返信」 line): custom emoji as their images, standard `:shortcode:`s as their glyphs, as
