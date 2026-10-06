@@ -77,7 +77,7 @@ struct ActivityFeedView: View {
                 } else {
                     ForEach(items) { item in
                         Button { onOpen(item) } label: {
-                            ActivityRowView(controller: controller, item: item, unread: ActivityRules.isUnread(item, readAt: seenFrom))
+                            ActivityRowView(controller: controller, item: item, unread: ActivityRules.isUnread(item, readAt: seenFrom, conversationRead: readInConversation(item)))
                         }
                         .buttonStyle(.plain)
                         .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 16))
@@ -127,6 +127,12 @@ struct ActivityFeedView: View {
             for (key, page) in lists { lists[key]?.items = ActivityRules.blankingExcerpts(page.items, itemIds: ids) }
             if visible, online { Task { await load(filter) } }
         }
+        // MOBILE_UI.md §6.4 (2026-10-06): a conversation's read position moved back (「ここから未読にする」): the mentions
+        // there are unread again; the lists held are read again (the dots of moves forward follow the positions held).
+        .onChange(of: store.activityReadsMovedBack) {
+            lists = lists.filter { $0.key == filter }
+            if visible, online { Task { await load(filter) } }
+        }
         // Being on screen reads the activity up to the newest row shown, on 「すべて」 only (ActivityRules.readsOnScreen);
         // the rows' dots stay until the view is left.
         .task(id: ReadKey(onScreen: onScreen, filter: filter, newest: ActivityRules.newest(items), readAt: store.activity?.readAt)) {
@@ -151,7 +157,8 @@ struct ActivityFeedView: View {
             failed = false
             if seenFrom == nil { seenFrom = page.readAt }
             let held = more ? lists[which]?.items ?? [] : []
-            lists[which] = Page(items: ActivityRules.append(held, page.items), cursor: page.nextCursor, loading: false)
+            let items = ActivityRules.markingConversationReads(page.items, readAt: page.readAt)
+            lists[which] = Page(items: ActivityRules.append(held, items), cursor: page.nextCursor, loading: false)
         } catch {
             guard requests[which] == request else { return }
             lists[which, default: Page()].loading = false
@@ -160,6 +167,16 @@ struct ActivityFeedView: View {
                 controller.error = controller.describe(error)
             }
         }
+    }
+
+    /// MOBILE_UI.md §6.4 (2026-10-06): this device's read positions cover the item's message (read here, or read.updated
+    /// / thread.updated from another device), so its dot goes at once, before the server's next page says so. A server
+    /// before the rule (no `read`) keeps the dots to the read position, as its badge does.
+    private func readInConversation(_ item: ActivityItem) -> Bool {
+        guard item.read != nil else { return false }
+        let message = item.message
+        return ActivityRules.conversationRead(item, channelReadSeq: message.flatMap { store.channel($0.channelId)?.lastReadSeq },
+                                              threadReadSeq: message?.parentId.flatMap { store.threads[$0]?.state.lastReadSeq })
     }
 
     /// ⋯ 「すべて既読」: everything up to now (or the newest row held, if the clock is behind), on every filter.

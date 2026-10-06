@@ -1059,6 +1059,12 @@ struct ActivityItem: Codable, Equatable, Identifiable {
     var canvas: ActivityCanvas? = nil
     /// M112: a `reservation` item's notice (asked for with `include=reservation`).
     var reservation: ActivityReservation? = nil
+    /// 2026-10-06 (MOBILE_UI.md §6.4): the server's verdict — read by the activity's read position, or (a mention or a
+    /// thread reply) read in its conversation, or a done reservation to-do. nil from a server before it.
+    var read: Bool? = nil
+    /// Not sent: the list sets it when `read` says more than the read position does (read in its conversation; see
+    /// ActivityRules.conversationRead), so the dots, which compare with the position the tab opened at, follow it.
+    var readInConversation = false
 
     /// One row per kind and message; a canvas item is its own (`canvas_mention:<item_id>`), a reservation notice too.
     var id: String {
@@ -1070,7 +1076,7 @@ struct ActivityItem: Codable, Equatable, Identifiable {
     /// The conversation the row is in.
     var channelId: String? { canvas?.channelId ?? message?.channelId }
 
-    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis, canvas, reservation }
+    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis, canvas, reservation, read }
 
     init(kind: String, at: String, message: MessageOut?, actorIds: [String], emojis: [String] = [], canvas: ActivityCanvas? = nil,
          reservation: ActivityReservation? = nil) {
@@ -1102,6 +1108,7 @@ struct ActivityItem: Codable, Equatable, Identifiable {
         }
         actorIds = try c.decodeIfPresent([String].self, forKey: .actorIds) ?? []
         emojis = try c.decodeIfPresent([String].self, forKey: .emojis) ?? []
+        read = try c.decodeIfPresent(Bool.self, forKey: .read)
     }
 }
 

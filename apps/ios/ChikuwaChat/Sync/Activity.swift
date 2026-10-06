@@ -38,11 +38,38 @@ enum ActivityRules {
         iso.flatMap(parseIsoDate) ?? .distantPast
     }
 
-    /// The row's dot: it happened after the read position (an item at the position itself is read). No position
-    /// known: no dots.
-    static func isUnread(_ item: ActivityItem, readAt: String?) -> Bool {
-        guard let readAt else { return false }
+    /// The row's dot: it happened after the read position (an item at the position itself is read) and, for a mention
+    /// or a thread reply, its message is not read in its conversation yet (`conversationRead`: this device's read
+    /// positions say so; the item's `readInConversation`: the server did). No position known: no dots.
+    static func isUnread(_ item: ActivityItem, readAt: String?, conversationRead: Bool = false) -> Bool {
+        guard let readAt, !conversationRead, !item.readInConversation else { return false }
         return time(item.at) > time(readAt)
+    }
+
+    /// The kinds a read in their conversation reads (MOBILE_UI.md §6.4, 2026-10-06); reactions, canvas mentions and
+    /// reservations keep to the read position.
+    static let readInConversationKinds: Set<String> = ["mention", "thread_reply"]
+
+    /// MOBILE_UI.md §6.4 (2026-10-06): a mention or a thread reply is read once my read position covers its message —
+    /// the conversation's for a timeline row (top level, or a reply also sent to the channel), the thread's for a reply
+    /// (either one for a reply also in the channel). The positions are this device's (read.updated, thread.updated and
+    /// its own reads move them), nil when not known.
+    static func conversationRead(_ item: ActivityItem, channelReadSeq: Int?, threadReadSeq: Int?) -> Bool {
+        guard readInConversationKinds.contains(item.kind), let message = item.message else { return false }
+        if message.parentId == nil || message.alsoInChannel, let seq = channelReadSeq, seq >= message.seq { return true }
+        if message.parentId != nil, let seq = threadReadSeq, seq >= message.seq { return true }
+        return false
+    }
+
+    /// A page as the list holds it: a mention or a thread reply the server calls read although it is after the page's
+    /// read position was read in its conversation, which the dots then follow (they compare with the position the tab
+    /// opened at, not the server's). A server before the rule sends no `read`: nothing changes.
+    static func markingConversationReads(_ items: [ActivityItem], readAt: String?) -> [ActivityItem] {
+        items.map { item in
+            var item = item
+            item.readInConversation = item.read == true && readInConversationKinds.contains(item.kind) && time(item.at) > time(readAt)
+            return item
+        }
     }
 
     /// The newest `at` of the rows (what being on screen marks read); nil without rows.
