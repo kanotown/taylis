@@ -482,7 +482,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "composer.syntax.code": "Inline code",
   "composer.syntax.headingEx": "# Heading / ## / ###",
   "composer.syntax.heading": "Headings (3 levels)",
-  "composer.syntax.fenceEx": "```language … ``` (at a line start)",
+  "composer.syntax.fenceEx": "```python\nprint(\"hello\")\n```",
   "composer.syntax.fence": "Code block. Enter makes a new line inside",
   "composer.syntax.quoteEx": "> quote",
   "composer.syntax.quote": "Quote. Enter continues the quote on the next line",

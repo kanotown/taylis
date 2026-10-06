@@ -481,7 +481,7 @@ export const ja = {
   "composer.syntax.code": "インラインコード",
   "composer.syntax.headingEx": "# 見出し / ## / ###",
   "composer.syntax.heading": "見出し（3 段階）",
-  "composer.syntax.fenceEx": "```言語 … ```（行頭）",
+  "composer.syntax.fenceEx": "```python\nprint(\"hello\")\n```",
   "composer.syntax.fence": "コードブロック。中では Enter で改行",
   "composer.syntax.quoteEx": "> 引用",
   "composer.syntax.quote": "引用。Enter で次の行も引用",

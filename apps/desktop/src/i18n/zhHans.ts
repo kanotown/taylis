@@ -482,7 +482,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "composer.syntax.code": "行内代码",
   "composer.syntax.headingEx": "# 标题 / ## / ###",
   "composer.syntax.heading": "标题（3 级）",
-  "composer.syntax.fenceEx": "```语言 … ```（行首）",
+  "composer.syntax.fenceEx": "```python\nprint(\"hello\")\n```",
   "composer.syntax.fence": "代码块。在其中按 Enter 换行",
   "composer.syntax.quoteEx": "> 引用",
   "composer.syntax.quote": "引用。按 Enter 下一行也是引用",
