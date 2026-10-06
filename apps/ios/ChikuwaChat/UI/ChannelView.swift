@@ -1121,10 +1121,16 @@ struct MessageRow: View {
                 if !body.isEmpty && !PollCardView.hidesBody(body, poll: message.poll) {
                     MessageBodyView(text: body, users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
                                     customEmoji: store.customEmoji, emojiImages: store.emojiImages, emojiAnimations: store.emojiAnimations,
-                                    onNeedEmojiImage: { controller.loadEmojiImage($0) }, keywords: store.me?.notifyKeywords ?? [], jumbo: true)
+                                    onNeedEmojiImage: { controller.loadEmojiImage($0) }, keywords: store.me?.notifyKeywords ?? [], jumbo: true,
+                                    userLinks: present != nil && !message.pending)
                         .environment(\.openURL, OpenURLAction { url in
                             if url.scheme == CanvasLink.scheme, let id = url.host {  // M45
                                 controller.canvasLink = CanvasLinkTarget(id: id)
+                                return .handled
+                            }
+                            if url.scheme == UserLink.scheme, let id = url.host {  // a mention: that person's profile
+                                KeyboardBehavior.dismiss()
+                                present?(MessageSheet(kind: .profile, message: message, userId: id))
                                 return .handled
                             }
                             guard url.scheme == Permalink.scheme, let id = url.host else { return .systemAction }

@@ -18,7 +18,9 @@ struct MessageSheet: Identifiable, Equatable {
     var url: URL? = nil
     /// `.task` (L9): the task a chip under the message opens.
     var taskId: String? = nil
-    var id: String { "\(kind.rawValue) \(message.id) \(url?.lastPathComponent ?? "") \(taskId ?? "")" }
+    /// `.profile`: a person a mention in the body names (nil: the sender).
+    var userId: String? = nil
+    var id: String { "\(kind.rawValue) \(message.id) \(url?.lastPathComponent ?? "") \(taskId ?? "") \(userId ?? "")" }
 }
 
 extension View {
@@ -105,7 +107,7 @@ private struct MessageSheets: ViewModifier {
                 case .revisions:
                     RevisionsView(controller: controller, message: message)
                 case .profile:
-                    ProfileSheet(controller: controller, userId: message.senderId) { id in
+                    ProfileSheet(controller: controller, userId: shown.userId ?? message.senderId) { id in
                         NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil, userInfo: ["id": id])
                     }
                 case .file:

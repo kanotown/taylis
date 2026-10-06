@@ -62,6 +62,13 @@ final class MentionsTests: XCTestCase {
         XCTAssertEqual(Mentions.candidates("", users: users, groups: [design]).map(\.username), ["alice", "bob.k", "design", "channel", "here"])
     }
 
+    /// A tapped mention names its person (the row's openURL handler reads the host).
+    func testUserLinkCarriesTheId() {
+        let url = UserLink.internalLink(userId: alice.id)
+        XCTAssertEqual(url?.scheme, UserLink.scheme)
+        XCTAssertEqual(url?.host, alice.id)
+    }
+
     /// AI.md §2.1 (2026-10-06): people and AI bots only; once /ai/status was read, only the AI bots it lists.
     func testSuggestionsLeaveOutBotsButAi() {
         func bot(_ id: String, _ username: String, kind: String?, gone: Bool = false) -> UserPublic {
