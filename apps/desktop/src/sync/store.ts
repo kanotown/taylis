@@ -1,6 +1,6 @@
 import type { AiAgentPublic, AiStatusOut } from "../api/ai";
 import type { AttachmentOut, ChannelLinkOut, PoolOut, ChannelOut, ChannelState, CustomEmojiOut, EmojiPackOut, GroupOut, MessageOut, SidebarDefaultOut, SidebarSectionOut, MessageState, NotificationLevel, OutboxItem, ParentThread, PresenceEntry, PresenceStatus, ReminderOut, ScheduledOut, ThreadEntry, ThreadFilter, ThreadItem, ThreadState, ThreadSummary, UserMe, UserPublic } from "./types";
-import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
+import type { ActivitySummaryOut, CanvasMeta, LabProfileOut, LastMessageOut, NotificationPreferenceOut, PageItem, PageOut, PollOut, TemplateOut, WorkspaceSettingsOut } from "../api/types";
 // M49: the preview's rule is plain text work shared with the rows that show it (no React, no store).
 import { lastMessageOf, type PreviewSource, sameLastMessage } from "../ui/dmPreview";
 import { type CanvasEditor, CanvasEditors } from "./canvasPresence";
@@ -32,6 +32,13 @@ export interface Snapshot {
   channels: ChannelState[];
   messages: MessageState[];
   outbox: OutboxItem[];
+}
+
+/** M121: the Docs tree as last read (WIKI.md §10). */
+export interface WikiTreeSnapshot {
+  pages: PageItem[];
+  cursor: number;
+  etag: string | null;
 }
 
 export function emptySnapshot(): Snapshot {
@@ -227,6 +234,43 @@ export class Store {
     this.persist((p) => p.saveMeta(`canvas:${canvasId}`, state ? JSON.stringify(state) : null));
   }
   /**
+   * M121 (WIKI.md §9.1, §10): 「ドキュメント」 kept on this device — the tree as last read (with the feed's cursor and the
+   * tree's ETag), the pages opened lately (to read them offline) and edits not saved yet (as a canvas's). SQLite in
+   * Tauri under "wiki:tree", "wikipage:<id>" and "wikipending:<id>"; the browser keeps them in memory only.
+   */
+  private wikiTree: WikiTreeSnapshot | null = null;
+  private readonly pageCache = new Map<string, PageOut>();
+  private readonly pagePending = new Map<string, CanvasPendingState>();
+  wikiTreeSnapshot(): WikiTreeSnapshot | null {
+    return this.wikiTree;
+  }
+  setWikiTreeSnapshot(snapshot: WikiTreeSnapshot | null): void {
+    this.wikiTree = snapshot;
+    this.persist((p) => p.saveMeta("wiki:tree", snapshot ? JSON.stringify(snapshot) : null));
+  }
+  cachedPages(): Array<[string, PageOut]> {
+    return [...this.pageCache.entries()];
+  }
+  cachedPage(pageId: string): PageOut | null {
+    return this.pageCache.get(pageId) ?? null;
+  }
+  setCachedPage(pageId: string, page: PageOut | null): void {
+    if (page) this.pageCache.set(pageId, page);
+    else if (!this.pageCache.delete(pageId)) return;
+    this.persist((p) => p.saveMeta(`wikipage:${pageId}`, page ? JSON.stringify(page) : null));
+  }
+  pendingPage(pageId: string): CanvasPendingState | null {
+    return this.pagePending.get(pageId) ?? null;
+  }
+  pendingPages(): Array<[string, CanvasPendingState]> {
+    return [...this.pagePending.entries()];
+  }
+  setPendingPage(pageId: string, state: CanvasPendingState | null): void {
+    if (state) this.pagePending.set(pageId, state);
+    else if (!this.pagePending.delete(pageId)) return;
+    this.persist((p) => p.saveMeta(`wikipending:${pageId}`, state ? JSON.stringify(state) : null));
+  }
+  /**
    * L4 (M31): bumped per conversation when its members change (added, removed, an owner made or taken back), so an open
    * member list loads again. Not persisted: a list opened later loads anyway.
    */
@@ -349,6 +393,12 @@ export class Store {
       try { this.drafts.set(key, JSON.parse(value) as Draft); } catch { /* Ignore a corrupt local draft. */ }
     } else if (key.startsWith("canvas:")) {
       try { this.canvasPending.set(key.slice("canvas:".length), JSON.parse(value) as CanvasPendingState); } catch { /* Ignore a corrupt row. */ }
+    } else if (key.startsWith("wikipending:")) {
+      try { this.pagePending.set(key.slice("wikipending:".length), JSON.parse(value) as CanvasPendingState); } catch { /* Ignore a corrupt row. */ }
+    } else if (key.startsWith("wikipage:")) {
+      try { this.pageCache.set(key.slice("wikipage:".length), JSON.parse(value) as PageOut); } catch { /* Ignore a corrupt row. */ }
+    } else if (key === "wiki:tree") {
+      try { this.wikiTree = JSON.parse(value) as WikiTreeSnapshot; } catch { /* Read again from the server. */ }
     }
   }
   /**
