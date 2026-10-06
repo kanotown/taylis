@@ -398,8 +398,10 @@ struct ThumbnailView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("写真 \(attachment.filename)")
-            } else if let image = loader.image, let ratio = ImageFit.ratio(attachment) {
-                // The shape the server recorded, as the frame shown while loading had: the row keeps its height.
+            } else if let image = loader.image,
+                      let ratio = ImageFit.ratio(attachment) ?? (image.size.height > 0 ? image.size.width / image.size.height : nil) {
+                // The shape the server recorded, as the frame shown while loading had: the row keeps its height. Without
+                // one, the photo's own: a box no wider than the photo, so all four corners are rounded (2026-10-06).
                 Button { viewing = true } label: {
                     Color.clear.photoBox(ratio)
                         .overlay(Image(uiImage: image).resizable().scaledToFill())
@@ -407,11 +409,6 @@ struct ThumbnailView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("写真 \(attachment.filename)")
-            } else if let image = loader.image {
-                Button { viewing = true } label: { Image(uiImage: image).resizable().scaledToFit() }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: ImageFit.maxWidth, maxHeight: ImageFit.maxHeight)
-                    .accessibilityLabel("写真 \(attachment.filename)")
             } else if loader.failed, let square {
                 Button { attempt += 1 } label: {
                     Image(systemName: "arrow.clockwise").foregroundStyle(.secondary)
@@ -445,9 +442,11 @@ struct ThumbnailView: View {
                 .frame(width: square ?? 160, height: square ?? 120)
             }
         }
-        .frame(maxWidth: square ?? ImageFit.maxWidth, alignment: .leading)
+        // Rounded before the frame: the frame stretches to its width on a wide row, and a photo narrower than that (a
+        // tall one, a small one) kept square right-hand corners when the frame was what was rounded (2026-10-06).
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .contentShape(RoundedRectangle(cornerRadius: 10))
+        .frame(maxWidth: square ?? ImageFit.maxWidth, alignment: .leading)
         .task(id: "\(attachment.id):\(attempt)") {
             await loader.load {
                 guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
