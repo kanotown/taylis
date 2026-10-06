@@ -202,7 +202,7 @@
 | `hello` | 上記 |
 | `pong` | `{ server_time }` |
 | `event` | `{ id, event, ts, channel_id?, seq?, data }`。`event` がイベント名 (§6)、`id` は outbox の id |
-| `typing` | `{ channel_id, parent_id, user_id }`。揮発 (M11b)。送った本人以外のメンバーに届く。クライアントは 5 秒で消す |
+| `typing` | `{ channel_id, parent_id, user_id }`。揮発 (M11b)。送った本人以外のメンバーに届く。クライアントは 5 秒で消す。AI ボットがメンションに応える準備をしている間は、サーバがボットの `user_id` で 3 秒ごとに同じ形を送る（docs/AI.md §2.2 の 6） |
 | `canvas_presence` | `{ canvas_id, channel_id, user_id, editing, section }` (M72)。揮発。キャンバスの会話の、送った本人以外のメンバーに届く。クライアントは 45 秒送り直しが無ければ消す。送った接続が切れると、その接続が最後に `editing: true` を送ったキャンバスに `editing: false` が届く |
 | `presence` | `{ user_id, status: "online" \| "away" \| "offline" }`。揮発 (M11b)。接続 / 切断、`ping` の `active: true`、5 分間 active な ping が無いときの away 判定 (30 秒ごとの sweep) で、接続中の全員に届く。在席を隠した人 (`users.presence_hidden`、L4) は常に offline として配り、bootstrap の `presence` にも載せない (本人にも offline に見える)。プロセス内の状態なので、複数プロセス化するときは Redis に移す (ARCHITECTURE.md §12) |
 | `error` | `{ code, message }`。`auth_required` / `invalid_token` / `invalid_frame` / `already_authenticated` など |

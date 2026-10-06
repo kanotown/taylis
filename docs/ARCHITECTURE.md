@@ -380,6 +380,9 @@ JSON でないエラー応答 (プロキシの HTML の 502 など) はステー
 
 EventBus の境界: **outbox に書くのはドメインモジュール、publish するのは OutboxRelay だけ、subscribe するのは
 RealtimeHub だけ**。永続的な処理は必ず outbox の永続ハンドラで行い、EventBus には乗せない。
+例外（2026-10-06）：AI ボットの「入力中」（docs/AI.md §2.2 の 6）は、保存しない揮発フレーム（`Envelope.volatile`）として
+AI のループが publish する。失っても次の 3 秒で送り直すだけなので outbox は通さない。EventBus に乗せるのは、Redis に
+替えたときに WS を持つ全プロセスへ届くようにするため（このループは Relay と同じく 1 プロセスだけで動かす）。
 この 3 点を守っていれば、`InMemoryEventBus` を `RedisEventBus` に差し替えても動作は変わらない。
 
 ### 将来の AI 検索 / RAG への備え

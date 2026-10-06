@@ -23,9 +23,15 @@ class Envelope:
     seq: int | None
     data: dict[str, Any]
     audience: Audience = field(default=Audience(kind="all"))
+    # A volatile frame sent as it is instead of an ``event`` frame (an AI bot's ``typing``,
+    # docs/AI.md §2.2): never stored, no id or seq (id is 0), not part of any cursor.
+    volatile: dict[str, Any] | None = None
 
     def frame(self) -> dict[str, Any]:
-        """The WebSocket ``event`` frame (SYNC_PROTOCOL.md §5.2). Audience is never sent."""
+        """The WebSocket ``event`` frame (SYNC_PROTOCOL.md §5.2), or the volatile frame as it is.
+        Audience is never sent."""
+        if self.volatile is not None:
+            return dict(self.volatile)
         return {
             "type": "event",
             "id": self.id,

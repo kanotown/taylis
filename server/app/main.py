@@ -22,6 +22,7 @@ from app.events.in_memory import InMemoryEventBus
 from app.events.outbox import OutboxRelay, asyncpg_dsn, purge_processed
 from app.modules.activity.router import router as activity_router
 from app.modules.admin.router import router as admin_router
+from app.modules.ai import bot_typing as ai_bot_typing
 from app.modules.ai import service as ai_service
 from app.modules.ai.llm import AiRuntime
 from app.modules.ai.router import router as ai_router
@@ -319,6 +320,21 @@ async def _ai_loop(app: FastAPI, stop: asyncio.Event) -> None:
             continue
 
 
+async def _ai_typing_loop(app: FastAPI, stop: asyncio.Event) -> None:
+    """docs/AI.md §2.2: a bot working on a mention is shown as typing (volatile `typing` frames
+    over the EventBus, every TYPING_INTERVAL seconds while its run is open). Apart from the AI
+    worker, which waits for the model."""
+    while not stop.is_set():
+        try:
+            await ai_bot_typing.publish_typing(app.state.db, app.state.bus)
+        except Exception:
+            log.exception("AI typing failed")
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=ai_bot_typing.TYPING_INTERVAL)
+        except TimeoutError:
+            continue
+
+
 async def _preview_loop(app: FastAPI, stop: asyncio.Event) -> None:
     """Document previews (docs/PREVIEWS.md, M108): one at a time, again at once while there are
     more; woken by an upload (app.state.preview_wake) or every PREVIEW_WORKER_INTERVAL_SECONDS
@@ -384,6 +400,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(_presence_sweep_loop(app, stop), name="presence-sweep"))
         tasks.append(asyncio.create_task(_scheduled_send_loop(app, stop), name="scheduled-send"))
         tasks.append(asyncio.create_task(_ai_loop(app, stop), name="ai-worker"))
+        tasks.append(asyncio.create_task(_ai_typing_loop(app, stop), name="ai-typing"))
         tasks.append(asyncio.create_task(_feed_loop(app, stop), name="feeds"))
         tasks.append(asyncio.create_task(_activity_loop(app, stop), name="activity"))
         if settings.previews_enabled:

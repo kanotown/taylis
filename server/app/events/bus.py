@@ -1,7 +1,8 @@
 """EventBus boundary (ARCHITECTURE.md §10).
 
-Only the OutboxRelay publishes and only the RealtimeHub subscribes. The bus is ephemeral:
-durable work happens in outbox handlers, never in subscribers.
+The OutboxRelay publishes the stored events and only the RealtimeHub subscribes. The AI bots'
+typing ticker (docs/AI.md §2.2) also publishes volatile ``typing`` frames (``Envelope.volatile``).
+The bus is ephemeral: durable work happens in outbox handlers, never in subscribers.
 """
 
 from collections.abc import Awaitable, Callable
