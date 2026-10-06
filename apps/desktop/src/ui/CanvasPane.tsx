@@ -10,7 +10,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalSt
 import type { CanvasConflict, CanvasMeta, CanvasOut, CanvasTemplateOut } from "../api/types";
 import { describeError } from "../api/errors";
 import type { AppController } from "../state/app";
-import type { CanvasSaver, CanvasSaveStatus } from "../sync/canvasSave";
+import type { CanvasSaver, CanvasSaveStatus, SavedDoc } from "../sync/canvasSave";
 import type { ChannelState } from "../sync/types";
 import { CanvasBody, headingAnchor } from "./CanvasBody";
 import { Avatar } from "./Avatar";
@@ -465,7 +465,7 @@ const STATUS: Record<CanvasSaveStatus, { label: string; icon: ReactNode; tone: s
 };
 
 /** The save state beside the canvas's name; a conflict reopens its choice. */
-function SaveState({ saver, onOpenConflict }: { saver: CanvasSaver; onOpenConflict: () => void }) {
+export function SaveState({ saver, onOpenConflict }: { saver: CanvasSaver<SavedDoc>; onOpenConflict: () => void }) {
   const state = STATUS[saver.status];
   const hint = saver.status === "offline" ? t("canvas.offlineHint") : saver.status === "retrying" ? t("canvas.retryingHint") : undefined;
   const content = (
@@ -731,9 +731,9 @@ function TrashDialog({ controller, channel, onClose, onRestored }: {
 }
 
 /** §4.4 409 canvas_conflict: where both changed the same words, and the three choices. */
-function ConflictDialog({ controller, saver, tickOnly, conflicts, timedOut, onClose }: {
+export function ConflictDialog({ controller, saver, tickOnly, conflicts, timedOut, onClose }: {
   controller: AppController;
-  saver: CanvasSaver;
+  saver: CanvasSaver<SavedDoc>;
   tickOnly: boolean;
   conflicts: readonly CanvasConflict[];
   timedOut: boolean;
@@ -780,10 +780,10 @@ function ConflictSide({ label, text, tone }: { label: string; text: string; tone
 }
 
 /** §4.4 409 canvas_base_expired: mine and the current body side by side. */
-function ExpiredDialog({ controller, saver, head, canOverwrite, onClose }: {
+export function ExpiredDialog({ controller, saver, head, canOverwrite, onClose }: {
   controller: AppController;
-  saver: CanvasSaver;
-  head: CanvasOut;
+  saver: CanvasSaver<SavedDoc>;
+  head: SavedDoc;
   canOverwrite: boolean;
   onClose: () => void;
 }) {

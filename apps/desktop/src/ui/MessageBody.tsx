@@ -7,7 +7,8 @@ import { replaceShortcodes } from "./emoji";
 import { CustomEmojiImage, splitCustomEmoji } from "./customEmoji";
 import { splitKeywords } from "./keywords";
 import { CanvasLinkCard } from "./CanvasLinkCard";
-import { parseCanvasLink, parsePermalink } from "./permalink";
+import { attachmentRefId, pageRefId, parseCanvasLink, parsePageLink, parsePermalink } from "./permalink";
+import { FileLinkChip, PageLinkChip } from "./PageLinkChip";
 import { openExternalLink } from "../platform/external";
 import { cn } from "./primitives";
 import { type EmojiOnly, emojiOnly, JUMBO } from "./emojiOnly";
@@ -260,6 +261,11 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
       case "codeblock":
         return <pre key={i}>{token.text}</pre>;
       case "link": {
+        // M121: a Docs page (`page:<id>` in a page or canvas, `<server>/p/<id>` anywhere) and a page's file.
+        const pageId = controller ? (pageRefId(token.url) ?? (internalBase ? parsePageLink(internalBase, token.url) : null)) : null;
+        if (pageId && controller) return <PageLinkChip key={i} controller={controller} pageId={pageId} label={token.label && token.label !== token.url ? token.label : undefined} />;
+        const fileId = controller ? attachmentRefId(token.url) : null;
+        if (fileId && controller) return <FileLinkChip key={i} controller={controller} attachmentId={fileId} label={token.label} />;
         // M44: a canvas link on this server is a card (title, conversation, progress) that opens the canvas.
         const canvasId = internalBase && controller ? parseCanvasLink(internalBase, token.url) : null;
         if (canvasId && controller) return <CanvasLinkCard key={i} controller={controller} canvasId={canvasId} url={token.url} />;

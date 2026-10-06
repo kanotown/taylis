@@ -4,7 +4,7 @@ import { dndActive } from "../ui/dnd";
 import { calendarAlarmText } from "../sync/calendar";
 import { taskNoticeText } from "../ui/tasks";
 import { reactionText } from "../ui/customEmoji";
-import { canvasLink, messagePermalink } from "../ui/permalink";
+import { canvasLink, messagePermalink, pageLink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
 import { challengeFor, newVerifier, parseSsoDeepLink, saveSsoPending, type SsoPending, ssoErrorText, ssoStartUrl, takeSsoPending, takeSsoReturn } from "../ui/sso";
 import { totpErrorText } from "../ui/totp";
@@ -196,12 +196,15 @@ export class AppController {
   private entryMessage: string | null = null;
   /** M44: a `/c/<id>` canvas link opened in the browser. */
   private entryCanvas: string | null = null;
+  /** M121: a `/p/<id>` Docs page opened in the browser. */
+  private entryPage: string | null = null;
 
   private takeEntryPath(): void {
     const entry = parseEntryPath(location.pathname);
     if (!entry) return;
     if (entry.kind === "invite") this.entryInvite = entry.token;
     else if (entry.kind === "canvas") this.entryCanvas = entry.id;
+    else if (entry.kind === "page") this.entryPage = entry.id;
     else this.entryMessage = entry.id;
     history.replaceState(null, "", "/");
   }
@@ -210,6 +213,9 @@ export class AppController {
     const canvasId = this.entryCanvas;
     this.entryCanvas = null;
     if (canvasId) await this.openCanvasLink(canvasId);
+    const pageId = this.entryPage;
+    this.entryPage = null;
+    if (pageId) this.requestOpenPage(pageId);
     const id = this.entryMessage;
     if (!id) return;
     this.entryMessage = null;
@@ -847,6 +853,18 @@ export class AppController {
     if (!url) return;
     try {
       await copyText(url);
+      this.setNotice(t("app.linkCopied"));
+    } catch (error) {
+      console.warn("copy failed", error);
+      this.setError(t("app.clipboardFailed"));
+    }
+  }
+
+  /** M121: `<server>/p/<id>` of a Docs page (WIKI.md §9.3). */
+  async copyPageLink(pageId: string): Promise<void> {
+    if (!this.api) return;
+    try {
+      await copyText(pageLink(this.api.baseUrl, pageId));
       this.setNotice(t("app.linkCopied"));
     } catch (error) {
       console.warn("copy failed", error);
@@ -1932,6 +1950,16 @@ export class AppController {
           void this.openFromNotification(session.serverUrl, () => this.requestOpenCanvas(mention.channel_id, mention.canvas_id));
         });
       },
+      // M121 (WIKI.md §9.3): a Docs page newly mentions me, or was shared with me by name; a click opens the page.
+      onWikiNotice: (notice) => {
+        if (this.quiet(session) || store.isBlocked(notice.data.by_user_id)) return;
+        const who = store.users.get(notice.data.by_user_id)?.display_name ?? t("common.member");
+        const title = notice.data.title || t("docs.untitled");
+        const text = notice.kind === "mentioned" ? t("notification.pageMention", { who, title }) : t("notification.pageShared", { who, title });
+        void notify(this.notificationTitle(session, t("nav.docs")), text, () => {
+          void this.openFromNotification(session.serverUrl, () => this.requestOpenPage(notice.data.page_id));
+        });
+      },
       // M112: a reservation notice (a to-do as an operator, or news of my own booking); a click opens 「予約」.
       onReservationNotice: (notice) => {
         if (this.quiet(session)) return;
@@ -2095,6 +2123,14 @@ export class AppController {
   }
 
   // --- reservation pools (M99, M112, docs/RESERVATIONS.md) ------------------------------------
+
+  /** M121: the Docs page the main screen should open (a `page:` link, a /p/ permalink, a notification, an activity item). */
+  openPageRequest: { pageId: string } | null = null;
+
+  requestOpenPage(pageId: string): void {
+    this.openPageRequest = { pageId: pageId.toLowerCase() };
+    this.emit();
+  }
 
   /** M112: the main screen should open 「予約」 (a notification, an activity item). */
   openReservationsRequest = 0;

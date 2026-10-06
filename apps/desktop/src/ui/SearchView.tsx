@@ -1,9 +1,10 @@
 import { AlertTriangle, ArrowUpDown, AtSign, Calendar, Check, ChevronDown, FileText, Filter, Hash, Lock, MessagesSquare, Newspaper, Paperclip, Search, SearchX, User, X } from "lucide-react";
 import { type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, type Ref, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import type { CanvasMeta, ChannelOut, FileItem, MessageOut, SearchHit } from "../api/types";
+import type { CanvasMeta, ChannelOut, FileItem, MessageOut, PageItem, SearchHit } from "../api/types";
 import { AskPanel } from "./AskPanel";
 import { CanvasResults } from "./CanvasSearch";
+import { PageResults } from "./DocsSearch";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
@@ -19,7 +20,7 @@ import { Badge, Button, cn, IconButton, Input, Menu, MenuContent, MenuRadioGroup
 import { DATE_PRESETS, dateLabel, EMPTY_SEARCH, HAS_FLAGS, HAS_LABELS, hasFilters, isEmptySearch, type SearchParams, type SearchSort, toQuery, totalLabel } from "./search";
 import { t } from "../i18n";
 
-export type SearchTab = "messages" | "files" | "canvases";
+export type SearchTab = "messages" | "files" | "canvases" | "docs";
 
 /** What the results looked like, so 「検索結果に戻る」 shows them again without a new request. */
 export interface SearchSnapshot {
@@ -38,7 +39,7 @@ export interface SearchSnapshot {
 const PAGE = 30;
 
 /** M16b: search results in the centre column: count, tabs, filter chips, sort, endless list. */
-export function SearchView({ controller, params, tab, onTabChange, onChange, onOpen, onOpenCanvas, onClose, snapshot }: {
+export function SearchView({ controller, params, tab, onTabChange, onChange, onOpen, onOpenCanvas, onOpenPage, onClose, snapshot }: {
   controller: AppController;
   params: SearchParams;
   tab: SearchTab;
@@ -47,6 +48,8 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
   onOpen: (message: MessageOut) => void;
   /** M44: a hit of the 「キャンバス」 tab: the canvas in its conversation. */
   onOpenCanvas?: (canvas: CanvasMeta) => void;
+  /** M121: a hit of the 「ドキュメント」 tab (a server with Docs). */
+  onOpenPage?: (page: PageItem) => void;
   onClose: () => void;
   snapshot: { current: SearchSnapshot | null };
 }) {
@@ -169,12 +172,15 @@ export function SearchView({ controller, params, tab, onTabChange, onChange, onO
         <TabButton active={tab === "messages"} onClick={() => onTabChange("messages")}>{t("main.tab.messages")}</TabButton>
         <TabButton active={tab === "files"} onClick={() => onTabChange("files")}>{t("nav.files")}</TabButton>
         {onOpenCanvas && <TabButton active={tab === "canvases"} onClick={() => onTabChange("canvases")}>{t("nav.canvases")}</TabButton>}
+        {onOpenPage && <TabButton active={tab === "docs"} onClick={() => onTabChange("docs")}>{t("nav.docs")}</TabButton>}
       </UnderlineTabRow>
       <FilterBar controller={controller} params={params} onChange={onChange} mode={tab} />
       {tab === "files" ? (
         <FileResults controller={controller} params={params} onOpen={onOpen} />
       ) : tab === "canvases" && onOpenCanvas ? (
         <CanvasResults controller={controller} params={params} onOpen={onOpenCanvas} />
+      ) : tab === "docs" && onOpenPage ? (
+        <PageResults controller={controller} params={params} onOpen={onOpenPage} />
       ) : (
         <div ref={scroller} data-scroll-memory className="min-h-0 flex-1 overflow-y-auto px-4 py-3" onKeyDown={onListKey} onScroll={rememberScroll}>
           {/* M70: 「AI に聞く」 with these words and filters (docs/AI.md §13.6). */}
@@ -255,7 +261,9 @@ function FilterBar({ controller, params, onChange, mode }: { controller: AppCont
   const store = controller.store;
   const filesOnly = mode === "files";
   // M44: a canvas has a creator / last editor, a conversation and an update date; no kinds, no threads.
-  const canvases = mode === "canvases";
+  // M121: a Docs page likewise, without a conversation (its place is `in:ページ` / the picker under the chips).
+  const docs = mode === "docs";
+  const canvases = mode === "canvases" || docs;
   const sender = params.fromUserId ? store.users.get(params.fromUserId) : undefined;
   const channel = params.channelId ? store.getChannel(params.channelId) : undefined;
   const date = dateLabel(params.date);
@@ -269,11 +277,13 @@ function FilterBar({ controller, params, onChange, mode }: { controller: AppCont
           </Chip>
         </PeoplePicker>
       )}
-      <ChannelPicker controller={controller} value={params.channelId} onChange={(id) => onChange({ ...params, channelId: id })}>
-        <Chip active={!!channel} icon={<Hash size={13} />} onClear={channel ? () => onChange({ ...params, channelId: null }) : undefined}>
-          {channel ? channelTitle(channel, controller) : t("search.channel")}
-        </Chip>
-      </ChannelPicker>
+      {!docs && (
+        <ChannelPicker controller={controller} value={params.channelId} onChange={(id) => onChange({ ...params, channelId: id })}>
+          <Chip active={!!channel} icon={<Hash size={13} />} onClear={channel ? () => onChange({ ...params, channelId: null }) : undefined}>
+            {channel ? channelTitle(channel, controller) : t("search.channel")}
+          </Chip>
+        </ChannelPicker>
+      )}
       {!filesOnly && (
         <>
           <DatePicker value={params.date} onChange={(value) => onChange({ ...params, date: value })}>

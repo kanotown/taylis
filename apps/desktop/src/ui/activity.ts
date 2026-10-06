@@ -13,14 +13,15 @@ export const ACTIVITY_FILTER_LABELS: Record<ActivityFilter, string> = { get all(
  * One row per kind and message (a reaction item is one message's reactions); a canvas mention (M76) by its own id (one
  * per canvas while unread).
  */
-export function activityKey(item: Pick<ActivityItem, "kind" | "message" | "canvas" | "reservation">): string {
-  return `${item.kind}:${item.message?.id ?? item.canvas?.item_id ?? item.reservation?.item_id ?? ""}`;
+export function activityKey(item: Pick<ActivityItem, "kind" | "message" | "canvas" | "reservation" | "page">): string {
+  return `${item.kind}:${item.message?.id ?? item.canvas?.item_id ?? item.reservation?.item_id ?? item.page?.item_id ?? ""}`;
 }
 
 /** M76: an item this client can show: a message's, or a canvas mention with its canvas (anything else is skipped). */
 export function isShownActivity(item: ActivityItem): boolean {
   if (item.kind === "canvas_mention") return !!item.canvas;
   if (item.kind === "reservation") return !!item.reservation; // M112
+  if (item.kind === "page_mention" || item.kind === "page_shared") return !!item.page; // M121: only while I can read it
   return !!item.message;
 }
 
@@ -91,20 +92,23 @@ export function appendActivityPage(held: readonly ActivityItem[], page: readonly
  * メンションしました」 (a canvas, M76), and for reactions 「〇〇 が」 / 「〇〇 ほか N 人が」 followed by the emoji (drawn by
  * the caller, custom emoji as pictures).
  */
-export function activityHeadline(item: Pick<ActivityItem, "kind" | "actor_ids" | "canvas" | "reservation">, nameOf: (userId: string) => string): { who: string; what: string } {
+export function activityHeadline(item: Pick<ActivityItem, "kind" | "actor_ids" | "canvas" | "reservation" | "page">, nameOf: (userId: string) => string): { who: string; what: string } {
   // M112: a reservation notice — the pool, and whether it is a to-do (an operator's) or news of my own reservation.
   if (item.kind === "reservation") return { who: item.reservation?.pool_name ?? t("nav.reservations"), what: item.reservation?.operator ? ` · ${t("reservations.todos")}` : ` · ${t("reservations.booking")}` };
   const first = item.actor_ids[0];
   const name = first ? nameOf(first) : t("activity.someone");
   if (item.kind === "mention") return { who: name, what: t("activity.mentioned") };
   if (item.kind === "canvas_mention") return { who: name, what: t("activity.canvasMentioned", { title: item.canvas?.title ?? t("main.tab.canvas") }) };
+  // M121 (WIKI.md §9.3): a Docs page mentions me / was shared with me by name.
+  if (item.kind === "page_mention") return { who: name, what: t("activity.pageMentioned", { title: item.page?.title || t("docs.untitled") }) };
+  if (item.kind === "page_shared") return { who: name, what: t("activity.pageShared", { title: item.page?.title || t("docs.untitled") }) };
   if (item.kind === "thread_reply") return { who: name, what: t("activity.repliedInThread") };
   const others = Math.max(0, item.actor_ids.length - 1);
   return others > 0 ? { who: t("activity.andOthers", { name, count: others }), what: t("activity.reactedMany") } : { who: name, what: t("activity.reacted") };
 }
 
 /** The same headline as plain text (the row's accessible name), the emoji written out. */
-export function activityHeadlineText(item: Pick<ActivityItem, "kind" | "actor_ids" | "emojis" | "canvas" | "reservation">, nameOf: (userId: string) => string): string {
+export function activityHeadlineText(item: Pick<ActivityItem, "kind" | "actor_ids" | "emojis" | "canvas" | "reservation" | "page">, nameOf: (userId: string) => string): string {
   const { who, what } = activityHeadline(item, nameOf);
   return item.kind === "reaction" ? `${who}${what} ${(item.emojis ?? []).join("")}` : `${who}${what}`;
 }
