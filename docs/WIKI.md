@@ -679,7 +679,7 @@ v1 の後の候補：見たまま編集（Desktop / Web）、ボードのビュ�
 
 ### 12.1 実装と同時に直す docs
 
-ARCHITECTURE.md（§5 のモジュールと依存、判断 D26「ドキュメントは別の実体、本文の部品はキャンバスと共有、権限は受け継ぎ +
+ARCHITECTURE.md（§5 のモジュールと依存、判断 D27「ドキュメントは別の実体、本文の部品はキャンバスと共有、権限は受け継ぎ +
 実効の表」）、DATA_MODEL.md（表）、SYNC_PROTOCOL.md（§6 のイベント、新しい節「ドキュメント」）、SECURITY.md（§3.2 の行、§4 の
 添付、§15 の AI）、PUSH_NOTIFICATIONS.md（`page_mention`・`page_shared`）、AI.md（§13 の拾い方）、MOBILE_UI.md（ホームのタイル）、
 `apps/shared/nav-items.json`・`errors.json`・`canvas_markdown.json`、infra/README.md（取り込み）、website の使い方ガイド。
