@@ -101,6 +101,12 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     ),
     wiki_events.WIKI_MENTIONED: (wiki_events.WikiMentionedData, "user (a reader)", False),
     wiki_events.WIKI_SHARED: (wiki_events.WikiSharedData, "user (a reader)", False),
+    # M123 (docs/WIKI.md §5, SYNC_PROTOCOL.md §17).
+    wiki_events.WIKI_ROWS_CHANGED: (
+        wiki_events.WikiRowsChangedData,
+        "page (who can read the database when sent)",
+        False,
+    ),
     calendar_events.CALENDAR_EVENT_UPDATED: (
         calendar_events.CalendarEventUpdatedData,
         "channel (a personal event: user)",

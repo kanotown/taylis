@@ -179,3 +179,61 @@ class WikiTombstone(Base):
     page_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
     seq: Mapped[int] = mapped_column(BigInteger)
     purged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WikiDatabase(Base):
+    """A database page's schema and saved views (WIKI.md §5, migration 0096, M123). Rows are the
+    pages of kind row below it; their values are in wiki_pages.props."""
+
+    __tablename__ = "wiki_databases"
+
+    page_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("wiki_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    # {"properties": [{"id", "name", "type", "options", "number_format", "relation"}]}
+    schema_doc: Mapped[dict[str, Any]] = mapped_column("schema", JSONB)
+    # [{"id", "name", "type", "columns", "sort", "filter", "date_prop_id"}]
+    views: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    # +1 on every schema or view change (a change written on an older one is refused).
+    schema_version: Mapped[int] = mapped_column(BigInteger, default=1, server_default=text("1"))
+
+
+class WikiRelation(Base):
+    """One link of a relation property (WIKI.md §5.7): row `src_page_id` links to row
+    `dst_page_id` through `prop_id` of the database `src_database_id`. A two-way relation's
+    reverse property reads the same rows from the other end."""
+
+    __tablename__ = "wiki_relations"
+
+    src_page_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("wiki_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    prop_id: Mapped[str] = mapped_column(String(24), primary_key=True)
+    dst_page_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("wiki_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    src_database_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("wiki_pages.id", ondelete="CASCADE")
+    )
+    # The order in the source's cell.
+    position: Mapped[int] = mapped_column(Integer)
+    # When it was made: the order in the reverse cell.
+    seq: Mapped[int] = mapped_column(
+        BigInteger, server_default=text("nextval('wiki_relation_seq')")
+    )
+
+
+class WikiPropLegacy(Base):
+    """A value a type change could not convert (WIKI.md §5.2), kept 30 days: changing the type
+    back brings it back."""
+
+    __tablename__ = "wiki_props_legacy"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    page_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("wiki_pages.id", ondelete="CASCADE"))
+    prop_id: Mapped[str] = mapped_column(String(24))
+    prop_type: Mapped[str] = mapped_column(String(16))
+    value: Mapped[Any] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )

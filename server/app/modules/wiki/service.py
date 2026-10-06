@@ -38,9 +38,11 @@ from app.modules.groups.models import UserGroup, UserGroupMember
 from app.modules.users import service as users
 from app.modules.users.models import User
 from app.modules.wiki import access, events, ordering
+from app.modules.wiki import dbschema as ds
 from app.modules.wiki import repository as repo
 from app.modules.wiki.access import LEVELS, Effective, Entry
 from app.modules.wiki.models import (
+    WikiDatabase,
     WikiEffectiveGrant,
     WikiGrant,
     WikiLink,
@@ -509,7 +511,7 @@ async def create(db: AsyncSession, actor: User, data: PageCreate) -> tuple[PageO
         parent_id=parent.id if parent is not None else None,
         path=[*parent.path, parent.id] if parent is not None else [],
         position=position,
-        kind="page",
+        kind=data.kind,
         title=title,
         icon=_clean_icon(data.icon),
         body=body,
@@ -526,6 +528,11 @@ async def create(db: AsyncSession, actor: User, data: PageCreate) -> tuple[PageO
     )
     db.add(page)
     await db.flush()
+    if data.kind == "database":
+        # M123 (WIKI.md §5.1): the title property and one table view.
+        db.add(
+            WikiDatabase(page_id=page.id, schema_doc=ds.default_schema(), views=ds.default_views())
+        )
     db.add(
         WikiPageRevision(
             id=revision_id,
@@ -610,6 +617,21 @@ async def _set_body(
     await _after_body_change(db, actor, page, before=before, revision_id=revision.id, notify=notify)
     await events.emit_page_updated(db, page, change)
     return revision
+
+
+async def _rows_changed(db: AsyncSession, row: WikiPage) -> None:
+    """M123: a row was added, renamed, trashed or restored: its database's table and the
+    relation cells that show it."""
+    ids = await repo.linked_databases(db, row.id)
+    if row.parent_id is not None:
+        ids.add(row.parent_id)
+    await events.emit_rows_changed(db, ids)
+
+
+def _rows_level(page: WikiPage) -> str:
+    """Rows go to the trash and back with edit (WIKI.md §4.1: adding and changing rows), pages
+    with full."""
+    return "edit" if page.kind == "row" else "full"
 
 
 def _touch(page: WikiPage, actor: User) -> None:
@@ -746,7 +768,11 @@ async def update(db: AsyncSession, actor: User, page_id: uuid.UUID, data: PageUp
         page.meta_seq = seq
         await db.flush()
         await events.emit_page_updated(db, page, "meta")
-        await events.emit_changed(db, seq)
+        if page.kind == "row":
+            # Rows are not in the tree: their database's table (and the cells linking here).
+            await _rows_changed(db, page)
+        else:
+            await events.emit_changed(db, seq)
     out = await _page_out(db, actor, page, rank)
     await db.commit()
     return out
@@ -1051,6 +1077,11 @@ def _grant_dump(
     }
 
 
+def _refuse_row_access(page: WikiPage) -> None:
+    if page.kind == "row":
+        raise bad_request("wiki_row_access", "A database row takes its database's access")
+
+
 async def set_access(
     db: AsyncSession, actor: User, page_id: uuid.UUID, data: AccessUpdate
 ) -> AccessOut:
@@ -1059,6 +1090,7 @@ async def set_access(
     await access.lock_tree(db)
     page, rank = await access.require_level(db, actor, page_id, "full", lock=True)
     _require_member(actor)
+    _refuse_row_access(page)
     grants = await _validate_grants(db, data)
     before = [
         (g.principal_type, g.principal_id, g.level) for g in await repo.own_grants(db, page.id)
@@ -1157,6 +1189,8 @@ async def move(db: AsyncSession, actor: User, page_id: uuid.UUID, data: PageMove
     become its own). `dry_run` only says who would gain or lose access."""
     await access.lock_tree(db)
     page, _ = await access.require_level(db, actor, page_id, "full", lock=True)
+    if page.kind == "row":
+        raise bad_request("invalid_page_parent", "A row stays in its database")
     parent: WikiPage | None = None
     if data.parent_id is not None:
         if data.parent_id == page.id:
@@ -1239,7 +1273,9 @@ async def trash(db: AsyncSession, actor: User, page_id: uuid.UUID) -> None:
     """The page and everything below it to the trash, together (restored and purged together;
     30 days)."""
     await access.lock_tree(db)
-    page, _ = await access.require_level(db, actor, page_id, "full", lock=True)
+    found = await access.load_page(db, page_id)
+    level = _rows_level(found) if found is not None else "full"
+    page, _ = await access.require_level(db, actor, page_id, level, lock=True)
     now = utcnow()
     seq = await repo.next_seq(db)
     result = await db.execute(
@@ -1265,7 +1301,10 @@ async def trash(db: AsyncSession, actor: User, page_id: uuid.UUID) -> None:
         target_id=page.id,
         details={"title": page.title, "pages": count},
     )
-    await events.emit_changed(db, seq)
+    if page.kind == "row":
+        await _rows_changed(db, page)
+    else:
+        await events.emit_changed(db, seq)
     await db.commit()
 
 
@@ -1286,7 +1325,9 @@ async def restore(db: AsyncSession, actor: User, page_id: uuid.UUID) -> PageOut:
     (taking the parent's access now, if it inherits); else at the top level keeping who sees it
     (WIKI.md §4.5)."""
     await access.lock_tree(db)
-    page, _ = await access.require_level(db, actor, page_id, "full", lock=True, trashed=True)
+    found = await access.load_page(db, page_id)
+    level = _rows_level(found) if found is not None else "full"
+    page, _ = await access.require_level(db, actor, page_id, level, lock=True, trashed=True)
     if page.trash_root_id != page.id:
         raise conflict("page_trashed_with_parent", "Restore the page it went to the trash with")
     parent = await access.load_page(db, page.parent_id) if page.parent_id else None
@@ -1314,7 +1355,10 @@ async def restore(db: AsyncSession, actor: User, page_id: uuid.UUID) -> PageOut:
     )
     await db.flush()
     await events.emit_page_updated(db, page, "restore")
-    await events.emit_changed(db, seq)
+    if page.kind == "row":
+        await _rows_changed(db, page)
+    else:
+        await events.emit_changed(db, seq)
     rank = await access.level_of(db, actor, page.id)
     if rank < 1:
         await db.commit()
@@ -1333,7 +1377,10 @@ async def list_trash(db: AsyncSession, actor: User) -> list[PageMeta]:
         .where(
             WikiPage.deleted_at.is_not(None),
             WikiPage.trash_root_id == WikiPage.id,
-            mine.c.rank >= LEVELS["full"],
+            or_(
+                mine.c.rank >= LEVELS["full"],
+                and_(WikiPage.kind == "row", mine.c.rank >= LEVELS["edit"]),
+            ),
         )
         .order_by(WikiPage.deleted_at.desc(), WikiPage.id)
     )
@@ -1569,6 +1616,7 @@ async def takeover(db: AsyncSession, actor: User, page_id: uuid.UUID) -> PageOut
     page = await access.load_page(db, page_id, lock=True)
     if page is None:
         raise access.page_not_found()
+    _refuse_row_access(page)
     before = [
         (g.principal_type, g.principal_id, g.level) for g in await repo.own_grants(db, page.id)
     ]
@@ -1779,5 +1827,7 @@ async def housekeeping(db: AsyncSession, *, now: datetime, trash_days: int) -> t
     pruned = await prune_revisions(db, now=now)
     purged = await purge_trash(db, now=now, trash_days=trash_days)
     await purge_tombstones(db, now=now)
+    await repo.purge_props_legacy(db, now - timedelta(days=TOMBSTONE_DAYS))
+    await db.commit()
     released = await release_unreferenced_files(db, now=now)
     return pruned, purged, released

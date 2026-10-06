@@ -1286,15 +1286,80 @@
       "en": "Webhook not found.",
       "zh-Hans": "找不到 Webhook。"
     },
+    "wiki_invalid_property_value": {
+      "ja": "この値はこのプロパティに入れられません",
+      "en": "This value doesn't fit the property.",
+      "zh-Hans": "此值不适用于该属性。"
+    },
+    "wiki_invalid_view": {
+      "ja": "並べ替えか絞り込みの条件がこのデータベースに合いません",
+      "en": "The sort or filter doesn't fit this database.",
+      "zh-Hans": "排序或筛选条件与此数据库不符。"
+    },
+    "wiki_last_view": {
+      "ja": "最後のビューは削除できません",
+      "en": "The last view can't be deleted.",
+      "zh-Hans": "无法删除最后一个视图。"
+    },
     "wiki_move_cycle": {
       "ja": "ページを自分自身やその下のページの下へは移動できません",
       "en": "A page can't be moved under itself or its own subpages.",
       "zh-Hans": "不能将页面移动到其自身或其子页面之下。"
     },
+    "wiki_property_not_found": {
+      "ja": "プロパティが見つかりません（削除されたかもしれません）",
+      "en": "Property not found (it may have been deleted).",
+      "zh-Hans": "找不到属性（可能已被删除）。"
+    },
+    "wiki_relation_pair_restricted": {
+      "ja": "関係の相手側のデータベースのフルアクセスが必要です",
+      "en": "You need full access to the database on the other side of this relation.",
+      "zh-Hans": "需要该关联另一侧数据库的完全访问权限。"
+    },
+    "wiki_row_access": {
+      "ja": "行の共有はデータベースの共有設定で変えます",
+      "en": "A row is shared through its database's sharing settings.",
+      "zh-Hans": "行的共享通过其数据库的共享设置更改。"
+    },
+    "wiki_schema_conflict": {
+      "ja": "ほかの人がプロパティを変えました。読み直してからもう一度お試しください",
+      "en": "Someone else changed the properties. Reload and try again.",
+      "zh-Hans": "其他人修改了属性。请重新加载后再试。"
+    },
+    "wiki_title_property": {
+      "ja": "タイトルのプロパティは消したり種類を変えたりできません",
+      "en": "The title property can't be deleted or change its type.",
+      "zh-Hans": "标题属性无法删除或更改类型。"
+    },
     "wiki_too_deep": {
       "ja": "ページの入れ子は 20 段までです",
       "en": "Pages can be nested up to 20 levels deep.",
       "zh-Hans": "页面最多可嵌套 20 层。"
+    },
+    "wiki_too_many_options": {
+      "ja": "選択肢は 200 個までです",
+      "en": "A property has at most 200 options.",
+      "zh-Hans": "选项最多 200 个。"
+    },
+    "wiki_too_many_properties": {
+      "ja": "プロパティは 50 個までです",
+      "en": "A database has at most 50 properties.",
+      "zh-Hans": "属性最多 50 个。"
+    },
+    "wiki_too_many_rows": {
+      "ja": "1 つのデータベースの行は 5,000 までです",
+      "en": "A database holds at most 5,000 rows.",
+      "zh-Hans": "一个数据库最多 5,000 行。"
+    },
+    "wiki_too_many_views": {
+      "ja": "ビューは 20 個までです",
+      "en": "A database has at most 20 views.",
+      "zh-Hans": "视图最多 20 个。"
+    },
+    "wiki_view_not_found": {
+      "ja": "ビューが見つかりません（削除されたかもしれません）",
+      "en": "View not found (it may have been deleted).",
+      "zh-Hans": "找不到视图（可能已被删除）。"
     },
     "workflow_channel_unsupported": {
       "ja": "ワークフローはダイレクトメッセージでは使えません",

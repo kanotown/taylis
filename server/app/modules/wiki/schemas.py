@@ -12,8 +12,9 @@ from app.modules.wiki.models import WikiPage, WikiPageRevision
 Level = Literal["view", "edit", "full"]
 PrincipalType = Literal["workspace", "group", "user"]
 PageKind = Literal["page", "database", "row"]
-# content: the body (saved or merged); meta: title / icon; restore: a version or the trash.
-PageChange = Literal["content", "meta", "restore"]
+# content: the body (saved or merged); meta: title / icon; restore: a version or the trash;
+# props: a database row's values (M123).
+PageChange = Literal["content", "meta", "restore", "props"]
 OnConflict = Literal["fail", "ours", "theirs", "both"]
 RevisionKind = Literal["create", "save", "merge", "side", "restore", "erased", "props", "import"]
 
@@ -133,8 +134,9 @@ class PageCreate(BaseModel):
     # Place it just before / after this sibling; neither: at the end.
     before_id: UUID | None = None
     after_id: UUID | None = None
-    # database / row come with M123.
-    kind: Literal["page"] = "page"
+    # database (M123): a database page with the title property and one table view (its rows:
+    # POST /wiki/databases/{id}/rows).
+    kind: Literal["page", "database"] = "page"
     # Left out: the template's title, else 「無題」.
     title: str | None = Field(default=None, max_length=MAX_TITLE_LENGTH)
     icon: str | None = Field(default=None, max_length=MAX_ICON_LENGTH)
