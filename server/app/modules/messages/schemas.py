@@ -347,6 +347,16 @@ class MessageWorkflowOut(BaseModel):
     name: str
 
 
+class MessageCallOut(BaseModel):
+    """M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button
+    that opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what
+    clients before M117 show."""
+
+    url: str
+    # Who started it (the sender).
+    started_by: UUID
+
+
 class MessageOut(BaseModel):
     id: UUID
     channel_id: UUID
@@ -388,6 +398,9 @@ class MessageOut(BaseModel):
     system_event: SystemEventOut | None = None
     # M94: posted through a workflow's form; null on other posts.
     workflow: MessageWorkflowOut | None = None
+    # M117: on a message that started a call (POST /channels/{id}/calls); null otherwise and once
+    # deleted.
+    call: MessageCallOut | None = None
 
 
 class MessageRevisionOut(BaseModel):
@@ -553,6 +566,9 @@ def to_message_out(
         workflow=None
         if deleted or message.workflow_id is None
         else MessageWorkflowOut(id=message.workflow_id, name=message.workflow_name or ""),
+        call=None
+        if deleted or not message.call_url
+        else MessageCallOut(url=message.call_url, started_by=message.sender_id),
     )
 
 

@@ -126,6 +126,7 @@ async def create_message(
     commit: bool = True,
     mentions: bool = True,
     workflow: tuple[uuid.UUID, str] | None = None,
+    call_url: str | None = None,
 ) -> tuple[Message, bool]:
     """Returns (message, created). Retrying with the same client_msg_id returns the same message.
 
@@ -135,7 +136,8 @@ async def create_message(
     automatic post that must not call anyone (Review v0.1.22 #8: the deadline bot): no user,
     group, @channel or @here mention is taken from the body, whatever text it carries.
     `workflow` = (id, name) marks a post made through a workflow's form (M94,
-    docs/WORKFLOWS.md); everything else is an ordinary post by the actor.
+    docs/WORKFLOWS.md); everything else is an ordinary post by the actor. `call_url` marks the
+    post that starts a call (M117, docs/CALLS.md; the calls module checks the setting).
     """
     # A retry of a message that is already stored gets that message back, whatever happened to
     # the channel since (archived, restricted, left): otherwise the client would mark a delivered
@@ -199,6 +201,7 @@ async def create_message(
                 ack_requested=data.ack_requested,
                 workflow_id=workflow[0] if workflow else None,
                 workflow_name=workflow[1] if workflow else None,
+                call_url=call_url,
             )
             db.add(message)
             await db.flush()

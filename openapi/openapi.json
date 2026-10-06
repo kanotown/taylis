@@ -692,6 +692,11 @@
       "AdminWorkspaceSettingsOut": {
         "description": "GET / PATCH /admin/workspace-settings: the settings and who changed them last.",
         "properties": {
+          "calls_enabled": {
+            "default": true,
+            "title": "Calls Enabled",
+            "type": "boolean"
+          },
           "default_channel_ids": {
             "default": [],
             "items": {
@@ -732,6 +737,18 @@
             },
             "title": "Legacy Sso Default Channels",
             "type": "array"
+          },
+          "meeting_base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "https://meet.jit.si/",
+            "title": "Meeting Base Url"
           },
           "preview_before_join": {
             "default": true,
@@ -2440,6 +2457,8 @@
           "workspace_settings": {
             "$ref": "#/components/schemas/WorkspaceSettingsOut",
             "default": {
+              "calls_enabled": true,
+              "meeting_base_url": "https://meet.jit.si/",
               "preview_before_join": true,
               "show_membership_messages": true
             }
@@ -3212,6 +3231,39 @@
           "scope"
         ],
         "title": "CalendarOccurrenceUpdate",
+        "type": "object"
+      },
+      "CallCreate": {
+        "additionalProperties": false,
+        "description": "POST /channels/{id}/calls. `client_msg_id` is the message's idempotency key, as for any\npost: a retry gets the same call back.",
+        "properties": {
+          "client_msg_id": {
+            "format": "uuid",
+            "title": "Client Msg Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_msg_id"
+        ],
+        "title": "CallCreate",
+        "type": "object"
+      },
+      "CallOut": {
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/MessageOut"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "message"
+        ],
+        "title": "CallOut",
         "type": "object"
       },
       "CanvasConflictDetails": {
@@ -7220,6 +7272,26 @@
         "title": "MentionListOut",
         "type": "object"
       },
+      "MessageCallOut": {
+        "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button that\nopens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what clients\nbefore M117 show.",
+        "properties": {
+          "started_by": {
+            "format": "uuid",
+            "title": "Started By",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "started_by"
+        ],
+        "title": "MessageCallOut",
+        "type": "object"
+      },
       "MessageCreate": {
         "properties": {
           "ack_requested": {
@@ -7342,6 +7414,16 @@
           "body": {
             "title": "Body",
             "type": "string"
+          },
+          "call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageCallOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "channel_id": {
             "format": "uuid",
@@ -14216,6 +14298,11 @@
       "WorkspaceSettingsOut": {
         "description": "M88 (docs/MEMBERSHIP.md §3): the switches every client needs (bootstrap, and the event\nworkspace.settings_updated).",
         "properties": {
+          "calls_enabled": {
+            "default": true,
+            "title": "Calls Enabled",
+            "type": "boolean"
+          },
           "icon_version": {
             "anyOf": [
               {
@@ -14226,6 +14313,18 @@
               }
             ],
             "title": "Icon Version"
+          },
+          "meeting_base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "https://meet.jit.si/",
+            "title": "Meeting Base Url"
           },
           "preview_before_join": {
             "default": true,
@@ -14260,6 +14359,18 @@
               }
             ],
             "title": "Default Channel Ids"
+          },
+          "meeting_base_url": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meeting Base Url"
           },
           "preview_before_join": {
             "anyOf": [
@@ -16214,6 +16325,7 @@
         ]
       },
       "patch": {
+        "description": "M117 (docs/CALLS.md): also the meeting service for calls (`meeting_base_url`).",
         "operationId": "update_workspace_settings_api_v1_admin_workspace_settings_patch",
         "requestBody": {
           "content": {
@@ -19459,6 +19571,65 @@
         "summary": "Archive Channel",
         "tags": [
           "channels"
+        ]
+      }
+    },
+    "/api/v1/channels/{channel_id}/calls": {
+      "post": {
+        "description": "M117 (docs/CALLS.md): start a call — a message 「📞 通話を始めました」 with a new meeting\nroom's link (`message.call`). 201 when created, 200 for a retry with the same `client_msg_id`.\n403 not_a_member / posting_restricted / dm_unavailable, 409 channel_archived /\ncalls_disabled / idempotency_conflict.",
+        "operationId": "start_call_api_v1_channels__channel_id__calls_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Call",
+        "tags": [
+          "calls"
         ]
       }
     },

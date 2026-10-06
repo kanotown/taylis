@@ -283,6 +283,8 @@ async def test_admin_settings_api_audit_event_and_bootstrap(
         "show_membership_messages": False,  # the tests' start (conftest.py)
         "preview_before_join": True,
         "icon_version": None,  # M93
+        "calls_enabled": True,  # M117
+        "meeting_base_url": "https://meet.jit.si/",
     }
 
     as_user(admin)
@@ -322,6 +324,8 @@ async def test_admin_settings_api_audit_event_and_bootstrap(
             "show_membership_messages": True,
             "preview_before_join": False,
             "icon_version": None,
+            "calls_enabled": True,
+            "meeting_base_url": "https://meet.jit.si/",
         }
     }
     # Nothing changed: no audit, no event.

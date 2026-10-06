@@ -2790,6 +2790,26 @@
             "title": "CollectionOut",
             "type": "object"
           },
+          "MessageCallOut": {
+            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button that\nopens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what clients\nbefore M117 show.",
+            "properties": {
+              "started_by": {
+                "format": "uuid",
+                "title": "Started By",
+                "type": "string"
+              },
+              "url": {
+                "title": "Url",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url",
+              "started_by"
+            ],
+            "title": "MessageCallOut",
+            "type": "object"
+          },
           "MessageOut": {
             "properties": {
               "ack_requested": {
@@ -2821,6 +2841,17 @@
               "body": {
                 "title": "Body",
                 "type": "string"
+              },
+              "call": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/MessageCallOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "channel_id": {
                 "format": "uuid",
@@ -3862,6 +3893,26 @@
             "title": "CollectionOut",
             "type": "object"
           },
+          "MessageCallOut": {
+            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button that\nopens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what clients\nbefore M117 show.",
+            "properties": {
+              "started_by": {
+                "format": "uuid",
+                "title": "Started By",
+                "type": "string"
+              },
+              "url": {
+                "title": "Url",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url",
+              "started_by"
+            ],
+            "title": "MessageCallOut",
+            "type": "object"
+          },
           "MessageOut": {
             "properties": {
               "ack_requested": {
@@ -3893,6 +3944,17 @@
               "body": {
                 "title": "Body",
                 "type": "string"
+              },
+              "call": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/MessageCallOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "channel_id": {
                 "format": "uuid",
@@ -4935,6 +4997,26 @@
             "title": "CollectionOut",
             "type": "object"
           },
+          "MessageCallOut": {
+            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button that\nopens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what clients\nbefore M117 show.",
+            "properties": {
+              "started_by": {
+                "format": "uuid",
+                "title": "Started By",
+                "type": "string"
+              },
+              "url": {
+                "title": "Url",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url",
+              "started_by"
+            ],
+            "title": "MessageCallOut",
+            "type": "object"
+          },
           "MessageOut": {
             "properties": {
               "ack_requested": {
@@ -4966,6 +5048,17 @@
               "body": {
                 "title": "Body",
                 "type": "string"
+              },
+              "call": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/MessageCallOut"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "channel_id": {
                 "format": "uuid",
@@ -8118,6 +8211,11 @@
           "WorkspaceSettingsOut": {
             "description": "M88 (docs/MEMBERSHIP.md §3): the switches every client needs (bootstrap, and the event\nworkspace.settings_updated).",
             "properties": {
+              "calls_enabled": {
+                "default": true,
+                "title": "Calls Enabled",
+                "type": "boolean"
+              },
               "icon_version": {
                 "anyOf": [
                   {
@@ -8129,6 +8227,18 @@
                 ],
                 "default": null,
                 "title": "Icon Version"
+              },
+              "meeting_base_url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": "https://meet.jit.si/",
+                "title": "Meeting Base Url"
               },
               "preview_before_join": {
                 "default": true,

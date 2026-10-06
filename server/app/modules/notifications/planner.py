@@ -738,6 +738,10 @@ class PushPlanner:
             else ""
         )
         body = label + (body or new_message)  # M15e
+        if message.get("call"):
+            # M117 (docs/CALLS.md): a call says who started it in the reader's language (no link:
+            # the notification opens the conversation, whose message has the 「参加する」 button).
+            body = i18n.t("push.call.started", locale, who=sender_name)
         return PushPayload(
             kind="message",
             workspace_id=workspace_id,

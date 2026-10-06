@@ -66,7 +66,10 @@ async def get_workspace_settings(
 async def update_workspace_settings(
     actor: CurrentAdmin, body: WorkspaceSettingsUpdate, db: Db, request: Request
 ) -> AdminWorkspaceSettingsOut:
-    return await service.update_settings(db, actor.id, body, _legacy(request))
+    """M117 (docs/CALLS.md): also the meeting service for calls (`meeting_base_url`)."""
+    return await service.update_settings(
+        db, actor.id, body, _legacy(request), debug=request.app.state.settings.debug
+    )
 
 
 @router.post(
