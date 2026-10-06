@@ -13,6 +13,8 @@ from app.modules.moderation.schemas import (
     AdminReportOut,
     BlockOut,
     BlockStateOut,
+    GeneralReportAck,
+    GeneralReportCreate,
     ReportAck,
     ReportCreate,
 )
@@ -70,6 +72,27 @@ async def report_message(
     return ack
 
 
+@router.post("/reports", response_model=GeneralReportAck, status_code=201)
+async def submit_report(
+    body: GeneralReportCreate,
+    user: CurrentUser,
+    db: Db,
+    request: Request,
+    response: Response,
+) -> GeneralReportAck:
+    """Report a person (`user_id`) or anything else, or send feedback, to the administrators
+    (M119, docs/MODERATION.md §3.1). Anyone signed in, guests too. 201; a retry with the same
+    `client_report_id` returns the first report (200). 10 an hour per person (429)."""
+    existing = await service.find_general_report(db, user, body.client_report_id)
+    if existing is not None:  # a retry does not use up the rate limit
+        response.status_code = 200
+        return existing
+    _limit(request, "general_report", str(user.id))
+    ack, created = await service.submit_report(db, user, body)
+    response.status_code = 201 if created else 200
+    return ack
+
+
 @router.post("/users/me/delete-account", status_code=204, name="users:delete_account")
 async def delete_account(
     body: AccountDeletion, user: CurrentUser, db: Db, request: Request
@@ -87,7 +110,8 @@ async def list_reports(
     db: Db,
     status: Literal["open", "resolved", "all"] = Query(default="open"),
 ) -> list[AdminReportOut]:
-    """Reported messages, newest first (administrators)."""
+    """Reports, newest first (administrators): of messages, and since M119 of people and
+    general reports / feedback (`kind`; those have no message or channel)."""
     return await service.list_reports(db, None if status == "all" else status)
 
 

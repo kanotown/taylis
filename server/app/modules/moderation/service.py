@@ -38,6 +38,8 @@ from app.modules.moderation.schemas import (
     BlockOut,
     BlockStateOut,
     BlockUpdatedData,
+    GeneralReportAck,
+    GeneralReportCreate,
     ReportAck,
     ReportCreate,
     ReportStatus,
@@ -55,8 +57,14 @@ REASON_LABELS = {
     "spam": "迷惑・スパム",
     "harassment": "嫌がらせ",
     "inappropriate": "不適切な内容",
+    "child_safety": "子どもの安全",
+    "feedback": "ご意見",
     "other": "その他",
 }
+# Put first in the admins' notice of a child-safety report, so it stands out (M119).
+CHILD_SAFETY_BANNER = "⚠️ 子どもの安全"
+# How much of a POST /reports note the notice DM carries (the whole note is in the admin screen).
+NOTICE_NOTE_MAX = 1000
 # A notice's client_msg_id: uuid5(this, "<kind>/<id>/<admin>"), so a retry never posts twice.
 _NOTICE_NAMESPACE = uuid.UUID("6f1d0c3e-2b7a-4c55-9e10-8a3f5d2c1b03")
 
@@ -213,7 +221,8 @@ def report_notice(
     note: str | None,
     link: str,
 ) -> str:
-    lines = ["🚩 メッセージが報告されました", f"理由: {REASON_LABELS.get(reason, reason)}"]
+    lines = [CHILD_SAFETY_BANNER] if reason == "child_safety" else []
+    lines += ["🚩 メッセージが報告されました", f"理由: {REASON_LABELS.get(reason, reason)}"]
     if author is not None:
         lines.append(f"投稿者: {plain_name(author.display_name)} (@{author.username})")
     lines.append(f"場所: {plain_name(channel_label)}")
@@ -291,6 +300,7 @@ async def report_message(
 
 
 def _ack(report: MessageReport) -> ReportAck:
+    assert report.message_id is not None  # a message report
     return ReportAck(
         id=report.id,
         message_id=report.message_id,
@@ -299,24 +309,130 @@ def _ack(report: MessageReport) -> ReportAck:
     )
 
 
+def _person(user: User) -> str:
+    return f"{plain_name(user.display_name)} (@{user.username})"
+
+
+def general_report_notice(*, category: str, reporter: User, target: User | None, note: str) -> str:
+    """The moderation bot's DM about a POST /reports report (M119). Names and the note are plain
+    text (no mention, no emphasis); a long note is cut (the admin screen has all of it)."""
+    lines = [CHILD_SAFETY_BANNER] if category == "child_safety" else []
+    lines.append("💬 ご意見が届きました" if category == "feedback" else "🚩 報告が届きました")
+    lines.append(f"種類: {REASON_LABELS.get(category, category)}")
+    lines.append(f"報告者: {_person(reporter)}")
+    if target is not None:
+        lines.append(f"対象のユーザー: {_person(target)}")
+    shown = note if len(note) <= NOTICE_NOTE_MAX else note[:NOTICE_NOTE_MAX] + "…"
+    lines.append(f"内容: {plain_name(shown)}")
+    lines.append("「管理」→「報告」で内容を確認して対応してください。")
+    return "\n".join(lines)
+
+
+def _general_ack(report: MessageReport) -> GeneralReportAck:
+    return GeneralReportAck(
+        id=report.id,
+        category=report.reason,  # type: ignore[arg-type]
+        user_id=report.reported_user_id,
+        created_at=report.created_at,
+    )
+
+
+async def find_general_report(
+    db: AsyncSession, actor: User, client_report_id: uuid.UUID | None
+) -> GeneralReportAck | None:
+    """The report this person already sent with this client id (a retried request)."""
+    if client_report_id is None:
+        return None
+    row = await db.scalar(
+        select(MessageReport).where(
+            MessageReport.reporter_id == actor.id,
+            MessageReport.client_report_id == client_report_id,
+        )
+    )
+    return _general_ack(row) if row is not None else None
+
+
+async def submit_report(
+    db: AsyncSession, actor: User, data: GeneralReportCreate
+) -> tuple[GeneralReportAck, bool]:
+    """POST /reports (M119, docs/MODERATION.md §3.1): a report about a person or about anything
+    else, or feedback, from anyone signed in (guests too: a safety report must always be
+    possible). (ack, created): a retry with the same client_report_id returns the first."""
+    existing = await find_general_report(db, actor, data.client_report_id)
+    if existing is not None:
+        return existing, False
+    target: User | None = None
+    if data.user_id is not None:
+        if data.user_id == actor.id:
+            raise bad_request("cannot_report_self", "You cannot report yourself")
+        target = await _require_visible_user(db, actor, data.user_id)
+    report = MessageReport(
+        kind="user" if target is not None else "general",
+        reporter_id=actor.id,
+        reported_user_id=target.id if target is not None else None,
+        reason=data.category,
+        note=data.note,
+        client_report_id=data.client_report_id,
+        created_at=utcnow(),
+    )
+    db.add(report)
+    await db.flush()
+    await audit.record_in_tx(
+        db,
+        actor_id=actor.id,
+        action="moderation.report_submitted",
+        target_type="user" if target is not None else "message_report",
+        target_id=target.id if target is not None else report.id,
+        details={"report_id": str(report.id), "kind": report.kind, "category": data.category},
+    )
+    try:
+        await db.commit()
+    except Exception:  # the same client_report_id sent twice at once
+        await db.rollback()
+        again = await find_general_report(db, actor, data.client_report_id)
+        if again is None:
+            raise
+        return again, False
+    ack = _general_ack(report)
+    await notify_admins(
+        db,
+        actor_id=actor.id,
+        key=f"report/{ack.id}",
+        text=general_report_notice(
+            category=data.category, reporter=actor, target=target, note=data.note
+        ),
+        excluding=actor.id,
+    )
+    return ack, True
+
+
 async def _admin_out(db: AsyncSession, rows: list[MessageReport]) -> list[AdminReportOut]:
     out: list[AdminReportOut] = []
     for row in rows:
-        channel = await channels.find_channel(db, row.channel_id)
-        live = await messages.find_message(db, row.message_id)
+        channel = (
+            await channels.find_channel(db, row.channel_id) if row.channel_id is not None else None
+        )
+        deleted = (
+            row.message_id is not None and await messages.find_message(db, row.message_id) is None
+        )
+        if row.channel_id is None:
+            channel_type = "none"  # M119: a report without a message
+        else:
+            channel_type = channel.type if channel else "public"
         out.append(
             AdminReportOut(
                 id=row.id,
+                kind=row.kind,  # type: ignore[arg-type]
                 message_id=row.message_id,
                 channel_id=row.channel_id,
-                channel_type=channel.type if channel else "public",
+                channel_type=channel_type,
                 channel_name=channel.name if channel else None,
                 reporter_id=row.reporter_id,
                 reported_user_id=row.reported_user_id,
                 reason=row.reason,  # type: ignore[arg-type]
                 note=row.note,
                 body_snapshot=row.body_snapshot,
-                message_deleted=live is None,
+                message_deleted=deleted,
                 status=row.status,  # type: ignore[arg-type]
                 created_at=row.created_at,
                 resolved_at=row.resolved_at,

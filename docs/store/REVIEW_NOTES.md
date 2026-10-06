@@ -62,6 +62,8 @@ administrator enables them; they are disabled on the review server.
 
 - 審査サーバで AI 機能を切るか、メモの最後の文を消す。
 - 報告・ブロック・アカウント削除の場所は M104 の実装（iOS / Android）に合わせて確かめてから貼る。
+- 「問題を報告・ご意見」とプロフィールの「報告する」（M119）が iOS のリリースに入ったら、上の Report の行（と
+  `docs/store/appstore.json` の `review.notes`）にも足す。Google Play の手順（§2）には先に書いてある。
 
 ## 2. Google Play：アプリのアクセス権（App access）
 
@@ -78,7 +80,13 @@ administrator (no public sign-up).
 1. Open the app. In "サーバ URL" enter: <https://review.example.ac.jp>
 2. Enter the username and password above and tap "ログイン".
 3. The demo workspace has fictional channels, a thread, a poll and direct messages.
-Report a message: long-press it > "報告する". Block a user: profile > "ブロック".
+In-app reporting and feedback (Child Safety Standards), without leaving the app:
+- Settings (設定) > "問題を報告・ご意見" (Report a problem / feedback): choose a category
+  (for example "子どもの安全" = Child safety, or "ご意見" = Feedback), write the details and send.
+  No message or person needs to be selected.
+- A person's profile > "報告する" (Report): report that person.
+- Long-press a message > "報告する" (Report): report that message.
+Reports reach the server administrators at once. Block a user: profile > "ブロック".
 Delete account: 設定 > アカウント > アカウントを削除 (also explained at
 https://kano.ac/pages/apps/taylis-account-deletion/).
 No 2-step verification is required for this account.

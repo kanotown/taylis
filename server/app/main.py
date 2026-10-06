@@ -533,6 +533,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # docs/MODERATION.md: reports per user (10 in a burst, then 1 a minute) and block changes.
         "report": RateLimiter(1, burst=10),
         "moderation": RateLimiter(30),
+        # M119: POST /reports, 10 an hour per person.
+        "general_report": RateLimiter(10 / 60, burst=10),
     }
     # M48: Google sign-in when fully configured (docs/SSO.md §2), else None (the log says why).
     app.state.sso_google = build_google(settings)

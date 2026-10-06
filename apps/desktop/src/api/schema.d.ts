@@ -347,7 +347,8 @@ export interface paths {
         };
         /**
          * List Reports
-         * @description Reported messages, newest first (administrators).
+         * @description Reports, newest first (administrators): of messages, and since M119 of people and
+         *     general reports / feedback (`kind`; those have no message or channel).
          */
         get: operations["list_reports_api_v1_admin_reports_get"];
         put?: never;
@@ -3057,6 +3058,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Report
+         * @description Report a person (`user_id`) or anything else, or send feedback, to the administrators
+         *     (M119, docs/MODERATION.md §3.1). Anyone signed in, guests too. 201; a retry with the same
+         *     `client_report_id` returns the first report (200). 10 an hour per person (429).
+         */
+        post: operations["submit_report_api_v1_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reservation-pools": {
         parameters: {
             query?: never;
@@ -4412,11 +4435,8 @@ export interface components {
         AdminReportOut: {
             /** Body Snapshot */
             body_snapshot: string;
-            /**
-             * Channel Id
-             * Format: uuid
-             */
-            channel_id: string;
+            /** Channel Id */
+            channel_id: string | null;
             /** Channel Name */
             channel_name: string | null;
             /** Channel Type */
@@ -4431,25 +4451,25 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Kind
+             * @default message
+             * @enum {string}
+             */
+            kind: "message" | "user" | "general";
             /** Message Deleted */
             message_deleted: boolean;
-            /**
-             * Message Id
-             * Format: uuid
-             */
-            message_id: string;
+            /** Message Id */
+            message_id: string | null;
             /** Note */
             note: string | null;
             /**
              * Reason
              * @enum {string}
              */
-            reason: "spam" | "harassment" | "inappropriate" | "other";
-            /**
-             * Reported User Id
-             * Format: uuid
-             */
-            reported_user_id: string;
+            reason: "child_safety" | "harassment" | "inappropriate" | "spam" | "feedback" | "other";
+            /** Reported User Id */
+            reported_user_id: string | null;
             /**
              * Reporter Id
              * Format: uuid
@@ -6532,6 +6552,47 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /**
+         * GeneralReportAck
+         * @description What the reporter gets back: their own report only.
+         */
+        GeneralReportAck: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "child_safety" | "harassment" | "inappropriate" | "spam" | "feedback" | "other";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** User Id */
+            user_id: string | null;
+        };
+        /**
+         * GeneralReportCreate
+         * @description POST /reports (M119, docs/MODERATION.md §3.1): a report about a person (`user_id`) or
+         *     about anything else, or feedback. The note is required.
+         */
+        GeneralReportCreate: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "child_safety" | "harassment" | "inappropriate" | "spam" | "feedback" | "other";
+            /** Client Report Id */
+            client_report_id?: string | null;
+            /** Note */
+            note: string;
+            /** User Id */
+            user_id?: string | null;
+        };
         /** GroupCreate */
         GroupCreate: {
             /** Description */
@@ -7897,7 +7958,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "spam" | "harassment" | "inappropriate" | "other";
+            reason: "spam" | "harassment" | "inappropriate" | "child_safety" | "other";
         };
         /** ReportCreate */
         ReportCreate: {
@@ -7907,7 +7968,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "spam" | "harassment" | "inappropriate" | "other";
+            reason: "spam" | "harassment" | "inappropriate" | "child_safety" | "other";
         };
         /** ReservationOut */
         ReservationOut: {
@@ -15931,6 +15992,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_report_api_v1_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeneralReportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneralReportAck"];
+                };
             };
             /** @description Validation Error */
             422: {
