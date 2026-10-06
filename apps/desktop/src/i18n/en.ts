@@ -2010,6 +2010,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "ai.summarizeDays": "{days, plural, one {Summarize the last day} other {Summarize the last # days}}",
   "ai.thisConversation": "This conversation",
   "ai.onlyYou": "Only you can see it",
+  "ai.thinking": "Thinking…",
   "ai.preparing": "Preparing the summary…",
   "ai.writing": "Writing the summary…",
   "ai.failed": "Couldn't summarize",
