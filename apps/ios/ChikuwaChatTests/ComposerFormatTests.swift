@@ -55,6 +55,62 @@ final class ComposerFormatTests: XCTestCase {
         XCTAssertNil(ComposerSelection.offsets(bridgedPast..<bridgedPast, in: "abc"))
     }
 
+    /// TestFlight build 98 (iOS 27, 2026-10-06): typing text, an emoji and a space crashed in `samePosition(in:)` itself.
+    /// The field reported a selection made in its own (bridged, UTF-16) copy of the text, one unit past the end of the
+    /// draft it was paired with (stored as UTF-8): converting the index trapped. An ASCII draft never did.
+    func testAFieldIndexPastTheEndOfAJapaneseOrEmojiDraftGivesNilInsteadOfCrashing() {
+        for typed in ["了解です👍", "abc👍", "家族👨‍👩‍👧", "了解"] {
+            let field = NSString(string: typed + " ") as String  // the field's text after the space
+            let draft = String(decoding: Array(typed.utf8), as: UTF8.self)  // the draft, a step behind
+            let cursor = field.endIndex
+            XCTAssertFalse(ComposerSelection.fits(cursor, in: draft), typed)
+            XCTAssertNil(ComposerSelection.characterOffset(cursor, in: draft), typed)
+            XCTAssertNil(ComposerSelection.offsets(cursor..<cursor, in: draft), typed)
+            XCTAssertNil(ComposerSelection.offsets(field.startIndex..<cursor, in: draft), typed)
+            // Paired with its own text, the same index is the end.
+            let caught = String(decoding: Array((typed + " ").utf8), as: UTF8.self)
+            XCTAssertEqual(ComposerSelection.offsets(cursor..<cursor, in: caught), caught.count..<caught.count, typed)
+            XCTAssertEqual(ComposerSelection.offsets(cursor..<cursor, in: field), field.count..<field.count, typed)
+        }
+    }
+
+    @available(iOS 26.0, *)
+    func testAStoredFieldSelectionPastTheEndOfTheDraftIsDropped() {
+        let field = NSString(string: "了解です👍 ") as String
+        let draft = String(decoding: Array("了解です👍".utf8), as: UTF8.self)
+        let box = ComposerSelection()
+        box.raw = TextSelection(insertionPoint: field.endIndex)
+        box.text = draft  // the setter ran before the draft caught up
+        XCTAssertNil(box.selection(for: draft))
+        box.raw = TextSelection(range: field.startIndex..<field.endIndex)
+        XCTAssertNil(box.selection(for: draft))
+    }
+
+    /// `fits` reads `String.Index`'s bits: an index counted in UTF-8 (a native text) is checked in UTF-8, one counted in
+    /// UTF-16 (a bridged text) in UTF-16, so a valid end of a Japanese text is not refused.
+    func testFitsReadsTheIndexUnit() {
+        let native = String(decoding: Array("了解です👍".utf8), as: UTF8.self)  // 16 UTF-8 bytes, 6 UTF-16 units
+        XCTAssertTrue(ComposerSelection.fits(native.endIndex, in: native))
+        XCTAssertEqual(ComposerSelection.characterOffset(native.endIndex, in: native), 5)
+        let bridged = NSString(string: "了解です👍") as String
+        XCTAssertTrue(ComposerSelection.fits(bridged.endIndex, in: native))
+        XCTAssertEqual(ComposerSelection.characterOffset(bridged.endIndex, in: native), 5)
+        XCTAssertFalse(ComposerSelection.fits(native.endIndex, in: "了解"))  // 16 bytes in a 6-byte text
+        XCTAssertNil(ComposerSelection.characterOffset(native.endIndex, in: "了解"))
+        XCTAssertFalse(ComposerSelection.fits(native.endIndex, in: "abc"))
+    }
+
+    /// A position inside a character (between the scalars of a ZWJ family, or in the middle of a surrogate pair) counts as
+    /// the start of that character, never as a crash.
+    func testAnIndexInsideAnEmojiRoundsDown() {
+        let text = "a👨‍👩‍👧b"
+        let inFamily = text.unicodeScalars.index(text.unicodeScalars.startIndex, offsetBy: 2)  // after 👨
+        XCTAssertEqual(ComposerSelection.characterOffset(inFamily, in: text), 1)
+        let bridged = NSString(string: "a👍b") as String
+        let midSurrogate = String.Index(utf16Offset: 2, in: bridged)
+        XCTAssertEqual(ComposerSelection.characterOffset(midSurrogate, in: "a👍b") ?? 1, 1)
+    }
+
     func testSelectionIndicesInTheirOwnTextGiveCharacterOffsets() {
         let text = "abc あいう😀x"
         func at(_ k: Int) -> String.Index { text.index(text.startIndex, offsetBy: k) }

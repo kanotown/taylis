@@ -2107,15 +2107,46 @@ final class ComposerSelection {
     }
 
     /// `range` as character offsets in `text`, or nil when an index is not a position in it (made in another text, past
-    /// its end). Never traps: `samePosition(in:)` answers nil where `utf16Offset(in:)` stops the app.
+    /// its end). Never traps (`characterOffset`).
     static func offsets(_ range: Range<String.Index>, in text: String) -> Range<Int>? {
-        func offset(_ index: String.Index) -> Int? {
-            guard let position = index.samePosition(in: text.utf16) else { return nil }
-            let utf16 = text.utf16.distance(from: text.utf16.startIndex, to: position)
-            return text[..<String.Index(utf16Offset: utf16, in: text)].count
-        }
-        guard let lower = offset(range.lowerBound), let upper = offset(range.upperBound) else { return nil }
+        guard let lower = characterOffset(range.lowerBound, in: text),
+              let upper = characterOffset(range.upperBound, in: text) else { return nil }
         return min(lower, upper)..<max(lower, upper)
+    }
+
+    /// `index` as a character offset in `text`, or nil when it is not a position in it. Never traps.
+    ///
+    /// `samePosition(in:)` alone was not enough: TestFlight build 98 (iOS 27, 2026-10-06) crashed inside it ("String
+    /// index is out of bounds") as text, an emoji and a space were typed. The field's indices are made in its own copy of
+    /// the text (a bridged NSString, offsets counted in UTF-16), and one past the end of a text stored as UTF-8 traps
+    /// while it is converted, before anything can answer nil. An ASCII text needs no conversion, so only texts with
+    /// Japanese or emoji crashed. `fits` checks the offset in the index's own unit first.
+    static func characterOffset(_ index: String.Index, in text: String) -> Int? {
+        guard fits(index, in: text), let position = index.samePosition(in: text.utf16) else { return nil }
+        // The characters that end at or before it: inside one (a ZWJ sequence, a flag) counts as its start.
+        let units = text.utf16.distance(from: text.utf16.startIndex, to: position)
+        var count = 0, end = 0
+        for character in text {
+            end += character.utf16.count
+            if end > units { break }
+            count += 1
+        }
+        return count
+    }
+
+    /// Whether `index`'s offset is within `text` in the unit the index counts in, so converting it to `text`'s encoding
+    /// cannot run past the end. `String.Index` is a frozen struct of one `UInt64` (the standard library's ABI): the
+    /// offset in bits 63…16, bit 2 "counted in UTF-8", bit 3 "counted in UTF-16"; with neither or both (ASCII), the
+    /// stricter bound of the two. ComposerFormatTests pins the layout down.
+    static func fits(_ index: String.Index, in text: String) -> Bool {
+        guard MemoryLayout<String.Index>.size == MemoryLayout<UInt64>.size else { return false }
+        let bits = unsafeBitCast(index, to: UInt64.self)
+        let offset = Int(truncatingIfNeeded: bits >> 16)
+        switch (bits & 0x4 != 0, bits & 0x8 != 0) {
+        case (true, false): return offset <= text.utf8.count
+        case (false, true): return offset <= text.utf16.count
+        default: return offset <= min(text.utf8.count, text.utf16.count)
+        }
     }
 }
 
