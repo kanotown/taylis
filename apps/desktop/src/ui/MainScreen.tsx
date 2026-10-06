@@ -45,7 +45,7 @@ import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
 import { WindowControls } from "./WindowControls";
 import { WorkspaceMenu } from "./WorkspaceRail";
 import { startSummary, SummaryDialog, SummaryMenuItems, summaryAvailable } from "./ai";
-import { customTitleBar, isWeb, TRAFFIC_LIGHTS_INSET } from "../platform/env";
+import { customTitleBar, isWeb, TITLE_ROW_HEIGHT, TITLE_ROW_INSET_AFTER_RAIL, TRAFFIC_LIGHTS_INSET } from "../platform/env";
 import { useReservesTrafficLights } from "../platform/windowState";
 import { EMPTY_SEARCH, pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
 import { HomeView } from "./HomeView";
@@ -1680,11 +1680,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
       <div
         data-tauri-drag-region
         className="flex h-10 min-w-0 items-center bg-sidebar px-2"
-        style={trafficLights && !controller.showsRail ? { paddingLeft: `calc(${TRAFFIC_LIGHTS_INSET}px / var(--ui-zoom, 1))` } : undefined}
+        style={trafficLights ? { height: TITLE_ROW_HEIGHT, paddingLeft: controller.showsRail ? TITLE_ROW_INSET_AFTER_RAIL : `calc(${TRAFFIC_LIGHTS_INSET}px / var(--ui-zoom, 1))` } : undefined}
       >
         <WorkspaceMenu controller={controller} />
       </div>
-      <div data-tauri-drag-region className={cn("col-span-2 flex h-10 items-center gap-2 border-b border-sidebar-edge bg-sidebar pl-3", windowButtons ? "pr-0" : "pr-3")}>
+      <div data-tauri-drag-region className={cn("col-span-2 flex h-10 items-center gap-2 border-b border-sidebar-edge bg-sidebar pl-3", windowButtons ? "pr-0" : "pr-3")} style={trafficLights ? { height: TITLE_ROW_HEIGHT } : undefined}>
         {/* M67: back / forward between places, beside the search box as in Slack. */}
         <nav aria-label={t("main.history")} className="flex shrink-0 items-center gap-0.5">
           <IconButton tone="sidebar" label={historyLabels.back} disabled={!canGoBack} onClick={() => goHistory(-1)} className="h-7 w-7 disabled:opacity-40">
