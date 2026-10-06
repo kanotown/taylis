@@ -57,7 +57,7 @@ struct ChannelListView: View {
 
     private func input(editing: String?) -> HomeSections.Input {
         let store = controller.store
-        return HomeSections.Input(channels: channels, meId: meId, favorites: store.favorites, sections: store.sidebarSections,
+        return HomeSections.Input(channels: channels, meId: meId, favorites: store.favorites, dmPins: store.dmPins, sections: store.sidebarSections,
                                   groupUnread: groupUnread, folded: folded, defaults: store.sidebarDefaults,
                                   title: { channelTitle($0, store: store) }, editing: editing)
     }
@@ -396,6 +396,7 @@ struct ChannelListView: View {
     @ViewBuilder
     private func rowMenu(_ channel: ChannelState) -> some View {
         let current = controller.store.sectionOf(channel.id)
+        DmPinButton(controller: controller, channel: channel)  // M118
         Button(starred(channel) ? "お気に入りから外す" : "お気に入りに追加", systemImage: starred(channel) ? "star.slash" : "star") {
             Task { await controller.toggleFavorite(channel.id) }
         }
@@ -574,6 +575,7 @@ struct ChannelListView: View {
                     StatusEmojiView(user: store.statusUser(statusId), controller: controller)
                 }
                 if muted { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary).accessibilityLabel("ミュート中") }
+                if store.isDmPinned(channel.id) { DmPinMark() }  // M118
                 if unread && badge > 0 {
                     Text("\(badge)")
                         .font(.caption2).bold().foregroundStyle(.white)

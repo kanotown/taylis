@@ -573,6 +573,7 @@ final class SyncEngine {
         store.replacePresence(bootstrap.presence ?? [])
         store.replaceBookmarks(bootstrap.bookmarks ?? [])
         store.replaceFavorites(bootstrap.favorites ?? [])
+        store.replaceDmPins(bootstrap.dmPins)  // M118
         store.replaceBlocked(bootstrap.blockedUserIds ?? [])
         store.replaceCustomEmoji(bootstrap.customEmoji ?? [])
         store.replaceEmojiPacks(bootstrap.emojiPacks ?? [])
@@ -770,6 +771,10 @@ final class SyncEngine {
         case "favorite.updated":
             if let id = frame.data["channel_id"]?.stringValue, case .bool(let on)? = frame.data["favorite"] {
                 store.setFavorite(id, on: on)
+            }
+        case "dm_pin.updated":  // M118: a pin goes last, an unpin drops it (DATA_MODEL.md conversation_pins)
+            if let id = frame.data["channel_id"]?.stringValue, case .bool(let on)? = frame.data["pinned"] {
+                store.setDmPin(id, on: on)
             }
         case "thread.updated":
             // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are

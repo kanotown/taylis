@@ -496,6 +496,9 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     }
 
     func favoriteChannel(id: String) async throws -> FavoriteStateOut { try await request("PUT", "/api/v1/channels/\(id)/favorite") }
+    /// M118: a DM or group DM to the top of the DM lists (one already pinned keeps its place).
+    func pinDm(id: String) async throws -> DmPinStateOut { try await request("PUT", "/api/v1/channels/\(id)/dm-pin") }
+    func unpinDm(id: String) async throws -> DmPinStateOut { try await request("DELETE", "/api/v1/channels/\(id)/dm-pin") }
     func unfavoriteChannel(id: String) async throws -> FavoriteStateOut { try await request("DELETE", "/api/v1/channels/\(id)/favorite") }
     func readAll() async throws -> [ChannelReadStateOut] { try await request("POST", "/api/v1/channels/read-all", body: .object([:])) }
     /// L8: `scope` "times" reads only the Times feed's channels (member, not muted) to their end; "all" is readAll().

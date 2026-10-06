@@ -40,13 +40,15 @@ enum TabBadges {
 
 /// M34 (MOBILE_UI.md §6.3): the DM tab's list and its time labels.
 enum DMList {
-    /// My DM with myself first, then the newest conversation first.
-    static func ordered(_ channels: [ChannelState], meId: String?) -> [ChannelState] {
-        channels.filter { $0.isMember && $0.channel.isDm }.sorted { a, b in
+    /// M118: the pinned ones first, oldest pin first (`pins`, bootstrap's `dm_pins`); then my DM with myself (unless
+    /// pinned), then the newest conversation first.
+    static func ordered(_ channels: [ChannelState], meId: String?, pins: [String] = []) -> [ChannelState] {
+        let sorted = channels.filter { $0.isMember && $0.channel.isDm }.sorted { a, b in
             let selfA = isNotesToSelf(a, meId: meId), selfB = isNotesToSelf(b, meId: meId)
             if selfA != selfB { return selfA }
             return SidebarOrder.newestFirst(a, b)
         }
+        return SidebarOrder.pinnedFirst(sorted, pins: pins)
     }
 
     static func isNotesToSelf(_ channel: ChannelState, meId: String?) -> Bool {
@@ -129,7 +131,7 @@ struct DMListView: View {
     var body: some View {
         let meId = store.me?.id
         let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
-        let all = DMList.ordered(Array(store.channels.values), meId: meId)
+        let all = DMList.ordered(Array(store.channels.values), meId: meId, pins: store.dmPins)
         let rows = all.filter { query.isEmpty || channelTitle($0, store: store).lowercased().contains(query) }
         // The DM with only me is always first, under my own name (as in Slack), made on its first open.
         let myName = store.me?.displayName ?? ""
@@ -151,6 +153,17 @@ struct DMListView: View {
                 Button { onOpen(channel.id) } label: { row(channel, meId: meId) }
                     .buttonStyle(.plain)
                     .listRowInsets(Self.rowInsets)
+                    // M118: 「上に固定」/「固定を外す」 (MOBILE_UI.md §6.3), from a long press or a swipe.
+                    .contextMenu { DmPinButton(controller: controller, channel: channel) }
+                    .swipeActions(edge: .leading) {
+                        if store.dmPinsSupported {
+                            let pinned = store.isDmPinned(channel.id)
+                            Button(pinned ? "固定を外す" : "上に固定", systemImage: pinned ? "pin.slash" : "pin") {
+                                Task { await controller.setDmPinned(channel.id, on: !pinned) }
+                            }
+                            .tint(.orange)
+                        }
+                    }
             }
         }
         .listStyle(.plain)
@@ -216,6 +229,7 @@ struct DMListView: View {
                     Text(channelTitle(channel, store: store)).fontWeight(unread ? .semibold : .regular).lineLimit(1)
                     if let statusId { StatusEmojiView(user: store.statusUser(statusId), controller: controller) }
                     if channel.isMuted { Image(systemName: "bell.slash").font(.caption).foregroundStyle(.secondary).accessibilityLabel("ミュート中") }
+                    if store.isDmPinned(channel.id) { DmPinMark() }  // M118
                     Spacer(minLength: 4)
                     if let time = DMList.timeLabel(channel.channel.lastMessageAt) {
                         Text(time).font(.caption).foregroundStyle(unread ? .primary : .secondary)
@@ -326,6 +340,28 @@ private struct TabBarProbe: UIViewControllerRepresentable {
             // Back to the tab's first screen (not a thread or details pushed over this page, not another tab).
             guard let navigation = navigationController, navigation.viewControllers.count <= 1 else { return }
             tabBarController?.setTabBarHidden(false, animated: animated)
+        }
+    }
+}
+
+/// M118: the 📌 on a pinned DM's row (the DM tab, the home's and the sidebar's sections).
+struct DmPinMark: View {
+    var body: some View {
+        Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.orange).accessibilityLabel("上に固定中")
+    }
+}
+
+/// M118: 「上に固定」/「固定を外す」 in a DM's menu; nothing for a channel or with a server before M118 (no `dm_pins`).
+struct DmPinButton: View {
+    @Bindable var controller: AppController
+    let channel: ChannelState
+
+    var body: some View {
+        if channel.channel.isDm && channel.isMember && controller.store.dmPinsSupported {
+            let pinned = controller.store.isDmPinned(channel.id)
+            Button(pinned ? "固定を外す" : "上に固定", systemImage: pinned ? "pin.slash" : "pin") {
+                Task { await controller.setDmPinned(channel.id, on: !pinned) }
+            }
         }
     }
 }
