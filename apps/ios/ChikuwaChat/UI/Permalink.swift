@@ -28,6 +28,14 @@ enum Permalink {
     static func internalLink(messageId: String) -> URL? { URL(string: "\(scheme)://\(messageId)") }
 }
 
+/// A person a mention names (`<@id>`), as an in-app link in a body's attributed text: the row's `openURL` handler shows
+/// their profile (user request, 2026-10-06).
+enum UserLink {
+    static let scheme = "chikuwa-user"
+
+    static func internalLink(userId: String) -> URL? { URL(string: "\(scheme)://\(userId)") }
+}
+
 /// M45 (CANVAS.md §4.13): canvas links, `<server>/c/<canvas_id>`, recognised only for the server we are logged into.
 enum CanvasLink {
     static let scheme = "chikuwa-canvas"

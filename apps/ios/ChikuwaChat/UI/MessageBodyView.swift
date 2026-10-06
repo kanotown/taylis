@@ -546,6 +546,9 @@ struct MessageBodyView: View {
     var citations = false
     /// M101 (docs/EMOJI.md §7): an emoji-only body is shown large (the timeline and threads only, not previews).
     var jumbo = false
+    /// A mention of someone known is a link (UserLink) the row turns into their profile; where nothing handles it
+    /// (previews, search results) mentions stay plain text.
+    var userLinks = false
 
     /// The animated custom emoji in this text, by id.
     private var animatedHere: [String: EmojiAnimation] {
@@ -832,7 +835,13 @@ struct MessageBodyView: View {
             var attributed = AttributedString(label ?? url)
             attributed.link = URL(string: url)
             return Text(attributed)
-        case .mention(let userId): return Text("@" + (users[userId]?.displayName ?? "unknown")).foregroundStyle(Color.accentColor)
+        case .mention(let userId):
+            if userLinks, let user = users[userId], let link = UserLink.internalLink(userId: userId) {
+                var attributed = AttributedString("@" + user.displayName)
+                attributed.link = link
+                return Text(attributed)  // links take the tint, the accent colour as before
+            }
+            return Text("@" + (users[userId]?.displayName ?? "unknown")).foregroundStyle(Color.accentColor)
         case .mentionGroup(let groupId): return Text("@" + (groups[groupId]?.name ?? tr("グループ"))).foregroundStyle(Color.accentColor)
         case .mentionAll(let target): return Text("@" + target).foregroundStyle(Color.accentColor)
         case .math(let tex, let display): return MathRender.inlineText(tex, display: display)
