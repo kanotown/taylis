@@ -1144,8 +1144,11 @@ class AppController(private val app: Application) {
                     senderId = message.senderId, senderName = sender, senderAvatar = store.users[message.senderId]?.avatarUpdatedAt,
                     isGroup = group, conversationTitle = if (group) channelTitle(channel, store) else null,
                 )
+                // M117 (docs/CALLS.md §6): a call says who started it, as the push does.
+                val text = jp.chikuwachat.android.ui.Calls.notificationLine(message.call, message.deleted, store.users)
+                    ?: messageLine(message.body, message.attachments, store).ifEmpty { L10n.str(R.string.common_new_message) }
                 notify(
-                    workspace(), channel.id, title, messageLine(message.body, message.attachments, store).ifEmpty { L10n.str(R.string.common_new_message) },
+                    workspace(), channel.id, title, text,
                     messageId = message.id, parentId = message.parentId, conversation = note,
                 )
             }
@@ -2045,6 +2048,34 @@ class AppController(private val app: Application) {
         val clipboard = app.getSystemService(ClipboardManager::class.java) ?: return
         clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", Mentions.decode(CanvasMarkers.strip(stored), store.users, store.groups)))
         notice = L10n.str(R.string.app_controller_text_copied_2)
+    }
+
+    // --- calls (M117, docs/CALLS.md §7) ---------------------------------------------------------
+
+    private val callKeys = jp.chikuwachat.android.ui.CallKeys()
+
+    /**
+     * The 📞 after its question: posts a new room (a retry after an unknown outcome sends the same key, [CallKeys]),
+     * shows the message like a send from here and opens the room outside the app. 409 calls_disabled: the workspace
+     * turned calls off since the settings were read, so the 📞 goes away.
+     */
+    suspend fun startCall(channelId: String) {
+        val api = api ?: return
+        val key = callKeys.take(channelId)
+        val result = attempt { api.startCall(channelId, key) }
+        callKeys.settle(channelId, result.exceptionOrNull())
+        result.onSuccess { call ->
+            engine?.postedFromHere(call.message) ?: store.upsertMessage(call.message)
+            openCall(call.url)
+        }.onFailure { e ->
+            if (e is ApiException.Api && e.code == "calls_disabled") store.setWorkspaceSettings(store.workspaceSettings.copy(callsEnabled = false))
+            report(e)
+        }
+    }
+
+    /** 「参加する」 and the 📞's room: outside the app (Calls.open). */
+    fun openCall(url: String) {
+        if (!jp.chikuwachat.android.ui.Calls.open(app, url)) error = L10n.str(R.string.calls_could_not_open)
     }
 
     /** M12a: a starred channel; the flag moves at once, favorite.updated confirms on every device. */

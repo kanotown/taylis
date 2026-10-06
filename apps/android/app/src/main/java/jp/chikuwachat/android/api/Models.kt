@@ -523,6 +523,11 @@ data class MessageOut(
      * message, a deleted one, and from a server before M94.
      */
     val workflow: MessageWorkflowOut? = null,
+    /**
+     * M117 (docs/CALLS.md §5): the call this message started (a card with 「参加する」 instead of the body); null for any
+     * other message, a deleted one, and from a server before M117.
+     */
+    val call: MessageCallOut? = null,
 ) {
     /** Mentions me by name, group or @channel, or by one of my notification keywords (M12g). */
     fun mentions(userId: String, keywords: List<String> = emptyList()): Boolean =
@@ -540,6 +545,14 @@ fun hitsKeyword(body: String, keywords: List<String>): Boolean {
     val text = body.lowercase()
     return keywords.any { it.isNotEmpty() && text.contains(it.lowercase()) }
 }
+
+/** M117 (docs/CALLS.md §5): the meeting room's link and who started the call (the sender). */
+@Serializable
+data class MessageCallOut(val url: String, val startedBy: String)
+
+/** POST /channels/{id}/calls (M117): the room to open, and the message that says so (201, or 200 for a retry). */
+@Serializable
+data class CallOut(val url: String, val message: MessageOut)
 
 /** The parent's thread fields after a reply changed them (SYNC_PROTOCOL.md §6). */
 @Serializable
@@ -621,6 +634,12 @@ data class WorkspaceSettingsOut(
     val previewBeforeJoin: Boolean = true,
     /** M93 (WORKSPACES.md §3.4): `icon_version` as it came; read it through [iconVersion] / [knowsIcon]. */
     @SerialName("icon_version") val iconVersionJson: JsonElement = ICON_VERSION_ABSENT,
+    /**
+     * M117 (docs/CALLS.md §3): the 📞 is offered; false (as from a server before M117, which does not send it) hides it.
+     * `meetingBaseUrl` is for display only: the server makes the rooms.
+     */
+    val callsEnabled: Boolean = false,
+    val meetingBaseUrl: String? = null,
 ) {
     /** M93: the workspace icon's version; null = none (the letter tile). */
     val iconVersion: String? get() = iconVersionOf(iconVersionJson)
@@ -991,6 +1010,12 @@ data class ServerInfoOut(
     val apiVersion: String = "",
     /** M93 (WORKSPACES.md §3.4): `icon_version` as it came; read it through [iconVersion] / [knowsIcon]. */
     @SerialName("icon_version") val iconVersionJson: JsonElement = ICON_VERSION_ABSENT,
+    /**
+     * M117 (docs/CALLS.md §3): the 📞 is offered; false (as from a server before M117, which does not send it) hides it.
+     * `meetingBaseUrl` is for display only: the server makes the rooms.
+     */
+    val callsEnabled: Boolean = false,
+    val meetingBaseUrl: String? = null,
 ) {
     /** M93: the workspace icon's version (GET /server/icon?v=…); null = none. */
     val iconVersion: String? get() = iconVersionOf(iconVersionJson)

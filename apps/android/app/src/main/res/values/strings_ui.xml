@@ -1701,6 +1701,13 @@
     <string name="notification_me">自分</string>
     <string name="you_language">言語</string>
     <string name="you_language_hint">ほかの端末とサーバーからの通知も、この言語になります</string>
+    <string name="calls_start_call">通話を始める</string>
+    <string name="calls_confirm_title">通話を始めますか？</string>
+    <string name="calls_confirm_text">メンバーに通知が届き、会議のリンクが投稿されます。</string>
+    <string name="calls_start">通話を始める</string>
+    <string name="calls_join">参加する</string>
+    <string name="calls_started_by">📞 %1$s さんが通話を始めました</string>
+    <string name="calls_could_not_open">通話のリンクを開けるアプリがありません</string>
     <plurals name="composer_message_max_length">
         <item quantity="other">本文は%1$,d文字までです</item>
     </plurals>
