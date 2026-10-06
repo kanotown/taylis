@@ -13,6 +13,7 @@ import { cn } from "./primitives";
 import { type EmojiOnly, emojiOnly, JUMBO } from "./emojiOnly";
 import { t } from "../i18n";
 import { MathView } from "./MathView";
+import { MentionCard } from "./UserPopover";
 
 const NO_CUSTOM: ReadonlyMap<string, CustomEmojiOut> = new Map();
 
@@ -283,12 +284,22 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
           </a>
         );
       }
-      case "mention":
+      case "mention": {
+        const user = users.get(token.userId);
+        // 2026-10-06: someone this device knows shows their card (hover or click); an unknown id stays plain.
+        if (user && controller) {
+          return (
+            <MentionCard key={i} controller={controller} userId={token.userId}>
+              @{user.display_name}
+            </MentionCard>
+          );
+        }
         return (
           <span key={i} className="mention">
-            @{users.get(token.userId)?.display_name ?? "unknown"}
+            @{user?.display_name ?? "unknown"}
           </span>
         );
+      }
       case "mention_group":
         return (
           <span key={i} className="mention" title={t("composer.group")}>
