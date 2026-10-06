@@ -98,6 +98,18 @@ describe("notification clicks", () => {
     expect(controller.activeServer).toBe(A);
   });
 
+  it("M121: a Docs page mention / share reads like the server's push; a click opens the page in its workspace", async () => {
+    const { controller, deps } = twoWorkspaces();
+    deps.onWikiNotice!({ kind: "shared", data: { page_id: "01A11249-B1F2-77AA-961D-DD4C4060F38A", title: "研究室マニュアル", level: "view", by_user_id: "u-x" } });
+    deps.onWikiNotice!({ kind: "mentioned", data: { page_id: "p2", rev_id: "r", title: "", by_user_id: "u-x" } });
+    await vi.waitFor(() => expect(shown).toHaveLength(2));
+    expect(shown[0]!.title).toContain("ドキュメント");
+    expect(shown.map((n) => n.body)).toEqual(["メンバー が「研究室マニュアル」をあなたと共有しました", "メンバー が「無題」であなたをメンションしました"]);
+    shown[0]!.onClick!();
+    await vi.waitFor(() => expect(controller.openPageRequest).toEqual({ pageId: "01a11249-b1f2-77aa-961d-dd4c4060f38a" }));
+    expect(controller.activeServer).toBe(B);
+  });
+
   it("a task, canvas or reservation notice of another workspace switches too (its request lands on that screen)", async () => {
     const { controller, deps } = twoWorkspaces();
     deps.onReservationNotice!({ text: "予約の順番が来ました" } as Parameters<NonNullable<EngineDeps["onReservationNotice"]>>[0]);
