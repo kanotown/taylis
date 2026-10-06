@@ -61,4 +61,32 @@ final class MentionsTests: XCTestCase {
         XCTAssertEqual(rows.first?.label, "グループ · 2 人 · デザイン担当")
         XCTAssertEqual(Mentions.candidates("", users: users, groups: [design]).map(\.username), ["alice", "bob.k", "design", "channel", "here"])
     }
+
+    /// AI.md §2.1 (2026-10-06): people and AI bots only; once /ai/status was read, only the AI bots it lists.
+    func testSuggestionsLeaveOutBotsButAi() {
+        func bot(_ id: String, _ username: String, kind: String?, gone: Bool = false) -> UserPublic {
+            var user = UserPublic(id: id, username: username, displayName: username, role: "bot", deactivatedAt: gone ? "2026-10-01T00:00:00Z" : nil,
+                                  createdAt: "", updatedAt: "")
+            user.botKind = kind
+            return user
+        }
+        let ai = bot("u-ai", "ai-chikuwa", kind: "ai")
+        let stopped = bot("u-ai2", "ai-old", kind: "ai")
+        let feed = bot("u-feed", "feed-news", kind: "feed")
+        let hook = bot("u-hook", "hook", kind: nil)
+        let reservation = bot("u-res", "reserve", kind: "reservation")
+        let gone = bot("u-ai3", "ai-gone", kind: "ai", gone: true)
+        let left = UserPublic(id: "u-left", username: "carol", displayName: "Carol", role: "member", deactivatedAt: "2026-10-01T00:00:00Z", createdAt: "", updatedAt: "")
+        let everyone = users + [ai, stopped, feed, hook, reservation, gone, left]
+        let names = { (ids: Set<String>?) in Mentions.candidates("", users: everyone, aiBotIds: ids, limit: 20).map(\.username) }
+        // Before /ai/status: bot_kind decides.
+        XCTAssertEqual(names(nil), ["ai-chikuwa", "ai-old", "alice", "bob.k", "channel", "here"])
+        // Read: only the agents it lists (a stopped one drops out), marked as AI.
+        XCTAssertEqual(names(["u-ai"]), ["ai-chikuwa", "alice", "bob.k", "channel", "here"])
+        XCTAssertEqual(Mentions.candidates("ai", users: everyone, aiBotIds: ["u-ai"]).map(\.kind), ["ai"])
+        // A server without AI (404): no bots at all.
+        XCTAssertEqual(names([]), ["alice", "bob.k", "channel", "here"])
+        // A server before bot_kind "ai": the agents still come once the status is read.
+        XCTAssertEqual(Mentions.candidates("hook", users: everyone, aiBotIds: ["u-hook"]).map(\.kind), ["ai"])
+    }
 }

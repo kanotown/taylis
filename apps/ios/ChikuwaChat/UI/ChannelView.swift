@@ -1518,7 +1518,7 @@ struct ComposerView: View {
     private var candidates: [Mentions.Candidate] {
         guard let query = Mentions.query(text) else { return [] }
         return Mentions.candidates(query, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [],
-                                   aiBotIds: controller?.aiHub?.botUserIds ?? [])
+                                   aiBotIds: controller?.aiHub?.knownBotUserIds)
     }
     /// `:tada` completes to an emoji (M11f) when no mention is being typed.
     private var emojiCandidates: [EmojiEntry] {

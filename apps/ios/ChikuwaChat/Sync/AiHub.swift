@@ -81,6 +81,8 @@ final class AiHub {
     var summaryAvailable: Bool { status?.summaryAvailable == true }
     var agents: [AiAgentPublic] { status?.agents ?? [] }
     var botUserIds: Set<String> { Set(agents.map(\.botUserId)) }
+    /// The AI bots once the server answered (a 404 too: none), nil before: the @-mention suggestions' filter (AI.md §2.1).
+    var knownBotUserIds: Set<String>? { status == nil ? nil : botUserIds }
 
     func isAiBot(_ userId: String) -> Bool { agents.contains { $0.botUserId == userId } }
 

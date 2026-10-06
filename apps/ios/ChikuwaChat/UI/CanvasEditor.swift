@@ -486,6 +486,7 @@ final class CanvasEditorModel {
             if !candidates.isEmpty { candidates = [] }
             return
         }
+        // The people and the AI bots by their `bot_kind` (AI.md §2.1; the model holds no AI status).
         let found = Mentions.candidates(query, users: store.users.values, groups: Array(store.groups.values), limit: 8).filter { $0.kind != "all" }
         if found != candidates { candidates = found }
     }
