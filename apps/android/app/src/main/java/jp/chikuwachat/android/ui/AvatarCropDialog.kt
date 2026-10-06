@@ -3,7 +3,11 @@ package jp.chikuwachat.android.ui
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +32,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
@@ -36,6 +41,7 @@ import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
@@ -81,10 +87,27 @@ fun AvatarCropDialog(bitmap: Bitmap, onCancel: () -> Unit, onDone: (ByteArray) -
                             crop = crop.clamped(width, height, frame)
                         }
                         .pointerInput(bitmap) {
-                            detectTransformGestures { centroid, pan, zoom, _ ->
-                                val px = centroid.x - stage.width / 2f
-                                val py = centroid.y - stage.height / 2f
-                                crop = crop.zoomed(crop.zoom * zoom, px, py, width, height, frame).moved(pan.x, pan.y, width, height, frame)
+                            // Not detectTransformGestures: it ignores the fingers until they pass the touch slop, so
+                            // the picture stuck and then lurched ("first move jumps"). Nothing else in this dialog
+                            // competes for the touches, so every move is applied from the first event, pinch and pan
+                            // together, about the fingers' centroid. Pointers joining or leaving are left out of that
+                            // event's change by calculateZoom/calculatePan, so a second finger does not jump either.
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                do {
+                                    val event = awaitPointerEvent()
+                                    val zoomChange = event.calculateZoom()
+                                    val pan = event.calculatePan()
+                                    val centroid = event.calculateCentroid(useCurrent = false)
+                                    if (centroid.isSpecified && (zoomChange != 1f || pan != Offset.Zero)) {
+                                        crop = crop.transformed(
+                                            zoomChange, pan.x, pan.y,
+                                            centroid.x - stage.width / 2f, centroid.y - stage.height / 2f,
+                                            width, height, frame,
+                                        )
+                                    }
+                                    event.changes.forEach { if (it.positionChanged()) it.consume() }
+                                } while (event.changes.any { it.pressed })
                             }
                         },
                 ) {
