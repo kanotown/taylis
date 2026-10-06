@@ -46,7 +46,7 @@ extension ErrorMessages {
 
 /// Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors.
 @MainActor
-final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, MyCanvasesApi, CalendarApi, CalendarFeedApi, TaskApi, RecurringApi, AiApi, WorkflowApi, ReservationsApi {
+final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasApi, MyCanvasesApi, WikiApi, CalendarApi, CalendarFeedApi, TaskApi, RecurringApi, AiApi, WorkflowApi, ReservationsApi {
     let baseUrl: URL
     private var sessionVersion = 0
     var accessToken: String?
@@ -545,7 +545,7 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// M77 (CANVAS.md §20.3): the kinds beyond M39's this build shows, sent on every activity call (the list, the badge,
     /// marking read and bootstrap's `activity_include`) so the badge counts what the list shows. A server before M76
     /// ignores it.
-    static let activityInclude = ["canvas_mention", "reservation"]  // M112: reservation notices
+    static let activityInclude = ["canvas_mention", "reservation", "page_mention", "page_shared"]  // M112: reservation notices; M122: pages
 
     private static var activityIncludeItems: [URLQueryItem] { activityInclude.map { URLQueryItem(name: "include", value: $0) } }
 
@@ -1257,6 +1257,121 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         return WorkflowValuesInvalid(fields: fields)
     }
 
+    // MARK: wiki (M122, docs/WIKI.md §14.2)
+
+    /// Every page I can read and the change feed's cursor; nil when `etag` is still the answer (304).
+    func wikiTree(etag: String?) async throws -> WikiTreeFetch? {
+        var etagOut: String?
+        do {
+            let (data, _) = try await requestRaw("GET", "/api/v1/wiki/tree", body: nil, auth: true, retry401: true,
+                                                 headers: etag.map { ["If-None-Match": $0] } ?? [:],
+                                                 onResponse: { etagOut = $0.value(forHTTPHeaderField: "ETag") })
+            let tree = try Self.decodeBody(WikiTreeOut.self, data)
+            return WikiTreeFetch(tree: tree, etag: etagOut)
+        } catch ApiError.api(let status, _, _) where status == 304 {
+            return nil
+        }
+    }
+
+    func wikiChanges(since: Int) async throws -> WikiChangesOut {
+        try await request("GET", Self.pathWithQuery("/api/v1/wiki/changes", [URLQueryItem(name: "since", value: String(since))]))
+    }
+
+    /// The page with its body, breadcrumbs and child pages; nil when `etag` (`"v<version>-<level>"`) is still current (304).
+    func getPage(id: String, etag: String?) async throws -> WikiPageOut? {
+        do {
+            return try await request("GET", "/api/v1/wiki/pages/\(id)", headers: etag.map { ["If-None-Match": $0] } ?? [:])
+        } catch ApiError.api(let status, _, _) where status == 304 {
+            return nil
+        }
+    }
+
+    /// The canvas's save on a page (§7.1). 409 page_conflict / page_base_expired and 429 come back as CanvasSaveFailure
+    /// (with the page as the canvas the save loop holds).
+    func savePage(id: String, _ save: CanvasSaveIn) async throws -> WikiSaveOut {
+        try await request("PUT", "/api/v1/wiki/pages/\(id)/content", body: Self.pageSaveBody(save), onError: Self.pageSaveFailure)
+    }
+
+    static func pageSaveBody(_ save: CanvasSaveIn) -> JSONValue {
+        .object([
+            "base_rev_id": .string(save.baseRevId),
+            "body": .string(save.body),
+            "client_save_id": .string(save.clientSaveId),
+            "on_conflict": .string(save.onConflict.rawValue),
+        ])
+    }
+
+    /// The error body of a page save, read for its details (nil: the usual ApiError).
+    static func pageSaveFailure(status: Int, data: Data) -> Error? {
+        struct Envelope: Decodable {
+            struct Inner: Decodable { let code: String; let details: JSONValue? }
+            let error: Inner
+        }
+        guard let envelope = try? JSON.plainDecoder.decode(Envelope.self, from: data) else { return nil }
+        let details = envelope.error.details
+        switch (status, envelope.error.code) {
+        case (409, "page_conflict"):
+            return (try? details?.decode(WikiConflictDetails.self)).map {
+                CanvasSaveFailure.conflict(CanvasConflictDetails(head: $0.head.canvas, conflicts: $0.conflicts, timedOut: $0.timedOut))
+            }
+        case (409, "page_base_expired"):
+            return (try? details?.decode(WikiConflictDetails.self)).map { CanvasSaveFailure.expired($0.head.canvas) }
+        case (429, _):
+            if case .number(let seconds)? = details?["retry_after_seconds"] { return CanvasSaveFailure.rateLimited(seconds: seconds) }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    func createPage(_ create: WikiPageCreate) async throws -> WikiPageOut {
+        try await request("POST", "/api/v1/wiki/pages", body: create.json)
+    }
+
+    /// The title and / or icon (`icon: ""` removes it).
+    func updatePage(id: String, title: String?, icon: String?) async throws -> WikiPageOut {
+        var fields: [String: JSONValue] = [:]
+        if let title { fields["title"] = .string(title) }
+        if let icon { fields["icon"] = .string(icon) }
+        return try await request("PATCH", "/api/v1/wiki/pages/\(id)", body: .object(fields))
+    }
+
+    func pageBacklinks(id: String) async throws -> [WikiPageItem] { try await request("GET", "/api/v1/wiki/pages/\(id)/backlinks") }
+
+    /// Titles for `page:` links: only the pages I can read come back.
+    func resolvePages(ids: [String]) async throws -> [WikiPageRef] {
+        try await request("POST", "/api/v1/wiki/pages/resolve", body: .object(["ids": .array(ids.map { .string($0) })]))
+    }
+
+    func pageRevisions(id: String, cursor: String? = nil) async throws -> CanvasRevisionPage {
+        var items: [URLQueryItem] = []
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        let page: WikiRevisionPage = try await request("GET", Self.pathWithQuery("/api/v1/wiki/pages/\(id)/revisions", items))
+        return CanvasRevisionPage(items: page.items.map(\.canvas), nextCursor: page.nextCursor)
+    }
+
+    func pageRevision(id: String, revisionId: String) async throws -> CanvasRevisionOut {
+        let rev: WikiRevisionOut = try await request("GET", "/api/v1/wiki/pages/\(id)/revisions/\(revisionId)")
+        return CanvasRevisionOut(id: rev.id, kind: rev.kind, authorId: rev.authorId, title: rev.title, label: rev.label, createdAt: rev.createdAt,
+                                 body: rev.body)
+    }
+
+    /// §8.1: pages I can read whose title or body matches; typed modifiers stay in `q`.
+    func searchPages(_ search: SearchRequest, limit: Int = 20, offset: Int = 0) async throws -> PageSearchOut {
+        try await request("GET", Self.pathWithQuery("/api/v1/search/pages", search.pageQueryItems(limit: limit, offset: offset)))
+    }
+
+    /// An attachment's metadata (a page's `[name](attachment:<id>)` file link).
+    func attachment(id: String) async throws -> AttachmentOut { try await request("GET", "/api/v1/attachments/\(id)") }
+
+    private static func decodeBody<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
+        do {
+            return try JSON.snakeDecoder.decode(T.self, from: data)
+        } catch {
+            throw ApiError.api(status: 0, code: "decode_error", message: "Unexpected response: \(error)")
+        }
+    }
+
     // MARK: transport
 
     private func request<T: Decodable>(_ method: String, _ path: String, body: JSONValue? = nil, auth: Bool = true, timeout: TimeInterval? = nil,
@@ -1272,7 +1387,8 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// `headers`: extra request headers (If-None-Match). `onError`: a call that reads an error's `details` turns the status
     /// and body into its own error (nil: the usual ApiError).
     private func requestRaw(_ method: String, _ path: String, body: JSONValue?, auth: Bool, retry401: Bool, timeout: TimeInterval? = nil,
-                            headers: [String: String] = [:], onError: ((Int, Data) -> Error?)? = nil) async throws -> (Data, Int) {
+                            headers: [String: String] = [:], onError: ((Int, Data) -> Error?)? = nil,
+                            onResponse: ((HTTPURLResponse) -> Void)? = nil) async throws -> (Data, Int) {
         if auth, accessToken == nil, refreshToken != nil { _ = try await refresh() }
         var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
         request.httpMethod = method
@@ -1296,14 +1412,18 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         } catch {
             throw ApiError.network(error)
         }
-        if (200..<300).contains(response.statusCode) { return (data, response.statusCode) }
+        if (200..<300).contains(response.statusCode) {
+            onResponse?(response)
+            return (data, response.statusCode)
+        }
 
         let envelope = try? JSON.plainDecoder.decode(ErrorEnvelope.self, from: data)
         let error = ApiError.api(status: response.statusCode, code: envelope?.error.code ?? "http_\(response.statusCode)",
                                  message: envelope?.error.message ?? "Request failed")
         if auth, response.statusCode == 401, error.code == "token_expired", retry401 {
             _ = try await refresh()
-            return try await requestRaw(method, path, body: body, auth: auth, retry401: false, timeout: timeout, headers: headers, onError: onError)
+            return try await requestRaw(method, path, body: body, auth: auth, retry401: false, timeout: timeout, headers: headers, onError: onError,
+                                        onResponse: onResponse)
         }
         if auth, response.statusCode == 401, error.code != "token_expired" { signOut() }
         if let onError, let own = onError(response.statusCode, data) { throw own }

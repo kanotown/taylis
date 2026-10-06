@@ -34,6 +34,8 @@ struct MainView: View {
         case newDm, newChannel, search, browse, directory, workspaces, newSection, compose
         /// M78: 「キャンバス」's filter searched in the canvases' bodies (the search's 「キャンバス」 tab).
         case canvasSearch(SearchParams)
+        /// M122: 「ドキュメント」's search (the search's 「ドキュメント」 tab).
+        case pageSearch(SearchParams)
         var id: Int {
             switch self {
             case .newDm: 0
@@ -45,6 +47,7 @@ struct MainView: View {
             case .newSection: 7
             case .compose: 8
             case .canvasSearch: 9
+            case .pageSearch: 10
             }
         }
     }
@@ -130,6 +133,7 @@ struct MainView: View {
             case .newChannel: NewChannelView(controller: controller) { id in land(id) }
             case .search: SearchView(controller: controller)
             case .canvasSearch(let params): SearchView(controller: controller, initial: params, initialTab: .canvases)
+            case .pageSearch(let params): SearchView(controller: controller, initial: params, initialTab: .pages)
             case .browse: ChannelBrowserView(controller: controller) { id in land(id) }
             case .workspaces: WorkspaceSwitcherSheet(controller: controller)
             case .newSection: SectionFormView(controller: controller, section: nil)
@@ -149,6 +153,10 @@ struct MainView: View {
         // M45: a canvas link tapped in a message (CANVAS.md §4.13).
         .sheet(item: $controller.canvasLink) { target in
             CanvasLinkSheet(controller: controller, canvasId: target.id)
+        }
+        // M122: a wiki page link tapped outside the wiki (a message, a canvas, a notice).
+        .sheet(item: $controller.pageLink) { target in
+            PageLinkSheet(controller: controller, pageId: target.id)
         }
         // M95: a workflow's form (WORKFLOWS.md §8 4.), from wherever it was opened.
         .fullScreenCover(item: $controller.workflowRun) { target in
@@ -187,7 +195,7 @@ struct MainView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .chikuwaOpenChannel)) { note in
             if let id = note.userInfo?["id"] as? String {
-                if sheet == .search || sheet?.isCanvasSearch == true { sheet = nil } // a conversation opened from a search result's profile or link
+                if sheet == .search || sheet?.isCanvasSearch == true || sheet?.isPageSearch == true { sheet = nil } // a conversation opened from a search result's profile or link
                 jumpShown = false // …or from the message search of 移動・検索
                 previewMessageId = note.userInfo?["messageId"] as? String
                 land(id, parentId: note.userInfo?["parentId"] as? String)
@@ -215,6 +223,12 @@ struct MainView: View {
             guard pending else { return }
             PushCenter.shared.pendingTasks = false
             nav.landList(MyTasksView.selectionId)
+        }
+        .onChange(of: PushCenter.shared.pendingPage, initial: true) { _, pageId in
+            // M122: a tapped page notification: the page over 「ドキュメント」 on the home tab.
+            guard let pageId else { return }
+            PushCenter.shared.pendingPage = nil
+            nav.landPage(pageId, docsId: DocsView.selectionId)
         }
         .onChange(of: PushCenter.shared.pendingReservations, initial: true) { _, pending in
             // M112: a tapped reservation notice: 「予約」, on the home tab.
@@ -383,6 +397,7 @@ struct MainView: View {
         case .channel(let id)?: id
         case .list(let id)?: id
         case .thread(let id, _)?: id
+        case .page?: DocsView.selectionId
         case nil: nil
         }
     }
@@ -453,6 +468,11 @@ struct MainView: View {
         ActivityView(controller: controller, onOpenMention: { message in
             Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: tab) } }
         }, onOpenItem: { item in
+            // M122: a page that mentions me or was shared with me: the page on this tab's stack.
+            if let page = item.page {
+                nav.openPage(page.pageId, on: tab)
+                return
+            }
             // M112: a reservation notice opens 「予約」 on this tab's stack.
             if item.reservation != nil {
                 if nav.layout == .split { nav.landList(ReservationsView.selectionId) } else { nav.paths[tab, default: []].append(.list(ReservationsView.selectionId)) }
@@ -566,6 +586,11 @@ struct MainView: View {
     private func screen(_ route: MainRoute, on tab: MainTab) -> some View {
         switch route {
         case .list(let id): list(id, on: tab)
+        case .page(let pageId):
+            // M122: a wiki page; its links, breadcrumbs and child pages go on this stack.
+            WikiPageScreen(controller: controller, pageId: pageId, onOpenPage: { nav.openPage($0, on: tab) })
+                .id(pageId)
+                .modifier(HidesTabBar())
         case .thread(let channelId, let parentId):
             // Pushed with its conversation under it (MainNavigation.show / land): Back goes to the conversation.
             if store.channel(channelId) != nil {
@@ -645,6 +670,9 @@ struct MainView: View {
             }
         case DraftsView.selectionId:
             DraftsView(controller: controller) { channelId, parentId in show(channelId, parentId: parentId, on: tab) }
+        case DocsView.selectionId:
+            // M122: the wiki's tree; a page goes on this stack.
+            DocsView(controller: controller, onOpen: { nav.openPage($0, on: tab) }, onSearch: { params in sheet = .pageSearch(params) })
         case CanvasesView.selectionId:
             // M78: a canvas in its conversation's 「キャンバス」 tab on this stack (Back: the list), or its own sheet for a
             // conversation not on this device.
@@ -659,6 +687,7 @@ struct MainView: View {
 
 private extension MainView.Sheet {
     var isCanvasSearch: Bool { if case .canvasSearch = self { true } else { false } }
+    var isPageSearch: Bool { if case .pageSearch = self { true } else { false } }
 }
 
 private extension String {
@@ -666,7 +695,8 @@ private extension String {
     var isListId: Bool {
         [DraftsView.selectionId, FilesView.selectionId, MentionsView.selectionId, RemindersView.selectionId,
          SavedView.selectionId, ThreadsListView.selectionId, CalendarView.selectionId, MyTasksView.selectionId,
-         TimesFeedView.selectionId, CanvasesView.selectionId, DeadlinesView.selectionId, ReservationsView.selectionId].contains(self)
+         TimesFeedView.selectionId, CanvasesView.selectionId, DeadlinesView.selectionId, ReservationsView.selectionId,
+         DocsView.selectionId].contains(self)
     }
 }
 

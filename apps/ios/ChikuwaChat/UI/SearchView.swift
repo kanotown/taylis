@@ -11,6 +11,7 @@ struct SearchRoute: Hashable {
 
 enum SearchTab: String, CaseIterable, Identifiable {
     case messages, files, canvases // M58: 「キャンバス」 beside メッセージ / ファイル (CANVAS.md §4.8)
+    case pages // M122: 「ドキュメント」 (docs/WIKI.md §8.1)
 
     var id: String { rawValue }
     var label: String {
@@ -18,6 +19,7 @@ enum SearchTab: String, CaseIterable, Identifiable {
         case .messages: tr("メッセージ")
         case .files: tr("ファイル")
         case .canvases: tr("キャンバス")
+        case .pages: tr("ドキュメント")
         }
     }
 }
@@ -25,6 +27,11 @@ enum SearchTab: String, CaseIterable, Identifiable {
 /// M58: a canvas search result opened inside the search screen (back returns to the results).
 struct SearchCanvasRoute: Hashable {
     let canvasId: String
+}
+
+/// M122: a page search result (or a page linked from one) opened inside the search screen.
+struct SearchPageRoute: Hashable {
+    let pageId: String
 }
 
 /// The filter pickers that need more room than a menu.
@@ -63,6 +70,8 @@ final class SearchModel {
 
     /// M58: the 「キャンバス」 tab's results (read when the tab shows).
     var canvases = CanvasSearchResults()
+    /// M122: the 「ドキュメント」 tab's results (read when the tab shows).
+    var pages = PageSearchResults()
 
     @ObservationIgnored private var nextOffset = 0
     @ObservationIgnored private var request = 0
@@ -91,6 +100,7 @@ final class SearchModel {
         resetMessages()
         resetFiles()
         canvases.reset()
+        pages.reset()
     }
 
     /// A new search takes the screen at once; `load` fetches its first page.
@@ -101,6 +111,7 @@ final class SearchModel {
         resetMessages()
         resetFiles()
         canvases.reset()
+        pages.reset()
     }
 
     func load(api: ApiClient?) async {
@@ -282,6 +293,9 @@ struct SearchView: View {
                 .navigationDestination(for: SearchCanvasRoute.self) { route in
                     CanvasOpenView(controller: controller, canvasId: route.canvasId, onTrashed: { if !path.isEmpty { path.removeLast() } })
                 }
+                .navigationDestination(for: SearchPageRoute.self) { route in
+                    WikiPageScreen(controller: controller, pageId: route.pageId, onOpenPage: { path.append(SearchPageRoute(pageId: $0)) })
+                }
                 // M71: the answer stays with the hub when the sheet goes (the row above the results brings it back); a
                 // cited message opens here like a result, once the sheet is gone.
                 .sheet(item: $askSheet, onDismiss: {
@@ -336,6 +350,7 @@ struct SearchView: View {
                               onPick: { picker = $0 },
                               onOpen: { messageId, channelId, parentId in open(messageId: messageId, channelId: channelId, parentId: parentId) },
                               onOpenCanvas: { canvas in path.append(SearchCanvasRoute(canvasId: canvas.id)) },
+                              onOpenPage: { id in path.append(SearchPageRoute(pageId: id)) },
                               onAskSheet: { askSheet = $0 })
         } else {
             List { startRows }
@@ -580,6 +595,8 @@ struct SearchResultsView: View {
     let onOpen: (_ messageId: String, _ channelId: String, _ parentId: String?) -> Void
     /// M58: a canvas hit of the 「キャンバス」 tab.
     var onOpenCanvas: (CanvasMeta) -> Void = { _ in }
+    /// M122: a page hit of the 「ドキュメント」 tab.
+    var onOpenPage: (String) -> Void = { _ in }
     /// M71: the 「AI に聞く」 sheet, on the answer or on the past questions.
     var onAskSheet: (AskSheetMode) -> Void = { _ in }
     /// M71: where the question on screen would go (GET /ai/ask/target), for the question it was read for.
@@ -594,7 +611,7 @@ struct SearchResultsView: View {
     var body: some View {
         VStack(spacing: 0) {
             Picker("表示", selection: $model.tab) {
-                ForEach(SearchTab.allCases) { tab in Text(tab.label).tag(tab) }
+                ForEach(SearchTab.allCases.filter { $0 != .pages || controller.wiki?.available == true || model.tab == .pages }) { tab in Text(tab.label).tag(tab) }
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
@@ -602,10 +619,12 @@ struct SearchResultsView: View {
             SearchFilterBar(controller: controller, params: params, tab: model.tab, onUpdate: onUpdate, onPick: onPick)
             if model.tab != .files {
                 let canvases = model.canvases
-                let loaded = model.tab == .messages ? model.loaded : canvases.loaded
+                let pages = model.pages
+                let loaded = model.tab == .messages ? model.loaded : model.tab == .pages ? pages.loaded : canvases.loaded
                 HStack {
                     Text(loaded ? (model.tab == .messages ? SearchLogic.totalLabel(model.total, capped: model.capped)
-                                                          : SearchLogic.totalLabel(canvases.total, capped: canvases.capped)) : " ")
+                                   : model.tab == .pages ? SearchLogic.totalLabel(pages.total, capped: pages.capped)
+                                   : SearchLogic.totalLabel(canvases.total, capped: canvases.capped)) : " ")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -621,6 +640,7 @@ struct SearchResultsView: View {
                 messages
             case .files: files
             case .canvases: CanvasSearchList(controller: controller, results: model.canvases, params: params, onOpen: onOpenCanvas)
+            case .pages: PageSearchList(controller: controller, results: model.pages, params: params, onOpen: onOpenPage)
             }
         }
         .onChange(of: model.tab) { _, tab in
@@ -761,7 +781,8 @@ struct SearchFilterBar: View {
     /// The files tab filters by conversation only (GET /files); the canvases tab by person, conversation and dates (M58).
     let tab: SearchTab
     private var filesOnly: Bool { tab == .files }
-    private var canvases: Bool { tab == .canvases }
+    /// M122: the pages tab like the canvases' (its person: who made or changed the page), without a conversation.
+    private var canvases: Bool { tab == .canvases || tab == .pages }
     let onUpdate: ((inout SearchParams) -> Void) -> Void
     let onPick: (SearchPicker) -> Void
 
@@ -781,8 +802,10 @@ struct SearchFilterBar: View {
                     }
                 }
                 let channel = params.channelId.map { id in store.channel(id).map { channelTitle($0, store: store) } ?? "?" }
-                SearchChip(active: channel != nil, onClear: { onUpdate { $0.channelId = nil } }) {
-                    Button { onPick(.channel) } label: { SearchChipLabel(title: channel ?? tr("チャンネル"), systemImage: "number", active: channel != nil) }
+                if tab != .pages {
+                    SearchChip(active: channel != nil, onClear: { onUpdate { $0.channelId = nil } }) {
+                        Button { onPick(.channel) } label: { SearchChipLabel(title: channel ?? tr("チャンネル"), systemImage: "number", active: channel != nil) }
+                    }
                 }
                 if !filesOnly {
                     let date = SearchLogic.dateLabel(params.date)

@@ -1039,6 +1039,8 @@ struct BootstrapOut: Codable {
     var workspaceSettings: WorkspaceSettings? = nil
     /// M104 (MODERATION.md §4): the people I blocked; changes arrive as block.updated. Nil from an older server.
     var blockedUserIds: [String]? = nil
+    /// M122 (docs/WIKI.md §10): the wiki's change feed position (the tree is GET /wiki/tree); nil from a server without it.
+    var wiki: WikiBootstrap? = nil
 }
 
 /// M39 (MOBILE_UI.md §6.4 / §7.2): one item of the activity, newest first. A mention of me, the reactions to one message
@@ -1059,6 +1061,8 @@ struct ActivityItem: Codable, Equatable, Identifiable {
     var canvas: ActivityCanvas? = nil
     /// M112: a `reservation` item's notice (asked for with `include=reservation`).
     var reservation: ActivityReservation? = nil
+    /// M122: a `page_mention` / `page_shared` item's page (asked for with `include=page_mention,page_shared`).
+    var page: ActivityPage? = nil
     /// 2026-10-06 (MOBILE_UI.md §6.4): the server's verdict — read by the activity's read position, or (a mention or a
     /// thread reply) read in its conversation, or a done reservation to-do. nil from a server before it.
     var read: Bool? = nil
@@ -1070,16 +1074,17 @@ struct ActivityItem: Codable, Equatable, Identifiable {
     var id: String {
         if let canvas { return "canvas_mention:\(canvas.itemId)" }
         if let reservation { return "reservation:\(reservation.itemId)" }
+        if let page { return "\(kind):\(page.itemId)" }
         return "\(kind):\(message?.id ?? "")"
     }
 
     /// The conversation the row is in.
     var channelId: String? { canvas?.channelId ?? message?.channelId }
 
-    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis, canvas, reservation, read }
+    enum CodingKeys: String, CodingKey { case kind, at, message, actorIds, emojis, canvas, reservation, page, read }
 
     init(kind: String, at: String, message: MessageOut?, actorIds: [String], emojis: [String] = [], canvas: ActivityCanvas? = nil,
-         reservation: ActivityReservation? = nil) {
+         reservation: ActivityReservation? = nil, page: ActivityPage? = nil) {
         self.kind = kind
         self.at = at
         self.message = message
@@ -1087,6 +1092,7 @@ struct ActivityItem: Codable, Equatable, Identifiable {
         self.emojis = emojis
         self.canvas = canvas
         self.reservation = reservation
+        self.page = page
     }
 
     /// A canvas item needs its canvas, every other kind its message: an item with neither (a kind of a newer server,
@@ -1100,6 +1106,10 @@ struct ActivityItem: Codable, Equatable, Identifiable {
             message = nil
         } else if kind == "reservation" {
             reservation = try c.decode(ActivityReservation.self, forKey: .reservation)
+            canvas = nil
+            message = nil
+        } else if kind == "page_mention" || kind == "page_shared" {
+            page = try c.decode(ActivityPage.self, forKey: .page)
             canvas = nil
             message = nil
         } else {

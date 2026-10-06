@@ -95,7 +95,7 @@ struct CanvasPane: View {
 }
 
 /// A list or a canvas that could not be read: 再読み込み (the failure is cleared while it asks: the spinner shows).
-private struct CanvasLoadFailed: View {
+struct CanvasLoadFailed: View {
     var detail: String?
     let retry: () async -> Void
 
@@ -576,15 +576,17 @@ private struct CanvasReader: View {
 
 /// §5 「このセクションを編集」: one heading's section in the editor; the whole body (with the section replaced) is saved,
 /// so the server merges what others changed elsewhere meanwhile.
-private struct CanvasSectionSheet: View {
+struct CanvasSectionSheet: View {
     @Bindable var controller: AppController
     let saver: CanvasSaver
     let line: Int
+    /// M122: a wiki page's section (no 「編集中」 frames, no 「タスクにする」).
+    var isPage = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            CanvasEditor(controller: controller, saver: saver, sectionLine: line, autoFocus: true)
+            CanvasEditor(controller: controller, saver: saver, sectionLine: line, autoFocus: true, isPage: isPage)
                 .navigationTitle("セクションを編集")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -776,7 +778,7 @@ private struct CanvasTrashSheet: View {
 }
 
 /// §4.4 409 canvas_conflict: where both changed the same words, and the choices (a member who may only tick: 相手の版).
-private struct CanvasConflictSheet: View {
+struct CanvasConflictSheet: View {
     @Bindable var controller: AppController
     let saver: CanvasSaver
     let conflict: CanvasSaver.ConflictState
@@ -849,7 +851,7 @@ private struct CanvasConflictSheet: View {
 }
 
 /// §4.4 409 canvas_base_expired: mine and the current body one above the other.
-private struct CanvasExpiredSheet: View {
+struct CanvasExpiredSheet: View {
     @Bindable var controller: AppController
     let saver: CanvasSaver
     let head: CanvasOut

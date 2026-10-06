@@ -103,6 +103,29 @@ struct MainNavigation: Equatable {
         if layout == .split { split = [.list(id)]; youSheet = false } else { paths[.home] = [.list(id)]; tab = .home }
     }
 
+    /// M122: a page from a notification: on the home tab over 「ドキュメント」 (Back: the tree), or in the detail column.
+    mutating func landPage(_ pageId: String, docsId: String) {
+        if layout == .split {
+            split = [.list(docsId), .page(pageId)]
+            youSheet = false
+        } else {
+            paths[.home] = [.list(docsId), .page(pageId)]
+            tab = .home
+        }
+    }
+
+    /// M122: a page opened from a page (a link, a breadcrumb, a child page): back to it when it is on the stack already
+    /// (a breadcrumb is a way back, §9.2), else pushed over the one in front.
+    mutating func openPage(_ pageId: String, on tab: MainTab) {
+        var path = layout == .split ? split : paths[tab] ?? []
+        if let index = path.lastIndex(of: .page(pageId)) {
+            path = Array(path[...index])
+        } else {
+            path.append(.page(pageId))
+        }
+        if layout == .split { split = path } else { paths[tab] = path }
+    }
+
     /// ⌘[ : one screen back (not past the detail column's first screen or a tab's root).
     mutating func back() {
         if layout == .split {
@@ -118,7 +141,7 @@ struct MainNavigation: Equatable {
             guard let index = path.firstIndex(where: {
                 switch $0 {
                 case .channel(let id), .thread(let id, _): gone(id)
-                case .list: false
+                case .list, .page: false
                 }
             }) else { return path }
             return Array(path[..<index])

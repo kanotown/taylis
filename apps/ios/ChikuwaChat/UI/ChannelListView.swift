@@ -264,7 +264,7 @@ struct ChannelListView: View {
                                  navItems: (store.me ?? controller.me)?.navItems.chosen,
                                  reservations: store.reservationPools.map {
                                      HomeTile.ReservationTile(todos: ReservationRules.todoCount($0), operates: $0.contains { $0.canOperate })
-                                 })
+                                 }, docs: controller.wiki?.available == true)
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(row) { tile in

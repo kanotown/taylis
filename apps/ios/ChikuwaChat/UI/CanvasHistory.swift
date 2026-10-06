@@ -10,6 +10,8 @@ import SwiftUI
 @Observable
 final class CanvasHistoryModel {
     let canvasId: String
+    /// M122: a wiki page's history (the same versions, read from /wiki/pages/{id}/revisions; read only on the phone).
+    let isPage: Bool
     private(set) var rows: [CanvasRevisionMeta]?
     private(set) var next: String?
     private(set) var failed = false
@@ -17,11 +19,15 @@ final class CanvasHistoryModel {
     private(set) var bodies: [String: String] = [:]
     @ObservationIgnored private var asking: Set<String> = []
 
-    init(canvasId: String) { self.canvasId = canvasId }
+    init(canvasId: String, isPage: Bool = false) {
+        self.canvasId = canvasId
+        self.isPage = isPage
+    }
 
     /// Known up front (snapshot tests).
-    init(canvasId: String, rows: [CanvasRevisionMeta], bodies: [String: String]) {
+    init(canvasId: String, rows: [CanvasRevisionMeta], bodies: [String: String], isPage: Bool = false) {
         self.canvasId = canvasId
+        self.isPage = isPage
         self.rows = rows
         self.bodies = bodies
     }
@@ -29,7 +35,8 @@ final class CanvasHistoryModel {
     func load(_ controller: AppController, more: Bool) async {
         guard let api = controller.api else { return }
         do {
-            let page = try await api.canvasRevisions(id: canvasId, cursor: more ? next : nil)
+            let cursor = more ? next : nil
+            let page = isPage ? try await api.pageRevisions(id: canvasId, cursor: cursor) : try await api.canvasRevisions(id: canvasId, cursor: cursor)
             rows = (more ? rows ?? [] : []) + page.items
             next = page.nextCursor
             failed = false
@@ -52,7 +59,10 @@ final class CanvasHistoryModel {
         guard bodies[id] == nil, !asking.contains(id), let api = controller.api else { return }
         asking.insert(id)
         defer { asking.remove(id) }
-        do { bodies[id] = try await api.canvasRevision(id: canvasId, revisionId: id).body } catch {
+        do {
+            bodies[id] = isPage ? try await api.pageRevision(id: canvasId, revisionId: id).body
+                : try await api.canvasRevision(id: canvasId, revisionId: id).body
+        } catch {
             controller.error = controller.describe(error)
         }
     }

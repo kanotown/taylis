@@ -533,6 +533,24 @@ final class Store {
         persist { try $0.saveMeta(key: Self.canvasPrefix + canvasId, value: encoded) }
     }
 
+    // MARK: M122 the wiki's kept state (docs/WIKI.md §10)
+
+    /// What the wiki keeps on this device (WikiHub): the tree (`wiki:tree`), the pages read lately (`wiki:page:<id>`) and
+    /// unsaved page edits (`wiki:pending:<id>`), as SQLite meta rows. Loaded with the rest at start; the hub decodes them.
+    @ObservationIgnored private var wikiKept: [String: String] = [:]
+    static let wikiPrefix = "wiki:"
+
+    func wikiValue(_ key: String) -> String? { wikiKept[key] }
+
+    /// The keys kept under `prefix` (one of the wiki's own).
+    func wikiKeys(prefix: String) -> [String] { wikiKept.keys.filter { $0.hasPrefix(prefix) }.sorted() }
+
+    func setWikiValue(_ key: String, _ value: String?) {
+        guard key.hasPrefix(Self.wikiPrefix), wikiKept[key] != value else { return }
+        wikiKept[key] = value
+        persist { try $0.saveMeta(key: key, value: value) }
+    }
+
     // MARK: M74 cached canvases (CANVAS.md §19.1)
 
     /// The canvases kept to read offline: their metadata here, their bodies in SQLite (in memory without persistence,
@@ -723,6 +741,7 @@ final class Store {
             }
         }
         applyPreviews(snapshot.meta)
+        for (key, value) in snapshot.meta where key.hasPrefix(Self.wikiPrefix) { wikiKept[key] = value } // M122
         if let me = snapshot.meta["me"], let data = me.data(using: .utf8) { self.me = try? JSON.plainDecoder.decode(UserMe.self, from: data) }
         if let raw = snapshot.meta[Self.activityKey], let data = raw.data(using: .utf8) {
             activity = try? JSON.plainDecoder.decode(ActivitySummary.self, from: data) // corrupt: the next bootstrap brings it
@@ -1450,6 +1469,7 @@ final class Store {
             let stored = StoredLinkPreview(preview: preview, savedAt: (previewSavedAt[url] ?? Date()).timeIntervalSince1970)
             if let data = try? JSON.plainEncoder.encode(stored) { snapshot.meta[Self.previewPrefix + url] = String(data: data, encoding: .utf8) }
         }
+        for (key, value) in wikiKept { snapshot.meta[key] = value } // M122
         if let me, let data = try? JSON.plainEncoder.encode(me), let text = String(data: data, encoding: .utf8) { snapshot.meta["me"] = text }
         if let activity, let data = try? JSON.plainEncoder.encode(activity) { snapshot.meta[Self.activityKey] = String(data: data, encoding: .utf8) }
         if !unsentReads.isEmpty, let data = try? JSON.plainEncoder.encode(unsentReads) { snapshot.meta[Self.unsentReadsKey] = String(data: data, encoding: .utf8) }

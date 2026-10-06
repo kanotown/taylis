@@ -73,6 +73,15 @@
       ]
     },
     {
+      "key": "docs",
+      "label": "ドキュメント",
+      "visible": true,
+      "platforms": [
+        "desktop",
+        "mobile"
+      ]
+    },
+    {
       "key": "calendar",
       "label": "カレンダー",
       "visible": true,
@@ -117,6 +126,7 @@
       "reminders",
       "files",
       "canvases",
+      "docs",
       "calendar",
       "tasks",
       "deadlines",
@@ -136,6 +146,7 @@
       "reservations",
       "files",
       "canvases",
+      "docs",
       "activity"
     ]
   },
@@ -179,6 +190,10 @@
         },
         {
           "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "docs",
           "visible": true
         },
         {
@@ -311,6 +326,10 @@
           "visible": true
         },
         {
+          "key": "docs",
+          "visible": true
+        },
+        {
           "key": "activity",
           "visible": true
         }
@@ -418,6 +437,10 @@
         },
         {
           "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "docs",
           "visible": true
         },
         {
@@ -532,6 +555,10 @@
         },
         {
           "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "docs",
           "visible": true
         },
         {
@@ -662,6 +689,10 @@
         },
         {
           "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "docs",
           "visible": true
         },
         {
@@ -809,6 +840,10 @@
         {
           "key": "files",
           "visible": true
+        },
+        {
+          "key": "docs",
+          "visible": true
         }
       ],
       "shown": [
@@ -913,6 +948,10 @@
         },
         {
           "key": "canvases",
+          "visible": true
+        },
+        {
+          "key": "docs",
           "visible": true
         },
         {
@@ -1066,6 +1105,10 @@
         {
           "key": "canvases",
           "visible": true
+        },
+        {
+          "key": "docs",
+          "visible": true
         }
       ]
     },
@@ -1120,6 +1163,10 @@
         },
         {
           "key": "files",
+          "visible": true
+        },
+        {
+          "key": "docs",
           "visible": true
         },
         {

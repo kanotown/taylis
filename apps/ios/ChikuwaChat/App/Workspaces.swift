@@ -87,6 +87,8 @@ struct PushPayload: Equatable, Sendable {
     var taskId: String?
     /// M73: a canvas that newly mentions me (`kind = canvas`, CANVAS.md §18.1).
     var canvasId: String?
+    /// M122: a wiki page that newly mentions me or was shared with me (`kind = page`, docs/WIKI.md §9.3).
+    var pageId: String? = nil
 
     init(workspaceId: String? = nil, channelId: String? = nil, messageId: String? = nil, parentId: String? = nil, badge: Int? = nil,
          kind: String? = nil, eventId: String? = nil, taskId: String? = nil, canvasId: String? = nil) {
@@ -113,6 +115,9 @@ struct PushPayload: Equatable, Sendable {
     /// M73: a canvas mention opens that canvas (its conversation's 「キャンバス」 tab).
     var opensCanvas: Bool { kind == "canvas" && canvasId != nil }
 
+    /// M122: a page's notification opens the page.
+    var opensPage: Bool { kind == "page" && pageId != nil }
+
     /// M39: a reaction to my message opens that message (it may be far above the conversation's unread position); a
     /// message push opens its conversation (and a reply's thread) as before.
     var opensMessage: Bool { kind == "reaction" && messageId != nil }
@@ -130,6 +135,7 @@ struct PushPayload: Equatable, Sendable {
         eventId = text("event_id")
         taskId = text("task_id")
         canvasId = text("canvas_id")
+        pageId = text("page_id")
         badge = (userInfo["aps"] as? [AnyHashable: Any])?["badge"] as? Int
     }
 }
@@ -267,7 +273,7 @@ enum Workspaces {
     static func shouldPresent(_ payload: PushPayload, target: Workspace?, active: String?, openChannelId: String?) -> Bool {
         // A canvas mention (M73) is not the conversation's messages: shown even while that conversation is open.
         // A test notification (PUSH_NOTIFICATIONS.md §15) is pressed for with the app open: it must show.
-        if payload.kind == "calendar" || payload.kind == "task" || payload.kind == "canvas" || payload.kind == "test" { return true }
+        if payload.kind == "calendar" || payload.kind == "task" || payload.kind == "canvas" || payload.kind == "page" || payload.kind == "test" { return true }
         guard let target, target.serverUrl == active, let channelId = payload.channelId, let openChannelId else { return true }
         return channelId != openChannelId
     }

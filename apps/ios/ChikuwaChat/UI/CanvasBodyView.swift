@@ -12,14 +12,19 @@ struct CanvasBodyView: View {
     var onEditSection: ((Int) -> Void)?
     /// M73 (CANVAS.md §18.3): 「タスクにする」 on an open checklist item's long press (its line); nil: not offered.
     var onMakeTask: ((Int) -> Void)?
+    /// M122: a page link tapped in this body (a wiki page pushes it on its own stack); nil: over everything.
+    var onOpenPage: ((String) -> Void)?
+    /// M122: a page's file link, downloaded and shown.
+    @State private var openedFile: URL?
 
     init(body: String, controller: AppController, onToggleTask: ((Int, Bool) -> Void)?, onEditSection: ((Int) -> Void)? = nil,
-         onMakeTask: ((Int) -> Void)? = nil) {
+         onMakeTask: ((Int) -> Void)? = nil, onOpenPage: ((String) -> Void)? = nil) {
         self.body_ = body
         self.controller = controller
         self.onToggleTask = onToggleTask
         self.onEditSection = onEditSection
         self.onMakeTask = onMakeTask
+        self.onOpenPage = onOpenPage
     }
 
     static func anchor(_ line: Int) -> String { "canvas-h-\(line)" }
@@ -39,8 +44,26 @@ struct CanvasBodyView: View {
                 Task { await controller.openPermalink(id) }
                 return .handled
             }
+            // M122: a wiki page (`page:` or `/p/`): the screen that shows this body may open it itself (a page's own
+            // links stay on its stack), else over everything.
+            if url.scheme == PageLink.scheme, let id = url.host {
+                if let onOpenPage { onOpenPage(id) } else { controller.pageLink = PageLinkTarget(id: id) }
+                return .handled
+            }
+            if url.scheme == FileLink.scheme, let id = url.host {
+                Task { if let file = await controller.downloadPageFile(id) { openedFile = file } }
+                return .handled
+            }
             return .systemAction
         })
+        .sheet(item: $openedFile) { url in
+            if AttachmentPreview.canPreview(url) { FilePreviewSheet(url: url, onDismiss: { openedFile = nil }) } else { ShareSheet(items: [url]) }
+        }
+        // M122: the titles of the pages this body links to that are not known here yet.
+        .task(id: body_) {
+            guard body_.contains("](page:"), let wiki = controller.wiki else { return }
+            await wiki.resolveLinks(in: body_)
+        }
     }
 
     @ViewBuilder
@@ -96,9 +119,11 @@ struct CanvasBodyView: View {
 
     private func message(_ blocks: [BodyBlock]) -> some View {
         let store = controller.store
+        let wiki = controller.wiki
         return MessageBodyView(text: "", users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
                                customEmoji: store.customEmoji, emojiImages: store.emojiImages,
-                               onNeedEmojiImage: { controller.loadEmojiImage($0) }, preparsed: blocks)
+                               onNeedEmojiImage: { controller.loadEmojiImage($0) }, preparsed: blocks,
+                               pageLabel: { id in wiki?.linkState(id) })
     }
 }
 
