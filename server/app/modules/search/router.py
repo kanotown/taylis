@@ -1,4 +1,4 @@
-from typing import get_args
+from typing import Literal, get_args
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
@@ -13,6 +13,8 @@ from app.modules.search.schemas import (
     CanvasSearchOut,
     CanvasSearchQuery,
     HasFlag,
+    PageSearchOut,
+    PageSearchQuery,
     SearchOut,
     SearchQuery,
     SearchSort,
@@ -105,5 +107,45 @@ async def search_canvases(
     )
     settings = request.app.state.settings
     return await service.search_canvases(
+        db, user, params, timeout_ms=settings.search_timeout_ms, gate=request.app.state.search_gate
+    )
+
+
+@router.get("/pages", response_model=PageSearchOut)
+async def search_pages(
+    request: Request,
+    user: CurrentUser,
+    db: Db,
+    q: str = Query(default="", max_length=MAX_QUERY_LENGTH),
+    in_page: UUID | None = Query(default=None, description="This page and the pages below it"),
+    from_user_id: UUID | None = Query(
+        default=None, description="The page's creator or its last editor"
+    ),
+    after: AwareDatetime | None = Query(default=None, description="Updated at or after"),
+    before: AwareDatetime | None = Query(default=None, description="Updated before"),
+    kind: Literal["page", "database", "row"] | None = None,
+    sort: SearchSort = "relevance",
+    tz_offset_minutes: int = Query(default=0, ge=-840, le=840),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=10_000),
+) -> PageSearchOut:
+    """M120 (docs/WIKI.md §8.1): wiki pages I can read whose title, body or properties match
+    (Japanese and English, the same query syntax; in:<page title> narrows to a subtree), with an
+    excerpt. Pages I cannot read are never counted."""
+    _limit(request, user)
+    params = PageSearchQuery(
+        q=q,
+        in_page=in_page,
+        from_user_id=from_user_id,
+        after=after,
+        before=before,
+        kind=kind,
+        sort=sort,
+        tz_offset_minutes=tz_offset_minutes,
+        limit=limit,
+        offset=offset,
+    )
+    settings = request.app.state.settings
+    return await service.search_pages(
         db, user, params, timeout_ms=settings.search_timeout_ms, gate=request.app.state.search_gate
     )

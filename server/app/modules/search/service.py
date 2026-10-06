@@ -25,6 +25,9 @@ from app.modules.search.schemas import (
     CanvasSearchHit,
     CanvasSearchOut,
     CanvasSearchQuery,
+    PageSearchHit,
+    PageSearchOut,
+    PageSearchQuery,
     SearchFilters,
     SearchHit,
     SearchOut,
@@ -33,6 +36,8 @@ from app.modules.search.schemas import (
 from app.modules.search.snippet import make_snippet
 from app.modules.users import repository as users_repo
 from app.modules.users.models import User
+from app.modules.wiki import service as wiki
+from app.modules.wiki.models import WikiPage
 
 log = logging.getLogger("app.search")
 
@@ -470,6 +475,142 @@ async def _search_canvases_in_time(
         for canvas, score in rows
     ]
     return CanvasSearchOut(
+        hits=hits,
+        keywords=keywords,
+        filters=filters,
+        limit=params.limit,
+        offset=params.offset,
+        has_more=has_more,
+        total=min(total, repo.TOTAL_CAP),
+        total_capped=total > repo.TOTAL_CAP,
+    )
+
+
+# --- wiki pages (M120, docs/WIKI.md §8.1) ---------------------------------------------------------
+
+
+async def search_pages(
+    db: AsyncSession,
+    actor: User,
+    params: PageSearchQuery,
+    *,
+    timeout_ms: int | None = None,
+    gate: asyncio.Semaphore | None = None,
+) -> PageSearchOut:
+    """GET /search/pages: live pages the caller can read (the effective access, in the query
+    itself) whose title, body or properties match."""
+
+    async def run() -> PageSearchOut:
+        return await _in_time(
+            db, lambda: _search_pages_in_time(db, actor, params, timeout_ms), timeout_ms
+        )
+
+    return await _gated(run, timeout_ms=timeout_ms, gate=gate)
+
+
+async def _search_pages_in_time(
+    db: AsyncSession, actor: User, params: PageSearchQuery, timeout_ms: int | None
+) -> PageSearchOut:
+    await _limit_time(db, timeout_ms)
+    parsed = parse_query(params.q, tz_offset_minutes=params.tz_offset_minutes)
+    filters = SearchFilters(
+        text=parsed.text,
+        after=max_dt(params.after, parsed.after),
+        before=min_dt(params.before, parsed.before),
+        unresolved=list(parsed.unresolved),
+    )
+    filters.unresolved.extend(f"has:{flag}" for flag in parsed.has)
+    if parsed.is_thread:
+        filters.unresolved.append("is:thread")
+    if parsed.is_times:
+        filters.unresolved.append("is:times")
+    from_user_id = params.from_user_id
+    for username in parsed.from_users:
+        user = await users_repo.get_by_username(db, username)
+        if user is None:
+            filters.unresolved.append(f"from:@{username}")
+        else:
+            filters.from_username = user.username
+            from_user_id = uuid.UUID(str(user.id))
+    in_page = params.in_page
+    if in_page is not None and not await wiki.can_read(db, actor, in_page):
+        # A page the caller cannot read narrows to nothing, said back like an unknown name.
+        filters.unresolved.append("in_page")
+    for title in parsed.in_channels:
+        found = await wiki.find_by_title(db, actor, title)
+        if found is None:
+            filters.unresolved.append(f"in:{title}")
+        else:
+            filters.in_page = found.title
+            in_page = found.id
+    structured = bool(params.in_page or params.from_user_id or params.after or params.before)
+    if not parsed.text and not parsed.has_modifiers and not structured and not filters.unresolved:
+        raise bad_request("empty_query", "Enter words to search or a modifier such as from:@name")
+    empty = PageSearchOut(
+        hits=[],
+        keywords=[],
+        filters=filters,
+        limit=params.limit,
+        offset=params.offset,
+        has_more=False,
+    )
+    if filters.unresolved:
+        return empty
+    scope = repo.PageScope(
+        actor=actor,
+        in_page=in_page,
+        from_user_id=from_user_id,
+        after=filters.after,
+        before=filters.before,
+        kind=params.kind,
+    )
+    keywords: list[str] = []
+    if parsed.text:
+
+        async def ranked(escaped: bool) -> tuple[list[tuple[WikiPage, float]], list[str], int]:
+            rows = await repo.search_pages(
+                db,
+                query=parsed.text,
+                scope=scope,
+                sort=params.sort,
+                limit=params.limit + 1,
+                offset=params.offset,
+                escaped=escaped,
+            )
+            words = await repo.extract_keywords(db, parsed.text, escaped=escaped)
+            total = await repo.count_pages(db, query=parsed.text, scope=scope, escaped=escaped)
+            return rows, words, total
+
+        try:
+            rows, keywords, total = await ranked(False)
+        except DBAPIError as exc:
+            if _cancelled(exc):
+                raise
+            log.info("page search query fell back to escaped form: %s", exc.orig)
+            await db.rollback()
+            await _limit_time(db, timeout_ms)
+            rows, keywords, total = await ranked(True)
+    else:
+        rows = [
+            (p, 0.0)
+            for p in await repo.list_pages(
+                db, scope=scope, limit=params.limit + 1, offset=params.offset
+            )
+        ]
+        total = await repo.count_pages(db, query=None, scope=scope, escaped=False)
+    has_more = len(rows) > params.limit
+    rows = rows[: params.limit]
+    items = await wiki.items_for(db, actor, [p for p, _ in rows])
+    hits = [
+        PageSearchHit(
+            page=items[page.id],
+            snippet=make_snippet(canvas_markers.strip(page.body), keywords),
+            score=score,
+        )
+        for page, score in rows
+        if page.id in items
+    ]
+    return PageSearchOut(
         hits=hits,
         keywords=keywords,
         filters=filters,

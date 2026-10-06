@@ -46,6 +46,8 @@ from app.modules.threads import service as threads
 from app.modules.users import service as users
 from app.modules.users.dnd import dnd_active
 from app.modules.users.models import User
+from app.modules.wiki import events as wiki_events
+from app.modules.wiki import service as wiki
 from app.modules.workspace import service as workspace
 
 # A fired reminder's push title by kind (L4 ack, L6 collect); a personal one is リマインダー.
@@ -101,6 +103,9 @@ class PushPlanner:
             return
         if event.event_type == RESERVATION_NOTICE:
             await self.handle_reservation(db, event)
+            return
+        if event.event_type in (wiki_events.WIKI_MENTIONED, wiki_events.WIKI_SHARED):
+            await self.handle_page_notice(db, event)
             return
         if (
             event.event_type != MESSAGE_CREATED
@@ -472,6 +477,72 @@ class PushPlanner:
                 kind="alert",
                 collapse_key=str(payload["collapse_key"]),
                 channel_id=channel_id,
+                message_id=None,
+                message_seq=None,
+                payload=payload,
+                expires_at=expires_at,
+            )
+
+    async def handle_page_notice(self, db: AsyncSession, event: OutboxEvent) -> None:
+        """M120 (docs/WIKI.md §9.3): a wiki page newly mentions me (page_mention) or was shared
+        with me by name (page_shared). Only while I can read it (the page and its title stay
+        hidden otherwise); not during DND, not while I am on another device, not from someone I
+        blocked."""
+        data = event.payload
+        user_id = uuid.UUID(str(event.audience_id))
+        user = await users.get_user(db, user_id)
+        now = utcnow()
+        if user is None or user.deactivated_at is not None or dnd_active(user, now):
+            return
+        if self.is_active(user_id):
+            return
+        by_user = data.get("by_user_id")
+        if by_user and await blocks.is_blocked(db, user_id, uuid.UUID(str(by_user))):
+            return
+        page_id = uuid.UUID(str(data["page_id"]))
+        if not await wiki.can_read(db, user, page_id):
+            return
+        page = await wiki.load(db, page_id)
+        if page is None:
+            return
+        devices = await repo.push_devices_for_users(db, [user_id])
+        if not devices:
+            return
+        actor = await users.get_user(db, uuid.UUID(str(by_user))) if by_user else None
+        shared = event.event_type == wiki_events.WIKI_SHARED
+        expires_at = now + timedelta(seconds=self.settings.push_alert_ttl_seconds)
+        workspace_id = await workspace.workspace_id(db)
+        badge = max(await self.badge_for(db, user_id), 1)
+        page_title = page.title
+
+        def build(lc: str) -> dict[str, Any]:
+            who = actor.display_name if actor else i18n.t("someone", lc)
+            key = "push.page.shared" if shared else "push.page.mention"
+            body = i18n.t(key, lc, who=who, title=page_title)
+            hidden = i18n.t(f"{key}_hidden", lc)
+            return PushPayload(
+                kind="page",
+                workspace_id=workspace_id,
+                page_id=page_id,
+                seq=None,
+                title=i18n.t("push.page.title", lc),
+                subtitle=None,
+                body=(body if self.settings.push_include_content else hidden)[:240],
+                badge=badge,
+                collapse_key=f"page:{page_id}",
+                sent_at=now,
+            ).model_dump(mode="json") | {"expires_at": expires_at.isoformat()}
+
+        payloads = _ByLocale(build)
+        for device in devices:
+            payload = payloads(i18n.device_locale(user, device))
+            await repo.add_delivery(
+                db,
+                event_id=event.id,
+                device=device,
+                kind="alert",
+                collapse_key=str(payload["collapse_key"]),
+                channel_id=None,
                 message_id=None,
                 message_seq=None,
                 payload=payload,

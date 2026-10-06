@@ -44,6 +44,11 @@
   "push.canvas.mention": {"ja": "{who} が「{title}」であなたをメンションしました", "en": "{who} mentioned you in “{title}”", "zh-Hans": "{who} 在“{title}”中提及了你"},
   "push.canvas.mention_hidden": {"ja": "キャンバスでメンションされました", "en": "You were mentioned in a canvas", "zh-Hans": "有人在画布中提及了你"},
 
+  "push.page.title": {"ja": "ドキュメント", "en": "Docs", "zh-Hans": "文档"},
+  "push.page.mention": {"ja": "{who} が「{title}」であなたをメンションしました", "en": "{who} mentioned you in “{title}”", "zh-Hans": "{who} 在“{title}”中提及了你"},
+  "push.page.mention_hidden": {"ja": "ドキュメントでメンションされました", "en": "You were mentioned in a doc", "zh-Hans": "有人在文档中提及了你"},
+  "push.page.shared": {"ja": "{who} が「{title}」を共有しました", "en": "{who} shared “{title}” with you", "zh-Hans": "{who} 与你共享了“{title}”"},
+  "push.page.shared_hidden": {"ja": "ドキュメントが共有されました", "en": "A doc was shared with you", "zh-Hans": "有文档与你共享"},
   "push.reservation.title": {"ja": "予約", "en": "Reservations", "zh-Hans": "预约"},
   "push.reservation.hidden": {"ja": "予約のお知らせがあります", "en": "There is news about a reservation", "zh-Hans": "有一条预约通知"},
 

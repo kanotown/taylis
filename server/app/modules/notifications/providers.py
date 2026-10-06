@@ -165,6 +165,8 @@ class APNsPushProvider:
             "canvas_id": payload.get("canvas_id"),
             # kind reservation (M112): the pool (opens the reservations page).
             "pool_id": payload.get("pool_id"),
+            # kind page (M120): the wiki page to open.
+            "page_id": payload.get("page_id"),
         }
         if payload.get("sender_id"):
             # kind message (§16): the sender and the conversation for the extension.
@@ -296,6 +298,7 @@ class FCMPushProvider:
                 "task_id",
                 "canvas_id",
                 "pool_id",
+                "page_id",
                 "seq",
                 "title",
                 "subtitle",
