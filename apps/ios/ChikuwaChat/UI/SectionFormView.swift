@@ -182,7 +182,8 @@ struct SectionFormView: View {
 
     private func conversationRow(_ channel: ChannelState, title: String) -> some View {
         let ticked = chosen.contains(channel.id)
-        let current = store.sidebarSections.first { $0.channelIds.contains(channel.id) }
+        // One place per conversation: a starred one leaves お気に入り (DATA_MODEL.md sidebar_sections).
+        let current = store.isFavorite(channel.id) ? tr("お気に入り") : store.sidebarSections.first { $0.channelIds.contains(channel.id) }?.name
         return Button {
             if ticked { chosen.remove(channel.id) } else { chosen.insert(channel.id) }
         } label: {
@@ -192,7 +193,7 @@ struct SectionFormView: View {
                 // Concrete colors: inside a Form button `.primary` would follow the tint.
                 Text(title).foregroundStyle(Color.primary).lineLimit(1)
                 Spacer()
-                if let current { Text("\(current.name) から移動").font(.caption).foregroundStyle(Color.secondary).lineLimit(1) }
+                if let current { Text("\(current) から移動").font(.caption).foregroundStyle(Color.secondary).lineLimit(1) }
             }
         }
         .accessibilityAddTraits(ticked ? .isSelected : [])

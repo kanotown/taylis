@@ -395,7 +395,8 @@ struct ChannelListView: View {
 
     @ViewBuilder
     private func rowMenu(_ channel: ChannelState) -> some View {
-        let current = controller.store.sectionOf(channel.id)
+        // A starred conversation shows in お気に入り (a server before 2026-10-07 may still have it in a section too).
+        let current = starred(channel) ? nil : controller.store.sectionOf(channel.id)
         DmPinButton(controller: controller, channel: channel)  // M118
         Button(starred(channel) ? "お気に入りから外す" : "お気に入りに追加", systemImage: starred(channel) ? "star.slash" : "star") {
             Task { await controller.toggleFavorite(channel.id) }
