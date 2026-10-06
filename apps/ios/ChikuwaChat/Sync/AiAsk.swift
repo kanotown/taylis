@@ -10,6 +10,14 @@ struct AiAskSession: Equatable {
         case done(output: String, omittedCount: Int, sources: [AiSourceOut])
         /// In Japanese, ready to show.
         case failed(String)
+
+        /// Asked and not answered yet: the bar shows it working and takes no other question meanwhile.
+        var inProgress: Bool {
+            switch self {
+            case .starting, .working: true
+            case .done, .failed: false
+            }
+        }
     }
 
     let request: AiAskRequest

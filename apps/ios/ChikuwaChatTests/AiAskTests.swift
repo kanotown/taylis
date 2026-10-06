@@ -73,6 +73,15 @@ final class AskRulesTests: XCTestCase {
     private let base = URL(string: "https://chat.example.jp/")!
     private let sources = [AiSourceOut(n: 1, messageId: m1, channelId: "c1"), AiSourceOut(n: 4, messageId: m4, channelId: "c2", parentId: "p")]
 
+    /// Asked and not answered: the bar spins and 「AI に聞く」 waits (2026-10-06).
+    func testAQuestionIsInProgressUntilItIsAnsweredOrFails() {
+        XCTAssertTrue(AiAskSession.Phase.starting.inProgress)
+        XCTAssertTrue(AiAskSession.Phase.working(running: false).inProgress)
+        XCTAssertTrue(AiAskSession.Phase.working(running: true).inProgress)
+        XCTAssertFalse(AiAskSession.Phase.done(output: "a", omittedCount: 0, sources: []).inProgress)
+        XCTAssertFalse(AiAskSession.Phase.failed("x").inProgress)
+    }
+
     func testCitationsBecomeMessageLinks() {
         let link1 = "[1](https://chat.example.jp/m/\(m1))"
         let link4 = "[4](https://chat.example.jp/m/\(m4))"

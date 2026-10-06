@@ -647,7 +647,7 @@ struct SearchResultsView: View {
             let target = askRead?.key == askKey ? askRead?.target : nil
             let usable = hub.summaryAvailable && !question.isEmpty && target != nil
             if usable || hub.ask != nil {
-                AiAskBar(hub: hub, target: usable ? target : nil, canAsk: usable && AskRules.canAsk(target) && hub.ask?.phase != .starting,
+                AiAskBar(hub: hub, target: usable ? target : nil, canAsk: usable && AskRules.canAsk(target) && hub.ask?.phase.inProgress != true,
                          onAsk: {
                              Task { await hub.startAsk(AiAskRequest(question: question, channelId: params.channelId)) }
                              onAskSheet(.answer)

@@ -46,8 +46,19 @@ struct AiAskBar: View {
             }
             if let session = hub.ask {
                 HStack(spacing: 8) {
+                    // While it works, a spinner and what it is doing (「メッセージを探しています…」) in place of the icon and
+                    // 「（作成中）」 alone, which read as finished at a glance (2026-10-06).
                     Button { onSheet(.answer) } label: {
-                        Label { Text("「\(session.question)」の答え\(Self.state(session.phase))").lineLimit(1) } icon: { Image(systemName: "text.bubble") }
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("「\(session.question)」の答え\(Self.state(session.phase))").lineLimit(1)
+                                if let doing = Self.doing(session.phase) {
+                                    Text(doing).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                        } icon: {
+                            if session.phase.inProgress { ProgressView().controlSize(.small) } else { Image(systemName: "text.bubble") }
+                        }
                             .font(.subheadline)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
@@ -68,6 +79,14 @@ struct AiAskBar: View {
         case .starting, .working: return tr("（作成中）")
         case .done: return ""
         case .failed: return tr("（失敗）")
+        }
+    }
+
+    private static func doing(_ phase: AiAskSession.Phase) -> String? {
+        switch phase {
+        case .starting: AskRules.startingText
+        case .working(let running): AskRules.progressText(running: running)
+        case .done, .failed: nil
         }
     }
 }
