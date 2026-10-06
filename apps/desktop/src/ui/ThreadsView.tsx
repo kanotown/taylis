@@ -1,3 +1,4 @@
+import { ContextMenu } from "radix-ui";
 import { MessagesSquare } from "lucide-react";
 import { useEffect } from "react";
 
@@ -5,6 +6,7 @@ import type { AppController } from "../state/app";
 import type { ThreadEntry, ThreadFilter } from "../sync/types";
 import { Avatar } from "./Avatar";
 import { dateLabel, fullTimestamp, timeLabel } from "./format";
+import { isDmChannel } from "./channels";
 import { channelTitle } from "./MainScreen";
 import { attachmentText, plainText } from "./markdown";
 import { mentionsToNames } from "./mentions";
@@ -16,12 +18,15 @@ import { t } from "../i18n";
 /**
  * The centre column of the threads view (THREADS.md §5): the threads I follow, newest reply first.
  * Rows are the parent message with the channel, the reply count and the unread badge; a row opens
- * the thread in the right pane.
+ * the thread in the right pane. The conversation's name on top of a row (and 「チャンネルを開く」 / 「会話を開く」 in its
+ * right-click menu) opens the conversation itself at the thread's parent message (`onOpenChannel`).
  */
-export function ThreadsView({ controller, selectedId, onOpen, embedded = false }: {
+export function ThreadsView({ controller, selectedId, onOpen, onOpenChannel, embedded = false }: {
   controller: AppController;
   selectedId: string | null;
   onOpen: (entry: ThreadEntry) => void;
+  /** The conversation of a row, with its parent message revealed (as a permalink lands). */
+  onOpenChannel: (entry: ThreadEntry) => void;
   /** M34: inside the phone's activity tab, which has its own header: only the filter is left here. */
   embedded?: boolean;
 }) {
@@ -80,7 +85,7 @@ export function ThreadsView({ controller, selectedId, onOpen, embedded = false }
         ) : (
           <ul className="divide-y divide-line">
             {rows.map((entry) => (
-              <ThreadRow key={entry.parent.id} entry={entry} controller={controller} selected={entry.parent.id === selectedId} onOpen={() => onOpen(entry)} />
+              <ThreadRow key={entry.parent.id} entry={entry} controller={controller} selected={entry.parent.id === selectedId} onOpen={() => onOpen(entry)} onOpenChannel={() => onOpenChannel(entry)} />
             ))}
           </ul>
         )}
@@ -96,7 +101,16 @@ export function ThreadsView({ controller, selectedId, onOpen, embedded = false }
   );
 }
 
-function ThreadRow({ entry, controller, selected, onOpen }: { entry: ThreadEntry; controller: AppController; selected: boolean; onOpen: () => void }) {
+const MENU = "rx-popover z-50 min-w-48 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
+const MENU_ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[highlighted]:bg-accent-soft";
+
+function ThreadRow({ entry, controller, selected, onOpen, onOpenChannel }: {
+  entry: ThreadEntry;
+  controller: AppController;
+  selected: boolean;
+  onOpen: () => void;
+  onOpenChannel: () => void;
+}) {
   const store = controller.store;
   const { parent, state } = entry;
   const channel = store.getChannel(state.channel_id);
@@ -105,41 +119,64 @@ function ThreadRow({ entry, controller, selected, onOpen }: { entry: ThreadEntry
   const last = state.last_reply_at ?? parent.created_at;
   const excerpt = plainText(mentionsToNames(parent.body, store.users, store.groups), 200) || attachmentText(parent.attachments);
   const others = state.participant_ids.filter((id) => id !== parent.sender_id).slice(0, 3);
+  const title = channel ? channelTitle(channel, controller) : "";
+  const dm = channel ? isDmChannel(channel) : false;
+  const openLabel = dm ? t("threads.openConversation") : t("threads.openChannel");
   return (
-    <li data-row-key={parent.id}>
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-current={selected ? "true" : undefined}
-        className={cn(
-          "flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-panel",
-          selected && "bg-accent-soft/60 hover:bg-accent-soft/60",
-        )}
-      >
-        <Avatar id={parent.sender_id} name={author?.display_name ?? "?"} size={36} className="mt-0.5 rounded-lg" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2 text-xs text-muted">
-            <span className="truncate font-medium text-ink/80">{channel ? channelTitle(channel, controller) : ""}</span>
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <li
+          data-row-key={parent.id}
+          className={cn("transition-colors hover:bg-panel", selected && "bg-accent-soft/60 hover:bg-accent-soft/60")}
+        >
+          {/* The conversation's line: its name opens the conversation; the rest of the line opens the thread, as the card does. */}
+          <div className="flex cursor-pointer items-baseline gap-2 px-4 pt-3 text-xs text-muted" onClick={onOpen}>
+            {channel && (
+              <button
+                type="button"
+                data-thread-channel
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenChannel();
+                }}
+                aria-label={t("timeline.openChannel", { name: title })}
+                title={openLabel}
+                className="min-w-0 truncate rounded font-medium text-ink/80 hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+              >
+                {title}
+              </button>
+            )}
             <span className="ml-auto whitespace-nowrap" title={fullTimestamp(last)}>
               {dateLabel(last)} {timeLabel(last)}
             </span>
           </div>
-          <div className={cn("mt-0.5 flex items-baseline gap-2 text-sm", unread ? "font-semibold" : "font-medium")}>
-            <span className="truncate">{author?.display_name ?? "…"}</span>
-          </div>
-          <p className={cn("mt-0.5 line-clamp-2 text-[13px] leading-5", unread ? "text-ink" : "text-muted")}><EmojiText controller={controller} text={excerpt} /></p>
-          <div className="mt-1.5 flex items-center gap-2 text-xs">
-            <span className="flex -space-x-1.5">
-              {others.map((id) => (
-                <Avatar key={id} id={id} name={store.users.get(id)?.display_name ?? "?"} size={18} className="rounded-md text-[9px] ring-2 ring-canvas" />
-              ))}
-            </span>
-            <span className={cn(unread ? "font-semibold text-accent" : "text-muted")}>{t("timeline.replyCount", { count: state.reply_count })}</span>
-            {unread && <span className="text-muted">· {t("format.unreadCount", { count: state.unread_count })}</span>}
-            {unread && <Badge tone={state.mention_count > 0 ? "danger" : "accent"} className="ml-auto">{state.mention_count > 0 ? `@${state.mention_count}` : state.unread_count}</Badge>}
-          </div>
-        </div>
-      </button>
-    </li>
+          <button type="button" onClick={onOpen} aria-current={selected ? "true" : undefined} className="flex w-full gap-3 px-4 pb-3 pt-1 text-left">
+            <Avatar id={parent.sender_id} name={author?.display_name ?? "?"} size={36} className="mt-0.5 rounded-lg" />
+            <div className="min-w-0 flex-1">
+              <div className={cn("flex items-baseline gap-2 text-sm", unread ? "font-semibold" : "font-medium")}>
+                <span className="truncate">{author?.display_name ?? "…"}</span>
+              </div>
+              <p className={cn("mt-0.5 line-clamp-2 text-[13px] leading-5", unread ? "text-ink" : "text-muted")}><EmojiText controller={controller} text={excerpt} /></p>
+              <div className="mt-1.5 flex items-center gap-2 text-xs">
+                <span className="flex -space-x-1.5">
+                  {others.map((id) => (
+                    <Avatar key={id} id={id} name={store.users.get(id)?.display_name ?? "?"} size={18} className="rounded-md text-[9px] ring-2 ring-canvas" />
+                  ))}
+                </span>
+                <span className={cn(unread ? "font-semibold text-accent" : "text-muted")}>{t("timeline.replyCount", { count: state.reply_count })}</span>
+                {unread && <span className="text-muted">· {t("format.unreadCount", { count: state.unread_count })}</span>}
+                {unread && <Badge tone={state.mention_count > 0 ? "danger" : "accent"} className="ml-auto">{state.mention_count > 0 ? `@${state.mention_count}` : state.unread_count}</Badge>}
+              </div>
+            </div>
+          </button>
+        </li>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className={MENU}>
+          <ContextMenu.Item className={MENU_ITEM} onSelect={onOpen}>{t("threads.openThread")}</ContextMenu.Item>
+          {channel && <ContextMenu.Item className={MENU_ITEM} onSelect={onOpenChannel}>{openLabel}</ContextMenu.Item>}
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }
