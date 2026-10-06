@@ -347,7 +347,13 @@ fun listMarker(ordered: Boolean, level: Int, number: Int): String {
 }
 
 /** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order; `canvas`: the canvas dialect too. */
-fun parseBlocks(body: String, canvas: Boolean = false): List<BodyBlock> {
+fun parseBlocks(body: String, canvas: Boolean = false): List<BodyBlock> = parseBlockSpans(body, canvas).map { it.block }
+
+/** A block and the source lines it was read from: `start` until `end` (0-based, `end` exclusive; blank lines included). */
+data class BlockSpan(val block: BodyBlock, val start: Int, val end: Int)
+
+/** [parseBlocks] with each block's source lines (the canvas's scroll sync between the editor and the preview uses them). */
+fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
     // M83 (CANVAS.md §22): a canvas's hidden task markers are never shown (each line keeps its place).
     val lines = body.replace("\r\n", "\n").replace('\r', '\n').split("\n").let { all -> if (canvas) all.map(CanvasMarkers::strip) else all }
     fun blank(index: Int) = index < 0 || index >= lines.size || lines[index].isBlank()
@@ -360,8 +366,27 @@ fun parseBlocks(body: String, canvas: Boolean = false): List<BodyBlock> {
     fun opensTable(index: Int) = index + 1 < lines.size && '|' in lines[index] && TABLE_SEPARATOR.matches(lines[index + 1]) &&
         splitTableRow(lines[index]).size == splitTableRow(lines[index + 1]).size
     val blocks = ArrayList<BodyBlock>()
+    val spans = ArrayList<BlockSpan>()
     var i = 0
+    var start = 0
+    /** The blocks added since the last call cover `start` until `i` (several only for a list split by kind). */
+    fun close() {
+        val added = blocks.subList(spans.size, blocks.size)
+        if (added.size == 1) spans.add(BlockSpan(added[0], start, i))
+        else {
+            // A list split into runs: each run has one line per item.
+            var from = start
+            added.forEachIndexed { k, block ->
+                val to = if (k == added.size - 1) i else from + (block as BodyBlock.ListBlock).items.size
+                spans.add(BlockSpan(block, from, to))
+                from = to
+            }
+        }
+        start = i
+    }
     while (i < lines.size) {
+        if (spans.size < blocks.size) close()
+        start = i
         val line = lines[i]
         if (opensFence(i)) {
             val lang = FENCE_OPEN.find(line)?.groupValues?.get(1).orEmpty()
@@ -452,7 +477,8 @@ fun parseBlocks(body: String, canvas: Boolean = false): List<BodyBlock> {
         }
         blocks.add(BodyBlock.Paragraph(paragraph))
     }
-    return blocks
+    if (spans.size < blocks.size) close()
+    return spans
 }
 
 /**
