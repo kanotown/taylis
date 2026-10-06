@@ -1599,6 +1599,7 @@ CREATE TABLE messages (
   system_event        jsonb,                               -- M88: type = 'system' の中身 {kind, actor_id, user_ids} (0071)。人の投稿は NULL
   workflow_id         uuid REFERENCES workflows(id),       -- M94: ワークフローのフォームから投稿した (0075)。ほかは NULL
   workflow_name       varchar(40),                         -- M94: その時のワークフローの名前 (MessageOut.workflow = {id, name})
+  call_url            text,                                -- M117 (0091): 通話を始めたメッセージの会議の部屋の URL (MessageOut.call = {url, started_by}、docs/CALLS.md)。ほかは NULL
   UNIQUE (channel_id, seq)
 );
 CREATE UNIQUE INDEX messages_client_msg_id_uniq ON messages (sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL;
@@ -2020,6 +2021,7 @@ CREATE TABLE workspace_settings (
   preview_before_join       boolean NOT NULL DEFAULT true,   -- 「参加前にチャンネルの中を見られる」(M27 のプレビュー)
   default_channel_ids       uuid[],                          -- M90 (0073) 「既定のチャンネル」、順序付き。NULL = 一度も保存していない
   icon_key                  text,                            -- M93 (0074) ワークスペースのアイコン (オブジェクトストアの `workspace-icon/<uuid7>`、256 px の PNG)。NULL = 無し (頭文字のタイル)
+  meeting_base_url          text DEFAULT 'https://meet.jit.si/', -- M117 (0091) 通話の会議サービス (部屋の名前を後ろに付ける、末尾は「/」)。NULL = 通話はオフ (docs/CALLS.md)
   updated_at                timestamptz NOT NULL DEFAULT now(),
   updated_by                uuid REFERENCES users(id) ON DELETE SET NULL
 );
@@ -2031,6 +2033,8 @@ CREATE TABLE workspace_settings (
 公開・未アーカイブでないものを飛ばす (MEMBERSHIP.md §6)。
 `icon_key` はキーの最後の部分 (アップロードごとの uuid7) を版 `icon_version` として、`GET /server` (認証不要)・bootstrap・
 イベントに出す。画像は `GET /server/icon` (認証不要。WORKSPACES.md §3.4)。
+`meeting_base_url` (M117) は bootstrap・イベントの `workspace_settings` に `calls_enabled` (NULL でない) と一緒に出す。
+行が無ければ既定の `https://meet.jit.si/` として読む (docs/CALLS.md §3)。
 
 ### import_refs (移行元の対応、M18・M87)
 

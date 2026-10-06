@@ -65,13 +65,15 @@ ON/OFF できるようにもしたい。管理者側の設定で、入る前に�
 `workspace_settings` (1 行、migration 0071。行が無ければ既定値) と `GET / PATCH /admin/workspace-settings`
 (管理者のみ。PATCH は送った項目だけを変える。未知の項目は 422)。変更は監査ログ `workspace.settings_updated`
 (`{項目: {from, to}}`) に残し、`workspace.settings_updated` (audience all、`{settings}`) で全端末に届ける。
-クライアントは bootstrap の `workspace_settings` (`{show_membership_messages, preview_before_join, icon_version}`) で受け取る
-(`icon_version` は M93 のワークスペースのアイコン。WORKSPACES.md §3.4)。
+クライアントは bootstrap の `workspace_settings` (`{show_membership_messages, preview_before_join, icon_version,
+calls_enabled, meeting_base_url}`) で受け取る (`icon_version` は M93 のワークスペースのアイコン。WORKSPACES.md §3.4。
+`calls_enabled` / `meeting_base_url` は M117 の通話。docs/CALLS.md)。
 
 | 項目 | 既定 | オフにすると |
 | --- | --- | --- |
 | `show_membership_messages` 「参加・退出の表示」 | オン | 新しい行を書かない。書いた行は残る |
 | `preview_before_join` 「参加前にチャンネルの中を見られる」 | オン (M27 のプレビュー) | 下の通り |
+| `meeting_base_url` 「通話の会議サービス」 (M117) | `https://meet.jit.si/` | `""` か null で通話がオフ (`calls_enabled = false`、📞 を出さない)。docs/CALLS.md §3 |
 
 **プレビューをオフにしたとき**: 参加していない公開チャンネルについて、一覧 (`GET /channels?include=public`) と
 `GET /channels/{id}` の名前・トピック・説明・人数は今まで通り。メッセージの履歴・差分・前後・単体・スレッドの返信・

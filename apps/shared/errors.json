@@ -176,6 +176,11 @@
       "en": "That occurrence was not found (it may have been changed or deleted).",
       "zh-Hans": "找不到该次重复（可能已被修改或删除）。"
     },
+    "calls_disabled": {
+      "ja": "このワークスペースでは通話がオフになっています",
+      "en": "Calls are turned off in this workspace.",
+      "zh-Hans": "此工作区已关闭通话。"
+    },
     "cancelled": {
       "ja": "Google でのログインを取り消しました",
       "en": "Google sign-in was cancelled.",
@@ -555,6 +560,11 @@
       "ja": "リンクが見つかりません",
       "en": "Link not found.",
       "zh-Hans": "找不到链接。"
+    },
+    "meeting_url_invalid": {
+      "ja": "会議サービスの URL が正しくありません（https:// で始まり、? や # を含まない URL にしてください）",
+      "en": "The meeting service URL is not valid (use an https:// URL without ? or #).",
+      "zh-Hans": "会议服务的 URL 无效（请使用以 https:// 开头且不含 ? 或 # 的 URL）。"
     },
     "member_not_found": {
       "ja": "メンバーが見つかりません",

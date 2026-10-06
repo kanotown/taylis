@@ -39,6 +39,7 @@ from app.modules.avatars.router import router as avatars_router
 from app.modules.bookmarks.router import router as bookmarks_router
 from app.modules.calendar import service as calendar
 from app.modules.calendar.router import router as calendar_router
+from app.modules.calls.router import router as calls_router
 from app.modules.canvases import service as canvases
 from app.modules.canvases.router import router as canvases_router
 from app.modules.channel_links.router import router as channel_links_router
@@ -432,6 +433,7 @@ def build_api_router() -> APIRouter:
     api.include_router(invites_router)
     api.include_router(channels_router)
     api.include_router(messages_router)
+    api.include_router(calls_router)
     api.include_router(threads_router)
     api.include_router(bookmarks_router)
     api.include_router(times_feed_router)

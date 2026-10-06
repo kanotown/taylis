@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.workspace.models import DEFAULT_MEETING_BASE_URL
+
 
 class ServerInfoOut(BaseModel):
     # Always "chikuwachat": the add-workspace dialog tells our server from any other site.
@@ -30,7 +32,14 @@ class WorkspaceSettingsOut(BaseModel):
     # M93 (WORKSPACES.md §3.4): the workspace icon's version (null: none); a change reaches the
     # signed-in devices through workspace.settings_updated, so the rail follows at once.
     icon_version: str | None = None
+    # M117 (docs/CALLS.md): whether the 📞 button is shown (POST /channels/{id}/calls works), and
+    # the meeting service a call's room is made on (null when calls are off).
+    calls_enabled: bool = True
+    meeting_base_url: str | None = DEFAULT_MEETING_BASE_URL
 
+
+# M117: the longest meeting service URL an administrator can set.
+MAX_MEETING_BASE_URL = 200
 
 # M90: at most this many default channels (a long list would bury a newcomer's sidebar).
 MAX_DEFAULT_CHANNELS = 20
@@ -67,6 +76,10 @@ class WorkspaceSettingsUpdate(BaseModel):
     # (422 default_channel_not_found / default_channel_not_public / default_channel_archived);
     # repeats are dropped.
     default_channel_ids: list[UUID] | None = Field(default=None, max_length=MAX_DEFAULT_CHANNELS)
+    # M117 (docs/CALLS.md): the meeting service's base URL (https; http only for localhost on a
+    # DEBUG server; no query, fragment or credentials; a missing final "/" is added). "" or an
+    # explicit null turns calls off (422 meeting_url_invalid otherwise).
+    meeting_base_url: str | None = Field(default=None, max_length=MAX_MEETING_BASE_URL)
 
 
 class DefaultChannelsApply(BaseModel):

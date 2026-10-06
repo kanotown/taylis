@@ -36,6 +36,7 @@
     { "ja": "ワークフロー", "en": "Workflows", "zh-Hans": "工作流" },
     { "ja": "投票", "en": "Poll", "zh-Hans": "投票" },
     { "ja": "ピン留め", "en": "Pin / Pinned", "zh-Hans": "置顶" },
+    { "ja": "通話", "en": "Call", "zh-Hans": "通话", "note": "M117 (docs/CALLS.md): 通話を始める = Start a call / 发起通话, 参加する (a call) = Join / 加入" },
     { "ja": "予約投稿", "en": "Scheduled message", "zh-Hans": "定时消息" },
     { "ja": "定期投稿", "en": "Recurring post", "zh-Hans": "定期消息" },
     { "ja": "確認を求める / 確認しました", "en": "Ask for acknowledgement / Acknowledged", "zh-Hans": "请求确认 / 已确认" },

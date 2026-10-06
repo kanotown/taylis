@@ -95,7 +95,7 @@
 - `favorites` は自分がお気に入りにしたチャンネルの id (`channels` に含まれるものだけ、M12a)。変化は `favorite.updated` で届く。
 - `blocked_user_ids` (M104、docs/MODERATION.md §4) は自分がブロックした人の id (古い順)。その人のメッセージは折りたたんで
   表示し、通知しない (未読の数え方は変えない)。M104 より前のサーバは送らない (空とみなす)。変化は `block.updated` で届く。
-- `workspace_settings` (M88) は `{ show_membership_messages, preview_before_join }` (docs/MEMBERSHIP.md §3)。M88 より前のサーバは送らない (両方 true とみなす)。変化は `workspace.settings_updated` で届く。
+- `workspace_settings` (M88) は `{ show_membership_messages, preview_before_join, icon_version, calls_enabled, meeting_base_url }` (docs/MEMBERSHIP.md §3)。M88 より前のサーバは送らない (両方 true とみなす)。変化は `workspace.settings_updated` で届く。`calls_enabled` / `meeting_base_url` (M117、docs/CALLS.md) が無いサーバ (M117 より前) では通話の 📞 を出さない。
 
 ### 4.2 `GET /api/v1/channels/{id}/messages?before_seq=&limit=50`
 
@@ -273,10 +273,13 @@
 | `channel.member_updated` | channel | — | `{ channel_id, user_id, role }` (L4、M31)。オーナーの追加・解除 (`PATCH /channels/{id}/members/{user_id}`)。自分なら `membership.role` を変え、開いているメンバー一覧を読み直す |
 | `user.created` / `user.updated` / `user.deactivated` | all | — | `{ user }` (UserPublic)。本人だけの設定 (UserMe の `notify_keywords`・`notification_default`・`notify_reactions`・`quick_reactions`・`nav_items`・`locale`・`composer_mode` など) は載らない。`PATCH /users/me` はどの項目でも `updated_at` を進めて `user.updated` を出すので、**自分についての `user.updated` の `updated_at` が手元の `me` より新しければ、別の端末が設定を変えた**: クライアントは `GET /users/me` を読み直して `me` を置き換える (M50。iOS・Android も M111 から読み直す。読み直さない端末も次の bootstrap の `me` で揃う) |
 | `session.revoked` | session | — | `{ reason }` |
-| `workspace.settings_updated` | all | — | `{ settings: { show_membership_messages, preview_before_join } }` (M88、docs/MEMBERSHIP.md §3)。管理者がワークスペースの設定を変えた。手元の値を置き換え、開いているプレビューを追従させる (オフなら行を捨てて「参加するとメッセージを読めます」、オンなら読み込む) |
+| `workspace.settings_updated` | all | — | `{ settings: { show_membership_messages, preview_before_join, icon_version, calls_enabled, meeting_base_url } }` (M88、docs/MEMBERSHIP.md §3。M117 の通話は docs/CALLS.md)。管理者がワークスペースの設定を変えた。手元の値を置き換え、開いているプレビューを追従させる (オフなら行を捨てて「参加するとメッセージを読めます」、オンなら読み込む) |
 
 `message.created` の `message.type` が `"system"` の行 (M88 の参加・退出の一言。`system_event` に `{kind, actor_id, user_ids}`) も
 seq を 1 つ取り、ふつうの行と同じに差分・マージする。未読・通知・メンションには数えない (§10.1 12.、docs/MEMBERSHIP.md §1)。
+
+`message.call` が null でない行 (M117、`{url, started_by}`) は通話を始めたメッセージ (docs/CALLS.md §5)。ふつうの
+`type = "user"` の行なので、未読・通知・検索も同じに扱う。
 
 `message` オブジェクトの形は REST と同一 (`openapi/openapi.json` の `MessageOut` スキーマ)。フレームと各イベントの
 `data` の JSON Schema は `openapi/ws-events.json` に生成される。
