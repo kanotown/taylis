@@ -187,6 +187,12 @@ apps/android/scripts/release-android.sh
   トラックは **内部テスト** (100 人まで、審査はほぼ即時) → **クローズド テスト** (招いたメンバー。新しい個人の
   デベロッパー アカウントは製品版の前にクローズド テストで 12 人・14 日が要る) → **製品版** (段階的な公開を使える)。
   同じ AAB を上のトラックに「昇格」できる。
-- R8 (縮小・難読化) は使っていない (`isMinifyEnabled = false`)。縮小したビルドを一度も試していないため
-  (kotlinx.serialization・Room・OkHttp・Firebase はそれぞれ keep の規則を持つが、漏れは実行時にしか分からない)。
-  入れるときはエミュレータで全画面を通してから。AAB が数 MB 大きいだけで、困ることは無い。
+- release は R8（縮小・難読化）を使う（`isMinifyEnabled` / `isShrinkResources`、2026-10-06 から。Play Console の
+  「難読化されていない DEX」の警告への対応）。kotlinx.serialization・Room・OkHttp・Firebase は各ライブラリが keep の
+  規則を持ち、`app/proguard-rules.pro` には AndroidMath の FreeType（JNI がクラス名で参照する
+  `com.pvporbit.freetype`）とスタックトレースの行番号だけを書く。漏れは実行時にしか分からないので、依存を足したり
+  上げたりしたときは、release の APK をエミュレータに入れて ログイン・送信・リアルタイム受信・通知・数式・検索 を通す
+  （`./gradlew :app:assembleRelease` の署名なし APK を `apksigner` でデバッグ鍵で署名すれば、デバッグ版の上に入る）。
+- 難読化の対応表 `mapping.txt` は AAB の中（`BUNDLE-METADATA/…/proguard.map`）に入っていて、Play Console が
+  クラッシュのスタックトレースを自動で戻す。手で上げる必要はない。スクリプトは AAB の隣にも
+  `taylis-<versionName>-<versionCode>-mapping.txt` を残す（手元で `retrace` するとき用）。
