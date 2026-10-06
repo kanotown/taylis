@@ -1,4 +1,4 @@
-import { Bell, BellOff, Building2, ChevronDown, ChevronRight, ChevronUp, GripVertical, EyeOff, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
+import { Bell, BellOff, Building2, ChevronDown, ChevronRight, ChevronUp, GripVertical, EyeOff, Flag, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { SessionOut, TotpStatusOut } from "../api/types";
@@ -27,7 +27,7 @@ import { TestNotificationCard } from "./TestNotification";
 import { displayTitle } from "./roster";
 import { applyThemeToAllWorkspaces, FONT_OPTIONS, PALETTES, SIDEBAR_TONES, THEME_OPTIONS, type ThemeScope, themeLabel, useFont, usePalette, useSidebarTone, useTheme, useWorkspaceThemesDiffer, writeFont, writePalette, writeSidebarTone, writeTheme } from "./theme";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
-import { DeleteAccountDialog } from "./ModerationDialogs";
+import { DeleteAccountDialog, ProblemReportDialog } from "./ModerationDialogs";
 import { UsernameEditor } from "./UsernameEditor";
 import { StatusGlyph } from "./UserPopover";
 import { activeStatus, expiryLabel } from "./users";
@@ -126,6 +126,7 @@ export function SettingsList({ controller, variant, selected = null, onSelect, o
   const me = meOf(controller);
   const status = activeStatus(me);
   const page = variant === "page";
+  const [reporting, setReporting] = useState(false);
   // The roster label is the title too (LAB.md 「肩書と名簿」).
   const myTitle = me ? displayTitle(me.title, controller.store.roster.get(me.id)) : null;
   const row = (section: SettingsSection, subtitle?: ReactNode) => {
@@ -191,6 +192,23 @@ export function SettingsList({ controller, variant, selected = null, onSelect, o
       </div>
       {group([row("pause"), row("quiet")], t("settings.list.quick"))}
       {group(menuSections(controller.isAdmin).map((section) => row(section, page ? sectionSubtitle(section) : undefined)), t("settings.list.items"))}
+      {/* M119 (docs/MODERATION.md §3.1): always visible, guests too (Google Play's child safety standards). */}
+      {group(
+        <li>
+          <button
+            type="button"
+            data-action="problem-report"
+            onClick={() => setReporting(true)}
+            className={cn("flex w-full items-center gap-3 text-left transition-colors", page ? "min-h-[48px] px-4 py-2.5 text-[15px] hover:bg-panel" : "rounded-lg px-2.5 py-1.5 text-sm hover:bg-panel")}
+          >
+            <span className="shrink-0 text-muted"><Flag size={18} /></span>
+            <span className="min-w-0 flex-1 truncate">{t("problemReport.entry")}</span>
+            {page && <ChevronRight size={16} className="shrink-0 text-muted" />}
+          </button>
+        </li>,
+        t("problemReport.entry"),
+      )}
+      {reporting && <ProblemReportDialog controller={controller} onClose={() => setReporting(false)} />}
       <div className={cn(page ? "border-y border-line" : "border-t border-line pt-2")}>
         <button
           type="button"
