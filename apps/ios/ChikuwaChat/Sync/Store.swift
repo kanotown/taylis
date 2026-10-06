@@ -138,11 +138,13 @@ struct MessageState: Codable, Identifiable, Equatable {
     var systemEvent: SystemEvent? = nil
     /// M95 (WORKFLOWS.md §8): the workflow whose form posted it (「⚡ name」 above it); rows persisted earlier lack it.
     var workflow: MessageWorkflow? = nil
+    /// M117 (docs/CALLS.md §5): the call it started (its card instead of the link); rows persisted earlier lack it.
+    var call: MessageCall? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed, type
         case reactions, mentionedUserIds, mentionAll, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
-        case priority, ackRequested, acks, collection, tasks, systemEvent, workflow
+        case priority, ackRequested, acks, collection, tasks, systemEvent, workflow, call
     }
 
     /// M88: a line the server writes (the join / leave lines): one muted line, never grouped, no actions.
@@ -191,6 +193,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         tasks = message.tasks
         systemEvent = message.systemEvent
         workflow = message.workflow
+        call = message.call
     }
 
     /// Rows persisted before M8a lack the reaction / mention fields.
@@ -228,6 +231,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         tasks = MessageTaskOut.list(c, forKey: .tasks)
         systemEvent = try? c.decodeIfPresent(SystemEvent.self, forKey: .systemEvent)
         workflow = try? c.decodeIfPresent(MessageWorkflow.self, forKey: .workflow)
+        call = try? c.decodeIfPresent(MessageCall.self, forKey: .call)
     }
 
     init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = nil,
@@ -269,7 +273,7 @@ extension MessageOut {
                   alsoInChannel: state.alsoInChannel, replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, replyUserIds: state.replyUserIds, attachments: state.attachments,
                   pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy, poll: state.poll,
                   priority: state.priority, ackRequested: state.ackRequested, acks: state.acks, collection: state.collection,
-                  tasks: state.tasks, systemEvent: state.systemEvent, workflow: state.workflow)
+                  tasks: state.tasks, systemEvent: state.systemEvent, workflow: state.workflow, call: state.call)
     }
 }
 
@@ -420,6 +424,13 @@ final class Store {
         let next = settings ?? .defaults
         if next != workspaceSettings { workspaceSettings = next } // every reconnect bootstraps: unchanged redraws nothing
         if next.hasIconVersion { onWorkspaceIcon?(next.iconVersion) }
+    }
+
+    /// M117 (docs/CALLS.md §7): `409 calls_disabled`, the setting went off before its event came: the 📞 goes until the
+    /// next bootstrap or workspace.settings_updated says otherwise.
+    func callsTurnedOff() {
+        workspaceSettings.callsEnabled = false
+        workspaceSettings.meetingBaseUrl = nil
     }
     /// A conversation left the store (left, removed, made private); the engine forgets it as the open one.
     @ObservationIgnored var onChannelRemoved: ((String) -> Void)?

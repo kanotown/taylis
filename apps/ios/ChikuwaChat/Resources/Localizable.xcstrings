@@ -44,6 +44,70 @@
       },
       "shouldTranslate" : false
     },
+    "%@ さんが通話を始めました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ started a call"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 发起了通话"
+          }
+        }
+      }
+    },
+    "メンバーに通知が届き、会議のリンクが投稿されます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Members will be notified, and a meeting link will be posted."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成员会收到通知，并会发布会议链接。"
+          }
+        }
+      }
+    },
+    "通話を始めますか？" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start a call?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要发起通话吗？"
+          }
+        }
+      }
+    },
+    "通話を始める" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start a call"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发起通话"
+          }
+        }
+      }
+    },
     "（今すぐ）" : {
       "localizations" : {
         "en" : {
@@ -27866,6 +27930,22 @@
     },
     "📝" : {
       "shouldTranslate" : false
+    },
+    "📞 %@ さんが通話を始めました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "📞 %@ started a call"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "📞 %@ 发起了通话"
+          }
+        }
+      }
     },
     "🔒" : {
       "shouldTranslate" : false

@@ -489,6 +489,12 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         _ = try await requestRaw("POST", "/api/v1/users/me/delete-account", body: .object(body), auth: true, retry401: true)
     }
 
+    /// M117 (docs/CALLS.md §4): a new meeting room, announced in the conversation. `clientMsgId` is the message's
+    /// idempotency key: a retry gets the same call back.
+    func startCall(channelId: String, clientMsgId: String) async throws -> CallOut {
+        try await request("POST", "/api/v1/channels/\(channelId)/calls", body: .object(["client_msg_id": .string(clientMsgId)]))
+    }
+
     func favoriteChannel(id: String) async throws -> FavoriteStateOut { try await request("PUT", "/api/v1/channels/\(id)/favorite") }
     func unfavoriteChannel(id: String) async throws -> FavoriteStateOut { try await request("DELETE", "/api/v1/channels/\(id)/favorite") }
     func readAll() async throws -> [ChannelReadStateOut] { try await request("POST", "/api/v1/channels/read-all", body: .object([:])) }
