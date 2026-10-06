@@ -337,6 +337,17 @@ it("a message revealed in a conversation is that conversation's entry: back land
   w.engine.stop();
 });
 
+it("a reply revealed in the conversation already on screen (a notification's click) opens its thread too", async () => {
+  const { w, controller, reply } = await setup();
+  expect(title()).toBe("c");
+  expect(screen.queryAllByText("返信")).toHaveLength(0);
+  await act(async () => { await controller.revealMessage(reply as MessageOut); });
+  await settle(w);
+  expect(title()).toBe("c");
+  expect(screen.getAllByText("返信").length).toBeGreaterThan(0); // the thread pane, beside the conversation
+  w.engine.stop();
+});
+
 it("M75: back / forward to a centre view asks it back where it was scrolled to; the sidebar opens it at its top", async () => {
   const { w } = await setup();
   fireEvent.click(sidebar().getByRole("button", { name: "スレッド" }));

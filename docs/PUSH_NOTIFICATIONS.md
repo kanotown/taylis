@@ -295,7 +295,7 @@ Provider の選択は起動時に設定から決め、`notifications` モジュ�
   音を返し、許可は UN の `authorizationStatus` (未決定 → `default`、拒否 → `denied`、それ以外 → `granted`) をそのまま
   設定に出し、「通知を許可」は `requestAuthorization` (初回は macOS の確認)。設定はウィンドウが前面に戻るたびに読み直す
   (システム設定で変えた後)。通知のクリックはウィンドウを前に出し、`notification-clicked` (通知の id) で画面の
-  `onClick` を実行する (タスクを開く。古い id は窓を出すだけ)。ログアウトで配信済みの通知を消す
+  `onClick` を実行する (新着はそのメッセージ (返信ならスレッド)、リアクションは自分のメッセージ、タスク・キャンバス・予約はそれぞれの画面を開く。他のワークスペースの通知は先にそのワークスペースへ切り替える (WORKSPACES.md §7)。古い id は窓を出すだけ)。ログアウトで配信済みの通知を消す
   (`removeAllDeliveredNotifications`)。
 - **それ以外** (Windows、Linux、アプリのバンドル外で動く macOS の `tauri dev`、macOS 10.13): UN はバンドルが無いと
   例外になるので使わず (`available()` が偽 → `"unavailable"`)、これまでどおり tauri-plugin-notification。
