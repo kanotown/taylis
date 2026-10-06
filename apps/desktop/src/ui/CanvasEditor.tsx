@@ -27,12 +27,14 @@ import { t } from "../i18n";
 /** M80: what a cut in a canvas editor keeps besides the plain text — the lines with their task markers. */
 const CUT_TYPE = "application/x-chikuwachat-canvas";
 
-export function CanvasEditor({ controller, saver, className, style, autoFocus = false }: {
+export function CanvasEditor({ controller, saver, className, style, autoFocus = false, onTextArea }: {
   controller: AppController;
   saver: CanvasSaver;
   className?: string;
   style?: CSSProperties;
   autoFocus?: boolean;
+  /** §23: the text area, for the scroll sync with the preview beside it (null when the editor goes). */
+  onTextArea?: (element: HTMLTextAreaElement | null) => void;
 }) {
   const store = controller.store;
   useSyncExternalStore((listener) => saver.subscribe(listener), () => saver.textRevision);
@@ -83,6 +85,11 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
   useEffect(() => {
     if (autoFocus) area.current?.focus();
   }, [autoFocus]);
+
+  useLayoutEffect(() => {
+    onTextArea?.(area.current);
+    return () => onTextArea?.(null);
+  }, [onTextArea]);
 
   // M72 (CANVAS.md §18.2): 「編集中」 for the conversation's other members — while the text area has the focus (said
   // again on typing and when the caret's heading changes, else every 20 s), stopped on blur and when the editor goes.

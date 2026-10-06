@@ -246,12 +246,33 @@ const HEADING = /^(#{1,3})\s+(\S.*)$/;
 
 /** Block structure for rendering: paragraphs, quotes, lists and fenced code, in order. */
 export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
+  return parseBlocksWithLines(body, options).blocks;
+}
+
+/** The lines of the body a block came from: `from` (0-based) up to, not including, `to`. */
+export interface BlockLines {
+  from: number;
+  to: number;
+}
+
+/**
+ * parseBlocks with each block's source lines beside it (`lines[k]` belongs to `blocks[k]`): the canvas editor's
+ * scroll sync (ui/canvasScrollSync.ts) matches the preview's blocks to the editor's lines with them. Every line of the
+ * body is in exactly one block, in order.
+ */
+export function parseBlocksWithLines(body: string, options: ParseOptions = {}): { blocks: Block[]; lines: BlockLines[] } {
   const blocks: Block[] = [];
+  const ranges: BlockLines[] = [];
   const canvas = options.canvas === true;
   // M80 (CANVAS.md §22): a canvas's hidden task markers are never shown (each line keeps its place).
   const lines = body.replace(/\r\n?/g, "\n").split("\n").map((line) => (canvas ? stripTaskMarkers(line) : line));
   let i = 0;
-  const push = (block: Block) => blocks.push(block);
+  let start = 0;
+  /** A block from `from` (the line the construct began on, by default) to the current line. */
+  const push = (block: Block, from = start) => {
+    blocks.push(block);
+    ranges.push({ from, to: i });
+  };
   const blank = (index: number) => index < 0 || index >= lines.length || (lines[index] ?? "").trim() === "";
   const isTask = (index: number) => canvas && TASK_LINE.test(lines[index] ?? "");
   const isImage = (index: number) => canvas && IMAGE_LINE.test(lines[index] ?? "");
@@ -267,24 +288,25 @@ export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
     return header.includes("|") && TABLE_SEPARATOR.test(separator) && splitTableRow(header).length === splitTableRow(separator).length;
   };
   while (i < lines.length) {
+    start = i;
     const line = lines[i] ?? "";
     if (opensFence(i)) {
       const fence = FENCE.exec(line);
       const close = fenceCloseAfter(i);
-      push({ kind: "codeblock", text: straightQuotes(lines.slice(i + 1, close).join("\n")), lang:fence?.[1] ? fence[1].toLowerCase() : null });
       i = close + 1;
+      push({ kind: "codeblock", text: straightQuotes(lines.slice(start + 1, close).join("\n")), lang:fence?.[1] ? fence[1].toLowerCase() : null });
       continue;
     }
     const math = mathBlockAt(lines, i);
     if (math) {
-      push({ kind: "math", tex: math.tex });
       i = math.end + 1;
+      push({ kind: "math", tex: math.tex });
       continue;
     }
     const heading = HEADING.exec(line);
     if (heading) {
-      push({ kind: "heading", level: (heading[1] ?? "#").length as 1 | 2 | 3, tokens: tokenizeInline(heading[2] ?? ""), ...(canvas ? { line: i } : {}) });
       i++;
+      push({ kind: "heading", level: (heading[1] ?? "#").length as 1 | 2 | 3, tokens: tokenizeInline(heading[2] ?? ""), ...(canvas ? { line: start } : {}) });
       continue;
     }
     if (isTask(i)) {
@@ -300,13 +322,13 @@ export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
     }
     if (isImage(i)) {
       const m = IMAGE_LINE.exec(line)!;
-      push({ kind: "image", alt: m[1] ?? "", attachmentId: (m[2] ?? "").toLowerCase(), line: i });
       i++;
+      push({ kind: "image", alt: m[1] ?? "", attachmentId: (m[2] ?? "").toLowerCase(), line: start });
       continue;
     }
     if (isRule(i)) {
-      push({ kind: "hr" });
       i++;
+      push({ kind: "hr" });
       continue;
     }
     const quote = QUOTE.exec(line);
@@ -348,7 +370,8 @@ export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
       for (let k = 1; k <= items.length; k++) {
         if (k < items.length && !(items[k]!.level === 0 && items[k]!.ordered !== items[from]!.ordered)) continue;
         const run = items.slice(from, k);
-        push({ kind: "list", ordered: run[0]!.ordered, start: run[0]!.ordered ? run[0]!.number : 1, items: run });
+        blocks.push({ kind: "list", ordered: run[0]!.ordered, start: run[0]!.ordered ? run[0]!.number : 1, items: run });
+        ranges.push({ from: start + from, to: start + k }); // one item per line
         from = k;
       }
       continue;
@@ -363,7 +386,7 @@ export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
     }
     push({ kind: "paragraph", lines: paragraph });
   }
-  return blocks;
+  return { blocks, lines: ranges };
 }
 
 /** A list line: its indent (a tab is 4 columns), its kind, the number written ("3." → 3) and its text. */

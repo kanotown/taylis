@@ -20,6 +20,7 @@ import { TaskDialog } from "./TaskDialog";
 import type { TaskCreateInit } from "./tasks";
 import { editingLabel } from "../sync/canvasPresence";
 import { CanvasEditor } from "./CanvasEditor";
+import { useCanvasScrollSync } from "./useCanvasScrollSync";
 import { canvasRights, type CanvasRights, isDmConversation, NO_CANVAS_RIGHTS } from "./canvasAccess";
 import { CanvasHistoryDialog } from "./CanvasHistory";
 import { outline, taskProgress, toggleTaskLine } from "./canvasText";
@@ -253,6 +254,10 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
     : null;
 
   const headings = useMemo(() => outline(saver.text), [saver.text]);
+  // §23: in the two columns the editor and the preview scroll together (always on; the single column has one side).
+  const [editorArea, setEditorArea] = useState<HTMLTextAreaElement | null>(null);
+  const [previewBox, setPreviewBox] = useState<HTMLDivElement | null>(null);
+  useCanvasScrollSync(editing && !compact ? editorArea : null, editing && !compact ? previewBox : null, saver.text);
   const showOutline = !compact && !editing && headings.length >= 3;
   const title = meta?.title ?? t("main.tab.canvas");
   const notice = noticeFor(channel, rights, saver, controller);
@@ -307,7 +312,7 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
         <Empty icon={<Loader2 size={22} className="animate-spin" />} title={t("common.loading")} />
       ) : editing ? (
         <div ref={splitBox} className={cn("flex min-h-0 flex-1", compact ? "flex-col" : "flex-row")}>
-          <CanvasEditor controller={controller} saver={saver} className={cn("min-w-0", compact ? "flex-1" : "shrink-0")} style={compact ? undefined : { width: `${split * 100}%` }} />
+          <CanvasEditor controller={controller} saver={saver} onTextArea={setEditorArea} className={cn("min-w-0", compact ? "flex-1" : "shrink-0")} style={compact ? undefined : { width: `${split * 100}%` }} />
           {!compact && (
             <div
               role="separator"
@@ -330,7 +335,7 @@ function CanvasView({ controller, channel, canvasId, list, onSelect, onNew, onTr
             />
           )}
           {!compact && (
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" aria-label={t("canvas.previewLabel")}>
+            <div ref={setPreviewBox} className="min-h-0 min-w-0 flex-1 overflow-y-auto" aria-label={t("canvas.previewLabel")}>
               <div className="mx-auto max-w-3xl px-6 py-4">
                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted">{t("composer.preview")}</div>
                 <CanvasBody body={saver.text} controller={controller} onToggleTask={onToggleTask} onMakeTask={onMakeTask} />
