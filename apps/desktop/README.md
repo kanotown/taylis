@@ -92,6 +92,16 @@ tests/        fakeServer.ts (プロトコルの模擬サーバ)、engine / apiCl
   白の直書きでなく `sidebar-strong` (濃い: 白 / 明るい: 濃い文字)・`sidebar-active-fg`・`sidebar-rail`・
   `sidebar-line`・`sidebar-edge` のトークンで書く。未読の太字と選択中の行が重なるときは選択中の文字色が勝つ
   よう、`cn()` で選択中のクラスを後に置く。macOS の信号機ボタンは OS が描くのでどちらでも同じ。
+- **ワークスペースごとの色** (2026-10-06): テーマの色とサイドバーはワークスペースごとに持てる (Slack のように
+  ワークスペースが一目で分かる)。localStorage `chikuwa.prefs.workspaceTheme` = `{ [serverUrl]: { palette?, sidebar? } }`
+  (キーは `WorkspaceEntry.serverUrl`)、無い値は共通の選択 (`chikuwa.prefs.palette` / `chikuwa.prefs.sidebar`)。
+  `ui/theme.ts` の `setThemeWorkspace` が画面のワークスペースを覚えて属性を付け直す。コントローラは開いている
+  ワークスペースが変わるたびに (`saveWorkspaces` を通る) 呼ぶので、切り替えと同じタスクで色が変わる。
+  `main.tsx` は描画前に最後に開いていたもの (`savedActiveWorkspace()`) で呼ぶ。「ワークスペースを追加」の
+  ログイン画面 (開いているものが無い) では色はそのまま。設定は、レールがある時 (`showsRail`) だけ選んだ色を
+  そのワークスペースのものにし、「すべてのワークスペースに使う」で共通にする (各自の値を消す)。レールが無い時
+  (1 つ・ブラウザ版) は共通の選択を書き、各自の値を消す。ライト / ダークとフォントは端末で 1 つ。端末ごとで、
+  サーバには保存しない。
 - **フォント** (2026-10-05): 既定は同梱の **Noto Sans JP** (`@fontsource-variable/noto-sans-jp`、SIL OFL 1.1、
   THIRD_PARTY_NOTICES.md)。`main.tsx` が重さの軸だけの可変フォント (`wght.css`) を読み込み、`styles.css` の
   `--font-ui` が `"Noto Sans JP Variable"` を先頭に、その後に以前のシステムのフォント (`--font-system`:

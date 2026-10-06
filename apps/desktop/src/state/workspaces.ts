@@ -120,6 +120,12 @@ export function gapForPointer(y: number, midpoints: number[]): number {
   return gap;
 }
 
+/** The last active workspace's list key as saved (no migration, no list read): main.tsx's colours before the first paint. */
+export function savedActiveWorkspace(): string | null {
+  const active = read<unknown>(ACTIVE_KEY, null);
+  return typeof active === "string" ? active : null;
+}
+
 /** The saved list, in the order added (or as the user arranged it, M93); the one install that predates workspaces becomes its first entry. */
 export function loadWorkspaces(): { entries: WorkspaceEntry[]; active: string | null } {
   let entries = read<unknown[]>(LIST_KEY, []);

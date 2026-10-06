@@ -132,6 +132,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "settings.appearance.paletteNote": "侧边栏和强调色（链接、按钮、选中行）的颜色。浅色和深色模式都适用。",
   "settings.appearance.sidebar": "侧边栏",
   "settings.appearance.sidebarNote": "“浅色”仅在浅色模式下生效。深色模式下侧边栏保持深色。",
+  "settings.appearance.workspaceThemeNote": "主题颜色和侧边栏仅用于“{name}”（每个工作区可以不同）。",
+  "settings.appearance.useForAllWorkspaces": "用于所有工作区",
   "settings.appearance.font": "字体",
   "settings.appearance.fontNote": "仅用于此设备。“Noto Sans JP”是应用自带的字体，在任何系统上外观都相同。",
   "settings.appearance.zoom": "文字大小",

@@ -11,6 +11,7 @@ import { totpErrorText } from "../ui/totp";
 import { shareBody } from "../ui/share";
 import { conversationTitle, hasUnread, unreadBadgeTotal } from "../ui/channels";
 import { configureAvatars, noteVersions } from "../ui/avatars";
+import { setThemeWorkspace } from "../ui/theme";
 import { findDmWith } from "../ui/mobileTabs";
 import { parseEntryPath } from "../ui/routes";
 import { COMMANDS, type ParsedCommand, parseDuration, SHRUG, splitStatus } from "../ui/commands";
@@ -267,6 +268,7 @@ export class AppController {
         if (username) this.workspaces = [{ serverUrl: location.origin, workspaceId: null, name: location.host, username, userId: null }];
       }
       this.activeServer = this.workspaces.find((e) => e.serverUrl === saved.active)?.serverUrl ?? this.workspaces[0]?.serverUrl ?? null;
+      setThemeWorkspace(this.activeServer); // main.tsx painted the saved one; a browser serves its own origin's
       if (sso?.kind === "ticket") {
         const failure = await this.completeSso(sso.ticket, takeSsoPending());
         if (failure !== null) this.setScreen("login", failure);
@@ -1553,8 +1555,10 @@ export class AppController {
     else this.setScreen("login");
   }
 
+  /** Every change of the active workspace comes through here: its colours go on screen at once (per-workspace themes). */
   private saveWorkspaces(): void {
     persistWorkspaces(this.workspaces, this.activeServer);
+    setThemeWorkspace(this.activeServer);
   }
 
   private patchEntry(serverUrl: string, patch: Partial<WorkspaceEntry>): void {
