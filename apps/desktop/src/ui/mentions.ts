@@ -2,6 +2,7 @@
  * The composer shows `@username`; the wire format is `<@uuid>` / `<!channel>` (DATA_MODEL.md).
  * Encoding happens on send, decoding when a message is opened for editing.
  */
+import type { AiStatusOut } from "../api/ai";
 import type { GroupOut, UserPublic } from "../api/types";
 import { t } from "../i18n";
 
@@ -66,14 +67,31 @@ export function mentionQuery(text: string, caret: number): { start: number; quer
   return { start: before.length - query.length - 1, query };
 }
 
-/** `aiBotIds` (M65): the bot users of the AI agents (GET /ai/status), marked `ai`. */
-export function mentionCandidates(query: string, users: UserPublic[], groups: GroupOut[] = [], limit = 6, aiBotIds: ReadonlySet<string> = new Set()): MentionCandidate[] {
+/**
+ * Who the @ list offers (docs/AI.md §2.1, 2026-10-06): people (not bots, not deactivated) and the AI bots, never the other
+ * bots (webhooks, feeds, reservations, imported ones: they do not answer). An AI bot is `bot_kind` "ai"; once
+ * /ai/status was read (`aiBotIds` not null), only its agents' bots (a stopped or deleted agent's bot drops out, and a
+ * server before `bot_kind` still offers its agents' bots).
+ */
+export function mentionable(user: UserPublic, aiBotIds: ReadonlySet<string> | null): boolean {
+  if (user.deactivated_at) return false;
+  if (user.role !== "bot") return true;
+  return aiBotIds ? aiBotIds.has(user.id) : user.bot_kind === "ai";
+}
+
+/** The AI agents' bot users once /ai/status was read, else null (`bot_kind` decides then). */
+export function aiBotIds(store: { aiStatus: AiStatusOut | null }): ReadonlySet<string> | null {
+  return store.aiStatus ? new Set(store.aiStatus.agents.map((agent) => agent.bot_user_id)) : null;
+}
+
+/** `aiBotIds` (M65): the bot users of the AI agents (GET /ai/status), marked `ai`; null while it was not read. */
+export function mentionCandidates(query: string, users: UserPublic[], groups: GroupOut[] = [], limit = 6, aiBotIds: ReadonlySet<string> | null = null): MentionCandidate[] {
   const q = query.toLowerCase();
   const people: MentionCandidate[] = users
-    .filter((u) => !u.deactivated_at)
+    .filter((u) => mentionable(u, aiBotIds))
     .filter((u) => u.username.toLowerCase().startsWith(q) || u.display_name.toLowerCase().includes(q))
     .sort((a, b) => a.username.localeCompare(b.username))
-    .map((u) => ({ username: u.username, label: u.display_name, kind: "user", ...(aiBotIds.has(u.id) ? { ai: true } : {}) }));
+    .map((u) => ({ username: u.username, label: u.display_name, kind: "user", ...(u.role === "bot" ? { ai: true } : {}) }));
   const teams: MentionCandidate[] = groups
     .filter((g) => g.name.toLowerCase().startsWith(q) || (g.description ?? "").toLowerCase().includes(q))
     .sort((a, b) => a.name.localeCompare(b.name))

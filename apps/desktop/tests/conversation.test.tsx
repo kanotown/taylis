@@ -57,6 +57,25 @@ describe("conversation UX", () => {
     }
   });
 
+  it("the mention list offers people and AI bots, not the other bots (docs/AI.md §2.1)", () => {
+    const w = world();
+    for (const [id, username, kind] of [["b1", "ai-chikuwa", "ai"], ["b2", "feedbot", "feed"], ["b3", "hook", null]] as const) {
+      w.store.upsertUser({ id, username, display_name: username, role: "bot", bot_kind: kind, deactivated_at: null, created_at: "", updated_at: "" });
+    }
+    render(<w.DraftComposer />);
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "@" } });
+    expect(screen.getByText("@alice")).toBeTruthy();
+    expect(screen.getByText("@ai-chikuwa")).toBeTruthy();
+    expect(screen.queryByText("@feedbot")).toBeNull();
+    expect(screen.queryByText("@hook")).toBeNull();
+    // /ai/status read without that agent (stopped): its bot drops out too.
+    act(() => w.store.setAiStatus({ available: true, summary_available: true, agents: [] }));
+    fireEvent.change(box, { target: { value: "@a" } });
+    expect(screen.getByText("@alice")).toBeTruthy();
+    expect(screen.queryByText("@ai-chikuwa")).toBeNull();
+  });
+
   it("keeps channel and thread text separate across switches and restart", () => {
     const w = world();
     const view = render(<w.DraftComposer />);
