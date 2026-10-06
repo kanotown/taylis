@@ -888,8 +888,10 @@ function syntaxRows(): Array<[string, string]> {
     [t("composer.syntax.listEx"), t("composer.syntax.list")],
     [t("composer.syntax.linkEx"), t("composer.syntax.link")],
     [t("composer.syntax.tableEx"), t("composer.syntax.table")],
+    [t("composer.syntax.mathEx"), t("composer.syntax.math")],
+    [t("composer.syntax.mathBlockEx"), t("composer.syntax.mathBlock")],
     [t("composer.syntax.mentionEx"), t("composer.syntax.mention")],
-    ["\\_ \\* \\~ \\`", t("composer.syntax.escape")],
+    ["\\_ \\* \\~ \\` \\$", t("composer.syntax.escape")],
   ];
 }
 
