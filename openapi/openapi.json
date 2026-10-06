@@ -12776,6 +12776,21 @@
             ],
             "title": "Bot Kind"
           },
+          "composer_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rich",
+                  "markdown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Composer Mode"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -13141,6 +13156,21 @@
       "UserUpdate": {
         "additionalProperties": false,
         "properties": {
+          "composer_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rich",
+                  "markdown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Composer Mode"
+          },
           "display_name": {
             "anyOf": [
               {

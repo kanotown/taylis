@@ -8974,6 +8974,8 @@ export interface components {
             avatar_updated_at?: string | null;
             /** Bot Kind */
             bot_kind?: string | null;
+            /** Composer Mode */
+            composer_mode?: ("rich" | "markdown") | null;
             /**
              * Created At
              * Format: date-time
@@ -9093,6 +9095,8 @@ export interface components {
         };
         /** UserUpdate */
         UserUpdate: {
+            /** Composer Mode */
+            composer_mode?: ("rich" | "markdown") | null;
             /** Display Name */
             display_name?: string | null;
             /** Dnd Until */

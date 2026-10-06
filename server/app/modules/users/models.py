@@ -60,6 +60,9 @@ class User(Base):
     # M115: the UI language I chose ("ja" / "en" / "zh-Hans"); NULL = follow each device
     # (docs/I18N.md). The server writes my errors, pushes and notices in it.
     locale: Mapped[str | None] = mapped_column(String(16))
+    # The desktop / Web composer: "rich" (WYSIWYG, writes the same Markdown) or "markdown";
+    # NULL = never chosen, the clients' default ("rich"). The phones ignore it for now.
+    composer_mode: Mapped[str | None] = mapped_column(String(16))
     # Profile picture (M14a): the object key and its version (null = initials only).
     avatar_key: Mapped[str | None] = mapped_column(Text)
     avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -106,6 +106,8 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         user.nav_items = [item.model_dump() for item in items] if items is not None else None
     if "locale" in data.model_fields_set:  # M115: null = follow each device
         user.locale = data.locale
+    if "composer_mode" in data.model_fields_set:  # null = the clients' default ("rich")
+        user.composer_mode = data.composer_mode
     user.updated_at = utcnow()
     try:
         await db.flush()
