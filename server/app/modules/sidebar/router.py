@@ -5,7 +5,14 @@ from fastapi import APIRouter
 from app.core.db import Db
 from app.modules.auth.deps import CurrentUser
 from app.modules.sidebar import service
-from app.modules.sidebar.schemas import SectionCreate, SectionUpdate, SidebarSectionOut
+from app.modules.sidebar.schemas import (
+    DefaultSectionKey,
+    SectionCreate,
+    SectionUpdate,
+    SidebarDefaultOut,
+    SidebarDefaultUpdate,
+    SidebarSectionOut,
+)
 
 router = APIRouter(tags=["sidebar"])
 
@@ -28,7 +35,8 @@ async def create_section(user: CurrentUser, body: SectionCreate, db: Db) -> list
 async def update_section(
     section_id: UUID, user: CurrentUser, body: SectionUpdate, db: Db
 ) -> list[SidebarSectionOut]:
-    """Rename, or move to another position (the others shift)."""
+    """Rename, move to another position (the others shift), fold, or change the sort / the
+    hand-made order (`manual_order`, the conversation ids in order)."""
     return await service.update(db, user, section_id, body)
 
 
@@ -53,3 +61,18 @@ async def place_channel(
 async def unplace_channel(channel_id: UUID, user: CurrentUser, db: Db) -> list[SidebarSectionOut]:
     """Back to the default sections."""
     return await service.unplace(db, user, channel_id)
+
+
+@router.get("/sidebar/defaults", response_model=list[SidebarDefaultOut])
+async def list_defaults(user: CurrentUser, db: Db) -> list[SidebarDefaultOut]:
+    """The sorts of the default sections (お気に入り / チャンネル / ダイレクトメッセージ),
+    all three."""
+    return await service.list_defaults(db, user.id)
+
+
+@router.patch("/sidebar/defaults/{key}", response_model=list[SidebarDefaultOut])
+async def update_default(
+    key: DefaultSectionKey, user: CurrentUser, body: SidebarDefaultUpdate, db: Db
+) -> list[SidebarDefaultOut]:
+    """Change a default section's sort or hand-made order; sidebar.updated carries it."""
+    return await service.update_default(db, user, key, body)

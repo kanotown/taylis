@@ -6523,6 +6523,44 @@
       "consumes_seq": false,
       "data": {
         "$defs": {
+          "SidebarDefaultOut": {
+            "description": "The sort of a default section (お気に入り / チャンネル / ダイレクトメッセージ); always\nall three.",
+            "properties": {
+              "key": {
+                "enum": [
+                  "favorites",
+                  "channels",
+                  "dms"
+                ],
+                "title": "Key",
+                "type": "string"
+              },
+              "manual_order": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Manual Order",
+                "type": "array"
+              },
+              "sort": {
+                "enum": [
+                  "name",
+                  "recent",
+                  "manual"
+                ],
+                "title": "Sort",
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "sort"
+            ],
+            "title": "SidebarDefaultOut",
+            "type": "object"
+          },
           "SidebarSectionOut": {
             "properties": {
               "channel_ids": {
@@ -6555,6 +6593,15 @@
                 "title": "Id",
                 "type": "string"
               },
+              "manual_order": {
+                "default": [],
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "Manual Order",
+                "type": "array"
+              },
               "name": {
                 "title": "Name",
                 "type": "string"
@@ -6562,6 +6609,16 @@
               "position": {
                 "title": "Position",
                 "type": "integer"
+              },
+              "sort": {
+                "default": "name",
+                "enum": [
+                  "name",
+                  "recent",
+                  "manual"
+                ],
+                "title": "Sort",
+                "type": "string"
               }
             },
             "required": [
@@ -6576,6 +6633,14 @@
         },
         "description": "The whole list after any change: small, and clients simply replace theirs.",
         "properties": {
+          "defaults": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/SidebarDefaultOut"
+            },
+            "title": "Defaults",
+            "type": "array"
+          },
           "sections": {
             "items": {
               "$ref": "#/$defs/SidebarSectionOut"

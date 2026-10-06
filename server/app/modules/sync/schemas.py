@@ -10,7 +10,7 @@ from app.modules.drafts.schemas import DraftOut
 from app.modules.emoji.schemas import CustomEmojiOut, EmojiPackOut
 from app.modules.groups.schemas import GroupOut
 from app.modules.lab.schemas import LabProfileOut
-from app.modules.sidebar.schemas import SidebarSectionOut
+from app.modules.sidebar.schemas import SidebarDefaultOut, SidebarSectionOut
 from app.modules.templates.schemas import TemplateOut
 from app.modules.threads.schemas import ThreadSummary
 from app.modules.users.schemas import UserMe, UserPublic
@@ -54,6 +54,8 @@ class BootstrapOut(BaseModel):
     roster: list[LabProfileOut] = []
     # My sidebar sections (M14f); changes arrive as sidebar.updated.
     sidebar_sections: list[SidebarSectionOut] = []
+    # 2026-10-07: the default sections' sorts (all three); changes arrive as sidebar.updated.
+    sidebar_defaults: list[SidebarDefaultOut] = []
     # My drafts shared by my devices (M15d); changes arrive as draft.updated.
     drafts: list[DraftOut] = []
     # M39: the activity tab's badge (GET /activity/summary); activity.read and reaction.added move

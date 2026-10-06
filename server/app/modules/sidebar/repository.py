@@ -4,7 +4,11 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.sidebar.models import SidebarSection, SidebarSectionChannel
+from app.modules.sidebar.models import (
+    SidebarDefaultSection,
+    SidebarSection,
+    SidebarSectionChannel,
+)
 
 
 async def sections_for(db: AsyncSession, user_id: uuid.UUID) -> list[SidebarSection]:
@@ -69,3 +73,14 @@ async def remove(db: AsyncSession, section: SidebarSection) -> None:
         delete(SidebarSectionChannel).where(SidebarSectionChannel.section_id == section.id)
     )
     await db.delete(section)
+
+
+async def defaults_for(db: AsyncSession, user_id: uuid.UUID) -> list[SidebarDefaultSection]:
+    stmt = select(SidebarDefaultSection).where(SidebarDefaultSection.user_id == user_id)
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def default_section(
+    db: AsyncSession, user_id: uuid.UUID, key: str
+) -> SidebarDefaultSection | None:
+    return await db.get(SidebarDefaultSection, (user_id, key))

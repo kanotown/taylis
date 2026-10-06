@@ -189,3 +189,77 @@ async def test_letter_badge_icons_are_validated(
     )
     assert created.status_code == 201
     assert {r["name"]: r["emoji"] for r in created.json()}["卒論指導"] == "letter:B:green"
+
+
+async def test_sections_and_default_sections_keep_a_sort(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """2026-10-07 (DATA_MODEL.md 「並べ替え」): name / recent / manual per section, the default
+    お気に入り / チャンネル / ダイレクトメッセージ too; synced to my devices by sidebar.updated."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    a = (await client.post("/api/v1/channels", json={"name": "a"})).json()["id"]
+    b = (await client.post("/api/v1/channels", json={"name": "b"})).json()["id"]
+
+    defaults = (await client.get("/api/v1/sidebar/defaults")).json()
+    assert defaults == [
+        {"key": "favorites", "sort": "name", "manual_order": []},
+        {"key": "channels", "sort": "name", "manual_order": []},
+        {"key": "dms", "sort": "recent", "manual_order": []},
+    ]
+    rows = (await client.post("/api/v1/sidebar/sections", json={"name": "研究"})).json()
+    section = rows[0]["id"]
+    assert rows[0]["sort"] == "name" and rows[0]["manual_order"] == []
+
+    # A section by hand: the order is kept as sent (each id once).
+    changed = await client.patch(
+        f"/api/v1/sidebar/sections/{section}",
+        json={"sort": "manual", "manual_order": [b, a, b]},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()[0]["sort"] == "manual" and changed.json()[0]["manual_order"] == [b, a]
+    recent = await client.patch(f"/api/v1/sidebar/sections/{section}", json={"sort": "recent"})
+    assert recent.json()[0]["sort"] == "recent" and recent.json()[0]["manual_order"] == [b, a]
+    bad = await client.patch(f"/api/v1/sidebar/sections/{section}", json={"sort": "size"})
+    assert bad.status_code == 422
+
+    # A default section: a row appears on the first change; the others keep their default.
+    out = await client.patch(
+        "/api/v1/sidebar/defaults/channels", json={"sort": "manual", "manual_order": [b, a]}
+    )
+    assert out.status_code == 200, out.text
+    assert out.json()[1] == {"key": "channels", "sort": "manual", "manual_order": [b, a]}
+    out = await client.patch("/api/v1/sidebar/defaults/dms", json={"sort": "name"})
+    assert [d["sort"] for d in out.json()] == ["name", "manual", "name"]
+    assert (await client.patch("/api/v1/sidebar/defaults/times", json={})).status_code == 422
+    extra = await client.patch("/api/v1/sidebar/defaults/dms", json={"position": 1})
+    assert extra.status_code == 422
+
+    booted = (await client.get("/api/v1/sync/bootstrap")).json()
+    assert [d["sort"] for d in booted["sidebar_defaults"]] == ["name", "manual", "name"]
+    assert booted["sidebar_sections"][0]["sort"] == "recent"
+
+    # The event carries both lists (the last one: the dms change).
+    event = (
+        (
+            await db.execute(
+                select(OutboxEvent)
+                .where(OutboxEvent.event_type == "sidebar.updated")
+                .order_by(OutboxEvent.id.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert event is not None and event.audience_id == alice.id
+    assert [d["sort"] for d in event.payload["defaults"]] == ["name", "manual", "name"]
+    assert event.payload["sections"][0]["sort"] == "recent"
+
+    # Personal: bob still has the defaults.
+    as_user(bob)
+    assert [d["sort"] for d in (await client.get("/api/v1/sidebar/defaults")).json()] == [
+        "name",
+        "name",
+        "recent",
+    ]

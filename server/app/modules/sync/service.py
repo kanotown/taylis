@@ -86,6 +86,7 @@ async def bootstrap(
         groups=await groups.list_visible(db, visible),
         roster=await lab.roster(db, visible),
         sidebar_sections=await sidebar.list_for(db, actor.id),
+        sidebar_defaults=await sidebar.list_defaults(db, actor.id),
         drafts=await drafts.list_for(db, actor.id),
         activity=await activity.summary(db, actor, activity_include),
         workspace_settings=await workspace.settings(db),
