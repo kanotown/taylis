@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { titleBarKind, type TitleBarKind } from "../platform/env";
+import { TITLE_ROW_HEIGHT, titleBarKind, type TitleBarKind } from "../platform/env";
 import { cn } from "./primitives";
 import { t } from "../i18n";
 
@@ -111,6 +111,15 @@ export function ScreenTitleStrip({ kind = titleBarKind(), leftInset = 0, source 
       <WindowControls tone="canvas" source={source} />
     </div>
   );
+}
+
+/**
+ * macOS with the workspace rail, on screens without the top bar (boot, login, adding a workspace, invite, password
+ * change): the rest of the title row beside the rail's top cell, in the same colour, so the window buttons (x 16 to 76
+ * points, past the 68 px rail) sit on one row across the window as on the main screen, never across the rail's edge.
+ */
+export function ScreenTitleRow() {
+  return <div data-tauri-drag-region data-testid="screen-title-row" className="shrink-0 bg-sidebar" style={{ height: TITLE_ROW_HEIGHT }} />;
 }
 
 // Segoe Fluent-style glyphs, 10 px, drawn with 1 px lines.

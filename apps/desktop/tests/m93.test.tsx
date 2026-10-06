@@ -1,18 +1,18 @@
 // @vitest-environment jsdom
 /**
  * M93: my profile card from the sidebar header, the lab title hint, the admin tab row that scrolls only sideways, the
- * full-screen inset on the rail, and the workspace icon (admin upload, the tiles, the controller following changes).
+ * title row over the rail (macOS), and the workspace icon (admin upload, the tiles, the controller following changes).
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AdminWorkspaceSettingsOut, UserMe } from "../src/api/types";
 import { RAIL_WIDTH, TITLE_ROW_INSET_AFTER_RAIL, TRAFFIC_LIGHTS_INSET } from "../src/platform/env";
-import { resetWindowState, watchFullscreen } from "../src/platform/windowState";
 import { AppController } from "../src/state/app";
 import { loadWorkspaces, saveWorkspaces, type WorkspaceEntry } from "../src/state/workspaces";
 import { Store } from "../src/sync/store";
 import { AdminBody } from "../src/ui/AdminDialog";
+import { App } from "../src/ui/App";
 import { UNDERLINE_TAB, UNDERLINE_TAB_ROW } from "../src/ui/primitives";
 import { SettingsSectionBody } from "../src/ui/Settings";
 import { Sidebar } from "../src/ui/Sidebar";
@@ -33,7 +33,6 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   configureWorkspaceIcons(null);
-  resetWindowState();
   vi.restoreAllMocks();
 });
 
@@ -123,12 +122,9 @@ const A: WorkspaceEntry = { serverUrl: "https://a.example.com", workspaceId: "wa
 const B: WorkspaceEntry = { serverUrl: "https://b.example.com", workspaceId: "wb", name: "研究室", username: "alice", userId: null, iconVersion: "v1" };
 
 describe("the rail under the macOS window buttons", () => {
-  it("stays 68 px and starts below the title row that holds them in a window (and when zoomed), not in full screen", async () => {
+  it("stays 68 px and starts below the title row that holds them, with the top bar's colour", () => {
     const restore = macApp();
     try {
-      let full = false;
-      let resized: (() => void) | null = null;
-      await watchFullscreen(async () => ({ isFullscreen: async () => full, onResized: async (handler) => { resized = handler; return () => {}; } }));
       render(<WorkspaceRail controller={{ ...railController([A, B]), screen: "main" } as AppController} />);
       const rail = screen.getByRole("navigation", { name: "ワークスペース" });
       // Slack: the window buttons sit in the title row across the window; the rail is not widened for them.
@@ -136,31 +132,37 @@ describe("the rail under the macOS window buttons", () => {
       expect(rail.style.width).toBe("");
       const cell = screen.getByTestId("rail-title-cell");
       expect(cell.style.height).toBe("max(40px, calc(40px / var(--ui-zoom, 1)))"); // the top bar's height (points at least)
-      expect(cell.className).toContain("bg-sidebar"); // one row with the top bar on the main screen
+      expect(cell.className).toContain("bg-sidebar"); // one row with the top bar
       expect(cell.className).not.toContain("border-r");
       expect(screen.getByTestId("rail-tiles").style.paddingTop).toBe("");
-      full = true;
-      await act(async () => {
-        resized?.();
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-      expect(screen.queryByTestId("rail-title-cell")).toBeNull(); // full screen: no buttons, the tiles go up
-      full = false;
-      await act(async () => {
-        resized?.();
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps the cell in full screen too: nothing to wait for, so the buttons never land on a tile while it ends", () => {
+    // Tauri tells nothing before the exit animation, during which macOS already shows the buttons: the cell (and the
+    // top bar's insets) do not follow full screen at all, and entering it changes no layout either.
+    const restore = macApp();
+    try {
+      const view = render(<WorkspaceRail controller={{ ...railController([A, B]), screen: "main" } as AppController} />);
+      expect(screen.getByTestId("rail-title-cell")).toBeTruthy();
+      window.dispatchEvent(new Event("resize")); // the window grows to the screen and back
+      view.rerender(<WorkspaceRail controller={{ ...railController([A, B]), screen: "main" } as AppController} />);
       expect(screen.getByTestId("rail-title-cell")).toBeTruthy();
     } finally {
       restore();
     }
   });
 
-  it("gives the cell over the rail the rail's colour on screens without the top bar", () => {
+  it("gives the cell the top bar's colour on screens without it too (the rest of the row is ScreenTitleRow)", () => {
     const restore = macApp();
     try {
       render(<WorkspaceRail controller={{ ...railController([A, B]), screen: "login" } as AppController} />);
-      expect(screen.getByTestId("rail-title-cell").className).toContain("bg-sidebar-rail");
+      const cell = screen.getByTestId("rail-title-cell");
+      expect(cell.className).toContain("bg-sidebar");
+      expect(cell.className).not.toContain("bg-sidebar-rail");
+      expect(cell.className).not.toContain("border-r"); // no edge for the green button to cross
     } finally {
       restore();
     }
@@ -170,6 +172,38 @@ describe("the rail under the macOS window buttons", () => {
     render(<WorkspaceRail controller={railController([A, B])} />);
     expect(screen.queryByTestId("rail-title-cell")).toBeNull();
     expect(screen.getByRole("navigation", { name: "ワークスペース" }).className).toContain("w-[68px]");
+  });
+});
+
+/** The whole window (App) with the rail, on the boot screen (no top bar, like login and 「ワークスペースを追加」). */
+function appController() {
+  const store = { version: 0, me: null, subscribe: () => () => {} };
+  return { ...railController([A, B]), screen: "boot", showsRail: true, store, engine: null, version: 0, subscribe: () => () => {}, updates: { subscribe: () => () => {}, version: 0, enabled: false } } as unknown as AppController;
+}
+
+describe("the title row on screens without the top bar (macOS, with the rail)", () => {
+  it("runs across the window beside the rail's cell, in its colour and height, above the screen", () => {
+    const restore = macApp();
+    try {
+      render(<App controller={appController()} />);
+      const row = screen.getByTestId("screen-title-row");
+      const cell = screen.getByTestId("rail-title-cell");
+      expect(row.style.height).toBe(cell.style.height);
+      expect(row.className).toContain("bg-sidebar");
+      expect(row.hasAttribute("data-tauri-drag-region")).toBe(true);
+      // The row sits above the screen in the column beside the rail, so the buttons (to x 76 pt) end on it.
+      const column = row.parentElement!;
+      expect(column.className).toContain("flex-col");
+      expect(column.previousElementSibling?.getAttribute("aria-label")).toBe("ワークスペース");
+      expect(row.nextElementSibling?.textContent).not.toBe("");
+    } finally {
+      restore();
+    }
+  });
+
+  it("is not drawn outside macOS", () => {
+    render(<App controller={appController()} />);
+    expect(screen.queryByTestId("screen-title-row")).toBeNull();
   });
 });
 

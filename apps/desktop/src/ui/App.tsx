@@ -9,7 +9,8 @@ import { InviteScreen } from "./InviteScreen";
 import { LoginScreen } from "./LoginScreen";
 import { MainScreen } from "./MainScreen";
 import { UpdateBanner } from "./UpdateBanner";
-import { ScreenTitleStrip } from "./WindowControls";
+import { ScreenTitleRow, ScreenTitleStrip } from "./WindowControls";
+import { overlayTitleBar } from "../platform/env";
 import { RAIL_WIDTH, WorkspaceRail } from "./WorkspaceRail";
 import { t } from "../i18n";
 
@@ -66,7 +67,16 @@ export function App({ controller }: { controller: AppController }) {
     <div key={locale} className="flex h-full min-h-0">
       {dragStrip}
       <WorkspaceRail controller={controller} />
-      <div className="min-w-0 flex-1">{screen}</div>
+      {/* macOS: the title row goes on across the window above every screen, as on the main one (the rail starts below
+          it); the window buttons reach past the rail's 68 px. */}
+      {controller.screen !== "main" && overlayTitleBar() ? (
+        <div className="flex min-w-0 flex-1 flex-col">
+          <ScreenTitleRow />
+          <div className="min-h-0 flex-1">{screen}</div>
+        </div>
+      ) : (
+        <div className="min-w-0 flex-1">{screen}</div>
+      )}
       <UpdateBanner controller={controller} />
     </div>
   );
