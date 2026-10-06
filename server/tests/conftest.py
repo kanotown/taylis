@@ -35,6 +35,9 @@ if _WORKER:
     TEST_DATABASE_URL = _url.render_as_string(hide_password=False)
 TABLES = [
     "workspace_settings",
+    # M120: no foreign key to users, so not emptied by the CASCADE below.
+    "wiki_tombstones",
+    "wiki_feed_state",
     "sso_tickets",
     "sso_requests",
     "user_identities",

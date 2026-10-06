@@ -34,6 +34,11 @@ class Attachment(Base):
     canvas_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("canvases.id", ondelete="SET NULL")
     )
+    # M120 (docs/WIKI.md §4.7): an image or file in a wiki page's body. message_id, channel_id
+    # and canvas_id stay NULL; whoever can read the page reads it.
+    page_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("wiki_pages.id", ondelete="SET NULL")
+    )
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
     filename: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
@@ -80,6 +85,11 @@ class Attachment(Base):
             "attachments_canvas_idx",
             "canvas_id",
             postgresql_where=text("canvas_id IS NOT NULL"),
+        ),
+        Index(
+            "attachments_page_idx",
+            "page_id",
+            postgresql_where=text("page_id IS NOT NULL"),
         ),
         Index(
             "attachments_preview_queue_idx",
