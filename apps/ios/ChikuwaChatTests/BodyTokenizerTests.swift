@@ -48,6 +48,7 @@ final class InlineFormatFixtureTests: XCTestCase {
             case .mention(let id): return ["mention", id]
             case .mentionGroup(let id): return ["mention_group", id]
             case .mentionAll(let target): return ["mention_all", target]
+            case .math(let tex, let display): return display ? ["math", tex, "display"] : ["math", tex]
             case .newline: return ["newline"]
             }
         }
@@ -116,6 +117,7 @@ final class ListsFixtureTests: XCTestCase {
         case .task: "task"
         case .image: "image"
         case .rule: "hr"
+        case .math: "math"
         }
     }
 
@@ -265,5 +267,82 @@ final class StraightenCodeTests: XCTestCase {
 
     func testTheCodeStillRendersAsCode() {
         XCTAssertEqual(BodyTokenizer.tokenizeInline(BodyTokenizer.straightenCode("`it’s` “x”")), [.code("it's"), .text(" “x”")])
+    }
+}
+
+/// TeX math (apps/shared/math.json, as the desktop's math.test.ts and Android's MathTest read it): `$…$` inline and
+/// `$$…$$` display, prices, escapes and code left alone; one-line text keeps the source.
+final class MathFixtureTests: XCTestCase {
+    private struct Fixture: Decodable {
+        struct Inline: Decodable { let name: String; let line: String; let tokens: [[String]]; let plain: String }
+        struct Blocks: Decodable { let name: String; let body: String; let blocks: [[String]] }
+        let inline: [Inline]
+        let blocks: [Blocks]
+    }
+
+    private func simple(_ tokens: [BodyToken]) -> [[String]] {
+        tokens.map { token in
+            switch token {
+            case .math(let tex, let display): return display ? ["math", tex, "display"] : ["math", tex]
+            case .link(let url, let label): return label.map { ["link", url, $0] } ?? ["link", url]
+            case .text(let s): return ["text", s]
+            case .bold(let s): return ["bold", s]
+            case .italic(let s): return ["italic", s]
+            case .strike(let s): return ["strike", s]
+            case .code(let s): return ["code", s]
+            case .codeBlock(let s, _): return ["codeblock", s]
+            case .mention(let id): return ["mention", id]
+            case .mentionGroup(let id): return ["mention_group", id]
+            case .mentionAll(let target): return ["mention_all", target]
+            case .newline: return ["newline"]
+            }
+        }
+    }
+
+    private func kind(_ block: BodyBlock) -> [String] {
+        switch block {
+        case .math(let tex): ["math", tex]
+        case .heading: ["heading"]
+        case .paragraph: ["paragraph"]
+        case .quote: ["quote"]
+        case .list: ["list"]
+        case .codeBlock: ["codeblock"]
+        case .table: ["table"]
+        case .task: ["task"]
+        case .image: ["image"]
+        case .rule: ["hr"]
+        }
+    }
+
+    func testTheSharedCases() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/math.json")
+        let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+        XCTAssertGreaterThan(fixture.inline.count, 20)
+        XCTAssertGreaterThan(fixture.blocks.count, 10)
+        for c in fixture.inline {
+            XCTAssertEqual(simple(BodyTokenizer.tokenizeInline(c.line)), c.tokens, c.name)
+            XCTAssertEqual(simple(BodyTokenizer.tokenize(c.line)), c.tokens, "\(c.name) (whole body)")
+            XCTAssertEqual(Timeline.plainText(c.line, limit: 200), c.plain, "\(c.name) (plain)")
+        }
+        for c in fixture.blocks {
+            XCTAssertEqual(BodyTokenizer.parseBlocks(c.body).map(kind), c.blocks, c.name)
+            XCTAssertEqual(BodyTokenizer.parseBlocks(c.body, canvas: true).map(kind), c.blocks, "\(c.name) (canvas)")
+        }
+    }
+
+    func testAFormulaOverTheLimitStaysText() {
+        let long = String(repeating: "x", count: BodyTokenizer.mathMaxLength + 1)
+        XCTAssertEqual(simple(BodyTokenizer.tokenizeInline("$" + long + "$")), [["text", "$" + long + "$"]])
+        XCTAssertEqual(BodyTokenizer.parseBlocks("$$" + long + "$$").map(kind), [["paragraph"]])
+    }
+
+    @MainActor
+    func testSwiftMathDrawsAFormulaAndRefusesABrokenOne() {
+        let drawn = MathRender.render(#"\frac{a}{b} + x_1^2"#, fontSize: 17, display: false)
+        XCTAssertNotNil(drawn)
+        XCTAssertGreaterThan(drawn?.image.size.width ?? 0, 10)
+        XCTAssertGreaterThan(drawn?.descent ?? 0, 0)
+        XCTAssertNil(MathRender.render(#"\frac{1}{"#, fontSize: 17, display: false))
     }
 }

@@ -12,6 +12,8 @@ enum BodyToken: Equatable {
     case mention(String)
     case mentionGroup(String)
     case mentionAll(String)
+    /// TeX math (apps/shared/math.json): the formula as written; `display` for `$$…$$` within a line.
+    case math(String, display: Bool = false)
     case newline
 }
 
@@ -38,6 +40,8 @@ enum BodyBlock: Equatable {
     case quote([[BodyToken]])
     case list(ordered: Bool, start: Int, items: [BodyListItem])
     case codeBlock(String, lang: String?)
+    /// Display math: `$$…$$` on a line (or lines) of its own (apps/shared/math.json).
+    case math(String)
     /// M15g: a GFM table; rows have exactly as many cells as the header.
     case table(align: [BodyTableAlign], header: [[BodyToken]], rows: [[[BodyToken]]])
     // The canvas dialect (CANVAS.md §4.2, `canvas: true`; messages keep these as text).
@@ -58,8 +62,13 @@ enum BodyTokenizer {
     // the closing one not followed by a letter, digit or `_`, so snake_case and e-mail addresses stay as they are.
     // `\_` `\*` `\~` `\`` are the literal character (also inside emphasis). E-mail addresses (and the shrug, which keeps its
     // backslash) are text tokens of their own, so emphasis and escapes are never read inside them.
-    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)"#
-    private static let escaped = try! NSRegularExpression(pattern: #"\\([_*~`])"#)
+    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"#
+    private static let escaped = try! NSRegularExpression(pattern: #"\\([_*~`$])"#)
+
+    /// TeX math (apps/shared/math.json, markdown.ts MATH_MAX_LENGTH): inline `$…$` as Pandoc reads it (the opening `$`
+    /// before a non-space, the closing one after a non-space and not before a digit or an ASCII letter), `$$…$$` within a
+    /// line, and display blocks (`mathBlock`). A formula longer than this stays text.
+    static let mathMaxLength = 2000
     private static let inlinePattern = try! NSRegularExpression(pattern: inline)
     private static let fullPattern = try! NSRegularExpression(pattern: #"(```([\s\S]*?)```)|"# + inline + #"|(\n)"#)
     private static let fenceOpen = try! NSRegularExpression(pattern: #"^```([A-Za-z0-9_+#.-]{0,20})\s*$"#)
@@ -149,6 +158,16 @@ enum BodyTokenizer {
             else if let url = group(20) { tokens.append(.link(url)) }
             else if group(21) != nil { text(group(22) ?? "") }
             else if let literal = group(23) { text(literal) }
+            else if group(24) != nil || group(26) != nil {
+                // TeX math: too long or blank, it stays the text it was.
+                let display = group(24) != nil
+                let tex = (display ? group(25) : group(27)) ?? ""
+                if tex.count > mathMaxLength || tex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    text(ns.substring(with: match.range))
+                } else {
+                    tokens.append(.math(tex, display: display))
+                }
+            }
             else { tokens.append(.newline) }
             last = match.range.location + match.range.length
         }
@@ -165,8 +184,39 @@ enum BodyTokenizer {
         case .mention(let id): return "<@\(id)>"
         case .mentionGroup(let id): return "<@group:\(id)>"
         case .mentionAll(let target): return "<!\(target)>"
+        case .math(let tex, let display): return display ? "$$\(tex)$$" : "$\(tex)$" // the source as written
         case .newline: return "\n"
         }
+    }
+
+    /// Display math starting at `lines[index]` (apps/shared/math.json, markdown.ts mathBlockAt): its formula and its last
+    /// line. `$$` starts the line (spaces around are ignored) and a later line ends with `$$`, no blank line and no other
+    /// `$$` between; one line `$$tex$$` is a block too.
+    static func mathBlock(_ lines: [String], at index: Int) -> (tex: String, end: Int)? {
+        let first = lines[index].trimmingCharacters(in: .whitespaces)
+        guard first.hasPrefix("$$") else { return nil }
+        func done(_ tex: String, _ end: Int) -> (tex: String, end: Int)? {
+            let trimmed = tex.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty || trimmed.count > mathMaxLength ? nil : (trimmed, end)
+        }
+        if first.count >= 4, first.hasSuffix("$$") {
+            let tex = String(first.dropFirst(2).dropLast(2))
+            return tex.contains("$$") ? nil : done(tex, index)
+        }
+        let head = String(first.dropFirst(2))
+        if head.contains("$$") { return nil }
+        var k = index + 1
+        while k < lines.count {
+            let trimmed = lines[k].trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { return nil } // a blank line ends the search: the $$ was not math
+            if trimmed.contains("$$") {
+                let tail = String(trimmed.dropLast(2))
+                if !trimmed.hasSuffix("$$") || tail.contains("$$") { return nil }
+                return done(([head] + lines[(index + 1)..<k] + [tail]).joined(separator: "\n"), k)
+            }
+            k += 1
+        }
+        return nil
     }
 
     private static func splitFence(_ raw: String) -> (String, String?) {
@@ -361,6 +411,11 @@ enum BodyTokenizer {
                 i = close + 1
                 continue
             }
+            if let math = mathBlock(lines, at: i) {
+                append(.math(math.tex))
+                i = math.end + 1
+                continue
+            }
             if let h = firstMatch(heading, line) {
                 append(.heading(group(h, 1, in: line).count, tokenizeInline(group(h, 2, in: line))))
                 i += 1
@@ -429,7 +484,7 @@ enum BodyTokenizer {
             var paragraph: [[BodyToken]] = []
             while i < lines.count {
                 let current = lines[i]
-                if !paragraph.isEmpty, opensFence(i) || opensTable(i) || firstMatch(heading, current) != nil || firstMatch(quote, current) != nil || firstMatch(bullet, current) != nil || firstMatch(numbered, current) != nil || isImage(i) || isRule(i) { break }
+                if !paragraph.isEmpty, opensFence(i) || opensTable(i) || firstMatch(heading, current) != nil || firstMatch(quote, current) != nil || firstMatch(bullet, current) != nil || firstMatch(numbered, current) != nil || isImage(i) || isRule(i) || mathBlock(lines, at: i) != nil { break }
                 paragraph.append(tokenizeInline(current))
                 i += 1
             }
@@ -621,6 +676,8 @@ struct MessageBodyView: View {
             }
         case .table(let align, let header, let rows):
             tableView(align: align, header: header, rows: rows)
+        case .math(let tex):
+            MathBlockView(tex: tex)
         case .task, .image, .rule:
             EmptyView() // the canvas dialect: drawn by CanvasBodyView (messages never parse these)
         case .codeBlock(let code, let lang):
@@ -778,6 +835,7 @@ struct MessageBodyView: View {
         case .mention(let userId): return Text("@" + (users[userId]?.displayName ?? "unknown")).foregroundStyle(Color.accentColor)
         case .mentionGroup(let groupId): return Text("@" + (groups[groupId]?.name ?? tr("グループ"))).foregroundStyle(Color.accentColor)
         case .mentionAll(let target): return Text("@" + target).foregroundStyle(Color.accentColor)
+        case .math(let tex, let display): return MathRender.inlineText(tex, display: display)
         case .newline: return Text("\n")
         }
     }

@@ -185,6 +185,8 @@
 		ABD405CB1D1E4C004CFEEE82 /* TaskModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9570146DD2C90451ED144458 /* TaskModels.swift */; };
 		AD2480D35418CD3BCF831BA4 /* ErrorMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BFA1430D19A954CF0F61BF9 /* ErrorMessages.swift */; };
 		ADCC3B2BF1EB386D4AFD1640 /* MessageBodyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C74AC169B95554B18E616A6 /* MessageBodyView.swift */; };
+		AA7E0001C0FFEE00000000A1 /* MathRender.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7E0001C0FFEE00000000A2 /* MathRender.swift */; };
+		AA7E0001C0FFEE00000000A3 /* SwiftMath in Frameworks */ = {isa = PBXBuildFile; productRef = AA7E0001C0FFEE00000000A6 /* SwiftMath */; };
 		B1CDDE952F0B4087B861A27D /* Totp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F8745FD65119CB04999AF56 /* Totp.swift */; };
 		B229EA04E953D0194682727E /* ApiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20149D2520CFB689B293AEB2 /* ApiClient.swift */; };
 		B3B06882FE9CF88966BB49DC /* YouTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56327099E6493E52A5CB905 /* YouTests.swift */; };
@@ -428,6 +430,7 @@
 		77CE8265D03ECB4438D9C7C9 /* JumpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JumpView.swift; sourceTree = "<group>"; };
 		787B30B2EE2CE4147E54945D /* CanvasText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasText.swift; sourceTree = "<group>"; };
 		7C74AC169B95554B18E616A6 /* MessageBodyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBodyView.swift; sourceTree = "<group>"; };
+		AA7E0001C0FFEE00000000A2 /* MathRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MathRender.swift; sourceTree = "<group>"; };
 		7C8A7F7E100BB442252F52DC /* TaskSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskSnapshotTests.swift; sourceTree = "<group>"; };
 		7E34E3CB601F52EA9350E096 /* ComposerSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerSnapshotTests.swift; sourceTree = "<group>"; };
 		7E6E2C35053163BBEF50E5E4 /* PriorityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriorityViews.swift; sourceTree = "<group>"; };
@@ -551,6 +554,17 @@
 		A88C41DB72A7ACC02BA31F63 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
 		61434ED44419F8D6B0B3F1EE /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AA7E0001C0FFEE00000000A4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA7E0001C0FFEE00000000A3 /* SwiftMath in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		009AE0B6956192294EE6E9C3 /* Sync */ = {
@@ -818,6 +832,7 @@
 				8E494C7AA73C2DCB826BFF98 /* Mentions.swift */,
 				1FCAE33D55025EFA146CADC2 /* MentionsView.swift */,
 				4B42F0BDEFE3B98EEFF6C089 /* MessageActions.swift */,
+				AA7E0001C0FFEE00000000A2 /* MathRender.swift */,
 				7C74AC169B95554B18E616A6 /* MessageBodyView.swift */,
 				CC72EC7EE82888C41D902D52 /* NoticeToast.swift */,
 				A8D41462A5457300887E01A5 /* PeopleList.swift */,
@@ -946,6 +961,7 @@
 			buildConfigurationList = 40761CA9CCDB088522CB91B0 /* Build configuration list for PBXNativeTarget "ChikuwaChat" */;
 			buildPhases = (
 				6D5D5433CF6D9EDCA0FBD7AD /* Sources */,
+				AA7E0001C0FFEE00000000A4 /* Frameworks */,
 				3D6E350A166A8548732ABCF1 /* Resources */,
 				701DA149467F20349F301801 /* Embed Foundation Extensions */,
 			);
@@ -956,6 +972,7 @@
 			);
 			name = ChikuwaChat;
 			packageProductDependencies = (
+				AA7E0001C0FFEE00000000A6 /* SwiftMath */,
 			);
 			productName = ChikuwaChat;
 			productReference = C0419A9377EEC2EE76A9C4C8 /* ChikuwaChat.app */;
@@ -1012,6 +1029,9 @@
 			);
 			mainGroup = EF7AAD189524D9626BFB43BC;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				AA7E0001C0FFEE00000000A5 /* XCRemoteSwiftPackageReference "SwiftMath" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9EBFF18BABA664437095FFC6 /* Products */;
 			projectDirPath = "";
@@ -1242,6 +1262,7 @@
 				380C9F0E6DBCC708AE52A1F6 /* MentionsView.swift in Sources */,
 				4516C9968AF6F1EEDAFBD299 /* MessageActions.swift in Sources */,
 				ADCC3B2BF1EB386D4AFD1640 /* MessageBodyView.swift in Sources */,
+				AA7E0001C0FFEE00000000A1 /* MathRender.swift in Sources */,
 				73929A42759EC180C603E753 /* Models.swift in Sources */,
 				5C1990D579D1995D99A86ADD /* NoticeToast.swift in Sources */,
 				2C1FC428F01A262CAFD3A2B5 /* PeopleList.swift in Sources */,
@@ -1607,6 +1628,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AA7E0001C0FFEE00000000A5 /* XCRemoteSwiftPackageReference "SwiftMath" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/mgriebling/SwiftMath";
+			requirement = {
+				kind = exactVersion;
+				version = 1.7.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AA7E0001C0FFEE00000000A6 /* SwiftMath */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA7E0001C0FFEE00000000A5 /* XCRemoteSwiftPackageReference "SwiftMath" */;
+			productName = SwiftMath;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A8F363DCE70EC6B8FB238379 /* Project object */;
 }
