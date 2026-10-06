@@ -1616,6 +1616,56 @@ final class AppController {
     func moveSection(_ id: String, position: Int) async -> Bool { await sidebarChange { try await $0.updateSidebarSection(id, position: position) } }
     func deleteSection(_ id: String) async -> Bool { await sidebarChange { try await $0.deleteSidebarSection(id) } }
 
+    /// Which section a sort belongs to: one of mine (its id) or a default one ("favorites", "channels", "dms").
+    enum SortTarget: Equatable {
+        case section(String)
+        case defaults(String)
+    }
+
+    /// DATA_MODEL.md sidebar_sections 「並べ替え」: a section's sort. 「手動」 starts from the order shown now (`shownIds`),
+    /// so nothing jumps. Changes at once here; a refusal puts it back.
+    func setSectionSort(_ target: SortTarget, sort: String, shownIds: [String]) async -> Bool {
+        await applySort(target, sort: sort, manualOrder: sort == "manual" ? shownIds : nil)
+    }
+
+    /// The order made by hand (Edit mode's handles); the section stays 「手動」.
+    func reorderSection(_ target: SortTarget, ids: [String]) async -> Bool {
+        await applySort(target, sort: "manual", manualOrder: ids)
+    }
+
+    private func applySort(_ target: SortTarget, sort: String, manualOrder: [String]?) async -> Bool {
+        switch target {
+        case .section(let id):
+            let before = store.sidebarSections
+            store.replaceSidebar(before.map { section in
+                var section = section
+                if section.id == id {
+                    section.sort = sort
+                    if let manualOrder { section.manualOrder = manualOrder }
+                }
+                return section
+            })
+            let done = await sidebarChange { try await $0.updateSidebarSection(id, sort: sort, manualOrder: manualOrder) }
+            if !done { store.replaceSidebar(before) }
+            return done
+        case .defaults(let key):
+            let before = store.sidebarDefaults
+            var row = store.defaultSort(key)
+            row.sort = sort
+            if let manualOrder { row.manualOrder = manualOrder }
+            store.replaceSidebarDefaults(before.filter { $0.key != key } + [row])
+            guard let api else { return false }
+            do {
+                store.replaceSidebarDefaults(try await api.updateSidebarDefault(key, sort: sort, manualOrder: manualOrder))
+                return true
+            } catch {
+                store.replaceSidebarDefaults(before)
+                self.error = describe(error)
+                return false
+            }
+        }
+    }
+
     /// `sectionId` nil puts the conversation back in the default sections.
     func moveToSection(_ channelId: String, sectionId: String?) async -> Bool {
         await sidebarChange { api in

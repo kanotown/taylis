@@ -751,12 +751,23 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         return try await request("POST", "/api/v1/sidebar/sections", body: .object(fields))
     }
 
-    func updateSidebarSection(_ id: String, name: String? = nil, position: Int? = nil, collapsed: Bool? = nil) async throws -> [SidebarSectionOut] {
+    func updateSidebarSection(_ id: String, name: String? = nil, position: Int? = nil, collapsed: Bool? = nil,
+                              sort: String? = nil, manualOrder: [String]? = nil) async throws -> [SidebarSectionOut] {
         var fields: [String: JSONValue] = [:]
         if let name { fields["name"] = .string(name) }
         if let position { fields["position"] = .number(Double(position)) }
         if let collapsed { fields["collapsed"] = .bool(collapsed) }
+        if let sort { fields["sort"] = .string(sort) }
+        if let manualOrder { fields["manual_order"] = .array(manualOrder.map { .string($0) }) }
         return try await request("PATCH", "/api/v1/sidebar/sections/\(id)", body: .object(fields))
+    }
+
+    /// DATA_MODEL.md 「並べ替え」: a default section's sort or hand-made order; all three come back.
+    func updateSidebarDefault(_ key: String, sort: String? = nil, manualOrder: [String]? = nil) async throws -> [SidebarDefaultOut] {
+        var fields: [String: JSONValue] = [:]
+        if let sort { fields["sort"] = .string(sort) }
+        if let manualOrder { fields["manual_order"] = .array(manualOrder.map { .string($0) }) }
+        return try await request("PATCH", "/api/v1/sidebar/defaults/\(key)", body: .object(fields))
     }
 
     /// M26: the name and the icon together; a nil `emoji` takes the icon off.

@@ -222,6 +222,7 @@
 		D861E62CE15DE4B36D429F67 /* Tabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B6D699AA727C35F14365333 /* Tabs.swift */; };
 		DA913C2DF69793934EEF259E /* Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1F069A68D7455481B1FB4B /* Commands.swift */; };
 		DC2D572AB84C9472A95422CE /* EmojiData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9762241E8CC66308A104F181 /* EmojiData.swift */; };
+		5A1D0E0000000000000000A1 /* JISKanji.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1D0E0000000000000000A2 /* JISKanji.swift */; };
 		DCD753F5F57E3748A2A05CC1 /* RecurringViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E74E7CB6F80D6681BC1C9D90 /* RecurringViews.swift */; };
 		DCDCDE31A7DA2F0A1B74ED1D /* AppController+Canvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16DC4D0797808C23098E30BA /* AppController+Canvas.swift */; };
 		DD186BA276E115EA76964F24 /* PinsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5CFB01E67A972B78B96D8C2 /* PinsView.swift */; };
@@ -452,6 +453,7 @@
 		95FD7DBAAA32915EFEB8C458 /* EmojiPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiPickerView.swift; sourceTree = "<group>"; };
 		9761DD00E522FC1A599CF65C /* CanvasAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasAccess.swift; sourceTree = "<group>"; };
 		9762241E8CC66308A104F181 /* EmojiData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiData.swift; sourceTree = "<group>"; };
+		5A1D0E0000000000000000A2 /* JISKanji.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JISKanji.swift; sourceTree = "<group>"; };
 		97BFF9DC0CE44D27566746C7 /* ScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleTests.swift; sourceTree = "<group>"; };
 		989AE8D5D6BB658A4E7C78C7 /* CalendarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarTests.swift; sourceTree = "<group>"; };
 		9B4C8A95833707C7581F036D /* SavedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedView.swift; sourceTree = "<group>"; };
@@ -814,6 +816,7 @@
 				25EC40A71175595521F5E564 /* DraftsView.swift */,
 				342A0B1BCD9379AB86C4B521 /* Emoji.swift */,
 				9762241E8CC66308A104F181 /* EmojiData.swift */,
+				5A1D0E0000000000000000A2 /* JISKanji.swift */,
 				95FD7DBAAA32915EFEB8C458 /* EmojiPickerView.swift */,
 				026967342CC9E58E372D3A44 /* FilesView.swift */,
 				3BE4CE83ACB60CE7C0CCC98A /* HomeLayout.swift */,
@@ -1239,6 +1242,7 @@
 				96F9C758ED3FAB648F703260 /* DraftsView.swift in Sources */,
 				F2230137BE87493D9D0FDC74 /* Emoji.swift in Sources */,
 				DC2D572AB84C9472A95422CE /* EmojiData.swift in Sources */,
+				5A1D0E0000000000000000A1 /* JISKanji.swift in Sources */,
 				5FECA8B2E9AF819525A1CAA1 /* EmojiPickerView.swift in Sources */,
 				AD2480D35418CD3BCF831BA4 /* ErrorMessages.swift in Sources */,
 				BF21ACAE32EB5D85A1485CB8 /* FilesView.swift in Sources */,

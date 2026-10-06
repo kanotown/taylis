@@ -51,16 +51,41 @@ struct ChannelListView: View {
         return !channels.contains { $0.channel.timesOwnerId == meId }
     }
     @State private var openingNotes = false
+    /// DATA_MODEL.md 「並べ替え」: the 「手動」 section being reordered with the handles ("favorites", "channels", "dms",
+    /// "custom:<id>"); 「完了」 in its header ends it.
+    @State private var editing: String?
 
-    private var layout: HomeSections.Layout {
+    private func input(editing: String?) -> HomeSections.Input {
         let store = controller.store
-        return HomeSections.build(HomeSections.Input(channels: channels, meId: meId, favorites: store.favorites, sections: store.sidebarSections,
-                                                     groupUnread: groupUnread, folded: folded))
+        return HomeSections.Input(channels: channels, meId: meId, favorites: store.favorites, sections: store.sidebarSections,
+                                  groupUnread: groupUnread, folded: folded, defaults: store.sidebarDefaults,
+                                  title: { channelTitle($0, store: store) }, editing: editing)
+    }
+
+    private var layout: HomeSections.Layout { HomeSections.build(input(editing: editing)) }
+
+    /// Every conversation of a section in its order now, folded or not (the start of a hand-made order).
+    private func allIds(_ key: String) -> [String] {
+        let layout = HomeSections.build(input(editing: key))
+        switch key {
+        case "favorites": return layout.favorites.ids
+        case "channels": return layout.channels.ids
+        case "dms": return layout.dms.ids
+        default: return layout.custom.first { "custom:\($0.section.id)" == key }?.rows.ids ?? []
+        }
     }
 
     var body: some View {
         let layout = layout
         // M34: a tap sets the selection, which the home tab turns into a screen on its stack (MainView).
+        let editingRows = { (key: String, rows: [ChannelState], target: AppController.SortTarget) -> ((IndexSet, Int) -> Void)? in
+            guard editing == key else { return nil }
+            return { from, to in
+                var ids = rows.map(\.id)
+                ids.move(fromOffsets: from, toOffset: to)
+                Task { _ = await controller.reorderSection(target, ids: ids) }
+            }
+        }
         List {
             jumpBar
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 6, trailing: 16))
@@ -84,15 +109,17 @@ struct ChannelListView: View {
             if !layout.favorites.isEmpty {
                 let fold = folded.contains("favorites")
                 Section {
-                    headerRow(foldHeader(tr("お気に入り"), folded: fold) { toggleFold("favorites") })
+                    headerRow(defaultHeader(tr("お気に入り"), key: "favorites", folded: fold))
                     ForEach(layout.favorites.rows) { row($0) }
+                        .onMove(perform: editingRows("favorites", layout.favorites.rows, .defaults("favorites")))
                 }
             }
-            customSections(layout.custom)
+            customSections(layout.custom, onMove: editingRows)
             let channelsFolded = folded.contains("channels")
             Section {
-                headerRow(foldHeader(tr("チャンネル"), folded: channelsFolded) { toggleFold("channels") })
+                headerRow(defaultHeader(tr("チャンネル"), key: "channels", folded: channelsFolded))
                 ForEach(layout.channels.rows) { row($0) }
+                    .onMove(perform: editingRows("channels", layout.channels.rows, .defaults("channels")))
                 if !channelsFolded {
                     if layout.channels.isEmpty && !groupUnread { hint(tr("参加中のチャンネルはありません。")) }
                     if !controller.isGuest { addChannelRow }
@@ -111,9 +138,10 @@ struct ChannelListView: View {
             }
             let dmsFolded = folded.contains("dms")
             Section {
-                headerRow(foldHeader(tr("ダイレクトメッセージ"), folded: dmsFolded) { toggleFold("dms") })
-                if layout.notesRow { notesRow }
+                headerRow(defaultHeader(tr("ダイレクトメッセージ"), key: "dms", folded: dmsFolded))
+                if layout.notesRow && editing != "dms" { notesRow }
                 ForEach(layout.dms.rows) { row($0) }
+                    .onMove(perform: editingRows("dms", layout.dms.rows, .defaults("dms")))
                 if !dmsFolded {
                     if layout.dms.isEmpty && !layout.notesRow && !groupUnread { hint(tr("右下の ✏️ から相手を選べます。")) }
                     if layout.moreDms { allDmsRow }
@@ -128,6 +156,8 @@ struct ChannelListView: View {
         // Plain and compact like Slack's; a row is 44 pt, a finger's target (MOBILE_UI.md §6.1).
         .listStyle(.plain)
         .environment(\.defaultMinListRowHeight, 44)
+        // 「順番を編集」: the move handles of the section being reordered (only its ForEach has an onMove).
+        .environment(\.editMode, .constant(editing == nil ? .inactive : .active))
         // M37 (5): the engine's resync (bootstrap, and the open conversation's catch-up); the protocol keeps things right.
         .refreshable { await controller.engine?.resync() }
         .onAppear(perform: loadFolds)
@@ -277,11 +307,13 @@ struct ChannelListView: View {
     // MARK: sidebar sections (M14f)
 
     @ViewBuilder
-    private func customSections(_ sections: [HomeSections.Custom]) -> some View {
+    private func customSections(_ sections: [HomeSections.Custom],
+                                onMove: @escaping (String, [ChannelState], AppController.SortTarget) -> ((IndexSet, Int) -> Void)?) -> some View {
         ForEach(Array(sections.enumerated()), id: \.element.section.id) { index, entry in
             Section {
                 headerRow(sectionHeader(entry.section, index: index, count: sections.count))
                 ForEach(entry.rows.rows) { row($0) }
+                    .onMove(perform: onMove("custom:\(entry.section.id)", entry.rows.rows, .section(entry.section.id)))
                 if entry.rows.isEmpty && !groupUnread && !entry.section.collapsed { hint(tr("会話を長押し →「セクションに移動」で追加できます。")) }
             }
         }
@@ -294,8 +326,12 @@ struct ChannelListView: View {
                 Task { _ = await controller.setSectionCollapsed(section.id, collapsed: !section.collapsed) { change in withAnimation(.easeInOut(duration: 0.25)) { change() } } }
             }
             Spacer()
+            if editing == "custom:\(section.id)" {
+                doneButton
+            } else {
             Menu {
                 Button("名前とアイコンを変更…", systemImage: "pencil") { sectionForm = SectionFormTarget(section: section) }
+                sortItems(.section(section.id), key: "custom:\(section.id)", sort: section.sort, folded: section.collapsed)
                 Button("上へ", systemImage: "arrow.up") { Task { _ = await controller.moveSection(section.id, position: index - 1) } }.disabled(index == 0)
                 Button("下へ", systemImage: "arrow.down") { Task { _ = await controller.moveSection(section.id, position: index + 1) } }.disabled(index == count - 1)
                 Button("新しいセクション…", systemImage: "plus") { sectionForm = SectionFormTarget(section: nil) }
@@ -304,7 +340,57 @@ struct ChannelListView: View {
                 Image(systemName: "ellipsis").padding(.horizontal, 4).frame(minWidth: 32, minHeight: 32)
             }
             .accessibilityLabel("\(section.name) のメニュー")
+            }
         }
+    }
+
+    // MARK: 並べ替え (DATA_MODEL.md sidebar_sections)
+
+    /// 「並べ替え」 (名前順 / 最近の活動順 / 手動), kept on the server for all my devices; in 「手動」 also 「順番を編集」 (the
+    /// handles), not while the section is folded or unread conversations are gathered (rows would be missing).
+    @ViewBuilder
+    private func sortItems(_ target: AppController.SortTarget, key: String, sort: String, folded: Bool) -> some View {
+        Picker(selection: Binding(get: { sort }, set: { value in
+            guard value != sort else { return }
+            let ids = allIds(key)
+            Task { _ = await controller.setSectionSort(target, sort: value, shownIds: ids) }
+        })) {
+            Text("名前順").tag("name")
+            Text("最近の活動順").tag("recent")
+            Text("手動").tag("manual")
+        } label: {
+            Label("並べ替え", systemImage: "arrow.up.arrow.down")
+        }
+        .pickerStyle(.menu)
+        if sort == "manual" {
+            Button("順番を編集", systemImage: "line.3.horizontal") { withAnimation { editing = key } }
+                .disabled(folded || groupUnread)
+        }
+    }
+
+    /// A default section's title (folds it), and its 「…」 with 「並べ替え」; 「完了」 while it is being reordered.
+    private func defaultHeader(_ title: String, key: String, folded: Bool) -> some View {
+        HStack {
+            foldHeader(title, folded: folded) { toggleFold(key) }
+            Spacer()
+            if editing == key {
+                doneButton
+            } else {
+                Menu {
+                    sortItems(.defaults(key), key: key, sort: controller.store.defaultSort(key).sort, folded: folded)
+                } label: {
+                    Image(systemName: "ellipsis").padding(.horizontal, 4).frame(minWidth: 32, minHeight: 32)
+                }
+                .accessibilityLabel("\(title) のメニュー")
+            }
+        }
+    }
+
+    /// Ends 「順番を編集」.
+    private var doneButton: some View {
+        Button("完了") { withAnimation { editing = nil } }
+            .font(.subheadline.weight(.semibold))
+            .padding(.top, 6)
     }
 
     @ViewBuilder

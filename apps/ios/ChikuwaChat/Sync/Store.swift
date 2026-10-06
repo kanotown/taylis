@@ -405,6 +405,8 @@ final class Store {
     var roster: [String: LabProfileOut] = [:]
     /// My sidebar sections (M14f), in order; from bootstrap and sidebar.updated.
     var sidebarSections: [SidebarSectionOut] = []
+    /// The default sections' sorts (DATA_MODEL.md 「並べ替え」); empty = the defaults.
+    var sidebarDefaults: [SidebarDefaultOut] = []
     /// Server limits from bootstrap (max attachment size …); nil until the first one.
     var limits: Limits?
     /// M88 (MEMBERSHIP.md §3): the workspace's switches, from bootstrap and workspace.settings_updated. Not persisted:
@@ -1017,6 +1019,11 @@ final class Store {
     // MARK: sidebar sections (M14f)
 
     func replaceSidebar(_ rows: [SidebarSectionOut]) { sidebarSections = rows.sorted { $0.position < $1.position } }
+    func replaceSidebarDefaults(_ rows: [SidebarDefaultOut]) { sidebarDefaults = rows }
+    /// A default section's sort and hand-made order.
+    func defaultSort(_ key: String) -> SidebarDefaultOut {
+        sidebarDefaults.first { $0.key == key } ?? SidebarDefaultOut(key: key, sort: SidebarOrder.defaultSorts[key] ?? "name")
+    }
 
     /// The id of my section the conversation sits in, if any.
     func sectionOf(_ channelId: String) -> String? { sidebarSections.first { $0.channelIds.contains(channelId) }?.id }

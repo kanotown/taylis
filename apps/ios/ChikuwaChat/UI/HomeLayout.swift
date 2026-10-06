@@ -3,7 +3,7 @@ import Foundation
 /// M37 (MOBILE_UI.md §6.1): what the phone's home lists, section by section. Pure over the store's conversations; the
 /// unread rule itself is ChannelState.hasUnread.
 enum HomeSections {
-    /// 「ダイレクトメッセージ」 shows my DM with myself and this many others (the newest); the DM tab has all.
+    /// 「ダイレクトメッセージ」 shows my DM with myself and this many others (the first in its sort); the DM tab has all.
     static let dmLimit = 5
 
     /// A section's rows after folding, and whether it has any at all (its hint and its trailing rows show only then).
@@ -43,6 +43,18 @@ enum HomeSections {
         /// by their `collapsed`.
         var folded: Set<String> = []
         var now = Date()
+        /// DATA_MODEL.md 「並べ替え」: the default sections' sorts (missing ones: SidebarOrder.defaultSorts).
+        var defaults: [SidebarDefaultOut] = []
+        /// A DM's display title, for 「名前順」.
+        var title: (ChannelState) -> String = { $0.channel.name ?? "" }
+        /// The section being reordered by hand ("favorites", "channels", "dms", "custom:<id>"): all its rows, unfolded,
+        /// without the DM limit.
+        var editing: String? = nil
+
+        func sort(_ key: String) -> (sort: String, manualOrder: [String]) {
+            if let row = defaults.first(where: { $0.key == key }) { return (row.sort, row.manualOrder) }
+            return (SidebarOrder.defaultSorts[key] ?? "name", [])
+        }
     }
 
     static func build(_ input: Input) -> Layout {
@@ -62,20 +74,30 @@ enum HomeSections {
             Rows(rows: folded ? rows.filter(unread) : rows, isEmpty: rows.isEmpty)
         }
 
-        layout.favorites = fold(SidebarOrder.section(pool.filter(starred)), input.folded.contains("favorites"))
+        let editing = input.editing
+        let ordered = { (rows: [ChannelState], key: String) in
+            let sort = input.sort(key)
+            return SidebarOrder.section(rows, sort: sort.sort, manualOrder: sort.manualOrder, title: input.title)
+        }
+        layout.favorites = fold(ordered(pool.filter(starred), "favorites"), input.folded.contains("favorites") && editing != "favorites")
         layout.custom = input.sections.map { section in
             let rows = pool.filter { !starred($0) && section.channelIds.contains($0.id) }
-            return Custom(section: section, rows: fold(SidebarOrder.section(rows), section.collapsed))
+            let sorted = SidebarOrder.section(rows, sort: section.sort, manualOrder: section.manualOrder, title: input.title)
+            return Custom(section: section, rows: fold(sorted, section.collapsed && editing != "custom:\(section.id)"))
         }
         let sections = ChannelListView.channelSections(pool, meId: meId) { !starred($0) && !placed.contains($0.id) }
-        layout.channels = fold(sections.channels, input.folded.contains("channels"))
+        layout.channels = fold(ordered(sections.channels, "channels"), input.folded.contains("channels") && editing != "channels")
         layout.times = fold(sections.times, input.folded.contains("times"))
 
-        let dmsFolded = input.folded.contains("dms")
+        let dmsFolded = input.folded.contains("dms") && editing != "dms"
         let dms = pool.filter { $0.channel.isDm && !starred($0) && !placed.contains($0.id) }
-        let notes = dms.filter { DMList.isNotesToSelf($0, meId: meId) }
-        let others = dms.filter { !DMList.isNotesToSelf($0, meId: meId) }.sorted(by: newestFirst)
-        if dmsFolded {
+        // My DM with myself first, unless the section is in my own order.
+        let manual = input.sort("dms").sort == "manual"
+        let notes = manual ? [] : dms.filter { DMList.isNotesToSelf($0, meId: meId) }
+        let others = ordered(dms.filter { manual || !DMList.isNotesToSelf($0, meId: meId) }, "dms")
+        if editing == "dms" {
+            layout.dms = Rows(rows: notes + others, isEmpty: dms.isEmpty)
+        } else if dmsFolded {
             layout.dms = fold(notes + others, true)
         } else {
             // The newest few, and any unread one further down (an unread conversation never hides).
@@ -91,13 +113,17 @@ enum HomeSections {
     static func newestFirst(_ a: ChannelState, _ b: ChannelState) -> Bool { SidebarOrder.newestFirst(a, b) }
 }
 
-/// DATA_MODEL.md sidebar_sections 「セクションの中の並び順」: the order inside a section, the same as the desktop's and
-/// Android's (apps/shared/sidebar-order.json). The server keeps no order inside a section.
+/// DATA_MODEL.md sidebar_sections 「セクションの中の並び順」「並べ替え」: the order inside a section, the same as the
+/// desktop's and Android's (apps/shared/sidebar-order.json). The server keeps each section's sort; the clients sort.
+/// No platform collator: ICU's ties and the JVM's java.text.Collator differ.
 enum SidebarOrder {
-    /// The name after NFKC, A-Z lower-cased and katakana folded to hiragana, as UTF-16 code units (no locale collation:
-    /// it differs per platform).
+    /// The default sections' sorts when I chose none (or the server is older).
+    static let defaultSorts = ["favorites": "name", "channels": "name", "dms": "recent"]
+
+    /// The level-2 key: the name after NFKC, A-Z lower-cased and katakana folded to hiragana, as UTF-16 code units.
+    /// NFKC as NFKD then NFC: Foundation's precomposedStringWithCompatibilityMapping leaves 「ﾌﾟﾛ」 as フ + U+309A.
     static func key(_ name: String) -> [UInt16] {
-        name.precomposedStringWithCompatibilityMapping.utf16.map { unit in
+        name.decomposedStringWithCompatibilityMapping.precomposedStringWithCanonicalMapping.utf16.map { unit in
             switch unit {
             case 0x41...0x5A: unit + 0x20
             case 0x30A1...0x30F6: unit - 0x60
@@ -106,29 +132,140 @@ enum SidebarOrder {
         }
     }
 
+    /// One level-1 element: its class, its weight, and a run of digits (compared by length, then digit by digit).
+    struct Element: Equatable {
+        let rank: Int
+        let weight: Int
+        var digits = ""
+    }
+
+    private static let largeKana: [UInt32: UInt32] = [
+        0x3041: 0x3042, 0x3043: 0x3044, 0x3045: 0x3046, 0x3047: 0x3048, 0x3049: 0x304A, 0x3063: 0x3064,
+        0x3083: 0x3084, 0x3085: 0x3086, 0x3087: 0x3088, 0x308E: 0x308F, 0x3095: 0x304B, 0x3096: 0x3051,
+    ]
+
+    /// JIS X 0208 kanji → their place in JIS order (apps/shared/gen_jis_kanji.py).
+    private static let jisRank: [UInt32: Int] = {
+        var ranks = [UInt32: Int](minimumCapacity: 6400)
+        for (rank, scalar) in JISKanji.order.unicodeScalars.enumerated() { ranks[scalar.value] = rank }
+        return ranks
+    }()
+
+    private static func isIdeograph(_ c: UInt32) -> Bool {
+        (0x3400...0x4DBF).contains(c) || (0x4E00...0x9FFF).contains(c) || (0xF900...0xFAFF).contains(c) || (0x20000...0x3FFFF).contains(c)
+    }
+
+    /// The level-1 elements: NFKD, combining and voicing marks dropped, then classified (see the shared JSON's comment).
+    static func elements(_ name: String) -> [Element] {
+        let codes = name.decomposedStringWithCompatibilityMapping.unicodeScalars.map(\.value)
+        var out: [Element] = []
+        var i = 0
+        while i < codes.count {
+            let c = codes[i]
+            if (0x300...0x36F).contains(c) || c == 0x3099 || c == 0x309A { i += 1; continue }
+            if (0x30...0x39).contains(c) {
+                var j = i
+                while j < codes.count, (0x30...0x39).contains(codes[j]) { j += 1 }
+                let run = String(codes[i..<j].map { Character(Unicode.Scalar(UInt8($0))) }).drop { $0 == "0" }
+                let digits = run.isEmpty ? "0" : String(run)
+                out.append(Element(rank: 1, weight: digits.count, digits: digits))
+                i = j
+                continue
+            }
+            if (0x41...0x5A).contains(c) {
+                out.append(Element(rank: 2, weight: Int(c) + 0x20))
+            } else if (0x61...0x7A).contains(c) {
+                out.append(Element(rank: 2, weight: Int(c)))
+            } else if (0x3041...0x3096).contains(c) || (0x30A1...0x30F6).contains(c) {
+                let hiragana = c >= 0x30A1 ? c - 0x60 : c
+                out.append(Element(rank: 3, weight: Int(largeKana[hiragana] ?? hiragana)))
+            } else if let rank = jisRank[c] {
+                out.append(Element(rank: 4, weight: rank))
+            } else if isIdeograph(c) {
+                out.append(Element(rank: 4, weight: 10000 + Int(c)))
+            } else if c < 0x3040 || (0x309B...0x30A0).contains(c) || (0x30FB...0x30FF).contains(c) || (0xFF00...0xFFEF).contains(c) {
+                out.append(Element(rank: 0, weight: Int(c)))
+            } else {
+                out.append(Element(rank: 5, weight: Int(c)))
+            }
+            i += 1
+        }
+        return out
+    }
+
+    private static func compare(_ a: [Element], _ b: [Element]) -> Int {
+        for (x, y) in zip(a, b) {
+            if x.rank != y.rank { return x.rank < y.rank ? -1 : 1 }
+            if x.weight != y.weight { return x.weight < y.weight ? -1 : 1 }
+            if x.digits != y.digits { return precedes(x.digits, y.digits) ? -1 : 1 }
+        }
+        return a.count == b.count ? 0 : (a.count < b.count ? -1 : 1)
+    }
+
     private static func precedes(_ a: String, _ b: String) -> Bool { a.utf16.lexicographicallyPrecedes(b.utf16) }
 
-    /// Two names by [key], equal keys by the raw names (UTF-16 code units).
-    static func namesInOrder(_ a: String, _ b: String) -> Bool {
-        let keyA = key(a), keyB = key(b)
-        return keyA != keyB ? keyA.lexicographicallyPrecedes(keyB) : precedes(a, b)
+    /// A name with its keys worked out once (a sort compares each name many times).
+    struct Collated {
+        let name: String
+        let elements: [Element]
+        let key: [UInt16]
+        init(_ name: String) {
+            self.name = name
+            elements = SidebarOrder.elements(name)
+            key = SidebarOrder.key(name)
+        }
     }
+
+    /// Level 1 the elements (kana by gojūon, kanji in JIS X 0208 order, numbers as numbers, case and voicing ignored),
+    /// level 2 [key], level 3 the raw names by UTF-16 code unit; -1, 0 or 1.
+    static func compare(_ a: Collated, _ b: Collated) -> Int {
+        let first = compare(a.elements, b.elements)
+        if first != 0 { return first }
+        if a.key != b.key { return a.key.lexicographicallyPrecedes(b.key) ? -1 : 1 }
+        if a.name.utf16.elementsEqual(b.name.utf16) { return 0 }
+        return precedes(a.name, b.name) ? -1 : 1
+    }
+
+    /// Two names in the sidebar's Japanese order.
+    static func namesInOrder(_ a: String, _ b: String) -> Bool { compare(Collated(a), Collated(b)) < 0 }
 
     /// Channels by name, then by id.
     static func byName(_ a: ChannelState, _ b: ChannelState) -> Bool {
-        let nameA = a.channel.name ?? "", nameB = b.channel.name ?? ""
-        return nameA.utf16.elementsEqual(nameB.utf16) ? precedes(a.id, b.id) : namesInOrder(nameA, nameB)
+        let order = compare(Collated(a.channel.name ?? ""), Collated(b.channel.name ?? ""))
+        return order != 0 ? order < 0 : precedes(a.id, b.id)
     }
 
-    /// DMs newest first: the last message, else when the DM was made (the server's text), then by id.
+    /// Rows by a name (`name`), equal names by id; each name collated once.
+    static func sorted(_ rows: [ChannelState], by name: (ChannelState) -> String) -> [ChannelState] {
+        rows.map { (row: $0, name: Collated(name($0))) }
+            .sorted { a, b in
+                let order = compare(a.name, b.name)
+                return order != 0 ? order < 0 : precedes(a.row.id, b.row.id)
+            }
+            .map(\.row)
+    }
+
+    /// Newest first: the last message, else when the conversation was made (the server's text), then by id.
     static func newestFirst(_ a: ChannelState, _ b: ChannelState) -> Bool {
         let lastA = a.channel.lastMessageAt ?? a.channel.createdAt, lastB = b.channel.lastMessageAt ?? b.channel.createdAt
         return lastA.utf16.elementsEqual(lastB.utf16) ? precedes(a.id, b.id) : precedes(lastB, lastA)
     }
 
-    /// Favorites and my own sections: their channels by name, then their DMs newest first.
-    static func section(_ rows: [ChannelState]) -> [ChannelState] {
-        rows.filter { !$0.channel.isDm }.sorted(by: byName) + rows.filter(\.channel.isDm).sorted(by: newestFirst)
+    /// The rows of a section in its sort: "name" = channels by name, then DMs by their title (`title`, the display
+    /// title); "recent" = all newest first; "manual" = `manualOrder` first, the rest after it by name.
+    static func section(_ rows: [ChannelState], sort: String = "name", manualOrder: [String] = [],
+                        title: (ChannelState) -> String = { $0.channel.name ?? "" }) -> [ChannelState] {
+        switch sort {
+        case "recent":
+            return rows.sorted(by: newestFirst)
+        case "manual":
+            var place: [String: Int] = [:]
+            for (index, id) in manualOrder.enumerated() where place[id] == nil { place[id] = index }
+            let placed = rows.filter { place[$0.id] != nil }.sorted { place[$0.id]! < place[$1.id]! }
+            return placed + section(rows.filter { place[$0.id] == nil }, title: title)
+        default:
+            return sorted(rows.filter { !$0.channel.isDm }) { $0.channel.name ?? "" } + sorted(rows.filter(\.channel.isDm), by: title)
+        }
     }
 }
 
