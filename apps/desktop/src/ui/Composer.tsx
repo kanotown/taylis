@@ -688,16 +688,18 @@ export function Composer({
       )}
       {/* Sized by the composer, not the window: a thread pane or a narrow window folds what does not fit; no row wraps. */}
       <div className="@container rounded-xl border border-line bg-canvas shadow-sm transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
-        {/* The formatting bar above the text, as in Slack (tester, 2026-09-30); 「Aa」 below shows or hides it. */}
+        {/* The formatting bar above the text, as in Slack (tester, 2026-09-30); 「Aa」 below shows or hides it. Every
+            tool shows from 27rem: the tools and 「Aa | M↓」 take about 26rem, so a narrower bar (the default thread
+            pane) folds them; at 22rem the mode switch stuck out of the frame (2026-10-06). */}
         {formatBar && (
           <div className="flex items-center gap-0.5 px-2 pt-1.5" aria-label={t("composer.formatting")}>
             {tools.map((tool, index) => (
               <Fragment key={tool.label}>
-                {tool.group && <span className={cn("mx-1 h-4 w-px shrink-0 bg-line", index >= PRIMARY_TOOLS && "hidden @[22rem]:block")} />}
+                {tool.group && <span className={cn("mx-1 h-4 w-px shrink-0 bg-line", index >= PRIMARY_TOOLS && "hidden @[27rem]:block")} />}
                 <IconButton
                   label={tool.label}
                   aria-pressed={rich ? !!tool.active : undefined}
-                  className={cn("h-7 w-7 shrink-0 text-muted hover:text-ink", index >= PRIMARY_TOOLS && "hidden @[22rem]:inline-flex", rich && tool.active && "bg-accent-soft text-accent")}
+                  className={cn("h-7 w-7 shrink-0 text-muted hover:text-ink", index >= PRIMARY_TOOLS && "hidden @[27rem]:inline-flex", rich && tool.active && "bg-accent-soft text-accent")}
                   disabled={preview}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={tool.run}
@@ -708,7 +710,7 @@ export function Composer({
             ))}
             <PopoverRoot open={moreToolsOpen} onOpenChange={setMoreToolsOpen}>
               <PopoverTrigger asChild>
-                <button type="button" title={t("composer.moreFormatting")} aria-label={t("composer.moreFormatting")} disabled={preview} onMouseDown={(e) => e.preventDefault()} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink disabled:opacity-40 @[22rem]:hidden">
+                <button type="button" title={t("composer.moreFormatting")} aria-label={t("composer.moreFormatting")} disabled={preview} onMouseDown={(e) => e.preventDefault()} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-ink disabled:opacity-40 @[27rem]:hidden">
                   <Ellipsis size={15} />
                 </button>
               </PopoverTrigger>
