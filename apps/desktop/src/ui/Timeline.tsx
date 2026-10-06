@@ -1393,16 +1393,17 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
       ) : (
         textArea
       )}
+      {/* The actions sit at the bottom right with 保存 last, as in Slack (the user, 2026-10-07); the keys' hint on the left. */}
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={() => void save()} disabled={!draft.trim() || saving}>
-          {saving ? t("common.saving") : t("common.save")}
-        </Button>
+        <span className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-muted">
+          <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> {t("common.save")} <Kbd>Esc</Kbd> {t("timeline.escCancel")}
+        </span>
         <Button size="sm" variant="secondary" onClick={finish}>
           {t("common.cancel")}
         </Button>
-        <span className="flex items-center gap-1 text-[11px] text-muted">
-          <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> {t("common.save")} <Kbd>Esc</Kbd> {t("timeline.escCancel")}
-        </span>
+        <Button size="sm" onClick={() => void save()} disabled={!draft.trim() || saving}>
+          {saving ? t("common.saving") : t("common.save")}
+        </Button>
       </div>
     </div>
   );
