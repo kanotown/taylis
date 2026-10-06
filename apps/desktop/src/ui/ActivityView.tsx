@@ -236,6 +236,7 @@ function activityExcerpt(item: ActivityItem, controller: AppController): string 
   if (item.reservation) return item.reservation.text; // M112
   // An erased canvas revision blanks the excerpt (`activity.updated`, review v0.1.22 #3), even in a list already loaded.
   if (item.canvas) return controller.store.erasedActivityItems.has(item.canvas.item_id) ? "" : item.canvas.excerpt;
+  if (item.page) return controller.store.erasedActivityItems.has(item.page.item_id) ? "" : item.page.excerpt; // M121
   const message = item.message;
   if (!message) return "";
   const store = controller.store;
@@ -249,11 +250,11 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
   const { who, what } = activityHeadline(item, nameOf);
   const channelId = item.message?.channel_id ?? item.canvas?.channel_id ?? "";
   const channel = store.getChannel(channelId);
-  const where = channel ? channelTitle(channel, controller) : "";
+  const where = channel ? channelTitle(channel, controller) : item.page ? t("nav.docs") : "";
   const excerpt = activityExcerpt(item, controller);
   const actors = item.actor_ids.slice(0, 3);
   const fallbackActor = item.message?.sender_id ?? "";
-  // page_mention / page_shared (M120) come only with include=page_mention (M121); no icon of their own yet.
+  // page_mention / page_shared (M121) and canvas mentions show a page glyph.
   const kindIcon = item.kind === "mention" || item.kind === "thread_reply" || item.kind === "reaction" ? KIND_ICON[item.kind] : null;
   // M112: a to-do another operator handled (or no longer needed) is done: greyed with 「対応済み」.
   const done = !!item.reservation && (item.reservation.done || store.doneActivityItems.has(item.reservation.item_id));
@@ -310,7 +311,7 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
             <kindIcon.Icon size={11} strokeWidth={2.6} />
           </span>
         ) : (
-          <span data-kind-icon="canvas" className="absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-canvas text-[11px] leading-none ring-2 ring-canvas">📝</span>
+          <span data-kind-icon={item.page ? "page" : "canvas"} className="absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-canvas text-[11px] leading-none ring-2 ring-canvas">{item.page ? "📄" : "📝"}</span>
         )}
       </span>
       <span className="min-w-0 flex-1 pl-1">

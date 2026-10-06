@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users } from "lucide-react";
+import { AlarmClock, AtSign, Bell, BellOff, BookOpen, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { DefaultSectionKey } from "../api/types";
@@ -56,6 +56,9 @@ interface Props {
   /** M44: the canvases of all my conversations. */
   onCanvases?: () => void;
   canvasesActive?: boolean;
+  /** M121: 「ドキュメント」 (none for a server without Docs). */
+  onDocs?: () => void;
+  docsActive?: boolean;
   /** M51: my calendar and my channels'. */
   onCalendar?: () => void;
   calendarActive?: boolean;
@@ -78,7 +81,7 @@ interface Props {
 }
 
 export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleUnreadOnly, onOpen, onNewDm,
-  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onReadAll, onReminders, remindersActive = false }: Props) {
+  onDirectory, onNewChannel, onCreateTimes, onTimesFeed, timesFeedActive = false, onSearch, onSettings, onThreads, threadsActive = false, onSaved, savedActive = false, onAdmin, onBrowse, onActivity, activityActive = false, onDrafts, draftsActive = false, onFiles, filesActive = false, onCanvases, canvasesActive = false, onDocs, docsActive = false, onCalendar, calendarActive = false, onTasks, tasksActive = false, onDeadlines, deadlinesActive = false, onReservations, reservationsActive = false, reservationsCount = 0, onReadAll, onReminders, remindersActive = false }: Props) {
   const store = controller.store;
   const reminderCount = store.reminders.size;
   const firedCount = store.firedReminderCount();
@@ -371,6 +374,24 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
                   >
                     <NotebookText size={15} className="shrink-0 opacity-70" />
                     <span className="flex-1 truncate">{t("nav.canvases")}</span>
+                  </button>
+                </li>
+                ) : null;
+              case "docs":
+                return onDocs ? (
+                <li key="docs">
+                  <button
+                    type="button"
+                    onClick={onDocs}
+                    aria-current={docsActive ? "page" : undefined}
+                    title={t("sidebar.docsTitle")}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] leading-5 transition-colors",
+                      docsActive ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-sidebar-hover hover:text-sidebar-strong",
+                    )}
+                  >
+                    <BookOpen size={15} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">{t("nav.docs")}</span>
                   </button>
                 </li>
                 ) : null;

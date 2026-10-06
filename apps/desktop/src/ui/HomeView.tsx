@@ -1,4 +1,4 @@
-import { AlarmClock, AtSign, BellOff, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Plus, Search, SquarePen, Ticket, Timer } from "lucide-react";
+import { AlarmClock, AtSign, BellOff, BookOpen, Bookmark, CalendarDays, Check, ChevronDown, ChevronRight, FileText, Files, Hash, ListTodo, Lock, MessagesSquare, MoreHorizontal, Newspaper, NotebookText, Plus, Search, SquarePen, Ticket, Timer } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -37,6 +37,8 @@ export interface HomeViewProps {
   onFiles: () => void;
   /** M44: the canvases of all my conversations (a tile, MOBILE_UI.md §6.1 / §10 9.). Optional (older callers). */
   onCanvases?: () => void;
+  /** M121: 「ドキュメント」 (a server with Docs). */
+  onDocs?: () => void;
   /** M51: the calendar (a tile, CALENDAR.md §7). Optional (older callers). */
   onCalendar?: () => void;
   /** M55: 「自分のタスク」 (a tile, TASKS.md §6). Optional (older callers). */
@@ -264,7 +266,7 @@ function HomeHeader({ controller, gatherUnread, onGatherUnread, onBrowse, onNewC
 }
 
 /** The tiles across the top (MOBILE_UI.md §6.1): the views the wide sidebar lists as rows. A zero is dimmed, still a tap. */
-function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onReminders, onFiles, onCanvases, onCalendar, onTasks, onDeadlines, onReservations }: HomeViewProps) {
+function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onReminders, onFiles, onCanvases, onDocs, onCalendar, onTasks, onDeadlines, onReservations }: HomeViewProps) {
   const store = controller.store;
   const threads = store.threadSummary;
   const drafts = store.listDrafts().length + store.scheduled.size;
@@ -282,6 +284,7 @@ function Tiles({ controller, onThreads, onTimesFeed, onDrafts, onSaved, onRemind
     ...(onReservations ? [{ key: "reservations", label: t("nav.reservations"), icon: <Ticket size={20} />, count: store.reservationPools?.some((p) => p.can_operate) ? reservationTodoCount(store.reservationPools) : null, danger: true, onClick: onReservations }] : []),
     { key: "files", label: t("nav.files"), icon: <Files size={20} />, count: null, danger: false, onClick: onFiles },
     ...(onCanvases ? [{ key: "canvases", label: t("nav.canvases"), icon: <NotebookText size={20} />, count: null, danger: false, onClick: onCanvases }] : []),
+    ...(onDocs ? [{ key: "docs", label: t("nav.docs"), icon: <BookOpen size={20} />, count: null, danger: false, onClick: onDocs }] : []),
   ];
   return (
     <div className="flex gap-2 overflow-x-auto px-3 pb-2 pt-1 [scrollbar-width:none]">

@@ -8,7 +8,7 @@
 import { ArrowLeft, Eraser, History, Loader2, RotateCcw, Tag } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import type { CanvasMeta, CanvasRevisionMeta } from "../api/types";
+import type { CanvasMeta } from "../api/types";
 import type { AppController } from "../state/app";
 import { Avatar } from "./Avatar";
 import { CanvasBody } from "./CanvasBody";
@@ -21,7 +21,34 @@ import { mentionsToNames } from "./mentions";
 import { Badge, Button, cn, Input, Modal } from "./primitives";
 import { t } from "../i18n";
 
-const KIND_LABELS: Record<CanvasRevisionMeta["kind"], string> = {
+/**
+ * M121: one version as both histories list it (a canvas's RevisionMeta, a Docs page's PageRevisionMeta).
+ */
+export interface HistoryRevision {
+  id: string;
+  kind: string;
+  author_id: string;
+  created_at: string;
+  label: string | null;
+  lines_added: number;
+  lines_removed: number;
+  parent_rev_id: string | null;
+}
+
+/** M121: where the history comes from — a canvas (CANVAS.md §4.9) or a Docs page (WIKI.md §7.2, the same five calls). */
+export interface HistorySource {
+  id: string;
+  title: string;
+  headRevId: string;
+  list(cursor: string | null): Promise<{ items: HistoryRevision[]; next_cursor: string | null } | null>;
+  get(revisionId: string): Promise<{ body: string } | null>;
+  /** The new head's id (null: refused, shown). */
+  restore(revisionId: string): Promise<string | null>;
+  label(revisionId: string, label: string | null): Promise<HistoryRevision | null>;
+  erase(revisionId: string): Promise<HistoryRevision | null>;
+}
+
+const KIND_LABELS: Record<string, string> = {
   get create() { return t("canvasHistory.kind.create"); },
   get save() { return t("canvasHistory.kind.save"); },
   get merge() { return t("canvasHistory.kind.merge"); },
@@ -29,6 +56,8 @@ const KIND_LABELS: Record<CanvasRevisionMeta["kind"], string> = {
   get restore() { return t("canvasHistory.kind.restore"); },
   get erased() { return t("canvasHistory.kind.erased"); },
   get task() { return t("canvasHistory.kind.task"); }, // M80 (§22): the server ticked an item, or tied it to a task
+  get import() { return t("canvasHistory.kind.import"); }, // M121: a Docs page brought in by an import
+  get props() { return t("canvasHistory.kind.props"); }, // M121: a database row's properties (M123)
 };
 
 type View = "previous" | "current" | "body";
@@ -39,19 +68,39 @@ export function CanvasHistoryDialog({ controller, canvas, rights, onClose }: {
   rights: CanvasRights;
   onClose: () => void;
 }) {
+  const source: HistorySource = {
+    id: canvas.id,
+    title: canvas.title,
+    headRevId: canvas.head_rev_id,
+    list: (cursor) => controller.canvasRevisions(canvas.id, cursor),
+    get: (revisionId) => controller.canvasRevision(canvas.id, revisionId),
+    restore: async (revisionId) => (await controller.restoreCanvasRevision(canvas.id, revisionId))?.head_rev_id ?? null,
+    label: (revisionId, label) => controller.labelCanvasRevision(canvas.id, revisionId, label),
+    erase: (revisionId) => controller.eraseCanvasRevision(canvas.id, revisionId),
+  };
+  return <DocHistoryDialog controller={controller} source={source} rights={{ edit: rights.edit, erase: rights.erase }} onClose={onClose} />;
+}
+
+/** The history screen of a canvas or a Docs page. */
+export function DocHistoryDialog({ controller, source, rights, onClose }: {
+  controller: AppController;
+  source: HistorySource;
+  rights: { edit: boolean; erase: boolean };
+  onClose: () => void;
+}) {
   const compact = useCompact();
-  const [items, setItems] = useState<CanvasRevisionMeta[] | null>(null);
+  const [items, setItems] = useState<HistoryRevision[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>("previous");
   const [bodies, setBodies] = useState<Record<string, string>>({});
-  const [confirm, setConfirm] = useState<{ kind: "restore" | "erase"; revision: CanvasRevisionMeta } | null>(null);
-  const [labelling, setLabelling] = useState<CanvasRevisionMeta | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "restore" | "erase"; revision: HistoryRevision } | null>(null);
+  const [labelling, setLabelling] = useState<HistoryRevision | null>(null);
   const [busy, setBusy] = useState(false);
-  const headId = canvas.head_rev_id;
+  const headId = source.headRevId;
 
   const load = async (more: boolean) => {
-    const page = await controller.canvasRevisions(canvas.id, more ? cursor : null);
+    const page = await source.list(more ? cursor : null);
     if (!page) return;
     setItems((current) => (more && current ? [...current, ...page.items] : page.items));
     setCursor(page.next_cursor);
@@ -61,7 +110,7 @@ export function CanvasHistoryDialog({ controller, canvas, rights, onClose }: {
   useEffect(() => {
     void load(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controller, canvas.id, headId]);
+  }, [controller, source.id, headId]);
 
   const list = items ?? [];
   const index = list.findIndex((r) => r.id === selectedId);
@@ -72,7 +121,7 @@ export function CanvasHistoryDialog({ controller, canvas, rights, onClose }: {
 
   const body = async (revisionId: string): Promise<void> => {
     if (bodies[revisionId] !== undefined) return;
-    const revision = await controller.canvasRevision(canvas.id, revisionId);
+    const revision = await source.get(revisionId);
     if (revision) setBodies((current) => ({ ...current, [revisionId]: revision.body }));
   };
   useEffect(() => {
@@ -93,28 +142,28 @@ export function CanvasHistoryDialog({ controller, canvas, rights, onClose }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, selectedBody, otherBody]);
 
-  const restore = async (revision: CanvasRevisionMeta) => {
+  const restore = async (revision: HistoryRevision) => {
     setBusy(true);
-    const restored = await controller.restoreCanvasRevision(canvas.id, revision.id);
+    const restored = await source.restore(revision.id);
     setBusy(false);
     setConfirm(null);
     if (!restored) return;
     controller.setNotice(t("canvasHistory.restored"));
-    setSelectedId(restored.head_rev_id);
+    setSelectedId(restored);
     setView("previous");
   };
-  const erase = async (revision: CanvasRevisionMeta) => {
+  const erase = async (revision: HistoryRevision) => {
     setBusy(true);
-    const erased = await controller.eraseCanvasRevision(canvas.id, revision.id);
+    const erased = await source.erase(revision.id);
     setBusy(false);
     setConfirm(null);
     if (!erased) return;
     setItems((current) => current?.map((r) => (r.id === erased.id ? erased : r)) ?? null);
     setBodies(({ [revision.id]: _gone, ...rest }) => rest);
   };
-  const saveLabel = async (revision: CanvasRevisionMeta, label: string | null) => {
+  const saveLabel = async (revision: HistoryRevision, label: string | null) => {
     setBusy(true);
-    const named = await controller.labelCanvasRevision(canvas.id, revision.id, label);
+    const named = await source.label(revision.id, label);
     setBusy(false);
     if (!named) return;
     setLabelling(null);
@@ -124,7 +173,7 @@ export function CanvasHistoryDialog({ controller, canvas, rights, onClose }: {
   const showList = !compact || !selected;
   const showDetail = !compact || !!selected;
   return (
-    <Modal title={t("canvasHistory.title", { title: canvas.title })} description={t("canvasHistory.description")} onClose={onClose} className="flex h-[85dvh] w-[1000px] flex-col overflow-hidden max-md:h-[92dvh]">
+    <Modal title={t("canvasHistory.title", { title: source.title })} description={t("canvasHistory.description")} onClose={onClose} className="flex h-[85dvh] w-[1000px] flex-col overflow-hidden max-md:h-[92dvh]">
       <div className="mt-3 flex min-h-0 flex-1 gap-3 max-md:flex-col">
         {showList && (
           <ul aria-label={t("canvasHistory.list")} className="min-h-0 w-72 shrink-0 space-y-0.5 overflow-y-auto border-r border-line pr-2 max-md:w-full max-md:border-r-0 max-md:pr-0">
@@ -210,7 +259,7 @@ export function CanvasHistoryDialog({ controller, canvas, rights, onClose }: {
 
 function RevisionRow({ controller, revision, head, selected, onSelect }: {
   controller: AppController;
-  revision: CanvasRevisionMeta;
+  revision: HistoryRevision;
   head: boolean;
   selected: boolean;
   onSelect: () => void;
@@ -230,7 +279,7 @@ function RevisionRow({ controller, revision, head, selected, onSelect }: {
           <span className="truncate font-medium">{author}</span>
           {head && <Badge tone="accent">{t("canvasHistory.currentBadge")}</Badge>}
         </span>
-        <span className="block text-[11px] text-muted">{fullTimestamp(revision.created_at)} · {KIND_LABELS[revision.kind]}</span>
+        <span className="block text-[11px] text-muted">{fullTimestamp(revision.created_at)} · {KIND_LABELS[revision.kind] ?? revision.kind}</span>
         <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
           {revision.kind !== "erased" && (revision.lines_added > 0 || revision.lines_removed > 0) && (
             <span aria-label={t("canvasHistory.linesLabel", { added: revision.lines_added, removed: revision.lines_removed })}>
@@ -286,7 +335,7 @@ export function DiffView({ rows }: { rows: readonly DiffRow[] }) {
   );
 }
 
-function LabelDialog({ revision, busy, onClose, onSave }: { revision: CanvasRevisionMeta; busy: boolean; onClose: () => void; onSave: (label: string | null) => void }) {
+function LabelDialog({ revision, busy, onClose, onSave }: { revision: HistoryRevision; busy: boolean; onClose: () => void; onSave: (label: string | null) => void }) {
   const [label, setLabel] = useState(revision.label ?? "");
   return (
     <Modal title={t("canvasHistory.nameTitle")} description={t("canvasHistory.nameNote")} onClose={onClose}>

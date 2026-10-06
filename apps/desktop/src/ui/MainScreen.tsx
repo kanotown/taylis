@@ -18,6 +18,7 @@ import { ChannelPins, PinsPane } from "./PinsPane";
 import { ChannelDetails } from "./ChannelDetails";
 import { FeedsDialog } from "./ChannelFeeds";
 import { ReservationsView } from "./Reservations";
+import { DocsView } from "./DocsView";
 import { reservationTodoCount } from "./reservationPools";
 import { RecurringPostsDialog } from "./RecurringPosts";
 import { ChannelWorkflowsDialog } from "./WorkflowViews";
@@ -83,7 +84,8 @@ import { t } from "../i18n";
 // "tasks" (M55): 「自分のタスク」 and 「自分の担当」. "times" (L8): the Times feed (TIMES_FEED.md §7).
 // "deadlines" (M85): 「締切」, my channels' deadlines (DEADLINES.md).
 // "reservations" (M112): 「予約」, the workspace's reservation pools (RESERVATIONS.md).
-type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations";
+// "docs" (M121): 「ドキュメント」, the Docs tree and a page (WIKI.md §9.1).
+type CentreView = "channel" | "threads" | "saved" | "activity" | "drafts" | "files" | "reminders" | "search" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs";
 /** A message revealed in its conversation (the controller's focus): kept by a conversation's history entry (M67). */
 type Focus = NonNullable<AppController["messageFocus"]>;
 
@@ -153,6 +155,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [threadId, setThreadId] = useState<string | null>(null);
   // "threads": the centre column lists followed threads (THREADS.md §5); the selected one opens on the right.
   const [view, setView] = useState<CentreView>("channel");
+  /** M121: the Docs page on screen in 「ドキュメント」 (kept while other views are open). */
+  const [docsPageId, setDocsPageId] = useState<string | null>(null);
   /** M11i: the channel the files view is scoped to (null: all my channels). */
   const [filesChannelId, setFilesChannelId] = useState<string | null>(null);
   const [threadChannelId, setThreadChannelId] = useState<string | null>(null);
@@ -442,11 +446,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
     const api = controller.api;
     if (!isWeb() || !hub || !api) return;
     const beforeUnload = (event: BeforeUnloadEvent) => {
-      if (!hub.mustStay) return;
+      if (!hub.mustStay && !engine?.wiki?.mustStay) return;
       event.preventDefault();
       event.returnValue = "";
     };
-    const pageHide = () => hub.unload((canvasId, body) => api.saveCanvasKeepalive(canvasId, body));
+    const pageHide = () => {
+      hub.unload((canvasId, body) => api.saveCanvasKeepalive(canvasId, body));
+      engine?.wiki?.unload((pageId, body) => api.saveWikiPageKeepalive(pageId, body)); // M121: Docs pages too
+    };
     window.addEventListener("beforeunload", beforeUnload);
     window.addEventListener("pagehide", pageHide);
     return () => {
@@ -548,6 +555,32 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const [taskDialog, setTaskDialog] = useState<TaskOut | null>(null);
   /** M85: ⋯ 「締切を追加…」 (a new deadline on the open channel's board). */
   const [deadlineInit, setDeadlineInit] = useState<TaskCreateInit | null>(null);
+  /**
+   * M121: a Docs page (a `page:` link, a /p/ permalink, a notification, an activity item, a search hit): 「ドキュメント」
+   * with that page, whatever was on screen (on a phone too: the view covers the tab's list).
+   */
+  const openDocsPage = (pageId: string | null) => {
+    controller.clearMessageFocus();
+    controller.setEditing(null);
+    setThreadId(null);
+    setThreadChannelId(null);
+    setSearchOpen(false);
+    setSwitcher(false);
+    setHomeOverlay(null);
+    setBackToSearch(false);
+    setPinsOpen(false);
+    resetConversation();
+    setDocsPageId(pageId);
+    setPane("main");
+    setView("docs");
+  };
+  useEffect(() => {
+    const request = controller.openPageRequest;
+    if (!request) return;
+    controller.openPageRequest = null;
+    openDocsPage(request.pageId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller.openPageRequest]);
   // M112: a reservation notification (or activity item) asked for 「予約」.
   const reservationsAsked = useRef(controller.openReservationsRequest);
   useEffect(() => {
@@ -670,7 +703,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setPane("main");
   };
 
-  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations") => {
+  const openView = (next: "activity" | "drafts" | "reminders" | "canvases" | "calendar" | "tasks" | "deadlines" | "times" | "reservations" | "docs") => {
     controller.clearMessageFocus();
     controller.setEditing(null);
     setThreadId(null);
@@ -734,6 +767,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
     // M112: a reservation notice opens 「予約」.
     if (item.reservation) {
       openView("reservations");
+      return;
+    }
+    // M121: a page mention or a page shared with me opens the page.
+    if (item.page) {
+      openDocsPage(item.page.page_id);
       return;
     }
     // M76: a canvas mention opens the canvas (as its notification does).
@@ -1051,6 +1089,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
       filesActive={view === "files"}
       onCanvases={() => openView("canvases")}
       canvasesActive={view === "canvases"}
+      onDocs={engine?.wiki?.available ? () => openView("docs") : undefined}
+      docsActive={view === "docs"}
       onCalendar={() => openView("calendar")}
       calendarActive={view === "calendar"}
       onTasks={() => openView("tasks")}
@@ -1148,6 +1188,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onChange={setSearch}
           onOpen={openSearchResult}
           onOpenCanvas={(canvas) => openCanvas(canvas.channel_id, canvas.id, { fromSearch: true })}
+          onOpenPage={engine?.wiki?.available ? (page) => openDocsPage(page.id) : undefined}
           onClose={() => {
             setView("channel");
             if (compact) setPane("list");
@@ -1182,6 +1223,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
             setSearchTab("canvases");
           }}
         />
+      ) : view === "docs" ? (
+        <DocsView controller={controller} pageId={docsPageId} onOpenPage={setDocsPageId} compact={compact} />
       ) : view === "calendar" ? (
         <CalendarView controller={controller} />
       ) : view === "tasks" ? (
@@ -1588,6 +1631,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
           onReminders={() => openView("reminders")}
           onFiles={() => openFiles(null)}
           onCanvases={() => openView("canvases")}
+          onDocs={engine?.wiki?.available ? () => openView("docs") : undefined}
           onCalendar={() => openView("calendar")}
           onTasks={() => openView("tasks")}
           onDeadlines={() => openView("deadlines")}

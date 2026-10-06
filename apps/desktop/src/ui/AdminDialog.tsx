@@ -8,6 +8,7 @@ import { AnalyticsTab } from "./AnalyticsTab";
 import { UsersTab } from "./AdminUsersTab";
 import { ReportsTab } from "./AdminReportsTab";
 import { CanvasTemplatesTab } from "./CanvasTemplatesTab";
+import { AdminDocsTab } from "./AdminDocsTab";
 import { EmojiAdminTab } from "./customEmoji";
 import { GroupsTab } from "./GroupsTab";
 import { InvitesTab } from "./InvitesTab";
@@ -18,7 +19,7 @@ import { WorkspaceSettingsTab } from "./WorkspaceSettingsTab";
 import { Badge, Button, cn, Field, Input, Modal, UNDERLINE_TAB, UnderlineTabRow } from "./primitives";
 import { t } from "../i18n";
 
-type Tab = "users" | "analytics" |"reports" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates";
+type Tab = "users" | "analytics" |"reports" | "roster" | "groups" | "invites" | "webhooks" | "workflows" | "ai" | "workspace" | "channels" | "emoji" | "canvas-templates" | "docs";
 
 /** Administration (M11e): users (create, role, deactivate, reset password, sessions, anonymize) and channels (rename, archive). */
 export function AdminDialog({ controller, onClose }: { controller: AppController; onClose: () => void }) {
@@ -38,7 +39,9 @@ export function AdminBody({ controller, className }: { controller: AppController
   const [tab, setTab] = useState<Tab>("users");
   // M65: 「AI」 only on a server that has the AI routes (GET /ai/status answered; docs/AI.md §5).
   const ai = controller.store.aiStatus !== null;
-  const shown: Tab = tab === "ai" && !ai ? "users" : tab;
+  // M121: 「ドキュメント」 only on a server with Docs (bootstrap's `wiki`).
+  const docs = !!controller.engine?.wiki?.available;
+  const shown: Tab = (tab === "ai" && !ai) || (tab === "docs" && !docs) ? "users" : tab;
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
       <UnderlineTabRow role="tablist" aria-label={t("settings.section.admin")} className="gap-1">
@@ -57,6 +60,7 @@ export function AdminBody({ controller, className }: { controller: AppController
             ["channels", t("admin.tab.channels")],
             ["emoji", t("admin.tab.emoji")],
             ["canvas-templates", t("admin.tab.canvasTemplates")],
+            ...(docs ? [["docs", t("nav.docs")]] : []),
           ] as Array<[Tab, string]>
         ).map(([value, label]) => (
           <button
@@ -72,7 +76,7 @@ export function AdminBody({ controller, className }: { controller: AppController
         ))}
       </UnderlineTabRow>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {shown === "ai" ? <AiTab controller={controller} /> : shown === "analytics" ? <AnalyticsTab controller={controller} /> : shown === "workspace" ? <WorkspaceSettingsTab controller={controller} /> : shown === "users" ? <UsersTab controller={controller} /> : shown === "reports" ? <ReportsTab controller={controller} /> : shown === "roster" ? <RosterTab controller={controller} /> : shown === "groups" ? <GroupsTab controller={controller} /> : shown === "invites" ? <InvitesTab controller={controller} /> : shown === "webhooks" ? <WebhooksTab controller={controller} /> : shown === "workflows" ? <WorkflowManager controller={controller} /> :shown === "channels" ? <ChannelsTab controller={controller} /> : shown === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
+        {shown === "ai" ? <AiTab controller={controller} /> : shown === "analytics" ? <AnalyticsTab controller={controller} /> : shown === "workspace" ? <WorkspaceSettingsTab controller={controller} /> : shown === "users" ? <UsersTab controller={controller} /> : shown === "reports" ? <ReportsTab controller={controller} /> : shown === "roster" ? <RosterTab controller={controller} /> : shown === "groups" ? <GroupsTab controller={controller} /> : shown === "invites" ? <InvitesTab controller={controller} /> : shown === "webhooks" ? <WebhooksTab controller={controller} /> : shown === "workflows" ? <WorkflowManager controller={controller} /> :shown === "channels" ? <ChannelsTab controller={controller} /> : shown === "canvas-templates" ? <CanvasTemplatesTab controller={controller} /> : shown === "docs" ? <AdminDocsTab controller={controller} /> : <EmojiAdminTab controller={controller} />}
       </div>
     </div>
   );

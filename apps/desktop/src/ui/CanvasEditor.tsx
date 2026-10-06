@@ -12,7 +12,10 @@ import { AtSign, Bold, Code, Heading1, Heading2, Heading3, ImagePlus, Italic, Li
 import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ApiError } from "../api/errors";
-import type { CanvasSaver } from "../sync/canvasSave";
+import type { PageRef } from "../api/types";
+import type { CanvasSaver, SavedDoc } from "../sync/canvasSave";
+import { applySlash, insertLinkAt, insertPageLink, pageLinkQuery, type SlashKey, slashItems, slashQuery } from "./docEditor";
+import { PageIcon } from "./PageIcon";
 import type { AppController } from "../state/app";
 import { anchorLine, findTable, insertTable, lineOf, lineStart, newTable, parseTable, sameTable, type Table, type TableOrigin, writeBackTable } from "./canvasTable";
 import { CanvasTableDialog } from "./CanvasTableDialog";
@@ -27,14 +30,27 @@ import { t } from "../i18n";
 /** M80: what a cut in a canvas editor keeps besides the plain text — the lines with their task markers. */
 const CUT_TYPE = "application/x-chikuwachat-canvas";
 
-export function CanvasEditor({ controller, saver, className, style, autoFocus = false, onTextArea }: {
+/**
+ * M121 (WIKI.md §7.3): the editor on a Docs page — no 「編集中」 frames (pages have no presence yet), `[[` suggests
+ * pages to link and `/` at the start of a line opens the block menu.
+ */
+export interface DocEditorLinks {
+  /** The `[[` suggestions: pages I can read whose title contains `q`. */
+  lookup(q: string): Promise<PageRef[]>;
+  /** The `/` menu's 「子ページ」: a new page below this one (null: refused, the error shown). */
+  createChild(): Promise<PageRef | null>;
+}
+
+export function CanvasEditor({ controller, saver, className, style, autoFocus = false, onTextArea, doc = null }: {
   controller: AppController;
-  saver: CanvasSaver;
+  saver: CanvasSaver<SavedDoc>;
   className?: string;
   style?: CSSProperties;
   autoFocus?: boolean;
   /** §23: the text area, for the scroll sync with the preview beside it (null when the editor goes). */
   onTextArea?: (element: HTMLTextAreaElement | null) => void;
+  /** M121: a Docs page's links and block menu (null: a canvas). */
+  doc?: DocEditorLinks | null;
 }) {
   const store = controller.store;
   useSyncExternalStore((listener) => saver.subscribe(listener), () => saver.textRevision);
@@ -101,10 +117,12 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     const now = Date.now();
     if (editing && soon && now - lastAnnounced.current < 1000) return;
     lastAnnounced.current = now;
+    if (doc) return; // M121: a page has no presence frames (WIKI.md §7.3, later)
     const el = area.current;
     engine?.setCanvasEditing(saver.id, editing, editing && el ? sectionAt(el.value, el.selectionStart ?? 0) : null);
   };
   useEffect(() => {
+    if (doc) return;
     const timer = setInterval(() => {
       if (focused.current) announce(true);
     }, CANVAS_PRESENCE_REFRESH_MS);
@@ -112,7 +130,7 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
       clearInterval(timer);
       engine?.setCanvasEditing(saver.id, false);
     };
-  }, [engine, saver]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [engine, saver, !doc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const change = (next: string) => {
     setText(next);
@@ -274,12 +292,60 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
     setTableEdit(null);
   };
 
-  const query = mentionQuery(text, caret);
-  const listKey = query ? `${query.start}:${query.query}` : null;
+  // M121: on a page, `[[` (page links) and `/` at a line's start (the block menu) come before the `@` suggestions.
+  const linkQ = doc ? pageLinkQuery(text, caret) : null;
+  const linkListKey = linkQ ? `link:${linkQ.start}:${linkQ.query}` : null;
+  const slashQ = doc && !linkQ ? slashQuery(text, caret) : null;
+  const slashListKey = slashQ ? `slash:${slashQ.start}:${slashQ.query}` : null;
+  const [linkResults, setLinkResults] = useState<{ key: string; pages: PageRef[] } | null>(null);
+  useEffect(() => {
+    if (!doc || !linkQ || dismissed === linkListKey) return;
+    const key = linkListKey!;
+    const timer = setTimeout(() => {
+      void doc.lookup(linkQ.query.trim()).then((pages) => setLinkResults({ key, pages }), () => setLinkResults({ key, pages: [] }));
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [linkListKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pageCandidates: PageRef[] = linkQ && dismissed !== linkListKey && linkResults?.key === linkListKey ? linkResults.pages : [];
+  const slashCandidates = slashQ && dismissed !== slashListKey ? slashItems(slashQ.query) : [];
+  const query = linkQ || slashQ ? null : mentionQuery(text, caret);
+  const listKey = query ? `${query.start}:${query.query}` : linkQ ? linkListKey : slashListKey;
   const candidates: MentionCandidate[] = query && dismissed !== listKey
     ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()], 8, aiBotIds(store)).filter((c) => c.kind !== "all") // `<!channel>` notifies nobody in a canvas
     : [];
-  const active = Math.min(selected, Math.max(candidates.length - 1, 0));
+  const listLength = pageCandidates.length || slashCandidates.length || candidates.length;
+  const active = Math.min(selected, Math.max(listLength - 1, 0));
+  const pickPage = (page: PageRef) => {
+    if (!linkQ) return;
+    edit((s) => insertPageLink(s, linkQ.start, page));
+    setSelected(0);
+  };
+  const [childBusy, setChildBusy] = useState(false);
+  const pickSlash = (key: SlashKey) => {
+    if (!slashQ) return;
+    const el = area.current;
+    if (!el) return;
+    const result = applySlash({ text: el.value, start: el.selectionStart ?? el.value.length, end: el.selectionEnd ?? el.value.length }, slashQ.start, key);
+    setSelected(0);
+    apply(result.state);
+    if (result.kind === "table") {
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => openTable());
+      else setTimeout(openTable, 0);
+    }
+    else if (result.kind === "image") {
+      if (isPickBusy(picker.current)) controller.setError(t("canvasEditor.stillReading"));
+      else picker.current?.click();
+    } else if (result.kind === "childPage" && doc) {
+      setChildBusy(true);
+      void doc.createChild().then((page) => {
+        setChildBusy(false);
+        if (!page) return;
+        const current = area.current;
+        const at = Math.min(result.state.start, (current?.value ?? textRef.current).length);
+        apply(insertLinkAt({ text: current?.value ?? textRef.current, start: at, end: at }, page));
+      });
+    }
+  };
   const pick = (candidate: MentionCandidate) => {
     if (!query) return;
     edit((s) => {
@@ -333,16 +399,24 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     const ime = event.nativeEvent.isComposing || composing.current || event.keyCode === 229;
-    if (candidates.length > 0 && !ime) {
+    if (listLength > 0 && !ime) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
-        setSelected((active + (event.key === "ArrowDown" ? 1 : candidates.length - 1)) % candidates.length);
+        setSelected((active + (event.key === "ArrowDown" ? 1 : listLength - 1)) % listLength);
         return;
       }
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault();
-        const candidate = candidates[active];
-        if (candidate) pick(candidate);
+        if (pageCandidates.length > 0) {
+          const page = pageCandidates[active];
+          if (page) pickPage(page);
+        } else if (slashCandidates.length > 0) {
+          const item = slashCandidates[active];
+          if (item) pickSlash(item.key);
+        } else {
+          const candidate = candidates[active];
+          if (candidate) pick(candidate);
+        }
         return;
       }
       if (event.key === "Escape") {
@@ -504,6 +578,48 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
           onCancel={() => closeTable("cancel")}
           onClosed={finishTable}
         />
+      )}
+      {pageCandidates.length > 0 && (
+        <ul className="absolute bottom-3 left-3 z-20 w-80 max-w-[calc(100%-1.5rem)] rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label={t("docs.linkSuggestions")}>
+          {pageCandidates.map((page, index) => (
+            <li
+              key={page.id}
+              role="option"
+              aria-selected={index === active}
+              className={cn("flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm", index === active ? "bg-accent-soft" : "hover:bg-panel")}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                pickPage(page);
+              }}
+            >
+              <PageIcon controller={controller} icon={page.icon} size={14} />
+              <span className="truncate">{page.title || t("docs.untitled")}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {slashCandidates.length > 0 && (
+        <ul className="absolute bottom-3 left-3 z-20 max-h-80 w-64 max-w-[calc(100%-1.5rem)] overflow-y-auto rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label={t("docs.slash.menu")}>
+          {slashCandidates.map((item, index) => (
+            <li
+              key={item.key}
+              role="option"
+              aria-selected={index === active}
+              className={cn("flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm", index === active ? "bg-accent-soft" : "hover:bg-panel")}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                pickSlash(item.key);
+              }}
+            >
+              {t(item.label)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {childBusy && (
+        <div role="status" className="pointer-events-none absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas px-3 py-1 text-xs text-muted shadow">
+          <Loader2 size={12} className="animate-spin" /> {t("docs.creatingChild")}
+        </div>
       )}
       {candidates.length > 0 && (
         <ul className="absolute bottom-3 left-3 z-20 w-72 max-w-[calc(100%-1.5rem)] rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label={t("canvasEditor.mentionSuggestions")}>
