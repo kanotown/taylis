@@ -7,6 +7,7 @@ from pathlib import Path
 from app.modules.messages.mentions import notification_text
 
 VECTORS = Path(__file__).resolve().parents[2] / "apps" / "shared" / "inline-format.json"
+MATH = Path(__file__).resolve().parents[2] / "apps" / "shared" / "math.json"
 
 
 def test_tables_flatten_to_their_cells() -> None:  # M15g
@@ -34,3 +35,13 @@ def test_names_from_mentions_are_not_read_as_emphasis() -> None:  # M107
     body = "<@00000000-0000-7000-8000-0000000000a1> _see_ a_b_c"
     names = {uuid.UUID("00000000-0000-7000-8000-0000000000a1"): "snake_case_user"}
     assert notification_text(body, names) == "@snake_case_user see a_b_c"
+
+
+def test_math_keeps_its_tex_source() -> None:
+    """TeX math stays as written, dollars and all; prices and escapes as the clients read them
+    (apps/shared/math.json)."""
+    cases = json.loads(MATH.read_text(encoding="utf-8"))["inline"]
+    assert len(cases) > 20
+    for case in cases:
+        assert notification_text(case["line"], {}) == case["plain"], case["name"]
+    assert notification_text("$$\na_1 * b_1 = c\n$$", {}) == "$$ a_1 * b_1 = c $$"
