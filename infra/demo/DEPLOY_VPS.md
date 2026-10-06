@@ -61,7 +61,8 @@ cat secrets/demo_review_password
 `demo-vps.sh` は本番の `deploy.sh` と同じ compose の組み合わせ（`docker-compose.yml` + `prod` + `release` +
 `behind-proxy`、`--profile proxy`）を `-p taylis-demo` で動かし、`/readyz` が `ok` になるまで待ちます。初回はデータベースの
 移行が走ります。イメージの取得に失敗した場合（ghcr.io のパッケージが非公開など）は、このサーバーにあるイメージで起動します。
-無ければ `docker login ghcr.io` してからやり直します。
+無ければ `docker login ghcr.io` してからやり直します。本番が同じタグで動いていれば、`unauthorized` と出ても最後に
+`demo is running <tag>` と出れば正常です（本番のデプロイが取ってきたイメージを使っています）。
 
 ## 4. nginx と証明書
 
