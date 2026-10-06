@@ -92,7 +92,7 @@ CREATE TABLE users (
   notify_keywords       text[],                 -- M12g 通知キーワード (本文に含まれればメンション扱い、20 個まで)
   presence_hidden       boolean NOT NULL DEFAULT false,  -- L4 (M31) 在席を隠す: 他の人には常に offline に見える
   notification_default  text NOT NULL DEFAULT 'mentions', -- M35 通知の全体設定 'all' | 'mentions' | 'none' (UserMe と PATCH /users/me)
-  activity_read_at      timestamptz NOT NULL DEFAULT now(), -- M39 アクティビティの既読位置 (項目ごとの既読行は作らない。進むだけ)
+  activity_read_at      timestamptz NOT NULL DEFAULT now(), -- M39 アクティビティの既読位置 (項目ごとの既読行は作らない。進むだけ)。メンション・スレッドの返信は read_states / thread_follows の last_read_seq で読んだものも既読 (2026-10-06、MOBILE_UI.md §6.4)
   notify_reactions      boolean NOT NULL DEFAULT false,   -- M39 自分の投稿へのリアクションをプッシュする (アクティビティには常に出る)
   notify_tasks          boolean NOT NULL DEFAULT true,    -- M55 タスクの割り当てと期限をプッシュする (TASKS.md §5)
   quick_reactions       text[],                 -- M50 長押しの「リアクションの候補」1〜6 個 (重複なし・普通の絵文字だけ)。NULL = クライアントの規則 (最近使った順、足りなければ既定)

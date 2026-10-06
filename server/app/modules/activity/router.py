@@ -47,7 +47,8 @@ async def list_activity(
 async def activity_summary(
     user: CurrentUser, db: Db, include: list[str] = Include
 ) -> ActivitySummaryOut:
-    """The activity tab's badge: items after my read position (the `include`d kinds too)."""
+    """The activity tab's badge: items after my read position (the `include`d kinds too), less
+    mentions and thread replies already read in their conversation (MOBILE_UI.md §6.4)."""
     return await service.summary(db, user, include)
 
 

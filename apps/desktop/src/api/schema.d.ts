@@ -56,7 +56,8 @@ export interface paths {
         };
         /**
          * Activity Summary
-         * @description The activity tab's badge: items after my read position (the `include`d kinds too).
+         * @description The activity tab's badge: items after my read position (the `include`d kinds too), less
+         *     mentions and thread replies already read in their conversation (MOBILE_UI.md §6.4).
          */
         get: operations["activity_summary_api_v1_activity_summary_get"];
         put?: never;
@@ -4365,6 +4366,8 @@ export interface components {
              */
             kind: "mention" | "reaction" | "thread_reply" | "canvas_mention" | "reservation";
             message?: components["schemas"]["MessageOut"] | null;
+            /** Read */
+            read?: boolean | null;
             reservation?: components["schemas"]["ActivityReservation"] | null;
         };
         /** ActivityListOut */

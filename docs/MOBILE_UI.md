@@ -245,6 +245,17 @@ Slack と同じく、スマホ幅 (Android の `PaneLayout.PHONE`、iOS の `Mai
 - **段階 B (7.2)**: 「すべて」と「リアクション」を足し、項目ごとに未読の点、「すべて既読」を付ける。
   - 未読は `activity_read_at` より新しい項目。端末をまたいで同期する
   - タブのバッジは未読の項目数。メンションを含むときは赤
+  - **会話で読んだものは既読（2026-10-06、Slack と同じ）**。メンションやスレッドの返信を会話・スレッドで読んだのに、アクティビティのバッジに数えられたままだった。項目が未読なのは次の両方を満たすとき：
+    1. `at` が `activity_read_at` より新しい（今までどおり。「すべて既読」はこれで全部を既読にする）
+    2. 項目の種類が `mention` か `thread_reply` なら、そのメッセージが自分にとって会話でまだ読まれていない：
+       - タイムラインの行（`parent_id` が null か、`also_in_channel` が true の返信）は、会話の既読位置（`read_states.last_read_seq`、`read.updated` / bootstrap の `last_read_seq`）が `seq` より小さい
+       - スレッドの返信（`parent_id` がある）は、そのスレッドの自分の既読位置（`thread_follows.last_read_seq`、`ThreadState.last_read_seq`。フォローしていなくても読めば行ができる。行が無ければ 0）が `seq` より小さい
+       - 「チャンネルにも送信」した返信はどちらか一方で読めば既読（上の 2 つの両方がまだのときだけ未読）
+       - 既読位置は自分のものだけを見る（他の人が読んでも変わらない）。「ここから未読にする」（`mode: "set"`）で位置が戻れば、`activity_read_at` より新しい項目はまた未読になる
+    - `reaction`・`canvas_mention` は 1 だけ（メッセージの既読位置とは関係しない）。`reservation` は 1 かつ「対応済み」でない（M112 のまま）
+    - サーバは `GET /activity/summary`・bootstrap の `activity`・`PUT /activity/read` の応答の `unread_count` / `mention_unread` をこの規則で数え、`GET /activity` の各項目に `read: bool` を付ける（同じ規則。null・無しはこの規則より前のサーバなので `at` と `read_at` を比べる）。項目ごとの既読の行は作らない（既読位置から求める）
+    - クライアント：未読の点は `read` で出す。接続中に `read.updated`（自分の会話の既読位置）と `thread.updated`（`reason: "read"`、自分のスレッドの既読位置）を受けたら、今のメンション・返信の `message.created` と同じくまとめて（デバウンスして）`GET /activity/summary` を取り直す。一覧を表示・保持していれば、上の 2 の規則でその場で項目の `read` を true にしてよい（`channel_id` と `last_read_seq`、または `parent_id` と `last_read_seq` で該当する項目）。`reason: "set"` で位置が戻ったときは一覧を読み直す
+    - アプリのアイコンのバッジ（プッシュの `badge`）はアクティビティの数を含まない（PUSH_NOTIFICATIONS.md §4.2）ので、この規則で変わらない
 - 研究室向けの候補: 「確認依頼」フィルタ。確認を求められていて自分がまだ確認していない投稿 (M15e の ack) を出す (決定事項 3)。
 
 ### 6.5 自分 (You)
@@ -384,6 +395,7 @@ Aa → 書式バー [B][I][S][`][```][🔗][•][1.][❝] (選択範囲を記法
   を付けた端末にだけ返し、数える (CANVAS.md §20)。
 - 保存するのは `users.activity_read_at timestamptz` の 1 列だけ (マイグレーション 1 本)。
   - 項目ごとに既読の行は作らない (CLAUDE.md の ReadState と同じ考え方)
+  - 2026-10-06：メンションとスレッドの返信は、会話・スレッドの既読位置で読んだものも既読（§6.4）。数える問い合わせは既読位置を主キーで 1 回ずつ引くだけで、メンションは GIN と `messages_mention_all_idx` で引く（`mention_all` の条件を部分インデックスの述語 `mention_all AND deleted_at IS NULL` の形で書く）。40 万件・既読位置 200 日前の合成データでメンション 2〜5 ms、返信はフォロー中のスレッド数に比例（1.2 万スレッドで約 25 ms、数百なら 1〜5 ms）。マイグレーション不要
 - 接続中の件数:
   - クライアントがイベントから数える。メンションの `message.created`、自分の投稿への `message.updated change=reaction`、`thread.updated`
   - 再接続したら bootstrap の値で直す (WS だけに頼らない)
