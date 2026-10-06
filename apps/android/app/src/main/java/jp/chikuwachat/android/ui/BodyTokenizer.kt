@@ -27,6 +27,8 @@ sealed class BodyToken {
     data class Mention(val userId: String) : BodyToken()
     data class MentionGroup(val groupId: String) : BodyToken()
     data class MentionAll(val target: String) : BodyToken()
+    /** TeX math (apps/shared/math.json): the formula as written; [display] for `$$…$$` within a line. */
+    data class Math(val tex: String, val display: Boolean = false) : BodyToken()
     data object Newline : BodyToken()
 }
 
@@ -49,6 +51,8 @@ sealed class BodyBlock {
     data class Quote(val lines: List<List<BodyToken>>) : BodyBlock()
     data class ListBlock(val ordered: Boolean, val start: Int, val items: List<BodyListItem>) : BodyBlock()
     data class CodeBlock(val text: String, val lang: String?) : BodyBlock()
+    /** Display math: `$$…$$` on a line (or lines) of its own (apps/shared/math.json). */
+    data class Math(val tex: String) : BodyBlock()
     /** M15g: a GFM table; rows have exactly as many cells as the header. */
     data class Table(val align: List<TableAlign>, val header: List<List<BodyToken>>, val rows: List<List<List<BodyToken>>>) : BodyBlock()
     // The canvas dialect (CANVAS.md §4.2).
@@ -68,7 +72,7 @@ private val RULE_LINE = Regex("""^-{3,}\s*$""")
 // text tokens of their own, so emphasis and escapes are never read inside them.
 private const val INLINE =
     // i18n: keep (inline-format pattern)
-    """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)"""
+    """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"""
 private val INLINE_PATTERN = Regex(INLINE)
 private val FULL_PATTERN = Regex("""(```([\s\S]*?)```)|$INLINE|(\n)""")
 private val FENCE_OPEN = Regex("""^```([A-Za-z0-9_+#.-]{0,20})\s*$""")
@@ -126,7 +130,43 @@ fun tokenizeBody(body: String): List<BodyToken> = scan(body, FULL_PATTERN, withB
 /** Inline tokens of a single line. */
 fun tokenizeInline(line: String): List<BodyToken> = scan(line, INLINE_PATTERN, withBlocks = false)
 
-private val ESCAPED = Regex("""\\([_*~`])""")
+private val ESCAPED = Regex("""\\([_*~`$])""")
+
+/**
+ * TeX math (apps/shared/math.json, markdown.ts MATH_MAX_LENGTH): inline `$…$` as Pandoc reads it (the opening `$` before a
+ * non-space, the closing one after a non-space and not before a digit or an ASCII letter), `$$…$$` within a line, and
+ * display blocks ([mathBlock]). A formula longer than this stays text.
+ */
+const val MATH_MAX_LENGTH = 2000
+
+/**
+ * Display math starting at `lines[index]` (markdown.ts mathBlockAt): its formula and its last line. `$$` starts the line
+ * (spaces around are ignored) and a later line ends with `$$`, no blank line and no other `$$` between; one line
+ * `$$tex$$` is a block too.
+ */
+fun mathBlock(lines: List<String>, index: Int): Pair<String, Int>? {
+    val first = lines[index].trim()
+    if (!first.startsWith("$$")) return null
+    fun done(tex: String, end: Int): Pair<String, Int>? {
+        val trimmed = tex.trim()
+        return if (trimmed.isEmpty() || trimmed.length > MATH_MAX_LENGTH) null else trimmed to end
+    }
+    if (first.length >= 4 && first.endsWith("$$")) {
+        val tex = first.substring(2, first.length - 2)
+        return if ("$$" in tex) null else done(tex, index)
+    }
+    val head = first.substring(2)
+    if ("$$" in head) return null
+    for (k in index + 1 until lines.size) {
+        val trimmed = lines[k].trim()
+        if (trimmed.isEmpty()) return null // a blank line ends the search: the $$ was not math
+        if ("$$" !in trimmed) continue
+        val tail = trimmed.dropLast(2)
+        if (!trimmed.endsWith("$$") || "$$" in tail) return null
+        return done((listOf(head) + lines.subList(index + 1, k) + listOf(tail)).joinToString("\n"), k)
+    }
+    return null
+}
 
 private fun scan(body: String, pattern: Regex, withBlocks: Boolean): List<BodyToken> {
     val tokens = ArrayList<BodyToken>()
@@ -155,6 +195,12 @@ private fun scan(body: String, pattern: Regex, withBlocks: Boolean): List<BodyTo
             group(20) != null -> tokens.add(BodyToken.Link(group(20) ?: ""))
             group(21) != null -> text(group(22) ?: "")
             group(23) != null -> text(group(23) ?: "")
+            group(24) != null || group(26) != null -> {
+                // TeX math: too long or blank, it stays the text it was.
+                val display = group(24) != null
+                val tex = (if (display) group(25) else group(27)) ?: ""
+                if (tex.length > MATH_MAX_LENGTH || tex.isBlank()) text(match.value) else tokens.add(BodyToken.Math(tex, display))
+            }
             else -> tokens.add(BodyToken.Newline)
         }
         last = match.range.last + 1
@@ -322,6 +368,12 @@ fun parseBlocks(body: String, canvas: Boolean = false): List<BodyBlock> {
             i = close + 1
             continue
         }
+        val math = mathBlock(lines, i)
+        if (math != null) {
+            blocks.add(BodyBlock.Math(math.first))
+            i = math.second + 1
+            continue
+        }
         HEADING.find(line)?.let { h ->
             blocks.add(BodyBlock.Heading(h.groupValues[1].length, tokenizeInline(h.groupValues[2]), if (canvas) i else null))
             i++
@@ -392,7 +444,7 @@ fun parseBlocks(body: String, canvas: Boolean = false): List<BodyBlock> {
         val paragraph = ArrayList<List<BodyToken>>()
         while (i < lines.size) {
             val current = lines[i]
-            if (paragraph.isNotEmpty() && (opensFence(i) || opensTable(i) || HEADING.matches(current) || QUOTE.matches(current) || BULLET.matches(current) || NUMBERED.matches(current) || isImage(i) || isRule(i))) break
+            if (paragraph.isNotEmpty() && (opensFence(i) || opensTable(i) || HEADING.matches(current) || QUOTE.matches(current) || BULLET.matches(current) || NUMBERED.matches(current) || isImage(i) || isRule(i) || mathBlock(lines, i) != null)) break
             paragraph.add(tokenizeInline(current))
             i++
         }
@@ -441,6 +493,7 @@ fun visibleText(tokens: List<BodyToken>): String = buildString {
             is BodyToken.Mention -> append("@")
             is BodyToken.MentionGroup -> append("@")
             is BodyToken.MentionAll -> append("@" + token.target)
+            is BodyToken.Math -> append(if (token.display) "$$" + token.tex + "$$" else "$" + token.tex + "$")
             BodyToken.Newline -> append("\n")
         }
     }
@@ -471,6 +524,7 @@ private fun inlineText(token: BodyToken): String = when (token) {
     is BodyToken.Mention -> "<@${token.userId}>"
     is BodyToken.MentionGroup -> "<@group:${token.groupId}>"
     is BodyToken.MentionAll -> "<!${token.target}>"
+    is BodyToken.Math -> if (token.display) "$$" + token.tex + "$$" else "$" + token.tex + "$" // the source as written
     BodyToken.Newline -> "\n"
 }
 

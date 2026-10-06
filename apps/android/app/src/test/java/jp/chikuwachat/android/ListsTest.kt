@@ -32,6 +32,7 @@ class ListsTest {
         is BodyBlock.Tasks -> "task"
         is BodyBlock.Image -> "image"
         BodyBlock.Rule -> "hr"
+        is BodyBlock.Math -> "math"
     }
 
     @Test

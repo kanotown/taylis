@@ -17,6 +17,12 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // AndroidMath (TeX math in messages, ui/MathRender.kt) is published only on JitPack; nothing else may come
+        // from there.
+        exclusiveContent {
+            forRepository { maven("https://jitpack.io") }
+            filter { includeGroup("com.github.gregcockroft") }
+        }
     }
 }
 

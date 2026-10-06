@@ -33,6 +33,7 @@ class InlineFormatTest {
                 is BodyToken.Mention -> listOf("mention", token.userId)
                 is BodyToken.MentionGroup -> listOf("mention_group", token.groupId)
                 is BodyToken.MentionAll -> listOf("mention_all", token.target)
+                is BodyToken.Math -> if (token.display) listOf("math", token.tex, "display") else listOf("math", token.tex)
                 BodyToken.Newline -> listOf("newline")
             }
             JsonArray(parts.map { JsonPrimitive(it) })

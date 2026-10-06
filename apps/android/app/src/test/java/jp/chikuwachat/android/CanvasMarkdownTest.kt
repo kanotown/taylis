@@ -50,6 +50,7 @@ class CanvasMarkdownTest {
         }
         is BodyBlock.Image -> buildJsonObject { put("kind", "image"); put("alt", block.alt); put("attachment_id", block.attachmentId); put("line", block.line) }
         BodyBlock.Rule -> buildJsonObject { put("kind", "hr") }
+        is BodyBlock.Math -> buildJsonObject { put("kind", "math"); put("tex", block.tex) }
         is BodyBlock.CodeBlock -> buildJsonObject { put("kind", "codeblock"); put("text", block.text) }
         is BodyBlock.Quote -> buildJsonObject { put("kind", "quote") }
         is BodyBlock.Table -> buildJsonObject { put("kind", "table") }
