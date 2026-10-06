@@ -38,6 +38,8 @@ const samples: string[] = [
   "| a | b |\n| --- | --- |\n| 1 | 2 |",
   "これは${ZWSP}_強調_${ZWSP}です".replace(/\$\{ZWSP\}/g, "​"),
   "​- not a list",
+  "数式 $a_b$ と $$\\frac{1}{2}$$ と \\$5",
+  "$$\nE = mc^2\n$$",
 ];
 
 describe("rich editor schema", () => {
@@ -72,6 +74,8 @@ describe("rich editor schema", () => {
       ["## head", "## head"],
       ["__init__ ", "__init__ "],
       ["snake_case_name ", "snake_case_name "],
+      ["式 $a_1$ ", "式 $a_1$ "],
+      ["$5 and $10 ", "$5 and $10 "],
     ];
     for (const [typed, expected] of cases) {
       const editor = editorWith("");

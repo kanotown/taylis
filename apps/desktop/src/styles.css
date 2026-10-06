@@ -310,6 +310,9 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .rich-editor ol { list-style-type: decimal; }
 .rich-editor ol ol { list-style-type: lower-alpha; }
 .rich-editor ol ol ol { list-style-type: lower-roman; }
+.rich-editor .rich-math { font-family: var(--font-code); font-size: 0.9em; color: var(--accent); }
+.rich-editor .rich-math::before, .rich-editor .rich-math::after { content: "$"; color: var(--muted-fg); }
+.rich-editor .rich-math[data-display]::before, .rich-editor .rich-math[data-display]::after { content: "$$"; }
 .rich-editor pre.rich-raw { font-size: 0.85em; color: var(--muted-fg); }
 .rich-editor a { cursor: text; }
 .rich-editor p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--muted-fg); float: left; height: 0; pointer-events: none; }
