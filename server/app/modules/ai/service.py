@@ -86,6 +86,8 @@ from app.modules.users.models import User
 
 log = logging.getLogger("app.ai")
 
+# users.bot_kind of an AI bot (docs/AI.md §2.1): clients keep it among the @-mention suggestions.
+BOT_KIND = "ai"
 MAX_ATTEMPTS = 3
 # Seconds before the 2nd and the 3rd attempt after a temporary failure.
 BACKOFF = (30, 120)
@@ -233,7 +235,11 @@ async def list_agents(db: AsyncSession) -> list[AiAgentOut]:
 async def create_agent(db: AsyncSession, actor: User, data: AiAgentCreate) -> AiAgentOut:
     try:
         bot = await admin.create_bot_in_tx(
-            db, actor_id=actor.id, username=data.username, display_name=data.name
+            db,
+            actor_id=actor.id,
+            username=data.username,
+            display_name=data.name,
+            bot_kind=BOT_KIND,
         )
         agent = AiAgent(
             bot_user_id=bot.id,
