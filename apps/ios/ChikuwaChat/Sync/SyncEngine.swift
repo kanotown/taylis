@@ -580,6 +580,7 @@ final class SyncEngine {
         store.replaceGroups(bootstrap.groups ?? [])
         store.replaceRoster(bootstrap.roster ?? [])
         store.replaceSidebar(bootstrap.sidebarSections ?? [])
+        store.replaceSidebarDefaults(bootstrap.sidebarDefaults ?? [])
         store.setWorkspaceSettings(bootstrap.workspaceSettings)
         drafts.applyBootstrap(bootstrap.drafts ?? [])
         Task { await self.loadScheduled() }
@@ -738,8 +739,10 @@ final class SyncEngine {
         case "ai.run_updated":  // M66 (docs/AI.md §5): my summary's state; M71: my question's
             ai.applyEvent(frame.data)
         case "sidebar.updated":
-            struct Payload: Decodable { let sections: [SidebarSectionOut] }
-            store.replaceSidebar(try frame.data.decode(Payload.self).sections)
+            struct Payload: Decodable { let sections: [SidebarSectionOut]; let defaults: [SidebarDefaultOut]? }
+            let payload = try frame.data.decode(Payload.self)
+            store.replaceSidebar(payload.sections)
+            if let defaults = payload.defaults { store.replaceSidebarDefaults(defaults) }
         case "group.updated":
             struct Payload: Decodable { let group: GroupOut; let deleted: Bool }
             let payload = try frame.data.decode(Payload.self)

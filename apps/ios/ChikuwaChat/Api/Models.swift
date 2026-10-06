@@ -1000,6 +1000,8 @@ struct BootstrapOut: Codable {
     var roster: [LabProfileOut]? = nil
     /// My sidebar sections (M14f); changes arrive as sidebar.updated.
     var sidebarSections: [SidebarSectionOut]? = nil
+    /// The default sections' sorts (DATA_MODEL.md 「並べ替え」); nil from an older server (the defaults).
+    var sidebarDefaults: [SidebarDefaultOut]? = nil
     /// My drafts shared by my devices (M15d); changes arrive as draft.updated.
     var drafts: [DraftOut]? = nil
     /// M39: the activity badge and read position; nil from a server before M39 (the activity tab stays at stage A).
@@ -1179,6 +1181,25 @@ struct SidebarSectionOut: Codable, Identifiable, Equatable {
     var channelIds: [String] = []
     var emoji: String? = nil
     var collapsed = false
+    /// DATA_MODEL.md 「並べ替え」: "name" / "recent" / "manual", and the hand-made order (conversation ids).
+    var sort = "name"
+    var manualOrder: [String] = []
+}
+
+/// The sort of a default section ("favorites", "channels", "dms"); the server always sends all three.
+struct SidebarDefaultOut: Codable, Equatable {
+    let key: String
+    var sort: String
+    var manualOrder: [String] = []
+}
+
+extension SidebarDefaultOut {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decode(String.self, forKey: .key)
+        sort = try c.decode(String.self, forKey: .sort)
+        manualOrder = try c.decodeIfPresent([String].self, forKey: .manualOrder) ?? []
+    }
 }
 
 extension SidebarSectionOut {
@@ -1191,6 +1212,8 @@ extension SidebarSectionOut {
         channelIds = try c.decodeIfPresent([String].self, forKey: .channelIds) ?? []
         emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
         collapsed = try c.decodeIfPresent(Bool.self, forKey: .collapsed) ?? false
+        sort = try c.decodeIfPresent(String.self, forKey: .sort) ?? "name"
+        manualOrder = try c.decodeIfPresent([String].self, forKey: .manualOrder) ?? []
     }
 }
 
