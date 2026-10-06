@@ -78,6 +78,8 @@ struct EngineOptions {
     /// M45: the canvas save loop's pauses (CANVAS.md §4.4) and its clock (nil: the real one).
     var canvasSave = CanvasSaverOptions()
     var canvasClock: CanvasClock? = nil
+    /// M122: wiki.changed events within this pause fold into one GET /wiki/changes (docs/WIKI.md §10).
+    var wikiFeed: TimeInterval = 0.3
     var sleep: (TimeInterval) async -> Void = { seconds in try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
     var random: () -> Double = { Double.random(in: 0..<1) }
     var newId: () -> String = { UUID().uuidString.lowercased() }
@@ -163,6 +165,8 @@ final class SyncEngine {
     @ObservationIgnored private(set) var drafts: DraftSync!
     /// M45: the conversations' canvases and the save loops of the open ones (CANVAS.md §4.4 / §4.6).
     @ObservationIgnored private(set) var canvases: CanvasHub!
+    /// M122: the wiki's tree, its change feed and the save loops of the open pages (docs/WIKI.md §10).
+    @ObservationIgnored private(set) var wiki: WikiHub!
     /// M52: the ranges of the calendar on screen and the channels' 「予定」 counts (CALENDAR.md §5).
     @ObservationIgnored private(set) var calendar: CalendarHub!
     /// M56: the boards, 「自分のタスク」 and the calendar ranges of tasks on screen (TASKS.md §4).
@@ -189,6 +193,7 @@ final class SyncEngine {
         drafts = DraftSync(api: api as? DraftApi, store: store, isOnline: { [weak self] in self?.status == .online }, delay: options.draftSave)
         store.onDraftEdited = { [weak self] channelId, parentId in self?.drafts.edited(channelId, parentId: parentId) }
         canvases = CanvasHub(api: api as? CanvasApi, store: store, clock: options.canvasClock, options: options.canvasSave)
+        wiki = WikiHub(api: api as? WikiApi, store: store, clock: options.canvasClock, options: options.canvasSave, feedDelay: options.wikiFeed)
         calendar = CalendarHub(api: api as? CalendarApi, me: { [weak store] in store?.me?.id })
         calendar.onAlarm = { [weak self] event, channelId in self?.onCalendarAlarm?(event, channelId) }
         tasks = TaskHub(api: api as? TaskApi, me: { [weak store] in store?.me?.id })
@@ -285,6 +290,7 @@ final class SyncEngine {
     func stop() {
         stopped = true
         canvases.stop()
+        wiki.stop()
         calendar.stop()
         tasks.stop()
         clearTimers()
@@ -370,6 +376,7 @@ final class SyncEngine {
         Task { await resendReads() } // §10: marks that could not be sent before
         Task { await drafts.flush() } // edited while offline (M15d)
         canvases.online() // M45: canvas saves that failed, open canvases read again, edits kept from before a relaunch
+        wiki.online() // M122: likewise for pages (the tree was read with the bootstrap)
         calendar.online() // M52: the ranges on screen and the channels' counts read again (CALENDAR.md §5)
         tasks.online() // M56: the boards, 「自分のタスク」 and the calendar's tasks read again (TASKS.md §4)
         ai.online() // M66: the AI status, and the open summary's run read again (docs/AI.md §5)
@@ -587,6 +594,8 @@ final class SyncEngine {
         Task { await self.loadScheduled() }
         Task { await self.loadReminders() }
         Task { await self.loadReservationPools() }  // M112
+        let wikiFeed = bootstrap.wiki
+        Task { await self.wiki.bootstrap(wikiFeed) }  // M122: the tree, or its change feed
         onBadge?(store.badgeCount)
     }
 
@@ -690,6 +699,8 @@ final class SyncEngine {
             store.upsertUser(user)
             // M111: me, changed on another of my devices (home tiles, quick reactions …): my private settings are not in
             // the event (it is everyone's), so read them again.
+            // M122: my role changed (a guest reads only what is shared with them by name): the tree again.
+            if let me = store.me, user.id == me.id, user.role != me.role, wiki.tree != nil { Task { await self.wiki.loadTree() } }
             if frame.event == "user.updated", let me = store.me, user.id == me.id, isNewer(user.updatedAt, than: me.updatedAt) {
                 Task { await refreshMe() }
             }
@@ -734,6 +745,11 @@ final class SyncEngine {
             drafts.applyEvent(try frame.data.decode(DraftUpdated.self))
         case "canvas.created", "canvas.updated", "canvas.deleted":  // M45 (CANVAS.md §4.6)
             canvases.applyEvent(frame.event, frame.data)
+        case "wiki.changed", "wiki.page.updated":  // M122 (docs/WIKI.md §14.3)
+            wiki.applyEvent(frame.event, frame.data)
+        case "wiki.mentioned", "wiki.shared":  // M122: an activity item for me; the push's words while the app is open
+            scheduleActivityRefresh()
+            if let notice = try? frame.data.decode(WikiNotice.self) { onWikiNotice?(notice, frame.event == "wiki.shared") }
         case "canvas.mentioned":  // M73 (CANVAS.md §18.1): the push's words while the app is open
             if let mention = try? frame.data.decode(CanvasMentioned.self) { maybeNotifyCanvasMention(mention) }
             // M77 (CANVAS.md §20.5): it is an activity item too (whatever the conversation's level), counted by the server.
@@ -753,6 +769,8 @@ final class SyncEngine {
             struct Payload: Decodable { let group: GroupOut; let deleted: Bool }
             let payload = try frame.data.decode(Payload.self)
             store.applyGroup(payload.group, deleted: payload.deleted)
+            // M122 (docs/WIKI.md §10): a group's members changed what I may read; the feed does not say so.
+            if wiki.tree != nil { Task { await self.wiki.loadTree() } }
         case "roster.updated":
             // M23: one line added, changed or removed (`profile` null = off the roster). The managed groups it moves
             // arrive on their own as group.updated.
@@ -951,6 +969,8 @@ final class SyncEngine {
     var onTaskNotice: ((TaskNotice) -> Void)?
     /// M73: canvas.mentioned while the app is open (likewise), when the conversation's level would push it.
     var onCanvasMention: ((CanvasMentioned, ChannelState) -> Void)?
+    /// M122: wiki.mentioned / wiki.shared while the app is open (`true`: shared).
+    var onWikiNotice: ((WikiNotice, Bool) -> Void)?
     /// M112: reservation.notice while the app is open (the server pushes to phones not on screen).
     var onReservationNotice: ((ReservationNotice) -> Void)?
 

@@ -207,7 +207,7 @@ struct ActivityRowView: View {
         let nameOf: (String) -> String = { store.users[$0]?.displayName ?? (store.me?.id == $0 ? store.me?.displayName : nil) ?? tr("メンバー") }
         let (who, what) = ActivityRules.headline(item, nameOf: nameOf)
         let conversation = item.channelId.flatMap { store.channel($0) }.map { channelTitle($0, store: store) } ?? ""
-        let place = conversation.isEmpty ? "" : ActivityRules.whereText(item, conversation: conversation)
+        let place = conversation.isEmpty && item.page == nil ? "" : ActivityRules.whereText(item, conversation: conversation)
         // M112: a to-do another operator handled (or no longer needed) is done: dimmed, 「対応済み」.
         let done = item.reservation?.done == true
         HStack(alignment: .top, spacing: 8) {
@@ -225,7 +225,7 @@ struct ActivityRowView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     HStack(spacing: 3) {
                         (Text(who).fontWeight(.semibold) + Text(what))
-                            .lineLimit(item.kind == "canvas_mention" ? 2 : 1) // the title in it
+                            .lineLimit(item.kind == "canvas_mention" || item.page != nil ? 2 : 1) // the title in it
                         if item.kind == "reaction" {
                             ForEach(item.emojis, id: \.self) { ReactionGlyph(controller: controller, emoji: $0, height: 16) }
                         }
@@ -282,9 +282,9 @@ struct ActivityRowView: View {
 
     @ViewBuilder
     private var kindBadge: some View {
-        if item.kind == "canvas_mention" {
-            // M77: 📝, where a message's mention has its @.
-            Text("📝")
+        if item.kind == "canvas_mention" || item.page != nil {
+            // M77: 📝, where a message's mention has its @ (M122: 📄 for a page).
+            Text(item.page != nil ? "📄" : "📝")
                 .font(.system(size: 10))
                 .frame(width: 18, height: 18)
                 .background(Color(.secondarySystemBackground), in: Circle())

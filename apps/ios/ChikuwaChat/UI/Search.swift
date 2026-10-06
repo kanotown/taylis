@@ -186,6 +186,16 @@ struct SearchRequest: Equatable {
 
     /// Nothing a canvas search could look for: no words, conversation, person or dates (it is not sent).
     var canvasIsEmpty: Bool { q.isEmpty && channelId == nil && fromUserId == nil && after == nil && before == nil }
+
+    /// M122 (docs/WIKI.md §8.1): GET /search/pages takes the words (`in:<page title>` stays in them), the person (who made
+    /// or last changed the page), the dates and the order; pages belong to no conversation.
+    func pageQueryItems(limit: Int, offset: Int) -> [URLQueryItem] {
+        let skipped: Set<String> = ["has", "is_thread", "is_times", "channel_id"]
+        return queryItems(limit: limit, offset: offset).filter { !skipped.contains($0.name) }
+    }
+
+    /// Nothing a page search could look for (it is not sent).
+    var pageIsEmpty: Bool { q.isEmpty && fromUserId == nil && after == nil && before == nil }
 }
 
 enum SearchLogic {

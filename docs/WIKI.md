@@ -828,3 +828,34 @@ bootstrap に `wiki: {change_seq}`。アクティビティは `include=page_ment
 出ないことを確かめる 1 つのパラメータ化されたスイート）、`tests/test_wiki_acl_property.py`（無作為な操作の列と同時の変更のあとで
 実効の表 = 全部の計算し直し）、`tests/test_wiki_search.py`（検索の絞り込みと索引、ページの画像、プッシュ）、`tests/test_wiki_perf.py`、
 `tests/test_doctext.py`。
+
+## 15. M122 の iOS（2026-10-07）
+
+§9.2 のうちデータベースを除いたもの。サーバの変更なし。
+
+- **入口**：ホームのタイル「ドキュメント」（キー `docs`、「キャンバス」の後。bootstrap に `wiki` があるサーバだけ）と iPad のサイドバーの同じ行。
+  `apps/shared/nav-items.json` に `docs` を足した（両方の既定の並びで `canvases` の次。Desktop・Android の写しも同じにすること）。
+- **木**（`UI/WikiViews.swift` の `DocsView`）：「共有」「プライベート」の 2 つの見出しに最上位のページ、行の ▸ で子を開閉（§9.2 の
+  「1 段ずつたどる」ではなく開閉。ページを押すとそのページ）。並びは `position` のバイト順、同じなら id。親が読めないページは最上位。
+  上の欄は題名で絞り込み、確定すると検索の「ドキュメント」タブで本文も探す。＋ は「共有に新しいページ」（`workspace`）と
+  「プライベートに新しいページ」（`private`）、ゲストには出さない。
+- **ページ**（`WikiPageScreen`）：パンくず（読めない祖先は「…」、押すとそのページへ戻る）、アイコンと題名、キャンバスと同じ描画
+  （`CanvasBodyView`）、サブページ、「このページへのリンク」。`page:` のリンクは題名とアイコンに置き換え（木に無ければ
+  `POST /wiki/pages/resolve`、答えの無いものは「表示できないページ」）、`[名前](attachment:<id>)` はファイルとして開く。
+  `<server>/p/<id>` はメッセージ・キャンバスの中で「📄 ページを開く」になり、押すとシートでページを開く（`/c/` と同じ扱い）。
+- **編集**：「編集」で全体、見出しの ✎ でセクション。キャンバスの `CanvasSaver`・`CanvasEditor`・競合の選択をそのまま使い、呼び先だけ
+  `WikiSaverApi`（`PUT /wiki/pages/{id}/content`、ETag `"v<version>-<level>"`）にした。「編集中」の表示とタスクにするは出さない。
+  題名とアイコン（⋯）、子ページの作成、履歴（閲覧だけ。戻す・名前はパソコン）。`my_level = view` のページは編集・チェック・作成を
+  出さず「閲覧のみです。」。
+- **同期**（`Sync/WikiHub.swift`）：bootstrap の `wiki` で、木が無ければ `GET /wiki/tree`（ETag）、あれば `GET /wiki/changes`。
+  `wiki.changed` は 300 ms まとめて差分、`reset` で木を読み直す。`wiki.page.updated` は木の題名を直し、開いているページを読み直す。
+  `group.updated` と自分のロールの変化で木を読み直す。木・最近開いた 20 ページ・保存待ちは SQLite の meta（`wiki:tree`、
+  `wiki:page:<id>`、`wiki:pending:<id>`）に持ち、オフラインで読める。
+- **通知**：プッシュ `kind = page` はホームのタブで「ドキュメント」の上にページを開く。アクティビティの `page_mention` /
+  `page_shared`（`include=`）は押すとそのタブにページを積む。アプリを開いている間の `wiki.mentioned` / `wiki.shared` は下の知らせ
+  （押すとページ）。検索に「ドキュメント」タブ（`/search/pages`、人と期間のチップ、会話のチップは出さない）。
+- **テスト**：`WikiTests.swift`（木の並び・最上位・行の開閉、変更のフィードの取り込みと reset、ハブと偽のサーバ（bootstrap・
+  `wiki.changed` のまとめ・ETag・保持と再起動・オフラインの保存待ちと同じ key・404・題名の変更・作成と解決・20 件の上限）、
+  段階ごとの規則、パーマリンクと `page:` の字句解析、経路（パンくずで戻る・通知）、保存の要求と 409 の形、アクティビティの項目）。
+  開発サーバで android1 / android2 の木・閲覧・リンク・チェックと全体の編集の保存・子ページの作成・閲覧のみのページ・
+  プライベートのページが相手に見えないことを確かめた。

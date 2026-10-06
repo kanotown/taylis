@@ -13,6 +13,9 @@ struct CanvasEditor: View {
     /// nil: the whole body; else the heading line of the section being edited.
     var sectionLine: Int? = nil
     var autoFocus = false
+    /// M122 (docs/WIKI.md §7.1): a wiki page's body — the same editor and save loop, without the canvas's 「編集中」 frames
+    /// (canvas_presence, M126 for pages) and 「タスクにする」 (a task's source is a canvas).
+    var isPage = false
     @State private var model = CanvasEditorModel()
     /// M58: 「画像」 (§4.10): the photo library or the camera; pictures are uploaded and put in at the caret.
     @State private var showPhotoPicker = false
@@ -73,6 +76,7 @@ struct CanvasEditor: View {
         }
         .onAppear {
             model.attach(saver: saver, store: controller.store, sectionLine: sectionLine)
+            if isPage { return }
             // M73 (§18.2): 「編集中」 for the others while the text view has the focus.
             let canvasId = saver.id
             model.onPresence = { [weak app = controller] editing, section in

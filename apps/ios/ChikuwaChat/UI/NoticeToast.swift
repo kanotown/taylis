@@ -7,9 +7,16 @@ struct NoticeToast: View {
 
     var body: some View {
         if let notice = controller.notice {
-            let opens = controller.noticeCanvas?.notice == notice
+            let page = controller.noticePage?.notice == notice
+            let opens = controller.noticeCanvas?.notice == notice || page
             Group {
-                if opens {
+                if page {
+                    Button { controller.openNoticePage(notice) } label: {
+                        Label(notice, systemImage: "book.closed")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("ページを開きます")
+                } else if opens {
                     Button { controller.openNoticeCanvas(notice) } label: {
                         Label(notice, systemImage: "doc.text")
                     }

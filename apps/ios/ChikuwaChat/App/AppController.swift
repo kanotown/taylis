@@ -28,6 +28,11 @@ final class AppController {
     var canvasOpen: CanvasOpen?
     /// M73: the notice on screen opens this canvas when tapped (an in-app canvas mention); kept with its text.
     var noticeCanvas: (notice: String, target: CanvasOpen)?
+    /// M122: a wiki page link (`page:<id>`, `<server>/p/<id>`) tapped outside the wiki's screens: the page over
+    /// everything (MainView).
+    var pageLink: PageLinkTarget?
+    /// M122: the notice on screen opens this page when tapped (an in-app page mention or share); kept with its text.
+    var noticePage: (notice: String, pageId: String)?
     /// L8: the Times feed's rows while the app runs (TIMES_FEED.md §5), one per open workspace.
     private(set) var timesFeed = TimesFeedModel()
     /// The conversations' 「ピン留め」 tabs (PinsView), kept live by the same rows as the Times feed.
@@ -252,6 +257,8 @@ final class AppController {
         canvasLink = nil
         canvasOpen = nil
         noticeCanvas = nil
+        pageLink = nil
+        noticePage = nil
         workflowRun = nil
         workflowLists = [:]
         timesFeed = TimesFeedModel()
@@ -520,6 +527,7 @@ final class AppController {
         // M73: a canvas mention while the app is open, worded like the push; the notice opens the canvas.
         engine.onCanvasMention = { [weak self] mention, _ in self?.sayCanvasMention(mention) }
         engine.onReservationNotice = { [weak self] notice in self?.sayReservationNotice(notice) }
+        engine.onWikiNotice = { [weak self] notice, shared in self?.sayWikiNotice(notice, shared: shared) }
         // L8: the Times feed keeps its rows with the live message events (TIMES_FEED.md §5).
         timesFeed = TimesFeedModel()
         engine.onTimelineMessage = { [weak self, weak engine] event, message, thread in
@@ -589,6 +597,7 @@ final class AppController {
         engine?.reportActivity()
         // M45 (CANVAS.md §4.4 「背面に回るとき」): what was typed in a canvas is saved now, not after the pause.
         if let canvases = engine?.canvases { Task { await canvases.flushAll() } }
+        if let wiki = engine?.wiki { Task { await wiki.flushAll() } }  // M122
     }
 
     // MARK: workspaces that are not open (WORKSPACES.md §6, §7, §8)
@@ -714,6 +723,12 @@ final class AppController {
             // the channel (as a message's conversation), or in the calendar for my own (no channel).
             calendarOpen = CalendarOpen(eventId: eventId, channelId: payload.channelId)
             if payload.channelId == nil { PushCenter.shared.pendingCalendar = true }
+        }
+        if payload.opensPage, let pageId = payload.pageId {
+            // M122 (docs/WIKI.md §9.3, kind = page): the page, on the home tab over 「ドキュメント」.
+            PushCenter.shared.pendingPage = pageId
+            engine?.reconnectNow()
+            return
         }
         if payload.opensReservations {
             // M112 (PUSH_NOTIFICATIONS.md §4, kind = reservation): 「予約」 on the home tab.
@@ -1949,6 +1964,7 @@ final class AppController {
         guard let workspace = workspaces.first(where: { $0.serverUrl == serverUrl }) else { return }
         if serverUrl == activeServerUrl {
             await engine?.canvases.flushAll() // M45: a canvas typed in the last seconds too
+            await engine?.wiki.flushAll() // M122: a page too
             engine?.stop()
         }
         // Out of the clients first: its own signed-out callback must not mark the entry instead of removing it.

@@ -13,7 +13,7 @@ protocol ActivityApi: AnyObject {
 enum ActivityRules {
     /// The filters in the order the tab shows them (the GET /activity `filter` values).
     static let filters = ["all", "mentions", "threads", "reactions"]
-    static let kinds: Set<String> = ["mention", "reaction", "thread_reply", "canvas_mention", "reservation"]
+    static let kinds: Set<String> = ["mention", "reaction", "thread_reply", "canvas_mention", "reservation", "page_mention", "page_shared"]
 
     static func filterLabel(_ filter: String) -> String {
         switch filter {
@@ -101,7 +101,7 @@ enum ActivityRules {
     static func append(_ held: [ActivityItem], _ page: [ActivityItem]) -> [ActivityItem] {
         var keys = Set(held.map(\.id))
         var rows = held
-        for item in page where kinds.contains(item.kind) && (item.message != nil || item.canvas != nil || item.reservation != nil)
+        for item in page where kinds.contains(item.kind) && (item.message != nil || item.canvas != nil || item.reservation != nil || item.page != nil)
             && !keys.contains(item.id) {
             keys.insert(item.id)
             rows.append(item)
@@ -121,6 +121,9 @@ enum ActivityRules {
         case "mention": return (name, tr(" がメンション"))
         case "thread_reply": return (name, tr(" がスレッドに返信"))
         case "canvas_mention": return (name, tr(" が「\(canvasTitle(item.canvas))」であなたをメンションしました"))
+        // M122: a page that mentions me, or one shared with me by name.
+        case "page_mention": return (name, tr(" が「\(pageTitle(item.page))」であなたをメンションしました"))
+        case "page_shared": return (name, tr(" が「\(pageTitle(item.page))」を共有しました"))
         default:
             let others = max(0, item.actorIds.count - 1)
             return others > 0 ? (tr("\(name) ほか \(others) 人"), tr("が")) : (name, tr(" が"))
@@ -139,11 +142,20 @@ enum ActivityRules {
         return title.isEmpty ? tr("キャンバス") : title
     }
 
+    /// M122: a page's title as the rows say it (its icon first; an untitled one: 「無題」).
+    static func pageTitle(_ page: ActivityPage?) -> String {
+        let title = page?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let shown = title.isEmpty ? tr("無題") : title
+        guard let icon = page?.icon, !icon.isEmpty, !icon.hasPrefix(":") else { return shown }
+        return icon + " " + shown
+    }
+
     /// The row's last line: the message's opening words, or a canvas item's excerpt (already one plain line, the
     /// server's copy of the line that mentions me).
     static func excerpt(_ item: ActivityItem, users: [String: UserPublic], groups: [String: GroupOut] = [:]) -> String {
         if let canvas = item.canvas { return canvas.excerpt }
         if let reservation = item.reservation { return reservation.text }  // M112
+        if let page = item.page { return page.excerpt }  // M122
         guard let message = item.message else { return "" }
         return excerpt(message, users: users, groups: groups)
     }
@@ -179,6 +191,7 @@ enum ActivityRules {
         switch item.kind {
         case "thread_reply": tr("\(conversation) のスレッド")
         case "canvas_mention": tr("\(conversation) のキャンバス")
+        case "page_mention", "page_shared": tr("ドキュメント")  // M122: a page belongs to no conversation
         default: conversation
         }
     }

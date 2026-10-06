@@ -44,6 +44,22 @@
       },
       "shouldTranslate" : false
     },
+    " が「%@」を共有しました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " shared “%@” with you"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " 与你共享了“%@”"
+          }
+        }
+      }
+    },
     "%@ さんが通話を始めました" : {
       "localizations" : {
         "en" : {
@@ -1144,6 +1160,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "%@ が「%@」を共有しました" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ が「%2$@」を共有しました"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ shared “%2$@” with you"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 与你共享了“%2$@”"
           }
         }
       }
@@ -3970,6 +4008,9 @@
     "-" : {
       "shouldTranslate" : false
     },
+    "…" : {
+      "shouldTranslate" : false
+    },
     "/%@ というコマンドはありません（/help で一覧）" : {
       "localizations" : {
         "en" : {
@@ -5507,6 +5548,22 @@
         }
       }
     },
+    "「%@」の下に作ります。見える人は親のページと同じです。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Made under “%@”. The same people can see it as the parent page."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将创建在“%@”下。可以看到它的人与父页面相同。"
+          }
+        }
+      }
+    },
     "「%@」の操作" : {
       "localizations" : {
         "en" : {
@@ -5557,6 +5614,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "也在画布正文中搜索“%@”"
+          }
+        }
+      }
+    },
+    "「%@」をドキュメントの本文からも検索" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Also search docs' text for “%@”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "也在文档正文中搜索“%@”"
           }
         }
       }
@@ -6069,6 +6142,22 @@
         }
       }
     },
+    "このサーバはまだドキュメントに対応していません。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This server does not support docs yet."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器尚不支持文档。"
+          }
+        }
+      }
+    },
     "このサーバはカレンダーに対応していません" : {
       "localizations" : {
         "en" : {
@@ -6257,6 +6346,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要退出此频道吗？"
+          }
+        }
+      }
+    },
+    "このページはゴミ箱に移されたか、見られなくなりました。手元の本文はコピーできます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This page was moved to the trash or you can no longer see it. You can copy the text you have."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此页面已被移到回收站或你已无法查看。你可以复制手头的正文。"
+          }
+        }
+      }
+    },
+    "このページへのリンク" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Links to this page"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "链接到此页面的页面"
           }
         }
       }
@@ -7837,6 +7958,22 @@
         }
       }
     },
+    "まだページはありません。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No pages yet."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有页面。"
+          }
+        }
+      }
+    },
     "まだメッセージはありません" : {
       "localizations" : {
         "en" : {
@@ -8057,6 +8194,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "读音"
+          }
+        }
+      }
+    },
+    "アイコン（絵文字 1 つ、なくても可）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Icon (one emoji, optional)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图标（一个表情，可留空）"
+          }
+        }
+      }
+    },
+    "アイコン（絵文字 1 つ、空欄で外す）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Icon (one emoji, empty to remove)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图标（一个表情，留空则移除）"
           }
         }
       }
@@ -8553,6 +8722,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "离线 — 仅显示此设备上保存的画布"
+          }
+        }
+      }
+    },
+    "オフライン — この端末に保存した一覧です" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline — the list saved on this device"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线 — 这是保存在此设备上的列表"
           }
         }
       }
@@ -9433,6 +9618,22 @@
         }
       }
     },
+    "ゴミ箱に移されたか、共有が外れました。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "It was moved to the trash or is no longer shared with you."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它已被移到回收站，或已不再与你共享。"
+          }
+        }
+      }
+    },
     "ゴミ箱に移されたか、削除されました。" : {
       "localizations" : {
         "en" : {
@@ -9681,6 +9882,86 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "添加子任务"
+          }
+        }
+      }
+    },
+    "サブページ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Subpages"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "子页面"
+          }
+        }
+      }
+    },
+    "サブページあり" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "has subpages"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有子页面"
+          }
+        }
+      }
+    },
+    "サブページを表示中" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "subpages shown"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示子页面"
+          }
+        }
+      }
+    },
+    "サブページを閉じる" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide subpages"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起子页面"
+          }
+        }
+      }
+    },
+    "サブページを開く" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show subpages"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开子页面"
           }
         }
       }
@@ -11233,6 +11514,86 @@
         }
       }
     },
+    "ドキュメント" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Docs"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文档"
+          }
+        }
+      }
+    },
+    "ドキュメントには使えない条件があります：%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Some conditions do not apply to docs: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分条件不适用于文档：%@"
+          }
+        }
+      }
+    },
+    "ドキュメントは見つかりませんでした" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No docs found"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到文档"
+          }
+        }
+      }
+    },
+    "ドキュメントを使えません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Docs unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法使用文档"
+          }
+        }
+      }
+    },
+    "ドキュメントを読み込めませんでした" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not load docs"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载文档"
+          }
+        }
+      }
+    },
     "ドラッグで動かし、ピンチやスライダーで拡大できます" : {
       "localizations" : {
         "en" : {
@@ -11405,6 +11766,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已更改密码"
+          }
+        }
+      }
+    },
+    "パンくず" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Breadcrumbs"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路径"
           }
         }
       }
@@ -11905,6 +12282,22 @@
         }
       }
     },
+    "プライベートに新しいページ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New private page"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建私人页面"
+          }
+        }
+      }
+    },
     "プレビュー（%@ に、あなたの投稿として）" : {
       "localizations" : {
         "en" : {
@@ -12029,6 +12422,86 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "编辑个人资料"
+          }
+        }
+      }
+    },
+    "ページ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "页面"
+          }
+        }
+      }
+    },
+    "ページが見つかりません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page not found"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到页面"
+          }
+        }
+      }
+    },
+    "ページの操作" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page actions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "页面操作"
+          }
+        }
+      }
+    },
+    "ページを開きます" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opens the page"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开页面"
+          }
+        }
+      }
+    },
+    "ページを開く" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open page"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开页面"
           }
         }
       }
@@ -13461,6 +13934,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "工作区：%@"
+          }
+        }
+      }
+    },
+    "ワークスペースの全員が読み書きできるページです（ゲストを除く）。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Everyone in the workspace can read and edit this page (except guests)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作区中的所有人都可以阅读和编辑此页面（访客除外）。"
           }
         }
       }
@@ -16459,6 +16948,22 @@
         }
       }
     },
+    "共有に新しいページ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New shared page"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建共享页面"
+          }
+        }
+      }
+    },
     "共有先" : {
       "localizations" : {
         "en" : {
@@ -18669,6 +19174,22 @@
         }
       }
     },
+    "子ページを作成" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New subpage"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建子页面"
+          }
+        }
+      }
+    },
     "学生" : {
       "localizations" : {
         "en" : {
@@ -20235,6 +20756,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新密码不一致"
+          }
+        }
+      }
+    },
+    "新しいページ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New page"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新页面"
           }
         }
       }
@@ -22691,6 +23228,22 @@
         }
       }
     },
+    "無題" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Untitled"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无标题"
+          }
+        }
+      }
+    },
     "無題のキャンバス" : {
       "localizations" : {
         "en" : {
@@ -22751,6 +23304,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择版本即可查看与上一版本或当前版本的差异。"
+          }
+        }
+      }
+    },
+    "版を選ぶと、前の版や現在の版との違いを見られます。版に戻すのはパソコンから行えます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a version to see how it differs from the one before or the current one. Restoring a version is done from a computer."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一个版本，即可查看它与上一个版本或当前版本的差异。恢复版本需在电脑上进行。"
           }
         }
       }
@@ -24797,6 +25366,54 @@
         }
       }
     },
+    "自分が読めるページを、題名と本文から探します。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Searches the titles and text of the pages you can read."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你可以阅读的页面的标题和正文中搜索。"
+          }
+        }
+      }
+    },
+    "自分だけが読めるページです。共有はパソコンから設定できます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only you can read this page. Share it from a computer."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有你能阅读此页面。可以在电脑上设置共享。"
+          }
+        }
+      }
+    },
+    "自分だけが読めるページはここに入ります。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pages only you can read appear here."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有你能阅读的页面会显示在这里。"
+          }
+        }
+      }
+    },
     "自分だけに表示" : {
       "localizations" : {
         "en" : {
@@ -25301,6 +25918,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "显示项目"
+          }
+        }
+      }
+    },
+    "表示できないページ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page not available"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法显示的页面"
           }
         }
       }
@@ -25931,6 +26564,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "输入词语即可在画布的标题和正文中搜索。"
+          }
+        }
+      }
+    },
+    "語を入れると、ドキュメントの題名と本文から探します。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type words to search the titles and text of docs."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输入词语，在文档的标题和正文中搜索。"
           }
         }
       }
@@ -27807,6 +28456,22 @@
         }
       }
     },
+    "閲覧のみ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View only"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅可查看"
+          }
+        }
+      }
+    },
     "閲覧のみです。" : {
       "localizations" : {
         "en" : {
@@ -28027,6 +28692,22 @@
         }
       }
     },
+    "題名（空欄なら「無題」）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Title (empty: “Untitled”)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题（留空则为“无标题”）"
+          }
+        }
+      }
+    },
     "題名（空欄なら「無題のキャンバス」）" : {
       "localizations" : {
         "en" : {
@@ -28071,6 +28752,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "按标题筛选"
+          }
+        }
+      }
+    },
+    "題名とアイコン" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Title and icon"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题和图标"
+          }
+        }
+      }
+    },
+    "題名とアイコンを変更…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change title and icon…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更改标题和图标…"
           }
         }
       }
@@ -28188,6 +28901,9 @@
       }
     },
     "🎫" : {
+      "shouldTranslate" : false
+    },
+    "📄" : {
       "shouldTranslate" : false
     },
     "📝" : {

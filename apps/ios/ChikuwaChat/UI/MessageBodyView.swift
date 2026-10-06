@@ -62,7 +62,7 @@ enum BodyTokenizer {
     // the closing one not followed by a letter, digit or `_`, so snake_case and e-mail addresses stay as they are.
     // `\_` `\*` `\~` `\`` are the literal character (also inside emphasis). E-mail addresses (and the shrug, which keeps its
     // backslash) are text tokens of their own, so emphasis and escapes are never read inside them.
-    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"#
+    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\(((?:https?://|page:|attachment:)[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"#
     private static let escaped = try! NSRegularExpression(pattern: #"\\([_*~`$])"#)
 
     /// TeX math (apps/shared/math.json, markdown.ts MATH_MAX_LENGTH): inline `$…$` as Pandoc reads it (the opening `$`
@@ -549,6 +549,9 @@ struct MessageBodyView: View {
     /// A mention of someone known is a link (UserLink) the row turns into their profile; where nothing handles it
     /// (previews, search results) mentions stay plain text.
     var userLinks = false
+    /// M122 (docs/WIKI.md §3.3): what a wiki page link (`page:<id>`, `<server>/p/<id>`) shows — the page's icon and title
+    /// now, 「表示できないページ」, or (nil) its own label while not known.
+    var pageLabel: ((String) -> WikiHub.LinkState?)? = nil
 
     /// The animated custom emoji in this text, by id.
     private var animatedHere: [String: EmojiAnimation] {
@@ -806,6 +809,20 @@ struct MessageBodyView: View {
         CustomEmoji.text(Emoji.replaceShortcodes(text), custom: customEmoji, images: emojiImages, onNeed: onNeedEmojiImage, height: height)
     }
 
+    /// M122: 「📄 題名」 (the page's own emoji when it has one), 「📄 表示できないページ」, or the link's label while the
+    /// title is not known (「ページを開く」 for a bare permalink).
+    static func pageLinkText(_ state: WikiHub.LinkState?, label: String?) -> String {
+        switch state {
+        case .page(let title, let icon)?:
+            let mark = icon.flatMap { $0.isEmpty || $0.hasPrefix(":") ? nil : $0 } ?? "📄"
+            return mark + " " + title
+        case .unreadable?:
+            return "📄 " + tr("表示できないページ")
+        case nil:
+            return "📄 " + ((label?.isEmpty == false) ? label! : tr("ページを開く"))
+        }
+    }
+
     private func render(_ token: BodyToken, emojiHeight: CGFloat = CustomEmoji.inlineHeight) -> Text {
         switch token {
         case .text(let text): return emojiText(text, height: emojiHeight)
@@ -815,6 +832,18 @@ struct MessageBodyView: View {
         case .code(let text): return Self.inlineCode(text)
         case .codeBlock(let text, _): return Text(Self.untabbed(text)).font(Self.codeBlockFont)
         case .link(let url, let label):
+            if let id = PageLink.pageId(base: internalBase, url: url) {
+                // M122: a wiki page opens in the app (its screen, or 「ページが見つかりません」).
+                var attributed = AttributedString(Self.pageLinkText(pageLabel?(id), label: label != url ? label : nil))
+                attributed.link = PageLink.internalLink(pageId: id)
+                return Text(attributed)
+            }
+            if let id = FileLink.attachmentId(url) {
+                // M122: a page's file (`[name](attachment:<id>)`, not an image): opened in the app.
+                var attributed = AttributedString("📎 " + ((label?.isEmpty == false) ? label! : tr("ファイル")))
+                attributed.link = FileLink.internalLink(attachmentId: id)
+                return Text(attributed)
+            }
             if let id = CanvasLink.canvasId(base: internalBase, url: url) {
                 // M45: a canvas of this server opens in the app (its screen, or 「メンバーではありません」).
                 var attributed = AttributedString("📄 " + ((label != nil && label != url) ? label! : tr("キャンバスを開く")))

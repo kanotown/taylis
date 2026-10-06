@@ -22,6 +22,7 @@ enum NavItems {
         Entry(key: "reminders", label: tr("リマインダー"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "files", label: tr("ファイル"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "canvases", label: tr("キャンバス"), visible: true, platforms: [.desktop, .mobile]),
+        Entry(key: "docs", label: tr("ドキュメント"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "calendar", label: tr("カレンダー"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "tasks", label: tr("タスク"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "deadlines", label: tr("締切"), visible: true, platforms: [.desktop, .mobile]),
@@ -29,8 +30,10 @@ enum NavItems {
     ] }
 
     static let order: [Platform: [String]] = [
-        .desktop: ["threads", "activity", "drafts", "reminders", "files", "canvases", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed"],
-        .mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "activity"],
+        .desktop: ["threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved",
+                   "times-feed"],
+        .mobile: ["threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs",
+                  "activity"],
     ]
 
     /// The tiles this app has (「予約」 joins when its page exists). アクティビティ is the phone's tab and the iPad

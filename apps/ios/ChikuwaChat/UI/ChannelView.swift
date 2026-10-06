@@ -1014,7 +1014,8 @@ struct MessageRow: View {
     private var previewLink: String? {
         // M117: a call's link is its card, without a preview.
         guard !message.pending, message.call == nil, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil,
-              CanvasLink.canvasId(base: controller.api?.baseUrl, url: link) == nil else { return nil }
+              CanvasLink.canvasId(base: controller.api?.baseUrl, url: link) == nil,
+              PageLink.pageId(base: controller.api?.baseUrl, url: link) == nil else { return nil }
         return link
     }
 
@@ -1126,6 +1127,10 @@ struct MessageRow: View {
                         .environment(\.openURL, OpenURLAction { url in
                             if url.scheme == CanvasLink.scheme, let id = url.host {  // M45
                                 controller.canvasLink = CanvasLinkTarget(id: id)
+                                return .handled
+                            }
+                            if url.scheme == PageLink.scheme, let id = url.host {  // M122: a wiki page
+                                controller.pageLink = PageLinkTarget(id: id)
                                 return .handled
                             }
                             if url.scheme == UserLink.scheme, let id = url.host {  // a mention: that person's profile
