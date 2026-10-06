@@ -239,8 +239,11 @@ object ReservationRules {
         }
     }
 
-    /** To-dos due now in the pools I operate (the tile's number). */
-    fun todoCount(pools: List<PoolOut>): Int = pools.sumOf { pool -> pool.todos.count { !it.upcoming } }
+    /**
+     * To-dos due now in the pools I operate (the tile's number): only work someone waits on (assign, swap). A `remove:<id>`
+     * (returned, or its time over, nobody waiting) stays listed but is not counted (2026-10-06, RESERVATIONS.md).
+     */
+    fun todoCount(pools: List<PoolOut>): Int = pools.sumOf { pool -> pool.todos.count { !it.upcoming && it.action != "remove" } }
 
     fun row(pool: PoolOut, id: String?): ReservationOut? =
         id?.let { pool.holders.firstOrNull { r -> r.id == it } ?: pool.waiting.firstOrNull { r -> r.id == it } ?: pool.bookings.firstOrNull { r -> r.id == it } }

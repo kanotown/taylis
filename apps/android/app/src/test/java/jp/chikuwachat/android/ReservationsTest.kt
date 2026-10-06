@@ -128,6 +128,12 @@ class ReservationsTest {
         assertEquals("わたし さん（me@example.jp） に割り当てる", ReservationRules.todoLine(todos[0], pool, name, now, tokyo))
         assertEquals("12:00 から：ボブ さん を外して アリス さん に割り当てる（保証時間が終了） · 予約 12:00〜15:00", ReservationRules.todoLine(todos[1], pool, name, now, tokyo))
         assertEquals(1, ReservationRules.todoCount(listOf(pool)))
+        // 2026-10-06: a `remove:<id>` (returned or its time over, nobody waiting) is listed but not counted; a swap is.
+        val returned = ReservationTodo(key = "remove:w1", action = "remove", reason = "returned", removeId = "w1", dueAt = at(10))
+        val ended = ReservationTodo(key = "remove:w2", action = "remove", reason = "booking_ended", removeId = "w2", dueAt = at(9))
+        val swap = ReservationTodo(key = "swap:w1:q1", action = "swap", reason = "guarantee_over", assignId = "q1", removeId = "w1", dueAt = at(9))
+        assertEquals(0, ReservationRules.todoCount(listOf(pool.copy(todos = listOf(returned, ended)))))
+        assertEquals(2, ReservationRules.todoCount(listOf(pool, pool.copy(id = "p2", todos = listOf(returned, swap)))))
         val tiles = HomeTiles.tiles(ThreadSummary(0, 0), 0, 0, 0, HomeTiles.ReservationTile(1, true))
         val tile = tiles.first { it.tile == HomeTile.RESERVATIONS }
         assertEquals(1, tile.count)
