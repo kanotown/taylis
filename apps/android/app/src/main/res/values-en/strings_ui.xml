@@ -1298,6 +1298,11 @@
     <string name="sidebar_dialogs_no_matching_conversations">No matching conversations</string>
     <string name="sidebar_dialogs_remove_from_section">Remove from section</string>
     <string name="sidebar_dialogs_remove_icon">Remove icon</string>
+    <string name="sidebar_dialogs_edit_order">Edit order</string>
+    <string name="sidebar_dialogs_sort">Sort</string>
+    <string name="sidebar_dialogs_sort_manual">Manually</string>
+    <string name="sidebar_dialogs_sort_name">By name</string>
+    <string name="sidebar_dialogs_sort_recent">By recent activity</string>
     <string name="sidebar_dialogs_section_name">Section name</string>
     <string name="sidebar_dialogs_up_to_2_letters_or_digits">Up to 2 letters or digits, or 1 CJK character</string>
     <string name="sso_etc">%1$s etc.</string>

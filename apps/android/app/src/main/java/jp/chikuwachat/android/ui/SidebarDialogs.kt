@@ -41,6 +41,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -104,6 +107,10 @@ fun ChannelSectionDialog(controller: AppController, channelId: String, version: 
 fun SectionActionsDialog(
     controller: AppController, section: SidebarSectionOut, index: Int, count: Int, version: Int,
     onDismiss: () -> Unit, onEdit: () -> Unit, onNewSection: () -> Unit,
+    /** DATA_MODEL.md 「並べ替え」: the section's rows in their order now (the start of a hand-made order). */
+    shownIds: () -> List<String> = { emptyList() },
+    /** 「順番を編集」 (in 「手動」): the home shows the section's arrows. */
+    onEditOrder: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     AlertDialog(
@@ -123,6 +130,9 @@ fun SectionActionsDialog(
                 }
                 TextButton(onClick = onNewSection) { Text(stringResource(R.string.sidebar_dialogs_new_section)) }
                 HorizontalDivider()
+                SortChoices(section.sort, onSort = { sort -> scope.launch { controller.setSectionSort(AppController.SortTarget.Section(section.id), sort, shownIds()) } })
+                if (section.sort == "manual") TextButton(enabled = !section.collapsed, onClick = onEditOrder) { Text(stringResource(R.string.sidebar_dialogs_edit_order)) }
+                HorizontalDivider()
                 TextButton(onClick = { scope.launch { if (controller.deleteSection(section.id)) onDismiss() } }) {
                     Text(stringResource(R.string.sidebar_dialogs_delete_section_conversations_go_back), color = MaterialTheme.colorScheme.error)
                 }
@@ -131,6 +141,27 @@ fun SectionActionsDialog(
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 }
+
+/** 「並べ替え」: 名前順 / 最近の活動順 / 手動 as a radio group (DATA_MODEL.md sidebar_sections). */
+@Composable
+fun SortChoices(sort: String, onSort: (String) -> Unit) {
+    Column(Modifier.selectableGroup()) {
+        Text(stringResource(R.string.sidebar_dialogs_sort), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 4.dp))
+        SIDEBAR_SORTS.forEach { (value, label) ->
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 44.dp).selectable(selected = sort == value, role = Role.RadioButton, onClick = { if (sort != value) onSort(value) })
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = sort == value, onClick = null)
+                Text(stringResource(label), modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+    }
+}
+
+/** The sorts and their names, in the menu's order. */
+val SIDEBAR_SORTS = listOf("name" to R.string.sidebar_dialogs_sort_name, "recent" to R.string.sidebar_dialogs_sort_recent, "manual" to R.string.sidebar_dialogs_sort_manual)
 
 /**
  * A section's icon (M26), also a status emoji: an emoji, or a custom emoji drawn from its image (its `:name:` until the

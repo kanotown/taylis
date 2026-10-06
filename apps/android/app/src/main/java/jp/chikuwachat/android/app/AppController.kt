@@ -2520,6 +2520,37 @@ class AppController(private val app: Application) {
     suspend fun moveSection(id: String, position: Int): Boolean = sidebarChange { it.updateSidebarSection(id, position = position) }
     suspend fun deleteSection(id: String): Boolean = sidebarChange { it.deleteSidebarSection(id) }
 
+    /** Which section a sort belongs to: one of mine (its id) or a default one ("favorites", "channels", "dms"). */
+    sealed interface SortTarget {
+        data class Section(val id: String) : SortTarget
+        data class Default(val key: String) : SortTarget
+    }
+
+    /**
+     * DATA_MODEL.md sidebar_sections 「並べ替え」: a section's sort. 「手動」 starts from the order shown now (`shownIds`), so
+     * nothing jumps. Changes at once here; a refusal puts it back.
+     */
+    suspend fun setSectionSort(target: SortTarget, sort: String, shownIds: List<String>): Boolean =
+        applySort(target, sort, if (sort == "manual") shownIds else null)
+
+    /** The order made by hand (「順番を編集」's arrows); the section stays 「手動」. */
+    suspend fun reorderSection(target: SortTarget, ids: List<String>): Boolean = applySort(target, "manual", ids)
+
+    private suspend fun applySort(target: SortTarget, sort: String, manualOrder: List<String>?): Boolean = when (target) {
+        is SortTarget.Section -> {
+            val before = store.sidebarSections
+            store.replaceSidebar(before.map { if (it.id == target.id) it.copy(sort = sort, manualOrder = manualOrder ?: it.manualOrder) else it })
+            sidebarChange { it.updateSidebarSection(target.id, sort = sort, manualOrder = manualOrder) }.also { if (!it) store.replaceSidebar(before) }
+        }
+        is SortTarget.Default -> {
+            val before = store.sidebarDefaults
+            val row = store.defaultSort(target.key).let { it.copy(sort = sort, manualOrder = manualOrder ?: it.manualOrder) }
+            store.replaceSidebarDefaults(before.filter { it.key != target.key } + row)
+            attempt { store.replaceSidebarDefaults(api!!.updateSidebarDefault(target.key, sort, manualOrder)); true }
+                .getOrElse { store.replaceSidebarDefaults(before); error = describe(it); false }
+        }
+    }
+
     /** `sectionId` null puts the conversation back in the default sections. */
     suspend fun moveToSection(channelId: String, sectionId: String?): Boolean =
         sidebarChange { api -> if (sectionId != null) api.placeInSidebarSection(sectionId, channelId) else api.removeFromSidebarSection(channelId) }

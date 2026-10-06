@@ -1293,6 +1293,11 @@
     <string name="sidebar_dialogs_no_matching_conversations">該当する会話がありません</string>
     <string name="sidebar_dialogs_remove_from_section">セクションから外す</string>
     <string name="sidebar_dialogs_remove_icon">アイコンを外す</string>
+    <string name="sidebar_dialogs_edit_order">順番を編集</string>
+    <string name="sidebar_dialogs_sort">並べ替え</string>
+    <string name="sidebar_dialogs_sort_manual">手動</string>
+    <string name="sidebar_dialogs_sort_name">名前順</string>
+    <string name="sidebar_dialogs_sort_recent">最近の活動順</string>
     <string name="sidebar_dialogs_section_name">セクション名</string>
     <string name="sidebar_dialogs_up_to_2_letters_or_digits">英数字 2 文字まで、または日本語 1 文字</string>
     <string name="sso_etc">%1$s など</string>

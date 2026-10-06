@@ -977,6 +977,19 @@ class Store(private val persistence: Persistence? = null) {
         emit()
     }
 
+    /** The default sections' sorts (DATA_MODEL.md 「並べ替え」); empty = the defaults. */
+    var sidebarDefaults: List<jp.chikuwachat.android.api.SidebarDefaultOut> = emptyList()
+        private set
+
+    fun replaceSidebarDefaults(rows: List<jp.chikuwachat.android.api.SidebarDefaultOut>) {
+        sidebarDefaults = rows
+        emit()
+    }
+
+    /** A default section's sort and hand-made order. */
+    fun defaultSort(key: String): jp.chikuwachat.android.api.SidebarDefaultOut =
+        sidebarDefaults.firstOrNull { it.key == key } ?: jp.chikuwachat.android.api.SidebarDefaultOut(key, jp.chikuwachat.android.ui.SidebarOrder.defaultSorts[key] ?: "name")
+
     /** The id of my section the conversation sits in, if any. */
     fun sectionOf(channelId: String): String? = sidebarSections.firstOrNull { channelId in it.channelIds }?.id
 
