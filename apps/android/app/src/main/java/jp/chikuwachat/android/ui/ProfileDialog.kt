@@ -11,7 +11,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +49,11 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
     val presence = remember(version, userId) { store.presenceOf(userId) }
     val status = activeStatus(user)
     val scope = rememberCoroutineScope()
+    var reporting by rememberSaveable { mutableStateOf(false) }
+    if (reporting) {
+        ReportProblemDialog(controller, userId = userId, onDismiss = { reporting = false })
+        return
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.profile_dialog_profile)) },
@@ -93,6 +102,8 @@ fun ProfileDialog(controller: AppController, userId: String, version: Int, onDis
                         onClick = { scope.launch { controller.setUserBlocked(userId, !blocked) } },
                         modifier = Modifier.padding(top = 4.dp),
                     ) { Text(if (blocked) stringResource(R.string.profile_dialog_unblock) else stringResource(R.string.profile_dialog_block), color = if (blocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
+                    // M119 (MODERATION.md §3.1): a report about this person (the same form as Settings' 「問題を報告・ご意見」).
+                    TextButton(onClick = { reporting = true }) { Text(stringResource(R.string.common_report), color = MaterialTheme.colorScheme.error) }
                 }
             }
         },

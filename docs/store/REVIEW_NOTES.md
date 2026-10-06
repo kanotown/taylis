@@ -81,8 +81,9 @@ administrator (no public sign-up).
 2. Enter the username and password above and tap "ログイン".
 3. The demo workspace has fictional channels, a thread, a poll and direct messages.
 In-app reporting and feedback (Child Safety Standards), without leaving the app:
-- Settings (設定) > "問題を報告・ご意見" (Report a problem / feedback): choose a category
-  (for example "子どもの安全" = Child safety, or "ご意見" = Feedback), write the details and send.
+- Settings: the "自分" (You) tab at the bottom right > "問題を報告・ご意見" (Report a problem /
+  Feedback, flag icon): choose a category (for example "子どもの安全" = Child safety, or
+  "ご意見・要望" = Feedback), write the details and tap "送信" (Send).
   No message or person needs to be selected.
 - A person's profile > "報告する" (Report): report that person.
 - Long-press a message > "報告する" (Report): report that message.

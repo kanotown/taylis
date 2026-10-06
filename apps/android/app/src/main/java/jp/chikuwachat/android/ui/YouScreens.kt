@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsPaused
@@ -280,6 +281,10 @@ private fun YouList(controller: AppController, version: Int, scroll: ScrollState
             }
             SettingsRow(rowIcon(page), page.title, value, selected = selected == page, onClick = { onOpen(page) })
         }
+        // M119 (MODERATION.md §3.1): its own row in the main list, for everyone (guests too); the form never leaves the app.
+        var reportingProblem by rememberSaveable { mutableStateOf(false) }
+        SettingsRow(Icons.Outlined.Flag, stringResource(R.string.report_problem_title), null, onClick = { reportingProblem = true })
+        if (reportingProblem) ReportProblemDialog(controller, userId = null, onDismiss = { reportingProblem = false })
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         // M16c: with several workspaces, say which one this signs out of (the others stay signed in).
         val logoutLabel = if (controller.workspaces.size > 1) stringResource(R.string.common_sign_out_of, controller.workspaceName) else stringResource(R.string.common_sign_out)

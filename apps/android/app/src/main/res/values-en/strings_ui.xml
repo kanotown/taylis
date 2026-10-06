@@ -913,6 +913,7 @@
     <string name="message_actions_share_to_another_channel">Share to another channel…</string>
     <string name="message_actions_unpin">Unpin</string>
     <string name="message_body_view_message">View message</string>
+    <string name="moderation_child_safety">Child safety</string>
     <string name="moderation_delete_account">Delete account…</string>
     <string name="moderation_enter_your_password_to_confirm">Enter your password to confirm</string>
     <string name="moderation_enter_your_username_to_confirm">Enter your username (%1$s) to confirm</string>
@@ -1068,6 +1069,18 @@
     <string name="reminders_pane_delivered_reminders">Delivered reminders</string>
     <string name="reminders_pane_long_press_a_message_and_choose">Long-press a message and choose \"Remind me\" to collect it here.</string>
     <string name="reminders_pane_no_reminders">No reminders</string>
+    <string name="report_problem_category">Category</string>
+    <string name="report_problem_child_safety_contact">For child safety concerns you can also email the developer (Toru Kano): %1$s</string>
+    <string name="report_problem_choose_a_category">Choose a category</string>
+    <string name="report_problem_details">Details (required)</string>
+    <string name="report_problem_details_placeholder">Describe what happened, or your feedback or request</string>
+    <string name="report_problem_feedback">Feedback / request</string>
+    <string name="report_problem_report_user">Report %1$s</string>
+    <string name="report_problem_sending">Sending…</string>
+    <string name="report_problem_sent">Sent. An administrator will review it.</string>
+    <string name="report_problem_title">Report a problem / Feedback</string>
+    <string name="report_problem_where_it_goes">Reports and feedback go to all administrators of this workspace. Other people are not told that you sent one.</string>
+    <string name="report_problem_write_the_details">Write the details</string>
     <string name="reservations_an_operator_will_assign_it_shortly">An operator will assign it shortly</string>
     <string name="reservations_assign_to">%1$sAssign to %2$s%3$s</string>
     <string name="reservations_assigned">Assigned</string>

@@ -520,12 +520,15 @@ class ApiClient(
     suspend fun blockUser(userId: String): BlockStateOut = request("PUT", "/api/v1/users/$userId/block")
     suspend fun unblockUser(userId: String): BlockStateOut = request("DELETE", "/api/v1/users/$userId/block")
 
-    /** `reason`: spam / harassment / inappropriate / other; `note` optional. */
+    /** `reason`: spam / harassment / inappropriate / child_safety / other; `note` optional. */
     suspend fun reportMessage(messageId: String, reason: String, note: String?): ReportAck =
         request("POST", "/api/v1/messages/$messageId/report", buildJsonObject {
             put("reason", reason)
             if (!note.isNullOrEmpty()) put("note", note)
         })
+
+    /** M119 (MODERATION.md §3.1): a report without a message; `body` from Reports.body (with its `client_report_id`). */
+    suspend fun submitReport(body: JsonObject): GeneralReportAck = request("POST", "/api/v1/reports", body)
 
     /** My password, or my username for an account without one (Google sign-in). Every session ends on success. */
     suspend fun deleteAccount(password: String?, confirmUsername: String?) {
