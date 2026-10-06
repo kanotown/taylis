@@ -222,6 +222,19 @@ export class Store {
     this.memberRevisions.set(channelId, this.membersRevision(channelId) + 1);
     this.emit();
   }
+  /**
+   * M11c: bumped per conversation when a message's pin may have moved where pinned() cannot see it: a held row pinned,
+   * unpinned or deleted (a deleted row leaves the store, its pin with it), or an update / tombstone of a row not held
+   * (an old pinned message, or one read in a search context). An open pins list loads again. Not persisted.
+   */
+  private readonly pinRevisions = new Map<string, number>();
+  pinsRevision(channelId: string): number {
+    return this.pinRevisions.get(channelId) ?? 0;
+  }
+  pinsMayHaveMoved(channelId: string): void {
+    this.pinRevisions.set(channelId, this.pinsRevision(channelId) + 1);
+    this.emit();
+  }
   /** L4 (M31): my role in a conversation changed (channel.member_updated, or my own PATCH). */
   setMyRole(channelId: string, role: string): void {
     const channel = this.channels.get(channelId);
@@ -1056,6 +1069,8 @@ export class Store {
     }
     const stored = message;
     this.timelines.delete(stored.channel_id);
+    // History pages bring no tombstones, so one not held is a deletion (an event, a catch-up, my own delete's answer).
+    if (!!stored.pinned_at !== !!local?.pinned_at || (stored.deleted && !local)) this.pinRevisions.set(stored.channel_id, this.pinsRevision(stored.channel_id) + 1);
     if (stored.deleted) {
       bucket.delete(stored.id);
       this.persist((p) => p.deleteMessage(stored.id));

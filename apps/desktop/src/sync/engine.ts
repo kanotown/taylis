@@ -1072,6 +1072,7 @@ export class SyncEngine {
     const message = frame.data["message"] as MessageOut;
     const thread = (frame.data["parent_thread"] as ParentThread | null | undefined) ?? null;
     const isNew = frame.event === "message.created";
+    this.notePinMove(channel.id, message);
     // L8 (TIMES_FEED.md §5): whatever the timeline does with it, the feed takes it (a new row only while on screen).
     this.timesFeed.applyMessage(message, isNew);
     if (thread) this.timesFeed.applyParentThread(thread);
@@ -1115,6 +1116,14 @@ export class SyncEngine {
       if (isNew) this.maybeNotify(message, channel, thread);
     }
     // seq <= syncedSeq: already applied.
+  }
+
+  /**
+   * M11c: a changed row this device does not hold (an old message, or one read in a search context) may have been
+   * unpinned: the store cannot tell, so an open pins list loads again. Held rows and tombstones the store sees itself.
+   */
+  private notePinMove(channelId: string, message: MessageOut): void {
+    if (!message.pinned_at && message.updated_seq > message.seq && !this.deps.store.message(channelId, message.id)) this.deps.store.pinsMayHaveMoved(channelId);
   }
 
   /**
@@ -1793,6 +1802,7 @@ export class SyncEngine {
     for (;;) {
       const delta = await this.deps.api.delta(channelId, since, this.opts.deltaLimit);
       for (const message of delta.messages) {
+        this.notePinMove(channelId, message);
         store.upsertMessage(message);
         brought.set(message.id, message);
       }
