@@ -10,7 +10,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { ApiClient } from "../src/api/client";
 import { ApiError } from "../src/api/errors";
-import type { UserMe, UserUpdate } from "../src/api/types";
+import type { GeneralReportCreate, UserMe, UserUpdate } from "../src/api/types";
 import { AppController } from "../src/state/app";
 import { COMPACT_QUERY } from "../src/ui/compact";
 import { pauseValue } from "../src/ui/dnd";
@@ -47,6 +47,7 @@ async function setup(options: { admin?: boolean; title?: string; renameError?: A
   const here = w.server.addSession(w.bob.id, { device_name: "ブラウザ", platform: "web" }, { current: true });
   const inner = w.api as unknown as Record<string, unknown>;
   const updates: UserUpdate[] = [];
+  const reports: GeneralReportCreate[] = [];
   const extra: Record<string, unknown> = {
     updateMe: async (patch: UserUpdate) => {
       if (patch.username !== undefined && options.renameError) throw options.renameError;
@@ -54,6 +55,7 @@ async function setup(options: { admin?: boolean; title?: string; renameError?: A
       return { ...w.store.me!, ...patch } as UserMe;
     },
     totpStatus: async () => ({ enabled: false, recovery_codes_left: 0 }),
+    submitReport: async (body: GeneralReportCreate) => { reports.push(body); return { id: "r1", category: body.category, user_id: null, created_at: "" }; },
   };
   // Whatever else the screen asks for on the side (custom emoji, sections, drafts, admin lists …) finds nothing.
   const api = new Proxy({ ...inner, ...extra }, { get: (target, key: string) => target[key] ?? (async () => []) }) as unknown as ApiClient;
@@ -63,7 +65,7 @@ async function setup(options: { admin?: boolean; title?: string; renameError?: A
   (controller as unknown as { active: unknown }).active = { serverUrl: "http://server", username: "bob", api, store: w.store, engine: w.engine, me: w.store.me, leaving: false };
   render(<Screen w={w} controller={controller} />);
   await flush();
-  return { w, controller, updates, sessions: { old, phone, here } };
+  return { w, controller, updates, reports, sessions: { old, phone, here } };
 }
 
 function Screen({ w, controller }: { w: World; controller: AppController }) {
@@ -431,4 +433,34 @@ it("the wide layout: 設定 opens the dialog with the same list on the left and 
   fireEvent.click(within(nav).getByRole("button", { name: "管理" }));
   expect(within(dialog).getByRole("tablist", { name: "管理" })).toBeTruthy();
   w.engine.stop();
+});
+
+it("M119 「問題を報告・ご意見」 is on the phone's 「自分」 and in the wide dialog's list, and sends POST /reports", async () => {
+  const phone = await setup();
+  await tap("you");
+  fireEvent.click(within(you()).getByRole("button", { name: "問題を報告・ご意見" }));
+  const sheet = screen.getByRole("dialog", { name: "問題を報告・ご意見" });
+  fireEvent.click(within(sheet).getByRole("button", { name: "キャンセル" }));
+  expect(screen.queryByRole("dialog", { name: "問題を報告・ご意見" })).toBeNull();
+  expect(phone.reports).toEqual([]);
+  phone.w.engine.stop();
+  cleanup();
+
+  compact = false;
+  const wide = await setup();
+  fireEvent.click(screen.getByRole("button", { name: "設定" }));
+  await flush();
+  const nav = within(screen.getByRole("dialog", { name: "設定" })).getByRole("navigation", { name: "設定の項目" });
+  fireEvent.click(within(nav).getByRole("button", { name: "問題を報告・ご意見" }));
+  const dialog = screen.getByRole("dialog", { name: "問題を報告・ご意見" });
+  fireEvent.click(within(dialog).getByLabelText("その他"));
+  fireEvent.change(within(dialog).getByLabelText("内容"), { target: { value: "通知が来ない" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "送信" }));
+  await flush();
+  expect(wide.reports).toEqual([expect.objectContaining({ category: "other", note: "通知が来ない" })]);
+  expect(wide.reports[0]!.client_report_id).toBeTruthy();
+  expect(wide.reports[0]!.user_id).toBeUndefined();
+  expect(screen.queryByRole("dialog", { name: "問題を報告・ご意見" })).toBeNull();
+  expect(wide.controller.notice).toBe("送信しました。管理者が確認します");
+  wide.w.engine.stop();
 });

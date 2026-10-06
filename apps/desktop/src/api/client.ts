@@ -4,7 +4,7 @@ import type { ActivityFilter, ActivityListOut, ActivitySummaryOut, AckPendingOut
 import type { AiAgentCreate, AiAgentOut, AiAgentUpdate, AiAskCreate, AiAskTargetOut, AiProviderOut, AiRunOut, AiStatusOut, AiSummaryCreate, AiSummaryTargetOut, AiUsageOut } from "./ai";
 import type { SendOptions } from "../sync/types";
 import type { TestNotificationOut } from "./types";
-import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, ReportAck, ReportCreate } from "./types";
+import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralReportAck, GeneralReportCreate, ReportAck, ReportCreate } from "./types";
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
 
 /**
@@ -915,6 +915,11 @@ export class ApiClient {
   /** My password, or my username for an account without one (Google sign-in). 422 invalid_password / invalid_confirmation, 409 last_admin. */
   deleteAccount(body: AccountDeletion): Promise<void> {
     return this.request("POST", "/api/v1/users/me/delete-account", body);
+  }
+
+  /** M119: a report of a person (`user_id`) or of anything else, or feedback; a retry with the same client_report_id returns the first. */
+  submitReport(body: GeneralReportCreate): Promise<GeneralReportAck> {
+    return this.request("POST", "/api/v1/reports", body);
   }
 
   adminListReports(status: "open" | "resolved" | "all" = "open"): Promise<AdminReportOut[]> {

@@ -1,4 +1,4 @@
-import { Ban, MessageSquare, Pencil, UserRoundPen } from "lucide-react";
+import { Ban, Flag, MessageSquare, Pencil, UserRoundPen } from "lucide-react";
 import { Fragment, type PointerEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
@@ -10,6 +10,7 @@ import { displayTitle, supervisorLabel } from "./roster";
 import { expiryLabel } from "./users";
 import { dndActive, quietHoursLabel } from "./dnd";
 import { activeStatus } from "./users";
+import { ProblemReportDialog } from "./ModerationDialogs";
 import { Button, cn, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { t } from "../i18n";
 
@@ -21,10 +22,12 @@ import { t } from "../i18n";
  */
 export function UserPopover({ controller, userId, children, className }: { controller: AppController; userId: string; children: ReactNode; className?: string }) {
   const [open, setOpen] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const store = controller.store;
   const user = store.users.get(userId);
   const me = store.me?.id === userId;
   return (
+    <>
     <PopoverRoot open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" className={cn("rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/40", className)} aria-label={me ? t("popover.myProfile", { name: user?.display_name ?? "" }) : t("popover.profileOf", { name: user?.display_name ?? "?" })}>
@@ -32,9 +35,11 @@ export function UserPopover({ controller, userId, children, className }: { contr
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-0">
-        <UserCard controller={controller} userId={userId} onClose={() => setOpen(false)} />
+        <UserCard controller={controller} userId={userId} onClose={() => setOpen(false)} onReport={() => { setOpen(false); setReporting(true); }} />
       </PopoverContent>
     </PopoverRoot>
+    {reporting && <ProblemReportDialog controller={controller} userId={userId} onClose={() => setReporting(false)} />}
+    </>
   );
 }
 
@@ -50,6 +55,7 @@ export const MENTION_LEAVE_MS = 200;
  */
 export function MentionCard({ controller, userId, children }: { controller: AppController; userId: string; children: ReactNode }) {
   const [open, setOpen] = useState<"hover" | "pinned" | null>(null);
+  const [reporting, setReporting] = useState(false);
   const timer = useRef<number | null>(null);
   const anchor = useRef<HTMLSpanElement>(null);
   const clear = () => {
@@ -71,6 +77,7 @@ export function MentionCard({ controller, userId, children }: { controller: AppC
     setOpen((now) => (now === "pinned" ? null : "pinned"));
   };
   return (
+    <>
     <PopoverRoot open={open !== null} onOpenChange={(next) => { clear(); setOpen(next ? "pinned" : null); }}>
       <PopoverAnchor asChild>
         <span
@@ -108,14 +115,19 @@ export function MentionCard({ controller, userId, children }: { controller: AppC
         onInteractOutside={(event) => { if (anchor.current?.contains(event.target as Node)) event.preventDefault(); }}
         onCloseAutoFocus={(event) => { if (open !== "pinned") event.preventDefault(); }}
       >
-        <UserCard controller={controller} userId={userId} onClose={() => { clear(); setOpen(null); }} />
+        <UserCard controller={controller} userId={userId} onClose={() => { clear(); setOpen(null); }} onReport={() => { clear(); setOpen(null); setReporting(true); }} />
       </PopoverContent>
     </PopoverRoot>
+    {reporting && <ProblemReportDialog controller={controller} userId={userId} onClose={() => setReporting(false)} />}
+    </>
   );
 }
 
-/** The card's content (UserPopover, MentionCard); `onClose` once it opened the DM or a settings screen. */
-function UserCard({ controller, userId, onClose }: { controller: AppController; userId: string; onClose: () => void }) {
+/**
+ * The card's content (UserPopover, MentionCard); `onClose` once it opened the DM or a settings screen. `onReport` (M119,
+ * docs/MODERATION.md §3.1): the host closes the card and opens 「〇〇 さんを報告」 (the dialog outlives the card).
+ */
+function UserCard({ controller, userId, onClose, onReport }: { controller: AppController; userId: string; onClose: () => void; onReport: () => void }) {
   // Its trigger sits in memoized message rows: the open card follows presence and status itself.
   useStoreUpdates(controller, true);
   const store = controller.store;
@@ -195,6 +207,14 @@ function UserCard({ controller, userId, onClose }: { controller: AppController; 
             </>
           )}
         </div>
+        {/* M119: a report about this person (the administrators are told, the person is not). */}
+        {!me && user && (
+          <div className="-mt-1 px-3 pb-3">
+            <Button size="sm" variant="ghost" className="w-full justify-center text-muted" onClick={onReport}>
+              <Flag size={14} /> {t("popover.report")}
+            </Button>
+          </div>
+        )}
     </>
   );
 }

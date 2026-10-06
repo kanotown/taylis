@@ -126,6 +126,10 @@ export type ReportCreate = components["schemas"]["ReportCreate"];
 export type ReportReason = ReportCreate["reason"];
 export type ReportAck = components["schemas"]["ReportAck"];
 export type AdminReportOut = components["schemas"]["AdminReportOut"];
+/** M119 (docs/MODERATION.md §3.1): a report of a person or of anything else, or feedback (POST /reports). */
+export type GeneralReportCreate = components["schemas"]["GeneralReportCreate"];
+export type ReportCategory = GeneralReportCreate["category"];
+export type GeneralReportAck = components["schemas"]["GeneralReportAck"];
 export type AccountDeletion = components["schemas"]["AccountDeletion"];
 
 /** PATCH /users/me body (M11d, M12c). */

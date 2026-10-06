@@ -31,7 +31,7 @@ import { openInBrowser } from "../platform/external";
 import { resolveDeviceName } from "../platform/deviceName";
 import { readerIdle } from "../platform/idle";
 import { clearNotifications, notify } from "../platform/notify";
-import type { ReportReason, TestNotificationOut } from "../api/types";
+import type { ReportCategory, ReportReason, TestNotificationOut } from "../api/types";
 import { secretStore } from "../platform/secrets";
 import { SqlitePersistence } from "../platform/sqlite";
 import { SyncEngine } from "../sync/engine";
@@ -1061,6 +1061,27 @@ export class AppController {
     try {
       await this.api.reportMessage(messageId, { reason, note: note.trim() || null });
       this.setNotice(t("app.reported"));
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
+  }
+
+  /**
+   * M119 「問題を報告・ご意見」 / a profile's 「報告する」 (docs/MODERATION.md §3.1): sent to the administrators. The dialog
+   * keeps `clientReportId` until this succeeds, so a retry after a lost answer does not make a second report.
+   */
+  async submitReport(report: { category: ReportCategory; note: string; userId?: string | null; clientReportId: string }): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      await this.api.submitReport({
+        category: report.category,
+        note: report.note.trim(),
+        client_report_id: report.clientReportId,
+        ...(report.userId ? { user_id: report.userId } : {}),
+      });
+      this.setNotice(t("problemReport.sent"));
       return true;
     } catch (error) {
       this.setError(error);
