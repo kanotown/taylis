@@ -84,7 +84,9 @@
 		A1BAD00000000000000000A1 /* MainNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BAD00000000000000000A2 /* MainNavigation.swift */; };
 		A1BAD00000000000000000B1 /* MainNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BAD00000000000000000B2 /* MainNavigationTests.swift */; };
 		A1111A0000000000000000A1 /* NavItems.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1111A0000000000000000A2 /* NavItems.swift */; };
+		A15F1B0000000000000000A1 /* SwipeNav.swift in Sources */ = {isa = PBXBuildFile; fileRef = A15F1B0000000000000000A2 /* SwipeNav.swift */; };
 		A1111A0000000000000000B1 /* NavItemsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1111A0000000000000000B2 /* NavItemsTests.swift */; };
+		A15F1B0000000000000000B1 /* SwipeNavTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A15F1B0000000000000000B2 /* SwipeNavTests.swift */; };
 		48C7FDA6E58AED3E9E04985A /* Mentions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E494C7AA73C2DCB826BFF98 /* Mentions.swift */; };
 		48FBBE91E055EFDBD243B916 /* TimesFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690E2A31864EA61465FAC271 /* TimesFeed.swift */; };
 		4A200550DAB5D48B6138873E /* ChannelLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A98B6538AD4A468120DB91A /* ChannelLinks.swift */; };
@@ -375,7 +377,9 @@
 		A1BAD00000000000000000A2 /* MainNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainNavigation.swift; sourceTree = "<group>"; };
 		A1BAD00000000000000000B2 /* MainNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainNavigationTests.swift; sourceTree = "<group>"; };
 		A1111A0000000000000000A2 /* NavItems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavItems.swift; sourceTree = "<group>"; };
+		A15F1B0000000000000000A2 /* SwipeNav.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeNav.swift; sourceTree = "<group>"; };
 		A1111A0000000000000000B2 /* NavItemsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavItemsTests.swift; sourceTree = "<group>"; };
+		A15F1B0000000000000000B2 /* SwipeNavTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeNavTests.swift; sourceTree = "<group>"; };
 		5295A8876F64E2619E181FDA /* ReadGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadGateTests.swift; sourceTree = "<group>"; };
 		5396B11E764B50A589735215 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
 		53CCFFE89EA1C7A2E59262F2 /* UnreadRangeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnreadRangeTests.swift; sourceTree = "<group>"; };
@@ -690,6 +694,7 @@
 				F84E35A41634A00627A22BB0 /* HomeTests.swift */,
 				A1BAD00000000000000000B2 /* MainNavigationTests.swift */,
 				A1111A0000000000000000B2 /* NavItemsTests.swift */,
+				A15F1B0000000000000000B2 /* SwipeNavTests.swift */,
 				3912A5148D5775ED304A0125 /* ImageViewerTests.swift */,
 				0FB071937EF97C9E53923BC8 /* InviteTests.swift */,
 				22D11A729F3DC9A928D8517A /* IsoDatesTests.swift */,
@@ -809,6 +814,7 @@
 				523DFDB1261A9B828CA81605 /* MainView.swift */,
 				A1BAD00000000000000000A2 /* MainNavigation.swift */,
 				A1111A0000000000000000A2 /* NavItems.swift */,
+				A15F1B0000000000000000A2 /* SwipeNav.swift */,
 				8E494C7AA73C2DCB826BFF98 /* Mentions.swift */,
 				1FCAE33D55025EFA146CADC2 /* MentionsView.swift */,
 				4B42F0BDEFE3B98EEFF6C089 /* MessageActions.swift */,
@@ -1085,6 +1091,7 @@
 				C6F6D891FDA3ACFA55078DB6 /* HomeTests.swift in Sources */,
 				A1BAD00000000000000000B1 /* MainNavigationTests.swift in Sources */,
 				A1111A0000000000000000B1 /* NavItemsTests.swift in Sources */,
+				A15F1B0000000000000000B1 /* SwipeNavTests.swift in Sources */,
 				1C05C00854F6286A034963BE /* ImageViewerTests.swift in Sources */,
 				8BF7B083F5758F11D1414F33 /* InviteTests.swift in Sources */,
 				0B30BA10FE1F85A93BEEE644 /* IsoDatesTests.swift in Sources */,
@@ -1230,6 +1237,7 @@
 				48471B90AD80B12A76F8D9D1 /* MainView.swift in Sources */,
 				A1BAD00000000000000000A1 /* MainNavigation.swift in Sources */,
 				A1111A0000000000000000A1 /* NavItems.swift in Sources */,
+				A15F1B0000000000000000A1 /* SwipeNav.swift in Sources */,
 				48C7FDA6E58AED3E9E04985A /* Mentions.swift in Sources */,
 				380C9F0E6DBCC708AE52A1F6 /* MentionsView.swift in Sources */,
 				4516C9968AF6F1EEDAFBD299 /* MessageActions.swift in Sources */,

@@ -25,6 +25,10 @@ struct MainView: View {
     /// M37: the home's ⋯ 「すべて既読にする」 asks first.
     @State private var confirmMarkAll = false
     @AppStorage(ChannelListView.groupUnreadKey) private var groupUnread = false
+    /// Issue #1 (MOBILE_UI.md §5.1): 「スワイプで戻る・進む」, the conversation each tab left last, and a left swipe under way.
+    @AppStorage(SwipeNav.settingKey) private var swipeNavigation = true
+    @State private var lastConversations: [MainTab: String] = [:]
+    @State private var forwardSwipe: ForwardSwipe?
 
     enum Sheet: Identifiable, Equatable {
         case newDm, newChannel, search, browse, directory, workspaces, newSection, compose
@@ -188,6 +192,9 @@ struct MainView: View {
             guard let raw = note.userInfo?["command"] as? String, let command = KeyCommand(rawValue: raw) else { return }
             keyCommand(command)
         }
+        .onChange(of: nav.paths) { old, new in
+            lastConversations = SwipeNav.noteLeft(lastConversations, previous: old, next: new)
+        }
         .onChange(of: goneChannel) { _, gone in
             guard gone else { return }
             nav.dropChannels { store.channel($0) == nil }
@@ -261,11 +268,65 @@ struct MainView: View {
         }
         // M39: the activity badge is red only with a mention among its items.
         .background(TabBadgeTint(index: 2, count: activityBadge.count, mention: activityBadge.mention))
+        .overlay { forwardSwipeOverlay }
+    }
+
+    // MARK: the left swipe on a tab's root (issue #1, MOBILE_UI.md §5.1)
+
+    /// The conversation a left swipe on `tab`'s root brings back, if any (not with a sheet or 移動・検索 over the screen).
+    private func forwardTarget(_ tab: MainTab) -> String? {
+        guard nav.layout == .tabs, sheet == nil, !jumpShown else { return nil }
+        return SwipeNav.forwardTarget(tab: tab, path: nav.paths[tab] ?? [], last: lastConversations) { store.channel($0) != nil }
+    }
+
+    /// The recognizer on `tab`'s navigation (ForwardSwipeProbe), as the background of its root screen.
+    private func forwardProbe(_ tab: MainTab) -> some View {
+        ForwardSwipeProbe(canForward: forwardTarget(tab) != nil, enabled: swipeNavigation, onChange: { shift in
+            if forwardSwipe == nil, let id = forwardTarget(tab) { forwardSwipe = ForwardSwipe(tab: tab, channelId: id) }
+            forwardSwipe?.shift = shift
+        }, onEnd: { complete in finishForwardSwipe(complete) })
+    }
+
+    /// Let go: the page slides the rest of the way and the conversation is pushed under it without an animation (then
+    /// the page goes), or it slides back out.
+    private func finishForwardSwipe(_ complete: Bool) {
+        guard let swipe = forwardSwipe else { return }
+        guard complete else {
+            withAnimation(.easeOut(duration: 0.2)) { forwardSwipe?.shift = 1 } completion: { forwardSwipe = nil }
+            return
+        }
+        withAnimation(.easeOut(duration: 0.2)) { forwardSwipe?.shift = 0 } completion: {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { nav.paths[swipe.tab, default: []].append(.channel(swipe.channelId)) }
+            // The conversation draws under the page first; the page then fades out over it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                withAnimation(.easeOut(duration: 0.15)) { forwardSwipe = nil }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var forwardSwipeOverlay: some View {
+        if let swipe = forwardSwipe, let channel = store.channel(swipe.channelId) {
+            GeometryReader { geometry in
+                ZStack(alignment: .topLeading) {
+                    Color.black.opacity(SwipeNav.scrimOpacity(shift: swipe.shift)).ignoresSafeArea()
+                    ForwardSwipePage(title: channelTitle(channel, store: store))
+                        .background(Color(.systemBackground).ignoresSafeArea())
+                        .shadow(color: .black.opacity(0.16), radius: 8, x: -3)
+                        .offset(x: swipe.shift * geometry.size.width)
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
     }
 
     private var homeTab: some View {
         NavigationStack(path: path(.home)) {
             homeList(sidebar: false)
+                .background(forwardProbe(.home))
                 .navigationDestination(for: MainRoute.self) { route in screen(route, on: .home) }
         }
     }
@@ -365,6 +426,7 @@ struct MainView: View {
     private var dmTab: some View {
         NavigationStack(path: path(.dms)) {
             dmList(on: .dms)
+                .background(forwardProbe(.dms))
                 .navigationDestination(for: MainRoute.self) { route in screen(route, on: .dms) }
         }
     }
@@ -376,6 +438,7 @@ struct MainView: View {
     private var activityTab: some View {
         NavigationStack(path: path(.activity)) {
             activityList(on: .activity)
+                .background(forwardProbe(.activity))
                 .navigationDestination(for: MainRoute.self) { route in screen(route, on: .activity) }
         }
     }
