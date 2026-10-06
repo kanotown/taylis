@@ -82,3 +82,24 @@ describe("group mentions (M12k)", () => {
     expect(mentionQuery("確認。@al", 6)).toEqual({ start: 3, query: "al" });
   });
 });
+
+describe("who the @ list offers (docs/AI.md §2.1)", () => {
+  const bot = (id: string, username: string, kind: string | null): UserPublic => ({ ...user(id, username, username.toUpperCase()), role: "bot", bot_kind: kind });
+  const guest: UserPublic = { ...user("g1", "guest1", "Guest"), role: "guest" };
+  const gone: UserPublic = { ...user("x1", "gone", "Gone"), deactivated_at: "2026-01-01T00:00:00Z" };
+  const everyone = [alice, guest, gone, bot("b1", "ai-chikuwa", "ai"), bot("b2", "ai-old", "ai"), bot("b3", "feedbot", "feed"), bot("b4", "rsv", "reservation"), bot("b5", "webhook", null)];
+  const names = (aiBots: ReadonlySet<string> | null) => mentionCandidates("", everyone, [], 20, aiBots).filter((c) => c.kind === "user").map((c) => [c.username, c.ai ?? false]);
+
+  it("before /ai/status: people and the bots with bot_kind ai (marked AI); no other bot, nobody deactivated", () => {
+    expect(names(null)).toEqual([["ai-chikuwa", true], ["ai-old", true], ["alice", false], ["guest1", false]]);
+  });
+
+  it("once /ai/status was read: only its agents' bots (a stopped agent's bot drops out)", () => {
+    expect(names(new Set(["b1"]))).toEqual([["ai-chikuwa", true], ["alice", false], ["guest1", false]]);
+    expect(names(new Set())).toEqual([["alice", false], ["guest1", false]]); // AI off: no bot at all
+  });
+
+  it("groups and @channel / @here are unchanged", () => {
+    expect(mentionCandidates("", [bot("b3", "feedbot", "feed")], [], 6, null).map((c) => c.username)).toEqual(["channel", "here"]);
+  });
+});
