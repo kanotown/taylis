@@ -1272,12 +1272,14 @@ export class AppController {
    * The composer's mode (users.composer_mode): "rich" (WYSIWYG, writes the same Markdown) or "markdown". Shown at once
    * in every composer; a refused or failed save puts the previous choice back. My other devices follow (user.updated).
    */
+  private composerModeLocal = false;
   async setComposerMode(mode: ComposerMode): Promise<boolean> {
     const before = this.store.me;
     if (!this.api || !before) return false;
-    this.store.setMe({ ...before, composer_mode: mode });
     // A server without the setting: this session only (PATCH would refuse the field).
-    if (before.composer_mode === undefined) return true;
+    if (before.composer_mode === undefined) this.composerModeLocal = true;
+    this.store.setMe({ ...before, composer_mode: mode });
+    if (this.composerModeLocal) return true;
     const ok = await this.updateProfile({ composer_mode: mode });
     if (!ok && this.store.me?.composer_mode === mode) this.store.setMe({ ...this.store.me, composer_mode: before.composer_mode ?? null });
     return ok;

@@ -4,7 +4,7 @@ import type { Editor } from "@tiptap/core";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AppController } from "../src/state/app";
+import { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
 import { Composer } from "../src/ui/Composer";
 import { isImeKey } from "../src/ui/richEditorApi";
@@ -248,6 +248,31 @@ describe("Settings → 表示 → 入力欄", () => {
     expect(composerModeOf({ composer_mode: "markdown" })).toBe("markdown");
     expect(composerModeOf({ composer_mode: null })).toBe("rich");
     expect(composerModeOf(null)).toBe("rich");
+  });
+});
+
+describe("AppController.setComposerMode", () => {
+  const self = (composer_mode: string | null | undefined) => {
+    const server = new FakeServer();
+    const store = new Store();
+    store.setMe({ ...server.meOf(server.addUser("alice").id), composer_mode } as unknown as UserMe);
+    const updateProfile = vi.fn(async () => true);
+    return { self: { api: {}, store, updateProfile } as unknown as AppController, store, updateProfile };
+  };
+
+  it("saves the choice on a server that has the setting", async () => {
+    const { self: controller, store, updateProfile } = self(null);
+    expect(await AppController.prototype.setComposerMode.call(controller, "markdown")).toBe(true);
+    expect(updateProfile).toHaveBeenCalledWith({ composer_mode: "markdown" });
+    expect(store.me?.composer_mode).toBe("markdown");
+  });
+
+  it("switches this session only on a server without it (PATCH would refuse the field)", async () => {
+    const { self: controller, store, updateProfile } = self(undefined);
+    await AppController.prototype.setComposerMode.call(controller, "markdown");
+    await AppController.prototype.setComposerMode.call(controller, "rich");
+    expect(updateProfile).not.toHaveBeenCalled();
+    expect(store.me?.composer_mode).toBe("rich");
   });
 });
 
