@@ -71,6 +71,9 @@ Then open `https://<CHAT_DOMAIN>/` in a browser, or enter that URL in a desktop 
 push notification setup (APNs / FCM), running behind an existing reverse proxy, automatic deployment and imports are
 described in [infra/README.md](infra/README.md).
 
+To try Taylis with fictional data first, [infra/demo/README.md](infra/demo/README.md) runs a demo workspace
+("Taylis Demo Lab") on your machine with one more command (`python -m app.cli seed-demo`).
+
 ## Clients
 
 | Client | Stack | Notes |

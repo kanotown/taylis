@@ -479,6 +479,14 @@ COMPOSE+=(--profile proxy)
   CLI は終了コード 1 と `SKIPPED (理由)` を出す。
 - release の配布先が複数あるとき (production 以外の環境) は、入れたいサーバーごとに同じ手順で置く。
 
+## デモのワークスペース（seed-demo）
+
+`python -m app.cli seed-demo` は、空のデータベースに架空の研究室「Taylis デモ研究室」（人・約 2 週間分の会話・週報の回収・
+タスク・カレンダー・キャンバス・ファイル・予約の枠）を書き込む。審査・見学用の一般メンバー `review` を含む。再実行しても
+何もせず、`--reset` は全データを消して書き直す（`WORKSPACE_NAME` がデモの名前のときだけ）。手元で動かす手順は
+[demo/README.md](demo/README.md)、本番と同じサーバーに 2 つ目の Taylis として置く手順（`-p taylis-demo`、
+Caddy は `127.0.0.1:18081`、毎晩のリセット）は [demo/DEPLOY_VPS.md](demo/DEPLOY_VPS.md)。
+
 ## Mattermost からの移行 (M18)
 
 Mattermost のチーム 1 つを、会話ごとこのサーバへ読み込む。2 段に分かれる。
