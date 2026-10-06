@@ -91,7 +91,7 @@
   メッセージがまだ無ければ null。
 - `threads` は未読の返信があるフォロー中スレッドの数 (THREADS.md §3)。一覧そのものは `GET /threads` で取る。
 - `presence` は今つながっているユーザー (§5.2)。載っていないユーザーは offline。以後の変化は `presence` フレームで届く。
-- `activity` (M39) は `{ read_at, unread_count, mention_unread }`: アクティビティ (メンション、自分の投稿へのリアクション、フォロー中のスレッドへの他の人の返信) のうち `read_at` より新しいものの数 (99 まで)。一覧は `GET /activity?filter=all|mentions|reactions|threads&cursor=`、既読は `PUT /activity/read {read_at}` (進むだけ)。再接続のたびに bootstrap の値で直し、接続中は `reaction.added`・自分へのメンションや フォロー中のスレッドの `message.created`・`activity.read` で `GET /activity/summary` を取り直す。
+- `activity` (M39) は `{ read_at, unread_count, mention_unread }`: アクティビティ (メンション、自分の投稿へのリアクション、フォロー中のスレッドへの他の人の返信) のうち `read_at` より新しく、メンションとスレッドの返信はそのメッセージを会話・スレッドでまだ読んでいないものの数 (99 まで。2026-10-06、規則は MOBILE_UI.md §6.4)。一覧は `GET /activity?filter=all|mentions|reactions|threads&cursor=`、既読は `PUT /activity/read {read_at}` (進むだけ)。再接続のたびに bootstrap の値で直し、接続中は `reaction.added`・自分へのメンションや フォロー中のスレッドの `message.created`・`activity.read`、自分の既読位置が動いた `read.updated` と `thread.updated` (`reason: "read"`) で `GET /activity/summary` を取り直す。
 - `bookmarks` は自分が保存したメッセージの id (新しい順)。本文つきの一覧は `GET /bookmarks`。変化は `bookmark.updated` で届く。
 - `favorites` は自分がお気に入りにしたチャンネルの id (`channels` に含まれるものだけ、M12a)。変化は `favorite.updated` で届く。
 - `dm_pins` (M118) は自分が先頭に固定した DM・グループ DM の id (`channels` に含まれるものだけ、固定の古い順。この順で DM の一覧の先頭に並べる。DATA_MODEL.md conversation_pins)。M118 より前のサーバは送らない (固定なしとみなし、固定の操作を出さない)。変化は `dm_pin.updated` で届く。
@@ -232,7 +232,7 @@
 | `message.created` | channel | 消費 | `{ message }` (reactions, attachments 込み。返信の場合は `parent_thread: { id, reply_count, last_reply_at, reply_user_ids, updated_seq, participant_ids }`。`participant_ids` はスレッドのフォロワー (THREADS.md §2) で、プッシュ対象の判定に使う。`reply_user_ids` は親の `MessageOut.reply_user_ids` と同じ値 (C3、返信した人の最近順・最大 5。古いサーバは送らないので、クライアントは無ければ手元の値を残す)) |
 | `message.updated` | channel | 消費 | `{ message, change: "body" \| "reactions" \| "pin" }`。`pin` は `pinned_at` / `pinned_by` の変化 (M11c) `change` は `body` / `reactions` / `pin` / `poll` (M14b。M53 の日程調整の回答・コメント・決定も) / `ack` (M15e: `acks` の変化) / `collection` (L6、M59: 回収のある投稿の `collection` の変化。対象者の最初の返信・最後の返信の削除、締切後の催促 (`reminded_at`)、投稿直後に回収が付いたとき。返信の `message.created` / `message.deleted` の後に、親が別の seq を取って出す。RECURRING.md §3) / `tasks` (L9、M63: `MessageOut.tasks` の変化。そのメッセージから作った共有のタスクの作成・削除・状態・期限・担当。REVIEWS.md §2.2) / `attachments` (M79: 添付の動画の縦横・長さ・ポスターをサーバが後から埋めた。`app.cli probe-videos` の backfill が出す。SECURITY.md §4 「動画」。M108: 添付の文書のプレビューが `ready` / `failed` になった。preview loop と `app.cli generate-previews` が出す。docs/PREVIEWS.md §3) |
 | `message.deleted` | channel | 消費 | `{ message }` (`deleted: true`、`body` は空。返信の削除は親の `parent_thread` も含む) |
-| `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count, first_unread_at, reason }` |
+| `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count, first_unread_at, reason }`。アクティビティのバッジも取り直す (その会話のメンションが既読になる、MOBILE_UI.md §6.4) |
 | `bookmark.updated` | user | — | `{ message_id, channel_id, bookmarked }` (M11c)。自分の他端末が保存 / 解除したときに届く |
 | `activity.read` | user | — | `{ read_at }` (M39)。アクティビティの既読位置が進んだ (自分の他端末から)。クライアントはバッジを取り直す |
 | `activity.updated` | user | — | `{ item_ids }` (Review v0.1.22)。持っているアクティビティの項目が書き換わった (キャンバスの版の本文の消去で抜粋が空になったとき、CANVAS.md §20.8。M112: 予約の担当者の作業が済んだとき、RESERVATIONS.md §5)。一覧を表示・保持していれば読み直す (予約の項目は「対応済み」に)。M112 からバッジも読み直す (済んだ作業は未読に数えない) |
@@ -265,7 +265,7 @@
 | `draft.updated` | user | — | `{ channel_id, parent_id, body, updated_at, deleted }` (M15d)。自分の端末が下書きを保存 / 削除した (`deleted` なら `body` は空)。取り込み方は §8 |
 | `ai.run_updated` | user (頼んだ人) | — | `{ run: AiRunOut }` (M65、docs/AI.md §5)。要約の状態が変わるたび (running、done、failed)。メンションの run は出さない (返事はふつうのメッセージ)。取りこぼしうるので、開いている要約は再接続のあと `GET /ai/runs/{id}` で読み直す |
 | `reminder.updated` | user | — | `{ reminder: ReminderOut }` (M12e)。作成 / 発火 (fired) / 完了 / 取消。fired の行は「リマインダー」一覧の先頭に出し、アプリ内でも通知する。`kind` は `personal` / `ack` (L4) / `collect` (L6: 回収の締切後の催促。本人にだけ届く) |
-| `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く |
+| `thread.updated` | user (フォロワー) | — | `ThreadState` + `reason: "reply" \| "deleted" \| "read" \| "follow"` (THREADS.md §4)。一覧の行と「スレッド」バッジはこの値で置き換える。`read` / `follow` は本人の全端末にだけ届く。`read` ではアクティビティのバッジも取り直す (そのスレッドの返信・メンションが既読になる、MOBILE_UI.md §6.4) |
 | `notification_preference.updated` | user | — | `{ channel_id, level, muted_until }` |
 | `notification.test` | user | — | `{ title, body, device_id, sent_at }` (PUSH_NOTIFICATIONS.md §15)。自分が「テスト通知を送る」を押した。Desktop / Web は OS の通知を出す (`device_id` の端末、つまり押した端末は自分で出し済み)。iOS / Android は無視する (プッシュが届く)。表示は変えない |
 | `channel.created` | channel (public は all)。参加・追加された本人には user 宛てにも送る | — | `{ channel, member_ids }`。`channel` は bootstrap と同じ形だが `membership` は null。受信者は `member_ids` に自分が含まれるかで所属を判定する (public は非メンバーにも届く) |

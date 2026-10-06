@@ -21,6 +21,7 @@ from app.modules.activity.schemas import (
     ActivityReservation,
     ActivitySummaryOut,
 )
+from app.modules.messages.models import Message
 from app.modules.messages.service import messages_out
 from app.modules.reservations import repository as reservations_repo
 from app.modules.users.models import User
@@ -51,6 +52,7 @@ async def list_activity(
     `include`: the kinds a client asks for by name (M76: canvas_mention, under all and
     mentions)."""
     items: list[ActivityItem] = []
+    read_at = actor.activity_read_at
     if "canvas_mention" in include and kind in ("all", "mentions"):
         for row, canvas in await repo.canvas_mentions(db, actor.id, before=cursor, limit=limit):
             items.append(
@@ -66,6 +68,7 @@ async def list_activity(
                         rev_id=row.rev_id,
                     ),
                     actor_ids=[row.actor_id],
+                    read=row.at <= read_at,
                 )
             )
     if "reservation" in include and kind == "all":
@@ -88,28 +91,39 @@ async def list_activity(
                         done_by=notice.done_by,
                     ),
                     actor_ids=[],
+                    read=notice.at <= read_at or notice.done_at is not None,
                 )
             )
+    # Mentions and replies already read in their conversation are read here too (2026-10-06).
+    mention_rows: list[Message] = []
+    reply_rows: list[Message] = []
     if kind in ("all", "mentions"):
-        rows = await repo.mentions(db, actor.id, before=cursor, limit=limit)
-        for message in await messages_out(db, rows, actor.id):
+        mention_rows = await repo.mentions(db, actor.id, before=cursor, limit=limit)
+    if kind in ("all", "threads"):
+        reply_rows = await repo.replies(db, actor.id, before=cursor, limit=limit)
+    seen = await repo.read_ids(
+        db, actor.id, [m.id for m in (*mention_rows, *reply_rows) if m.created_at > read_at]
+    )
+    if mention_rows:
+        for message in await messages_out(db, mention_rows, actor.id):
             items.append(
                 ActivityItem(
                     kind="mention",
                     at=message.created_at,
                     message=message,
                     actor_ids=[message.sender_id],
+                    read=message.created_at <= read_at or message.id in seen,
                 )
             )
-    if kind in ("all", "threads"):
-        rows = await repo.replies(db, actor.id, before=cursor, limit=limit)
-        for message in await messages_out(db, rows, actor.id):
+    if reply_rows:
+        for message in await messages_out(db, reply_rows, actor.id):
             items.append(
                 ActivityItem(
                     kind="thread_reply",
                     at=message.created_at,
                     message=message,
                     actor_ids=[message.sender_id],
+                    read=message.created_at <= read_at or message.id in seen,
                 )
             )
     if kind in ("all", "reactions"):
@@ -125,6 +139,7 @@ async def list_activity(
                         message=shaped[message_id],
                         actor_ids=actors,
                         emojis=emojis,
+                        read=at <= read_at,
                     )
                 )
     items.sort(key=_item_key, reverse=True)
@@ -133,7 +148,7 @@ async def list_activity(
     return ActivityListOut(
         items=page,
         next_cursor=page[-1].at if page and full else None,
-        read_at=actor.activity_read_at,
+        read_at=read_at,
     )
 
 

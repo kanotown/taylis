@@ -63,6 +63,11 @@ class ActivityItem(BaseModel):
     actor_ids: list[UUID]
     # A reaction item's emoji (the distinct ones on my message by others).
     emojis: list[str] = []
+    # Read (2026-10-06, MOBILE_UI.md §6.4): `at` is not after read_at, or the item's message is
+    # read in its conversation (mention / thread_reply: the channel's read position for a
+    # timeline row, the thread's for a reply), or a reservation to-do is done. The unread dot
+    # and the badge follow it. Null from a server before it: compare `at` with read_at.
+    read: bool | None = None
 
 
 class ActivityListOut(BaseModel):
@@ -74,7 +79,9 @@ class ActivityListOut(BaseModel):
 
 class ActivitySummaryOut(BaseModel):
     read_at: datetime
-    # Items after read_at (at most 99), and whether one of them is a mention (the badge turns red).
+    # Unread items (at most 99), and whether one of them is a mention (the badge turns red):
+    # after read_at, and for a mention or a thread reply its message not yet read in its
+    # conversation (2026-10-06, MOBILE_UI.md §6.4; `read` on GET /activity's items).
     unread_count: int
     mention_unread: bool
 
