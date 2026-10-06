@@ -120,6 +120,11 @@ final class ReservationTests: XCTestCase {
         XCTAssertEqual(ReservationRules.todoLine(todos[0], pool: pool, name: name, now: now), "わたし さん（me@example.jp） に割り当てる")
         XCTAssertTrue(ReservationRules.todoLine(todos[1], pool: pool, name: name, now: now).contains("ボブ さん を外して アリス さん に割り当てる（保証時間が終了）"))
         XCTAssertEqual(ReservationRules.todoCount([pool]), 1)
+        // A returned (or ended) reservation waiting for 「外した」 with nobody waiting: listed, not counted.
+        var removing = pool
+        removing.todos.append(ReservationTodo(key: "remove:w1", action: "remove", reason: "returned", removeId: "w1", dueAt: at(10)))
+        XCTAssertEqual(ReservationRules.todoCount([removing]), 1)
+        XCTAssertEqual(removing.todos.count, 3)
         let tiles = HomeTile.tiles(threads: ThreadSummary(unreadCount: 0, mentionCount: 0), drafts: 0, saved: 0, firedReminders: 0,
                                    reservations: HomeTile.ReservationTile(todos: 1, operates: true))
         let tile = tiles.first { $0.kind == .reservations }

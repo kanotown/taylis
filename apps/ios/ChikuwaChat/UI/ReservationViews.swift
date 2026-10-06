@@ -212,8 +212,12 @@ enum ReservationRules {
         }
     }
 
-    /// To-dos due now in the pools I operate (the tile's number).
-    static func todoCount(_ pools: [PoolOut]) -> Int { pools.reduce(0) { $0 + $1.todos.filter { !$0.upcoming }.count } }
+    /// To-dos due now in the pools I operate that someone is waiting on (the tile's number): not those coming soon, and
+    /// not a `remove` (a returned or ended reservation's 「外した」 with nobody waiting), which stays listed on the page
+    /// (RESERVATIONS.md §6).
+    static func todoCount(_ pools: [PoolOut]) -> Int {
+        pools.reduce(0) { $0 + $1.todos.filter { !$0.upcoming && $0.action != "remove" }.count }
+    }
 
     static func row(_ pool: PoolOut, _ id: String?) -> ReservationOut? {
         guard let id else { return nil }
