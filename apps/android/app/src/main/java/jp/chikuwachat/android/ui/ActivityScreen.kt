@@ -266,6 +266,8 @@ fun ActivityScreen(
     onOpenMessage: (MessageOut) -> Unit,
     onOpenThread: (ThreadEntry) -> Unit,
     onOpenCanvas: (channelId: String, canvasId: String) -> Unit,
+    /** A followed thread's conversation header: the conversation around the thread's parent. */
+    onOpenThreadConversation: (ThreadEntry) -> Unit = {},
     /** M112: a reservation row opens 「予約」. */
     onOpenReservations: () -> Unit = {},
     /** M122: a page row (a mention in a page, a page shared with me) opens the page. */
@@ -273,7 +275,7 @@ fun ActivityScreen(
 ) {
     val store = controller.store
     if (store.activity == null) {
-        StageA(controller, version, segment, onSegment, mentionsState, threadsState, onOpenMessage, onOpenThread)
+        StageA(controller, version, segment, onSegment, mentionsState, threadsState, onOpenMessage, onOpenThread, onOpenThreadConversation)
         return
     }
     val online = controller.engineStatus == EngineStatus.ONLINE
@@ -529,6 +531,7 @@ private fun StageA(
     threadsState: LazyListState,
     onOpenMessage: (MessageOut) -> Unit,
     onOpenThread: (ThreadEntry) -> Unit,
+    onOpenThreadConversation: (ThreadEntry) -> Unit,
 ) {
     val shown = if (segment == ActivitySegment.THREADS) ActivitySegment.THREADS else ActivitySegment.MENTIONS
     Column(Modifier.fillMaxSize()) {
@@ -544,7 +547,7 @@ private fun StageA(
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (shown) {
-                ActivitySegment.THREADS -> ThreadsPane(controller, version, onOpen = onOpenThread, listState = threadsState)
+                ActivitySegment.THREADS -> ThreadsPane(controller, version, onOpen = onOpenThread, listState = threadsState, onOpenConversation = onOpenThreadConversation)
                 else -> MentionsPane(controller, version, onOpen = onOpenMessage, listState = mentionsState)
             }
         }

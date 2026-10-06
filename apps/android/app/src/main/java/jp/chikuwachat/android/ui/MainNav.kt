@@ -213,6 +213,13 @@ object MainNav {
     fun openFromThreadList(stack: List<Route>, channelId: String, parentId: String): List<Route> =
         openConversation(stack, channelId, parentId, ThreadFrom.LIST)
 
+    /**
+     * A 「スレッド」 card's conversation header (or its menu's 「チャンネルを開く」 / 「会話を開く」): the conversation itself,
+     * its timeline around the thread's parent (the caller focuses it), no thread on top; back returns to the list.
+     */
+    fun openConversationFromThreadList(stack: List<Route>, channelId: String): List<Route> =
+        openConversation(stack, channelId)
+
     /** A draft row: the drafts list closes, its conversation (or thread) opens with the composer's text restored. */
     fun openDraft(stack: List<Route>, channelId: String, parentId: String?): List<Route> =
         openConversation(stack.filterNot { it is Route.Drafts }, channelId, parentId)

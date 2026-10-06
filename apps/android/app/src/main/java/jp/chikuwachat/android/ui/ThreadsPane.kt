@@ -2,6 +2,16 @@ package jp.chikuwachat.android.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,9 +53,19 @@ import jp.chikuwachat.android.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 
-/** Followed threads (THREADS.md §5): newest reply first, an all / unread filter; a row opens the thread. */
+/**
+ * Followed threads (THREADS.md §5): newest reply first, an all / unread filter; a row opens the thread. Its conversation
+ * header (and the long-press menu's 「チャンネルを開く」 / 「会話を開く」) opens the conversation itself around the
+ * thread's parent ([onOpenConversation]).
+ */
 @Composable
-fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -> Unit, listState: LazyListState = rememberLazyListState()) {
+fun ThreadsPane(
+    controller: AppController,
+    version: Int,
+    onOpen: (ThreadEntry) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
+    onOpenConversation: (ThreadEntry) -> Unit = {},
+) {
     val store = controller.store
     val rows = remember(version) { store.threadList() }
     val filter = store.threadsFilter
@@ -98,7 +118,7 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
             }
         } else {
             items(rows, key = { it.id }) { entry ->
-                ThreadRow(entry, store, version, { controller.loadEmojiImage(it) }, onClick = { onOpen(entry) })
+                ThreadRow(entry, store, version, { controller.loadEmojiImage(it) }, onClick = { onOpen(entry) }, onOpenConversation = { onOpenConversation(entry) })
                 HorizontalDivider()
             }
             if (store.threadsHasMore) {
@@ -108,60 +128,91 @@ fun ThreadsPane(controller: AppController, version: Int, onOpen: (ThreadEntry) -
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ThreadRow(entry: ThreadEntry, store: Store, version: Int, onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit, onClick: () -> Unit) {
+private fun ThreadRow(
+    entry: ThreadEntry,
+    store: Store,
+    version: Int,
+    onNeedEmojiImage: (jp.chikuwachat.android.api.CustomEmojiOut) -> Unit,
+    onClick: () -> Unit,
+    onOpenConversation: () -> Unit,
+) {
     val parent = entry.parent
     val state = entry.state
     val unread = state.unreadCount > 0
     val author = store.users[parent.senderId]?.displayName ?: "…"
     val last = state.lastReplyAt ?: parent.createdAt
     val excerpt = messageLine(parent.body, parent.attachments, store)
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Avatar(parent.senderId, author, size = 36.dp)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val channel = store.channel(state.channelId)
-                Text(
-                    channel?.let { channelTitle(it, store) } ?: "",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+    val channel = store.channel(state.channelId)
+    val title = channel?.let { channelTitle(it, store) } ?: ""
+    val openLabel = stringResource(if (channel?.channel?.isDm == true) R.string.threads_pane_open_conversation else R.string.threads_pane_open_channel)
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.fillMaxWidth()
+                .combinedClickable(onClick = onClick, onLongClick = { menu = true }, onLongClickLabel = stringResource(R.string.common_menu))
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Avatar(parent.senderId, author, size = 36.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The conversation's name is a link of its own: the conversation around this thread's parent.
+                    val linkLabel = stringResource(R.string.threads_pane_open_named, title)
+                    Box(
+                        Modifier.weight(1f, fill = false)
+                            .heightIn(min = 32.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable(enabled = channel != null, onClickLabel = openLabel, role = Role.Button, onClick = onOpenConversation)
+                            .semantics(mergeDescendants = true) { contentDescription = linkLabel }
+                            .padding(end = 4.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Text(
+                            title,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text(Timeline.timeLabel(last), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(author, style = MaterialTheme.typography.titleSmall, fontWeight = if (unread) FontWeight.Bold else FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                EmojiLineText(
+                    excerpt, store, onNeedEmojiImage, version, MaterialTheme.typography.bodyMedium,
+                    if (unread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
                 )
-                Spacer(Modifier.weight(1f))
-                Text(Timeline.timeLabel(last), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text(author, style = MaterialTheme.typography.titleSmall, fontWeight = if (unread) FontWeight.Bold else FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            EmojiLineText(
-                excerpt, store, onNeedEmojiImage, version, MaterialTheme.typography.bodyMedium,
-                if (unread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-            )
-            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    pluralStringResource(R.plurals.common_replies_count, state.replyCount, state.replyCount),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (unread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal,
-                )
-                if (unread) Text(stringResource(R.string.threads_pane_unread, state.unreadCount), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.weight(1f))
-                if (unread) {
+                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        if (state.mentionCount > 0) "@${state.mentionCount}" else state.unreadCount.toString(),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier
-                            .background(if (state.mentionCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, CircleShape)
-                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                        pluralStringResource(R.plurals.common_replies_count, state.replyCount, state.replyCount),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (unread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal,
                     )
+                    if (unread) Text(stringResource(R.string.threads_pane_unread, state.unreadCount), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.weight(1f))
+                    if (unread) {
+                        Text(
+                            if (state.mentionCount > 0) "@${state.mentionCount}" else state.unreadCount.toString(),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier
+                                .background(if (state.mentionCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, CircleShape)
+                                .padding(horizontal = 7.dp, vertical = 2.dp),
+                        )
+                    }
                 }
             }
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text(stringResource(R.string.common_open_thread)) }, onClick = { menu = false; onClick() })
+            DropdownMenuItem(text = { Text(openLabel) }, enabled = channel != null, onClick = { menu = false; onOpenConversation() })
         }
     }
 }

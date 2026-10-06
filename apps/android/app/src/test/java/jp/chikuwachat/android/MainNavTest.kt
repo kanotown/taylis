@@ -1,5 +1,6 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.ui.ActivitySegment
 import jp.chikuwachat.android.ui.ConversationTab
 import jp.chikuwachat.android.ui.MainNav
 import jp.chikuwachat.android.ui.Route
@@ -104,6 +105,33 @@ class MainNavTest {
         assertEquals("c1", MainNav.conversation(stack)?.id)
         assertEquals(list, MainNav.back(stack))
         assertEquals(root, MainNav.back(MainNav.back(stack)))
+    }
+
+    @Test
+    fun aThreadCardsConversationHeaderOpensTheConversationAndGoesBackToTheList() {
+        val list = MainNav.open(root, Route.Threads)
+        val stack = MainNav.openConversationFromThreadList(list, "c1")
+        assertEquals(list + channel(), stack)
+        assertEquals("c1", MainNav.conversation(stack)?.id)
+        assertNull(MainNav.thread(stack))
+        assertEquals(list, MainNav.back(stack))
+    }
+
+    @Test
+    fun aThreadCardsConversationReplacesTheThreadOpenOverTheList() {
+        // The thread of another card is open (a wide layout keeps the list on screen): the conversation replaces it.
+        val list = MainNav.open(root, Route.Threads)
+        val stack = MainNav.openConversationFromThreadList(MainNav.openFromThreadList(list, "c2", "p2"), "c1")
+        assertEquals(list + channel(), stack)
+        assertEquals(list, MainNav.back(stack))
+    }
+
+    @Test
+    fun aThreadCardsConversationFromTheActivityTabGoesBackToIt() {
+        val activity = listOf<Route>(Route.Activity(ActivitySegment.THREADS))
+        val stack = MainNav.openConversationFromThreadList(activity, "c1")
+        assertEquals(activity + channel(), stack)
+        assertEquals(activity, MainNav.back(stack))
     }
 
     @Test

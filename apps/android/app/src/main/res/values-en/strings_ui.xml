@@ -1471,6 +1471,9 @@
     <string name="threads_pane_couldnt_load_threads">Couldn\'t load threads</string>
     <string name="threads_pane_no_followed_threads">No followed threads</string>
     <string name="threads_pane_no_unread_threads">No unread threads</string>
+    <string name="threads_pane_open_channel">Open channel</string>
+    <string name="threads_pane_open_conversation">Open conversation</string>
+    <string name="threads_pane_open_named">Open %1$s</string>
     <string name="threads_pane_show_more">Show more</string>
     <string name="threads_pane_threads_you_posted_in_replied_to">Threads you posted in, replied to or were mentioned in show up here.</string>
     <string name="threads_pane_unread">" · %1$s unread"</string>
