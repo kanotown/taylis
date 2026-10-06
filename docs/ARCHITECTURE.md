@@ -150,6 +150,7 @@ server/
       logging.py         # JSON 構造化ログ, request_id
       ratelimit.py       # in-memory token bucket
       time.py            # now() (テストで差し替え可能)
+      doctext/           # Markdown 文書の純粋な部品 (3-way マージ・タスクの印・本文の整形・保存の手順・版の整理)。キャンバスとドキュメントが共有 (M120、WIKI.md §2.3)
     events/
       envelope.py        # Event (id, type, ts, channel_id, seq, audience, data)
       bus.py             # EventBus Protocol (publish / subscribe)
@@ -171,14 +172,15 @@ server/
       drafts/            # 端末間で共有する下書き (本文のみ、draft.updated) (M15d)
       channel_links/     # 会話の上部のリンク (channel.links_updated) (M15f)
       templates/         # 投稿テンプレート (共通と個人、template.updated。置き換えは端末) (M30)
-      canvases/          # キャンバス (会話に属する Markdown 文書、版、サーバ側の 3-way マージ merge.py、テンプレート templates.py、canvas.*) (M41)
+      canvases/          # キャンバス (会話に属する Markdown 文書、版、サーバ側の 3-way マージ (M120 から core/doctext)、テンプレート templates.py、canvas.*) (M41)
+      wiki/              # ドキュメント (ページの木、版、受け継ぐ権限 access.py と実効の表、ゴミ箱、変更のフィード、wiki.*) (M120、WIKI.md、D27)
       calendar/          # カレンダー (自分用とチャンネルの予定、人ごとの通知と fire_due、calendar.*、抜けた人の通知を消す outbox ハンドラ) (M51)
       totp/              # 2 要素認証 (設定 / 有効化 / 無効化、ログイン時の第 2 要素) (M12i)
       channels/          # channels, channel_members, DM 解決
       messages/          # messages, seq 採番, idempotency, edit/delete, reactions, mentions, threads, delta sync
       reads/             # read_states, 未読数
       attachments/       # upload/bind/download, thumbnail, GC, BlobStore (S3 API)
-      search/            # PGroonga 検索 (messages / attachments / canvases の読み取り専用アクセスを許可。canvases は M42)
+      search/            # PGroonga 検索 (messages / attachments / canvases / wiki の読み取り専用アクセスを許可。canvases は M42、wiki は M120)
       notifications/     # notification_preferences, PushPlanner, PushSender, PushProvider 実装
       sync/              # GET /api/v1/sync/bootstrap (各モジュールの read-only 集約)
       ai/                # AI のボット (メンションへの返事) と要約、LlmProvider (Anthropic / テスト用の Fake)、worker (M65、docs/AI.md)
@@ -193,7 +195,8 @@ server/
 ### モジュール間の規約
 
 1. モジュール間の呼び出しは `service.py` の公開関数経由のみ。他モジュールのテーブルを直接クエリしない。
-   例外は明示的に許可する: `search` は `messages` / `attachments` / `canvases` (M42) を読み取り専用でクエリしてよい。
+   例外は明示的に許可する: `search` は `messages` / `attachments` / `canvases`（M42） / `wiki`（M120。読める集合は
+   `wiki.access` の条件で絞る）を読み取り専用でクエリしてよい。
    `sync` は各モジュールの repository の read-only 関数を呼んでよい。`channels` はメンバー追加 / DM の
    対象ユーザー解決のため `users` を読み取り専用でクエリしてよい (`load_users`)。
    `reads` は未読数・メンション数の集計のため `messages` を読み取り専用でクエリしてよい (DATA_MODEL.md の COUNT)。
@@ -206,6 +209,13 @@ server/
    `auth → users`、`admin → users, auth`、`invites → admin, auth, channels, users`、`auth → totp` (第 2 要素の確認)、`admin → totp` (一覧の表示)、`messages → groups` (メンションの展開)、`admin → groups` (名前の衝突確認)、`lab → users, groups, channels` (名簿の対象、管理グループのメンバー、指導教員を学生の times に加える M24)、`channels` の `POST /times` は指導教員の一覧を `main.py` が注入した関数で得る (channels は lab に依存しない)、`admin → lab` (匿名化で名簿の行を消す)、`moderation → admin, channels, messages, users, audit` (M104: アカウントの削除は管理者の匿名化を使い、報告の知らせはボットの DM。docs/MODERATION.md)、`messages` / `channels` / `notifications` / `activity` / `admin` / `sync` → `moderation.blocks`・`moderation.models` (ブロックの読み取りだけ。moderation の service には依存しない)、`notifications → groups` (通知文の名前)、`webhooks → admin (bot ユーザー), channels, messages`、`drafts → channels, messages` (メンバー確認とスレッドの親)、`channel_links → channels`、`canvases → channels, audit, attachments, messages` (メンバーシップ・権限・DM の相手の名前。M42: 本文の画像の bind と完全削除時の削除、会話への共有メッセージの投稿。整理の周期ジョブは参照されなくなった画像を `attachments` の表から探し、削除の印は `attachments` の service が付ける。M72: `canvases → groups, users` でメンションの展開と宛先)、`tasks → canvases` (M72: チェックリストの行から作るタスクの確認。M80: 同じトランザクションで行に印を書く・チェックを付け外しする `canvases.link_task_in_tx` / `follow_task_in_tx`)、キャンバスの保存でチェックが変わったときのタスクの追従は `main.py` が `canvases.set_task_ticks_handler(tasks.follow_canvas_ticks)` で注入する (canvases は tasks に依存しない、M80、CANVAS.md §22)、`notifications → canvases` と realtime の中継 → `canvases` (M72: メンションのプッシュ、`canvas_presence` の宛先。読み取りだけ)、`sync → canvases` (bootstrap の `canvas_tab_id`)、`notifications → threads` (手動で外したスレッドは通知しない)、`reminders → channels, messages` (元のメッセージと所属から文面を作る)、`threads` / `bookmarks` は `channels` の `ChannelMember` を読み取り専用で参照 (メンバーでなくなった行を外す)、`users` の router → `channels.shared_member_ids()` (guest の一覧絞り込みだけ、M13e)、`channels → users, reads`、`messages → channels, users, attachments, reads`、
    `attachments → channels`、`search → channels (+ 読み取り例外)`、
    `notifications → channels, users, auth (端末一覧), reads`、`sync → *`。
+   M120（WIKI.md §11.3）：`wiki → users, groups, attachments, audit, core.doctext`、`wiki → canvases`（テンプレートの読み取り
+   だけ）、`wiki → activity.canvas_mentions`（メンションの抜粋の純粋な関数）。`wiki` は `channels` に依存しない。`canvases →
+   core.doctext`。`search → wiki`、`activity → wiki.access / wiki.models` (読めるページの通知だけを出す)、`notifications → wiki`
+   （プッシュの前に読めるかを確かめる）、`admin → wiki`（匿名化で `user` の項目を消す）、`sync → wiki`（bootstrap の
+   `change_seq`）。添付の読み出しの判定は `main.py` が `attachments.set_page_access_check(wiki.can_read)` で注入する
+   （attachments は wiki に依存しない）。outbox の audience `page` は `main.py` が `wiki.events.audience_resolver(channels の解決)`
+   で組み立てる。
    M88: `channels → workspace` (設定の読み取り: プレビューの可否と参加・退出の表示)。参加・退出の一言を書くのは `messages`
    で、`messages` が import 時に `channels.set_membership_writer(post_membership_in_tx)` で登録する (channels は messages に
    依存しない、docs/MEMBERSHIP.md §1)。`workspace → audit` (設定の変更の監査)。
@@ -218,7 +228,8 @@ server/
    (メンバー判定が `channels` にあるため。M8b で `reads → channels` から変更)。
    `events/` と `realtime/` は modules に依存しない。配信先 (audience) の解決に必要な関数は
    `main.py` で `OutboxRelay` に注入する。
-5. `core/` はどのモジュールにも依存しない。
+5. `core/` はどのモジュールにも依存しない（`core/doctext` も。メンションのトークンの正規表現は `messages.mentions` と同じものを
+   持ち、テストで一致を確かめる）。
 
 ## 6. リクエストとイベントの流れ
 
@@ -464,3 +475,4 @@ AI のループが publish する。失っても次の 3 秒で送り直すだ�
 | D24 | キャンバスは Markdown 全体 + 版 (`base_rev_id`) + サーバ側の 3-way マージ (行 → 語句)。CRDT は保留 (M41、CANVAS.md §3) | 3 端末ともネイティブのエディタのまま作れ、マージのコードはサーバ (Python、標準の difflib) の 1 か所で済む。数人がときどき同時に書く規模なら、自動保存 (約 2 秒) とマージで十分。保存は行ロックで直列化し、重なりは黙って消さず競合として本人に見せる | ブロック型 (エディタを 3 つ作る費用)、Yjs / Automerge (バインディングが 1.0 前、モバイルが WebView になる、WS 受信専用 D7 の例外が要る) |
 | D25 | 製品の表示名は「Taylis」(先頭だけ大文字。ドメイン `chat.example.com` は小文字)。ID は「chikuwachat」のまま変えない: バンドル ID / applicationId / パッケージ名 / Tauri の `identifier`、URL スキーム `chikuwachat://`、Keychain・App Group・プッシュの topic、`GET /server` の `product`、リポジトリ・Docker イメージ・compose・ディレクトリ・環境変数・DB・OpenAPI の operation id とスキーマ名・モジュール名・Xcode のプロジェクト / ターゲット名 (2026-10-03) | 表示だけを変えれば、入れ直しやデータ移行なしで今の端末・サーバーがそのまま続く (ID を変えると別アプリ扱いになり、ログイン情報・ローカルの保存・プッシュの登録が失われる) | ID も含めて全部を改名する (端末ごとの入れ直しと再ログイン、プッシュの再設定、イメージ名・デプロイの切り替えが要る) |
 | D26 | 音声・ビデオの通話は自前の LiveKit (SFU、組み込みの TURN) を同じ compose の 1 コンテナとして置き、認可 (トークンの発行)・部屋の作成・参加者の記録はアプリのサーバが持つ。共用の VPS では、シグナリングは既存の nginx の後ろの専用のホスト名 (`livekit.<domain>`)、メディアは 7882/udp の 1 ポートと 7881/tcp、TURN は 3478/udp と 5349/tcp (443 は nginx のまま)。会議リンクの通話 (M117) は置き換えて廃止する (docs/CALLS.md、2026-10-07 利用者の決定) | WebRTC の SFU・ICE・simulcast は自分で書くものではなく、LiveKit は Apache-2.0 で 3 端末の公式 SDK がある。1 ノードなら Redis が要らない。トークンをアプリが出せば、メンバー・ブロック・アーカイブの規則が 1 か所に残る。1 ポートの UDP はファイアウォールの穴とブリッジ網の負担が小さい。nginx の SNI 振り分けで 443 を分けるとほかのサイトの設定が全部変わる | 会議リンクのまま (M117。アプリの外に出る・主催者のサインイン・通話の状態が分からない)、Jitsi を自前で立てる (Prosody・Jicofo・JVB の 3 つを運用し、モバイルは SDK が大きい)、P2P の WebRTC だけ (3 人以上で上りが人数分になる、TURN は結局要る)、mediasoup / Janus (SDK を自分で揃える) |
+| D27 | ドキュメント（Notion の置き換え）は会話のキャンバスを広げずに別の実体 `wiki_pages` として作り、本文の部品（Markdown の方言・3-way マージ・保存の手順・版の整理）は `core/doctext` でキャンバスと共有する。権限は Notion と同じ「親から受け継ぐ + ページごとに足す / 絞る」（相手はワークスペース・グループ・人、段階は閲覧・編集・フル。ゲストは名前を挙げたときだけ）で、受け継いだ結果を実効の表 `wiki_effective_grants` に持ち、木の形と権限の変更のたびに 1 つの advisory lock の下で同じトランザクションのうちに部分木を計算し直す。読めないページはどの経路でも 404（存在ごと隠す）。管理者も黙っては読めず、題名の一覧と監査ログに残る引き取りだけ（M120、docs/WIKI.md §2・§4、2026-10-07 利用者の決定） | 権限の判定がページの 1 か所（`wiki/access.py`）に閉じ、会話のメンバーシップの分岐をキャンバスのコードに入れずに済む。キャンバス（M41〜M83、3 端末）を作り直さない。実効の表なら 1 ページの判定は索引 1 回、読める集合は 1 回の問い合わせで、深さに依存しない（1 万ページで判定 0.7 ms、読める集合 5 ms、1,000 ページの移動 80 ms）。全部の計算し直し（`cli wiki-acl --verify`）と比べてずれを検出できる | キャンバスに「持ち主 = 会話 | ウィキ」を足す一般化（全関数に権限の分岐、1 か所の見落としが漏れになる）、判定のたびに祖先を再帰でたどる（深さと件数に比例、検索の絞り込みが重い）、会話のメンバーで共有を決める（研究室の「教員だけ」「M2 だけ」を表せない） |

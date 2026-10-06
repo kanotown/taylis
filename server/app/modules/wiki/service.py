@@ -57,28 +57,28 @@ from app.modules.wiki.schemas import (
     AdminEffective,
     AdminPageOut,
     ChangesOut,
-    ConflictOut,
-    ContentSave,
     Crumb,
     EffectiveOut,
     GrantOut,
     MoveOut,
     PageChange,
     PageConflictDetails,
+    PageConflictOut,
     PageContent,
+    PageContentSave,
     PageCreate,
     PageItem,
     PageMeta,
     PageMove,
     PageOut,
     PageRef,
+    PageRevisionMeta,
+    PageRevisionOut,
+    PageRevisionPage,
+    PageRevisionRestore,
+    PageRevisionUpdate,
+    PageSaveOut,
     PageUpdate,
-    RevisionMeta,
-    RevisionOut,
-    RevisionPage,
-    RevisionRestore,
-    RevisionUpdate,
-    SaveOut,
     TreeOut,
     WikiBootstrap,
     WikiMentionedData,
@@ -630,7 +630,7 @@ async def _conflict_details(
     details = PageConflictDetails(
         head=await _content(db, actor, page, rank),
         conflicts=[
-            ConflictOut(
+            PageConflictOut(
                 base=c.base,
                 ours=c.ours,
                 theirs=c.theirs,
@@ -645,8 +645,8 @@ async def _conflict_details(
 
 
 async def save_content(
-    db: AsyncSession, actor: User, page_id: uuid.UUID, data: ContentSave
-) -> SaveOut:
+    db: AsyncSession, actor: User, page_id: uuid.UUID, data: PageContentSave
+) -> PageSaveOut:
     """CANVAS.md §4.4 for a page (WIKI.md §7.1): edit level; view changes nothing, not even a
     box."""
     body = clean_body(data.body)
@@ -659,7 +659,7 @@ async def save_content(
             )
         out = await _content(db, actor, page, rank)
         await db.commit()
-        return SaveOut(page=out, submitted_rev_id=done.id, merged=done.kind == "side")
+        return PageSaveOut(page=out, submitted_rev_id=done.id, merged=done.kind == "side")
     if rank < LEVELS["edit"]:
         raise forbidden("page_edit_restricted", "You can read this page but not change it")
     base = await repo.get_revision(db, data.base_rev_id)
@@ -722,7 +722,7 @@ async def save_content(
     )
     out = await _content(db, actor, page, rank)
     await db.commit()
-    return SaveOut(
+    return PageSaveOut(
         page=out, submitted_rev_id=outcome.submitted_rev_id, merged=outcome.kind == "merged"
     )
 
@@ -1354,19 +1354,19 @@ async def _load_revision(
 
 async def list_revisions(
     db: AsyncSession, actor: User, page_id: uuid.UUID, *, cursor: str | None, limit: int
-) -> RevisionPage:
+) -> PageRevisionPage:
     page, _ = await access.require_level(db, actor, page_id, "view")
     limit = min(limit, MAX_REVISION_PAGE)
     rows = await repo.list_revisions(db, page.id, before=_parse_cursor(cursor), limit=limit + 1)
     more = len(rows) > limit
     rows = rows[:limit]
     next_cursor = f"{rows[-1].created_at.isoformat()}|{rows[-1].id}" if more and rows else None
-    return RevisionPage(items=[to_revision_meta(r) for r in rows], next_cursor=next_cursor)
+    return PageRevisionPage(items=[to_revision_meta(r) for r in rows], next_cursor=next_cursor)
 
 
 async def get_revision(
     db: AsyncSession, actor: User, page_id: uuid.UUID, revision_id: uuid.UUID
-) -> RevisionOut:
+) -> PageRevisionOut:
     page, _ = await access.require_level(db, actor, page_id, "view")
     return to_revision_out(await _load_revision(db, page, revision_id))
 
@@ -1376,7 +1376,7 @@ async def restore_revision(
     actor: User,
     page_id: uuid.UUID,
     revision_id: uuid.UUID,
-    data: RevisionRestore,
+    data: PageRevisionRestore,
 ) -> PageOut:
     page, rank = await access.require_level(db, actor, page_id, "edit", lock=True)
     done = await repo.revision_by_save_id(db, actor.id, data.client_save_id)
@@ -1409,8 +1409,12 @@ async def restore_revision(
 
 
 async def label_revision(
-    db: AsyncSession, actor: User, page_id: uuid.UUID, revision_id: uuid.UUID, data: RevisionUpdate
-) -> RevisionMeta:
+    db: AsyncSession,
+    actor: User,
+    page_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    data: PageRevisionUpdate,
+) -> PageRevisionMeta:
     page, _ = await access.require_level(db, actor, page_id, "edit")
     revision = await _load_revision(db, page, revision_id)
     if revision.kind == "side":
@@ -1425,7 +1429,7 @@ async def label_revision(
 
 async def erase_revision(
     db: AsyncSession, actor: User, page_id: uuid.UUID, revision_id: uuid.UUID
-) -> RevisionMeta:
+) -> PageRevisionMeta:
     """Erase a version's body (full access), audited. Not the current version."""
     page, _ = await access.require_level(db, actor, page_id, "full", lock=True)
     revision = await _load_revision(db, page, revision_id)

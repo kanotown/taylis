@@ -542,6 +542,67 @@ export interface paths {
         patch: operations["update_webhook_api_v1_admin_webhooks__webhook_id__patch"];
         trace?: never;
     };
+    "/api/v1/admin/wiki/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin List Pages
+         * @description Administrators: every page's title and who has access (no bodies), the trash too.
+         */
+        get: operations["admin_list_pages_api_v1_admin_wiki_pages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wiki/pages/{page_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin Purge Page
+         * @description Administrators: empty a page in the trash (with what went with it) now. Audited.
+         */
+        delete: operations["admin_purge_page_api_v1_admin_wiki_pages__page_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wiki/pages/{page_id}/takeover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Takeover Page
+         * @description Administrators: give myself full access to the page (audited as wiki.access_takeover).
+         *     null when the page is in the trash.
+         */
+        post: operations["admin_takeover_page_api_v1_admin_wiki_pages__page_id__takeover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/workspace-settings": {
         parameters: {
             query?: never;
@@ -3393,6 +3454,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Pages
+         * @description M120 (docs/WIKI.md §8.1): wiki pages I can read whose title, body or properties match
+         *     (Japanese and English, the same query syntax; in:<page title> narrows to a subtree), with an
+         *     excerpt. Pages I cannot read are never counted.
+         */
+        get: operations["search_pages_api_v1_search_pages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/server": {
         parameters: {
             query?: never;
@@ -4145,6 +4228,340 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/wiki/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wiki Changes
+         * @description The tree's changes after `since` (SYNC_PROTOCOL.md §17): pages I can read that changed,
+         *     and ids to drop. `reset`: read GET /wiki/tree again.
+         */
+        get: operations["wiki_changes_api_v1_wiki_changes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Page
+         * @description A new page: under a page I can edit, or (not guests) at the top level with `access`.
+         */
+        post: operations["create_page_api_v1_wiki_pages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lookup Pages
+         * @description The `[[` suggestions: pages I can read whose title contains `q`.
+         */
+        get: operations["lookup_pages_api_v1_wiki_pages_lookup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Pages
+         * @description Titles for `page:` links: only the pages I can read (the others: 「表示できないページ」).
+         */
+        post: operations["resolve_pages_api_v1_wiki_pages_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Page
+         * @description The page with its body, head_rev_id, my level, breadcrumbs and child pages. ETag is the
+         *     version and my level.
+         */
+        get: operations["get_page_api_v1_wiki_pages__page_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Trash Page
+         * @description To the trash with everything below it (full access; 30 days).
+         */
+        delete: operations["trash_page_api_v1_wiki_pages__page_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Page
+         * @description Title and icon (edit level).
+         */
+        patch: operations["update_page_api_v1_wiki_pages__page_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Page Access
+         * @description Who has access: the page's own entries and the effective ones with where they come from.
+         */
+        get: operations["get_page_access_api_v1_wiki_pages__page_id__access_get"];
+        /**
+         * Set Page Access
+         * @description Replace the page's own entries and inherit_access (full access, not guests). 409
+         *     page_last_manager when nobody could manage it afterwards.
+         */
+        put: operations["set_page_access_api_v1_wiki_pages__page_id__access_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}/backlinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Page Backlinks
+         * @description Pages I can read whose body links here.
+         */
+        get: operations["page_backlinks_api_v1_wiki_pages__page_id__backlinks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Page Content
+         * @description Save the whole body written on `base_rev_id` (as a canvas, CANVAS.md §4.4); edit level.
+         *     409 page_conflict / page_base_expired.
+         */
+        put: operations["save_page_content_api_v1_wiki_pages__page_id__content_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Page */
+        get: operations["export_page_api_v1_wiki_pages__page_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Page
+         * @description Move under another page or to the top level (full here, edit there). `dry_run` says who
+         *     would gain or lose access; `keep_access` keeps it as it is.
+         */
+        post: operations["move_page_api_v1_wiki_pages__page_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Page
+         * @description Back from the trash with what went with it (full access).
+         */
+        post: operations["restore_page_api_v1_wiki_pages__page_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Page Revisions */
+        get: operations["list_page_revisions_api_v1_wiki_pages__page_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}/revisions/{revision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Page Revision */
+        get: operations["get_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Erase Page Revision
+         * @description Erase a version's body (full access). Audited.
+         */
+        delete: operations["erase_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__delete"];
+        options?: never;
+        head?: never;
+        /** Label Page Revision */
+        patch: operations["label_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wiki/pages/{page_id}/revisions/{revision_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Page Revision
+         * @description That version's body as a new version (edit level).
+         */
+        post: operations["restore_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wiki Trash
+         * @description Pages in the trash (as the root of what went together) that I have full access to.
+         */
+        get: operations["wiki_trash_api_v1_wiki_trash_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wiki/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wiki Tree
+         * @description Every page I can read (not database rows) with my level, and the change feed's cursor.
+         *     The ETag is a hash of the answer.
+         */
+        get: operations["wiki_tree_api_v1_wiki_tree_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflow-templates": {
         parameters: {
             query?: never;
@@ -4276,6 +4693,54 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AccessChange
+         * @description A principal whose level on the moved page would change (null: none).
+         */
+        AccessChange: {
+            /** After */
+            after: ("view" | "edit" | "full") | null;
+            /** Before */
+            before: ("view" | "edit" | "full") | null;
+            /** Principal Id */
+            principal_id: string | null;
+            /**
+             * Principal Type
+             * @enum {string}
+             */
+            principal_type: "workspace" | "group" | "user";
+        };
+        /** AccessOut */
+        AccessOut: {
+            /** Effective */
+            effective: components["schemas"]["EffectiveOut"][];
+            /** Inherit Access */
+            inherit_access: boolean;
+            /**
+             * My Level
+             * @enum {string}
+             */
+            my_level: "view" | "edit" | "full";
+            /** Own */
+            own: components["schemas"]["GrantOut"][];
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+        };
+        /**
+         * AccessUpdate
+         * @description PUT /wiki/pages/{id}/access: the page's own entries and whether it takes its parent's.
+         *     To narrow an inherited entry, send inherit_access false with the effective entries you keep
+         *     (WIKI.md §4.2).
+         */
+        AccessUpdate: {
+            /** Grants */
+            grants?: components["schemas"]["GrantIn"][];
+            /** Inherit Access */
+            inherit_access: boolean;
+        };
+        /**
          * AccountDeletion
          * @description POST /users/me/delete-account: the current password, or for an account without one
          *     (Google sign-in) the username typed again.
@@ -4364,8 +4829,9 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mention" | "reaction" | "thread_reply" | "canvas_mention" | "reservation";
+            kind: "mention" | "reaction" | "thread_reply" | "canvas_mention" | "reservation" | "page_mention" | "page_shared";
             message?: components["schemas"]["MessageOut"] | null;
+            page?: components["schemas"]["ActivityPage"] | null;
             /** Read */
             read?: boolean | null;
             reservation?: components["schemas"]["ActivityReservation"] | null;
@@ -4381,6 +4847,33 @@ export interface components {
              * Format: date-time
              */
             read_at: string;
+        };
+        /**
+         * ActivityPage
+         * @description A page_mention / page_shared item's page (M120): it opens the page. Listed only while I can
+         *     read the page.
+         */
+        ActivityPage: {
+            /** Excerpt */
+            excerpt: string;
+            /** Icon */
+            icon: string | null;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Level */
+            level: ("view" | "edit" | "full") | null;
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Rev Id */
+            rev_id: string | null;
+            /** Title */
+            title: string;
         };
         /** ActivityReadIn */
         ActivityReadIn: {
@@ -4433,6 +4926,56 @@ export interface components {
             read_at: string;
             /** Unread Count */
             unread_count: number;
+        };
+        /** AdminEffective */
+        AdminEffective: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "view" | "edit" | "full";
+            /** Principal Id */
+            principal_id: string | null;
+            /**
+             * Principal Type
+             * @enum {string}
+             */
+            principal_type: "workspace" | "group" | "user";
+        };
+        /**
+         * AdminPageOut
+         * @description GET /admin/wiki/pages (WIKI.md §4.3): titles and who has access, never bodies.
+         */
+        AdminPageOut: {
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Effective */
+            effective: components["schemas"]["AdminEffective"][];
+            /** Has Manager */
+            has_manager: boolean;
+            /** Icon */
+            icon: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Inherit Access */
+            inherit_access: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "page" | "database" | "row";
+            /** Parent Id */
+            parent_id: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** AdminReportOut */
         AdminReportOut: {
@@ -5268,6 +5811,7 @@ export interface components {
             threads: components["schemas"]["ThreadSummary"];
             /** Users */
             users: components["schemas"]["UserPublic"][];
+            wiki?: components["schemas"]["WikiBootstrap"] | null;
             /**
              * @default {
              *       "calls_enabled": true,
@@ -5797,6 +6341,20 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /**
+         * ChangesOut
+         * @description GET /wiki/changes?since=: what changed in the tree after `since`.
+         */
+        ChangesOut: {
+            /** Cursor */
+            cursor: number;
+            /** Pages */
+            pages: components["schemas"]["PageItem"][];
+            /** Removed */
+            removed: string[];
+            /** Reset */
+            reset: boolean;
+        };
         /** ChannelCreate */
         ChannelCreate: {
             /** Name */
@@ -6040,6 +6598,20 @@ export interface components {
              * @enum {string}
              */
             on_conflict: "fail" | "ours" | "theirs" | "both";
+        };
+        /**
+         * Crumb
+         * @description An ancestor in the breadcrumbs. One I cannot read has no id, title or icon (「…」).
+         */
+        Crumb: {
+            /** Icon */
+            icon: string | null;
+            /** Id */
+            id: string | null;
+            /** Readable */
+            readable: boolean;
+            /** Title */
+            title: string | null;
         };
         /** CustomEmojiOut */
         CustomEmojiOut: {
@@ -6289,6 +6861,33 @@ export interface components {
             channel_id: string;
             /** Parent Id */
             parent_id?: string | null;
+        };
+        /**
+         * EffectiveOut
+         * @description An entry of the page's effective access.
+         */
+        EffectiveOut: {
+            /** Inherited */
+            inherited: boolean;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "view" | "edit" | "full";
+            /** Principal Id */
+            principal_id: string | null;
+            /**
+             * Principal Type
+             * @enum {string}
+             */
+            principal_type: "workspace" | "group" | "user";
+            /**
+             * Source Page Id
+             * Format: uuid
+             */
+            source_page_id: string;
+            /** Source Title */
+            source_title: string | null;
         };
         /** EmojiPackCreate */
         EmojiPackCreate: {
@@ -6595,6 +7194,36 @@ export interface components {
             note: string;
             /** User Id */
             user_id?: string | null;
+        };
+        /** GrantIn */
+        GrantIn: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "view" | "edit" | "full";
+            /** Principal Id */
+            principal_id?: string | null;
+            /**
+             * Principal Type
+             * @enum {string}
+             */
+            principal_type: "workspace" | "group" | "user";
+        };
+        /** GrantOut */
+        GrantOut: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "view" | "edit" | "full";
+            /** Principal Id */
+            principal_id: string | null;
+            /**
+             * Principal Type
+             * @enum {string}
+             */
+            principal_type: "workspace" | "group" | "user";
         };
         /** GroupCreate */
         GroupCreate: {
@@ -7285,6 +7914,16 @@ export interface components {
             /** Time */
             time: string;
         };
+        /** MoveOut */
+        MoveOut: {
+            /** Changes */
+            changes: components["schemas"]["AccessChange"][];
+            /** Dry Run */
+            dry_run: boolean;
+            /** Manager Lost */
+            manager_lost: boolean;
+            page: components["schemas"]["PageItem"] | null;
+        };
         /**
          * MyLabProfileUpdate
          * @description What people change on their own line (PATCH /lab/roster/me); null clears.
@@ -7338,6 +7977,570 @@ export interface components {
             muted: boolean;
             /** Muted Until */
             muted_until: string | null;
+        };
+        /** PageConflictDetails */
+        PageConflictDetails: {
+            /** Conflicts */
+            conflicts?: components["schemas"]["PageConflictOut"][];
+            head: components["schemas"]["PageContent"];
+            /**
+             * Timed Out
+             * @default false
+             */
+            timed_out: boolean;
+        };
+        /** PageConflictError */
+        PageConflictError: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "page_conflict" | "page_base_expired";
+            details: components["schemas"]["PageConflictDetails"];
+            /** Message */
+            message: string;
+        };
+        /** PageConflictOut */
+        PageConflictOut: {
+            /** Base */
+            base: string;
+            /** Ours */
+            ours: string;
+            /** Ours Line */
+            ours_line: number;
+            /** Theirs */
+            theirs: string;
+            /** Theirs Line */
+            theirs_line: number;
+        };
+        /**
+         * PageConflictResponse
+         * @description 409 from PUT /wiki/pages/{id}/content.
+         */
+        PageConflictResponse: {
+            error: components["schemas"]["PageConflictError"];
+        };
+        /** PageContent */
+        PageContent: {
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Deleted At */
+            deleted_at?: string | null;
+            /**
+             * Head Rev Id
+             * Format: uuid
+             */
+            head_rev_id: string;
+            /** Icon */
+            icon: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Inherit Access */
+            inherit_access: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "page" | "database" | "row";
+            /** Meta Seq */
+            meta_seq: number;
+            /**
+             * My Level
+             * @enum {string}
+             */
+            my_level: "view" | "edit" | "full";
+            /** Parent Id */
+            parent_id: string | null;
+            /** Position */
+            position: string;
+            /** Private */
+            private: boolean;
+            /** Task Done */
+            task_done: number;
+            /** Task Total */
+            task_total: number;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * Format: uuid
+             */
+            updated_by: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * PageContentSave
+         * @description PUT /wiki/pages/{id}/content: the same as a canvas's (CANVAS.md §4.4).
+         */
+        PageContentSave: {
+            /**
+             * Base Rev Id
+             * Format: uuid
+             */
+            base_rev_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Client Save Id
+             * Format: uuid
+             */
+            client_save_id: string;
+            /**
+             * On Conflict
+             * @default fail
+             * @enum {string}
+             */
+            on_conflict: "fail" | "ours" | "theirs" | "both";
+        };
+        /** PageCreate */
+        PageCreate: {
+            /**
+             * Access
+             * @default workspace
+             * @enum {string}
+             */
+            access: "workspace" | "private";
+            /** After Id */
+            after_id?: string | null;
+            /** Before Id */
+            before_id?: string | null;
+            /** Body */
+            body?: string | null;
+            /**
+             * Client Save Id
+             * Format: uuid
+             */
+            client_save_id: string;
+            /** Icon */
+            icon?: string | null;
+            /**
+             * Kind
+             * @default page
+             * @constant
+             */
+            kind: "page";
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Template Key */
+            template_key?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Tz */
+            tz?: string | null;
+        };
+        /**
+         * PageItem
+         * @description A page as one person sees it: the tree, the change feed, search.
+         */
+        PageItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Deleted At */
+            deleted_at?: string | null;
+            /**
+             * Head Rev Id
+             * Format: uuid
+             */
+            head_rev_id: string;
+            /** Icon */
+            icon: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Inherit Access */
+            inherit_access: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "page" | "database" | "row";
+            /** Meta Seq */
+            meta_seq: number;
+            /**
+             * My Level
+             * @enum {string}
+             */
+            my_level: "view" | "edit" | "full";
+            /** Parent Id */
+            parent_id: string | null;
+            /** Position */
+            position: string;
+            /** Private */
+            private: boolean;
+            /** Task Done */
+            task_done: number;
+            /** Task Total */
+            task_total: number;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * Format: uuid
+             */
+            updated_by: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * PageMeta
+         * @description A page without its body, the same for everyone (the wiki.page.updated event).
+         */
+        PageMeta: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Deleted At */
+            deleted_at?: string | null;
+            /**
+             * Head Rev Id
+             * Format: uuid
+             */
+            head_rev_id: string;
+            /** Icon */
+            icon: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Inherit Access */
+            inherit_access: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "page" | "database" | "row";
+            /** Meta Seq */
+            meta_seq: number;
+            /** Parent Id */
+            parent_id: string | null;
+            /** Position */
+            position: string;
+            /** Task Done */
+            task_done: number;
+            /** Task Total */
+            task_total: number;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * Format: uuid
+             */
+            updated_by: string;
+            /** Version */
+            version: number;
+        };
+        /** PageMove */
+        PageMove: {
+            /** After Id */
+            after_id?: string | null;
+            /** Before Id */
+            before_id?: string | null;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Keep Access
+             * @default false
+             */
+            keep_access: boolean;
+            /** Parent Id */
+            parent_id?: string | null;
+        };
+        /**
+         * PageOut
+         * @description GET /wiki/pages/{id}: the page, its breadcrumbs (root first) and its child pages I can
+         *     read, in order.
+         */
+        PageOut: {
+            /** Body */
+            body: string;
+            /** Breadcrumbs */
+            breadcrumbs: components["schemas"]["Crumb"][];
+            /** Children */
+            children: components["schemas"]["PageItem"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Deleted At */
+            deleted_at?: string | null;
+            /**
+             * Head Rev Id
+             * Format: uuid
+             */
+            head_rev_id: string;
+            /** Icon */
+            icon: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Inherit Access */
+            inherit_access: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "page" | "database" | "row";
+            /** Meta Seq */
+            meta_seq: number;
+            /**
+             * My Level
+             * @enum {string}
+             */
+            my_level: "view" | "edit" | "full";
+            /** Parent Id */
+            parent_id: string | null;
+            /** Position */
+            position: string;
+            /** Private */
+            private: boolean;
+            /** Task Done */
+            task_done: number;
+            /** Task Total */
+            task_total: number;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * Format: uuid
+             */
+            updated_by: string;
+            /** Version */
+            version: number;
+        };
+        /** PageRef */
+        PageRef: {
+            /** Icon */
+            icon: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "page" | "database" | "row";
+            /** Title */
+            title: string;
+        };
+        /** PageRevisionMeta */
+        PageRevisionMeta: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "create" | "save" | "merge" | "side" | "restore" | "erased" | "props" | "import";
+            /** Label */
+            label: string | null;
+            /** Lines Added */
+            lines_added: number;
+            /** Lines Removed */
+            lines_removed: number;
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Parent Rev Id */
+            parent_rev_id: string | null;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number | null;
+        };
+        /** PageRevisionOut */
+        PageRevisionOut: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "create" | "save" | "merge" | "side" | "restore" | "erased" | "props" | "import";
+            /** Label */
+            label: string | null;
+            /** Lines Added */
+            lines_added: number;
+            /** Lines Removed */
+            lines_removed: number;
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Parent Rev Id */
+            parent_rev_id: string | null;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number | null;
+        };
+        /** PageRevisionPage */
+        PageRevisionPage: {
+            /** Items */
+            items: components["schemas"]["PageRevisionMeta"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** PageRevisionRestore */
+        PageRevisionRestore: {
+            /**
+             * Client Save Id
+             * Format: uuid
+             */
+            client_save_id: string;
+        };
+        /** PageRevisionUpdate */
+        PageRevisionUpdate: {
+            /** Label */
+            label?: string | null;
+        };
+        /** PageSaveOut */
+        PageSaveOut: {
+            /** Merged */
+            merged: boolean;
+            page: components["schemas"]["PageContent"];
+            /**
+             * Submitted Rev Id
+             * Format: uuid
+             */
+            submitted_rev_id: string;
+        };
+        /** PageSearchHit */
+        PageSearchHit: {
+            page: components["schemas"]["PageItem"];
+            /** Score */
+            score: number;
+            /** Snippet */
+            snippet: string;
+        };
+        /**
+         * PageSearchOut
+         * @description Only pages the caller can read are ever counted or returned.
+         */
+        PageSearchOut: {
+            filters: components["schemas"]["SearchFilters"];
+            /** Has More */
+            has_more: boolean;
+            /** Hits */
+            hits: components["schemas"]["PageSearchHit"][];
+            /** Keywords */
+            keywords: string[];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Total Capped
+             * @default false
+             */
+            total_capped: boolean;
+        };
+        /** PageUpdate */
+        PageUpdate: {
+            /** Icon */
+            icon?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /** PasswordChange */
         PasswordChange: {
@@ -8057,6 +9260,11 @@ export interface components {
              */
             user_id: string;
         };
+        /** ResolveIn */
+        ResolveIn: {
+            /** Ids */
+            ids: string[];
+        };
         /** RevisionMeta */
         RevisionMeta: {
             /**
@@ -8378,6 +9586,8 @@ export interface components {
             has?: string[];
             /** In Channel */
             in_channel?: string | null;
+            /** In Page */
+            in_page?: string | null;
             /**
              * Is Thread
              * @default false
@@ -9230,6 +10440,17 @@ export interface components {
             recovery_codes_left: number;
         };
         /**
+         * TreeOut
+         * @description Every page I can read (not database rows), and the change feed's position to continue
+         *     from with GET /wiki/changes.
+         */
+        TreeOut: {
+            /** Cursor */
+            cursor: number;
+            /** Pages */
+            pages: components["schemas"]["PageItem"][];
+        };
+        /**
          * UnreadSummaryOut
          * @description What the workspace switcher shows for a workspace that is not open (WORKSPACES.md §6).
          */
@@ -9510,6 +10731,14 @@ export interface components {
             /** Weekdays */
             weekdays: number[];
         };
+        /**
+         * WikiBootstrap
+         * @description In GET /sync/bootstrap: the change feed's position (read the tree with GET /wiki/tree).
+         */
+        WikiBootstrap: {
+            /** Change Seq */
+            change_seq: number;
+        };
         /** WorkflowCreate */
         WorkflowCreate: {
             /**
@@ -9729,7 +10958,7 @@ export interface operations {
                 filter?: "all" | "mentions" | "reactions" | "threads";
                 cursor?: string | null;
                 limit?: number;
-                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored. */
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored. */
                 include?: string[];
             };
             header?: never;
@@ -9761,7 +10990,7 @@ export interface operations {
     mark_activity_read_api_v1_activity_read_put: {
         parameters: {
             query?: {
-                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored. */
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored. */
                 include?: string[];
             };
             header?: never;
@@ -9797,7 +11026,7 @@ export interface operations {
     activity_summary_api_v1_activity_summary_get: {
         parameters: {
             query?: {
-                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored. */
+                /** @description Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored. */
                 include?: string[];
             };
             header?: never;
@@ -10799,6 +12028,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_list_pages_api_v1_admin_wiki_pages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPageOut"][];
+                };
+            };
+        };
+    };
+    admin_purge_page_api_v1_admin_wiki_pages__page_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_takeover_page_api_v1_admin_wiki_pages__page_id__takeover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOut"] | null;
                 };
             };
             /** @description Validation Error */
@@ -16612,6 +17921,50 @@ export interface operations {
             };
         };
     };
+    search_pages_api_v1_search_pages_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                /** @description This page and the pages below it */
+                in_page?: string | null;
+                /** @description The page's creator or its last editor */
+                from_user_id?: string | null;
+                /** @description Updated at or after */
+                after?: string | null;
+                /** @description Updated before */
+                before?: string | null;
+                kind?: ("page" | "database" | "row") | null;
+                sort?: "relevance" | "newest";
+                tz_offset_minutes?: number;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageSearchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     server_info_api_v1_server_get: {
         parameters: {
             query?: never;
@@ -17994,6 +19347,719 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["BlockStateOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wiki_changes_api_v1_wiki_changes_get: {
+        parameters: {
+            query: {
+                /** @description The last cursor */
+                since: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_page_api_v1_wiki_pages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageCreate"];
+            };
+        };
+        responses: {
+            /** @description A retry: the page made before */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_pages_api_v1_wiki_pages_lookup_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageRef"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_pages_api_v1_wiki_pages_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageRef"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_page_api_v1_wiki_pages__page_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "if-none-match"?: string | null;
+            };
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOut"];
+                };
+            };
+            /** @description If-None-Match matched the version (ETag) */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trash_page_api_v1_wiki_pages__page_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_page_api_v1_wiki_pages__page_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_page_access_api_v1_wiki_pages__page_id__access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_page_access_api_v1_wiki_pages__page_id__access_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    page_backlinks_api_v1_wiki_pages__page_id__backlinks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_page_content_api_v1_wiki_pages__page_id__content_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageContentSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageSaveOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageConflictResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_page_api_v1_wiki_pages__page_id__export_get: {
+        parameters: {
+            query?: {
+                /** @description A ZIP with the pages below I can read */
+                subtree?: boolean;
+            };
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page as Markdown, or with subtree=true a ZIP */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                    "text/markdown": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_page_api_v1_wiki_pages__page_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_page_api_v1_wiki_pages__page_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_page_revisions_api_v1_wiki_pages__page_id__revisions_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageRevisionPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageRevisionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    erase_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageRevisionMeta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    label_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageRevisionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageRevisionMeta"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageRevisionRestore"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wiki_trash_api_v1_wiki_trash_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageMeta"][];
+                };
+            };
+        };
+    };
+    wiki_tree_api_v1_wiki_tree_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "if-none-match"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TreeOut"];
+                };
+            };
+            /** @description If-None-Match matched (ETag) */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

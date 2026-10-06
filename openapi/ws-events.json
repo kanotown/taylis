@@ -8232,6 +8232,257 @@
         "type": "object"
       }
     },
+    "wiki.changed": {
+      "audience": "all",
+      "consumes_seq": false,
+      "data": {
+        "description": "wiki.changed (audience all): the tree's change feed moved to `seq`; what changed differs\nper person, so read GET /wiki/changes?since= (after about 300 ms, folding several).",
+        "properties": {
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq"
+        ],
+        "title": "WikiChangedData",
+        "type": "object"
+      }
+    },
+    "wiki.mentioned": {
+      "audience": "user (a reader)",
+      "consumes_seq": false,
+      "data": {
+        "description": "wiki.mentioned (to one person who can read the page): a save newly mentions them.",
+        "properties": {
+          "by_user_id": {
+            "format": "uuid",
+            "title": "By User Id",
+            "type": "string"
+          },
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "rev_id": {
+            "format": "uuid",
+            "title": "Rev Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id",
+          "rev_id",
+          "title",
+          "by_user_id"
+        ],
+        "title": "WikiMentionedData",
+        "type": "object"
+      }
+    },
+    "wiki.page.updated": {
+      "audience": "page (who can read it when sent)",
+      "consumes_seq": false,
+      "data": {
+        "$defs": {
+          "PageMeta": {
+            "description": "A page without its body, the same for everyone (the wiki.page.updated event).",
+            "properties": {
+              "created_at": {
+                "format": "date-time",
+                "title": "Created At",
+                "type": "string"
+              },
+              "created_by": {
+                "format": "uuid",
+                "title": "Created By",
+                "type": "string"
+              },
+              "deleted_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Deleted At"
+              },
+              "head_rev_id": {
+                "format": "uuid",
+                "title": "Head Rev Id",
+                "type": "string"
+              },
+              "icon": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Icon"
+              },
+              "id": {
+                "format": "uuid",
+                "title": "Id",
+                "type": "string"
+              },
+              "inherit_access": {
+                "title": "Inherit Access",
+                "type": "boolean"
+              },
+              "kind": {
+                "enum": [
+                  "page",
+                  "database",
+                  "row"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "meta_seq": {
+                "title": "Meta Seq",
+                "type": "integer"
+              },
+              "parent_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Parent Id"
+              },
+              "position": {
+                "title": "Position",
+                "type": "string"
+              },
+              "task_done": {
+                "title": "Task Done",
+                "type": "integer"
+              },
+              "task_total": {
+                "title": "Task Total",
+                "type": "integer"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "updated_at": {
+                "format": "date-time",
+                "title": "Updated At",
+                "type": "string"
+              },
+              "updated_by": {
+                "format": "uuid",
+                "title": "Updated By",
+                "type": "string"
+              },
+              "version": {
+                "title": "Version",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "parent_id",
+              "position",
+              "kind",
+              "title",
+              "icon",
+              "version",
+              "head_rev_id",
+              "meta_seq",
+              "inherit_access",
+              "task_total",
+              "task_done",
+              "created_by",
+              "updated_by",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "PageMeta",
+            "type": "object"
+          }
+        },
+        "description": "wiki.page.updated (audience: who can read the page when it is sent): re-read the page if\nit is open and not being edited (an editor merges with its next save).",
+        "properties": {
+          "change": {
+            "enum": [
+              "content",
+              "meta",
+              "restore"
+            ],
+            "title": "Change",
+            "type": "string"
+          },
+          "page": {
+            "$ref": "#/$defs/PageMeta"
+          }
+        },
+        "required": [
+          "page",
+          "change"
+        ],
+        "title": "WikiPageUpdatedData",
+        "type": "object"
+      }
+    },
+    "wiki.shared": {
+      "audience": "user (a reader)",
+      "consumes_seq": false,
+      "data": {
+        "description": "wiki.shared (to one person): the page was shared with them by name.",
+        "properties": {
+          "by_user_id": {
+            "format": "uuid",
+            "title": "By User Id",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "view",
+              "edit",
+              "full"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id",
+          "title",
+          "level",
+          "by_user_id"
+        ],
+        "title": "WikiSharedData",
+        "type": "object"
+      }
+    },
     "workspace.settings_updated": {
       "audience": "all",
       "consumes_seq": false,
