@@ -20,7 +20,7 @@ function world() {
   for (const channel of made) store.upsertChannel(channel, { isMember: true, syncedSeq: 0, oldestLoadedSeq: 0 });
   const [general, papers, lab, random] = made as [typeof made[0], typeof made[0], typeof made[0], typeof made[0]];
   store.updateChannel(lab.id, { unreadCount: 2 });
-  store.replaceSidebar([{ id: "s1", name: "研究", emoji: "🔬", collapsed: true, position: 0, channel_ids: [papers.id, lab.id] }]);
+  store.replaceSidebar([{ id: "s1", name: "研究", emoji: "🔬", collapsed: true, position: 0, channel_ids: [papers.id, lab.id], sort: "name", manual_order: [] }]);
   const controller = {
     store, engine: null, me, isGuest: false, isAdmin: false,
     moveToSection: vi.fn(async () => true), setSectionCollapsed: vi.fn(async () => true), toggleFavorite: vi.fn(async () => {}),
@@ -100,6 +100,41 @@ describe("sidebar sections (M26, Slack)", () => {
     expect(header.className).toContain("top-0");
     expect(header.className).toContain("bg-sidebar");
     expect(within(header).getByRole("button", { name: "設定" })).toBeTruthy();
+  });
+});
+
+describe("a section's 並べ替え (DATA_MODEL.md sidebar_sections)", () => {
+  const names = (section: HTMLElement) => within(section).getAllByRole("button").map((b) => b.getAttribute("title")).filter((x) => x?.startsWith("#"));
+
+  it("lists 「チャンネル」 in the server's hand-made order, and a row dragged within it lands before the row under it", () => {
+    const w = world();
+    w.store.replaceSidebarDefaults([{ key: "channels", sort: "manual", manual_order: [w.random.id, w.general.id] }]);
+    const reorderSection = vi.fn(async () => true);
+    Object.assign(w.controller, { reorderSection });
+    w.view();
+    const section = screen.getByRole("button", { name: /^チャンネル$/ }).closest("section")!;
+    expect(names(section)).toEqual(["#random", "#general"]);
+    const dataTransfer = { types: ["application/x-chikuwa-channel"], setData: () => {}, getData: () => w.general.id, dropEffect: "none", effectAllowed: "none" };
+    const general = within(section).getByRole("button", { name: "general" });
+    const random = within(section).getByRole("button", { name: "random" }).closest("li")!;
+    fireEvent.dragStart(general, { dataTransfer });
+    fireEvent.dragOver(random, { dataTransfer, clientY: 0 });
+    fireEvent.drop(random, { dataTransfer, clientY: 0 });
+    expect(reorderSection).toHaveBeenCalledWith({ default: "channels" }, [w.general.id, w.random.id]);
+    expect(w.controller.moveToSection).not.toHaveBeenCalled();
+  });
+
+  it("by name, a row dropped on another row goes to the section as before (no reordering)", () => {
+    const w = world();
+    const reorderSection = vi.fn(async () => true);
+    Object.assign(w.controller, { reorderSection });
+    w.view();
+    const section = screen.getByRole("button", { name: /^チャンネル$/ }).closest("section")!;
+    expect(names(section)).toEqual(["#general", "#random"]);
+    const dataTransfer = { types: ["application/x-chikuwa-channel"], setData: () => {}, getData: () => w.random.id, dropEffect: "none", effectAllowed: "none" };
+    fireEvent.dragStart(within(section).getByRole("button", { name: "random" }), { dataTransfer });
+    fireEvent.drop(within(section).getByRole("button", { name: "general" }).closest("li")!, { dataTransfer });
+    expect(reorderSection).not.toHaveBeenCalled();
   });
 });
 

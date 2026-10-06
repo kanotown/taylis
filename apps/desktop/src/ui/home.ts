@@ -3,7 +3,7 @@
  * 「移動・検索」 and the new-message picker list, and the recent conversations this device keeps. Pure rules; the screens
  * are HomeView, JumpView and NewMessageView.
  */
-import type { ChannelState, SidebarSectionOut, UserPublic } from "../sync/types";
+import type { ChannelState, SidebarDefaultOut, SidebarSectionOut, UserPublic } from "../sync/types";
 import { hasUnread, isDmChannel, isSelfNotes, sectionChannels } from "./channels";
 import { type JumpItem, rankItems } from "./jumpMatch";
 
@@ -119,7 +119,7 @@ export interface HomeSections {
   custom: Array<{ section: SidebarSectionOut; channels: ChannelState[] }>;
   channels: ChannelState[];
   times: ChannelState[];
-  /** My own DM first, then the 5 newest others (and any other unread one); the rest are on the DM tab. */
+  /** My own DM first, then the first 5 others in the section's sort (and any other unread one); the rest are on the DM tab. */
   dms: ChannelState[];
   /** More DMs than the section shows: it ends with 「すべての DM」. */
   moreDms: boolean;
@@ -127,10 +127,18 @@ export interface HomeSections {
 
 export function homeSections(
   all: ChannelState[],
-  options: { gatherUnread?: boolean; favorites?: ReadonlySet<string>; sections?: readonly SidebarSectionOut[]; meId?: string | null; now?: Date } = {},
+  options: {
+    gatherUnread?: boolean;
+    favorites?: ReadonlySet<string>;
+    sections?: readonly SidebarSectionOut[];
+    defaults?: readonly SidebarDefaultOut[];
+    meId?: string | null;
+    now?: Date;
+    title?: (channel: ChannelState) => string;
+  } = {},
 ): HomeSections {
   const meId = options.meId ?? null;
-  const base = sectionChannels(all, { favorites: options.favorites, sections: options.sections, meId, now: options.now });
+  const base = sectionChannels(all, { favorites: options.favorites, sections: options.sections, defaults: options.defaults, meId, now: options.now, title: options.title });
   const unread: ChannelState[] = [];
   const pick = (list: ChannelState[]) => {
     if (!options.gatherUnread) return list;

@@ -1514,6 +1514,7 @@ export class FakeServer {
           groups: [],
           roster: [...this.roster.values()],
           sidebar_sections: [],
+          sidebar_defaults: [],
           drafts: this.draftsOf(userId),
           workspace_settings: this.workspaceSettings,
           ...(this.activityEnabled ? { activity: this.activitySummary(userId) } : {}),

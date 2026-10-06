@@ -1,14 +1,14 @@
 import { ContextMenu, DropdownMenu } from "radix-ui";
-import { MoreHorizontal } from "lucide-react";
+import { Check, MoreHorizontal } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 
-import type { SidebarSectionOut } from "../api/types";
-import type { AppController } from "../state/app";
+import type { SidebarSectionOut, SidebarSort } from "../api/types";
+import type { AppController, SortTarget } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { isTimedMuted } from "./channels";
 import { SectionDialog } from "./SectionDialog";
 import { Button, cn, Input, Modal } from "./primitives";
-import { t } from "../i18n";
+import { t, type MessageKey } from "../i18n";
 
 const CONTENT = "rx-popover z-50 min-w-52 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
 const ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft";
@@ -83,8 +83,58 @@ export function ChannelContextMenu({ controller, channel, children }: { controll
   );
 }
 
-/** The 「…」 on a custom section's header: name and icon, move up / down, delete. */
-export function SectionHeaderMenu({ controller, section, index, count }: { controller: AppController; section: SidebarSectionOut; index: number; count: number }) {
+const SORTS: ReadonlyArray<[SidebarSort, MessageKey]> = [
+  ["name", "sections.sortName"],
+  ["recent", "sections.sortRecent"],
+  ["manual", "sections.sortManual"],
+];
+
+/**
+ * 「並べ替え」 › 名前順 / 最近の活動順 / 手動 (DATA_MODEL.md sidebar_sections, Mattermost style): kept on the server, so my
+ * other devices follow. `shownIds` is the order shown now, the hand-made order's start when 「手動」 is chosen.
+ */
+function SortSubmenu({ controller, target, sort, shownIds }: { controller: AppController; target: SortTarget; sort: SidebarSort; shownIds: () => string[] }) {
+  return (
+    <DropdownMenu.Sub>
+      <DropdownMenu.SubTrigger className={cn(ITEM, "justify-between")}>
+        {t("sections.sort")} <span className="text-muted">›</span>
+      </DropdownMenu.SubTrigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.SubContent className={CONTENT} sideOffset={4}>
+          <DropdownMenu.RadioGroup value={sort} onValueChange={(value) => { if (value !== sort) void controller.setSectionSort(target, value as SidebarSort, shownIds()); }}>
+            {SORTS.map(([value, label]) => (
+              <DropdownMenu.RadioItem key={value} value={value} className={cn(ITEM, "pl-7 relative")}>
+                <DropdownMenu.ItemIndicator className="absolute left-2.5"><Check size={13} /></DropdownMenu.ItemIndicator>
+                {t(label)}
+              </DropdownMenu.RadioItem>
+            ))}
+          </DropdownMenu.RadioGroup>
+        </DropdownMenu.SubContent>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Sub>
+  );
+}
+
+/** The 「…」 on a default section's header (お気に入り / チャンネル / ダイレクトメッセージ): its 「並べ替え」. */
+export function DefaultSectionMenu({ controller, target, title, sort, shownIds }: { controller: AppController; target: SortTarget; title: string; sort: SidebarSort; shownIds: () => string[] }) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" aria-label={t("sections.menu", { name: title })} className="flex h-6 w-6 items-center justify-center rounded-md opacity-70 hover:bg-white/10 hover:opacity-100">
+          <MoreHorizontal size={14} />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content sideOffset={6} align="end" className={CONTENT}>
+          <SortSubmenu controller={controller} target={target} sort={sort} shownIds={shownIds} />
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+/** The 「…」 on a custom section's header: name and icon, sort, move up / down, delete. */
+export function SectionHeaderMenu({ controller, section, index, count, shownIds }: { controller: AppController; section: SidebarSectionOut; index: number; count: number; shownIds: () => string[] }) {
   const [renaming, setRenaming] = useState(false);
   const [creating, setCreating] = useState(false);
   return (
@@ -98,6 +148,7 @@ export function SectionHeaderMenu({ controller, section, index, count }: { contr
         <DropdownMenu.Portal>
           <DropdownMenu.Content sideOffset={6} align="end" className={CONTENT}>
             <DropdownMenu.Item className={ITEM} onSelect={() => setRenaming(true)}>{t("sections.renameIcon")}</DropdownMenu.Item>
+            <SortSubmenu controller={controller} target={{ section: section.id }} sort={section.sort ?? "name"} shownIds={shownIds} />
             <DropdownMenu.Item className={ITEM} disabled={index === 0} onSelect={() => void controller.moveSection(section.id, index - 1)}>{t("common.moveUp")}</DropdownMenu.Item>
             <DropdownMenu.Item className={ITEM} disabled={index === count - 1} onSelect={() => void controller.moveSection(section.id, index + 1)}>{t("common.moveDown")}</DropdownMenu.Item>
             <DropdownMenu.Item className={ITEM} onSelect={() => setCreating(true)}>{t("home.newSection")}</DropdownMenu.Item>

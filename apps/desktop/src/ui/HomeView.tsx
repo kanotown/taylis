@@ -5,7 +5,8 @@ import type { AppController } from "../state/app";
 import { WorkspaceIcon } from "./workspaceIcons";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
-import { badgeCount, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, showsSelfNotesInDmSection } from "./channels";
+import type { DefaultSectionKey } from "../api/types";
+import { badgeCount, defaultSort, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, showsSelfNotesInDmSection } from "./channels";
 import { useOpenSelfNotes } from "./DmListView";
 import { homeSections } from "./home";
 import { reservationTodoCount } from "./reservationPools";
@@ -13,7 +14,7 @@ import { channelTitle, myDisplayName } from "./MainScreen";
 import { Badge, Button, cn, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { statusLabel, statusTitle, useFoldedDefaults } from "./Sidebar";
-import { ChannelContextMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
+import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
 import { StatusEmoji } from "./UserPopover";
 import { t } from "../i18n";
 
@@ -63,7 +64,11 @@ export function HomeView(props: HomeViewProps) {
   const me = store.me ?? controller.me;
   const meId = me?.id ?? null;
   const channels = [...store.channels.values()];
-  const sections = homeSections(channels, { gatherUnread, favorites: store.favorites, sections: store.sidebarSections, meId });
+  const sections = homeSections(channels, { gatherUnread, favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId, title: (c) => channelTitle(c, controller) });
+  const ids = (list: ChannelState[]) => () => list.map((c) => c.id);
+  const sortMenu = (key: DefaultSectionKey, title: string, list: ChannelState[]) => (
+    <DefaultSectionMenu controller={controller} target={{ default: key }} title={title} sort={defaultSort(store.sidebarDefaults, key).sort ?? "name"} shownIds={ids(list)} />
+  );
   const [folded, toggleFolded] = useFoldedDefaults();
   const [confirmReadAll, setConfirmReadAll] = useState(false);
   const [newSection, setNewSection] = useState(false);
@@ -97,7 +102,7 @@ export function HomeView(props: HomeViewProps) {
           </HomeSection>
         )}
         {sections.favorites.length > 0 && (
-          <HomeSection title={t("sidebar.favorites")} sectionKey="favorites" collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")}>
+          <HomeSection title={t("sidebar.favorites")} sectionKey="favorites" collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")} action={sortMenu("favorites", t("sidebar.favorites"), sections.favorites)}>
             <ul>{rows(sections.favorites, folded.has("favorites"))}</ul>
           </HomeSection>
         )}
@@ -109,12 +114,12 @@ export function HomeView(props: HomeViewProps) {
             icon={<SectionIcon controller={controller} emoji={section.emoji} />}
             collapsed={section.collapsed}
             onToggle={() => void controller.setSectionCollapsed(section.id, !section.collapsed)}
-            action={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} />}
+            action={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} shownIds={ids(members)} />}
           >
             <ul>{rows(members, section.collapsed)}</ul>
           </HomeSection>
         ))}
-        <HomeSection title={t("sidebar.channels")} sectionKey="channels" collapsed={folded.has("channels")} onToggle={() => toggleFolded("channels")}>
+        <HomeSection title={t("sidebar.channels")} sectionKey="channels" collapsed={folded.has("channels")} onToggle={() => toggleFolded("channels")} action={sortMenu("channels", t("sidebar.channels"), sections.channels)}>
           <ul>
             {rows(sections.channels, folded.has("channels"))}
             {!controller.isGuest && (
@@ -133,7 +138,7 @@ export function HomeView(props: HomeViewProps) {
             <ul>{rows(sections.times, folded.has("times"))}</ul>
           </HomeSection>
         )}
-        <HomeSection title={t("sidebar.dms")} sectionKey="dms" collapsed={folded.has("dms")} onToggle={() => toggleFolded("dms")}>
+        <HomeSection title={t("sidebar.dms")} sectionKey="dms" collapsed={folded.has("dms")} onToggle={() => toggleFolded("dms")} action={sortMenu("dms", t("sidebar.dms"), sections.dms)}>
           <ul>
             {selfPlaceholder && me && (
               <li>

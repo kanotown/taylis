@@ -17,7 +17,7 @@ import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, Ca
 import type { NotificationTest, ReservationNotice } from "../api/types";
 import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
-import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
+import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarDefaultOut, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
 import { LOCAL_PREFIX } from "./types";
 import { caughtUp, countsAsUnread, covers, JUMP_MAX_PAGES, JUMP_PAGE_SIZE, readRangeReady as rangeReady } from "./readGate";
 
@@ -750,6 +750,7 @@ export class SyncEngine {
     store.replaceGroups(bootstrap.groups ?? []);
     store.replaceTemplates(bootstrap.templates ?? []);
     store.replaceSidebar(bootstrap.sidebar_sections ?? []);
+    store.replaceSidebarDefaults(bootstrap.sidebar_defaults ?? []);
     this.drafts.applyBootstrap(bootstrap.drafts ?? []);
     this.applyWorkspaceSettings(bootstrap.workspace_settings);
     void this.loadScheduled();
@@ -966,8 +967,9 @@ export class SyncEngine {
         this.tasks.applyEvent(frame.event, frame.data);
         return;
       case "sidebar.updated": {
-        const data = frame.data as { sections: SidebarSectionOut[] };
+        const data = frame.data as { sections: SidebarSectionOut[]; defaults?: SidebarDefaultOut[] };
         store.replaceSidebar(data.sections);
+        if (data.defaults) store.replaceSidebarDefaults(data.defaults);
         return;
       }
       case "template.updated": {

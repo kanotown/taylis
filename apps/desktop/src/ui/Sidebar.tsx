@@ -1,17 +1,18 @@
 import { AlarmClock, AtSign, Bell, BellOff, Bookmark, CalendarDays, CheckCheck, ChevronDown, Compass, FileText, Files, FolderPlus, Hash, ListTodo, Lock, MessagesSquare, Newspaper, NotebookText, Plus, Search, Settings, ShieldCheck, Ticket, Timer, Users } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import type { AppController } from "../state/app";
+import type { DefaultSectionKey } from "../api/types";
+import type { AppController, SortTarget } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { Avatar } from "./Avatar";
-import { badgeCount, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, sectionChannels, showsSelfNotesInDmSection } from "./channels";
+import { badgeCount, defaultSort, hasUnread, isDmChannel, isMutedChannel, isQuietChannel, sectionChannels, showsSelfNotesInDmSection } from "./channels";
 import { useOpenSelfNotes } from "./DmListView";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { activityBadge } from "./mobileTabs";
 import { sidebarNavKeys } from "./navItems";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
-import { ChannelContextMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
+import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { t } from "../i18n";
 
@@ -85,7 +86,17 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // M39: the same badge as the phone's activity tab (none before M39: the entry is the mentions list then).
   const activity = activityBadge(channels, store.threadSummary, store.activity);
   const me = store.me ?? controller.me;
-  const sections = sectionChannels(channels, { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections, meId: me?.id ?? null });
+  const sections = sectionChannels(channels, { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId: me?.id ?? null, title: (c) => channelTitle(c, controller) });
+  // DATA_MODEL.md sidebar_sections 「並べ替え」: each section's sort from its ⋯ menu; in 「手動」 a row dragged onto another row of
+  // the same section lands before or after it (not while only unread conversations are listed: the hidden ones would
+  // lose their place).
+  const ids = (list: ChannelState[]) => () => list.map((c) => c.id);
+  const defaultSortOf = (key: DefaultSectionKey) => defaultSort(store.sidebarDefaults, key).sort ?? "name";
+  const sortMenu = (key: DefaultSectionKey, title: string, list: ChannelState[]) => (
+    <DefaultSectionMenu controller={controller} target={{ default: key }} title={title} sort={defaultSortOf(key)} shownIds={ids(list)} />
+  );
+  const reorder = (target: SortTarget, list: ChannelState[], sort: string | null | undefined): Reorder | undefined =>
+    sort === "manual" && !unreadOnly ? { ids: list.map((c) => c.id), apply: (next) => void controller.reorderSection(target, next) } : undefined;
   // M24: offer to make my times until I have one.
   const hasMyTimes = !!me && channels.some((c) => c.times_owner_id === me.id);
   // M26: the default sections fold up on this device (my own sections fold on all of them, via the server).
@@ -99,8 +110,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // A folded section still shows what is unread and the open conversation (Slack). The others stay in the list, folded
   // away (.fold-row), so they slide shut and open rather than jump (testers, 2026-09-29).
   // `keep` names more rows a folded section still shows (Times: my own times).
-  const shown = (rows: ChannelState[], collapsed: boolean, keep?: (c: ChannelState) => boolean) =>
-    rows.map((c) => item(c, collapsed && c.id !== currentId && !hasUnread(c, me?.id ?? null) && !keep?.(c)));
+  const shown = (rows: ChannelState[], collapsed: boolean, keep?: (c: ChannelState) => boolean, order?: Reorder) =>
+    rows.map((c) => item(c, collapsed && c.id !== currentId && !hasUnread(c, me?.id ?? null) && !keep?.(c), order));
   // Times folded: 「フィード」 and my own times stay within reach (the others fold away); nothing extra without my times.
   const isMyTimes = (c: ChannelState) => !!me && c.times_owner_id === me.id;
   const timesFolded = folded.has("times");
@@ -122,7 +133,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // M111: the menu items I chose to show, in my order (UserMe.nav_items; null = all, the default order).
   const navKeys = sidebarNavKeys(me?.nav_items);
 
-  const item = (channel: ChannelState, folded = false) => {
+  const item = (channel: ChannelState, folded = false, order?: Reorder) => {
     const muted = isMutedChannel(channel);
     const unread = hasUnread(channel, me?.id ?? null) && channel.id !== currentId;
     // M24: someone else's times with new posts but no mention: not bold, a faint dot (SYNC_PROTOCOL.md §10.5).
@@ -132,7 +143,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     // A DM's avatar is the other person's; my own notes (a DM with only me) show mine.
     const other = isDmChannel(channel) ? ((channel.dm_user_ids ?? []).find((id) => id !== me?.id) ?? me?.id) : undefined;
     return (
-      <li key={channel.id} className={cn("fold-row", folded && "folded")} aria-hidden={folded || undefined} inert={folded}>
+      <ReorderRow key={channel.id} id={channel.id} order={order} folded={folded}>
         <div className="fold-inner">
         <ChannelContextMenu controller={controller} channel={channel}>
         <button
@@ -142,6 +153,10 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           onDragStart={(event) => {
             event.dataTransfer.setData(CHANNEL_DRAG, channel.id);
             event.dataTransfer.effectAllowed = "move";
+            draggedChannel = channel.id;
+          }}
+          onDragEnd={() => {
+            draggedChannel = null;
           }}
           onClick={() => onOpen(channel.id)}
           title={channelTitle(channel, controller)}
@@ -171,7 +186,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         </button>
         </ChannelContextMenu>
         </div>
-      </li>
+      </ReorderRow>
     );
   };
 
@@ -457,8 +472,9 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
       )}
 
       {sections.favorites.length > 0 && (
-        <Section title={t("sidebar.favorites")} collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")} onDropChannel={(id) => { if (!store.isFavorite(id)) void controller.toggleFavorite(id); }}>
-          <ul className="space-y-px">{shown(sections.favorites, folded.has("favorites"))}</ul>
+        <Section title={t("sidebar.favorites")} collapsed={folded.has("favorites")} onToggle={() => toggleFolded("favorites")} onDropChannel={(id) => { if (!store.isFavorite(id)) void controller.toggleFavorite(id); }}
+          action={sortMenu("favorites", t("sidebar.favorites"), sections.favorites)}>
+          <ul className="space-y-px">{shown(sections.favorites, folded.has("favorites"), undefined, reorder({ default: "favorites" }, sections.favorites, defaultSortOf("favorites")))}</ul>
         </Section>
       )}
       {sections.custom.map(({ section, channels: members }, index) => (
@@ -471,9 +487,9 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           onDropChannel={(id) => { if (!section.channel_ids.includes(id)) void controller.moveToSection(id, section.id); }}
           sectionId={section.id}
           onDropSection={(dragged, after) => dropSection(dragged, index, after)}
-          action={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} />}
+          action={<SectionHeaderMenu controller={controller} section={section} index={index} count={sections.custom.length} shownIds={ids(members)} />}
         >
-          <ul className="space-y-px">{shown(members, section.collapsed)}</ul>
+          <ul className="space-y-px">{shown(members, section.collapsed, undefined, reorder({ section: section.id }, members, section.sort))}</ul>
           {members.length === 0 && !unreadOnly && !section.collapsed && <Hint>{t("sidebar.sectionEmptyHint")}</Hint>}
         </Section>
       ))}
@@ -502,10 +518,11 @@ collapsed={folded.has("channels")}
                 <Plus size={14} />
               </IconButton>
             )}
+            {sortMenu("channels", t("sidebar.channels"), sections.channels)}
           </span>
         }
       >
-        <ul className="space-y-px">{shown(sections.channels, folded.has("channels"))}</ul>
+        <ul className="space-y-px">{shown(sections.channels, folded.has("channels"), undefined, reorder({ default: "channels" }, sections.channels, defaultSortOf("channels")))}</ul>
         {sections.channels.length === 0 && <Hint>{unreadOnly ? t("sidebar.noUnreadChannels") : t("sidebar.noChannels")}</Hint>}
       </Section>
       {(sections.times.length > 0 || (onCreateTimes && !hasMyTimes && !controller.isGuest && !unreadOnly)) && (
@@ -570,6 +587,7 @@ collapsed={folded.has("dms")}
             <IconButton tone="sidebar" label={t("sidebar.newDmKey", { key: `${modKey()}+Shift+K` })} className="h-6 w-6" onClick={onNewDm}>
               <Plus size={14} />
             </IconButton>
+            {sortMenu("dms", t("sidebar.dms"), sections.dms)}
           </span>
         }
       >
@@ -590,7 +608,7 @@ collapsed={folded.has("dms")}
               </button>
             </li>
           )}
-          {shown(sections.dms, folded.has("dms"))}
+          {shown(sections.dms, folded.has("dms"), undefined, reorder({ default: "dms" }, sections.dms, defaultSortOf("dms")))}
         </ul>
         {sections.dms.length === 0 && !selfPlaceholder && <Hint>{unreadOnly ? t("sidebar.noUnreadDms") : t("sidebar.dmsEmptyHint")}</Hint>}
       </Section>
@@ -653,6 +671,69 @@ export function useFoldedDefaults(): [ReadonlySet<string>, (key: string) => void
       return next;
     });
   return [folded, toggle];
+}
+
+/** A section in 「手動」: its conversations in order, and what a drop within it does with the new order. */
+interface Reorder {
+  ids: string[];
+  apply: (ids: string[]) => void;
+}
+
+/** The conversation row being dragged (a dragover cannot read the drag's data, only its types). */
+let draggedChannel: string | null = null;
+
+/** Where `dragged` lands when dropped before or after `target` in `ids` (unchanged: null). */
+export function reorderedIds(ids: readonly string[], dragged: string, target: string, after: boolean): string[] | null {
+  if (dragged === target || !ids.includes(dragged) || !ids.includes(target)) return null;
+  const rest = ids.filter((id) => id !== dragged);
+  rest.splice(rest.indexOf(target) + (after ? 1 : 0), 0, dragged);
+  return rest.every((id, index) => id === ids[index]) ? null : rest;
+}
+
+/**
+ * A sidebar row. In a 「手動」 section another row of the same section dragged over it shows a line above or below
+ * (by the pointer's half) and lands there; a row from elsewhere falls through to the section (moving it in).
+ */
+function ReorderRow({ id, order, folded, children }: { id: string; order?: Reorder; folded: boolean; children: ReactNode }) {
+  const [edge, setEdge] = useState<"before" | "after" | null>(null);
+  const mine = () => !!order && !!draggedChannel && draggedChannel !== id && order.ids.includes(draggedChannel);
+  const half = (event: React.DragEvent): "before" | "after" => {
+    const box = event.currentTarget.getBoundingClientRect();
+    return box.height > 0 && event.clientY > box.top + box.height / 2 ? "after" : "before";
+  };
+  return (
+    <li
+      className={cn(
+        "fold-row relative",
+        folded && "folded",
+        edge === "before" && "before:absolute before:inset-x-1 before:top-0 before:z-10 before:h-0.5 before:rounded-full before:bg-accent-solid",
+        edge === "after" && "after:absolute after:inset-x-1 after:bottom-0 after:z-10 after:h-0.5 after:rounded-full after:bg-accent-solid",
+      )}
+      data-drop-edge={edge ?? undefined}
+      aria-hidden={folded || undefined}
+      inert={folded}
+      onDragOver={order ? (event) => {
+        if (!mine()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "move";
+        const next = half(event);
+        if (edge !== next) setEdge(next);
+      } : undefined}
+      onDragLeave={order ? () => setEdge(null) : undefined}
+      onDrop={order ? (event) => {
+        setEdge(null);
+        if (!mine() || !draggedChannel) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const next = reorderedIds(order.ids, draggedChannel, id, half(event) === "after");
+        draggedChannel = null;
+        if (next) order.apply(next);
+      } : undefined}
+    >
+      {children}
+    </li>
+  );
 }
 
 /** The data type a dragged conversation row carries (M26); files dragged in from outside have none of it. */
