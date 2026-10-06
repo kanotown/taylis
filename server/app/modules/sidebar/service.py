@@ -6,6 +6,10 @@ Every change fans out to my own devices as `sidebar.updated` carrying the whole 
 
 2026-10-07 (DATA_MODEL.md sidebar_sections 「並べ替え」): every section, the default ones too, has a
 sort (name / recent / manual) and a hand-made order; the clients sort by them.
+
+2026-10-07 (「1 つの会話は 1 か所」): a conversation is in お気に入り or in one of my sections,
+never both (Slack). Putting a starred one in a section unstars it (favorite.updated); starring
+one takes it out of its section (the hook below, sidebar.updated).
 """
 
 import uuid
@@ -16,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import conflict, not_found
 from app.events.outbox import write_outbox
 from app.modules.channels import service as channels
+from app.modules.favorites import service as favorites
 from app.modules.sidebar import repository as repo
 from app.modules.sidebar.events import SIDEBAR_UPDATED, SidebarUpdatedData
 from app.modules.sidebar.models import SidebarDefaultSection, SidebarSection
@@ -78,7 +83,7 @@ async def _renumber(sections: list[SidebarSection]) -> None:
         section.position = index
 
 
-async def _commit(db: AsyncSession, actor: User) -> list[SidebarSectionOut]:
+async def _announce(db: AsyncSession, actor: User) -> list[SidebarSectionOut]:
     await db.flush()
     out = await list_for(db, actor.id)
     defaults = await list_defaults(db, actor.id)
@@ -89,8 +94,33 @@ async def _commit(db: AsyncSession, actor: User) -> list[SidebarSectionOut]:
         audience_id=actor.id,
         payload=SidebarUpdatedData(sections=out, defaults=defaults).model_dump(mode="json"),
     )
+    return out
+
+
+async def _commit(db: AsyncSession, actor: User) -> list[SidebarSectionOut]:
+    out = await _announce(db, actor)
     await db.commit()
     return out
+
+
+async def _place(
+    db: AsyncSession, actor: User, channel_id: uuid.UUID, section_id: uuid.UUID
+) -> None:
+    """Into the section (out of any other of mine) and out of お気に入り: one place per
+    conversation."""
+    await channels.require_member(db, actor.id, channel_id)
+    await repo.place(db, actor.id, channel_id, section_id)
+    await favorites.unstar_in_tx(db, actor.id, channel_id)
+
+
+async def unplace_when_starred(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> None:
+    """Registered with favorites: a starred conversation leaves my section (sidebar.updated when it
+    was in one). The favorites transaction commits."""
+    if await repo.unplace(db, actor.id, channel_id):
+        await _announce(db, actor)
+
+
+favorites.set_starred_hook(unplace_when_starred)
 
 
 async def _require(db: AsyncSession, actor: User, section_id: uuid.UUID) -> SidebarSection:
@@ -111,10 +141,10 @@ async def create(db: AsyncSession, actor: User, data: SectionCreate) -> list[Sid
     )
     db.add(section)
     await db.flush()
-    # M26: the conversations chosen in the create form move here (only ones I am in).
+    # M26: the conversations chosen in the create form move here (only ones I am in), out of
+    # another section of mine or お気に入り.
     for channel_id in dict.fromkeys(data.channel_ids):
-        await channels.require_member(db, actor.id, channel_id)
-        await repo.place(db, actor.id, channel_id, section.id)
+        await _place(db, actor, channel_id, section.id)
     return await _commit(db, actor)
 
 
@@ -152,8 +182,7 @@ async def place(
     db: AsyncSession, actor: User, section_id: uuid.UUID, channel_id: uuid.UUID
 ) -> list[SidebarSectionOut]:
     section = await _require(db, actor, section_id)
-    await channels.require_member(db, actor.id, channel_id)
-    await repo.place(db, actor.id, channel_id, section.id)
+    await _place(db, actor, channel_id, section.id)
     return await _commit(db, actor)
 
 

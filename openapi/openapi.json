@@ -22245,7 +22245,7 @@
         ]
       },
       "put": {
-        "description": "Star a channel I belong to (M12a); 201 when it was not starred yet.",
+        "description": "Star a channel I belong to (M12a); 201 when it was not starred yet. It leaves my sidebar\nsection, if it was in one (sidebar.updated): one place per conversation.",
         "operationId": "add_favorite_api_v1_channels__channel_id__favorite_put",
         "parameters": [
           {
@@ -28698,7 +28698,7 @@
         ]
       },
       "post": {
-        "description": "M14f: a new section at the end (at most 20).",
+        "description": "M14f: a new section at the end (at most 20). M26: the conversations in `channel_ids` move\nhere from another section of mine or from お気に入り (they are unstarred: one place per\nconversation).",
         "operationId": "create_section_api_v1_sidebar_sections_post",
         "requestBody": {
           "content": {
@@ -28863,7 +28863,7 @@
     },
     "/api/v1/sidebar/sections/{section_id}/channels/{channel_id}": {
       "put": {
-        "description": "Put a conversation I belong to in the section (moving it out of any other).",
+        "description": "Put a conversation I belong to in the section (moving it out of any other). A starred one\nis unstarred (favorite.updated): one place per conversation.",
         "operationId": "place_channel_api_v1_sidebar_sections__section_id__channels__channel_id__put",
         "parameters": [
           {

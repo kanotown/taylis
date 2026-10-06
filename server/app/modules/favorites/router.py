@@ -14,7 +14,8 @@ router = APIRouter(tags=["favorites"])
 async def add_favorite(
     channel_id: UUID, user: CurrentUser, db: Db, response: Response
 ) -> FavoriteStateOut:
-    """Star a channel I belong to (M12a); 201 when it was not starred yet."""
+    """Star a channel I belong to (M12a); 201 when it was not starred yet. It leaves my sidebar
+    section, if it was in one (sidebar.updated): one place per conversation."""
     state, changed = await service.set_favorite(db, user, channel_id, favorite=True)
     response.status_code = 201 if changed else 200
     return state
