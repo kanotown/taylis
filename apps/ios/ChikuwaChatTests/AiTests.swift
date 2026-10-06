@@ -210,8 +210,8 @@ final class AiRulesTests: XCTestCase {
         let bot = UserPublic(id: "u-bot", username: "ai-chikuwa", displayName: "ちくわ", role: "bot", deactivatedAt: nil, createdAt: "", updatedAt: "")
         let hook = UserPublic(id: "u-hook", username: "ai-hook", displayName: "Webhook", role: "bot", deactivatedAt: nil, createdAt: "", updatedAt: "")
         let found = Mentions.candidates("ai", users: [bot, hook], aiBotIds: ["u-bot"])
-        XCTAssertEqual(found.map(\.kind), ["ai", "user"])
-        XCTAssertEqual(Mentions.candidates("ai", users: [bot]).map(\.kind), ["user"])
+        XCTAssertEqual(found.map(\.kind), ["ai"])  // AI.md §2.1: the webhook's bot is not offered
+        XCTAssertEqual(found.map(\.username), ["ai-chikuwa"])
     }
 }
 

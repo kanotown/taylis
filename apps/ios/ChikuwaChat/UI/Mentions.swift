@@ -46,14 +46,24 @@ enum Mentions {
     /// The `@prefix` being typed at the end of `text`, or nil.
     static func query(_ text: String) -> String? { groups(queryPattern, text)?[2] }
 
-    static func candidates(_ query: String, users: some Collection<UserPublic>, groups: [GroupOut] = [], aiBotIds: Set<String> = [],
+    /// AI.md §2.1 (2026-10-06): who the suggestions offer. People (not deactivated) and AI bots only: other bots (incoming
+    /// webhooks, feeds, reservations, recurring posts, imported ones) answer nothing. `aiBotIds` is GET /ai/status's
+    /// `agents[].bot_user_id` once it was read (then only those, a stopped or deleted AI bot drops out), nil before
+    /// (then `bot_kind == "ai"` decides).
+    static func offered(_ user: UserPublic, aiBotIds: Set<String>?) -> Bool {
+        guard user.deactivatedAt == nil else { return false }
+        guard user.role == "bot" else { return true }
+        return aiBotIds.map { $0.contains(user.id) } ?? (user.botKind == "ai")
+    }
+
+    static func candidates(_ query: String, users: some Collection<UserPublic>, groups: [GroupOut] = [], aiBotIds: Set<String>? = nil,
                            limit: Int = 6) -> [Candidate] {
         let q = query.lowercased()
         let people = users
-            .filter { $0.deactivatedAt == nil }
+            .filter { offered($0, aiBotIds: aiBotIds) }
             .filter { $0.username.lowercased().hasPrefix(q) || $0.displayName.lowercased().contains(q) }
             .sorted { $0.username < $1.username }
-            .map { Candidate(username: $0.username, label: $0.displayName, kind: aiBotIds.contains($0.id) ? "ai" : "user") }
+            .map { Candidate(username: $0.username, label: $0.displayName, kind: $0.role == "bot" ? "ai" : "user") }
         let teams = groups
             .filter { $0.name.lowercased().hasPrefix(q) || ($0.description ?? "").lowercased().contains(q) }
             .sorted { $0.name < $1.name }
