@@ -38,7 +38,8 @@ server/
   Dockerfile             uv ベース。起動時に alembic upgrade head を実行 (RUN_MIGRATIONS=false で抑止)
   app/
     main.py              create_app() (composition root)。uvicorn は --factory で起動
-    cli.py               create-admin, create-user, push-test, export-openapi
+    cli.py               create-admin, create-user, push-test, seed-demo, export-openapi ほか
+    demo/                seed-demo の架空の研究室 (content.py) と書き込み (seed.py)。infra/demo/README.md
     core/                settings, db, base, ids (UUIDv7), security, errors, logging, ratelimit, time, health
     models_registry.py   全モジュールの models を集約 (Alembic 用)
     events/              envelope, bus (Protocol), in_memory (InMemoryEventBus), outbox (write_outbox, OutboxRelay, purge), models

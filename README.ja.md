@@ -58,6 +58,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app python 
 バックアップと復元、プッシュ通知（APNs / FCM）の設定、既存のリバースプロキシの後ろでの運用、自動デプロイ、
 取り込みについては [infra/README.md](infra/README.md) に書いてあります。
 
+まず架空のデータで試すなら、[infra/demo/README.md](infra/demo/README.md) の手順で手元にデモのワークスペース
+（「Taylis デモ研究室」、`python -m app.cli seed-demo`）を立てられます。
+
 ## アプリ
 
 | アプリ | 技術 | 備考 |

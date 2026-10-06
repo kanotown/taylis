@@ -129,6 +129,7 @@ nav:
   - サーバーを立てる:
       - self-hosting/index.md
       - クイックスタート: self-hosting/quickstart.md
+      - デモを試す: self-hosting/demo.md
       - 既存のリバースプロキシの後ろで: self-hosting/reverse-proxy.md
       - プッシュ通知 (APNs / FCM): self-hosting/push.md
       - 文書のプレビュー: self-hosting/previews.md

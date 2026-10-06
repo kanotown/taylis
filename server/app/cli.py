@@ -758,6 +758,59 @@ def cmd_import_emoji_presets(args: argparse.Namespace) -> int:
     return asyncio.run(_import_emoji_presets(directory, args.restore))
 
 
+def _write_private(path: str, body: str) -> Path:
+    """Write a file only its owner can read (created with mode 600, never world-readable)."""
+    out = Path(path)
+    fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(body + "\n")
+    out.chmod(0o600)
+    return out
+
+
+async def _seed_demo(args: argparse.Namespace) -> int:
+    from app.core.settings import get_settings
+    from app.demo.content import WORKSPACE_NAME
+    from app.demo.seed import DemoSeedError, seed_demo
+
+    try:
+        review_password = read_secret_file(args.review_password_file)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    review_password = review_password or os.environ.get("DEMO_REVIEW_PASSWORD") or None
+    try:
+        outcome = await seed_demo(
+            get_settings(),
+            reset=args.reset,
+            i_know=args.i_know,
+            review_username=_validate_username(args.review_user),
+            review_password=review_password,
+        )
+    except DemoSeedError as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    if outcome.status == "already_seeded":
+        note = " (review password updated)" if review_password else ""
+        print(f"the demo lab is already in this database{note}; --reset seeds it again")
+        return 0
+    print(
+        f"seeded {WORKSPACE_NAME!r}: {outcome.messages} posts"
+        + (" after reset" if args.reset else "")
+    )
+    lines = [f"{username}\t{password}" for username, password in outcome.credentials.items()]
+    if args.credentials_out:
+        out = _write_private(args.credentials_out, "username\tpassword\n" + "\n".join(lines))
+        print(f"passwords of the {len(lines)} new accounts written to {out}")
+    else:
+        print("passwords (shown once; tanaka is the administrator):")
+        for line in lines:
+            print(f"  {line}")
+    return 0
+
+
+def cmd_seed_demo(args: argparse.Namespace) -> int:
+    return asyncio.run(_seed_demo(args))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -920,6 +973,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="bring back a preset pack (or its emoji) an administrator deleted (repeatable)",
     )
     presets.set_defaults(func=cmd_import_emoji_presets)
+
+    demo = sub.add_parser(
+        "seed-demo",
+        help="write the fictional demo lab (Taylis デモ研究室); idempotent, --reset to start over",
+    )
+    demo.add_argument(
+        "--reset",
+        action="store_true",
+        help="delete ALL data first (only when WORKSPACE_NAME is the demo's name, or --i-know)",
+    )
+    demo.add_argument(
+        "--i-know", action="store_true", help="allow --reset / seeding whatever WORKSPACE_NAME is"
+    )
+    demo.add_argument("--review-user", default="review", help="the reviewers' account (member)")
+    demo.add_argument(
+        "--review-password-file",
+        help="file holding the review account's password (else DEMO_REVIEW_PASSWORD, else random)",
+    )
+    demo.add_argument(
+        "--credentials-out", help="write the generated passwords to this file (mode 600)"
+    )
+    demo.set_defaults(func=cmd_seed_demo)
 
     export = sub.add_parser("export-openapi", help="write the OpenAPI document to openapi/")
     export.add_argument("--out", default=str(REPO_ROOT / "openapi" / "openapi.json"))
