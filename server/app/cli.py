@@ -811,6 +811,36 @@ def cmd_seed_demo(args: argparse.Namespace) -> int:
     return asyncio.run(_seed_demo(args))
 
 
+async def _wiki_acl(rebuild: bool) -> int:
+    """M120 (docs/WIKI.md §4.6): compare wiki_effective_grants (and the pages' paths) with a
+    recomputation from the roots; --rebuild rewrites the table first."""
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.wiki import access
+
+    settings = get_settings()
+    db = Database(settings.database_url)
+    try:
+        async with db.session_factory() as session:
+            if rebuild:
+                pages = await access.rebuild(session)
+                await session.commit()
+                print(f"rebuilt the effective access of {pages} page(s)")
+            problems = await access.verify(session)
+        for problem in problems[:100]:
+            print(problem)
+        if len(problems) > 100:
+            print(f"… and {len(problems) - 100} more")
+        print(f"{len(problems)} difference(s)")
+        return 1 if problems else 0
+    finally:
+        await db.dispose()
+
+
+def cmd_wiki_acl(args: argparse.Namespace) -> int:
+    return asyncio.run(_wiki_acl(args.rebuild))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -995,6 +1025,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--credentials-out", help="write the generated passwords to this file (mode 600)"
     )
     demo.set_defaults(func=cmd_seed_demo)
+
+    acl = sub.add_parser(
+        "wiki-acl", help="check the wiki's effective access against a full recomputation"
+    )
+    mode = acl.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--verify", action="store_true", help="report differences (exit 1 if any)")
+    mode.add_argument("--rebuild", action="store_true", help="recompute everything, then verify")
+    acl.set_defaults(func=cmd_wiki_acl)
 
     export = sub.add_parser("export-openapi", help="write the OpenAPI document to openapi/")
     export.add_argument("--out", default=str(REPO_ROOT / "openapi" / "openapi.json"))

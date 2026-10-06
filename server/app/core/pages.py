@@ -1,7 +1,8 @@
-"""Pages outside the API: the permalink landing pages for messages (M12b) and canvases (M42), and
-the invite page (M12h).
+"""Pages outside the API: the permalink landing pages for messages (M12b), canvases (M42) and wiki
+pages (M120), and the invite page (M12h).
 
-A permalink is `<server>/m/<message_id>` or `<server>/c/<canvas_id>`. The apps recognise it in
+A permalink is `<server>/m/<message_id>`, `<server>/c/<canvas_id>` or `<server>/p/<page_id>`
+(a wiki page: GET /api/v1/wiki/pages/{id}, 404 for whoever cannot read it). The apps recognise it in
 message bodies and open the message or canvas in place, reading it through the API, which checks
 the membership (a canvas: GET /api/v1/canvases/{id}, 403 / 404 for others). A browser lands here
 and learns nothing about the target (no auth, no lookup, not even whether it exists), so a link
@@ -45,21 +46,23 @@ p {{ margin: .25rem 0; color: #5b6172; }}
 <h1>Taylis の{kind}</h1>
 <p>このリンクは Taylis の{kind}を指しています。</p>
 <p>デスクトップ / iPhone / Android のアプリでこのリンクを開くと、
-該当の{kind}が表示されます (見られるのは、その会話のメンバーだけです)。</p>
+該当の{kind}が表示されます ({who})。</p>
 </main>
 </body>
 </html>
 """
 
 
-def _landing(raw_id: str, kind: str) -> HTMLResponse:
+def _landing(
+    raw_id: str, kind: str, who: str = "見られるのは、その会話のメンバーだけです"
+) -> HTMLResponse:
     """The id is only validated, never looked up."""
     try:
         uuid.UUID(raw_id)
     except ValueError as exc:
         raise not_found("not_found", "No such page") from exc
     return HTMLResponse(
-        _PAGE.format(kind=kind),
+        _PAGE.format(kind=kind, who=who),
         headers={"X-Robots-Tag": "noindex", "Cache-Control": "no-store"},
     )
 
@@ -74,6 +77,13 @@ async def message_permalink(message_id: str) -> HTMLResponse:
 async def canvas_permalink(canvas_id: str) -> HTMLResponse:
     """The landing page for a canvas permalink (M42, CANVAS.md §4.13)."""
     return _landing(canvas_id, "キャンバス")
+
+
+@router.get("/p/{page_id}", response_class=HTMLResponse, include_in_schema=False)
+async def page_permalink(page_id: str) -> HTMLResponse:
+    """The landing page for a wiki page's permalink (M120, docs/WIKI.md §9.3): nothing about the
+    page, not even whether it exists."""
+    return _landing(page_id, "ドキュメント", "見られるのは、そのページを共有されている人だけです")
 
 
 _INVITE_TOKEN = re.compile(r"^[A-Za-z0-9_-]{20,128}$")

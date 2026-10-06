@@ -6,7 +6,7 @@ import re
 import shutil
 import tempfile
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import IO
 from urllib.parse import quote
@@ -41,6 +41,21 @@ log = logging.getLogger("app.attachments")
 MAX_ATTACHMENTS_PER_MESSAGE = 10
 # CANVAS.md §4.3: images (and files) bound to one canvas.
 MAX_ATTACHMENTS_PER_CANVAS = 100
+# docs/WIKI.md §4.7: images and files bound to one wiki page (an imported Notion page may have
+# many).
+MAX_ATTACHMENTS_PER_PAGE = 200
+
+# M120: whether someone can read a wiki page (wiki.access, handed over by main.py: the wiki
+# depends on attachments, not the other way round). Unset: a page's file is never served.
+PageReadable = Callable[[AsyncSession, User, uuid.UUID], Awaitable[bool]]
+_page_readable: PageReadable | None = None
+
+
+def set_page_access_check(check: PageReadable | None) -> None:
+    global _page_readable
+    _page_readable = check
+
+
 INLINE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 READ_CHUNK = 1024 * 1024
 # An upload larger than this is spooled to a temporary file rather than held in memory.
@@ -255,6 +270,41 @@ async def bind_to_canvas_in_tx(
     return rows
 
 
+async def bind_to_page_in_tx(
+    db: AsyncSession, actor_id: uuid.UUID, *, page_id: uuid.UUID, attachment_ids: list[uuid.UUID]
+) -> list[Attachment]:
+    """Bind the actor's own pending uploads that a wiki page's body now refers to (M120, as for
+    a canvas: ids that are not the actor's pending uploads are skipped). Past
+    MAX_ATTACHMENTS_PER_PAGE the save is refused (400 too_many_page_files)."""
+    if not attachment_ids:
+        return []
+    rows = [
+        a
+        for a in await repo.get_many(db, list(dict.fromkeys(attachment_ids)))
+        if a.uploader_id == actor_id and a.status == "pending"
+    ]
+    if not rows:
+        return []
+    if await repo.count_for_page(db, page_id) + len(rows) > MAX_ATTACHMENTS_PER_PAGE:
+        raise bad_request(
+            "too_many_page_files",
+            f"A page holds at most {MAX_ATTACHMENTS_PER_PAGE} images and files",
+        )
+    now = utcnow()
+    for attachment in rows:
+        attachment.page_id = page_id
+        attachment.status = "attached"
+        attachment.attached_at = now
+    await db.flush()
+    return rows
+
+
+async def mark_pages_deleted_in_tx(db: AsyncSession, page_ids: list[uuid.UUID]) -> int:
+    """The wiki pages are purged: their images and files go with them."""
+    rows = await repo.for_pages(db, page_ids)
+    return await mark_ids_deleted_in_tx(db, [a.id for a in rows])
+
+
 async def mark_ids_deleted_in_tx(db: AsyncSession, attachment_ids: list[uuid.UUID]) -> int:
     """Gone at once (404); the GC loop removes the bytes and then the rows."""
     now = utcnow()
@@ -387,13 +437,20 @@ async def list_files(
 async def get_for_access(db: AsyncSession, actor: User, attachment_id: uuid.UUID) -> Attachment:
     """SECURITY.md §4: attached → channel members (and in a public channel anyone but a guest,
     who reads it before joining: M27), pending → uploader only, deleted → 404. A canvas's image
-    (M42) → the conversation's members only, like the canvas itself (CANVAS.md §4.7)."""
+    (M42) → the conversation's members only, like the canvas itself (CANVAS.md §4.7). A wiki page's
+    file (M120) → whoever can read the page."""
     attachment = await repo.get(db, attachment_id)
     if attachment is None or attachment.status == "deleted":
         raise not_found("attachment_not_found", "Attachment not found")
     if attachment.status == "pending":
         if attachment.uploader_id != actor.id:
             raise forbidden("not_uploader", "Only the uploader can access a pending attachment")
+        return attachment
+    if attachment.page_id is not None:
+        # M120 (docs/WIKI.md §4.7): whoever can read the page (and it is not in the trash); for
+        # anyone else the file does not exist, like the page.
+        if _page_readable is None or not await _page_readable(db, actor, attachment.page_id):
+            raise not_found("attachment_not_found", "Attachment not found")
         return attachment
     if attachment.channel_id is None:
         raise not_found("attachment_not_found", "Attachment not found")

@@ -26,7 +26,8 @@ from app.events.models import OutboxEvent
 log = logging.getLogger("app.outbox")
 
 NOTIFY_CHANNEL = "outbox"
-AudienceType = Literal["channel", "user", "session", "all"]
+# "page" (M120, docs/WIKI.md §10): the people who can read a wiki page when the relay sends it.
+AudienceType = Literal["channel", "user", "session", "all", "page"]
 
 
 async def write_outbox(

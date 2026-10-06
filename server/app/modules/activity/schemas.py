@@ -6,12 +6,21 @@ from pydantic import BaseModel
 
 from app.modules.messages.schemas import MessageOut
 
-ActivityKind = Literal["mention", "reaction", "thread_reply", "canvas_mention", "reservation"]
+ActivityKind = Literal[
+    "mention",
+    "reaction",
+    "thread_reply",
+    "canvas_mention",
+    "reservation",
+    "page_mention",
+    "page_shared",
+]
 ActivityFilter = Literal["all", "mentions", "reactions", "threads"]
 # M76 (CANVAS.md §20): canvas_mention items only go to clients that name the kind in `include`
 # (clients before them cannot read an item without `message`). Unknown `include` values are
 # ignored, so a newer client may name kinds an older server does not have.
 # M112 (RESERVATIONS.md §5): reservation items likewise only with `include=reservation`.
+# M120 (docs/WIKI.md §9.3): page_mention / page_shared likewise, by name each.
 
 
 class ActivityCanvas(BaseModel):
@@ -27,6 +36,23 @@ class ActivityCanvas(BaseModel):
     excerpt: str
     # The version that added the (latest) mention.
     rev_id: UUID
+
+
+class ActivityPage(BaseModel):
+    """A page_mention / page_shared item's page (M120): it opens the page. Listed only while I can
+    read the page."""
+
+    item_id: UUID
+    page_id: UUID
+    # The page's title and icon now.
+    title: str
+    icon: str | None
+    # page_mention: the line around the mention (as for a canvas), else "".
+    excerpt: str
+    # page_mention: the version that added the (latest) mention.
+    rev_id: UUID | None
+    # page_shared: the level I was given.
+    level: Literal["view", "edit", "full"] | None
 
 
 class ActivityReservation(BaseModel):
@@ -59,6 +85,8 @@ class ActivityItem(BaseModel):
     canvas: ActivityCanvas | None = None
     # reservation only (M112): the notice.
     reservation: ActivityReservation | None = None
+    # page_mention / page_shared only (M120): the page.
+    page: ActivityPage | None = None
     # Who did it: the sender, or everyone who reacted (not me).
     actor_ids: list[UUID]
     # A reaction item's emoji (the distinct ones on my message by others).
