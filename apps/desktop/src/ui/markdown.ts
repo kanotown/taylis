@@ -85,6 +85,12 @@ export type TableAlign = "left" | "center" | "right" | null;
 const INLINE =
   /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))/gu;
 const WITH_BLOCKS = new RegExp(`(\`\`\`([\\s\\S]*?)\`\`\`)|${INLINE.source}|(\\n)`, "gu");
+/**
+ * M121 (WIKI.md §2.3): the canvas dialect (canvases and Docs pages) also links `[label](page:<uuid>)` (a Docs page) and
+ * `[label](attachment:<uuid>)` (a file of the page). Messages keep showing these as text. Same groups as INLINE.
+ */
+const LINK_URL = "(https?:\\/\\/[^\\s)]+)\\)";
+const INLINE_CANVAS = new RegExp(INLINE.source.replace(LINK_URL, "(https?:\\/\\/[^\\s)]+|(?:page|attachment):[0-9a-fA-F-]{36})\\)"), "gu");
 const WORD_BEFORE = /[\p{L}\p{N}_]$/u;
 
 /**
@@ -129,8 +135,8 @@ export function tokenize(body: string): Token[] {
 }
 
 /** Inline tokens of one line (no fences, no newlines). */
-export function tokenizeInline(line: string): Token[] {
-  return scan(line, new RegExp(INLINE.source, "gu"), false);
+export function tokenizeInline(line: string, canvas = false): Token[] {
+  return scan(line, new RegExp((canvas ? INLINE_CANVAS : INLINE).source, "gu"), false);
 }
 
 function scan(body: string, pattern: RegExp, withBlocks: boolean): Token[] {
@@ -264,6 +270,7 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
   const blocks: Block[] = [];
   const ranges: BlockLines[] = [];
   const canvas = options.canvas === true;
+  const inl = (text: string) => tokenizeInline(text, canvas);
   // M80 (CANVAS.md §22): a canvas's hidden task markers are never shown (each line keeps its place).
   const lines = body.replace(/\r\n?/g, "\n").split("\n").map((line) => (canvas ? stripTaskMarkers(line) : line));
   let i = 0;
@@ -306,7 +313,7 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
     const heading = HEADING.exec(line);
     if (heading) {
       i++;
-      push({ kind: "heading", level: (heading[1] ?? "#").length as 1 | 2 | 3, tokens: tokenizeInline(heading[2] ?? ""), ...(canvas ? { line: start } : {}) });
+      push({ kind: "heading", level: (heading[1] ?? "#").length as 1 | 2 | 3, tokens: inl(heading[2] ?? ""), ...(canvas ? { line: start } : {}) });
       continue;
     }
     if (isTask(i)) {
@@ -314,7 +321,7 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
       while (i < lines.length && isTask(i)) {
         const m = TASK_LINE.exec(lines[i] ?? "")!;
         const indent = (m[1] ?? "").replace(/\t/g, "  ").length;
-        items.push({ level: indent >= 2 ? 1 : 0, done: m[2] !== " ", tokens: tokenizeInline(m[3] ?? ""), line: i });
+        items.push({ level: indent >= 2 ? 1 : 0, done: m[2] !== " ", tokens: inl(m[3] ?? ""), line: i });
         i++;
       }
       push({ kind: "task", items });
@@ -337,7 +344,7 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
       while (i < lines.length) {
         const q = QUOTE.exec(lines[i] ?? "");
         if (!q) break;
-        quoted.push(tokenizeInline(q[1] ?? ""));
+        quoted.push(inl(q[1] ?? ""));
         i++;
       }
       push({ kind: "quote", lines: quoted });
@@ -350,10 +357,10 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
       i += 2;
       while (i < lines.length && (lines[i] ?? "").includes("|") && (lines[i] ?? "").trim() !== "") {
         const cells = splitTableRow(lines[i] ?? "");
-        rows.push(header.map((_, c) => tokenizeInline(cells[c] ?? ""))); // short rows pad, long rows are cut (GFM)
+        rows.push(header.map((_, c) => inl(cells[c] ?? ""))); // short rows pad, long rows are cut (GFM)
         i++;
       }
-      push({ kind: "table", align, header: header.map((cell) => tokenizeInline(cell)), rows });
+      push({ kind: "table", align, header: header.map((cell) => inl(cell)), rows });
       continue;
     }
     if (listLine(line)) {
@@ -365,7 +372,7 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
         i++;
       }
       // A top-level item of the other kind starts a new list (as in CommonMark).
-      const items = listItems(rows);
+      const items = listItems(rows, canvas);
       let from = 0;
       for (let k = 1; k <= items.length; k++) {
         if (k < items.length && !(items[k]!.level === 0 && items[k]!.ordered !== items[from]!.ordered)) continue;
@@ -381,7 +388,7 @@ export function parseBlocksWithLines(body: string, options: ParseOptions = {}): 
     while (i < lines.length) {
       const current = lines[i] ?? "";
       if (paragraph.length > 0 && (opensFence(i) || opensTable(i) || HEADING.test(current) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current) || isImage(i) || isRule(i) || mathBlockAt(lines, i))) break;
-      paragraph.push(tokenizeInline(current));
+      paragraph.push(inl(current));
       i++;
     }
     push({ kind: "paragraph", lines: paragraph });
@@ -418,7 +425,7 @@ export const LIST_LEVELS = 3;
  * others say ("1. 1. 1." is 1, 2, 3); a run of the other kind (bullets among numbers) starts again. Level 1 numbers are
  * 1. 2. 3., level 2 a. b. c., level 3 i. ii. iii.; bullets • ◦ ▪.
  */
-function listItems(rows: readonly ListLine[]): ListItem[] {
+function listItems(rows: readonly ListLine[], canvas = false): ListItem[] {
   const indents: number[] = [];
   const counters: Array<{ ordered: boolean; next: number } | undefined> = [];
   return rows.map((row) => {
@@ -432,7 +439,7 @@ function listItems(rows: readonly ListLine[]): ListItem[] {
     const counter = counters[level];
     const number = !row.ordered ? 0 : counter?.ordered ? counter.next : row.written;
     counters[level] = { ordered: row.ordered, next: number + 1 };
-    return { level, ordered: row.ordered, number, marker: listMarker(row.ordered, level, number), tokens: tokenizeInline(row.text) };
+    return { level, ordered: row.ordered, number, marker: listMarker(row.ordered, level, number), tokens: tokenizeInline(row.text, canvas) };
   });
 }
 
