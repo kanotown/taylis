@@ -164,6 +164,8 @@ fun MainScreen(controller: AppController) {
     var sectionMenuFor by remember { mutableStateOf<Pair<jp.chikuwachat.android.api.SidebarSectionOut, Int>?>(null) }
     // M26: making (no section) or editing one of my sections; the conversations a long-press 「新しいセクション…」 ticks.
     var sectionForm by remember { mutableStateOf<Pair<jp.chikuwachat.android.api.SidebarSectionOut?, List<String>>?>(null) }
+    // DATA_MODEL.md 「並べ替え」: the 「手動」 section the home shows with ↑ / ↓ (「順番を編集」).
+    var editingSection by remember { mutableStateOf<String?>(null) }
     // M26: the default sections folded on this device.
     var folded by remember { mutableStateOf(FoldedSections.read(controller.prefs)) }
     var bellOpen by remember { mutableStateOf(false) }
@@ -1087,6 +1089,8 @@ fun MainScreen(controller: AppController) {
                         onToggleSection = { section -> scope.launch { controller.setSectionCollapsed(section.id, !section.collapsed) } },
                         sectionIcon = { emoji -> SectionIcon(controller, emoji, version) },
                         selectedId = selection.takeIf { layout != PaneLayout.PHONE },
+                        editing = editingSection,
+                        onEditing = { editingSection = it },
                     )
                 }
             }
@@ -1224,6 +1228,13 @@ fun MainScreen(controller: AppController) {
             controller, section, index, controller.store.sidebarSections.size, version, onDismiss = { sectionMenuFor = null },
             onEdit = { sectionMenuFor = null; sectionForm = section to emptyList() },
             onNewSection = { sectionMenuFor = null; sectionForm = null to emptyList() },
+            shownIds = {
+                val store = controller.store
+                Channels.sections(store.channels.values, favorites = store.favorites, sidebar = store.sidebarSections, meId = store.me?.id,
+                    defaults = store.sidebarDefaults, title = { channelTitle(it, store) })
+                    .custom.firstOrNull { it.first.id == section.id }?.second?.map { it.id }.orEmpty()
+            },
+            onEditOrder = { sectionMenuFor = null; editingSection = "custom:" + section.id },
         )
     }
     sectionForm?.let { (section, preselected) -> SectionDialog(controller, section, preselected, version, onDismiss = { sectionForm = null }) }

@@ -40,6 +40,8 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Search
@@ -50,6 +52,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -127,15 +133,24 @@ fun HomeScreen(
     sectionIcon: @Composable (String?) -> Unit,
     /** T1: the conversation open beside the list (wide), marked. */
     selectedId: String? = null,
+    /**
+     * DATA_MODEL.md 「並べ替え」: the 「手動」 section being reordered with arrows ("favorites", "channels", "dms",
+     * "custom:<id>"), shown whole and unfolded; 「完了」 in its header ends it.
+     */
+    editing: String? = null,
+    onEditing: (String?) -> Unit = {},
 ) {
     val store = controller.store
     val meId = store.me?.id
     val isGuest = controller.isGuest
     val sections = remember(version, groupUnread, meId) {
-        Channels.sections(store.channels.values, groupUnread = groupUnread, favorites = store.favorites, sidebar = store.sidebarSections, meId = meId)
+        Channels.sections(store.channels.values, groupUnread = groupUnread, favorites = store.favorites, sidebar = store.sidebarSections, meId = meId,
+            defaults = store.sidebarDefaults, title = { channelTitle(it, store) })
     }
-    val dmsFolded = FoldedSections.DMS in folded
-    val dmSection = remember(sections, meId) { Channels.dmSection(sections.dms, meId) }
+    val dmsFolded = FoldedSections.DMS in folded && editing != "dms"
+    val dmSection = remember(sections, meId, editing) {
+        Channels.dmSection(sections.dms, meId, manual = store.defaultSort("dms").sort == "manual", limit = if (editing == "dms") Int.MAX_VALUE else Channels.HOME_DMS)
+    }
     // My own DM is always the first DM; until it exists, a placeholder row with my picture and name stands there (not
     // while the section is folded).
     val myName = remember(version, meId) { myDisplayName(store) }
@@ -165,6 +180,34 @@ fun HomeScreen(
     val row: @Composable LazyItemScope.(ChannelState) -> Unit = { channel ->
         HomeChannelRow(channel, controller, version, onClick = { onSelect(channel.id) }, onLongClick = { onChannelMenu(channel.id) }, modifier = Modifier.folding(this), selected = channel.id == selectedId)
     }
+    // 「順番を編集」: a row with ↑ / ↓ that move it one place within its section (TalkBack reads them with its name).
+    val reorderRow: @Composable LazyItemScope.(ChannelState, List<ChannelState>, AppController.SortTarget) -> Unit = { channel, rows, target ->
+        val ids = rows.map { it.id }
+        val index = ids.indexOf(channel.id)
+        val title = remember(version, channel) { channelTitle(channel, store).removePrefix("#") }
+        val move = { delta: Int ->
+            val next = ids.toMutableList().apply { add(index + delta, removeAt(index)) }
+            scope.launch { controller.reorderSection(target, next) }
+            Unit
+        }
+        Row(Modifier.folding(this).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { HomeChannelRow(channel, controller, version, onClick = {}, selected = false) }
+            IconButton(enabled = index > 0, onClick = { move(-1) }) { Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.you_screens_move_up, title)) }
+            IconButton(enabled = index < ids.size - 1, onClick = { move(1) }) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.you_screens_move_down, title)) }
+        }
+    }
+    val done: @Composable () -> Unit = { TextButton(onClick = { onEditing(null) }) { Text(stringResource(R.string.common_done_2)) } }
+    // A default section's 「…」 (並べ替え), or 「完了」 while it is being reordered.
+    val sortAction = { key: String, rows: List<ChannelState>, folded: Boolean ->
+        @Composable {
+            if (editing == key) done()
+            else DefaultSortMenu(
+                store.defaultSort(key).sort, canEdit = !folded && !groupUnread, title = key,
+                onSort = { sort -> scope.launch { controller.setSectionSort(AppController.SortTarget.Default(key), sort, rows.map { it.id }) } },
+                onEditOrder = { onEditing(key) },
+            )
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         JumpBar(onJump)
@@ -185,25 +228,32 @@ fun HomeScreen(
                     items(sections.unread, key = { "unread:" + it.id }) { row(it) }
                 }
                 if (sections.favorites.isNotEmpty()) {
-                    val fold = FoldedSections.FAVORITES in folded
-                    item(key = "header:favorites") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_star), fold) { onToggleFolded(FoldedSections.FAVORITES) } } }
-                    items(Channels.shown(sections.favorites, fold, meId), key = { "fav:" + it.id }) { row(it) }
+                    val fold = FoldedSections.FAVORITES in folded && editing != "favorites"
+                    item(key = "header:favorites") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_star), fold, action = sortAction("favorites", sections.favorites, fold)) { onToggleFolded(FoldedSections.FAVORITES) } } }
+                    if (editing == "favorites") items(sections.favorites, key = { "fav:" + it.id }) { reorderRow(it, sections.favorites, AppController.SortTarget.Default("favorites")) }
+                    else items(Channels.shown(sections.favorites, fold, meId), key = { "fav:" + it.id }) { row(it) }
                 }
                 sections.custom.forEachIndexed { index, (section, members) ->
                     item(key = "section:" + section.id) {
                         // Every row slides into place when a section above it folds (testers, 2026-09-29).
                         Box(Modifier.folding(this)) {
-                            CustomSectionHeader(section.name, section.collapsed, icon = { sectionIcon(section.emoji) }, onToggle = { onToggleSection(section) }, onMenu = { onSectionMenu(section, index) })
+                            CustomSectionHeader(section.name, section.collapsed, icon = { sectionIcon(section.emoji) }, onToggle = { onToggleSection(section) }, onMenu = { onSectionMenu(section, index) },
+                                done = if (editing == "custom:" + section.id) done else null)
                         }
                     }
-                    items(Channels.shown(members, section.collapsed, meId), key = { "sec:" + section.id + ":" + it.id }) { row(it) }
+                    if (editing == "custom:" + section.id) {
+                        items(members, key = { "sec:" + section.id + ":" + it.id }) { reorderRow(it, members, AppController.SortTarget.Section(section.id)) }
+                    } else {
+                        items(Channels.shown(members, section.collapsed, meId), key = { "sec:" + section.id + ":" + it.id }) { row(it) }
+                    }
                     if (members.isEmpty() && !section.collapsed && !groupUnread) {
                         item(key = "section-empty:" + section.id) { Box(Modifier.folding(this)) { EmptyHint(stringResource(R.string.home_screen_long_press_a_conversation_move_to)) } }
                     }
                 }
-                val channelsFolded = FoldedSections.CHANNELS in folded
-                item(key = "header:channels") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_channels), channelsFolded) { onToggleFolded(FoldedSections.CHANNELS) } } }
-                items(Channels.shown(sections.channels, channelsFolded, meId), key = { it.id }) { row(it) }
+                val channelsFolded = FoldedSections.CHANNELS in folded && editing != "channels"
+                item(key = "header:channels") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_channels), channelsFolded, action = sortAction("channels", sections.channels, channelsFolded)) { onToggleFolded(FoldedSections.CHANNELS) } } }
+                if (editing == "channels") items(sections.channels, key = { it.id }) { reorderRow(it, sections.channels, AppController.SortTarget.Default("channels")) }
+                else items(Channels.shown(sections.channels, channelsFolded, meId), key = { it.id }) { row(it) }
                 if (!channelsFolded) {
                     if (sections.channels.isEmpty() && !groupUnread) {
                         item(key = "channels-empty") { Box(Modifier.folding(this)) { EmptyHint(stringResource(R.string.home_screen_you_havent_joined_any_channels)) } }
@@ -229,11 +279,12 @@ fun HomeScreen(
                     items(Channels.shown(sections.times, timesFolded, meId), key = { "times:" + it.id }) { row(it) }
                     if (canCreateTimes && !timesFolded) item(key = "times-create") { ActionRow(Icons.Default.Add, stringResource(R.string.common_create_your_times), onClick = onCreateTimes, modifier = Modifier.folding(this)) }
                 }
-                item(key = "header:dms") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_direct_message), dmsFolded) { onToggleFolded(FoldedSections.DMS) } } }
-                if (selfPlaceholder && meId != null) {
+                item(key = "header:dms") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_direct_message), dmsFolded, action = sortAction("dms", sections.dms, dmsFolded)) { onToggleFolded(FoldedSections.DMS) } } }
+                if (selfPlaceholder && meId != null && editing != "dms") {
                     item(key = "dms-self-placeholder") { HomeSelfNotesRow(meId, myName, busy = creatingSelf, onClick = onSelfPlaceholder, modifier = Modifier.folding(this)) }
                 }
-                items(Channels.shown(dmSection.rows, dmsFolded, meId), key = { it.id }) { row(it) }
+                if (editing == "dms") items(dmSection.rows, key = { it.id }) { reorderRow(it, dmSection.rows, AppController.SortTarget.Default("dms")) }
+                else items(Channels.shown(dmSection.rows, dmsFolded, meId), key = { it.id }) { row(it) }
                 if (!dmsFolded) {
                     if (dmSection.rows.isEmpty() && !selfPlaceholder && !groupUnread) {
                         item(key = "dms-empty") { Box(Modifier.folding(this)) { EmptyHint(stringResource(R.string.home_screen_pick_someone_from_at_the_bottom)) } }
@@ -345,7 +396,7 @@ private fun ActionRow(icon: ImageVector, label: String, onClick: () -> Unit, mod
 
 /** A custom section's title with its icon and 「…」 (M14f); M26: tapping the title folds it on all my devices. */
 @Composable
-private fun CustomSectionHeader(title: String, collapsed: Boolean, icon: @Composable () -> Unit, onToggle: () -> Unit, onMenu: () -> Unit) {
+private fun CustomSectionHeader(title: String, collapsed: Boolean, icon: @Composable () -> Unit, onToggle: () -> Unit, onMenu: () -> Unit, done: (@Composable () -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier.weight(1f).heightIn(min = ROW_MIN).foldable(title, collapsed, onToggle).padding(start = 12.dp),
@@ -356,8 +407,43 @@ private fun CustomSectionHeader(title: String, collapsed: Boolean, icon: @Compos
             icon()
             Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
         }
-        IconButton(onClick = onMenu) { Icon(Icons.Default.MoreHoriz, contentDescription = stringResource(R.string.common_menu_for, title)) }
+        if (done != null) done() else IconButton(onClick = onMenu) { Icon(Icons.Default.MoreHoriz, contentDescription = stringResource(R.string.common_menu_for, title)) }
     }
+}
+
+/**
+ * A default section's 「…」: 「並べ替え」 (名前順 / 最近の活動順 / 手動, DATA_MODEL.md sidebar_sections), and in 「手動」
+ * 「順番を編集」 (not while the section is folded or unread conversations are gathered: rows would be missing).
+ */
+@Composable
+private fun DefaultSortMenu(sort: String, canEdit: Boolean, title: String, onSort: (String) -> Unit, onEditOrder: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreHoriz, contentDescription = stringResource(R.string.common_menu_for, sectionLabel(title))) }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text(stringResource(R.string.sidebar_dialogs_sort), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            SIDEBAR_SORTS.forEach { (value, label) ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(label)) },
+                    leadingIcon = { RadioButton(selected = sort == value, onClick = null) },
+                    onClick = { open = false; if (sort != value) onSort(value) },
+                )
+            }
+            if (sort == "manual") {
+                HorizontalDivider()
+                DropdownMenuItem(text = { Text(stringResource(R.string.sidebar_dialogs_edit_order)) }, enabled = canEdit, onClick = { open = false; onEditOrder() })
+            }
+        }
+    }
+}
+
+/** The name of a default section by its key, for TalkBack. */
+@Composable
+private fun sectionLabel(key: String): String = when (key) {
+    "favorites" -> stringResource(R.string.common_star)
+    "channels" -> stringResource(R.string.common_channels)
+    else -> stringResource(R.string.common_direct_message)
 }
 
 /** A default section's title; M26: tapping it folds it on this device. */

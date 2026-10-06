@@ -1293,6 +1293,11 @@
     <string name="sidebar_dialogs_no_matching_conversations">没有匹配的会话</string>
     <string name="sidebar_dialogs_remove_from_section">从分区中移除</string>
     <string name="sidebar_dialogs_remove_icon">移除图标</string>
+    <string name="sidebar_dialogs_edit_order">编辑顺序</string>
+    <string name="sidebar_dialogs_sort">排序</string>
+    <string name="sidebar_dialogs_sort_manual">手动</string>
+    <string name="sidebar_dialogs_sort_name">按名称</string>
+    <string name="sidebar_dialogs_sort_recent">按最近活动</string>
     <string name="sidebar_dialogs_section_name">分区名称</string>
     <string name="sidebar_dialogs_up_to_2_letters_or_digits">最多 2 个英文字母或数字，或 1 个汉字</string>
     <string name="sso_etc">%1$s 等</string>

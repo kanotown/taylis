@@ -587,6 +587,8 @@ data class BootstrapOut(
     val roster: List<LabProfileOut> = emptyList(),
     /** My sidebar sections (M14f); changes arrive as sidebar.updated. */
     val sidebarSections: List<SidebarSectionOut> = emptyList(),
+    /** The default sections' sorts (DATA_MODEL.md 「並べ替え」); empty from an older server (the defaults). */
+    val sidebarDefaults: List<SidebarDefaultOut> = emptyList(),
     /** My drafts shared by my devices (M15d); changes arrive as draft.updated. */
     val drafts: List<DraftOut> = emptyList(),
     /** Post templates (M30): the workspace's, then mine; changes arrive as template.updated. Absent before M30. */
@@ -658,7 +660,13 @@ data class DraftUpdated(val channelId: String, val parentId: String? = null, val
 data class SidebarSectionOut(
     val id: String, val name: String, val position: Int, val channelIds: List<String> = emptyList(),
     val emoji: String? = null, val collapsed: Boolean = false,
+    /** DATA_MODEL.md 「並べ替え」: "name" / "recent" / "manual", and the hand-made order (conversation ids). */
+    val sort: String = "name", val manualOrder: List<String> = emptyList(),
 )
+
+/** The sort of a default section ("favorites", "channels", "dms"); the server always sends all three. */
+@Serializable
+data class SidebarDefaultOut(val key: String, val sort: String, val manualOrder: List<String> = emptyList())
 
 /**
  * A named set of members that `@name` notifies (M12k). `managed` (M23): the server keeps its members from the lab

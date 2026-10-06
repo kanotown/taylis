@@ -630,11 +630,23 @@ class ApiClient(
             if (channelIds.isNotEmpty()) put("channel_ids", buildJsonArray { channelIds.forEach { add(JsonPrimitive(it)) } })
         })
 
-    suspend fun updateSidebarSection(id: String, name: String? = null, position: Int? = null, collapsed: Boolean? = null): List<SidebarSectionOut> =
+    suspend fun updateSidebarSection(
+        id: String, name: String? = null, position: Int? = null, collapsed: Boolean? = null,
+        sort: String? = null, manualOrder: List<String>? = null,
+    ): List<SidebarSectionOut> =
         request("PATCH", "/api/v1/sidebar/sections/$id", buildJsonObject {
             name?.let { put("name", it) }
             position?.let { put("position", it) }
             collapsed?.let { put("collapsed", it) }
+            sort?.let { put("sort", it) }
+            manualOrder?.let { ids -> put("manual_order", buildJsonArray { ids.forEach { add(JsonPrimitive(it)) } }) }
+        })
+
+    /** DATA_MODEL.md 「並べ替え」: a default section's sort or hand-made order; all three come back. */
+    suspend fun updateSidebarDefault(key: String, sort: String? = null, manualOrder: List<String>? = null): List<jp.chikuwachat.android.api.SidebarDefaultOut> =
+        request("PATCH", "/api/v1/sidebar/defaults/$key", buildJsonObject {
+            sort?.let { put("sort", it) }
+            manualOrder?.let { ids -> put("manual_order", buildJsonArray { ids.forEach { add(JsonPrimitive(it)) } }) }
         })
 
     /** M26: the name and the icon together; a null `emoji` takes the icon off. */

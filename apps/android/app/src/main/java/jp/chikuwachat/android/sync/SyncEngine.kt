@@ -674,6 +674,7 @@ class SyncEngine(
         store.replaceGroups(bootstrap.groups)
         store.replaceTemplates(bootstrap.templates)
         store.replaceSidebar(bootstrap.sidebarSections)
+        store.replaceSidebarDefaults(bootstrap.sidebarDefaults)
         applyWorkspaceSettings(bootstrap.workspaceSettings, live = false) // the reconnect's openChannel loads a preview again
         drafts.applyBootstrap(bootstrap.drafts)
         scope.launch { loadScheduled() }
@@ -824,6 +825,9 @@ class SyncEngine(
             "sidebar.updated" -> {
                 val rows = Codec.snake.decodeFromJsonElement(ListSerializer(SidebarSectionOut.serializer()), frame.data["sections"] ?: return)
                 store.replaceSidebar(rows)
+                frame.data["defaults"]?.let {
+                    store.replaceSidebarDefaults(Codec.snake.decodeFromJsonElement(ListSerializer(jp.chikuwachat.android.api.SidebarDefaultOut.serializer()), it))
+                }
             }
             "group.updated" -> {
                 val row = Codec.snake.decodeFromJsonElement(GroupOut.serializer(), frame.data["group"] ?: return)

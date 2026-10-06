@@ -1,6 +1,7 @@
 package jp.chikuwachat.android.ui
 
 import jp.chikuwachat.android.api.NavItem
+import jp.chikuwachat.android.api.SidebarDefaultOut
 import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.platform.KeyValueStore
@@ -77,7 +78,14 @@ object Channels {
         favorites: Set<String> = emptySet(),
         sidebar: List<SidebarSectionOut> = emptyList(),
         meId: String? = null,
+        /** DATA_MODEL.md 「並べ替え」: the default sections' sorts (missing ones: SidebarOrder.defaultSorts). */
+        defaults: List<SidebarDefaultOut> = emptyList(),
+        /** A DM's display title, for 「名前順」. */
+        title: (ChannelState) -> String = { it.channel.name ?: "" },
     ): Sections {
+        fun sortOf(key: String) = defaults.firstOrNull { it.key == key } ?: SidebarDefaultOut(key, SidebarOrder.defaultSorts[key] ?: "name")
+        fun ordered(rows: List<ChannelState>, key: String) = sortOf(key).let { SidebarOrder.section(rows, it.sort, it.manualOrder, title) }
+        val manualDms = sortOf("dms").sort == "manual"
         fun live(channel: ChannelState) = channel.isMember && (channel.channel.isDm || !channel.channel.archived)
         fun grouped(channel: ChannelState) = groupUnread && live(channel) && hasUnread(channel, meId, now)
         fun keep(channel: ChannelState) = !grouped(channel)
@@ -88,15 +96,19 @@ object Channels {
         return Sections(
             unread = all.filter { grouped(it) }
                 .sortedWith(compareByDescending<ChannelState> { it.channel.lastMessageAt ?: "" }.thenBy { it.channel.name ?: "" }.thenBy { it.id }),
-            favorites = SidebarOrder.section(all.filter { it.isMember && !it.channel.archived && starred(it) && keep(it) }),
+            favorites = ordered(all.filter { it.isMember && !it.channel.archived && starred(it) && keep(it) }, "favorites"),
             custom = sidebar.map { section ->
-                section to SidebarOrder.section(all.filter { it.isMember && !it.channel.archived && !starred(it) && keep(it) && placed[it.id] == section.id })
+                val rows = all.filter { it.isMember && !it.channel.archived && !starred(it) && keep(it) && placed[it.id] == section.id }
+                section to SidebarOrder.section(rows, section.sort, section.manualOrder, title)
             },
-            channels = all.filter { it.isMember && !it.channel.isDm && !it.channel.isTimes && !it.channel.archived && loose(it) && keep(it) }.sortedWith(SidebarOrder.byName),
+            channels = ordered(all.filter { it.isMember && !it.channel.isDm && !it.channel.isTimes && !it.channel.archived && loose(it) && keep(it) }, "channels"),
             times = all.filter { it.isMember && it.channel.isTimes && !it.channel.archived && loose(it) && keep(it) }
                 .sortedWith(compareBy<ChannelState> { it.channel.timesOwnerId != meId }.then(SidebarOrder.byName)),
-            dms = all.filter { it.isMember && it.channel.isDm && loose(it) && keep(it) }
-                .sortedWith(compareByDescending<ChannelState> { MainTabs.isSelfNotes(it, meId) }.then(SidebarOrder.newestFirst)),
+            // My own DM first, unless the section is in my own order.
+            dms = all.filter { it.isMember && it.channel.isDm && loose(it) && keep(it) }.let { dms ->
+                if (manualDms) ordered(dms, "dms")
+                else dms.partition { MainTabs.isSelfNotes(it, meId) }.let { (self, others) -> self + ordered(others, "dms") }
+            },
             browse = all.filter { !it.isMember && !it.channel.archived }.sortedWith(SidebarOrder.byName),
         )
     }
@@ -116,8 +128,9 @@ object Channels {
      * them). An older one that is unread still shows (unread is never hidden, as in a folded section); `more` when some
      * are left out, for 「すべての DM」 (the DM tab).
      */
-    fun dmSection(dms: List<ChannelState>, meId: String?, now: Instant = Instant.now(), limit: Int = HOME_DMS): DmSection {
-        val (self, others) = dms.partition { MainTabs.isSelfNotes(it, meId) }
+    fun dmSection(dms: List<ChannelState>, meId: String?, now: Instant = Instant.now(), limit: Int = HOME_DMS, manual: Boolean = false): DmSection {
+        // 「手動」: my own DM is where I put it, one of the rows.
+        val (self, others) = if (manual) emptyList<ChannelState>() to dms else dms.partition { MainTabs.isSelfNotes(it, meId) }
         val newest = others.take(limit)
         val olderUnread = others.drop(limit).filter { hasUnread(it, meId, now) }
         return DmSection(self + newest + olderUnread, more = others.size > newest.size + olderUnread.size)
@@ -125,14 +138,15 @@ object Channels {
 }
 
 /**
- * DATA_MODEL.md sidebar_sections 「セクションの中の並び順」: the order inside a section, the same as the desktop's and iOS's
- * (apps/shared/sidebar-order.json). The server keeps no order inside a section.
+ * DATA_MODEL.md sidebar_sections 「セクションの中の並び順」「並べ替え」: the order inside a section, the same as the desktop's
+ * and iOS's (apps/shared/sidebar-order.json). The server keeps each section's sort; the clients sort. No Collator: ICU's
+ * ties differ, and these unit tests run on the JVM's java.text.Collator, which differs more.
  */
 object SidebarOrder {
-    /**
-     * The name after NFKC, A-Z lower-cased and katakana folded to hiragana, compared by UTF-16 code unit (String.compareTo);
-     * no Collator: locale collation differs per platform.
-     */
+    /** The default sections' sorts when I chose none (or the server is older). */
+    val defaultSorts = mapOf("favorites" to "name", "channels" to "name", "dms" to "recent")
+
+    /** The level-2 key: the name after NFKC, A-Z lower-cased and katakana folded to hiragana (String.compareTo: UTF-16). */
     fun key(name: String): String {
         val normalized = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFKC)
         val out = StringBuilder(normalized.length)
@@ -148,19 +162,119 @@ object SidebarOrder {
         return out.toString()
     }
 
-    /** Two names by [key], equal keys by the raw names. */
-    val names: Comparator<String> = compareBy<String> { key(it) }.thenBy { it }
+    /** One level-1 element: its class, its weight, and a run of digits (compared by length, then digit by digit). */
+    data class Element(val rank: Int, val weight: Int, val digits: String = "")
+
+    private val largeKana = mapOf(
+        0x3041 to 0x3042, 0x3043 to 0x3044, 0x3045 to 0x3046, 0x3047 to 0x3048, 0x3049 to 0x304A, 0x3063 to 0x3064,
+        0x3083 to 0x3084, 0x3085 to 0x3086, 0x3087 to 0x3088, 0x308E to 0x308F, 0x3095 to 0x304B, 0x3096 to 0x3051,
+    )
+
+    /** JIS X 0208 kanji → their place in JIS order (apps/shared/gen_jis_kanji.py). */
+    private val jisRank: Map<Int, Int> by lazy {
+        val ranks = HashMap<Int, Int>(8192)
+        JisKanji.ORDER.forEachIndexed { rank, ch -> ranks[ch.code] = rank }
+        ranks
+    }
+
+    private fun isIdeograph(c: Int) = c in 0x3400..0x4DBF || c in 0x4E00..0x9FFF || c in 0xF900..0xFAFF || c in 0x20000..0x3FFFF
+
+    /** The level-1 elements: NFKD, combining and voicing marks dropped, then classified (see the shared JSON's comment). */
+    fun elements(name: String): List<Element> {
+        val codes = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFKD).codePoints().toArray()
+        val out = ArrayList<Element>(codes.size)
+        var i = 0
+        while (i < codes.size) {
+            val c = codes[i]
+            if (c in 0x300..0x36F || c == 0x3099 || c == 0x309A) { i++; continue }
+            if (c in 0x30..0x39) {
+                var j = i
+                while (j < codes.size && codes[j] in 0x30..0x39) j++
+                val digits = String(codes, i, j - i).trimStart('0').ifEmpty { "0" }
+                out.add(Element(1, digits.length, digits))
+                i = j
+                continue
+            }
+            val rank = jisRank[c]
+            out.add(
+                when {
+                    c in 0x41..0x5A -> Element(2, c + 0x20)
+                    c in 0x61..0x7A -> Element(2, c)
+                    c in 0x3041..0x3096 || c in 0x30A1..0x30F6 -> {
+                        val hiragana = if (c >= 0x30A1) c - 0x60 else c
+                        Element(3, largeKana[hiragana] ?: hiragana)
+                    }
+                    rank != null -> Element(4, rank)
+                    isIdeograph(c) -> Element(4, 10000 + c)
+                    c < 0x3040 || c in 0x309B..0x30A0 || c in 0x30FB..0x30FF || c in 0xFF00..0xFFEF -> Element(0, c)
+                    else -> Element(5, c)
+                },
+            )
+            i++
+        }
+        return out
+    }
+
+    private fun compare(a: List<Element>, b: List<Element>): Int {
+        for (index in 0 until minOf(a.size, b.size)) {
+            val x = a[index]
+            val y = b[index]
+            if (x.rank != y.rank) return x.rank.compareTo(y.rank)
+            if (x.weight != y.weight) return x.weight.compareTo(y.weight)
+            if (x.digits != y.digits) return x.digits.compareTo(y.digits)
+        }
+        return a.size.compareTo(b.size)
+    }
+
+    /** A name with its keys worked out once (a sort compares each name many times). */
+    class Collated(val name: String) {
+        val elements = elements(name)
+        val key = key(name)
+    }
+
+    /**
+     * Level 1 the elements (kana by gojūon, kanji in JIS X 0208 order, numbers as numbers, case and voicing ignored),
+     * level 2 [key], level 3 the raw names by UTF-16 code unit.
+     */
+    val collated: Comparator<Collated> = Comparator { a, b ->
+        compare(a.elements, b.elements).takeIf { it != 0 } ?: a.key.compareTo(b.key).takeIf { it != 0 } ?: a.name.compareTo(b.name)
+    }
+
+    /** Two names in the sidebar's Japanese order. */
+    val names: Comparator<String> = Comparator { a, b -> collated.compare(Collated(a), Collated(b)) }
 
     /** Channels by name, then by id. */
     val byName: Comparator<ChannelState> = Comparator<ChannelState> { a, b -> names.compare(a.channel.name ?: "", b.channel.name ?: "") }.thenBy { it.id }
 
-    /** DMs newest first: the last message, else when the DM was made (the server's text), then by id. */
+    /** Rows by a name (`name`), equal names by id; each name collated once. */
+    fun sortedBy(rows: List<ChannelState>, name: (ChannelState) -> String): List<ChannelState> =
+        rows.map { it to Collated(name(it)) }
+            .sortedWith { a, b -> collated.compare(a.second, b.second).takeIf { it != 0 } ?: a.first.id.compareTo(b.first.id) }
+            .map { it.first }
+
+    /** Newest first: the last message, else when the conversation was made (the server's text), then by id. */
     val newestFirst: Comparator<ChannelState> =
         compareByDescending<ChannelState> { it.channel.lastMessageAt ?: it.channel.createdAt }.thenBy { it.id }
 
-    /** Favorites and my own sections: their channels by name, then their DMs newest first. */
-    fun section(rows: List<ChannelState>): List<ChannelState> =
-        rows.filter { !it.channel.isDm }.sortedWith(byName) + rows.filter { it.channel.isDm }.sortedWith(newestFirst)
+    /**
+     * The rows of a section in its sort: "name" = channels by name, then DMs by their title (`title`, the display title);
+     * "recent" = all newest first; "manual" = `manualOrder` first, the rest after it by name.
+     */
+    fun section(
+        rows: List<ChannelState>,
+        sort: String = "name",
+        manualOrder: List<String> = emptyList(),
+        title: (ChannelState) -> String = { it.channel.name ?: "" },
+    ): List<ChannelState> = when (sort) {
+        "recent" -> rows.sortedWith(newestFirst)
+        "manual" -> {
+            val place = HashMap<String, Int>()
+            manualOrder.forEachIndexed { index, id -> place.putIfAbsent(id, index) }
+            val (placed, rest) = rows.partition { it.id in place }
+            placed.sortedBy { place[it.id] } + section(rest, title = title)
+        }
+        else -> sortedBy(rows.filter { !it.channel.isDm }) { it.channel.name ?: "" } + sortedBy(rows.filter { it.channel.isDm }, title)
+    }
 }
 
 /** M37: 「未読をまとめる」 (replacing M28c's 「未読のみ」 filter) as it was left on this device; off at first. */
