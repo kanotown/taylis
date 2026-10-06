@@ -474,8 +474,11 @@ export function MeetingServiceSection({ controller, settings, onSaved }: {
         }}
       >
         <Input
-          type="url"
+          // text, not url: the server's check (and its reason) speaks, not the browser's own bubble.
+          type="text"
           inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
           aria-label={t("workspace.meetingUrl")}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "meeting-url-error" : undefined}
