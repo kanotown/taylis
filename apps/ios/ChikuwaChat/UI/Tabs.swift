@@ -6,10 +6,12 @@ enum MainTab: Hashable {
 }
 
 /// A screen on a tab's stack: a conversation (a channel or a DM, or a public channel's preview), or one of the lists
-/// (its `selectionId`: threads, saved, files, drafts, reminders, mentions).
+/// (its `selectionId`: threads, saved, files, drafts, reminders, mentions), or a thread over its conversation: a reply
+/// opened from a list or a notification pushes both at once (the phone's stacks only; the split shows it in its pane).
 enum MainRoute: Hashable {
     case channel(String)
     case list(String)
+    case thread(channelId: String, parentId: String)
 }
 
 /// The tab badges (the same rules on the three clients, IMPLEMENTATION_PLAN.md M34 (6)). Pure over the store's

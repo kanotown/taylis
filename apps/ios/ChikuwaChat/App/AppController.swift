@@ -30,6 +30,8 @@ final class AppController {
     var noticeCanvas: (notice: String, target: CanvasOpen)?
     /// L8: the Times feed's rows while the app runs (TIMES_FEED.md §5), one per open workspace.
     private(set) var timesFeed = TimesFeedModel()
+    /// The conversations' 「ピン留め」 tabs (PinsView), kept live by the same rows as the Times feed.
+    var pinLists = PinLists()
     /// M52: an event to show (a calendar alarm's notification): its channel's 「予定」 tab or the calendar takes it.
     var calendarOpen: CalendarOpen?
     /// M56: a task to show, or a board to open (a task's notification, 「自分の担当」's channel): its channel's 「タスク」 tab
@@ -251,6 +253,7 @@ final class AppController {
         workflowRun = nil
         workflowLists = [:]
         timesFeed = TimesFeedModel()
+        pinLists = PinLists()
         previewLoads = [:]
         emojiLoads = []
         AvatarCache.shared.reset()
@@ -520,12 +523,14 @@ final class AppController {
         engine.onTimelineMessage = { [weak self, weak engine] event, message, thread in
             guard let self, self.engine === engine else { return }
             self.timesFeed.live(event, message, thread: thread, channel: self.store.channel(message.channelId))
+            self.takePinRow(message) // a pinned message deleted or unpinned by anyone, held here or not
         }
         // Review #4: the rows the store takes otherwise (the delta after a gap, the answers to my own actions) and my
         // poll part reach the feed too; it keeps the newer version of each (§8).
         store.onMessageTaken = { [weak self, weak store] message in
             guard let self, let store, self.store === store else { return }
             self.timesFeed.stored(message, channel: store.channel(message.channelId))
+            self.takePinRow(message)
         }
         store.onMyPart = { [weak self, weak store] answer in
             guard let self, let store, self.store === store else { return }
@@ -869,6 +874,13 @@ final class AppController {
         do {
             _ = store.upsertMessage(message.pinnedAt != nil ? try await api.unpinMessage(id: message.id) : try await api.pinMessage(id: message.id))
         } catch { self.error = describe(error) }
+    }
+
+    /// A message row taken (a live event, my own pin, unpin or delete answered): the pins tabs follow it, written back
+    /// only when it changed them, so that the rows of a page going by redraw nothing.
+    private func takePinRow(_ message: MessageOut) {
+        var lists = pinLists
+        if lists.take(message) { pinLists = lists }
     }
 
     // MARK: custom emoji (M12f)
