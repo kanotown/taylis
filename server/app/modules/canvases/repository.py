@@ -5,6 +5,7 @@ from sqlalchemy import and_, delete, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.doctext.revisions import thin_statement
 from app.modules.canvases.models import Canvas, CanvasRevision, CanvasTemplate
 
 
@@ -133,39 +134,13 @@ async def delete_side_revisions(db: AsyncSession, before: datetime) -> int:
     return int(getattr(result, "rowcount", 0) or 0)
 
 
-# Among the versions made between :since and :before, a run of consecutive save / merge / task
-# (M80) versions by one author (no label, not the head) keeps the last one of every :bucket.
-# Create, restore, erased, labelled and head versions are always kept, and end a run.
-_THIN = text(
-    """
-    WITH old AS (
-        SELECT r.id, r.canvas_id, r.author_id, r.created_at,
-               (r.kind IN ('save', 'merge', 'task') AND r.label IS NULL
-                AND r.id <> c.head_rev_id) AS thin
-        FROM canvas_revisions r JOIN canvases c ON c.id = r.canvas_id
-        WHERE r.kind <> 'side' AND r.created_at < :before AND r.created_at >= :since
-    ), marked AS (
-        SELECT old.*,
-               CASE WHEN thin AND lag(thin) OVER w AND lag(author_id) OVER w = author_id
-                    THEN 0 ELSE 1 END AS starts
-        FROM old
-        WINDOW w AS (PARTITION BY canvas_id ORDER BY created_at, id)
-    ), runs AS (
-        SELECT marked.*,
-               sum(starts) OVER (PARTITION BY canvas_id ORDER BY created_at, id) AS run
-        FROM marked
-    ), ranked AS (
-        SELECT id, thin,
-               row_number() OVER (
-                   PARTITION BY canvas_id, run,
-                                date_bin(:bucket, created_at, TIMESTAMPTZ '2000-01-01 00:00:00+00')
-                   ORDER BY created_at DESC, id DESC
-               ) AS rn
-        FROM runs
-    )
-    DELETE FROM canvas_revisions
-    WHERE id IN (SELECT id FROM ranked WHERE thin AND rn > 1)
-    """
+# CANVAS.md §4.9: the thinning policy (app/core/doctext/revisions.py) on the canvases' tables. A
+# task version (M80) is thinned like a save.
+_THIN = thin_statement(
+    revisions="canvas_revisions",
+    documents="canvases",
+    fk="canvas_id",
+    thinnable=("save", "merge", "task"),
 )
 
 

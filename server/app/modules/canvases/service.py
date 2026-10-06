@@ -22,19 +22,18 @@ notifies them. A restore or a tick never does. M76 (§20): the same people (not 
 activity item (activity/canvas_mentions.py), one per canvas while unread.
 """
 
-import asyncio
-import re
 import uuid
-from collections import Counter
 from collections.abc import Awaitable, Callable
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from functools import partial
+from typing import NoReturn
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.doctext import body as doc
+from app.core.doctext import revisions as doc_revisions
+from app.core.doctext import save as doc_save
 from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.ids import uuid7
 from app.core.time import utcnow
@@ -90,8 +89,6 @@ from app.modules.groups import service as groups
 from app.modules.messages import service as messages
 from app.modules.messages.mentions import (
     MAX_MENTIONS,
-    MENTION_GROUP,
-    MENTION_USER,
     extract_group_mentions,
     extract_mentions,
 )
@@ -103,27 +100,19 @@ DEFAULT_TITLE = "無題のキャンバス"
 MAX_REVISION_PAGE = 100
 # CANVAS.md §4.4 / §8: merges run off the event loop, a few at a time, within this budget.
 MERGE_BUDGET_SECONDS = merge.DEFAULT_BUDGET_SECONDS
-_merge_pool: ThreadPoolExecutor | None = None
 
 # `- [ ] item` / `* [x] item`, nested with leading spaces (CANVAS.md §4.2), in markers.py.
 TASK_LINE = markers.TASK_LINE
-# An image or file in the body: `![説明](attachment:<uuid>)` (CANVAS.md §4.2, §4.10). Any case:
-# a client may print the id in capitals (Swift's uuidString).
-ATTACHMENT_REF = re.compile(
-    r"attachment:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
-)
+# An image or file in the body: `![説明](attachment:<uuid>)` (CANVAS.md §4.2, §4.10).
+ATTACHMENT_REF = doc.ATTACHMENT_REF
 
-# CANVAS.md §4.9 / §4.14: every version of the last day stays (the bases of editing devices);
-# after that side versions go and a run of one author's versions keeps the last of every ten
-# minutes. The trash is purged after `trash_days` (settings.canvas_trash_retention_days).
-KEEP_ALL_REVISIONS = timedelta(hours=24)
-THIN_BUCKET = timedelta(minutes=10)
-# Versions are thinned once, soon after they pass KEEP_ALL_REVISIONS: only this far back is read
-# again each hour (a server that was down longer leaves a few extra versions, never fewer).
-THIN_LOOKBACK = timedelta(days=7)
-# An image no version refers to any more is let go this long after it was bound (by then every
-# version that could refer to it is older than KEEP_ALL_REVISIONS or still kept).
-IMAGE_GRACE = timedelta(hours=24)
+# CANVAS.md §4.9 / §4.14 (the policy is app/core/doctext/revisions.py since M120): every version
+# of the last day stays; after that side versions go and a run of one author's versions keeps the
+# last of every ten minutes. The trash is purged after `trash_days`.
+KEEP_ALL_REVISIONS = doc_revisions.KEEP_ALL_REVISIONS
+THIN_BUCKET = doc_revisions.THIN_BUCKET
+THIN_LOOKBACK = doc_revisions.THIN_LOOKBACK
+IMAGE_GRACE = doc_revisions.IMAGE_GRACE
 PURGE_BATCH = 100
 
 
@@ -145,72 +134,20 @@ def set_task_ticks_handler(handler: TaskTicks | None) -> None:
 
 def clean_body(body: str) -> str:
     """One newline convention (\n), and the length limit (422 canvas_too_large)."""
-    cleaned = body.replace("\r\n", "\n").replace("\r", "\n")
-    if len(cleaned) > MAX_BODY_LENGTH:
-        raise AppError(
-            422,
-            "canvas_too_large",
-            f"A canvas holds at most {MAX_BODY_LENGTH} characters",
-            details={"max_length": MAX_BODY_LENGTH},
-        )
-    return cleaned
+    return doc.clean_body(body, max_length=MAX_BODY_LENGTH)
 
 
-def count_tasks(body: str) -> tuple[int, int]:
-    """(total, done) task items, outside fenced code blocks."""
-    total = done = 0
-    fenced = False
-    for line in body.split("\n"):
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-            continue
-        if fenced:
-            continue
-        match = TASK_LINE.match(line)
-        if match:
-            total += 1
-            done += match.group(2) != " "
-    return total, done
-
-
-def only_tasks_toggled(before: str, after: str) -> bool:
-    """True when `after` differs from `before` only in task boxes ([ ] ↔ [x]) (§4.7)."""
-    old, new = before.split("\n"), after.split("\n")
-    if len(old) != len(new):
-        return False
-    for a, b in zip(old, new, strict=True):
-        if a == b:
-            continue
-        ma, mb = TASK_LINE.match(a), TASK_LINE.match(b)
-        if ma is None or mb is None:
-            return False
-        if ma.group(1) != mb.group(1) or ma.group(3) != mb.group(3):
-            return False
-    return True
-
-
-def line_changes(before: str, after: str) -> tuple[int, int]:
-    """(added, removed) lines, counted as multisets: cheap and good enough for a history list."""
-    old, new = Counter(before.split("\n")), Counter(after.split("\n"))
-    return sum((new - old).values()), sum((old - new).values())
-
-
-def attachment_refs(body: str) -> list[uuid.UUID]:
-    """The attachments the body refers to, in order, each once."""
-    return list(dict.fromkeys(uuid.UUID(m.group(1)) for m in ATTACHMENT_REF.finditer(body)))
+# The pure body helpers live in app/core/doctext/body.py since M120 (docs/WIKI.md §2.3).
+count_tasks = doc.count_tasks
+only_tasks_toggled = doc.only_tasks_toggled
+line_changes = doc.line_changes
+attachment_refs = doc.attachment_refs
+mention_tokens = doc.mention_tokens
 
 
 def permalink(base_url: str, canvas_id: uuid.UUID) -> str:
     """`<server>/c/<canvas_id>` (CANVAS.md §4.13), like a message's `<server>/m/<id>`."""
     return f"{base_url.rstrip('/')}/c/{canvas_id}"
-
-
-def mention_tokens(body: str) -> tuple[set[uuid.UUID], set[uuid.UUID]]:
-    """(users, groups) the body mentions (`<!channel>` / `<!here>` never notify in a canvas)."""
-    return (
-        {uuid.UUID(raw) for raw in MENTION_USER.findall(body)},
-        {uuid.UUID(raw) for raw in MENTION_GROUP.findall(body)},
-    )
 
 
 async def _mentioned_people(db: AsyncSession, body: str) -> set[uuid.UUID]:
@@ -303,13 +240,9 @@ async def _notify_mentions(
 
 
 async def _merge(base: str, ours: str, theirs: str, resolve: merge.Resolve) -> merge.MergeResult:
-    global _merge_pool
-    if _merge_pool is None:
-        _merge_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="canvas-merge")
-    call = partial(
-        merge.merge3, base, ours, theirs, resolve=resolve, budget_seconds=MERGE_BUDGET_SECONDS
+    return await doc_save.run_merge(
+        base, ours, theirs, resolve, budget_seconds=MERGE_BUDGET_SECONDS
     )
-    return await asyncio.get_running_loop().run_in_executor(_merge_pool, call)
 
 
 # --- access (CANVAS.md §4.7) ---------------------------------------------------------------------
@@ -799,55 +732,64 @@ async def save_content(
                 "canvas_edit_restricted", "Only ticking tasks: keep the other version instead"
             )
 
-    if base.id == canvas.head_rev_id or body == canvas.body:
-        if body == canvas.body:
-            return await _unchanged(db, canvas)
+    async def write_head(
+        text: str, kind: str, parent: uuid.UUID, save_id: uuid.UUID | None
+    ) -> uuid.UUID:
         revision = await _set_body(
             db,
             canvas,
             actor,
-            body,
-            kind="save",
-            parent=base.id,
-            client_save_id=data.client_save_id,
+            text,
+            kind=kind,
+            parent=parent,
+            client_save_id=save_id,
             change="content",
         )
-        out = to_out(canvas)
-        await db.commit()
-        return SaveOut(canvas=out, submitted_rev_id=revision.id, merged=False)
+        return revision.id
 
-    result = await _merge(base.body, body, canvas.body, data.on_conflict)
-    if result.conflicts and data.on_conflict == "fail":
-        details = _conflict_details(canvas, result.conflicts, timed_out=result.timed_out)
-        await db.rollback()
-        raise conflict("canvas_conflict", "Someone changed the same words", details)
-    side = _revision(
-        canvas,
-        actor,
-        kind="side",
-        body=body,
-        parent=base.id,
-        parent_body=base.body,
-        version=None,
-        client_save_id=data.client_save_id,
-    )
-    db.add(side)
-    await db.flush()
-    merged_body = clean_body(result.text)
-    if merged_body != canvas.body:
-        await _set_body(
-            db,
+    async def write_side(
+        text: str, parent: uuid.UUID, parent_body: str, save_id: uuid.UUID
+    ) -> uuid.UUID:
+        side = _revision(
             canvas,
             actor,
-            merged_body,
-            kind="merge",
-            parent=canvas.head_rev_id,
-            client_save_id=None,
-            change="content",
+            kind="side",
+            body=text,
+            parent=parent,
+            parent_body=parent_body,
+            version=None,
+            client_save_id=save_id,
         )
+        db.add(side)
+        await db.flush()
+        return side.id
+
+    async def refuse(conflicts: tuple[merge.Conflict, ...], timed_out: bool) -> NoReturn:
+        details = _conflict_details(canvas, conflicts, timed_out=timed_out)
+        await db.rollback()
+        raise conflict("canvas_conflict", "Someone changed the same words", details)
+
+    outcome = await doc_save.save_flow(
+        head_body=canvas.body,
+        head_rev_id=canvas.head_rev_id,
+        base_rev_id=base.id,
+        base_body=base.body,
+        body=body,
+        client_save_id=data.client_save_id,
+        on_conflict=data.on_conflict,
+        write_head=write_head,
+        write_side=write_side,
+        refuse=refuse,
+        clean=clean_body,
+        run=_merge,
+    )
+    if outcome.kind == "unchanged":
+        return await _unchanged(db, canvas)
     out = to_out(canvas)
     await db.commit()
-    return SaveOut(canvas=out, submitted_rev_id=side.id, merged=True)
+    return SaveOut(
+        canvas=out, submitted_rev_id=outcome.submitted_rev_id, merged=outcome.kind == "merged"
+    )
 
 
 async def _unchanged(db: AsyncSession, canvas: Canvas) -> SaveOut:
