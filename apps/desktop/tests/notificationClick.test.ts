@@ -12,9 +12,9 @@ import { Store } from "../src/sync/store";
 import type { ChannelState } from "../src/sync/types";
 import { FakeServer } from "./fakeServer";
 
-const { shown } = vi.hoisted(() => ({ shown: [] as Array<{ title: string; onClick?: () => void }> }));
+const { shown } = vi.hoisted(() => ({ shown: [] as Array<{ title: string; body: string; onClick?: () => void }> }));
 vi.mock("../src/platform/notify", () => ({
-  notify: async (title: string, _body: string, onClick?: () => void) => void shown.push({ title, onClick }),
+  notify: async (title: string, body: string, onClick?: () => void) => void shown.push({ title, body, onClick }),
   clearNotifications: () => {},
 }));
 
@@ -66,6 +66,23 @@ describe("notification clicks", () => {
     expect(revealedIn[0]![0]).toBe(B);
     expect(revealedIn[0]![1].parent_id).toBe(parent.id); // the main screen opens its thread
     expect(controller.activeServer).toBe(B);
+  });
+
+  it("M117: a call reads 「📞 〇〇 さんが通話を始めました」 like the server's push (no link, no sender prefix)", async () => {
+    const { deps } = twoWorkspaces();
+    const server = new FakeServer();
+    const alice = server.addUser("alice");
+    const channel = server.createChannel("general", alice.id);
+    const body = "📞 通話を始めました\nhttps://meet.jit.si/taylis-abc";
+    const call: MessageOut = { ...server.post(channel.id, alice.id, body).message, call: { url: "https://meet.jit.si/taylis-abc", started_by: alice.id } };
+    const store = (deps as unknown as { store: Store }).store;
+    store.upsertUser(alice);
+    deps.onNotify!(call, { ...channel, type: "public", name: "general" } as unknown as ChannelState);
+    deps.onNotify!(call, { ...channel, type: "dm" } as unknown as ChannelState);
+    await vi.waitFor(() => expect(shown).toHaveLength(2));
+    expect(shown.map((n) => n.body)).toEqual(["📞 Alice さんが通話を始めました", "📞 Alice さんが通話を始めました"]);
+    expect(shown[0]!.title).toContain("#general");
+    expect(shown[1]!.title).toContain("Alice");
   });
 
   it("the open workspace's notification opens at once; a signed-out workspace's does nothing", async () => {

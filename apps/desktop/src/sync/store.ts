@@ -44,8 +44,11 @@ export function emptySnapshot(): Snapshot {
  */
 export const CACHED_MESSAGES_PER_CHANNEL = 500;
 
-/** M88: the workspace settings a server before M88 (or an offline start) stands for: both on, as before. */
-export const DEFAULT_WORKSPACE_SETTINGS: Readonly<WorkspaceSettingsOut> = { show_membership_messages: true, preview_before_join: true };
+/**
+ * M88: the workspace settings a server before M88 (or an offline start) stands for: both on, as before. M117: calls are
+ * off until the server says otherwise (a server before M117 has no calls endpoint).
+ */
+export const DEFAULT_WORKSPACE_SETTINGS: Readonly<WorkspaceSettingsOut> = { show_membership_messages: true, preview_before_join: true, calls_enabled: false, meeting_base_url: null };
 
 export interface Draft {
   text: string;
@@ -718,7 +721,8 @@ export class Store {
   setWorkspaceSettings(settings: WorkspaceSettingsOut | null | undefined): void {
     const next = { ...DEFAULT_WORKSPACE_SETTINGS, ...(settings ?? {}) };
     const current = this.workspaceSettings;
-    if (next.show_membership_messages === current.show_membership_messages && next.preview_before_join === current.preview_before_join && next.icon_version === current.icon_version) return;
+    const same = next.show_membership_messages === current.show_membership_messages && next.preview_before_join === current.preview_before_join && next.icon_version === current.icon_version;
+    if (same && next.calls_enabled === current.calls_enabled && next.meeting_base_url === current.meeting_base_url) return;
     this.workspaceSettings = next;
     this.emit();
   }

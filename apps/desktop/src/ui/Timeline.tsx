@@ -19,6 +19,7 @@ import { attachmentText, plainText } from "./markdown";
 import { AiBadge } from "./ai";
 import { MessageBody } from "./MessageBody";
 import { PollCard, pollHidesBody } from "./PollCard";
+import { CallCard, callHidesBody } from "./Calls";
 import { PriorityLabel } from "./PriorityLabel";
 import { WorkflowLabel } from "./WorkflowViews";
 import { CollectionChip } from "./RecurringPosts";
@@ -905,7 +906,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   const reactions = message.reactions ?? [];
   const size = thread ? 30 : 36;
   const rawLink = message.body ? firstLink(message.body) : null;
-  const link = rawLink && api && parsePermalink(api.baseUrl, rawLink) ? null : rawLink; // our own permalinks get no card
+  // Our own permalinks get no card, nor a call's room (M117: its card has 「参加する」).
+  const link = (rawLink && api && parsePermalink(api.baseUrl, rawLink)) || message.call ? null : rawLink;
   const pinnedBy = message.pinned_at ? (store.users.get(message.pinned_by ?? "")?.display_name ?? "?") : null;
   const threadId = message.parent_id ?? message.id;
   // The same actions as the long-press sheet (messageActions.ts): the bar shows a few, ⋯ the rest.
@@ -1070,7 +1072,9 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
           <MessageEditor controller={controller} message={message} />
         ) : (
           <>
-            {message.body && !pollHidesBody(message) && (
+            {/* M117: a call's card stands for the server's body (the same link); an edited body still shows. */}
+            {message.call && !message.deleted && <CallCard controller={controller} call={message.call} createdAt={message.created_at} />}
+            {message.body && !pollHidesBody(message) && !callHidesBody(message) && (
               <MessageBody body={message.body} users={store.users} internalBase={api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} keywords={store.me?.notify_keywords} groups={store.groups} jumbo />
             )}
             <AttachmentList attachments={message.attachments ?? []} controller={controller} />

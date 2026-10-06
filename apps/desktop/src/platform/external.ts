@@ -20,3 +20,33 @@ export async function openInBrowser(url: string): Promise<void> {
   const { openUrl } = await import("@tauri-apps/plugin-opener");
   await openUrl(url);
 }
+
+/**
+ * M117 (docs/CALLS.md §7): a tab opened during the click itself, for a URL known only after a request. A browser blocks a
+ * window opened after an await; the Tauri app needs none (the system browser opens it). Null when blocked or not needed.
+ */
+export function reserveTab(): Window | null {
+  if (isTauri()) return null;
+  try {
+    return window.open("", "_blank");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A meeting room (M117) outside the app: the system browser from the Tauri app (camera and microphone stay out of the
+ * webview), a new tab on the web: the reserved one when there is one, else a fresh one.
+ */
+export function openOutside(url: string, tab: Window | null = null): void {
+  if (isTauri()) {
+    void openInBrowser(url).catch((err: unknown) => console.error("could not open the link", err));
+    return;
+  }
+  if (tab && !tab.closed) {
+    tab.opener = null;
+    tab.location.href = url;
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
