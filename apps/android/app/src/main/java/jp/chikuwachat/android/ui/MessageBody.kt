@@ -94,6 +94,8 @@ fun MessageBody(
     citations: Boolean = false,
     /** M101 (docs/EMOJI.md §7): an emoji-only body is shown large (the timeline and threads only, not previews). */
     jumbo: Boolean = false,
+    /** A tap on a mention of someone known (2026-10-06): their profile. Null: mentions are plain text. */
+    onOpenUser: ((String) -> Unit)? = null,
 ) {
     if (jumbo) {
         val only = remember(text, version, customEmoji) { EmojiOnly.parse(text, customEmoji) }
@@ -102,7 +104,7 @@ fun MessageBody(
             return
         }
     }
-    val inline = bodyInline(users, internalBase, onOpenMessage, onOpenCanvas, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, groups, version, citations)
+    val inline = bodyInline(users, internalBase, onOpenMessage, onOpenCanvas, customEmoji, emojiImages, emojiAnimations, onNeedEmojiImage, groups, version, citations, onOpenUser)
     // The parse depends on the text alone (M28c: keyed on the version too, every keystroke in the composer parsed every
     // row on screen again).
     val blocks = remember(text) { parseBlocks(text) }
@@ -194,6 +196,8 @@ fun bodyInline(
     groups: Map<String, GroupOut> = emptyMap(),
     version: Int = 0,
     citations: Boolean = false,
+    /** A tap on a known user's mention; a group, @channel and an unknown user stay plain. */
+    onOpenUser: ((String) -> Unit)? = null,
 ): BodyInline {
     // The Store's maps change in place, so `version` is read here on purpose: the Compose compiler leaves a parameter the
     // body never reads out of the skip check, and the body was never drawn again when only the maps had changed (custom
@@ -258,8 +262,13 @@ fun bodyInline(
                     LinkAnnotation.Url(token.url, TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))),
                 ) { append(token.label ?: token.url) }
                 }
-                is BodyToken.Mention -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) {
-                    append("@" + (users[token.userId]?.displayName ?: "unknown"))
+                is BodyToken.Mention -> {
+                    val user = users[token.userId]
+                    val style = SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)
+                    // Only the mention's own span takes the tap: the rest of the row keeps its tap and long press.
+                    if (user != null && onOpenUser != null) {
+                        withLink(LinkAnnotation.Clickable("user:" + user.id, TextLinkStyles(style)) { onOpenUser(user.id) }) { append("@" + user.displayName) }
+                    } else withStyle(style) { append("@" + (user?.displayName ?: "unknown")) }
                 }
                 is BodyToken.MentionGroup -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) { append("@" + (groups[token.groupId]?.name ?: L10n.str(R.string.common_group))) }
                 is BodyToken.MentionAll -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) { append("@" + token.target) }
