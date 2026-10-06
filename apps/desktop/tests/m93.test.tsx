@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AdminWorkspaceSettingsOut, UserMe } from "../src/api/types";
+import { RAIL_WIDTH, TITLE_ROW_INSET_AFTER_RAIL, TRAFFIC_LIGHTS_INSET } from "../src/platform/env";
 import { resetWindowState, watchFullscreen } from "../src/platform/windowState";
 import { AppController } from "../src/state/app";
 import { loadWorkspaces, saveWorkspaces, type WorkspaceEntry } from "../src/state/workspaces";
@@ -122,29 +123,44 @@ const A: WorkspaceEntry = { serverUrl: "https://a.example.com", workspaceId: "wa
 const B: WorkspaceEntry = { serverUrl: "https://b.example.com", workspaceId: "wb", name: "研究室", username: "alice", userId: null, iconVersion: "v1" };
 
 describe("the rail under the macOS window buttons", () => {
-  it("reserves their space in a window (and when zoomed), not in full screen", async () => {
+  it("stays 68 px and starts below the title row that holds them in a window (and when zoomed), not in full screen", async () => {
     const restore = macApp();
     try {
       let full = false;
       let resized: (() => void) | null = null;
       await watchFullscreen(async () => ({ isFullscreen: async () => full, onResized: async (handler) => { resized = handler; return () => {}; } }));
-      render(<WorkspaceRail controller={railController([A, B])} />);
+      render(<WorkspaceRail controller={{ ...railController([A, B]), screen: "main" } as AppController} />);
       const rail = screen.getByRole("navigation", { name: "ワークスペース" });
-      expect(rail.style.paddingTop).toBe("calc(48px / var(--ui-zoom, 1))"); // points: the same space at any zoom (platform/zoom.ts)
-      expect(rail.style.width).toBe("max(68px, calc(84px / var(--ui-zoom, 1)))");
+      // Slack: the window buttons sit in the title row across the window; the rail is not widened for them.
+      expect(rail.className).toContain("w-[68px]");
+      expect(rail.style.width).toBe("");
+      const cell = screen.getByTestId("rail-title-cell");
+      expect(cell.style.height).toBe("max(40px, calc(40px / var(--ui-zoom, 1)))"); // the top bar's height (points at least)
+      expect(cell.className).toContain("bg-sidebar"); // one row with the top bar on the main screen
+      expect(cell.className).not.toContain("border-r");
+      expect(screen.getByTestId("rail-tiles").style.paddingTop).toBe("");
       full = true;
       await act(async () => {
         resized?.();
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
-      expect(rail.style.paddingTop).toBe("");
-      expect(rail.style.width).toBe("");
+      expect(screen.queryByTestId("rail-title-cell")).toBeNull(); // full screen: no buttons, the tiles go up
       full = false;
       await act(async () => {
         resized?.();
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
-      expect(rail.style.paddingTop).toBe("calc(48px / var(--ui-zoom, 1))"); // points: the same space at any zoom (platform/zoom.ts)
+      expect(screen.getByTestId("rail-title-cell")).toBeTruthy();
+    } finally {
+      restore();
+    }
+  });
+
+  it("gives the cell over the rail the rail's colour on screens without the top bar", () => {
+    const restore = macApp();
+    try {
+      render(<WorkspaceRail controller={{ ...railController([A, B]), screen: "login" } as AppController} />);
+      expect(screen.getByTestId("rail-title-cell").className).toContain("bg-sidebar-rail");
     } finally {
       restore();
     }
@@ -152,7 +168,20 @@ describe("the rail under the macOS window buttons", () => {
 
   it("reserves nothing outside the macOS app (Windows keeps its own title bar)", () => {
     render(<WorkspaceRail controller={railController([A, B])} />);
-    expect(screen.getByRole("navigation", { name: "ワークスペース" }).style.paddingTop).toBe("");
+    expect(screen.queryByTestId("rail-title-cell")).toBeNull();
+    expect(screen.getByRole("navigation", { name: "ワークスペース" }).className).toContain("w-[68px]");
+  });
+});
+
+describe("the title row's inset after the rail", () => {
+  it("keeps what the rail leaves of the 84 points for the window buttons, and at least 8 px", () => {
+    expect(TITLE_ROW_INSET_AFTER_RAIL).toBe("max(8px, calc(84px / var(--ui-zoom, 1) - 68px))");
+    // 80 %: 105 - 68 = 37 px; 100 %: 16 px; 125 % and up: the rail alone (85 points and more) clears them -> 8 px.
+    const inset = (zoom: number) => Math.max(8, TRAFFIC_LIGHTS_INSET / zoom - RAIL_WIDTH);
+    expect(inset(0.8)).toBeCloseTo(37);
+    expect(inset(1)).toBe(16);
+    expect(inset(1.25)).toBe(8);
+    for (const zoom of [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]) expect((RAIL_WIDTH + inset(zoom)) * zoom).toBeGreaterThanOrEqual(TRAFFIC_LIGHTS_INSET - 1e-9);
   });
 });
 

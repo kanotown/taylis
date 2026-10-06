@@ -41,7 +41,13 @@ tests/        fakeServer.ts (プロトコルの模擬サーバ)、engine / apiCl
 ## ウィンドウのタイトルバー
 
 - macOS: `titleBarStyle: "Overlay"` (tauri.conf.json)。信号機ボタンは上の行に重なり、上の行
-  (`data-tauri-drag-region`) でウィンドウを動かす。
+  (`data-tauri-drag-region`) でウィンドウを動かす。信号機ボタンの位置は `trafficLightPosition` (x 16・y 20) で
+  固定 (上から 40pt の中央、右端は x 76)。上の行の高さは `TITLE_ROW_HEIGHT` (40px、ただし 40pt 未満にしない:
+  80・90% でもボタンが収まる)。ワークスペースのレールがある時も Slack と同じく信号機ボタンは上の行に置き、
+  レールは 68px のまま上の行の下から始まる (レールの上のマスはメイン画面では上の行と同じ色で 1 本の行に見え、
+  上の行の最初のマスは信号機ボタンの残り `TITLE_ROW_INSET_AFTER_RAIL` = 84pt − レールの幅 (8px 以上) を空ける)。
+  レールがない時は上の行の左を 84pt 空ける。全画面ではボタンが消えるので空けない (`useReservesTrafficLights`)。
+  以前はレールを信号機ボタンが横に並ぶ幅 (84pt) まで広げていた。
 - Windows: システムのタイトルバーを出さない (`src-tauri/tauri.windows.conf.json` の `"decorations": false`、
   Tauri が Windows でだけ重ねる。配列は丸ごと置き換わるので、ウィンドウの設定はそこにも全部書く)。Slack と同じく
   上の行 (ワークスペース名 / 検索) がタイトルバーで、右端に自前の最小化 / 最大化・元に戻す / 閉じる

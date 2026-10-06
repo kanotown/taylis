@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 
 import type { AppController } from "../state/app";
 import { dropIndex, gapForPointer, hostLabel, signInName, type WorkspaceEntry } from "../state/workspaces";
-import { TRAFFIC_LIGHTS_INSET } from "../platform/env";
+import { RAIL_WIDTH, TITLE_ROW_HEIGHT } from "../platform/env";
 import { useReservesTrafficLights } from "../platform/windowState";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
 import { useMediaQuery } from "./hooks";
@@ -59,8 +59,7 @@ export function dragOffset(drag: Pick<Drag, "from" | "gap" | "tops">, index: num
   return 0;
 }
 
-/** The rail's width outside macOS (its class says w-[68px]); the Windows title strip starts after it. */
-export const RAIL_WIDTH = 68;
+export { RAIL_WIDTH };
 
 /**
  * M16c: the workspaces down the left edge (Slack): number / dot for unread, ⌘1 … ⌘9, + to add (WORKSPACES.md §5).
@@ -79,7 +78,8 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
   // The tile that just landed shows again at once, without its usual opacity fade (no flicker as the lifted copy goes).
   const [landing, setLanding] = useState<string | null>(null);
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
-  // macOS: keep all three overlay window buttons inside the rail, with space below them; not in full screen (M93).
+  // macOS: the overlay window buttons sit in the title row across the top (Slack); the rail keeps its 68 px and starts
+  // below that row, whose cell over the rail takes the top bar's colour on the main screen. Not in full screen (M93).
   const trafficLights = useReservesTrafficLights();
   const entries = controller.workspaces;
 
@@ -218,52 +218,56 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
   const slide = drag?.moving && !reducedMotion && drag.settling !== "drop" ? `transform ${DRAG_SLIDE_MS}ms ease` : undefined;
 
   return (
-    <nav
-      aria-label={t("settings.section.workspaces")}
-      data-tauri-drag-region
-      className="flex w-[68px] shrink-0 flex-col items-center gap-3 overflow-y-auto border-r border-black/20 bg-sidebar-rail py-3"
-      style={trafficLights ? { paddingTop: `calc(48px / var(--ui-zoom, 1))`, width: `max(68px, calc(${TRAFFIC_LIGHTS_INSET}px / var(--ui-zoom, 1)))` } : undefined}
-      data-drop-gap={lifted ? drag.gap : undefined}
-    >
-      {entries.map((entry, index) => (
-        <WorkspaceTile
-          key={entry.serverUrl}
-          controller={controller}
-          entry={entry}
-          index={index}
-          count={entries.length}
-          tileRef={(node) => {
-            if (node) tiles.current.set(entry.serverUrl, node);
-            else tiles.current.delete(entry.serverUrl);
-          }}
-          placeholder={drag?.moving === true && drag.serverUrl === entry.serverUrl}
-          landing={landing === entry.serverUrl}
-          offset={lifted ? dragOffset(drag, index) : 0}
-          transition={slide}
-          onPointerDown={onPointerDown(entry, index)}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerCancel}
-          onOpen={() => {
-            if (swallowClick.current) {
-              swallowClick.current = false;
-              return;
-            }
-            void controller.switchWorkspace(entry.serverUrl);
-          }}
-          onMove={(to) => move(entry, to, true)}
-          onLeave={() => setLeaving(entry)}
+    <nav aria-label={t("settings.section.workspaces")} className="flex w-[68px] shrink-0 flex-col" data-drop-gap={lifted ? drag.gap : undefined}>
+      {trafficLights && (
+        <div
+          data-tauri-drag-region
+          data-testid="rail-title-cell"
+          className={cn("shrink-0", controller.screen === "main" ? "bg-sidebar" : "border-r border-black/20 bg-sidebar-rail")}
+          style={{ height: TITLE_ROW_HEIGHT }}
         />
-      ))}
-      <button
-        type="button"
-        title={t("settings.workspaces.add")}
-        aria-label={t("settings.workspaces.add")}
-        onClick={() => controller.beginAddWorkspace()}
-        className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-dashed border-sidebar-strong/30 text-sidebar-strong/70 transition-colors hover:border-sidebar-strong/60 hover:text-sidebar-strong", controller.addingWorkspace && "border-solid border-sidebar-strong bg-sidebar-strong/10 text-sidebar-strong")}
-      >
-        <Plus size={18} />
-      </button>
+      )}
+      <div data-tauri-drag-region data-testid="rail-tiles" className="flex min-h-0 flex-1 flex-col items-center gap-3 overflow-y-auto border-r border-black/20 bg-sidebar-rail py-3">
+        {entries.map((entry, index) => (
+          <WorkspaceTile
+            key={entry.serverUrl}
+            controller={controller}
+            entry={entry}
+            index={index}
+            count={entries.length}
+            tileRef={(node) => {
+              if (node) tiles.current.set(entry.serverUrl, node);
+              else tiles.current.delete(entry.serverUrl);
+            }}
+            placeholder={drag?.moving === true && drag.serverUrl === entry.serverUrl}
+            landing={landing === entry.serverUrl}
+            offset={lifted ? dragOffset(drag, index) : 0}
+            transition={slide}
+            onPointerDown={onPointerDown(entry, index)}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+            onOpen={() => {
+              if (swallowClick.current) {
+                swallowClick.current = false;
+                return;
+              }
+              void controller.switchWorkspace(entry.serverUrl);
+            }}
+            onMove={(to) => move(entry, to, true)}
+            onLeave={() => setLeaving(entry)}
+          />
+        ))}
+        <button
+          type="button"
+          title={t("settings.workspaces.add")}
+          aria-label={t("settings.workspaces.add")}
+          onClick={() => controller.beginAddWorkspace()}
+          className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-dashed border-sidebar-strong/30 text-sidebar-strong/70 transition-colors hover:border-sidebar-strong/60 hover:text-sidebar-strong", controller.addingWorkspace && "border-solid border-sidebar-strong bg-sidebar-strong/10 text-sidebar-strong")}
+        >
+          <Plus size={18} />
+        </button>
+      </div>
       {drag &&
         draggedEntry &&
         createPortal(
