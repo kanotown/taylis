@@ -2092,6 +2092,23 @@ class AppController(private val app: Application) {
     }
 
     /**
+     * M118 「上に固定」/「固定を外す」: the row moves at once (a new pin last), dm_pin.updated brings my other devices along;
+     * a refusal puts the pins back as they were.
+     */
+    suspend fun toggleDmPin(channelId: String) {
+        val api = api ?: return
+        val before = store.dmPins.toList()
+        val on = channelId !in before
+        store.setDmPin(channelId, on)
+        try {
+            if (on) api.pinDm(channelId) else api.unpinDm(channelId)
+        } catch (e: Exception) {
+            store.restoreDmPins(before)
+            report(e)
+        }
+    }
+
+    /**
      * M104 「ブロック」/「ブロックを解除」 (MODERATION.md §4): the flag moves at once, block.updated brings my other devices
      * along. The blocked person is not told.
      */

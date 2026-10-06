@@ -70,6 +70,7 @@ fun ChannelSectionDialog(controller: AppController, channelId: String, version: 
     val channel = store.channels[channelId] ?: return onDismiss()
     val current = remember(version, channelId) { store.sectionOf(channelId) }
     val starred = remember(version, channelId) { channelId in store.favorites }
+    val pinned = remember(version, channelId) { store.isDmPinned(channelId) }
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -79,6 +80,8 @@ fun ChannelSectionDialog(controller: AppController, channelId: String, version: 
                 TextButton(onClick = { scope.launch { controller.toggleFavorite(channelId); onDismiss() } }) {
                     Text(if (starred) stringResource(R.string.common_remove_from_favorites) else stringResource(R.string.common_add_to_favorites))
                 }
+                // M118: a DM or group DM (my own too) at the top of the DM lists, while the server keeps pins.
+                if (channel.channel.isDm && store.dmPinsKnown) DmPinButton(pinned) { scope.launch { controller.toggleDmPin(channelId); onDismiss() } }
                 HorizontalDivider()
                 Text(stringResource(R.string.sidebar_dialogs_move_to_section), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                 store.sidebarSections.forEach { section ->

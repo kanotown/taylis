@@ -82,9 +82,11 @@ object Channels {
         defaults: List<SidebarDefaultOut> = emptyList(),
         /** A DM's display title, for 「名前順」. */
         title: (ChannelState) -> String = { it.channel.name ?: "" },
+        /** M118: my pinned DMs, oldest pin first: the first rows of every section they are in. */
+        dmPins: List<String> = emptyList(),
     ): Sections {
         fun sortOf(key: String) = defaults.firstOrNull { it.key == key } ?: SidebarDefaultOut(key, SidebarOrder.defaultSorts[key] ?: "name")
-        fun ordered(rows: List<ChannelState>, key: String) = sortOf(key).let { SidebarOrder.section(rows, it.sort, it.manualOrder, title) }
+        fun ordered(rows: List<ChannelState>, key: String) = DmPins.first(rows, dmPins) { rest -> sortOf(key).let { SidebarOrder.section(rest, it.sort, it.manualOrder, title) } }
         val manualDms = sortOf("dms").sort == "manual"
         fun live(channel: ChannelState) = channel.isMember && (channel.channel.isDm || !channel.channel.archived)
         fun grouped(channel: ChannelState) = groupUnread && live(channel) && hasUnread(channel, meId, now)
@@ -99,15 +101,15 @@ object Channels {
             favorites = ordered(all.filter { it.isMember && !it.channel.archived && starred(it) && keep(it) }, "favorites"),
             custom = sidebar.map { section ->
                 val rows = all.filter { it.isMember && !it.channel.archived && !starred(it) && keep(it) && placed[it.id] == section.id }
-                section to SidebarOrder.section(rows, section.sort, section.manualOrder, title)
+                section to DmPins.first(rows, dmPins) { rest -> SidebarOrder.section(rest, section.sort, section.manualOrder, title) }
             },
             channels = ordered(all.filter { it.isMember && !it.channel.isDm && !it.channel.isTimes && !it.channel.archived && loose(it) && keep(it) }, "channels"),
             times = all.filter { it.isMember && it.channel.isTimes && !it.channel.archived && loose(it) && keep(it) }
                 .sortedWith(compareBy<ChannelState> { it.channel.timesOwnerId != meId }.then(SidebarOrder.byName)),
-            // My own DM first, unless the section is in my own order.
+            // M118: the pins first; then my own DM, unless the section is in my own order.
             dms = all.filter { it.isMember && it.channel.isDm && loose(it) && keep(it) }.let { dms ->
                 if (manualDms) ordered(dms, "dms")
-                else dms.partition { MainTabs.isSelfNotes(it, meId) }.let { (self, others) -> self + ordered(others, "dms") }
+                else DmPins.first(dms, dmPins) { rest -> rest.partition { MainTabs.isSelfNotes(it, meId) }.let { (self, others) -> self + ordered(others, "dms") } }
             },
             browse = all.filter { !it.isMember && !it.channel.archived }.sortedWith(SidebarOrder.byName),
         )
@@ -128,12 +130,34 @@ object Channels {
      * them). An older one that is unread still shows (unread is never hidden, as in a folded section); `more` when some
      * are left out, for 「すべての DM」 (the DM tab).
      */
-    fun dmSection(dms: List<ChannelState>, meId: String?, now: Instant = Instant.now(), limit: Int = HOME_DMS, manual: Boolean = false): DmSection {
+    fun dmSection(
+        dms: List<ChannelState>, meId: String?, now: Instant = Instant.now(), limit: Int = HOME_DMS, manual: Boolean = false,
+        /** M118: the pinned ones (first in `dms`) always show, before my own DM, and do not count against `limit`. */
+        dmPins: List<String> = emptyList(),
+    ): DmSection {
+        val pinned = dms.filter { it.id in dmPins }
+        val rest = dms.filter { it.id !in dmPins }
         // 「手動」: my own DM is where I put it, one of the rows.
-        val (self, others) = if (manual) emptyList<ChannelState>() to dms else dms.partition { MainTabs.isSelfNotes(it, meId) }
+        val (self, others) = if (manual) emptyList<ChannelState>() to rest else rest.partition { MainTabs.isSelfNotes(it, meId) }
         val newest = others.take(limit)
         val olderUnread = others.drop(limit).filter { hasUnread(it, meId, now) }
-        return DmSection(self + newest + olderUnread, more = others.size > newest.size + olderUnread.size)
+        return DmSection(pinned + self + newest + olderUnread, more = others.size > newest.size + olderUnread.size)
+    }
+}
+
+/**
+ * M118 (DATA_MODEL.md sidebar_sections 「セクションの中の並び順」「DM の固定」): pinned DMs and group DMs lead every list
+ * they are in (the DM tab, the home's 「ダイレクトメッセージ」, a section or the favourites holding them), oldest pin
+ * first (bootstrap's `dm_pins` order); the rest follow in the list's own order. Channels are never pinned.
+ */
+object DmPins {
+    /** `rows` with the pinned ones first in pin order, then `rest` ordering the others. */
+    fun first(rows: List<ChannelState>, pins: List<String>, rest: (List<ChannelState>) -> List<ChannelState>): List<ChannelState> {
+        if (pins.isEmpty()) return rest(rows)
+        val byId = rows.associateBy { it.id }
+        val pinned = pins.mapNotNull { id -> byId[id]?.takeIf { it.channel.isDm } }
+        val ids = pinned.mapTo(HashSet()) { it.id }
+        return pinned + rest(rows.filter { it.id !in ids })
     }
 }
 

@@ -1708,6 +1708,9 @@
     <string name="calls_join">参加する</string>
     <string name="calls_started_by">📞 %1$s さんが通話を始めました</string>
     <string name="calls_could_not_open">通話のリンクを開けるアプリがありません</string>
+    <string name="dm_pin_pin">上に固定</string>
+    <string name="dm_pin_unpin">固定を外す</string>
+    <string name="dm_pin_pinned">固定済み</string>
     <plurals name="composer_message_max_length">
         <item quantity="other">本文は%1$,d文字までです</item>
     </plurals>

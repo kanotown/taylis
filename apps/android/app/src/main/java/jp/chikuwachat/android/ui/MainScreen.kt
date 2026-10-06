@@ -1242,7 +1242,7 @@ fun MainScreen(controller: AppController) {
             shownIds = {
                 val store = controller.store
                 Channels.sections(store.channels.values, favorites = store.favorites, sidebar = store.sidebarSections, meId = store.me?.id,
-                    defaults = store.sidebarDefaults, title = { channelTitle(it, store) })
+                    defaults = store.sidebarDefaults, title = { channelTitle(it, store) }, dmPins = store.dmPins)
                     .custom.firstOrNull { it.first.id == section.id }?.second?.map { it.id }.orEmpty()
             },
             onEditOrder = { sectionMenuFor = null; editingSection = "custom:" + section.id },

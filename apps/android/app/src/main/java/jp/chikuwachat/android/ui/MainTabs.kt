@@ -269,14 +269,17 @@ object MainTabs {
     }
 
     /**
-     * My DMs and group DMs: my own DM first, then the newest last message first (the conversation's creation when it
-     * has none); `query` keeps the ones whose name has it.
+     * My DMs and group DMs: the pinned ones (M118), my own DM, then the newest last message first (the conversation's
+     * creation when it has none); `query` keeps the ones whose name has it.
      */
-    fun dmList(channels: Collection<ChannelState>, title: (ChannelState) -> String, meId: String?, query: String = ""): List<ChannelState> {
+    fun dmList(
+        channels: Collection<ChannelState>, title: (ChannelState) -> String, meId: String?, query: String = "",
+        /** M118: my pinned DMs, oldest pin first: before everything, my own DM included (DmPins). */
+        dmPins: List<String> = emptyList(),
+    ): List<ChannelState> {
         val needle = query.trim().lowercase()
-        return channels
-            .filter { it.isMember && it.channel.isDm && (needle.isEmpty() || title(it).lowercase().contains(needle)) }
-            .sortedWith(compareByDescending<ChannelState> { isSelfNotes(it, meId) }.thenByDescending { recency(it) })
+        val rows = channels.filter { it.isMember && it.channel.isDm && (needle.isEmpty() || title(it).lowercase().contains(needle)) }
+        return DmPins.first(rows, dmPins) { rest -> rest.sortedWith(compareByDescending<ChannelState> { isSelfNotes(it, meId) }.thenByDescending { recency(it) }) }
     }
 
     private fun recency(channel: ChannelState): Instant =
