@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ActivityFilter, ActivityItem, MessageOut } from "../api/types";
 import type { AppController } from "../state/app";
 import type { ThreadEntry } from "../sync/types";
-import { ACTIVITY_FILTER_LABELS, ACTIVITY_FILTERS, activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isShownActivity, movesActivityRead, newestActivityAt } from "./activity";
+import { ACTIVITY_FILTER_LABELS, ACTIVITY_FILTERS, activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isShownActivity, movesActivityRead, newestActivityAt, type ReadPositions } from "./activity";
 import { Avatar } from "./Avatar";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { fullTimestamp } from "./format";
@@ -48,6 +48,8 @@ interface ActivityList {
   items: ActivityItem[];
   cursor: string | null;
   loading: boolean;
+  /** The read position the server answered with (its items' `read` flags were counted against it). */
+  readAt?: string | null;
 }
 
 /** Whether the page itself is on screen (not a background browser tab or a hidden window). */
@@ -88,7 +90,7 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
     if (more && !cursor) return;
     const request = (requests.current[which] ?? 0) + 1;
     requests.current[which] = request;
-    setLists((current) => ({ ...current, [which]: { items: current[which]?.items ?? [], cursor: current[which]?.cursor ?? null, loading: true } }));
+    setLists((current) => ({ ...current, [which]: { ...current[which], items: current[which]?.items ?? [], cursor: current[which]?.cursor ?? null, loading: true } }));
     try {
       const answer = await api.listActivity({ filter: which, cursor, limit: ACTIVITY_PAGE });
       // A kind this version cannot show (a newer server) is skipped; the cursor still walks past it.
@@ -98,11 +100,11 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
       setSeenFrom((current) => current ?? page.read_at);
       setLists((current) => ({
         ...current,
-        [which]: { items: more ? appendActivityPage(current[which]?.items ?? [], page.items) : page.items, cursor: page.next_cursor ?? null, loading: false },
+        [which]: { items: more ? appendActivityPage(current[which]?.items ?? [], page.items) : page.items, cursor: page.next_cursor ?? null, loading: false, readAt: more ? current[which]?.readAt ?? page.read_at : page.read_at },
       }));
     } catch (error) {
       if (requests.current[which] !== request) return;
-      setLists((current) => ({ ...current, [which]: { items: current[which]?.items ?? [], cursor: current[which]?.cursor ?? null, loading: false } }));
+      setLists((current) => ({ ...current, [which]: { ...current[which], items: current[which]?.items ?? [], cursor: current[which]?.cursor ?? null, loading: false } }));
       setFailed(true);
       controller.setError(error);
     }
@@ -130,6 +132,17 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unread]);
 
+  // MOBILE_UI.md §6.4: a conversation's read position went back (「ここから未読にする」): its mentions are unread again,
+  // which only the server's `read` flags say — the list loads again.
+  const reloads = store.activityReloads;
+  const lastReloads = useRef(reloads);
+  useEffect(() => {
+    const changed = reloads !== lastReloads.current;
+    lastReloads.current = reloads;
+    if (changed && active && status === "online") void load(filter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloads]);
+
   // Being on screen reads the activity up to the newest row shown (the rows' dots stay until the view is left) — only
   // under 「すべて」: one read position covers every kind, so a filtered list would mark unseen items of the other kinds
   // read (「すべて既読」 is there for that).
@@ -147,6 +160,8 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
   };
 
   const items = list?.items ?? [];
+  // §6.4: what I read in its conversation or thread (here or on another device) loses its dot at once.
+  const positions: ReadPositions = { channel: (id) => store.getChannel(id)?.lastReadSeq, thread: (id) => store.threadReadSeqs.get(id) };
   return (
     <section aria-label={t("nav.activity")} className="flex min-h-0 flex-1 flex-col bg-canvas">
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-4 max-md:pr-2">
@@ -195,7 +210,7 @@ function ActivityFeed({ controller, active, onOpen }: { controller: AppControlle
           <ul className="mx-auto max-w-3xl" aria-label={t("activity.listLabel", { filter: ACTIVITY_FILTER_LABELS[filter] })}>
             {items.map((item) => (
               <li key={activityKey(item)} data-row-key={activityKey(item)}>
-                <ActivityRow controller={controller} item={item} unread={isActivityUnread(item, seenFrom)} onOpen={() => onOpen(item)} />
+                <ActivityRow controller={controller} item={item} unread={isActivityUnread(item, seenFrom, { listReadAt: list.readAt, positions })} onOpen={() => onOpen(item)} />
               </li>
             ))}
             {list.cursor && (

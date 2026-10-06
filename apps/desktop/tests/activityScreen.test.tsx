@@ -339,3 +339,73 @@ it("M76: an item of a kind this version does not know (a newer server) is skippe
   expect(labels(root("activity"))).toHaveLength(3);
   w.engine.stop();
 });
+
+it("2026-10-06 (§6.4): reading the mention's conversation and the reply's thread clears them from the tab's badge and their dots", async () => {
+  const { w, m1 } = await setup();
+  const reply = w.server.channels.get(w.channelId)!.messages.find((m) => m.parent_id === m1.id && m.sender_id === w.alice.id)!;
+  const lastSeq = () => w.server.channels.get(w.channelId)!.channel.last_seq;
+  await tap("activity");
+  const activity = root("activity");
+  expect(dots(activity)).toBe(3);
+  // My other device reads the conversation: the mention leaves the badge and loses its dot while the list is open.
+  await act(async () => {
+    w.server.markRead(w.bob.id, w.channelId, lastSeq());
+  });
+  await settle(w);
+  expect(w.store.activity).toMatchObject({ unread_count: 2, mention_unread: false });
+  expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ（未読 2）");
+  expect(tabButton("activity").querySelector("[data-badge]")?.getAttribute("data-badge")).toBe("neutral");
+  expect(labels(activity)).toEqual(["未読 Alice ほか 1 人が 🎉👍 · #c", "Alice がメンション · #c", "未読 Alice がスレッドに返信 · #c"]);
+  // … and back to unread from before the mention (「ここから未読にする」 there): the list loads again, the dot is back.
+  const requests = w.server.activityRequests.length;
+  await act(async () => {
+    w.server.markRead(w.bob.id, w.channelId, 3, "set");
+  });
+  await settle(w);
+  await settle(w);
+  expect(w.server.activityRequests.length).toBeGreaterThan(requests);
+  expect(w.store.activity?.unread_count).toBe(3);
+  expect(dots(activity)).toBe(3);
+
+  // This device opens the reply's thread and reads it: the row's dot goes at once, the badge with the PUT's answer.
+  await act(async () => {
+    expect(await w.engine.loadReplies(w.channelId, m1.id)).toBe(true);
+    w.engine.markThreadRead(m1.id, reply.seq);
+  });
+  expect(labels(activity)[2]).toBe("Alice がスレッドに返信 · #c");
+  await act(async () => {
+    await w.engine.flushReads();
+    await w.engine.flushActivity();
+  });
+  expect(w.store.activity?.unread_count).toBe(2);
+  expect(tabButton("activity").getAttribute("aria-label")).toBe("アクティビティ（未読 2）");
+  w.engine.stop();
+});
+
+it("2026-10-06: the wide sidebar's badge follows reads in the conversation; a server without `read` keeps the old dots", async () => {
+  compact = false;
+  const { w, m1 } = await setup();
+  expect(screen.getByRole("button", { name: "アクティビティ（未読 3）" })).toBeTruthy();
+  const reply = w.server.channels.get(w.channelId)!.messages.find((m) => m.parent_id === m1.id && m.sender_id === w.alice.id)!;
+  await act(async () => {
+    w.server.markThreadRead(w.bob.id, m1.id, reply.seq);
+    w.server.markRead(w.bob.id, w.channelId, w.server.channels.get(w.channelId)!.channel.last_seq);
+  });
+  await settle(w);
+  const entry = screen.getByRole("button", { name: "アクティビティ（未読 1）" });
+  expect(entry.querySelector("[data-badge]")?.getAttribute("data-badge")).toBe("neutral");
+  w.engine.stop();
+  cleanup();
+
+  // An older server (no `read` on the items): the dots compare times only, whatever was read in the conversation.
+  const old = await setup();
+  old.w.server.activityReadFlag = false;
+  await act(async () => {
+    old.w.server.markRead(old.w.bob.id, old.w.channelId, old.w.server.channels.get(old.w.channelId)!.channel.last_seq);
+  });
+  await settle(old.w);
+  fireEvent.click(screen.getByRole("button", { name: "アクティビティ（未読 3）" }));
+  await settle(old.w);
+  expect(dots(screen.getByRole("region", { name: "アクティビティ" }))).toBe(3);
+  old.w.engine.stop();
+});

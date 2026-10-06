@@ -29,9 +29,40 @@ const time = (iso: string | null | undefined): number => {
   return Number.isNaN(ms) ? 0 : ms;
 };
 
-/** The row's dot: it happened after the read position (items at the position itself are read). */
-export function isActivityUnread(item: Pick<ActivityItem, "at">, readAt: string | null | undefined): boolean {
-  return !!readAt && time(item.at) > time(readAt);
+/** My read positions as this device knows them: a conversation's (`last_read_seq`) and a thread's. */
+export interface ReadPositions {
+  channel(channelId: string): number | undefined;
+  thread(parentId: string): number | undefined;
+}
+
+/**
+ * MOBILE_UI.md §6.4 rule 2 (2026-10-06): a mention or a thread reply I have read where it was posted — a timeline row
+ * (top level, or a reply also sent to the channel) up to the conversation's read position, a reply up to its thread's.
+ * Other kinds are never read this way.
+ */
+export function isReadInConversation(item: Pick<ActivityItem, "kind" | "message">, positions: ReadPositions): boolean {
+  const message = item.message;
+  if (!message || (item.kind !== "mention" && item.kind !== "thread_reply")) return false;
+  const seq = message.seq;
+  if ((!message.parent_id || message.also_in_channel) && (positions.channel(message.channel_id) ?? 0) >= seq) return true;
+  return !!message.parent_id && (positions.thread(message.parent_id) ?? 0) >= seq;
+}
+
+/**
+ * The row's dot: it happened after the read position (items at the position itself are read) — `readAt` is the one the
+ * view compares with (so the dots stay while looking). With a server of 2026-10-06 or later (`read` not null), a mention
+ * or reply read in its conversation has none either: the server said so (`read` true for an item newer than the list's
+ * `read_at`), or this device has read it since (`positions`). `read` null (an older server): the time alone, as before.
+ */
+export function isActivityUnread(
+  item: Pick<ActivityItem, "at"> & Partial<Pick<ActivityItem, "kind" | "message" | "read">>,
+  readAt: string | null | undefined,
+  options: { listReadAt?: string | null; positions?: ReadPositions } = {},
+): boolean {
+  if (!readAt || time(item.at) <= time(readAt)) return false;
+  if (item.read === null || item.read === undefined) return true;
+  if (item.read && time(item.at) > time(options.listReadAt ?? readAt)) return false;
+  return !(options.positions && item.kind && isReadInConversation({ kind: item.kind, message: item.message }, options.positions));
 }
 
 /** The newest `at` of the rows (what being on screen marks read); null without rows. */

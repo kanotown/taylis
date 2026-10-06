@@ -442,8 +442,24 @@ export class FakeServer {
     if (filter === "all" || filter === "mentions") {
       for (const item of this.canvasMentions.get(userId) ?? []) if (this.channels.get(item.canvas!.channel_id)?.members.has(userId)) items.push({ ...item });
     }
+    // 2026-10-06 (MOBILE_UI.md §6.4): `read` — behind the read position, or a mention / reply read in its conversation.
+    // A server before it (activityReadFlag false) sends none.
+    const readAt = this.activityReadAt.get(userId)!;
+    if (this.activityReadFlag) for (const item of items) item.read = item.at <= readAt || this.readInConversation(item, userId);
     const ref = (item: ActivityItem) => item.message?.id ?? item.canvas?.item_id ?? "";
     return items.sort((a, b) => b.at.localeCompare(a.at) || b.kind.localeCompare(a.kind) || ref(b).localeCompare(ref(a)));
+  }
+
+  /** A server before 2026-10-06: no `read` on the items, and the counts compare with the read position only. */
+  activityReadFlag = true;
+
+  /** §6.4 rule 2: a mention or a thread reply I read in its conversation (timeline row) or its thread (a reply). */
+  private readInConversation(item: ActivityItem, userId: string): boolean {
+    const message = item.message;
+    if (!message || (item.kind !== "mention" && item.kind !== "thread_reply")) return false;
+    const inTimeline = !message.parent_id || message.also_in_channel === true;
+    if (inTimeline && (this.readPositions.get(`${userId}:${message.channel_id}`) ?? 0) >= message.seq) return true;
+    return !!message.parent_id && (this.threadFollows.get(`${message.parent_id}:${userId}`)?.lastReadSeq ?? 0) >= message.seq;
   }
 
   listActivity(userId: string, filter: ActivityFilter, cursor: string | null, limit: number): ActivityListOut {
@@ -455,7 +471,7 @@ export class FakeServer {
 
   activitySummary(userId: string): ActivitySummaryOut {
     const readAt = this.activityReadAt.get(userId)!;
-    const unread = this.activityItems(userId).filter((item) => item.at > readAt);
+    const unread = this.activityItems(userId).filter((item) => item.at > readAt && !(this.activityReadFlag && this.readInConversation(item, userId)));
     return { read_at: readAt, unread_count: Math.min(unread.length, 99), mention_unread: unread.some((item) => item.kind === "mention" || item.kind === "canvas_mention") };
   }
 
