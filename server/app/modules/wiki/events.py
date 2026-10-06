@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.events.envelope import Audience
 from app.events.models import OutboxEvent
 from app.events.outbox import AudienceResolver, write_outbox
+from app.modules.wiki.db_schemas import WikiRowsChangedData
 from app.modules.wiki.models import WikiPage
 from app.modules.wiki.schemas import (
     PageChange,
@@ -29,6 +30,7 @@ WIKI_CHANGED = "wiki.changed"
 WIKI_PAGE_UPDATED = "wiki.page.updated"
 WIKI_MENTIONED = "wiki.mentioned"
 WIKI_SHARED = "wiki.shared"
+WIKI_ROWS_CHANGED = "wiki.rows.changed"
 # Events for one person that name a page: delivered only while they can still read it.
 _PERSONAL = (WIKI_MENTIONED, WIKI_SHARED)
 
@@ -36,10 +38,12 @@ __all__ = [
     "WIKI_CHANGED",
     "WIKI_MENTIONED",
     "WIKI_PAGE_UPDATED",
+    "WIKI_ROWS_CHANGED",
     "WIKI_SHARED",
     "WikiChangedData",
     "WikiMentionedData",
     "WikiPageUpdatedData",
+    "WikiRowsChangedData",
     "WikiSharedData",
 ]
 
@@ -97,6 +101,31 @@ async def emit_page_updated(db: AsyncSession, page: WikiPage, change: PageChange
             page=to_meta(page).model_copy(update={"parent_id": None}), change=change
         ).model_dump(mode="json"),
     )
+
+
+async def emit_rows_changed(db: AsyncSession, database_ids: Iterable[uuid.UUID]) -> None:
+    """wiki.rows.changed to whoever can read each database when it is sent (M123): its rows,
+    values, schema or views changed."""
+    ids = sorted(set(database_ids))
+    if not ids:
+        return
+    rows = await db.execute(
+        text(
+            "SELECT page_id, schema_version, nextval('wiki_rows_seq') FROM wiki_databases "
+            "WHERE page_id = ANY(CAST(:ids AS uuid[])) ORDER BY page_id"
+        ),
+        {"ids": ids},
+    )
+    for page_id, version, seq in rows.all():
+        await write_outbox(
+            db,
+            event_type=WIKI_ROWS_CHANGED,
+            audience_type="page",
+            audience_id=page_id,
+            payload=WikiRowsChangedData(
+                database_id=page_id, seq=int(seq), schema_version=int(version)
+            ).model_dump(mode="json"),
+        )
 
 
 async def emit_personal(

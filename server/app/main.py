@@ -93,6 +93,7 @@ from app.modules.users.router import router as users_router
 from app.modules.webhooks.router import router as webhooks_router
 from app.modules.wiki import events as wiki_events
 from app.modules.wiki import service as wiki
+from app.modules.wiki.db_router import router as wiki_db_router
 from app.modules.wiki.router import router as wiki_router
 from app.modules.workflows.router import router as workflows_router
 from app.modules.workspace import service as workspace
@@ -499,6 +500,7 @@ def build_api_router() -> APIRouter:
     api.include_router(channel_links_router)
     api.include_router(canvases_router)
     api.include_router(wiki_router)
+    api.include_router(wiki_db_router)
     api.include_router(calendar_router)
     api.include_router(tasks_router)
     api.include_router(scheduled_router)

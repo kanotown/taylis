@@ -207,7 +207,7 @@ THIN = thin_statement(
     revisions="wiki_page_revisions",
     documents="wiki_pages",
     fk="page_id",
-    thinnable=("save", "merge"),
+    thinnable=("save", "merge", "props"),
 )
 
 
@@ -241,3 +241,25 @@ async def unreferenced_files(
 ) -> list[uuid.UUID]:
     rows = await db.execute(_UNREFERENCED, {"bound_before": bound_before, "limit": limit})
     return [row[0] for row in rows.all()]
+
+
+async def linked_databases(db: AsyncSession, row_id: uuid.UUID) -> set[uuid.UUID]:
+    """M123: the databases whose relation cells show this row (its title, or that it is there):
+    those linking to it, and (for their reverse cells) those of the rows it links to."""
+    rows = await db.execute(
+        text(
+            "SELECT src_database_id FROM wiki_relations WHERE dst_page_id = :row "
+            "UNION SELECT p.parent_id FROM wiki_relations r JOIN wiki_pages p "
+            "ON p.id = r.dst_page_id WHERE r.src_page_id = :row AND p.parent_id IS NOT NULL"
+        ),
+        {"row": row_id},
+    )
+    return {r[0] for r in rows.all()}
+
+
+async def purge_props_legacy(db: AsyncSession, before: datetime) -> int:
+    """M123: values a type change could not convert, after 30 days."""
+    result = await db.execute(
+        text("DELETE FROM wiki_props_legacy WHERE created_at < :before"), {"before": before}
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
