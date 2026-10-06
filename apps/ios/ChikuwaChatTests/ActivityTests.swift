@@ -102,6 +102,71 @@ final class ActivityTests: XCTestCase {
         XCTAssertFalse(ActivityRules.isUnread(item("mention", at: "2026-09-30T03:00:00Z"), readAt: nil)) // no position: no dots
     }
 
+    // MARK: read in the conversation (MOBILE_UI.md §6.4, 2026-10-06)
+
+    private func conversationItem(_ kind: String, seq: Int, parent: String? = nil, alsoInChannel: Bool = false, read: Bool? = false) -> ActivityItem {
+        var item = ActivityItem(kind: kind, at: "2026-10-06T10:00:00Z",
+                                message: MessageOut(id: "m\(seq)", channelId: "c1", senderId: "u2", seq: seq, updatedSeq: seq, clientMsgId: nil, body: "b",
+                                                    createdAt: "", editedAt: nil, deleted: false, parentId: parent, alsoInChannel: alsoInChannel),
+                                actorIds: ["u2"])
+        item.read = read
+        return item
+    }
+
+    func testTheReadFlagDecodesAndIsOptional() throws {
+        func page(_ read: String) throws -> ActivityItem {
+            let json = """
+            {"items": [{"kind": "mention", "at": "2026-09-30T01:00:00Z", "message": \(Self.messageJson), "actor_ids": ["u2"]\(read)}],
+             "next_cursor": null, "read_at": "2026-09-30T00:00:00Z"}
+            """
+            return try XCTUnwrap(JSON.snakeDecoder.decode(ActivityListOut.self, from: Data(json.utf8)).items.first)
+        }
+        XCTAssertEqual(try page(#", "read": true"#).read, true)
+        XCTAssertEqual(try page(#", "read": false"#).read, false)
+        XCTAssertNil(try page(#", "read": null"#).read)
+        XCTAssertNil(try page("").read) // a server before the rule
+    }
+
+    func testAMentionOrReplyIsReadOnceItsConversationsPositionCoversIt() {
+        // A timeline row: the conversation's position.
+        let top = conversationItem("mention", seq: 10)
+        XCTAssertFalse(ActivityRules.conversationRead(top, channelReadSeq: 9, threadReadSeq: nil))
+        XCTAssertTrue(ActivityRules.conversationRead(top, channelReadSeq: 10, threadReadSeq: nil))
+        XCTAssertFalse(ActivityRules.conversationRead(top, channelReadSeq: nil, threadReadSeq: 99))
+        // A reply only in its thread: the thread's position, not the conversation's.
+        let reply = conversationItem("thread_reply", seq: 12, parent: "p")
+        XCTAssertFalse(ActivityRules.conversationRead(reply, channelReadSeq: 50, threadReadSeq: 11))
+        XCTAssertTrue(ActivityRules.conversationRead(reply, channelReadSeq: nil, threadReadSeq: 12))
+        let mentionInThread = conversationItem("mention", seq: 12, parent: "p")
+        XCTAssertTrue(ActivityRules.conversationRead(mentionInThread, channelReadSeq: 0, threadReadSeq: 30))
+        // A reply also sent to the channel: either position.
+        let both = conversationItem("thread_reply", seq: 20, parent: "p", alsoInChannel: true)
+        XCTAssertTrue(ActivityRules.conversationRead(both, channelReadSeq: 20, threadReadSeq: 0))
+        XCTAssertTrue(ActivityRules.conversationRead(both, channelReadSeq: 3, threadReadSeq: 25))
+        XCTAssertFalse(ActivityRules.conversationRead(both, channelReadSeq: 19, threadReadSeq: 19))
+        // Reactions keep to the activity's read position.
+        XCTAssertFalse(ActivityRules.conversationRead(conversationItem("reaction", seq: 1), channelReadSeq: 99, threadReadSeq: 99))
+    }
+
+    func testTheDotFollowsReadsInTheConversation() {
+        let seenFrom = "2026-10-06T09:00:00Z"
+        let item = conversationItem("mention", seq: 10)
+        XCTAssertTrue(ActivityRules.isUnread(item, readAt: seenFrom))
+        XCTAssertFalse(ActivityRules.isUnread(item, readAt: seenFrom, conversationRead: true))
+        // The server's verdict: read although after the page's read position = read in its conversation.
+        let pageReadAt = "2026-10-06T08:00:00Z"
+        let marked = ActivityRules.markingConversationReads([conversationItem("mention", seq: 10, read: true), conversationItem("mention", seq: 11, read: false),
+                                                            conversationItem("mention", seq: 12, read: nil), conversationItem("reaction", seq: 13, read: true)],
+                                                           readAt: pageReadAt)
+        XCTAssertEqual(marked.map(\.readInConversation), [true, false, false, false])
+        XCTAssertEqual(marked.map { ActivityRules.isUnread($0, readAt: seenFrom) }, [false, true, true, true])
+        // Read by the position itself (at not after it): no conversation read is implied; the dots compare with the
+        // position the tab opened at, as before.
+        let byPosition = ActivityRules.markingConversationReads([conversationItem("mention", seq: 10, read: true)], readAt: "2026-10-06T11:00:00Z")
+        XCTAssertFalse(byPosition[0].readInConversation)
+        XCTAssertTrue(ActivityRules.isUnread(byPosition[0], readAt: seenFrom))
+    }
+
     func testBeingOnScreenReadsUpToTheNewestRowOnlyOnAll() {
         let rows = [item("mention", at: "2026-09-30T01:00:00Z", id: "a"), item("reaction", at: "2026-09-30T03:00:00.25Z", id: "b"),
                     item("thread_reply", at: "2026-09-30T02:00:00Z", id: "c")]
@@ -301,6 +366,54 @@ final class ActivityTests: XCTestCase {
         await settle(w.engine)
         XCTAssertEqual(summaryCalls(w.api), 4)
         XCTAssertEqual(w.store.activity, ActivitySummary(readAt: "2026-09-30T05:00:00Z", unreadCount: 0, mentionUnread: false))
+        w.engine.stop()
+    }
+
+    /// MOBILE_UI.md §6.4 (2026-10-06): reading a mention or a reply in its conversation lowers the server's count, so
+    /// the badge is fetched again on read.updated, on thread.updated (reason read) and after this device's own reads.
+    func testReadsInTheConversationFetchTheBadgeAgain() async throws {
+        let w = makeWorld()
+        let mine = try w.server.post(channelId: w.channel.id, senderId: w.bob.id, body: "スライド v2 です").0
+        let mention = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "<@\(w.bob.id)> 見てください").0
+        let reply = try w.server.post(channelId: w.channel.id, senderId: w.alice.id, body: "<@\(w.bob.id)> 返信です", parentId: mine.id).0
+        w.server.activity[w.bob.id] = ActivitySummary(readAt: "2026-09-30T00:00:00Z", unreadCount: 2, mentionUnread: true)
+        await w.engine.start()
+        await settle(w.engine)
+        let before = summaryCalls(w.api)
+        XCTAssertEqual(w.store.activity?.unreadCount, 2)
+
+        // Read in the conversation on another device: read.updated.
+        w.server.activity[w.bob.id]?.unreadCount = 1
+        try w.server.markRead(userId: w.bob.id, channelId: w.channel.id, seq: mention.seq)
+        await settle(w.engine)
+        XCTAssertEqual(summaryCalls(w.api), before + 1)
+        XCTAssertEqual(w.store.activity?.unreadCount, 1)
+        XCTAssertEqual(w.store.activityReadsMovedBack, 0)
+
+        // Read in the thread: thread.updated with reason read.
+        w.server.activity[w.bob.id] = ActivitySummary(readAt: "2026-09-30T00:00:00Z", unreadCount: 0, mentionUnread: false)
+        try w.server.markThreadRead(userId: w.bob.id, messageId: mine.id, seq: reply.seq)
+        await settle(w.engine)
+        XCTAssertEqual(summaryCalls(w.api), before + 2)
+        XCTAssertEqual(w.store.activity?.unreadCount, 0)
+
+        // 「ここから未読にする」: the position moves back, the lists held are read again.
+        w.server.activity[w.bob.id] = ActivitySummary(readAt: "2026-09-30T00:00:00Z", unreadCount: 1, mentionUnread: true)
+        try w.server.markRead(userId: w.bob.id, channelId: w.channel.id, seq: mine.seq, mode: "set")
+        await settle(w.engine)
+        XCTAssertEqual(summaryCalls(w.api), before + 3)
+        XCTAssertEqual(w.store.activityReadsMovedBack, 1)
+        XCTAssertEqual(w.store.activity?.unreadCount, 1)
+
+        // Read here: once the PUT went through, the badge is fetched again.
+        w.engine.isActive = { true }
+        w.server.activity[w.bob.id] = ActivitySummary(readAt: "2026-09-30T00:00:00Z", unreadCount: 0, mentionUnread: false)
+        let calls = summaryCalls(w.api)
+        w.engine.markRead(w.channel.id, seq: mention.seq, force: true)
+        await w.engine.flushReads()
+        await settle(w.engine)
+        XCTAssertGreaterThan(summaryCalls(w.api), calls)
+        XCTAssertEqual(w.store.activity?.unreadCount, 0)
         w.engine.stop()
     }
 

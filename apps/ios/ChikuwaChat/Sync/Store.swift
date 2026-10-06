@@ -919,6 +919,12 @@ final class Store {
         activityUpdates += 1
     }
 
+    /// MOBILE_UI.md §6.4 (2026-10-06): a conversation's read position moved back (read.updated reason "set", 「ここから未読に
+    /// する」): mentions there read before are unread again, so the activity lists held are read again.
+    private(set) var activityReadsMovedBack = 0
+
+    func activityReadPositionMovedBack() { activityReadsMovedBack += 1 }
+
     /// The item ids of the activity.updated events since the last call (the list applies them once).
     func takeUpdatedActivityItems() -> Set<String> {
         defer { updatedActivityItems = [] }

@@ -694,9 +694,14 @@ final class SyncEngine {
                 Task { await refreshMe() }
             }
         case "read.updated":
+            let moveBack = frame.data["reason"]?.stringValue == "set"
             if let id = frame.data["channel_id"]?.stringValue {
-                applyReadState(id, try frame.data.decode(ReadStateOut.self), allowDecrease: frame.data["reason"]?.stringValue == "set")
+                applyReadState(id, try frame.data.decode(ReadStateOut.self), allowDecrease: moveBack)
             }
+            // MOBILE_UI.md §6.4 (2026-10-06): mentions read in the conversation leave the activity badge (the server
+            // counts them); a position moved back makes them unread again, in the lists held too.
+            if moveBack { store.activityReadPositionMovedBack() }
+            scheduleActivityRefreshAfterRead(movedBack: moveBack)
         case "bookmark.updated":
             if let id = frame.data["message_id"]?.stringValue, case .bool(let on)? = frame.data["bookmarked"] {
                 store.setBookmarked(id, on: on)
@@ -782,6 +787,9 @@ final class SyncEngine {
             applyThreadState(try frame.data.decode(ThreadState.self))
             onBadge?(store.badgeCount)
             scheduleThreadRefresh()
+            // MOBILE_UI.md §6.4 (2026-10-06): my position in the thread moved, its replies and mentions read there
+            // leave the activity badge.
+            if frame.data["reason"]?.stringValue == "read" { scheduleActivityRefreshAfterRead() }
         case "notification_preference.updated":
             // M35: follows_default and muted ride along (absent from older servers: decoded as before).
             let pref = try frame.data.decode(NotificationPreferenceOut.self)
@@ -1163,6 +1171,7 @@ final class SyncEngine {
         }
         if (store.unsentReads[channelId] ?? 0) <= target { store.setUnsentRead(channelId, nil) }
         _ = try? await enqueue { [self] in self.applyReadState(channelId, state) }.value
+        scheduleActivityRefreshAfterRead() // the server has my read: the mentions it covers leave the activity badge (§6.4)
     }
 
     /// §10: bootstrap's read state is the server's; a position this device reached but could not send yet goes on
@@ -1269,6 +1278,7 @@ final class SyncEngine {
             self.applyThreadState(state) // the position reached here stays even when the server keeps none (not followed)
             self.onBadge?(self.store.badgeCount)
         }.value
+        scheduleActivityRefreshAfterRead() // the replies and mentions read here leave the activity badge (MOBILE_UI.md §6.4)
     }
 
     /// False when nothing changed (offline, or the request failed): the caller tells the reader.
@@ -1335,6 +1345,14 @@ final class SyncEngine {
             guard let self, !Task.isCancelled, self.status == .online else { return }
             await self.refreshActivity()
         }
+    }
+
+    /// MOBILE_UI.md §6.4 (2026-10-06): a read position of mine moved, so mentions and replies read in their conversation
+    /// may leave the badge. A position moving forward cannot lower a badge already at 0 (every post of mine moves mine):
+    /// fetched only when it shows something, or when a position moved back (「ここから未読にする」).
+    private func scheduleActivityRefreshAfterRead(movedBack: Bool = false) {
+        guard movedBack || (store.activity?.unreadCount ?? 0) > 0 else { return }
+        scheduleActivityRefresh()
     }
 
     /// The activity badge from the server; a failure waits for the next event or bootstrap.
