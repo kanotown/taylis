@@ -268,6 +268,8 @@ struct ActivityView: View {
     let onOpenMention: (MessageOut) -> Void
     /// Stage B: an item opens its message (in its thread when it is a reply).
     let onOpenItem: (ActivityItem) -> Void
+    /// Stage A: a followed thread's conversation link opens the conversation at the thread's parent.
+    var onOpenThreadConversation: ((ThreadEntry) -> Void)?
     @State private var segment = "mentions"
 
     var body: some View {
@@ -290,7 +292,7 @@ struct ActivityView: View {
             if segment == "mentions" {
                 MentionsView(controller: controller, onOpen: onOpenMention, embedded: true)
             } else {
-                ThreadsListView(controller: controller, embedded: true)
+                ThreadsListView(controller: controller, embedded: true, onOpenConversation: onOpenThreadConversation)
             }
         }
         .navigationTitle("アクティビティ")

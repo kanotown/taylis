@@ -53,6 +53,63 @@ final class MainNavigationTests: XCTestCase {
         XCTAssertEqual(split.pendingThread, ThreadRef(channelId: "general", parentId: "p1")) // in the pane
     }
 
+    /// 「スレッド」's conversation link (and 「チャンネルを開く」): the thread's parent revealed in its conversation's
+    /// timeline, the conversation pushed alone over the list (no thread screen), the thread not loaded.
+    @MainActor
+    func testAThreadsConversationLinkRevealsTheParentInTheConversation() async throws {
+        let parent = MessageOut(id: "p1", channelId: "general", senderId: "u2", seq: 7, updatedSeq: 7, clientMsgId: nil, body: "topic",
+                                createdAt: "2026-10-07T01:00:00Z", editedAt: nil, deleted: false, replyCount: 3)
+        let entry = ThreadEntry(parent: parent, state: ThreadState(parentId: "p1", channelId: "general", following: true, lastReadSeq: 0,
+                                                                   unreadCount: 1, mentionCount: 0, replyCount: 3, lastReplyAt: nil, participantIds: []))
+        let context = try JSON.snakeEncoder.encode([parent])
+        let recorder = PathRecorder()
+        StubProtocol.handler = { request in
+            let path = request.url?.path ?? ""
+            recorder.add(path)
+            return path == "/api/v1/messages/p1/context" ? (200, context) : (404, Data())
+        }
+        defer { StubProtocol.handler = nil }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let controller = AppController(defaults: UserDefaults(suiteName: "threads-link-\(UUID())")!)
+        controller.api = ApiClient(baseUrl: URL(string: "http://server")!, session: URLSession(configuration: configuration))
+
+        let channelId = await controller.revealThreadParent(entry)
+        XCTAssertEqual(channelId, "general")
+        XCTAssertEqual(recorder.all, ["/api/v1/messages/p1/context"]) // no replies: the thread is not opened
+        let focus = try XCTUnwrap(controller.messageFocus)
+        XCTAssertEqual(focus.channelId, "general")
+        XCTAssertEqual(focus.messageId, "p1")
+        XCTAssertNil(focus.parentId) // highlighted in the channel's timeline, not in a thread
+
+        // MainView then shows it on the tab's stack: the conversation alone, Back to the list.
+        var nav = navigation(.tabs)
+        nav.tab = .activity
+        nav.show(try XCTUnwrap(channelId), parentId: nil, on: .activity)
+        XCTAssertEqual(nav.paths[.activity], [.channel("general")])
+        XCTAssertEqual(nav.frontChannelId, "general")
+        var split = navigation(.split)
+        split.select(.list(ThreadsListView.selectionId))
+        split.show("general", parentId: nil, on: .home)
+        XCTAssertEqual(split.split, [.list(ThreadsListView.selectionId), .channel("general")])
+        XCTAssertNil(split.pendingThread)
+
+        // A message that cannot be loaded leaves the screens as they were.
+        StubProtocol.handler = { _ in (404, Data(#"{"error": {"code": "not_found", "message": "gone"}}"#.utf8)) }
+        controller.messageFocus = nil
+        let missing = await controller.revealThreadParent(entry)
+        XCTAssertNil(missing)
+        XCTAssertNil(controller.messageFocus)
+    }
+
+    /// The paths the stubbed server was asked for (its handler runs off the main actor).
+    private final class PathRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var paths: [String] = []
+        func add(_ path: String) { lock.lock(); paths.append(path); lock.unlock() }
+        var all: [String] { lock.lock(); defer { lock.unlock() }; return paths }
+    }
+
     /// An activity (or mentions, saved, Times) row of a reply: one push of the conversation and its thread; Back goes to
     /// the conversation, then to the list.
     func testARevealedReplyPushesItsConversationAndThreadAtOnce() {

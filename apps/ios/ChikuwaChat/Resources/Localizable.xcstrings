@@ -11290,6 +11290,22 @@
         }
       }
     },
+    "チャンネルを開く" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open channel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开频道"
+          }
+        }
+      }
+    },
     "チャンネルを探す" : {
       "localizations" : {
         "en" : {
@@ -15642,6 +15658,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "输入对话或人员的名称即可前往。也可以从这里开始搜索消息。"
+          }
+        }
+      }
+    },
+    "会話を開く" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open conversation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开对话"
           }
         }
       }
