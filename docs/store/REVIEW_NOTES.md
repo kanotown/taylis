@@ -39,8 +39,13 @@ believe Sign in with Apple is not required (Guideline 4.8, education/enterprise 
 The review server uses a username and password.
 
 User-generated content safeguards (Guideline 1.2):
-- Report: long-press a message and choose "報告する" (Report). Reports go to the
-  server administrators, who can delete messages and deactivate accounts.
+- Report a problem or send feedback: 自分 (You) tab > "問題を報告・ご意見" (Report a problem /
+  Feedback). Choose a category (for example "子どもの安全" = Child safety, or "ご意見・要望" =
+  Feedback), write the details and tap "送信" (Send). No message or person needs to be selected.
+- Report a person: open their profile and choose "報告する" (Report).
+- Report a message: long-press it and choose "報告する" (Report).
+- Reports stay in the app and go to the server administrators at once; they can delete messages
+  and deactivate accounts.
 - Block: open a person's profile and choose "ブロック" (Block); their messages are hidden.
 - Users can edit and delete their own messages.
 - Only members created or invited by the organization's administrator can post.
@@ -62,8 +67,9 @@ administrator enables them; they are disabled on the review server.
 
 - 審査サーバで AI 機能を切るか、メモの最後の文を消す。
 - 報告・ブロック・アカウント削除の場所は M104 の実装（iOS / Android）に合わせて確かめてから貼る。
-- 「問題を報告・ご意見」とプロフィールの「報告する」（M119）が iOS のリリースに入ったら、上の Report の行（と
-  `docs/store/appstore.json` の `review.notes`）にも足す。Google Play の手順（§2）には先に書いてある。
+- 「問題を報告・ご意見」とプロフィールの「報告する」（M119）は iOS に入った。上の Report の行と
+  `docs/store/appstore.json` の `review.notes` の両方に書いてある（iOS では「自分」タブの一覧。Google Play の手順（§2）は
+  Android の「設定」）。M119 を含まないビルドを審査に出すときは、メッセージの報告だけの書き方に戻す。
 
 ## 2. Google Play：アプリのアクセス権（App access）
 

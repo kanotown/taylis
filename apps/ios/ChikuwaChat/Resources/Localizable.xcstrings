@@ -60,6 +60,76 @@
         }
       }
     },
+    "%@ さんを報告" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报 %@"
+          }
+        }
+      }
+    },
+    "report.other" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その他"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他"
+          }
+        }
+      }
+    },
+    "ご意見・要望" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feedback / requests"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "意见与建议"
+          }
+        }
+      }
+    },
+    "スパム" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spam"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "垃圾信息"
+          }
+        }
+      }
+    },
     "メンバーに通知が届き、会議のリンクが投稿されます。" : {
       "localizations" : {
         "en" : {
@@ -108,6 +178,54 @@
         }
       }
     },
+    "内容" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内容"
+          }
+        }
+      }
+    },
+    "内容（必須）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details (required)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内容（必填）"
+          }
+        }
+      }
+    },
+    "問題を報告・ご意見" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report a problem / Feedback"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "报告问题 / 意见反馈"
+          }
+        }
+      }
+    },
     "固定を外す" : {
       "localizations" : {
         "en" : {
@@ -120,6 +238,86 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取消置顶"
+          }
+        }
+      }
+    },
+    "報告とご意見は、このワークスペースの管理者に届きます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reports and feedback go to this workspace's administrators."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "报告和意见将发送给此工作区的管理员。"
+          }
+        }
+      }
+    },
+    "報告は、このワークスペースの管理者に届きます。相手には知らされません。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The report goes to this workspace's administrators. The person is not told."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "举报将发送给此工作区的管理员。对方不会收到通知。"
+          }
+        }
+      }
+    },
+    "子どもの安全" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Child safety"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儿童安全"
+          }
+        }
+      }
+    },
+    "子どもの安全に関する懸念は、開発者にも連絡できます：加納 徹（Taylis 開発者）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Child safety concerns can also be sent to the developer: Toru Kano (developer of Taylis)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有关儿童安全的问题，也可以联系开发者：Toru Kano（Taylis 开发者）"
+          }
+        }
+      }
+    },
+    "送信しました。管理者が確認します" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sent. The administrators will review it."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已发送。管理员会进行确认。"
           }
         }
       }
@@ -152,6 +350,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "发起通话"
+          }
+        }
+      }
+    },
+    "（[at] を @ に置き換えてください）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(replace [at] with @)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（请将 [at] 替换为 @）"
           }
         }
       }

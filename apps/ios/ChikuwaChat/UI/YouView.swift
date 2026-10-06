@@ -17,6 +17,7 @@ struct YouView: View {
     var onClose: (() -> Void)? = nil
     @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .system
     @State private var confirmLogout = false
+    @State private var reportingProblem = false
 
     private var me: UserMe? { controller.store.me ?? controller.me }
     private var mePublic: UserPublic? { me.map { controller.store.users[$0.id] ?? $0.asPublic } }
@@ -51,6 +52,12 @@ struct YouView: View {
                         NavigationLink(value: YouRoute.admin) { YouRow(title: tr("管理"), symbol: "shield") }
                     }
                 }
+                // M119 (MODERATION.md §3.1): always here, guests included (Google Play's child safety standards).
+                Section {
+                    Button { reportingProblem = true } label: {
+                        YouRow(title: tr("問題を報告・ご意見"), symbol: "exclamationmark.bubble").foregroundStyle(Color.primary)
+                    }
+                }
                 Section {
                     Button(logoutTitle, role: .destructive) { confirmLogout = true }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -62,6 +69,7 @@ struct YouView: View {
                 if let onClose { ToolbarItem(placement: .confirmationAction) { Button("閉じる", action: onClose) } }
             }
             .navigationDestination(for: YouRoute.self) { route in destination(route) }
+            .sheet(isPresented: $reportingProblem) { ReportProblemSheet(controller: controller) }
             .alert("ログアウトしますか？", isPresented: $confirmLogout) {
                 Button("キャンセル", role: .cancel) {}
                 Button("ログアウト", role: .destructive) { Task { await controller.logout() } }

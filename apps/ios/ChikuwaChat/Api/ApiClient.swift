@@ -475,11 +475,16 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     func blockUser(id: String) async throws -> BlockStateOut { try await request("PUT", "/api/v1/users/\(id)/block") }
     func unblockUser(id: String) async throws -> BlockStateOut { try await request("DELETE", "/api/v1/users/\(id)/block") }
-    /// `reason`: spam / harassment / inappropriate / other; `note` optional.
+    /// `reason`: child_safety / spam / harassment / inappropriate / other; `note` optional.
     func reportMessage(id: String, reason: String, note: String?) async throws -> ReportAck {
         var body: [String: JSONValue] = ["reason": .string(reason)]
         if let note, !note.isEmpty { body["note"] = .string(note) }
         return try await request("POST", "/api/v1/messages/\(id)/report", body: .object(body))
+    }
+    /// M119 (MODERATION.md §3.1): a report not tied to a message (of a person when `user_id` is in the body, or general
+    /// feedback). The body comes from `GeneralReportForm.body`; its `client_report_id` makes a resend return the first one.
+    func submitReport(_ body: [String: JSONValue]) async throws -> GeneralReportAck {
+        try await request("POST", "/api/v1/reports", body: .object(body))
     }
     /// My password, or my username for an account without one (Google sign-in). Every session ends on success.
     func deleteAccount(password: String?, confirmUsername: String?) async throws {

@@ -1106,6 +1106,18 @@ final class AppController {
         }
     }
 
+    /// M119 「問題を報告・ご意見」/ プロフィールの「報告する」 (MODERATION.md §3.1). Returns the error to show in the form, or
+    /// nil when the server took it (a resend with the same `client_report_id` gets the first report back).
+    func submitReport(_ form: GeneralReportForm) async -> String? {
+        guard let api else { return tr("ログインしていません") }
+        do {
+            _ = try await api.submitReport(form.body)
+            return nil
+        } catch {
+            return describe(error)
+        }
+    }
+
     /// M104 「アカウントを削除」 (MODERATION.md §2): my password, or my username for an account without one. On success the
     /// server has ended every session and this workspace is signed out here. Returns the error to show, or nil.
     func deleteAccount(secret: String) async -> String? {

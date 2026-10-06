@@ -20,7 +20,86 @@ final class ModerationTests: XCTestCase {
         XCTAssertFalse(Moderation.canReport(message(sender: "bob", pending: true), meId: "alice"))
         XCTAssertFalse(Moderation.canReport(message(sender: "bob", deleted: true), meId: "alice"))
         XCTAssertFalse(Moderation.canReport(message(sender: "bob", type: "system"), meId: "alice"))
-        XCTAssertEqual(Moderation.reasons.map(\.value), ["spam", "harassment", "inappropriate", "other"])
+        XCTAssertEqual(Moderation.reasons.map(\.value), ["child_safety", "spam", "harassment", "inappropriate", "other"])
+    }
+
+    // MARK: M119 「問題を報告・ご意見」 (MODERATION.md §3.1)
+
+    func testReportCategoriesStartWithChildSafety() {
+        XCTAssertEqual(Moderation.reportCategories.map(\.value), ["child_safety", "harassment", "inappropriate", "spam", "feedback", "other"])
+    }
+
+    func testReportNeedsACategoryAndOneToFourThousandCharacters() {
+        var form = GeneralReportForm()
+        XCTAssertFalse(form.canSend)
+        form.note = "困っています"
+        XCTAssertFalse(form.canSend, "no category yet")
+        form.category = "feedback"
+        XCTAssertTrue(form.canSend)
+        form.note = "  \n "
+        XCTAssertFalse(form.canSend, "blank after trimming")
+        XCTAssertEqual(form.noteLength, 0)
+        form.note = " " + String(repeating: "あ", count: 4000) + "\n"
+        XCTAssertEqual(form.noteLength, 4000)
+        XCTAssertTrue(form.canSend)
+        form.note = String(repeating: "a", count: 4001)
+        XCTAssertTrue(form.tooLong)
+        XCTAssertFalse(form.canSend)
+        // Counted as the server counts (code points): a flag is two.
+        form.note = "🇯🇵"
+        XCTAssertEqual(form.noteLength, 2)
+    }
+
+    func testReportBodyCarriesTheTrimmedNoteThePersonAndTheRetryKey() {
+        var general = GeneralReportForm()
+        general.category = "child_safety"
+        general.note = "  見てください \n"
+        XCTAssertEqual(general.body, [
+            "category": .string("child_safety"),
+            "note": .string("見てください"),
+            "client_report_id": .string(general.clientReportId),
+        ])
+        var person = GeneralReportForm(userId: "u-2")
+        person.category = "harassment"
+        person.note = "x"
+        XCTAssertEqual(person.body["user_id"], .string("u-2"))
+        XCTAssertNotNil(UUID(uuidString: person.clientReportId))
+        XCTAssertNotEqual(general.clientReportId, person.clientReportId)
+    }
+
+    func testRetryKeyStaysUntilTheServerTookTheReport() {
+        var form = GeneralReportForm(userId: "u-2")
+        let key = form.clientReportId
+        form.category = "spam"
+        form.note = "first try"
+        _ = form.body  // a failed attempt
+        form.note = "edited after the failure"
+        XCTAssertEqual(form.clientReportId, key, "a resend after a lost response must return the first report")
+        form.sent()
+        XCTAssertNotEqual(form.clientReportId, key)
+        XCTAssertEqual(form.note, "")
+        XCTAssertNil(form.category)
+        XCTAssertEqual(form.userId, "u-2")
+    }
+
+    /// 「その他」 of a report reads "Other", not the overflow buttons' "More".
+    func testOtherReadsAsAKindOfReport() {
+        let language = UILanguage.shared
+        let before = language.choice
+        defer { language.set(before) }
+        language.set(.en)
+        XCTAssertEqual(Moderation.otherLabel, "Other")
+        language.set(.zhHans)
+        XCTAssertEqual(Moderation.otherLabel, "其他")
+        language.set(.ja)
+        XCTAssertEqual(Moderation.otherLabel, "その他")
+    }
+
+    func testReportAckDecodes() throws {
+        let json = #"{"id":"r-1","category":"feedback","user_id":null,"created_at":"2026-10-06T00:00:00Z"}"#
+        let ack = try JSON.snakeDecoder.decode(GeneralReportAck.self, from: Data(json.utf8))
+        XCTAssertEqual(ack.category, "feedback")
+        XCTAssertNil(ack.userId)
     }
 
     func testABlockedSendersRowFoldsUntilShown() {
