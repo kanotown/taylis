@@ -18,7 +18,7 @@ export function ReactionsDialog({ controller, message, onClose }: { controller: 
   const store = controller.store;
   const reactions = message.reactions ?? [];
   return (
-    <Modal onClose={onClose} title={t("actions.reactions")} className="w-[420px]">
+    <Modal onClose={onClose} title={t("actions.reactions")} className="w-[420px]" growsDown>
       <ul className="mt-3 divide-y divide-line">
         {reactions.map((reaction) => {
           const name = customEmojiName(reaction.emoji);
@@ -84,7 +84,7 @@ export function AcksDialog({ controller, message, onClose, readOnly = false }: {
     );
   };
   return (
-    <Modal onClose={onClose} title={t("who.acked")} description={t("who.ackedCount", { count: acks.length })} className="w-[380px]">
+    <Modal onClose={onClose} title={t("who.acked")} description={t("who.ackedCount", { count: acks.length })} className="w-[380px]" growsDown>
       <ul className="mt-3 space-y-1">{acks.map((ack) => row(ack.user_id, ack.acked_at))}</ul>
       {!readOnly && (
         <section aria-label={t("who.pending")} className="mt-4 border-t border-line pt-3">

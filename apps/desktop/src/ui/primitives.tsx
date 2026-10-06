@@ -189,6 +189,7 @@ export function Modal({
   className,
   hideClose = false,
   focusDialog = false,
+  growsDown = false,
 }: {
   onClose: () => void;
   title: string;
@@ -199,6 +200,9 @@ export function Modal({
   /** Focus the dialog itself on open instead of its first control (e.g. a tab row, whose clipped focus ring looked
    *  like a selected gap between the first two tabs in the macOS app). */
   focusDialog?: boolean;
+  /** Anchor the top edge instead of centring, for a dialog whose content arrives after it opens (a list read from the
+   *  server): centred, it jumped up by half the new height when the list came in. */
+  growsDown?: boolean;
 }) {
   return (
     <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -207,7 +211,8 @@ export function Modal({
         <Dialog.Content
           onOpenAutoFocus={focusDialog ? (event) => { event.preventDefault(); (event.currentTarget as HTMLElement | null)?.focus(); } : undefined}
           className={cn(
-            "rx-dialog fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[460px] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-line bg-canvas p-5 text-ink shadow-2xl focus:outline-none max-md:p-4",
+            "rx-dialog fixed left-1/2 z-50 max-h-[85dvh] w-[460px] max-w-[92vw] -translate-x-1/2 overflow-y-auto rounded-2xl border border-line bg-canvas p-5 text-ink shadow-2xl focus:outline-none max-md:p-4",
+            growsDown ? "top-[12dvh] max-h-[80dvh]" : "top-1/2 -translate-y-1/2",
             className,
           )}
         >
