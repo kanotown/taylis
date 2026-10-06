@@ -42,6 +42,9 @@ class BootstrapOut(BaseModel):
     bookmarks: list[UUID] = []
     # My starred channels (M12a) among the channels above, oldest star first.
     favorites: list[UUID] = []
+    # M118: my pinned DMs and group DMs among the channels above, oldest pin first (the top of
+    # my DM list in this order); changes arrive as dm_pin.updated.
+    dm_pins: list[UUID] = []
     # Custom emoji (M12f): the whole table, by name; changes arrive as emoji.updated.
     custom_emoji: list[CustomEmojiOut] = []
     # Emoji packs (M100) in tab order; changes arrive as emoji_pack.updated.

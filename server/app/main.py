@@ -45,6 +45,7 @@ from app.modules.canvases.router import router as canvases_router
 from app.modules.channel_links.router import router as channel_links_router
 from app.modules.channels import service as channels_service
 from app.modules.channels.router import router as channels_router
+from app.modules.dm_pins.router import router as dm_pins_router
 from app.modules.drafts.router import router as drafts_router
 from app.modules.emoji import presets as emoji_presets
 from app.modules.emoji.router import router as emoji_router
@@ -439,6 +440,7 @@ def build_api_router() -> APIRouter:
     api.include_router(times_feed_router)
     api.include_router(activity_router)
     api.include_router(favorites_router)
+    api.include_router(dm_pins_router)
     api.include_router(sidebar_router)
     api.include_router(drafts_router)
     api.include_router(channel_links_router)

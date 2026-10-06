@@ -2356,6 +2356,15 @@
             "title": "Custom Emoji",
             "type": "array"
           },
+          "dm_pins": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Dm Pins",
+            "type": "array"
+          },
           "drafts": {
             "default": [],
             "items": {
@@ -5300,6 +5309,25 @@
         "title": "DmCreate",
         "type": "object"
       },
+      "DmPinStateOut": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "pinned": {
+            "title": "Pinned",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel_id",
+          "pinned"
+        ],
+        "title": "DmPinStateOut",
+        "type": "object"
+      },
       "DraftOut": {
         "properties": {
           "body": {
@@ -7273,7 +7301,7 @@
         "type": "object"
       },
       "MessageCallOut": {
-        "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button that\nopens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what clients\nbefore M117 show.",
+        "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button\nthat opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what\nclients before M117 show.",
         "properties": {
           "started_by": {
             "format": "uuid",
@@ -19762,6 +19790,102 @@
         "summary": "Create Canvas",
         "tags": [
           "canvases"
+        ]
+      }
+    },
+    "/api/v1/channels/{channel_id}/dm-pin": {
+      "delete": {
+        "description": "Idempotent: 200 whether or not it was pinned.",
+        "operationId": "unpin_dm_api_v1_channels__channel_id__dm_pin_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DmPinStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unpin Dm",
+        "tags": [
+          "dm-pins"
+        ]
+      },
+      "put": {
+        "description": "Pin a DM or group DM I belong to at the top of my DM list (M118); 201 when it was not\npinned yet, 200 when it was (it keeps its place). 403 not_a_member, 409 dm_pin_not_dm for a\nchannel.",
+        "operationId": "pin_dm_api_v1_channels__channel_id__dm_pin_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Channel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DmPinStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pin Dm",
+        "tags": [
+          "dm-pins"
         ]
       }
     },

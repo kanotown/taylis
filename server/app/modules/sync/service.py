@@ -12,6 +12,7 @@ from app.modules.attachments.service import MAX_ATTACHMENTS_PER_MESSAGE
 from app.modules.bookmarks import service as bookmarks
 from app.modules.canvases import service as canvases
 from app.modules.channels import service as channels
+from app.modules.dm_pins import service as dm_pins
 from app.modules.drafts import service as drafts
 from app.modules.emoji import service as emoji
 from app.modules.favorites import service as favorites
@@ -80,6 +81,7 @@ async def bootstrap(
         threads=await threads.summary_for(db, actor.id),
         bookmarks=await bookmarks.ids_for(db, actor.id),
         favorites=await favorites.ids_for(db, actor.id),
+        dm_pins=await dm_pins.ids_for(db, actor.id),
         custom_emoji=await emoji.list_all(db),
         emoji_packs=await emoji.list_packs(db),
         templates=await templates.list_for(db, actor),
