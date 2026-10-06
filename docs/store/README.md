@@ -13,6 +13,7 @@
 - プライバシーポリシー: https://kano.ac/pages/apps/taylis-privacy-policy/
 - サポート: https://kano.ac/pages/apps/taylis-support/
 - アカウントの削除: https://kano.ac/pages/apps/taylis-account-deletion/
+- 子どもの安全基準（Google Play の申告、文面は [CHILD_SAFETY.md](CHILD_SAFETY.md)）: https://kano.ac/pages/apps/taylis-child-safety/
 
 ## スクリーンショット
 
