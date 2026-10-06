@@ -263,3 +263,74 @@ async def test_sections_and_default_sections_keep_a_sort(
         "name",
         "recent",
     ]
+
+
+async def _latest(db: AsyncSession, event_type: str) -> list[OutboxEvent]:
+    rows = await db.execute(
+        select(OutboxEvent).where(OutboxEvent.event_type == event_type).order_by(OutboxEvent.id)
+    )
+    return list(rows.scalars().all())
+
+
+async def test_a_conversation_is_starred_or_in_a_section_never_both(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """2026-10-07 (user report: moving a starred conversation into a new section did nothing):
+    one place per conversation. Putting a starred one in a section (made with it, or an existing
+    one) unstars it; starring one takes it out of its section. Each change reaches my devices."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    carol = await make_user(db, "carol")
+    as_user(alice)
+    general = (await client.post("/api/v1/channels", json={"name": "general"})).json()
+    dm = (await client.post("/api/v1/dms", json={"user_ids": [str(bob.id)]})).json()
+    group = (
+        await client.post("/api/v1/dms", json={"user_ids": [str(bob.id), str(carol.id)]})
+    ).json()
+    me = (await client.post("/api/v1/dms", json={"user_ids": [str(alice.id)]})).json()
+    for conversation in (general, dm, group, me):
+        put = await client.put(f"/api/v1/channels/{conversation['id']}/favorite")
+        assert put.status_code == 201, put.text
+
+    async def starred() -> set[str]:
+        booted = (await client.get("/api/v1/sync/bootstrap")).json()
+        return set(booted["favorites"])
+
+    # A new section made with starred conversations (a channel, the self-DM, a group DM).
+    made = await client.post(
+        "/api/v1/sidebar/sections",
+        json={"name": "研究", "channel_ids": [general["id"], me["id"], group["id"]]},
+    )
+    assert made.status_code == 201, made.text
+    research = made.json()[0]
+    assert research["channel_ids"] == [general["id"], me["id"], group["id"]]
+    assert await starred() == {dm["id"]}
+    unstarred = [
+        e.payload["channel_id"]
+        for e in await _latest(db, "favorite.updated")
+        if e.payload["favorite"] is False
+    ]
+    assert sorted(unstarred) == sorted([general["id"], me["id"], group["id"]])
+
+    # An existing section: the starred DM moves in and is no longer starred.
+    rows = await client.put(f"/api/v1/sidebar/sections/{research['id']}/channels/{dm['id']}")
+    assert rows.status_code == 200 and dm["id"] in rows.json()[0]["channel_ids"]
+    assert await starred() == set()
+
+    # Starring takes it out of the section (sidebar.updated carries the list without it).
+    assert (await client.put(f"/api/v1/channels/{general['id']}/favorite")).status_code == 201
+    sections = (await client.get("/api/v1/sidebar/sections")).json()
+    assert general["id"] not in sections[0]["channel_ids"]
+    assert await starred() == {general["id"]}
+    last = (await _latest(db, "sidebar.updated"))[-1]
+    assert last.audience_id == alice.id
+    assert general["id"] not in last.payload["sections"][0]["channel_ids"]
+
+    # Starring again (starred, in no section) sends no sidebar.updated; unstarring leaves it in
+    # the default section.
+    before = len(await _latest(db, "sidebar.updated"))
+    assert (await client.put(f"/api/v1/channels/{general['id']}/favorite")).status_code == 200
+    assert len(await _latest(db, "sidebar.updated")) == before
+    assert (await client.delete(f"/api/v1/channels/{general['id']}/favorite")).status_code == 200
+    sections = (await client.get("/api/v1/sidebar/sections")).json()
+    assert general["id"] not in sections[0]["channel_ids"] and await starred() == set()

@@ -237,7 +237,7 @@
 | `activity.read` | user | — | `{ read_at }` (M39)。アクティビティの既読位置が進んだ (自分の他端末から)。クライアントはバッジを取り直す |
 | `activity.updated` | user | — | `{ item_ids }` (Review v0.1.22)。持っているアクティビティの項目が書き換わった (キャンバスの版の本文の消去で抜粋が空になったとき、CANVAS.md §20.8。M112: 予約の担当者の作業が済んだとき、RESERVATIONS.md §5)。一覧を表示・保持していれば読み直す (予約の項目は「対応済み」に)。M112 からバッジも読み直す (済んだ作業は未読に数えない) |
 | `reaction.added` | user (投稿者) | — | `{ channel_id, message_id, user_id, emoji, at }` (M39)。他の人が自分の投稿にリアクションした。アクティビティのバッジを取り直す (`GET /activity/summary`)。外したときは送らない (一覧は表から作るので消える) |
-| `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く |
+| `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く。会話を自分のセクションへ入れたときも `favorite: false` で届く (DATA_MODEL.md sidebar_sections「1 つの会話は 1 か所」、2026-10-07) |
 | `dm_pin.updated` | user | — | `{ channel_id, pinned, at }` (M118)。自分が DM・グループ DM を先頭に固定した / 外した (変わったときだけ。自分の全端末)。固定なら手元の `dm_pins` の最後に足し (すでにあれば動かさない)、外したなら取り除く。`at` は変えた時刻 |
 | `block.updated` | user | — | `{ user_id, blocked }` (M104、docs/MODERATION.md §4)。自分がブロック / 解除したとき自分の全端末に届く。ブロックされた人には届かない |
 | `scheduled.updated` | user | — | `{ scheduled: ScheduledOut }` (M12d)。予約送信の作成 / 送信済み / 失敗 / 取消。`status` で一覧の行を置き換える (sent と cancelled は一覧から外す。failed は `error` と一緒に残し、本文を下書きに戻すか `DELETE /scheduled/{id}` で消すまで表示する。`GET /scheduled` も pending と failed を返す) |
@@ -246,7 +246,7 @@
 | `template.updated` | all (個人のテンプレートは本人) | — | `{ template: TemplateOut, deleted }` (M30)。投稿テンプレートの追加・変更・削除。クライアントは id で差し替えるか取り除く (DATA_MODEL.md message_templates) |
 | `group.updated` | all | — | `{ group: GroupOut, deleted }` (M12k)。ユーザーグループの作成 / 変更 / 削除。クライアントは id の表を差し替える (`@name` の候補と `<@group:id>` の表示に使う) |
 | `roster.updated` | all (guest を除く) | — | `{ user_id, profile: LabProfileOut \| null }` (M23)。名簿の行の追加 / 変更 / 削除 (`profile` が null なら外れた)。クライアントは user_id の表を差し替える。管理グループのメンバーの変化は別に `group.updated` で届く |
-| `sidebar.updated` | user | — | `{ sections: [SidebarSectionOut], defaults: [SidebarDefaultOut] }` (M14f、`defaults` と各セクションの `sort` / `manual_order` は 2026-10-07)。自分のサイドバーのセクション一覧全体と既定のセクションの並べ替え。クライアントは差し替える (`defaults` が無ければ今のまま) |
+| `sidebar.updated` | user | — | `{ sections: [SidebarSectionOut], defaults: [SidebarDefaultOut] }` (M14f、`defaults` と各セクションの `sort` / `manual_order` は 2026-10-07)。自分のサイドバーのセクション一覧全体と既定のセクションの並べ替え。クライアントは差し替える (`defaults` が無ければ今のまま)。星を付けた会話がセクションから外れたときも届く (2026-10-07) |
 | `channel.links_updated` | channel | — | `{ channel_id, links: [ChannelLinkOut] }` (M15f)。会話の上部のリンク全体。クライアントは差し替える (bootstrap には含めず、会話を開いたときに `GET /channels/{id}/links` で読む) |
 | `canvas.created` | channel | — | `{ canvas: CanvasMeta }` (M41)。キャンバスの作成、ゴミ箱からの復元。本文は載せない。手順は §14 |
 | `canvas.updated` | channel | — | `{ canvas: CanvasMeta, change: "content" \| "title" \| "settings" \| "restore" }` (M41)。`version` が手元より大きければメタを差し替え、開いていて編集中でなければ本文を読み直す (§14) |

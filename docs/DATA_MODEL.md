@@ -712,6 +712,7 @@ CREATE INDEX channel_favorites_user_idx ON channel_favorites (user_id, created_a
 - サイドバーの「お気に入り」節。個人データなので `seq` を消費せず、端末間は `favorite.updated` (audience=user)
   で揃え、bootstrap には id の一覧 (`favorites`) を入れる。星を付けられるのはメンバーだけ。
 - 退出しても行は残すが、bootstrap は現在のメンバーシップと結合して返すので表示からは消える (再参加で戻る)。
+- 星を付けた会話は自分のセクションから外れる（sidebar_sections の「1 つの会話は 1 か所」）。
 
 ### conversation_pins（DM の固定、M118）
 
@@ -1038,7 +1039,21 @@ CREATE TABLE sidebar_section_channels (
 ```
 
 - 個人データ (channel seq なし)。1 人 20 セクションまで。参加中の会話 (チャンネルと DM) だけを入れられる。
-- お気に入りはセクションより優先して表示する。抜けた会話の行は残すが、クライアントは参加中のものだけ出す。
+- 抜けた会話の行は残すが、クライアントは参加中のものだけ出す。
+- **1 つの会話は 1 か所（2026-10-07）**：会話はサイドバーの「お気に入り」か自分のセクションのどれか 1 つか、
+  どちらでもなければ種類ごとの既定のセクション（チャンネル・Times・ダイレクトメッセージ）に出る。Slack と同じく
+  お気に入りも 1 つのセクションとして扱い、両方には入らない。
+  - 星の付いた会話をセクションへ入れる（`PUT /sidebar/sections/{id}/channels/{channel_id}`、作るときの
+    `channel_ids`、ドラッグ）と星が外れる（同じトランザクションで `channel_favorites` の行を消し、`favorite.updated
+    {favorite: false}` を出す）。
+  - 星を付ける（`PUT /channels/{id}/favorite`）とセクションから外れる（行を消し、`sidebar.updated` を出す）。
+    favorites は sidebar に依存しないので、sidebar が import 時に `favorites.set_starred_hook` で登録する。
+  - 「チャンネル」「Times」「ダイレクトメッセージ」の見出しへ落とすと、セクションからも星からも外れる。
+  - クライアントは成功したらその場で同じ規則を当てる（イベントを待たずに行が動く）。失敗はエラーを出し、元に戻す。
+  - 以前は両方に入れられ、クライアントはお気に入りを優先して出していたので、星の付いた会話をセクション（新しい
+    セクションも）へ移しても何も起きないように見えた（利用者の報告 2026-10-07）。移行 0096 は星の付いた会話の
+    セクションの行を消す（見た目は変わらない）。古いサーバのために、クライアントは今もお気に入りを優先して出し、
+    星の付いた会話の「セクションに移動」では「現在」を出さない。
 - 変更はすべて `sidebar.updated` (audience=user) で自分の全端末へ、ペイロードはセクションの一覧全体。
 - **M26 (Slack のようなセクション)**: 作るときに名前・アイコン・入れる会話をまとめて決められる
   (`POST /sidebar/sections {name, emoji, channel_ids}`、ほかのセクションにあった会話はこちらへ移る)。名前とアイコンは

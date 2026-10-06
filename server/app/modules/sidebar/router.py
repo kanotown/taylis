@@ -27,7 +27,9 @@ async def list_sections(user: CurrentUser, db: Db) -> list[SidebarSectionOut]:
 
 @router.post("/sidebar/sections", response_model=list[SidebarSectionOut], status_code=201)
 async def create_section(user: CurrentUser, body: SectionCreate, db: Db) -> list[SidebarSectionOut]:
-    """M14f: a new section at the end (at most 20)."""
+    """M14f: a new section at the end (at most 20). M26: the conversations in `channel_ids` move
+    here from another section of mine or from お気に入り (they are unstarred: one place per
+    conversation)."""
     return await service.create(db, user, body)
 
 
@@ -53,7 +55,8 @@ async def delete_section(section_id: UUID, user: CurrentUser, db: Db) -> list[Si
 async def place_channel(
     section_id: UUID, channel_id: UUID, user: CurrentUser, db: Db
 ) -> list[SidebarSectionOut]:
-    """Put a conversation I belong to in the section (moving it out of any other)."""
+    """Put a conversation I belong to in the section (moving it out of any other). A starred one
+    is unstarred (favorite.updated): one place per conversation."""
     return await service.place(db, user, section_id, channel_id)
 
 
