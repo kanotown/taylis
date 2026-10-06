@@ -577,7 +577,8 @@ fun MessageRow(
     var savingEdit by remember { mutableStateOf(false) }
     val rowScope = rememberCoroutineScope()
     var confirmingDelete by remember { mutableStateOf(false) }
-    var showingProfile by remember { mutableStateOf(false) }
+    // Whose profile is open: the sender's (avatar, name) or a mentioned person's (a tap on the mention).
+    var profileUserId by remember { mutableStateOf<String?>(null) }
     var pickingReaction by remember { mutableStateOf(false) }
     var sharing by rememberSaveable { mutableStateOf(false) }
     var showingRevisions by remember { mutableStateOf(false) }
@@ -611,7 +612,7 @@ fun MessageRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), textAlign = TextAlign.Center,
                     modifier = Modifier.width(36.dp).padding(top = 3.dp),
                 )
-            } else Avatar(message.senderId, sender, size = 36.dp, onClick = if (message.pending) null else ({ showingProfile = true }))
+            } else Avatar(message.senderId, sender, size = 36.dp, onClick = if (message.pending) null else ({ profileUserId = message.senderId }))
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 if (message.isReply) ReplyLine(message, store, version, { controller.loadEmojiImage(it) }, onOpenThread)  // M15c
@@ -636,7 +637,7 @@ fun MessageRow(
                 }
                 if (!compact) {
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(sender, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.clickable(enabled = !message.pending) { showingProfile = true })
+                        Text(sender, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.clickable(enabled = !message.pending) { profileUserId = message.senderId })
                         // M66: an AI bot says 「AI」 (docs/AI.md §6), the other bots (webhooks, recurring posts) 「BOT」.
                         if (message.senderId in controller.aiBotIds) {
                             AiBadge(Modifier.padding(start = 6.dp))
@@ -683,6 +684,7 @@ fun MessageRow(
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations, onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
                         canvasCard = { canvasId -> CanvasLinkCard(controller, canvasId, version) },  // M58
                         jumbo = true,  // M101
+                        onOpenUser = { id -> profileUserId = id },
                     )
                 }
                 message.poll?.let { PollCard(it, message, controller, version, readOnly) }  // M14b
@@ -750,7 +752,7 @@ fun MessageRow(
     if (reporting) ReportMessageDialog(controller, message, onDismiss = { reporting = false })
     if (showingRevisions) RevisionsDialog(controller, message, onDismiss = { showingRevisions = false })
     if (pickingReaction) EmojiPickerSheet(recent = QuickReactions.read(controller.prefs), store = store, onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
-    if (showingProfile) ProfileDialog(controller, message.senderId, version, onDismiss = { showingProfile = false }, onOpenDm = { controller.pendingChannelId = it })
+    profileUserId?.let { id -> ProfileDialog(controller, id, version, onDismiss = { profileUserId = null }, onOpenDm = { controller.pendingChannelId = it }) }
     // Codex audit C4: closed only once the edit is saved; a failure (offline) keeps the text and shows the error.
     if (editing) EditMessageDialog(Mentions.decode(message.body, store.users, store.groups), saving = savingEdit, onDismiss = { if (!savingEdit) editing = false }, onSave = { body ->
         rowScope.launch {
