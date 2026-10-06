@@ -977,9 +977,21 @@ CREATE TABLE sidebar_sections (
   emoji       varchar(64),                   -- M26: アイコン。絵文字 1 つかカスタム絵文字 `:name:` (null = なし)。M114: 文字のバッジ `letter:M:blue`
   collapsed   boolean NOT NULL DEFAULT false, -- M26: 折りたたみ (自分の全端末で同じ)
   position    integer NOT NULL,              -- 0 から。並べ替えで詰め直す
+  sort        varchar(10) NOT NULL DEFAULT 'name', -- 2026-10-07: 中の並べ替え name / recent / manual
+  manual_order uuid[] NOT NULL DEFAULT '{}',  -- 2026-10-07: manual のときの順番 (会話の id の並び)
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX sidebar_sections_user_idx ON sidebar_sections (user_id, position);
+
+-- 2026-10-07: 既定のセクション (お気に入り / チャンネル / ダイレクトメッセージ) の並べ替え。行が無ければ既定
+-- (お気に入り・チャンネルは name、ダイレクトメッセージは recent)
+CREATE TABLE sidebar_default_sections (
+  user_id      uuid NOT NULL REFERENCES users(id),
+  key          varchar(16) NOT NULL CHECK (key IN ('favorites', 'channels', 'dms')),
+  sort         varchar(10) NOT NULL,
+  manual_order uuid[] NOT NULL DEFAULT '{}',
+  PRIMARY KEY (user_id, key)
+);
 
 CREATE TABLE sidebar_section_channels (
   user_id     uuid NOT NULL REFERENCES users(id),
@@ -1009,18 +1021,51 @@ CREATE TABLE sidebar_section_channels (
   直す)・8 色の見本・その場のプレビュー。規則のケースは `apps/shared/section-icons.json` (サーバと 3 クライアントの
   テストが通す)。M114 より前のクライアントは `letter:M:blue` を文字のまま出す。カスタム絵文字のテキスト絵文字
   (M100) もアイコンにでき、ラベルの幅のピルで描く。
-- **セクションの中の並び順（2026-10-06）**：サーバはセクションの中の順番を持たない（`sidebar_section_channels` に
-  位置の列は無く、`channel_ids` の順に意味は無い。Desktop のドラッグも会話をセクション間で移すだけ）。並べるのは
-  クライアントで、3 端末とも同じ規則にする：お気に入りと自分のセクションは、チャンネル（public / private）を名前順、
-  そのあとに DM・グループ DM を新しい順（`last_message_at`、無ければ `created_at` をサーバの文字列のまま比べ、同じなら id の昇順）。名前順の
-  キーは、名前を NFKC にし、A〜Z を小文字に、カタカナ（U+30A1〜U+30F6）をひらがなに寄せたもので、UTF-16 の
-  コード単位で比べる。キーが同じなら元の名前を同じ方法で、さらに id で比べる。ロケールの照合（localeCompare・
-  Collator）は端末ごとに結果が違うので使わず、数字も文字として比べる（「10」は「2」の前）。既定の「チャンネル」・
-  Times・「チャンネルを探す」も同じ名前順、「ダイレクトメッセージ」は自分の DM のあと同じ新しい順。ミュートしても
-  位置は変わらない。以前は Desktop が表示名を `localeCompare("ja")`（大文字・小文字やかなを ICU の照合で比べる）、
-  iOS と Android が名前をコード単位のまま比べ、お気に入りでは DM の位置も端末ごとに違ったため、英字の大小や
-  カタカナ・全角を含む名前で順番がずれていた。ケースは `apps/shared/sidebar-order.json`（3 クライアントのテストが
-  通す）。
+- **セクションの中の並び順（2026-10-06、日本語の照合と並べ替え 2026-10-07）**：サーバはセクションの中の順番を
+  並べない（`channel_ids` の順に意味は無い）。持つのは各セクションの「並べ替え」（下）だけで、並べるのはクライアント、
+  3 端末とも同じ規則にする。ケースは `apps/shared/sidebar-order.json`（3 クライアントのテストが通す）。
+  - **名前順のキー**：Slack と同じく日本語の辞書順にする（以前の「NFKC して UTF-16 のコード単位で比べる」では、
+    漢字がコードポイント順になり「2026修論指導」（修 U+4FEE）が「2026院ゼミ」（院 U+9662）の前に来ていた）。
+    比べるのは 3 段階：
+    1. 名前を NFKD にし、結合文字（U+0300〜U+036F）と濁点・半濁点（U+3099・U+309A）を落として、1 文字ずつ
+       （数字は続く分をまとめて）次の種類と重みにして比べる。種類の順は、記号・空白など（U+3040 より前の残り、
+       ゛゜ゝゞ・ーヽヾ、U+FF00〜U+FFEF。コードポイント順）→ 数字（数として比べる：先頭の 0 を落とし、桁数、
+       それから数字の並び。「2」は「10」の前）→ 英字（A〜Z は大文字・小文字を区別しない）→ かな（カタカナは
+       ひらがなに、小さいかなは大きいかなに寄せる。ひらがなのコードポイント順が五十音順）→ 漢字（JIS X 0208 の
+       漢字を JIS の順に：第 1 水準は音読み順で「院（イン）」が「修（シュウ）」の前、第 2 水準は部首・画数順。
+       表は `apps/shared/gen_jis_kanji.py` が Python の EUC-JP コーデックから作り、3 クライアントに同じ文字列で
+       入れる。JIS にない漢字はそのあとにコードポイント順）→ その他（ハングル・絵文字など、コードポイント順）。
+       片方がもう片方の先頭部分なら短いほうが前。
+    2. 同じなら、名前を NFKC にし A〜Z を小文字に、カタカナをひらがなに寄せたもの（以前のキー）を UTF-16 の
+       コード単位で比べる（清音が濁音の前、「02」が「2」の前）。
+    3. 同じなら元の名前を UTF-16 のコード単位で（大文字が小文字の前、ひらがなが同じカタカナの前）、さらに id で。
+
+    端末の照合（Intl.Collator・Foundation・java.text.Collator）は使わない：ICU の ja（Node と macOS の Foundation）
+    は実際のチャンネル名 80 余りで第 1 段の順が上と同じだったが、大文字・小文字やかなの種類の同順の扱いと ASCII 記号の
+    順が違い、Android の単体テストが動く JVM の java.text.Collator は数字を数として比べず半角カナを最後にするなど
+    大きく違う。iOS は NFKC を NFKD → NFC で作る（Foundation の `precomposedStringWithCompatibilityMapping` は
+    半角の「ﾌﾟ」を合成しない）。
+  - **並べ替え（Mattermost のように）**：自分のセクションと既定の「お気に入り」「チャンネル」「ダイレクトメッセージ」
+    ごとに `sort` を選ぶ。`name`（名前順）＝チャンネル（public / private）を名前順、そのあとに DM・グループ DM を
+    その端末の表示名（相手の名前）で名前順、`recent`（最近の活動順）＝すべての会話を新しい順（`last_message_at`、
+    無ければ `created_at` をサーバの文字列のまま比べ、同じなら id の昇順）、`manual`（手動）＝`manual_order` の
+    順に並べ（セクションに無い id は飛ばす）、そこに無い会話（あとから入った会話など）はそのあとに名前順。既定は
+    お気に入り・チャンネル・自分のセクションが `name`、ダイレクトメッセージが `recent`（以前と同じ）。
+    ダイレクトメッセージの自分の DM は `name` と `recent` では先頭、`manual` では置いた場所。Times は常に名前順
+    （自分の times が先頭）、「チャンネルを探す」も名前順。以前のお気に入りと自分のセクションは DM を新しい順に
+    していたが、`name` では表示名順になった。ミュートしても位置は変わらない。アーカイブしたチャンネルは出さない。
+  - **保存と同期**：自分のセクションは `PATCH /sidebar/sections/{id} {sort?, manual_order?}`、既定のセクションは
+    `PATCH /sidebar/defaults/{favorites|channels|dms} {sort?, manual_order?}`（最初の変更で
+    `sidebar_default_sections` の行ができる）、`GET /sidebar/defaults` とブートストラップの `sidebar_defaults` は
+    いつも 3 つ。`manual_order` は重複を落として最大 1000 件。`sidebar.updated` のペイロードは
+    `{sections, defaults}`（`defaults` を知らない古いクライアントは無視する）。「手動」を選ぶとクライアントは
+    いま見えている順を `manual_order` として送るので、並びは動かない。
+  - **操作**：Desktop / Web はセクションの「…」→「並べ替え」（名前順 / 最近の活動順 / 手動）。「手動」では会話を
+    同じセクションの別の行へドラッグすると、その行の上か下（ポインタのある半分）に線が出て、そこへ入る
+    （ほかのセクションへのドラッグは以前どおりセクションへの移動。未読だけを出しているあいだは並べ替えない）。
+    iOS と Android はセクションの「…」に同じ 3 つ、「手動」のときは「順番を編集」：iOS はそのセクションだけ
+    List の編集モードの移動ハンドル、Android は各行の ↑ / ↓、見出しの「完了」で終わる（セクションを畳んでいる
+    とき・「未読をまとめる」のときは使えない）。
 
 ### channel_links (会話の上部に並べるリンク、M15f)
 
