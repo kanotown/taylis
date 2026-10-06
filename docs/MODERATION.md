@@ -167,6 +167,21 @@ Google Play の「子どもの安全基準」のポリシーは、アプリを�
   文字で表示）。`client_report_id` は最初の「送信」で作り、成功するまで同じものを使う（再送で重複しない）。成功は
   「送信しました。管理者が確認します」、失敗（検証・`429`・通信）はフォームの中に共通のエラー文で出す。アプリの外には
   出ない。メッセージの報告（§3）の理由にも「子どもの安全」を先頭に足した。`ui/ReportProblem.kt`。
+- iOS（M119）：
+  - 「自分」タブ（iPad では設定のシート）の一覧の「ログアウト」の上に、いつも「問題を報告・ご意見」の行。
+    ゲストにも出る。押すとシート：種類（子どもの安全・嫌がらせ・不適切な内容・スパム・ご意見・要望・その他。
+    子どもの安全が先頭）、内容（必須、4,000 文字まで。「n / 4000」の数え。サーバと同じくコードポイントで数える）、
+    「報告とご意見は、このワークスペースの管理者に届きます。」と、子どもの安全に関する開発者の窓口
+    （store/CHILD_SAFETY.md の連絡先。リンクにしない文字だけ）、「送信」。種類を選び、空白以外の内容を書くまで
+    「送信」は押せない。
+  - 相手のプロフィール（ProfileSheet）：自分以外の人に「報告する」（ブロックの上）。同じシートを「〇〇 さんを報告」
+    として開き、`user_id` を付けて送る。注記は「相手には知らされません」。
+  - `client_report_id` はシートを開いたときに作り、送信が成功するまで同じものを使う（失敗の後の「送信」や、
+    書き直した後の「送信」も同じ id の再送）。成功するとシートの中身が「送信しました。管理者が確認します」と
+    「閉じる」に変わる（iPad の設定もシートで、下のトーストは隠れるため）。エラー（`429`・`404 user_not_found`・
+    通信エラーなど）は共通のエラーの文言を内容の欄の下に赤で出し、シートは残る。
+  - メッセージの報告の理由も「子どもの安全」が先頭。報告の「その他」はカタログのキー `report.other`（ふつうの
+    「その他」は「More」の訳のため）。
 
 ## 4. ブロック
 
@@ -205,5 +220,6 @@ Google Play の「子どもの安全基準」のポリシーは、アプリを�
 - Desktop / Web: `ui/ModerationDialogs.tsx` (報告・削除のダイアログ)、`ui/AdminReportsTab.tsx`、`ui/UserPopover.tsx`、
   `ui/Timeline.tsx` (折りたたみ)、`ui/Settings.tsx` (アカウント)、`state/app.ts`。
 - iOS: `UI/ModerationViews.swift`、`UI/ProfileSheet.swift`、`UI/MessageActions.swift`、`UI/ChannelView.swift` (行)、
-  `UI/YouView.swift` (アカウント)。
+  `UI/YouView.swift` (アカウント、「問題を報告・ご意見」の行)。M119 の報告のシートは `ReportProblemSheet`、送る中身は
+  `GeneralReportForm`（どちらも `UI/ModerationViews.swift`）。
 - Android: `ui/Moderation.kt`、`ui/ReportProblem.kt`（問題の報告・ご意見、M119）、`ui/ProfileDialog.kt`、`ui/MessageActions.kt`、`ui/ChannelPane.kt` (行)、`ui/YouScreens.kt`。

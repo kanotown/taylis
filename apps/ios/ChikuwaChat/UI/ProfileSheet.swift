@@ -10,6 +10,7 @@ struct ProfileSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var editingStatus = false
     @State private var confirmingBlock = false
+    @State private var reporting = false
 
     private var user: UserPublic? { controller.store.users[userId] }
     private var blocked: Bool { controller.store.isBlocked(userId) }
@@ -74,6 +75,8 @@ struct ProfileSheet: View {
                 // M104 (MODERATION.md §4): private; the person is not told.
                 if !isMe, user != nil {
                     Section {
+                        // M119 (MODERATION.md §3.1): a report about this person, to the administrators.
+                        Button("報告する", systemImage: "flag") { reporting = true }
                         if blocked {
                             Button("ブロックを解除", systemImage: "hand.raised.slash") { Task { await controller.setUserBlocked(userId, on: false) } }
                         } else {
@@ -88,6 +91,7 @@ struct ProfileSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
             .sheet(isPresented: $editingStatus) { StatusEditorView(controller: controller) }
+            .sheet(isPresented: $reporting) { ReportProblemSheet(controller: controller, userId: userId) }
             .confirmationDialog("\(user?.displayName ?? "") をブロックしますか？", isPresented: $confirmingBlock, titleVisibility: .visible) {
                 Button("ブロック", role: .destructive) { Task { await controller.setUserBlocked(userId, on: true) } }
                 Button("キャンセル", role: .cancel) {}

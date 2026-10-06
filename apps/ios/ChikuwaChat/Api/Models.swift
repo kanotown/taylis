@@ -1352,6 +1352,14 @@ struct ReportAck: Codable, Equatable {
     let createdAt: String
 }
 
+/// POST /reports (M119, MODERATION.md §3.1): my own report (of a person, or general) only.
+struct GeneralReportAck: Codable, Equatable {
+    let id: String
+    let category: String
+    let userId: String?
+    let createdAt: String
+}
+
 /// PUT / DELETE /channels/{id}/favorite (M12a).
 struct FavoriteStateOut: Codable, Equatable {
     let channelId: String
