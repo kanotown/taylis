@@ -5,13 +5,14 @@
  *
  * Only what the dialect holds: bold, italic, strike, inline code (one mark at a time: the dialect does not nest them),
  * links (http / https), `#`–`###` headings, quotes of plain lines, bullet / numbered lists three levels deep, code
- * blocks, and tables kept as raw Markdown. Markdown typed here converts as it is typed (`**x**`, `_x_`, `` `x` ``,
+ * blocks, TeX math kept as its source (a `math` mark inline, display blocks raw like tables), and tables kept as raw
+ * Markdown. Markdown typed here converts as it is typed (`**x**`, `_x_`, `` `x` ``,
  * `- `, `1. `, `> `, `# `, ``` ``` ```, `[label](https://…)`); pasted plain text stays literal (escaped when sent);
  * pasted HTML (web pages, Word, Google Docs) keeps the supported marks and drops the rest; pasted files go to the
  * attachments. The owner decides what Enter does (send or newline) through `onKeyDown`, which ProseMirror never calls
  * during an IME composition.
  */
-import { Editor, markInputRule, Node, type JSONContent } from "@tiptap/core";
+import { Editor, Mark, markInputRule, Node, type JSONContent } from "@tiptap/core";
 import { Blockquote } from "@tiptap/extension-blockquote";
 import { Bold } from "@tiptap/extension-bold";
 import { Code } from "@tiptap/extension-code";
@@ -71,6 +72,25 @@ const InlineCode = Code.extend({
   },
 });
 const OnlyLink = Link.extend({ excludes: "_" });
+/**
+ * TeX math within a line (apps/shared/math.json): the formula as typed, shown in its dollars (CSS) and written back
+ * between them unchanged. `$x$` typed converts as the code span does; plain text with dollars stays text (escaped).
+ */
+const InlineMath = Mark.create({
+  name: "math",
+  excludes: "_",
+  code: true,
+  inclusive: false,
+  addAttributes: () => ({
+    display: { default: false, parseHTML: (el) => el.getAttribute("data-display") === "true", renderHTML: (attrs) => (attrs.display ? { "data-display": "true" } : {}) },
+  }),
+  parseHTML: () => [{ tag: "span[data-math]" }],
+  renderHTML: ({ HTMLAttributes }) => ["span", { ...HTMLAttributes, "data-math": "", class: "rich-math", spellcheck: "false" }, 0],
+  addInputRules() {
+    // Pandoc's rule as the renderer reads it: a non-space after the opening `$` and before the closing one.
+    return [markInputRule({ find: /(?:^|[^\\$])(\$([^\s$](?:[^$\n]*[^\s$\\])?)\$)$/, type: this.type })];
+  },
+});
 /** A quote holds plain lines: the renderer reads a quote's lines inline (no lists or code inside). */
 const PlainQuote = Blockquote.extend({ content: "paragraph+" });
 /** A list item is one line, with the lists nested under it. */
@@ -115,6 +135,7 @@ export const extensions = (placeholder: string | (() => string)) => [
   OnlyItalic,
   OnlyStrike,
   InlineCode,
+  InlineMath,
   CodeBlock.configure({ defaultLanguage: null, HTMLAttributes: { spellcheck: "false" } }),
   PlainQuote,
   BulletList,

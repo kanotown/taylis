@@ -11,8 +11,8 @@ function prng(seed: number) {
   };
 }
 
-const ATOMS = ["a", "b", "あ", "強調", " ", "_", "*", "~", "`", "**", "__", "~~", "1", ".", "-", "#", ">", "|", "(", ")", "[", "]", "x_y", "$a_b$", "https://ex.am/p_q ", "me@ex.am", "@kano"];
-const MARKS = [null, null, null, "bold", "italic", "strike", "code", "link"];
+const ATOMS = ["a", "b", "あ", "強調", " ", "_", "*", "~", "`", "**", "__", "~~", "1", ".", "-", "#", ">", "|", "(", ")", "[", "]", "x_y", "$a_b$", "$", "$$", "\\", "https://ex.am/p_q ", "me@ex.am", "@kano"];
+const MARKS = [null, null, null, "bold", "italic", "strike", "code", "link", "math"];
 
 function randomLine(rand: () => number): RichNode[] {
   const nodes: RichNode[] = [];
@@ -57,6 +57,10 @@ describe("rich composer serialisation (generated lines)", () => {
       // Out of reach of the dialect: a code span holding ``, a `[` in text before a link (the label would start there).
       const plain = line.map((node) => (node.marks?.[0]?.type === "link" ? "\u0001" : node.text)).join("");
       if (line.some((node) => node.marks?.[0]?.type === "code" && node.text!.includes("`")) || /\[[^\]]*\u0001/.test(plain)) continue;
+      // A formula holds TeX as typed: a `$` (or a final `\`) inside one, or blank, is not a formula the dialect can write.
+      if (line.some((node) => node.marks?.[0]?.type === "math" && (/[$]|\\$/.test(node.text!) || node.text!.trim() !== node.text || node.text!.trim() === ""))) continue;
+      // A `\` before a marker is the dialect's escape: text cannot keep that backslash (the renderer drops it).
+      if (line.some((node) => /\\[_*~`$]|\\$/.test(node.text!) || (node.marks && /\\$/.test(node.text!.trimEnd())))) continue;
       const doc: RichNode = { type: "doc", content: [{ type: "paragraph", content: line }] };
       const markdown = docToMarkdown(doc);
       const back = markdownToDoc(markdown);
@@ -67,7 +71,7 @@ describe("rich composer serialisation (generated lines)", () => {
 
   it("keeps typed block markers in paragraphs as text, line after line", () => {
     const rand = prng(42);
-    const starts = ["- ", "* ", "• ", "1. ", "12. ", "> ", ">", "# ", "### ", "```", "```js", "| a | b |", "| --- | --- |", "---", "  - ", "\t1. ", "", " "];
+    const starts = ["- ", "* ", "• ", "1. ", "12. ", "> ", ">", "# ", "### ", "```", "```js", "| a | b |", "| --- | --- |", "---", "  - ", "\t1. ", "", " ", "$$", "$$x$$", " $$ "];
     const failures: string[] = [];
     for (let run = 0; run < 2000; run++) {
       const content: RichNode[] = [];

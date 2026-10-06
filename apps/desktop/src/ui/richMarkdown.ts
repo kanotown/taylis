@@ -5,14 +5,17 @@
  *
  * - Markdown → document reads the body with the renderer's own parser (markdown.ts `parseBlocks`), so the editor shows
  *   what the message shows. One body line is one paragraph (an empty paragraph is an empty line), a quote holds one
- *   paragraph per line, list items nest by level, a table is a raw Markdown block (edited as text), math stays text.
+ *   paragraph per line, list items nest by level, a table is a raw Markdown block (edited as text). TeX math
+ *   (apps/shared/math.json) keeps its source: an inline `$…$` / `$$…$$` is text with the `math` mark (its TeX, written
+ *   back between its dollars as it was), a display block is a raw Markdown block.
  * - Document → Markdown writes the dialect: `**bold**`, `_italic_`, `~~strike~~`, `` `code` ``, `[label](url)` (a URL
  *   that is its own label is written bare), `# ` headings, `> ` quotes, `- ` / `1. ` lists two spaces per level,
  *   ``` fences. Marks never nest in this dialect, so the editor keeps one mark at a time. A character typed as text is
- *   escaped (`\_ \* \~ \``) only where the renderer would otherwise read it as formatting: each line is checked with the
- *   renderer's tokenizer, so `snake_case`, URLs and math (`$a_b$`) stay as typed. `_italic_` against a letter (Japanese
+ *   escaped (`\_ \* \~ \` \$`) only where the renderer would otherwise read it as formatting: each line is checked with the
+ *   renderer's tokenizer, so `snake_case`, URLs and e-mail addresses stay as typed. `_italic_` against a letter (Japanese
  *   inside a sentence) gets a zero-width space (U+200B) outside its `_`, and a paragraph line the renderer would read as
- *   a block (`- `, `1. `, `> `, `# `, ``` ``` ```, a table separator) starts with one.
+ *   a block (`- `, `1. `, `> `, `# `, ``` ``` ```, `$$`, a table separator) starts with one. A `$` typed as text that
+ *   would open math is written `\$`; nothing inside a formula is ever escaped.
  */
 import { parseBlocks, straightQuotes, tokenizeInline, type Block, type Token } from "./markdown";
 
@@ -31,12 +34,14 @@ const QUOTE = /^>\s?(.*)$/;
 const BULLET = /^(\s*)[-*•]\s+(.*)$/;
 const NUMBERED = /^(\s*)(\d{1,3})\.\s+(.*)$/;
 const FENCE_START = /^```/;
+/** A line the renderer may read as the start of display math (`mathBlockAt`). */
+const MATH_START = /^\s*\$\$/;
 const TABLE_SEPARATOR = /^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
 const WORD_CHAR = /[\p{L}\p{N}_]/u;
 const BLANK = /^[\s　]*$/;
 /** What the renderer never reads emphasis or escapes in: URLs, e-mail addresses, the shrug, @handles. */
 const PROTECTED = [/https?:\/\/[^\s<>]+/g, /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}/g, /¯\\_\(ツ\)_\/¯/g, /(?<![A-Za-z0-9._@<-])@[A-Za-z0-9._-]+/g];
-const MARKERS = /[_*~`]/g;
+const MARKERS = /[_*~`$]/g;
 const SAFE_URL = /^https?:\/\/[^\s)]+$/;
 const BARE_URL = /https?:\/\/[^\s<>]+/g;
 
@@ -65,6 +70,11 @@ function blockNodes(block: Block): RichNode[] {
       return [{ type: "codeBlock", attrs: { language: block.lang }, ...withContent(block.text ? [{ type: "text", text: block.text }] : []) }];
     case "table":
       return [{ type: "rawMarkdown", content: [{ type: "text", text: tableMarkdown(block) }] }];
+    case "math": {
+      // Display math is edited as its source, like a table (the formula is trimmed: it renders the same).
+      const source = block.tex.includes("\n") ? `$$\n${block.tex}\n$$` : `$$${block.tex}$$`;
+      return [{ type: "rawMarkdown", content: [{ type: "text", text: source }] }];
+    }
     default:
       return []; // tasks, images and rules exist in the canvas dialect only
   }
@@ -119,6 +129,9 @@ function inlineNodes(tokens: readonly Token[], lineStart: boolean): RichNode[] {
       case "link":
         nodes.push(marked(token.label || token.url, "link", { href: token.url }));
         break;
+      case "math":
+        nodes.push(marked(token.text, "math", token.display ? { display: true } : undefined));
+        break;
       case "mention":
         nodes.push({ type: "text", text: `<@${token.userId}>` });
         break;
@@ -133,10 +146,11 @@ function inlineNodes(tokens: readonly Token[], lineStart: boolean): RichNode[] {
     }
   }
   const isItalic = (node: RichNode | undefined) => node?.marks?.[0]?.type === "italic";
+  const isMath = (node: RichNode | undefined) => node?.marks?.[0]?.type === "math" && !node.marks[0].attrs?.display;
   nodes.forEach((node, index) => {
     if (node.marks) return;
     let text = node.text ?? "";
-    if ((index === 0 && lineStart) || isItalic(nodes[index - 1])) text = text.startsWith(ZWSP) ? text.slice(1) : text;
+    if ((index === 0 && lineStart) || isItalic(nodes[index - 1]) || isMath(nodes[index - 1])) text = text.startsWith(ZWSP) ? text.slice(1) : text;
     if (isItalic(nodes[index + 1]) && text.endsWith(ZWSP)) text = text.slice(0, -1);
     node.text = text;
   });
@@ -212,7 +226,7 @@ export function docToMarkdown(doc: RichNode): string {
 
 /** A paragraph line the renderer would read as a block starts with a zero-width space. */
 function blockSafe(line: string): string {
-  return HEADING.test(line) || QUOTE.test(line) || BULLET.test(line) || NUMBERED.test(line) || FENCE_START.test(line) ? ZWSP + line : line;
+  return HEADING.test(line) || QUOTE.test(line) || BULLET.test(line) || NUMBERED.test(line) || FENCE_START.test(line) || MATH_START.test(line) ? ZWSP + line : line;
 }
 
 function listLines(list: RichNode, depth: number): string[] {
@@ -253,14 +267,15 @@ function plainOf(node: RichNode): string {
 // ---------------------------------------------------------------------------------------------------------------------
 // One line of inline Markdown
 
-type PieceKind = "text" | "bold" | "italic" | "strike" | "code" | "link";
+type PieceKind = "text" | "bold" | "italic" | "strike" | "code" | "math" | "link";
 interface Piece {
   kind: PieceKind;
   text: string;
+  /** A link's URL; "display" for `$$…$$` math. */
   href?: string;
 }
 
-const MARK_ORDER: PieceKind[] = ["code", "link", "bold", "italic", "strike"];
+const MARK_ORDER: PieceKind[] = ["code", "math", "link", "bold", "italic", "strike"];
 
 function nodePieces(nodes: readonly RichNode[]): Piece[] {
   const pieces: Piece[] = [];
@@ -269,7 +284,8 @@ function nodePieces(nodes: readonly RichNode[]): Piece[] {
     if (!text) continue;
     const types = new Set((node.marks ?? []).map((mark) => mark.type));
     const kind = MARK_ORDER.find((k) => types.has(k)) ?? "text";
-    const href = kind === "link" ? String(node.marks!.find((mark) => mark.type === "link")?.attrs?.href ?? "") : undefined;
+    const mark = node.marks?.find((m) => m.type === kind);
+    const href = kind === "link" ? String(mark?.attrs?.href ?? "") : kind === "math" && mark?.attrs?.display ? "display" : undefined;
     pieces.push(href !== undefined ? { kind, text, href } : { kind, text });
   }
   return mergePieces(pieces);
@@ -314,6 +330,8 @@ interface Emitted {
   bare?: string;
   /** Italic only: needs a word boundary on its left / right. */
   italic?: boolean;
+  /** Inline `$…$` math: its closing `$` must not be followed by an ASCII letter or digit. */
+  math?: boolean;
 }
 
 function emitPieces(pieces: readonly Piece[]): Emitted[] {
@@ -354,6 +372,13 @@ function emitPieces(pieces: readonly Piece[]): Emitted[] {
         if (!text.includes("`")) out.push({ expect: [{ kind: "code", text: straightQuotes(text) }], raw: "`" + text + "`" });
         else if (!text.includes("``") && !text.includes("\n")) out.push({ expect: [{ kind: "code", text: straightQuotes(text) }], raw: "`` " + text + " ``" });
         else plain(text);
+        break;
+      }
+      case "math": {
+        // The formula as it was typed, between its dollars; never escaped (a `\$` inside is TeX's dollar).
+        const fence = piece.href === "display" ? "$$" : "$";
+        if (piece.text.includes("\n") || piece.text.trim() === "") plain(piece.text);
+        else out.push({ expect: [piece.href ? { kind: "math", text: piece.text, href: piece.href } : { kind: "math", text: piece.text }], raw: fence + piece.text + fence, math: !piece.href });
         break;
       }
       case "link": {
@@ -407,6 +432,8 @@ function assemble(parts: readonly Emitted[], escaped: ReadonlySet<string>, bareL
   // `_italic_` next to a letter, digit or `_` is not emphasis: a zero-width space makes the word boundary.
   return strings
     .map((value, index) => {
+      // `$x$` right before a letter or digit is not math (prices): a zero-width space ends it.
+      if (parts[index]!.math) return /^[0-9A-Za-z]/.test(strings[index + 1] ?? "") ? value + ZWSP : value;
       if (!parts[index]!.italic) return value;
       const before = strings[index - 1]?.slice(-1) ?? "";
       const after = strings[index + 1]?.slice(0, 1) ?? "";
@@ -457,6 +484,8 @@ function readBack(line: string): string {
         return { kind: token.kind, text: token.text };
       case "link":
         return { kind: "link", text: token.label || token.url, href: token.url };
+      case "math":
+        return token.display ? { kind: "math", text: token.text, href: "display" } : { kind: "math", text: token.text };
       case "mention":
         return { kind: "text", text: `<@${token.userId}>` };
       case "mention_group":

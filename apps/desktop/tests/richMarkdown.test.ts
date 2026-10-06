@@ -19,6 +19,7 @@ function rendered(body: string): unknown {
       else if (token.kind === "mention_group") entry = ["text", `<@group:${token.groupId}>`];
       else if (token.kind === "mention_all") entry = ["text", `<!${token.target}>`];
       else if (token.kind === "newline") entry = ["text", "\n"];
+      else if (token.kind === "math") entry = [token.display ? "math-display" : "math", token.text];
       else entry = [token.kind, token.text];
       entry[1] = entry[1].split(ZWSP).join("");
       const last = out.at(-1);
@@ -45,6 +46,8 @@ function rendered(body: string): unknown {
         return ["code", block.lang, block.text];
       case "table":
         return ["table", block.align, block.header.map(tokens), block.rows.map((row) => row.map(tokens))];
+      case "math":
+        return ["math", block.tex];
       default:
         return [block.kind];
     }
@@ -58,6 +61,8 @@ const samples: string[] = [
   ...shared("inline-format.json").code_blocks.map((c: { body: string }) => c.body),
   ...shared("lists.json").cases.map((c: { body: string }) => c.body),
   ...shared("body-paragraphs.json").cases.map((c: { body: string }) => c.body),
+  ...shared("math.json").inline.map((c: { line: string }) => c.line),
+  ...shared("math.json").blocks.map((c: { body: string }) => c.body),
   ...shared("dm-preview.json").cases?.map?.((c: { body?: string }) => c.body ?? "").filter(Boolean) ?? [],
   "plain text",
   "",
@@ -79,6 +84,9 @@ const samples: string[] = [
   "```\nunclosed fence",
   "| a | b |\n| :-- | --: |\n| `x` | **y** \\| z |\n| 1 |",
   "数式 $a_b$ と $$x_1 + y_1$$ はそのまま",
+  "価格は \\$5 と \\$10、\\$x\\$ は文字、$5 and $10 も文字",
+  "$$\n\\int_0^1 f(x)\\,dx\n$$\n\nあと",
+  "- 項目 $a_i$\n> 引用 $$b$$\n# 見出し $c^2$",
   "<@11111111-1111-4111-8111-111111111111> さん <!channel> <@group:22222222-2222-4222-8222-222222222222>",
   "¯\\_(ツ)_/¯ and \\*escaped\\* and \\_x\\_",
   "``a ` b`` and `` ` ``",
@@ -106,7 +114,8 @@ describe("rich composer Markdown round trip", () => {
       "これは _強調_ です",
       "# 見出し\n- a\n  - b\n1. x\n2. y\n> q",
       "```js\nconst a_b = 1;\n```",
-      "数式 $a_b$ と $x_1 + y_1$",
+      "数式 $a_b$ と $x_1 + y_1$ と $$\\frac{1}{2}$$",
+      "$$\nE = mc^2\nF = ma\n$$",
       "[label](https://example.com)",
     ]) expect(roundTrip(body)).toBe(body);
   });
@@ -116,6 +125,7 @@ describe("rich composer Markdown round trip", () => {
     expect(roundTrip("1. a\n1. b\n1. c")).toBe("1. a\n2. b\n3. c");
     expect(roundTrip("-   a\n    - b")).toBe("- a\n  - b");
     expect(roundTrip("[https://a.example/x](https://a.example/x)")).toBe("https://a.example/x");
+    expect(roundTrip("$$\nE = mc^2\n$$")).toBe("$$E = mc^2$$"); // a one-line formula on one line
   });
 });
 
@@ -160,6 +170,31 @@ describe("rich composer serialisation", () => {
     expect(docToMarkdown(doc(p(text("a "), text(" b ", "italic"), text("c"))))).toBe("a  _b_ c");
     expect(docToMarkdown(doc(p(text("x", "bold", "italic"))))).toBe("**x**");
     expect(docToMarkdown(doc(p({ type: "text", text: "a*b", marks: [{ type: "bold" }] })))).toBe("**a\\*b**");
+  });
+
+  it("keeps a formula's source and escapes a typed dollar that would open one", () => {
+    const math = (tex: string, display = false): RichNode => ({ type: "text", text: tex, marks: [display ? { type: "math", attrs: { display: true } } : { type: "math" }] });
+    expect(docToMarkdown(doc(p(text("式"), math("a_1 * b_2"), text("が成り立つ"))))).toBe("式$a_1 * b_2$が成り立つ");
+    expect(docToMarkdown(doc(p(text("a "), math("\\frac{1}{2}", true))))).toBe("a $$\\frac{1}{2}$$");
+    // Alone on a line `$$…$$` would be a display block: the formula within a line keeps a zero-width space before it.
+    expect(parseBlocks(docToMarkdown(doc(p(math("x", true))))).map((b) => b.kind)).toEqual(["paragraph"]);
+    // `$x$` before a letter would not be math (prices): a zero-width space ends it, and the editor never sees it.
+    const before = docToMarkdown(doc(p(math("n"), text("dim"))));
+    expect(tokenizeInline(before).map((t) => t.kind)).toEqual(["math", "text"]);
+    expect(JSON.stringify(markdownToDoc(before))).not.toContain("\u200B");
+    // Dollars typed as text: escaped only where they would make math.
+    const literal = docToMarkdown(doc(p(text("$x$ と $y_1$"))));
+    expect(tokenizeInline(literal).map((t) => t.kind)).toEqual(["text"]);
+    expect(docToMarkdown(doc(p(text("$5 and $10"))))).toBe("$5 and $10");
+    // A paragraph line that would open display math.
+    expect(parseBlocks(docToMarkdown(doc(p(text("$$x$$"))))).map((b) => b.kind)).toEqual(["paragraph"]);
+    // \$ round-trips as a dollar, never as math.
+    for (const body of ["\\$x\\$", "costs \\$5", "$x$ and \\$y\\$"]) {
+      const once = roundTrip(body);
+      expect(rendered(once)).toEqual(rendered(body));
+      expect(roundTrip(once)).toBe(once);
+    }
+    expect(markdownToDoc("$$\na\nb\n$$").content?.[0]).toEqual({ type: "rawMarkdown", content: [{ type: "text", text: "$$\na\nb\n$$" }] });
   });
 
   it("writes code with backticks inside and links", () => {
