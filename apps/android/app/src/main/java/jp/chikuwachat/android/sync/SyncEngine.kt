@@ -676,6 +676,7 @@ class SyncEngine(
         store.replacePresence(bootstrap.presence)
         store.replaceBookmarks(bootstrap.bookmarks)
         store.replaceFavorites(bootstrap.favorites)
+        store.replaceDmPins(bootstrap.dmPins)
         store.replaceBlocked(bootstrap.blockedUserIds)
         store.replaceCustomEmoji(bootstrap.customEmoji)
         store.replaceEmojiPacks(bootstrap.emojiPacks)
@@ -869,6 +870,10 @@ class SyncEngine(
             "favorite.updated" -> {
                 val id = frame.data.str("channel_id") ?: return
                 store.setFavorite(id, frame.data.bool("favorite") ?: false)
+            }
+            "dm_pin.updated" -> {
+                val id = frame.data.str("channel_id") ?: return
+                store.setDmPin(id, frame.data.bool("pinned") ?: false)
             }
             "thread.updated" -> {
                 // THREADS.md §4: the row (if held) takes the new state now; the badge and the open list are

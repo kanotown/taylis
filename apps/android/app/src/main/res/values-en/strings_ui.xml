@@ -1714,6 +1714,9 @@
     <string name="calls_join">Join</string>
     <string name="calls_started_by">📞 %1$s started a call</string>
     <string name="calls_could_not_open">No app can open the call link.</string>
+    <string name="dm_pin_pin">Pin to top</string>
+    <string name="dm_pin_unpin">Unpin</string>
+    <string name="dm_pin_pinned">Pinned</string>
     <plurals name="composer_message_max_length">
         <item quantity="one">The message can be up to %1$,d character</item>
         <item quantity="other">The message can be up to %1$,d characters</item>

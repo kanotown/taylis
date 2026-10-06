@@ -19,6 +19,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
@@ -178,7 +183,7 @@ fun DmListScreen(controller: AppController, version: Int, listState: LazyListSta
     val store = controller.store
     val meId = store.me?.id
     var query by rememberSaveable { mutableStateOf("") }
-    val rows = remember(version, meId, query) { MainTabs.dmList(store.channels.values, { channelTitle(it, store) }, meId, query) }
+    val rows = remember(version, meId, query) { MainTabs.dmList(store.channels.values, { channelTitle(it, store) }, meId, query, store.dmPins) }
     val myName = remember(version, meId) { myDisplayName(store) }
     val placeholder = remember(version, meId, query) { MainTabs.showsSelfNotesPlaceholder(store.channels.values, meId, myName, query) }
     val scope = rememberCoroutineScope()
@@ -264,6 +269,10 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
     val muted = Channels.isMuted(channel)
     val badge = Channels.badgeCount(channel)
     val time = MainTabs.dmTimeLabel(channel.channel.lastMessageAt, now)
+    // M118: 「上に固定」/「固定を外す」 on a long press, while the server keeps pins.
+    val pinned = store.isDmPinned(channel.id)
+    var menuOpen by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     // M49: the last message (「あなた: …」 / 「佐藤: …」, DmPreview.kt); without one, the size, status or presence as before.
     val preview = remember(version, channel) { previewLine(channel.channel, meId, store.users) }
     val second = when {
@@ -274,7 +283,9 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
         else -> null
     }
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 72.dp).selectedRow(selected).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp)
+        Modifier.fillMaxWidth().heightIn(min = 72.dp).selectedRow(selected)
+            .combinedClickable(onClick = onClick, onLongClick = if (store.dmPinsKnown) ({ menuOpen = true }) else null, onLongClickLabel = stringResource(R.string.common_menu))
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .alpha(if (muted && !unread) 0.6f else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -297,6 +308,7 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
                     )
                     StatusEmoji(statusUser, controller, version, modifier = Modifier.padding(start = 4.dp))
                 }
+                if (pinned) DmPinMark(Modifier.padding(start = 6.dp))
                 if (time != null) {
                     Text(
                         time, style = MaterialTheme.typography.labelMedium, maxLines = 1,
@@ -327,6 +339,13 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
                 } else if (unread) {
                     Box(Modifier.padding(start = 6.dp).size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape).semantics { contentDescription = L10n.str(R.string.common_unread) })
                 }
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(if (pinned) R.string.dm_pin_unpin else R.string.dm_pin_pin)) },
+                    leadingIcon = { Icon(if (pinned) Icons.Outlined.PushPin else Icons.Filled.PushPin, contentDescription = null) },
+                    onClick = { menuOpen = false; scope.launch { controller.toggleDmPin(channel.id) } },
+                )
             }
         }
     }

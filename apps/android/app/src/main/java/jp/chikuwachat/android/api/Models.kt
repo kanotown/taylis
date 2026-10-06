@@ -590,6 +590,11 @@ data class BootstrapOut(
     val bookmarks: List<String> = emptyList(),
     /** My starred channels (M12a) among `channels`. */
     val favorites: List<String> = emptyList(),
+    /**
+     * M118 (DATA_MODEL.md conversation_pins): the DMs and group DMs I pinned to the top, oldest pin first; changes arrive as
+     * dm_pin.updated. Null from a server before M118: no pins, and no pin actions.
+     */
+    val dmPins: List<String>? = null,
     /** Custom emoji (M12f): the whole table; changes arrive as emoji.updated. */
     val customEmoji: List<CustomEmojiOut> = emptyList(),
     /** M100: emoji packs in tab order; changes arrive as emoji_pack.updated. */
@@ -743,6 +748,10 @@ data class BlockStateOut(val userId: String, val blocked: Boolean)
 /** POST /messages/{id}/report (M104, MODERATION.md §3): my own report only. */
 @Serializable
 data class ReportAck(val id: String, val messageId: String, val reason: String, val createdAt: String = "")
+
+/** PUT / DELETE /channels/{id}/dm-pin (M118). */
+@Serializable
+data class DmPinStateOut(val channelId: String, val pinned: Boolean)
 
 /** PUT / DELETE /channels/{id}/favorite (M12a). */
 @Serializable

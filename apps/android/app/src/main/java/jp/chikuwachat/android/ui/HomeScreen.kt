@@ -145,11 +145,11 @@ fun HomeScreen(
     val isGuest = controller.isGuest
     val sections = remember(version, groupUnread, meId) {
         Channels.sections(store.channels.values, groupUnread = groupUnread, favorites = store.favorites, sidebar = store.sidebarSections, meId = meId,
-            defaults = store.sidebarDefaults, title = { channelTitle(it, store) })
+            defaults = store.sidebarDefaults, title = { channelTitle(it, store) }, dmPins = store.dmPins)
     }
     val dmsFolded = FoldedSections.DMS in folded && editing != "dms"
     val dmSection = remember(sections, meId, editing) {
-        Channels.dmSection(sections.dms, meId, manual = store.defaultSort("dms").sort == "manual", limit = if (editing == "dms") Int.MAX_VALUE else Channels.HOME_DMS)
+        Channels.dmSection(sections.dms, meId, manual = store.defaultSort("dms").sort == "manual", limit = if (editing == "dms") Int.MAX_VALUE else Channels.HOME_DMS, dmPins = store.dmPins)
     }
     // My own DM is always the first DM; until it exists, a placeholder row with my picture and name stands there (not
     // while the section is folded).
@@ -540,6 +540,7 @@ private fun HomeChannelRow(channel: ChannelState, controller: AppController, ver
             Text(title, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             if (channel.channel.isDm && others.size == 1) StatusEmoji(store.users[others[0]], controller, version, modifier = Modifier.padding(start = 4.dp))
         }
+        if (channel.channel.isDm && store.isDmPinned(channel.id)) DmPinMark(Modifier.padding(end = 6.dp))  // M118
         if (muted) Icon(Icons.Default.NotificationsOff, contentDescription = stringResource(R.string.common_notifications_off), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 6.dp).size(14.dp))
         if (unread && badge > 0) {
             Text(

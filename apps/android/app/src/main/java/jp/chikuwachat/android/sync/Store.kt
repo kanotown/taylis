@@ -372,6 +372,11 @@ class Store(private val persistence: Persistence? = null) {
     val bookmarks = HashSet<String>()
     /** My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted. */
     val favorites = HashSet<String>()
+    /** M118: the DMs I pinned to the top, oldest pin first; from bootstrap and dm_pin.updated, not persisted. */
+    val dmPins = ArrayList<String>()
+    /** M118: the server keeps pins (it sent `dm_pins`); a server before M118 does not, and no pin action is offered. */
+    var dmPinsKnown = false
+        private set
     /** M104 (MODERATION.md §4): the people I blocked; from bootstrap and block.updated, not persisted. */
     val blockedUsers = HashSet<String>()
     /** My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted. */
@@ -1161,6 +1166,32 @@ class Store(private val persistence: Persistence? = null) {
     fun replaceFavorites(ids: List<String>) {
         favorites.clear()
         favorites.addAll(ids)
+        emit()
+    }
+
+    // --- pinned DMs (M118) ---------------------------------------------------------------------
+
+    fun isDmPinned(channelId: String): Boolean = channelId in dmPins
+
+    /** A new pin goes last (one already there keeps its place), as on the server. */
+    fun setDmPin(channelId: String, on: Boolean) {
+        val changed = if (on) (channelId !in dmPins && dmPins.add(channelId)) else dmPins.remove(channelId)
+        if (changed) emit()
+    }
+
+    /** The pins as they were (a refused change put back in its place). */
+    fun restoreDmPins(ids: List<String>) {
+        if (dmPins == ids) return
+        dmPins.clear()
+        dmPins.addAll(ids)
+        emit()
+    }
+
+    /** Bootstrap's `dm_pins`; null (a server before M118) = none, and pins unknown. */
+    fun replaceDmPins(ids: List<String>?) {
+        dmPinsKnown = ids != null
+        dmPins.clear()
+        dmPins.addAll(ids.orEmpty())
         emit()
     }
 

@@ -539,6 +539,9 @@ class ApiClient(
 
     suspend fun favoriteChannel(channelId: String): FavoriteStateOut = request("PUT", "/api/v1/channels/$channelId/favorite")
     suspend fun unfavoriteChannel(channelId: String): FavoriteStateOut = request("DELETE", "/api/v1/channels/$channelId/favorite")
+    /** M118: a DM or group DM at the top of the DM list (201 new, 200 already: it keeps its place); DELETE always 200. */
+    suspend fun pinDm(channelId: String): DmPinStateOut = request("PUT", "/api/v1/channels/$channelId/dm-pin")
+    suspend fun unpinDm(channelId: String): DmPinStateOut = request("DELETE", "/api/v1/channels/$channelId/dm-pin")
     override suspend fun readAll(scope: String?): List<ChannelReadStateOut> =
         request("POST", "/api/v1/channels/read-all", buildJsonObject { scope?.let { put("scope", it) } })
 
