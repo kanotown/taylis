@@ -68,8 +68,9 @@ import androidx.compose.ui.res.stringResource
 fun ChannelSectionDialog(controller: AppController, channelId: String, version: Int, onDismiss: () -> Unit, onNewSection: () -> Unit) {
     val store = controller.store
     val channel = store.channels[channelId] ?: return onDismiss()
-    val current = remember(version, channelId) { store.sectionOf(channelId) }
     val starred = remember(version, channelId) { channelId in store.favorites }
+    // A starred conversation shows in お気に入り (a server before 2026-10-07 may still have it in a section too).
+    val current = remember(version, channelId) { if (starred) null else store.sectionOf(channelId) }
     val pinned = remember(version, channelId) { store.isDmPinned(channelId) }
     val scope = rememberCoroutineScope()
     AlertDialog(
@@ -281,7 +282,8 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
                     OutlinedTextField(query, { query = it }, placeholder = { Text(stringResource(R.string.sidebar_dialogs_filter_channels_and_dms)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 260.dp).padding(top = 4.dp)) {
                         items(conversations, key = { it.first.id }) { (channel, title) ->
-                            val current = sectionOf[channel.id]
+                            // One place per conversation: a starred one leaves お気に入り (DATA_MODEL.md sidebar_sections).
+                            val current = if (store.isFavorite(channel.id)) stringResource(R.string.common_star) else sectionOf[channel.id]?.name
                             Row(
                                 Modifier.fillMaxWidth().clickable { choose(if (channel.id in chosen) chosen - channel.id else chosen + channel.id) }.padding(vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -290,7 +292,7 @@ fun SectionDialog(controller: AppController, section: SidebarSectionOut?, presel
                                 Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                 if (current != null) {
                                     Text(
-                                        stringResource(R.string.sidebar_dialogs_move_from, current.name), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        stringResource(R.string.sidebar_dialogs_move_from, current), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1, modifier = Modifier.padding(start = 6.dp),
                                     )
                                 }

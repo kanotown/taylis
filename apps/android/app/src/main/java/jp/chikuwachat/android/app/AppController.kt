@@ -2108,11 +2108,15 @@ class AppController(private val app: Application) {
     suspend fun toggleFavorite(channelId: String) {
         val api = api ?: return
         val on = !store.isFavorite(channelId)
+        // Starring takes it out of my section at once (DATA_MODEL.md sidebar_sections 「1 つの会話は 1 か所」; the server
+        // does the same and sidebar.updated confirms); a refusal puts both back.
         store.setFavorite(channelId, on)
+        val sections = if (on) store.takeOutOfSections(channelId) else store.sidebarSections
         try {
             if (on) api.favoriteChannel(channelId) else api.unfavoriteChannel(channelId)
         } catch (e: Exception) {
             store.setFavorite(channelId, !on)
+            if (on) store.replaceSidebar(sections)
             report(e)
         }
     }
@@ -2654,7 +2658,9 @@ class AppController(private val app: Application) {
 
     /** A new section at the end (M26: with its icon); `channelIds` move into it from wherever they were. */
     suspend fun createSection(name: String, emoji: String?, channelIds: List<String>): Boolean =
-        sidebarChange { it.createSidebarSection(name, emoji, channelIds) }
+        // DATA_MODEL.md sidebar_sections 「1 つの会話は 1 か所」: they are no longer starred. The server unstarred them in the
+        // same change (favorite.updated confirms); the rows move here at once.
+        sidebarChange { it.createSidebarSection(name, emoji, channelIds) }.also { if (it) store.leaveFavorites(channelIds) }
 
     /** M26: the name and the icon (null takes it off). */
     suspend fun editSection(id: String, name: String, emoji: String?): Boolean = sidebarChange { it.editSidebarSection(id, name, emoji) }
@@ -2703,9 +2709,10 @@ class AppController(private val app: Application) {
         }
     }
 
-    /** `sectionId` null puts the conversation back in the default sections. */
+    /** `sectionId` null puts it back in the default sections; into a section it leaves お気に入り too. */
     suspend fun moveToSection(channelId: String, sectionId: String?): Boolean =
         sidebarChange { api -> if (sectionId != null) api.placeInSidebarSection(sectionId, channelId) else api.removeFromSidebarSection(channelId) }
+            .also { if (it && sectionId != null) store.leaveFavorites(listOf(channelId)) }
 
     // --- edit history (M14c) -------------------------------------------------------------------
 

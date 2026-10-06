@@ -1077,6 +1077,21 @@ class Store(private val persistence: Persistence? = null) {
     /** The id of my section the conversation sits in, if any. */
     fun sectionOf(channelId: String): String? = sidebarSections.firstOrNull { channelId in it.channelIds }?.id
 
+    /**
+     * DATA_MODEL.md sidebar_sections 「1 つの会話は 1 か所」: a starred conversation leaves my section (here at once; the
+     * server does the same and sidebar.updated confirms). Returns the sections as they were, to put back when refused.
+     */
+    fun takeOutOfSections(channelId: String): List<SidebarSectionOut> {
+        val before = sidebarSections
+        if (sectionOf(channelId) != null) replaceSidebar(before.map { if (channelId in it.channelIds) it.copy(channelIds = it.channelIds - channelId) else it })
+        return before
+    }
+
+    /** The other half of the rule: conversations put in one of my sections are no longer starred. */
+    fun leaveFavorites(channelIds: List<String>) {
+        channelIds.forEach { setFavorite(it, false) }
+    }
+
     // --- user groups (M12k) ------------------------------------------------------------------
 
     fun replaceGroups(rows: List<GroupOut>) {
