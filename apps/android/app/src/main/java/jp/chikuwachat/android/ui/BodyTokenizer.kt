@@ -70,9 +70,11 @@ private val RULE_LINE = Regex("""^-{3,}\s*$""")
 // closing one not followed by a letter, digit or `_`, so snake_case and e-mail addresses stay as they are. `\_` `\*` `\~`
 // `\`` are the literal character (also inside emphasis). E-mail addresses (and the shrug, which keeps its backslash) are
 // text tokens of their own, so emphasis and escapes are never read inside them.
+// The math alternatives are written as unrolled loops (`[^$\n\\]*(?:\\.[^$\n\\]*)*`): java.util.regex recurses once per
+// repetition of a group with alternatives, so `(?:\\.|[^$\n\\])*?` overflowed the stack on a formula of MATH_MAX_LENGTH+ chars.
 private const val INLINE =
     // i18n: keep (inline-format pattern)
-    """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"""
+    """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?=[^$\n])[^$\n\\]*(?:\\.[^$\n\\]*)*)\$\$)|(\$(?![\s$])([^$\n\\]*(?:\\.[^$\n\\]*)*(?:(?<!\s)|(?<=\\\s)))\$(?![0-9A-Za-z]))"""
 private val INLINE_PATTERN = Regex(INLINE)
 private val FULL_PATTERN = Regex("""(```([\s\S]*?)```)|$INLINE|(\n)""")
 private val FENCE_OPEN = Regex("""^```([A-Za-z0-9_+#.-]{0,20})\s*$""")
