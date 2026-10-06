@@ -1,7 +1,7 @@
 """Sidebar sorts: name / recent / manual per section, and the default sections' own row
 
-Revision ID: 0089
-Revises: 0088
+Revision ID: 0090
+Revises: 0089
 Create Date: 2026-10-07
 
 DATA_MODEL.md sidebar_sections 「並べ替え」: each of my sections, and the default
@@ -18,8 +18,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0089"
-down_revision: str | None = "0088"
+revision: str = "0090"
+down_revision: str | None = "0089"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
