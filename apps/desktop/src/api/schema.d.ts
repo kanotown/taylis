@@ -6881,11 +6881,8 @@ export interface components {
              * @enum {string}
              */
             principal_type: "workspace" | "group" | "user";
-            /**
-             * Source Page Id
-             * Format: uuid
-             */
-            source_page_id: string;
+            /** Source Page Id */
+            source_page_id: string | null;
             /** Source Title */
             source_title: string | null;
         };

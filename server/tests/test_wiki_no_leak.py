@@ -253,6 +253,7 @@ async def test_breadcrumbs_hide_an_unreadable_parent(
     assert MARK not in page.text
     access_out = await client.get(f"{API}/wiki/pages/{world.shared_child['id']}/access")
     assert MARK not in access_out.text
+    assert str(world.secret["id"]) not in access_out.text
     tree = (await client.get(f"{API}/wiki/tree")).json()
     assert {p["title"] for p in tree["pages"]} == {"Open handbook", "Shared child", "Theirs"}
     child = next(p for p in tree["pages"] if p["title"] == "Shared child")
