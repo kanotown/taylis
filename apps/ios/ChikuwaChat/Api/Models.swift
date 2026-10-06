@@ -1015,6 +1015,8 @@ struct BootstrapOut: Codable {
     var bookmarks: [String]? = nil
     /// My starred channels (M12a) among `channels`.
     var favorites: [String]? = nil
+    /// M118: the DMs and group DMs I pinned to the top, oldest pin first; nil from an older server (no pinning there).
+    var dmPins: [String]? = nil
     /// Custom emoji (M12f): the whole table; changes arrive as emoji.updated.
     var customEmoji: [CustomEmojiOut]? = nil
     /// M100: emoji packs in tab order; changes arrive as emoji_pack.updated.
@@ -1354,6 +1356,12 @@ struct ReportAck: Codable, Equatable {
 struct FavoriteStateOut: Codable, Equatable {
     let channelId: String
     let favorite: Bool
+}
+
+/// M118 (DATA_MODEL.md conversation_pins): `PUT` / `DELETE /channels/{id}/dm-pin`.
+struct DmPinStateOut: Codable, Equatable {
+    let channelId: String
+    let pinned: Bool
 }
 
 /// One row of POST /channels/read-all (M12a).

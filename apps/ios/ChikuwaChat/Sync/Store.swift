@@ -385,6 +385,11 @@ final class Store {
     var bookmarks: Set<String> = []
     /// My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted.
     var favorites: Set<String> = []
+    /// M118 (DATA_MODEL.md conversation_pins): the DMs pinned to the top of the DM lists, oldest pin first; from bootstrap
+    /// and dm_pin.updated, not persisted (an offline start lists without pins until the first bootstrap).
+    private(set) var dmPins: [String] = []
+    /// The server sends `dm_pins` (M118 or later): only then are 「上に固定」/「固定を外す」 offered.
+    private(set) var dmPinsSupported = false
     /// M104 (MODERATION.md §4): the people I blocked; from bootstrap and block.updated, not persisted.
     var blockedUsers: Set<String> = []
     /// My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted.
@@ -1106,6 +1111,32 @@ final class Store {
     }
 
     func replaceFavorites(_ ids: [String]) { favorites = Set(ids) }
+
+    // MARK: pinned DMs (M118)
+
+    func isDmPinned(_ channelId: String) -> Bool { dmPins.contains(channelId) }
+
+    /// dm_pin.updated and my own tap: a new pin goes last (one already there keeps its place), an unpin drops it.
+    func setDmPin(_ channelId: String, on: Bool) {
+        if on {
+            if !dmPins.contains(channelId) { dmPins.append(channelId) }
+        } else {
+            dmPins.removeAll { $0 == channelId }
+        }
+    }
+
+    /// bootstrap's `dm_pins`; nil from a server before M118, which then offers no pinning.
+    func replaceDmPins(_ ids: [String]?) {
+        dmPinsSupported = ids != nil
+        if dmPins != ids ?? [] { dmPins = ids ?? [] }
+    }
+
+    /// A refused tap undone (its rollback): the conversation back where it was in the pins (`place`), or out of them;
+    /// the other pins stay as events may have changed them meanwhile.
+    func restoreDmPin(_ channelId: String, at place: Int?) {
+        dmPins.removeAll { $0 == channelId }
+        if let place { dmPins.insert(channelId, at: min(place, dmPins.count)) }
+    }
 
     // MARK: blocks (M104)
 

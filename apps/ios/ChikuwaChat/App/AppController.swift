@@ -1063,6 +1063,20 @@ final class AppController {
         }
     }
 
+    /// M118 「上に固定」/「固定を外す」: the list moves at once and goes back if the server refuses; dm_pin.updated brings my
+    /// other devices along.
+    func setDmPinned(_ channelId: String, on: Bool) async {
+        guard let api else { return }
+        let place = store.dmPins.firstIndex(of: channelId)
+        store.setDmPin(channelId, on: on)
+        do {
+            if on { _ = try await api.pinDm(id: channelId) } else { _ = try await api.unpinDm(id: channelId) }
+        } catch {
+            store.restoreDmPin(channelId, at: place)
+            self.error = describe(error)
+        }
+    }
+
     /// M104 「ブロック」/「ブロックを解除」 (MODERATION.md §4): the store flag moves at once, block.updated brings my other
     /// devices along. The blocked person is not told.
     func setUserBlocked(_ userId: String, on: Bool) async {

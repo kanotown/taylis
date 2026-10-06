@@ -36,6 +36,8 @@ enum HomeSections {
         var channels: [ChannelState]
         var meId: String?
         var favorites: Set<String> = []
+        /// M118: the pinned DMs, oldest pin first; first in every section they are in.
+        var dmPins: [String] = []
         var sections: [SidebarSectionOut] = []
         /// 「未読をまとめる」.
         var groupUnread = false
@@ -79,10 +81,14 @@ enum HomeSections {
             let sort = input.sort(key)
             return SidebarOrder.section(rows, sort: sort.sort, manualOrder: sort.manualOrder, title: input.title)
         }
-        layout.favorites = fold(ordered(pool.filter(starred), "favorites"), input.folded.contains("favorites") && editing != "favorites")
+        // M118 (DATA_MODEL.md 「DM の固定」): pinned DMs first in whichever section they are, in pin order.
+        let pins = input.dmPins
+        layout.favorites = fold(SidebarOrder.pinnedFirst(ordered(pool.filter(starred), "favorites"), pins: pins),
+                                input.folded.contains("favorites") && editing != "favorites")
         layout.custom = input.sections.map { section in
             let rows = pool.filter { !starred($0) && section.channelIds.contains($0.id) }
-            let sorted = SidebarOrder.section(rows, sort: section.sort, manualOrder: section.manualOrder, title: input.title)
+            let sorted = SidebarOrder.pinnedFirst(SidebarOrder.section(rows, sort: section.sort, manualOrder: section.manualOrder, title: input.title),
+                                                  pins: pins)
             return Custom(section: section, rows: fold(sorted, section.collapsed && editing != "custom:\(section.id)"))
         }
         let sections = ChannelListView.channelSections(pool, meId: meId) { !starred($0) && !placed.contains($0.id) }
@@ -91,18 +97,22 @@ enum HomeSections {
 
         let dmsFolded = input.folded.contains("dms") && editing != "dms"
         let dms = pool.filter { $0.channel.isDm && !starred($0) && !placed.contains($0.id) }
-        // My DM with myself first, unless the section is in my own order.
+        // M118: the pinned ones first, in pin order, always shown; then my DM with myself, unless the section is in my
+        // own order; then the rest in the section's sort.
+        let pinned = SidebarOrder.pinned(dms, pins: pins)
+        let pinnedIds = Set(pinned.map(\.id))
+        let rest = dms.filter { !pinnedIds.contains($0.id) }
         let manual = input.sort("dms").sort == "manual"
-        let notes = manual ? [] : dms.filter { DMList.isNotesToSelf($0, meId: meId) }
-        let others = ordered(dms.filter { manual || !DMList.isNotesToSelf($0, meId: meId) }, "dms")
+        let head = pinned + (manual ? [] : rest.filter { DMList.isNotesToSelf($0, meId: meId) })
+        let others = ordered(rest.filter { manual || !DMList.isNotesToSelf($0, meId: meId) }, "dms")
         if editing == "dms" {
-            layout.dms = Rows(rows: notes + others, isEmpty: dms.isEmpty)
+            layout.dms = Rows(rows: head + others, isEmpty: dms.isEmpty)
         } else if dmsFolded {
-            layout.dms = fold(notes + others, true)
+            layout.dms = fold(head + others, true)
         } else {
             // The newest few, and any unread one further down (an unread conversation never hides).
             let shown = others.enumerated().filter { $0.offset < dmLimit || unread($0.element) }.map(\.element)
-            layout.dms = Rows(rows: notes + shown, isEmpty: dms.isEmpty)
+            layout.dms = Rows(rows: head + shown, isEmpty: dms.isEmpty)
             layout.moreDms = shown.count < others.count
             layout.notesRow = DMList.notesMissing(input.channels, meId: meId)
         }
@@ -243,6 +253,22 @@ enum SidebarOrder {
                 return order != 0 ? order < 0 : precedes(a.row.id, b.row.id)
             }
             .map(\.row)
+    }
+
+    /// M118 (DATA_MODEL.md conversation_pins): the pinned DMs among `rows`, oldest pin first (bootstrap's `dm_pins`).
+    static func pinned(_ rows: [ChannelState], pins: [String]) -> [ChannelState] {
+        guard !pins.isEmpty else { return [] }
+        let dms = Dictionary(rows.filter(\.channel.isDm).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var seen: Set<String> = []
+        return pins.compactMap { id in seen.insert(id).inserted ? dms[id] : nil }
+    }
+
+    /// M118: a section's rows with its pinned DMs first (in pin order), the rest in the order they had.
+    static func pinnedFirst(_ rows: [ChannelState], pins: [String]) -> [ChannelState] {
+        let head = pinned(rows, pins: pins)
+        guard !head.isEmpty else { return rows }
+        let ids = Set(head.map(\.id))
+        return head + rows.filter { !ids.contains($0.id) }
     }
 
     /// Newest first: the last message, else when the conversation was made (the server's text), then by id.
