@@ -5931,9 +5931,16 @@
             "type": "string"
           },
           "source_page_id": {
-            "format": "uuid",
-            "title": "Source Page Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Page Id"
           },
           "source_title": {
             "anyOf": [

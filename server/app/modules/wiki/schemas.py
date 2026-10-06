@@ -281,8 +281,9 @@ class EffectiveOut(BaseModel):
     principal_type: PrincipalType
     principal_id: UUID | None
     level: Level
-    # The page whose own entry gives it (this page, or an ancestor).
-    source_page_id: UUID
+    # The page whose own entry gives it (this page, or an ancestor); null for an ancestor I cannot
+    # read (neither its id nor its title is shown).
+    source_page_id: UUID | None
     inherited: bool
     # The ancestor's title when I can read it (「〇〇から」), else null.
     source_title: str | None

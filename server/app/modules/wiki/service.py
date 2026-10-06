@@ -960,7 +960,7 @@ async def _access_out(db: AsyncSession, actor: User, page: WikiPage, rank: int) 
                 principal_type=e.principal_type,  # type: ignore[arg-type]
                 principal_id=e.principal_id,
                 level=level_name(e.rank),
-                source_page_id=e.source,
+                source_page_id=e.source if e.source == page.id or e.source in titles else None,
                 inherited=e.source != page.id,
                 source_title=titles.get(e.source),
             )
