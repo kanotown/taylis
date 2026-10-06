@@ -923,10 +923,21 @@ export class AppController {
    * A new section at the end (M26: with its icon), and the conversations that move into it. The M26 fields go only
    * when set: a server before M26 refuses fields it does not know, and a plain section still works there.
    */
-  createSection(name: string, emoji: string | null, channelIds: string[]): Promise<boolean> {
-    return this.sidebarChange((api) =>
+  async createSection(name: string, emoji: string | null, channelIds: string[]): Promise<boolean> {
+    const ok = await this.sidebarChange((api) =>
       api.createSidebarSection({ name, ...(emoji ? { emoji } : {}), ...(channelIds.length ? { channel_ids: channelIds } : {}) }),
     );
+    if (ok) this.leaveFavorites(channelIds);
+    return ok;
+  }
+
+  /**
+   * DATA_MODEL.md sidebar_sections 「1 つの会話は 1 か所」: a conversation put in one of my sections is no longer starred.
+   * The server unstarred it in the same change (favorite.updated confirms); the row moves here at once, not only when
+   * the event comes.
+   */
+  private leaveFavorites(channelIds: Iterable<string>): void {
+    for (const id of channelIds) this.store.setFavorite(id, false);
   }
 
   /** M26: the name and the icon (null: none). */
@@ -997,9 +1008,11 @@ export class AppController {
     return this.sidebarChange((api) => api.deleteSidebarSection(sectionId));
   }
 
-  /** `sectionId` null puts the conversation back in the default sections. */
-  moveToSection(channelId: string, sectionId: string | null): Promise<boolean> {
-    return this.sidebarChange((api) => (sectionId ? api.placeInSidebarSection(sectionId, channelId) : api.removeFromSidebarSection(channelId)));
+  /** `sectionId` null puts the conversation back in the default sections. Into a section it leaves お気に入り too. */
+  async moveToSection(channelId: string, sectionId: string | null): Promise<boolean> {
+    const ok = await this.sidebarChange((api) => (sectionId ? api.placeInSidebarSection(sectionId, channelId) : api.removeFromSidebarSection(channelId)));
+    if (ok && sectionId) this.leaveFavorites([channelId]);
+    return ok;
   }
 
   /**
@@ -1021,16 +1034,25 @@ export class AppController {
     }
   }
 
-  /** M12a: a starred channel; the store flag moves at once, favorite.updated confirms on every device. */
+  /**
+   * M12a: a starred channel; the store flag moves at once, favorite.updated confirms on every device. Starring takes
+   * it out of my section (「1 つの会話は 1 か所」; the server does the same, sidebar.updated confirms); a refusal puts
+   * both back.
+   */
   async toggleFavorite(channelId: string): Promise<void> {
     if (!this.api) return;
     const on = !this.store.isFavorite(channelId);
+    const sections = this.store.sidebarSections;
     this.store.setFavorite(channelId, on);
+    if (on && this.store.sectionOf(channelId)) {
+      this.store.replaceSidebar(sections.map((s) => (s.channel_ids.includes(channelId) ? { ...s, channel_ids: s.channel_ids.filter((id) => id !== channelId) } : s)));
+    }
     try {
       if (on) await this.api.favoriteChannel(channelId);
       else await this.api.unfavoriteChannel(channelId);
     } catch (error) {
       this.store.setFavorite(channelId, !on);
+      if (on) this.store.replaceSidebar(sections);
       this.setError(error);
     }
   }
