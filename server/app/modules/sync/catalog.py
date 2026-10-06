@@ -12,6 +12,7 @@ from app.modules.calendar import events as calendar_events
 from app.modules.canvases import events as canvas_events
 from app.modules.channel_links import events as channel_link_events
 from app.modules.channels import events as channel_events
+from app.modules.dm_pins import events as dm_pin_events
 from app.modules.drafts import events as draft_events
 from app.modules.emoji import events as emoji_events
 from app.modules.favorites import events as favorite_events
@@ -72,6 +73,7 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     activity_events.ACTIVITY_UPDATED: (activity_events.ActivityUpdatedData, "user", False),
     activity_events.REACTION_ADDED: (activity_events.ReactionAddedData, "user", False),
     favorite_events.FAVORITE_UPDATED: (favorite_events.FavoriteUpdatedData, "user", False),
+    dm_pin_events.DM_PIN_UPDATED: (dm_pin_events.DmPinUpdatedData, "user", False),
     moderation_events.BLOCK_UPDATED: (moderation_events.BlockUpdatedData, "user", False),
     sidebar_events.SIDEBAR_UPDATED: (sidebar_events.SidebarUpdatedData, "user", False),
     draft_events.DRAFT_UPDATED: (draft_events.DraftUpdatedData, "user", False),

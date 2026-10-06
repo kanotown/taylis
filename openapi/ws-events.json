@@ -2196,6 +2196,35 @@
         "type": "object"
       }
     },
+    "dm_pin.updated": {
+      "audience": "user",
+      "consumes_seq": false,
+      "data": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "pinned": {
+            "title": "Pinned",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel_id",
+          "pinned",
+          "at"
+        ],
+        "title": "DmPinUpdatedData",
+        "type": "object"
+      }
+    },
     "draft.updated": {
       "audience": "user",
       "consumes_seq": false,
@@ -2791,7 +2820,7 @@
             "type": "object"
           },
           "MessageCallOut": {
-            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button that\nopens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what clients\nbefore M117 show.",
+            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button\nthat opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what\nclients before M117 show.",
             "properties": {
               "started_by": {
                 "format": "uuid",
@@ -3894,7 +3923,7 @@
             "type": "object"
           },
           "MessageCallOut": {
-            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button that\nopens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what clients\nbefore M117 show.",
+            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button\nthat opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what\nclients before M117 show.",
             "properties": {
               "started_by": {
                 "format": "uuid",
@@ -4998,7 +5027,7 @@
             "type": "object"
           },
           "MessageCallOut": {
-            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button that\nopens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what clients\nbefore M117 show.",
+            "description": "M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button\nthat opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what\nclients before M117 show.",
             "properties": {
               "started_by": {
                 "format": "uuid",

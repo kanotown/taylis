@@ -281,6 +281,11 @@
    "en": "This can't be done in a direct message.",
    "zh-Hans": "私信中不能执行此操作。"
   },
+  "dm_pin_not_dm": {
+   "ja": "上に固定できるのはダイレクトメッセージだけです",
+   "en": "Only direct messages can be pinned to the top.",
+   "zh-Hans": "只有私信可以置顶。"
+  },
   "dm_unavailable": {
    "ja": "このユーザーにはメッセージを送れません",
    "en": "You can't send messages to this user.",

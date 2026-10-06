@@ -713,6 +713,28 @@ CREATE INDEX channel_favorites_user_idx ON channel_favorites (user_id, created_a
   で揃え、bootstrap には id の一覧 (`favorites`) を入れる。星を付けられるのはメンバーだけ。
 - 退出しても行は残すが、bootstrap は現在のメンバーシップと結合して返すので表示からは消える (再参加で戻る)。
 
+### conversation_pins（DM の固定、M118）
+
+```sql
+CREATE TABLE conversation_pins (
+  user_id     uuid NOT NULL REFERENCES users(id),
+  channel_id  uuid NOT NULL REFERENCES channels(id),   -- type が dm / group_dm のものだけ
+  created_at  timestamptz NOT NULL DEFAULT now(),      -- 固定の順番（古い固定が先）
+  PRIMARY KEY (user_id, channel_id)
+);
+CREATE INDEX conversation_pins_user_idx ON conversation_pins (user_id, created_at);
+```
+
+- 決まった DM・グループ DM（自分だけの DM も）を DM の一覧の先頭に固定する（利用者の要望 2026-10-06）。個人データ
+  なので `seq` を消費せず、端末間は `dm_pin.updated`（audience=user、`{channel_id, pinned, at}`）で揃え、bootstrap には
+  id の一覧（`dm_pins`、固定の古い順）を入れる。チャンネルの「お気に入り」と同じ形（移行 0092）。
+- `PUT /channels/{id}/dm-pin`（固定。201、すでに固定なら 200 で順番はそのまま）、`DELETE /channels/{id}/dm-pin`（外す。
+  いつも 200）。固定できるのはメンバー（`403 not_a_member`）の DM とグループ DM だけ（公開・非公開チャンネルは
+  `409 dm_pin_not_dm`。チャンネルにはお気に入りがある）。外してからもう一度固定すると最後に付く。数の上限は無い（参加して
+  いる DM の数まで）。
+- メンバーでなくなっても行は残すが、bootstrap は現在のメンバーシップと結合して返すので表示からは消える（お気に入りと同じ）。
+- 並び順の規則は sidebar_sections の「セクションの中の並び順」の「DM の固定」。
+
 ### user_blocks (ブロック、M104、MODERATION.md §4)
 
 ```sql
@@ -1054,6 +1076,14 @@ CREATE TABLE sidebar_section_channels (
     ダイレクトメッセージの自分の DM は `name` と `recent` では先頭、`manual` では置いた場所。Times は常に名前順
     （自分の times が先頭）、「チャンネルを探す」も名前順。以前のお気に入りと自分のセクションは DM を新しい順に
     していたが、`name` では表示名順になった。ミュートしても位置は変わらない。アーカイブしたチャンネルは出さない。
+  - **DM の固定（M118、conversation_pins）**：固定した DM・グループ DM は、それが出るセクション（既定の「ダイレクト
+    メッセージ」、それを入れた自分のセクションやお気に入り）と DM の一覧（スマホの DM タブ・ホームの「ダイレクト
+    メッセージ」）の **先頭に、固定の古い順（bootstrap の `dm_pins` の順）** に並べる。そのあとに残りの会話をその
+    セクションの `sort` の規則で並べる（`name` と `recent` では自分だけの DM が固定しない会話の先頭、という今の規則も
+    そのまま）。`manual` でも固定が先（`manual_order` は固定しない会話の順として使う）。固定はチャンネル（public /
+    private）には付かない。固定した会話は未読が無くても「未読だけ」の絞り込みでは今までどおり隠れる。固定の印（📌）を
+    行に出し、長押し / 右クリックのメニューに「上に固定」/「固定を外す」を置く（`PUT` / `DELETE /channels/{id}/dm-pin`）。
+    `dm_pins` を送らないサーバ（M118 より前）では固定の操作を出さない。
   - **保存と同期**：自分のセクションは `PATCH /sidebar/sections/{id} {sort?, manual_order?}`、既定のセクションは
     `PATCH /sidebar/defaults/{favorites|channels|dms} {sort?, manual_order?}`（最初の変更で
     `sidebar_default_sections` の行ができる）、`GET /sidebar/defaults` とブートストラップの `sidebar_defaults` は
