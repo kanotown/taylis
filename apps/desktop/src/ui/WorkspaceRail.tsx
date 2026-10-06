@@ -5,8 +5,7 @@ import { createPortal } from "react-dom";
 
 import type { AppController } from "../state/app";
 import { dropIndex, gapForPointer, hostLabel, signInName, type WorkspaceEntry } from "../state/workspaces";
-import { RAIL_WIDTH, TITLE_ROW_HEIGHT } from "../platform/env";
-import { useReservesTrafficLights } from "../platform/windowState";
+import { overlayTitleBar, RAIL_WIDTH, TITLE_ROW_HEIGHT } from "../platform/env";
 import { Button, cn, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal, modKey } from "./primitives";
 import { useMediaQuery } from "./hooks";
 import { WorkspaceIcon } from "./workspaceIcons";
@@ -79,8 +78,10 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
   const [landing, setLanding] = useState<string | null>(null);
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
   // macOS: the overlay window buttons sit in the title row across the top (Slack); the rail keeps its 68 px and starts
-  // below that row, whose cell over the rail takes the top bar's colour on the main screen. Not in full screen (M93).
-  const trafficLights = useReservesTrafficLights();
+  // below that row, whose cell over the rail has the top bar's colour on every screen (the other screens draw the rest
+  // of the row, ScreenTitleRow). Also in full screen: macOS shows the buttons all through the exit animation, before
+  // the app could learn that full screen is ending (README「ウィンドウのタイトルバー」).
+  const trafficLights = overlayTitleBar();
   const entries = controller.workspaces;
 
   // A tile moved from the keyboard keeps the focus (the list re-renders in its new order).
@@ -223,7 +224,7 @@ export function WorkspaceRail({ controller }: { controller: AppController }) {
         <div
           data-tauri-drag-region
           data-testid="rail-title-cell"
-          className={cn("shrink-0", controller.screen === "main" ? "bg-sidebar" : "border-r border-black/20 bg-sidebar-rail")}
+          className="shrink-0 bg-sidebar"
           style={{ height: TITLE_ROW_HEIGHT }}
         />
       )}

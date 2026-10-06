@@ -45,8 +45,7 @@ import { SearchView, type SearchSnapshot, type SearchTab } from "./SearchView";
 import { WindowControls } from "./WindowControls";
 import { WorkspaceMenu } from "./WorkspaceRail";
 import { startSummary, SummaryDialog, SummaryMenuItems, summaryAvailable } from "./ai";
-import { customTitleBar, isWeb, TITLE_ROW_HEIGHT, TITLE_ROW_INSET_AFTER_RAIL, TRAFFIC_LIGHTS_INSET } from "../platform/env";
-import { useReservesTrafficLights } from "../platform/windowState";
+import { customTitleBar, isWeb, overlayTitleBar, TITLE_ROW_HEIGHT, TITLE_ROW_INSET_AFTER_RAIL, TRAFFIC_LIGHTS_INSET } from "../platform/env";
 import { EMPTY_SEARCH, pushRecent, readRecent, recentKey, removeRecent, type SearchParams } from "./search";
 import { HomeView } from "./HomeView";
 import { JumpView } from "./JumpView";
@@ -142,8 +141,8 @@ function readUnreadOnly(): boolean {
 export function MainScreen({ controller }: { controller: AppController }) {
   const engine = controller.engine;
   const store = controller.store;
-  // macOS: room for the window buttons, except in full screen where macOS hides them (M93).
-  const trafficLights = useReservesTrafficLights();
+  // macOS: room for the window buttons, in full screen too (they show during the exit animation; README).
+  const trafficLights = overlayTitleBar();
   const windowButtons = customTitleBar();
   const [currentId, setCurrentId] = useState<string | null>(() => engine?.currentChannelId ?? engine?.preview?.channelId ?? [...store.channels.values()].find((channel) => channel.isMember)?.id ?? null);
   const [dialog, setDialog] = useState<Dialog>(null);
