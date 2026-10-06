@@ -8,7 +8,7 @@ import type { ActivityItem, ActivitySummaryOut, MessageOut, ReactionAdded } from
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import type { ChannelState } from "../src/sync/types";
-import { activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isShownActivity, movesActivityRead, newestActivityAt } from "../src/ui/activity";
+import { activityEmptyText, activityHeadline, activityHeadlineText, activityKey, appendActivityPage, isActivityUnread, isReadInConversation, isShownActivity, movesActivityRead, newestActivityAt, type ReadPositions } from "../src/ui/activity";
 import { activityBadge } from "../src/ui/mobileTabs";
 import { FakeServer, MemoryPersistence } from "./fakeServer";
 
@@ -44,6 +44,30 @@ describe("activity rows", () => {
     expect(movesActivityRead("2026-09-30T03:00:00Z", "2026-09-30T02:00:00Z")).toBe(true);
     expect(movesActivityRead("2026-09-30T02:00:00Z", "2026-09-30T02:00:00Z")).toBe(false);
     expect(movesActivityRead(null, "2026-09-30T02:00:00Z")).toBe(false);
+  });
+
+  it("2026-10-06 (§6.4): a mention or reply read in its conversation or thread has no dot; `read` null (an older server) is the time alone", () => {
+    const readAt = "2026-09-30T01:00:00.000Z";
+    const at = "2026-09-30T02:00:00.000Z";
+    const msg = (patch: Partial<MessageOut>) => ({ id: "m", channel_id: "c1", sender_id: "u1", body: "", seq: 10, parent_id: null, also_in_channel: false, ...patch }) as unknown as MessageOut;
+    const row = (kind: ActivityItem["kind"], message: MessageOut, read: boolean | null): ActivityItem => ({ kind, at, message, actor_ids: ["u1"], emojis: [], read });
+    const pos = (channel: number, thread: number): ReadPositions => ({ channel: () => channel, thread: () => thread });
+    // The rule: a timeline row by the conversation's position, a reply by its thread's, a reply also in the channel by either.
+    expect(isReadInConversation(row("mention", msg({}), false), pos(10, 0))).toBe(true);
+    expect(isReadInConversation(row("mention", msg({}), false), pos(9, 99))).toBe(false);
+    expect(isReadInConversation(row("thread_reply", msg({ parent_id: "p" }), false), pos(99, 9))).toBe(false);
+    expect(isReadInConversation(row("thread_reply", msg({ parent_id: "p" }), false), pos(0, 10))).toBe(true);
+    expect(isReadInConversation(row("mention", msg({ parent_id: "p", also_in_channel: true }), false), pos(10, 0))).toBe(true);
+    expect(isReadInConversation(row("mention", msg({ parent_id: "p", also_in_channel: true }), false), pos(0, 10))).toBe(true);
+    expect(isReadInConversation(row("reaction", msg({}), false), pos(99, 99))).toBe(false);
+    // The dot: the server's flag (newer than the list's read_at: read in its conversation), or this device's positions.
+    expect(isActivityUnread(row("mention", msg({}), false), readAt, { listReadAt: readAt, positions: pos(0, 0) })).toBe(true);
+    expect(isActivityUnread(row("mention", msg({}), true), readAt, { listReadAt: readAt, positions: pos(0, 0) })).toBe(false);
+    expect(isActivityUnread(row("mention", msg({}), false), readAt, { listReadAt: readAt, positions: pos(10, 0) })).toBe(false);
+    // `read` true only because it is behind the list's read position: the dot stays while looking (seen from earlier).
+    expect(isActivityUnread(row("reaction", msg({}), true), readAt, { listReadAt: "2026-09-30T03:00:00.000Z" })).toBe(true);
+    // An older server: no flag, the positions are not looked at.
+    expect(isActivityUnread(row("mention", msg({}), null), readAt, { listReadAt: readAt, positions: pos(10, 10) })).toBe(true);
   });
 
   it("come in pages without listing a row twice (kind and message make a row)", () => {
@@ -176,16 +200,75 @@ describe("SyncEngine and the activity (M39)", () => {
     expect(w.store.activity?.unread_count).toBe(2);
 
     // Carol reacts to bob's message: reaction.added to bob only.
+    // (Posting at the top level reads the channel: read.updated, and the mention above was read there, §6.4.)
     const mine = w.server.post(w.channel.id, w.bob.id, "bob の投稿").message;
     await w.settle();
+    expect(w.calls.summary).toBe(3);
+    expect(w.store.activity?.unread_count).toBe(1);
     w.server.react(w.channel.id, w.carol.id, mine.id, "👍", true);
     await w.settle();
-    expect(w.calls.summary).toBe(3);
-    expect(w.store.activity?.unread_count).toBe(3);
+    expect(w.calls.summary).toBe(4);
+    expect(w.store.activity?.unread_count).toBe(2);
     // Taken back: no event (the list drops it; the next bootstrap or event corrects the badge).
     w.server.react(w.channel.id, w.carol.id, mine.id, "👍", false);
     await w.settle();
-    expect(w.calls.summary).toBe(3);
+    expect(w.calls.summary).toBe(4);
+    w.engine.stop();
+  });
+
+  it("2026-10-06 (§6.4): reading the mention's conversation or the reply's thread on another device recounts the badge (read.updated, thread.updated read)", async () => {
+    const w = await setup();
+    w.server.post(w.channel.id, w.alice.id, `<@${w.bob.id}> 見て`);
+    const parent = w.server.post(w.channel.id, w.carol.id, "親").message;
+    w.server.post(w.channel.id, w.bob.id, "bob の返信", undefined, parent.id);
+    const reply = w.server.post(w.channel.id, w.alice.id, "alice の返信", undefined, parent.id).message;
+    await w.settle();
+    expect(w.store.activity).toMatchObject({ unread_count: 2, mention_unread: true });
+    expect(w.server.listActivity(w.bob.id, "all", null, 50).items.map((i) => [i.kind, i.read])).toEqual([["thread_reply", false], ["mention", false]]);
+
+    // Another device reads the conversation: read.updated, the summary again — the mention is read, the reply is not.
+    const calls = w.calls.summary;
+    w.server.markRead(w.bob.id, w.channel.id, parent.seq);
+    await w.settle();
+    expect(w.calls.summary).toBe(calls + 1);
+    expect(w.store.activity).toMatchObject({ unread_count: 1, mention_unread: false });
+    expect(w.store.activityReloads).toBe(0);
+
+    // Back to unread from the mention (「ここから未読にする」 elsewhere): unread again, and the list is to load again.
+    w.server.markRead(w.bob.id, w.channel.id, parent.seq - 2, "set");
+    await w.settle();
+    expect(w.store.activity).toMatchObject({ unread_count: 2, mention_unread: true });
+    expect(w.store.activityReloads).toBe(1);
+
+    // Another device reads the thread: thread.updated (read), the summary again; the store keeps that position.
+    w.server.markThreadRead(w.bob.id, parent.id, reply.seq);
+    await w.settle();
+    expect(w.store.activity).toMatchObject({ unread_count: 1, mention_unread: true });
+    expect(w.store.threadReadSeqs.get(parent.id)).toBe(reply.seq);
+    w.engine.stop();
+  });
+
+  it("2026-10-06: this device's own read of the conversation or the thread recounts at once (the PUT's answer, not the event)", async () => {
+    const w = await setup({ active: true });
+    w.server.post(w.channel.id, w.alice.id, `<@${w.bob.id}> 見て`);
+    const parent = w.server.post(w.channel.id, w.carol.id, "親").message;
+    w.server.post(w.channel.id, w.bob.id, "bob の返信", undefined, parent.id);
+    const reply = w.server.post(w.channel.id, w.alice.id, "alice の返信", undefined, parent.id).message;
+    await w.settle();
+    await w.engine.openChannel(w.channel.id);
+    expect(await w.engine.loadReplies(w.channel.id, parent.id)).toBe(true);
+    // From here nothing reaches this device over the socket: only the PUT answers can bring the new count.
+    for (const socket of w.server.sockets) socket.silent = true;
+    w.engine.markRead(w.channel.id, parent.seq, { force: true });
+    await w.engine.flushReads();
+    await w.engine.flushActivity();
+    expect(w.store.activity).toMatchObject({ unread_count: 1, mention_unread: false });
+
+    w.engine.markThreadRead(parent.id, reply.seq);
+    expect(w.store.threadReadSeqs.get(parent.id)).toBe(reply.seq); // the list's dot goes before the PUT
+    await w.engine.flushReads();
+    await w.engine.flushActivity();
+    expect(w.store.activity).toMatchObject({ unread_count: 0, mention_unread: false });
     w.engine.stop();
   });
 

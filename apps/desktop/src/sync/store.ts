@@ -78,6 +78,14 @@ export class Store {
   erasedActivityItems: ReadonlySet<string> = new Set();
   activityEdits = 0;
   /**
+   * 2026-10-06 (MOBILE_UI.md §6.4): my read position in each thread as far as this device knows (ThreadState from any
+   * source, and this device's own marks), kept even for a thread not held in `threads`: an activity reply at or below
+   * it was read in its thread. Positions in threads never go down.
+   */
+  readonly threadReadSeqs = new Map<string, number>();
+  /** Bumped when a conversation's read position went back (`read.updated` "set"): the activity list loads again. */
+  activityReloads = 0;
+  /**
    * M88 (docs/MEMBERSHIP.md §3): the workspace settings from bootstrap and workspace.settings_updated. Not persisted: an
    * offline start reads the defaults (today's behaviour), and the next bootstrap says what they are.
    */
@@ -713,6 +721,19 @@ export class Store {
     this.emit();
   }
 
+  /** My read position in a thread moved (never down; see `threadReadSeqs`). */
+  noteThreadRead(parentId: string, seq: number): void {
+    if (seq <= (this.threadReadSeqs.get(parentId) ?? 0)) return;
+    this.threadReadSeqs.set(parentId, seq);
+    this.emit();
+  }
+
+  /** A read position went back: the activity list, whose `read` flags came from the server, loads again. */
+  reloadActivity(): void {
+    this.activityReloads += 1;
+    this.emit();
+  }
+
   setActivity(summary: ActivitySummaryOut | null): void {
     const current = this.activity;
     if (summary && current && Date.parse(summary.read_at) < Date.parse(current.read_at)) return;
@@ -764,6 +785,7 @@ export class Store {
 
   /** thread.updated / a PUT response: replace the state; the badge moves with it when the old state is known. */
   applyThreadState(state: ThreadState, parent?: MessageOut): void {
+    if (state.last_read_seq > (this.threadReadSeqs.get(state.parent_id) ?? 0)) this.threadReadSeqs.set(state.parent_id, state.last_read_seq);
     const entry = this.threads.get(state.parent_id);
     const before = entry?.state;
     if (entry) {

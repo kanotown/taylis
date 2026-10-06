@@ -814,6 +814,7 @@ export class SyncEngine {
     await this.enqueue(async () => {
       for (const state of states) this.applyReadState(state.channel_id, state, false);
     });
+    this.refreshActivityNow();
   }
 
   /** Public channels I am not a member of; bootstrap only lists my own channels. */
@@ -911,7 +912,12 @@ export class SyncEngine {
       }
       case "read.updated": {
         const data = frame.data as { channel_id: string } & ReadStateOut;
-        this.applyReadState(data.channel_id, data, (data as { reason?: string }).reason === "set");
+        const set = (data as { reason?: string }).reason === "set";
+        this.applyReadState(data.channel_id, data, set);
+        // MOBILE_UI.md §6.4: mentions read in that conversation leave the activity badge; a position that went back
+        // makes them unread again, and the list (its `read` flags) loads again.
+        this.scheduleActivityRefresh();
+        if (set) store.reloadActivity();
         return;
       }
       case "roster.updated": {
@@ -1022,6 +1028,7 @@ export class SyncEngine {
         const data = frame.data as ThreadUpdated;
         store.applyThreadState(this.withFloor(data));
         this.scheduleThreadRefresh();
+        if (data.reason === "read") this.scheduleActivityRefresh(); // MOBILE_UI.md §6.4: its replies read in the thread
         return;
       }
       case "activity.read": {
@@ -1309,6 +1316,17 @@ export class SyncEngine {
     })();
   }
 
+  /**
+   * MOBILE_UI.md §6.4: this device's own read mark reached the server: the activity badge is counted again at once (a
+   * waiting debounced refresh is replaced), so it clears without waiting for the event.
+   */
+  private refreshActivityNow(): void {
+    if (!this.deps.api.activitySummary || this.deps.store.activity === null) return;
+    this.activityRefreshCancel?.();
+    this.activityRefreshCancel = null;
+    this.activityRefresh = this.refreshActivity();
+  }
+
   /** M50: my own settings again (GET /users/me), kept only when still newer than what the store holds. */
   async refreshMe(): Promise<void> {
     const api = this.deps.api;
@@ -1552,6 +1570,8 @@ export class SyncEngine {
       try {
         const state = await this.deps.api.markRead(channelId, target, "set");
         await this.enqueue(async () => this.applyReadState(channelId, state, true));
+        this.refreshActivityNow();
+        this.deps.store.reloadActivity();
       } catch (err) {
         console.warn("mark as unread not sent; the next bootstrap restores the server's position", err);
       }
@@ -1611,6 +1631,7 @@ export class SyncEngine {
         if (store.getChannel(channelId)?.pendingReadSeq === target) store.updateChannel(channelId, { pendingReadSeq: null });
         this.applyReadState(channelId, state);
       });
+      this.refreshActivityNow();
     } catch (err) {
       if (isRetryable(err) || (err instanceof ApiError && err.isAuth)) {
         console.warn("read mark not sent; retried after reconnecting", err);
@@ -1690,6 +1711,7 @@ export class SyncEngine {
     if (seq <= Math.max(entry?.state.last_read_seq ?? 0, floor) && !this.unsentThreadReads.has(parentId)) return;
     const target = Math.max(seq, floor);
     this.threadReadFloor.set(parentId, target);
+    store.noteThreadRead(parentId, target); // the activity list's replies read here lose their dots now
     if (entry && target > entry.state.last_read_seq) {
       const newest = Math.max(0, ...store.replies(entry.state.channel_id, parentId).map((r) => r.seq ?? 0));
       store.applyThreadState(target >= newest ? { ...entry.state, last_read_seq: target, unread_count: 0, mention_count: 0 } : { ...entry.state, last_read_seq: target });
@@ -1709,6 +1731,7 @@ export class SyncEngine {
       const state = await this.deps.api.markThreadRead(parentId, target);
       if ((this.unsentThreadReads.get(parentId) ?? 0) <= target) this.unsentThreadReads.delete(parentId);
       await this.enqueue(async () => this.deps.store.applyThreadState(this.withFloor(state)));
+      this.refreshActivityNow();
     } catch (err) {
       if (isRetryable(err) || (err instanceof ApiError && err.isAuth)) {
         console.warn("thread read mark not sent; retried after reconnecting", err);
