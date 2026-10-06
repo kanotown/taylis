@@ -140,6 +140,8 @@ class UserMe(UserPublic):
     # M115: my UI language; null = follow the device / browser (docs/I18N.md). The server writes
     # my error messages, pushes and notices in it (else in the request's Accept-Language).
     locale: Literal["ja", "en", "zh-Hans"] | None = None
+    # The desktop / Web composer's mode; null = never chosen, the clients' default ("rich").
+    composer_mode: Literal["rich", "markdown"] | None = None
 
 
 class UserUpdate(BaseModel):
@@ -177,6 +179,8 @@ class UserUpdate(BaseModel):
     nav_items: list[NavItem] | None = Field(default=None, max_length=MAX_NAV_ITEMS)
     # M115: my UI language; null = follow each device.
     locale: Literal["ja", "en", "zh-Hans"] | None = None
+    # The desktop / Web composer: "rich" or "markdown"; null = back to the clients' default.
+    composer_mode: Literal["rich", "markdown"] | None = None
 
     @field_validator("nav_items")
     @classmethod
@@ -270,6 +274,9 @@ def to_user_me(user: User) -> UserMe:
         quick_reactions=list(user.quick_reactions) if user.quick_reactions else None,
         nav_items=nav_items_of(user),
         locale=user.locale if user.locale in ("ja", "en", "zh-Hans") else None,  # type: ignore[arg-type]
+        composer_mode=(
+            user.composer_mode if user.composer_mode in ("rich", "markdown") else None  # type: ignore[arg-type]
+        ),
     )
 
 
