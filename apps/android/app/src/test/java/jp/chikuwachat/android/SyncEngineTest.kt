@@ -575,6 +575,22 @@ class SyncEngineTest {
         settle(w.engine)
         assertEquals(emptyList<String>(), w.store.typingUsers(w.channelId, null))
 
+        // 2026-10-06: the AI bot answering a mention sends the same typing frame with its own id; the line names it
+        // (bots are users of the bootstrap) until its reply arrives.
+        val bot = w.server.addUser("ai").copy(displayName = "AI", botKind = "ai").also { w.server.users[it.id] = it }
+        w.server.join(w.channelId, bot.id)
+        w.store.upsertUser(bot)
+        val (question, _) = w.server.post(w.channelId, w.alice, "@ai what changed?")
+        val botSocket = w.server.connector(bot.id)("ws://fake", "t")
+        botSocket.send(ClientFrame.auth("t"))
+        botSocket.send(ClientFrame.typing(w.channelId, question.id))
+        settle(w.engine)
+        assertEquals(listOf(bot.id), w.store.typingUsers(w.channelId, question.id))
+        assertEquals("AI", w.store.users[bot.id]?.displayName)
+        w.server.post(w.channelId, bot.id, "the answer", parentId = question.id)
+        settle(w.engine)
+        assertEquals(emptyList<String>(), w.store.typingUsers(w.channelId, question.id))
+
         // Our own typing goes out at most once per interval and never comes back to us.
         w.engine.sendTyping(w.channelId)
         w.engine.sendTyping(w.channelId)

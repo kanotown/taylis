@@ -68,7 +68,10 @@ fun AskBar(controller: AppController, version: Int, params: SearchParams, onHist
     val session = controller.aiAsk
     if ((!usable || target == null) && session == null) return
     val line = if (usable) AiTexts.askTargetLine(target) else null
-    val canAsk = usable && target?.available == true && session?.phase != AiSummaryPhase.REQUESTING
+    // 2026-10-06: a question on its way (asked, queued or being answered) keeps the button off and says so in the bar too
+    // (the answer sheet may be closed meanwhile: a source opened from it).
+    val progress = session?.let { AiTexts.askProgress(it) }
+    val canAsk = usable && target?.available == true && progress == null
     Surface(
         shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -86,7 +89,13 @@ fun AskBar(controller: AppController, version: Int, params: SearchParams, onHist
                     Text(stringResource(R.string.common_history))
                 }
             }
-            if (line != null) {
+            if (progress != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                    CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(progress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else if (line != null) {
                 Text(
                     line, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp),
                     color = if (target?.available == false) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
