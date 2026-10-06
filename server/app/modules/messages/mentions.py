@@ -43,8 +43,9 @@ _LIST_MARKER = re.compile(r"^\s*(?:[-*•]|\d{1,3}\.)\s+", re.MULTILINE)
 # M107 (apps/shared/inline-format.json): the clients' inline tokenizer (markdown.ts INLINE),
 # mention tokens left out (they are names by then). `_` emphasis is never inside a word (`\w` =
 # a letter, digit or `_`, as the clients' `[\p{L}\p{N}_]`); URLs and e-mail addresses (and the
-# shrug) are kept as they are, so their `_` `*` `~` stay; `\_` `\*` `\~` `\`` are the literal
-# character, also inside emphasis.
+# shrug) are kept as they are, so their `_` `*` `~` stay; `\_` `\*` `\~` `\`` `\$` are the literal
+# character, also inside emphasis. TeX math (`$…$`, `$$…$$`, apps/shared/math.json) keeps its source
+# with its dollars, so `_` and `*` inside a formula stay too.
 _INLINE = re.compile(
     r"(\*\*((?:\\.|[^*\n\\])+?)\*\*)"
     r"|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)"
@@ -53,10 +54,12 @@ _INLINE = re.compile(
     r"|(~~((?:\\.|[^~\n\\])+)~~)"
     r"|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))"
     r"|(https?://[^\s<>]+)"
-    r"|(\\([_*~`]))"
+    r"|(\\([_*~`$]))"
     r"|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)"
+    r"|(\$\$(?:\\.|[^$\n\\])+?\$\$)"
+    r"|(\$(?![\s$])(?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\])\$(?![0-9A-Za-z]))"
 )
-_ESCAPED = re.compile(r"\\([_*~`])")
+_ESCAPED = re.compile(r"\\([_*~`$])")
 
 
 _CURLY = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
