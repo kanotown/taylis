@@ -66,6 +66,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.Clipboard
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -332,9 +333,18 @@ private fun CanvasView(
                 loadError != null -> CanvasLoadFailed(controller, loadError) { saver.load() }
                 status == CanvasSaveStatus.LOADING -> CanvasEmpty(stringResource(R.string.common_loading), null, loading = true)
                 editing && wide -> Row(Modifier.fillMaxSize()) {
-                    CanvasEditorField(controller, saver, null, Modifier.weight(1f).fillMaxHeight())
+                    // The editor and the preview scroll together (the side last touched drives; CanvasScrollSync.kt).
+                    val sync = remember(canvasId) { CanvasScrollLink() }
+                    val previewState = rememberLazyListState()
+                    val spans = remember(text) { parseBlockSpans(text, canvas = true) }
+                    CanvasScrollSyncEffect(sync, previewState, spans)
+                    CanvasEditorField(controller, saver, null, Modifier.weight(1f).fillMaxHeight(), scroll = sync)
                     VerticalDivider()
-                    CanvasReader(controller, saver, meta, title, rights, onToggle, null, rememberLazyListState(), Modifier.weight(1f).fillMaxHeight(), preview = true, onStartWriting = {}, onMakeTask = onMakeTask)
+                    CanvasReader(
+                        controller, saver, meta, title, rights, onToggle, null, previewState,
+                        Modifier.weight(1f).fillMaxHeight().drivesScroll(sync, ScrollDriver.PREVIEW), preview = true, onStartWriting = {},
+                        onMakeTask = onMakeTask, spans = spans,
+                    )
                 }
                 editing -> CanvasEditorField(controller, saver, null, Modifier.fillMaxSize())
                 else -> Row(Modifier.fillMaxSize()) {
@@ -547,11 +557,11 @@ private fun CanvasNotice(controller: AppController, channel: ChannelState, right
 private fun CanvasReader(
     controller: AppController, saver: CanvasSaver, meta: CanvasMeta?, title: String, rights: CanvasRights,
     onToggle: ((Int, Boolean) -> Unit)?, onEditSection: ((Int) -> Unit)?, listState: LazyListState, modifier: Modifier,
-    preview: Boolean, onStartWriting: () -> Unit, onMakeTask: ((Int) -> Unit)? = null,
+    preview: Boolean, onStartWriting: () -> Unit, onMakeTask: ((Int) -> Unit)? = null, spans: List<BlockSpan>? = null,
 ) {
     val revision by saver.revision.collectAsState()
     val text = remember(revision) { saver.text }
-    val blocks = remember(text) { parseBlocks(text, canvas = true) }
+    val blocks = remember(text, spans) { spans?.map { it.block } ?: parseBlocks(text, canvas = true) }
     val store = controller.store
     val version by store.version.collectAsState()
     val inline = bodyInline(
@@ -650,11 +660,14 @@ private val HEADING_IN_SECTION = Regex("""(?m)^#{1,3}\s+\S""")
  * ([CanvasMarkers.Table], one table per editor) that move with their lines and are written back at their line's end;
  * a deletion beside one (Compose takes it with the character before it, one grapheme) is redone in onValueChange so
  * the marker stays; a copy or a cut leaves them out ([StandInFreeClipboard]).
+ *
+ * `scroll` (840 dp and wider, beside the preview): the text scrolls in [CanvasScrollLink.editor] rather than inside the
+ * field, so the preview can follow it and drive it ([CanvasScrollSyncEffect]); typing makes the editor the side that drives.
  */
 @Composable
 private fun CanvasEditorField(
     controller: AppController, saver: CanvasSaver, section: CanvasSections.Key?, modifier: Modifier,
-    autoFocus: Boolean = false, onSectionGone: () -> Unit = {},
+    autoFocus: Boolean = false, onSectionGone: () -> Unit = {}, scroll: CanvasScrollLink? = null,
 ) {
     val store = controller.store
     val markers = remember(saver, section) { CanvasMarkers.Table() }
@@ -736,6 +749,7 @@ private fun CanvasEditorField(
     }
 
     fun change(incoming: TextFieldValue) {
+        scroll?.driver = ScrollDriver.EDITOR
         var next = incoming
         val previous = field
         // M83: Backspace / Delete beside a task marker's stand-in takes the visible character and keeps the marker.
@@ -761,6 +775,7 @@ private fun CanvasEditorField(
     }
 
     fun apply(transform: (CanvasText.Edit) -> CanvasText.Edit) {
+        scroll?.driver = ScrollDriver.EDITOR
         val current = field
         val result = transform(CanvasText.Edit(current.text, current.selection.min, current.selection.max))
         field = TextFieldValue(result.text, TextRange(result.start, result.end))
@@ -874,14 +889,14 @@ private fun CanvasEditorField(
         }
         val platformClipboard = LocalClipboard.current
         val clipboard = remember(platformClipboard) { StandInFreeClipboard(platformClipboard) }
-        CompositionLocalProvider(LocalClipboard provides clipboard) { BasicTextField(
+        val editorTop = with(LocalDensity.current) { 12.dp.toPx() }
+        val textField: @Composable (Modifier) -> Unit = { size -> CompositionLocalProvider(LocalClipboard provides clipboard) { BasicTextField(
             value = field,
             onValueChange = ::change,
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
+            onTextLayout = { layout -> scroll?.let { it.layout = layout; it.editorTop = editorTop } },
+            modifier = size
                 .focusRequester(focus)
                 .onFocusChanged { state ->
                     if (focused && !state.isFocused) {
@@ -905,7 +920,14 @@ private fun CanvasEditorField(
                     inner()
                 }
             },
-        ) }
+        ) } }
+        if (scroll == null) textField(Modifier.weight(1f).fillMaxWidth())
+        else BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val viewport = maxHeight
+            Box(Modifier.fillMaxSize().drivesScroll(scroll, ScrollDriver.EDITOR).verticalScroll(scroll.editor)) {
+                textField(Modifier.fillMaxWidth().heightIn(min = viewport))
+            }
+        }
     }
 }
 
