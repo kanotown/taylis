@@ -290,7 +290,7 @@
     <string name="canvas_pane_editing">编辑中</string>
     <string name="canvas_pane_editing_creator_owners_administrators">编辑：创建者、所有者、管理员</string>
     <string name="canvas_pane_heading">标题 %1$s</string>
-    <string name="canvas_pane_heading_nwrite_the_text_here_n"># 标题\\n在这里写正文。\\n- [ ] 检查清单\\n@名称 进行提及</string>
+    <string name="canvas_pane_heading_nwrite_the_text_here_n"># 标题\n在这里写正文。\n- [ ] 检查清单\n@名称 进行提及</string>
     <string name="canvas_pane_keep_both">保留两者</string>
     <string name="canvas_pane_keep_their_version_and_tick_the">请保留对方的版本，然后重新勾选。</string>
     <string name="canvas_pane_last_updated">最后更新：%1$s · %2$s</string>
@@ -1055,7 +1055,7 @@
     <string name="recurring_views_time">时间 %1$s</string>
     <string name="recurring_views_times_are_in">时间为 %1$s 的时间</string>
     <string name="recurring_views_weekly_report">周报</string>
-    <string name="recurring_views_weekly_report_date_nreply_to_this">**周报 {date}**\\n请在此话题中回复本周的进度</string>
+    <string name="recurring_views_weekly_report_date_nreply_to_this">**周报 {date}**\n请在此话题中回复本周的进度</string>
     <string name="recurring_views_who_submits">提交人</string>
     <string name="recurring_views_you">(我)</string>
     <string name="reminder_dialog_note_optional">备注 (可选)</string>
@@ -1524,7 +1524,7 @@
     <string name="workflows_yes">是</string>
     <string name="workspace_views_move_down">下移</string>
     <string name="workspace_views_move_up">上移</string>
-    <string name="workspace_views_n_nthis_workspaces_messages_and_drafts">%1$s @ %2$s\\n\\n将删除此设备上保存的该工作区的消息和草稿，并从列表中移除。服务器上的数据不会被删除。</string>
+    <string name="workspace_views_n_nthis_workspaces_messages_and_drafts">%1$s @ %2$s\n\n将删除此设备上保存的该工作区的消息和草稿，并从列表中移除。服务器上的数据不会被删除。</string>
     <string name="workspace_views_remove_from_list">从列表中移除</string>
     <string name="workspace_views_showing">当前显示</string>
     <string name="workspace_views_sign_in_required">需要登录</string>
@@ -1581,7 +1581,7 @@
     <string name="you_screens_notifications_on_this_device">此设备的通知</string>
     <string name="you_screens_notifies_you_when_youre_assigned_and">在你被指派时和期限当天 8:00 通知</string>
     <string name="you_screens_off">已停用</string>
-    <string name="you_screens_off_show_the_avatar_and_name">关：每条帖子都显示头像和名称\\n开：合并同一人的连续帖子 (频道、私信、话题)</string>
+    <string name="you_screens_off_show_the_avatar_and_name">关：每条帖子都显示头像和名称\n开：合并同一人的连续帖子 (频道、私信、话题)</string>
     <string name="you_screens_on">已启用</string>
     <string name="you_screens_on_vacation">休假中</string>
     <string name="you_screens_open_device_notification_settings">打开设备的通知设置</string>

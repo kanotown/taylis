@@ -291,7 +291,7 @@
     <string name="canvas_pane_editing">Editing</string>
     <string name="canvas_pane_editing_creator_owners_administrators">Editing: creator, owners, administrators</string>
     <string name="canvas_pane_heading">Heading %1$s</string>
-    <string name="canvas_pane_heading_nwrite_the_text_here_n"># Heading\\nWrite the text here.\\n- [ ] Checklist\\n@name to mention</string>
+    <string name="canvas_pane_heading_nwrite_the_text_here_n"># Heading\nWrite the text here.\n- [ ] Checklist\n@name to mention</string>
     <string name="canvas_pane_keep_both">Keep both</string>
     <string name="canvas_pane_keep_their_version_and_tick_the">Keep their version and tick the checkboxes again.</string>
     <string name="canvas_pane_last_updated">Last updated: %1$s · %2$s</string>
@@ -1060,7 +1060,7 @@
     <string name="recurring_views_time">Time %1$s</string>
     <string name="recurring_views_times_are_in">Times are in %1$s</string>
     <string name="recurring_views_weekly_report">Weekly report</string>
-    <string name="recurring_views_weekly_report_date_nreply_to_this">**Weekly report {date}**\\nReply to this thread with this week\'s progress</string>
+    <string name="recurring_views_weekly_report_date_nreply_to_this">**Weekly report {date}**\nReply to this thread with this week\'s progress</string>
     <string name="recurring_views_who_submits">Who submits</string>
     <string name="recurring_views_you">(you)</string>
     <string name="reminder_dialog_note_optional">Note (optional)</string>
@@ -1529,7 +1529,7 @@
     <string name="workflows_yes">Yes</string>
     <string name="workspace_views_move_down">Move down</string>
     <string name="workspace_views_move_up">Move up</string>
-    <string name="workspace_views_n_nthis_workspaces_messages_and_drafts">%1$s @ %2$s\\n\\nThis workspace\'s messages and drafts saved on this device are deleted and it is removed from the list. Data on the server is not deleted.</string>
+    <string name="workspace_views_n_nthis_workspaces_messages_and_drafts">%1$s @ %2$s\n\nThis workspace\'s messages and drafts saved on this device are deleted and it is removed from the list. Data on the server is not deleted.</string>
     <string name="workspace_views_remove_from_list">Remove from list</string>
     <string name="workspace_views_showing">Showing</string>
     <string name="workspace_views_sign_in_required">Sign-in required</string>
@@ -1586,7 +1586,7 @@
     <string name="you_screens_notifications_on_this_device">Notifications on this device</string>
     <string name="you_screens_notifies_you_when_youre_assigned_and">Notifies you when you\'re assigned and at 8:00 on the due date</string>
     <string name="you_screens_off">Off</string>
-    <string name="you_screens_off_show_the_avatar_and_name">Off: show the avatar and name on every post\\nOn: group one person\'s consecutive posts (channels, DMs, threads)</string>
+    <string name="you_screens_off_show_the_avatar_and_name">Off: show the avatar and name on every post\nOn: group one person\'s consecutive posts (channels, DMs, threads)</string>
     <string name="you_screens_on">On</string>
     <string name="you_screens_on_vacation">On vacation</string>
     <string name="you_screens_open_device_notification_settings">Open device notification settings</string>
