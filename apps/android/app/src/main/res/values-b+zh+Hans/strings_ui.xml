@@ -1466,6 +1466,9 @@
     <string name="threads_pane_couldnt_load_threads">无法加载话题</string>
     <string name="threads_pane_no_followed_threads">没有关注的话题</string>
     <string name="threads_pane_no_unread_threads">没有未读话题</string>
+    <string name="threads_pane_open_channel">打开频道</string>
+    <string name="threads_pane_open_conversation">打开会话</string>
+    <string name="threads_pane_open_named">打开 %1$s</string>
     <string name="threads_pane_show_more">显示更多</string>
     <string name="threads_pane_threads_you_posted_in_replied_to">你发帖、回复或被提及的话题会显示在这里。</string>
     <string name="threads_pane_unread">" · %1$s 条未读"</string>

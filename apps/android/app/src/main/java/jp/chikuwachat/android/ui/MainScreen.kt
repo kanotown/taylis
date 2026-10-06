@@ -466,6 +466,20 @@ fun MainScreen(controller: AppController) {
         }
     }
 
+    /**
+     * A 「スレッド」 card's conversation header / 「チャンネルを開く」: the conversation itself, its timeline around the
+     * thread's parent (as a search result lands); back returns to the list. Without the parent's context (offline) the
+     * conversation still opens, at its usual position.
+     */
+    fun openThreadConversation(entry: jp.chikuwachat.android.sync.ThreadEntry) {
+        val channelId = entry.state.channelId
+        controller.messageFocus = null
+        scope.launch {
+            controller.revealMessage(entry.parent.id, channelId, null)
+            stack = MainNav.openConversationFromThreadList(stack, channelId)
+        }
+    }
+
     val me = store.me
     val isChannel = selectedChannel != null && !selectedChannel.channel.isDm
     // M27 (SYNC_PROTOCOL.md §7.6.1): a public channel I have not joined opens read-only, until 「参加する」.
@@ -1064,7 +1078,7 @@ fun MainScreen(controller: AppController) {
                     ThreadsPane(controller, version, onOpen = { entry ->
                         controller.messageFocus = null
                         stack = MainNav.openFromThreadList(stack, entry.state.channelId, entry.parent.id)
-                    })
+                    }, onOpenConversation = ::openThreadConversation)
                 } else if (top == Route.DmList) {
                     DmListScreen(
                         controller, version, dmListState,
@@ -1090,6 +1104,7 @@ fun MainScreen(controller: AppController) {
                             controller.messageFocus = null
                             stack = MainNav.openFromThreadList(stack, entry.state.channelId, entry.parent.id)
                         },
+                        onOpenThreadConversation = ::openThreadConversation,
                         // M77 (CANVAS.md §20.7): a canvas row opens its conversation's 「キャンバス」 tab on this tab's
                         // stack, like the message rows (back returns here). A conversation the store does not know yet
                         // lands like the canvas push (M73) once it does.

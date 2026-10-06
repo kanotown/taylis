@@ -1466,6 +1466,9 @@
     <string name="threads_pane_couldnt_load_threads">スレッドを読み込めませんでした</string>
     <string name="threads_pane_no_followed_threads">フォロー中のスレッドはありません</string>
     <string name="threads_pane_no_unread_threads">未読のスレッドはありません</string>
+    <string name="threads_pane_open_channel">チャンネルを開く</string>
+    <string name="threads_pane_open_conversation">会話を開く</string>
+    <string name="threads_pane_open_named">%1$s を開く</string>
     <string name="threads_pane_show_more">さらに表示</string>
     <string name="threads_pane_threads_you_posted_in_replied_to">自分が投稿・返信・メンションされたスレッドはここに集まります。</string>
     <string name="threads_pane_unread">" · 未読 %1$s 件"</string>
