@@ -101,7 +101,10 @@ export function DocsTree({ controller, selectedId, onOpen, onCreate, onMove, onT
     event.preventDefault();
     const target = dropTarget(pages, dragged, page.id, zoneOf(event, page));
     endDrag();
-    if (target) onMove(dragged, target);
+    if (!target) return;
+    // Dropped inside a page: its branch opens, so the page is seen where it went.
+    if (target.parent_id && !expanded.has(target.parent_id)) toggle(target.parent_id);
+    onMove(dragged, target);
   };
   const sectionDrop = (section: "shared" | "private") => ({
     onDragOver: (event: DragEvent<HTMLElement>) => {
@@ -130,7 +133,7 @@ export function DocsTree({ controller, selectedId, onOpen, onCreate, onMove, onT
         <div
           className={cn(
             "group/row relative flex h-8 items-center gap-1 rounded-lg pr-1 text-[13.5px] transition-colors",
-            selected ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-panel-2",
+            selected ? "bg-accent-soft font-medium text-ink" : "hover:bg-panel-2",
             drag === page.id && "opacity-50",
             hovering === "inside" && "bg-accent-soft ring-1 ring-accent",
           )}
