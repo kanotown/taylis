@@ -2145,6 +2145,22 @@ class AppController(private val app: Application) {
     }
 
     /**
+     * M119 「問題を報告・ご意見」 / a person's 「報告する」 (MODERATION.md §3.1): `body` from Reports.body. Returns the
+     * error to show in the form (validation, rate limit, network…), or null when the server took it.
+     */
+    suspend fun submitReport(body: JsonObject): String? {
+        val api = api ?: return L10n.str(R.string.app_controller_not_signed_in)
+        return try {
+            api.submitReport(body)
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            describe(e)
+        }
+    }
+
+    /**
      * M104 「アカウントを削除」 (MODERATION.md §2): my password, or my username for an account without one. On success the
      * server has ended every session and this workspace is signed out here. Returns the error to show, or null.
      */

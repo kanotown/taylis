@@ -909,6 +909,7 @@
     <string name="message_actions_share_to_another_channel">別のチャンネルに共有…</string>
     <string name="message_actions_unpin">ピン留めを外す</string>
     <string name="message_body_view_message">メッセージを表示</string>
+    <string name="moderation_child_safety">子どもの安全</string>
     <string name="moderation_delete_account">アカウントを削除…</string>
     <string name="moderation_enter_your_password_to_confirm">確認のためパスワードを入力</string>
     <string name="moderation_enter_your_username_to_confirm">確認のためユーザー名（%1$s）を入力</string>
@@ -1063,6 +1064,18 @@
     <string name="reminders_pane_delivered_reminders">届いたリマインド</string>
     <string name="reminders_pane_long_press_a_message_and_choose">メッセージを長押しして「リマインド」を選ぶと、ここに集まります。</string>
     <string name="reminders_pane_no_reminders">リマインダーはありません</string>
+    <string name="report_problem_category">種類</string>
+    <string name="report_problem_child_safety_contact">子どもの安全に関わることは、開発者（加納 徹）にメールでも連絡できます：%1$s</string>
+    <string name="report_problem_choose_a_category">種類を選んでください</string>
+    <string name="report_problem_details">内容（必須）</string>
+    <string name="report_problem_details_placeholder">何が起きたか、またはご意見・要望を書いてください</string>
+    <string name="report_problem_feedback">ご意見・要望</string>
+    <string name="report_problem_report_user">%1$s さんを報告</string>
+    <string name="report_problem_sending">送信中…</string>
+    <string name="report_problem_sent">送信しました。管理者が確認します</string>
+    <string name="report_problem_title">問題を報告・ご意見</string>
+    <string name="report_problem_where_it_goes">報告とご意見は、このワークスペースの管理者全員に届きます。報告したことは、ほかの利用者には伝わりません。</string>
+    <string name="report_problem_write_the_details">内容を書いてください</string>
     <string name="reservations_an_operator_will_assign_it_shortly">まもなく担当者が割り当てます</string>
     <string name="reservations_assign_to">%1$s%2$s に割り当てる%3$s</string>
     <string name="reservations_assigned">割り当てた</string>

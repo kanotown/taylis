@@ -23,7 +23,7 @@ class ModerationTest {
         assertFalse(Moderation.canReport(message("bob", pending = true), "alice"))
         assertFalse(Moderation.canReport(message("bob", deleted = true), "alice"))
         assertFalse(Moderation.canReport(message("bob", type = "system"), "alice"))
-        assertEquals(listOf("spam", "harassment", "inappropriate", "other"), Moderation.reasons.map { it.first })
+        assertEquals(listOf("child_safety", "spam", "harassment", "inappropriate", "other"), Moderation.reasons.map { it.first })
     }
 
     @Test fun aBlockedSendersRowFoldsUntilShown() {

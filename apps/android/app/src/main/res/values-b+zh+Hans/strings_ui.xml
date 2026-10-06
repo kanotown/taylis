@@ -909,6 +909,7 @@
     <string name="message_actions_share_to_another_channel">分享到其他频道…</string>
     <string name="message_actions_unpin">取消置顶</string>
     <string name="message_body_view_message">查看消息</string>
+    <string name="moderation_child_safety">儿童安全</string>
     <string name="moderation_delete_account">删除账户…</string>
     <string name="moderation_enter_your_password_to_confirm">输入密码以确认</string>
     <string name="moderation_enter_your_username_to_confirm">输入用户名 (%1$s) 以确认</string>
@@ -1063,6 +1064,18 @@
     <string name="reminders_pane_delivered_reminders">已送达的提醒</string>
     <string name="reminders_pane_long_press_a_message_and_choose">长按消息并选择\"提醒\"，即会集中显示在这里。</string>
     <string name="reminders_pane_no_reminders">没有提醒</string>
+    <string name="report_problem_category">类别</string>
+    <string name="report_problem_child_safety_contact">涉及儿童安全的问题，也可以通过电子邮件联系开发者（加纳 彻）：%1$s</string>
+    <string name="report_problem_choose_a_category">请选择类别</string>
+    <string name="report_problem_details">内容（必填）</string>
+    <string name="report_problem_details_placeholder">请描述发生了什么，或写下您的意见与建议</string>
+    <string name="report_problem_feedback">意见与建议</string>
+    <string name="report_problem_report_user">举报 %1$s</string>
+    <string name="report_problem_sending">正在发送…</string>
+    <string name="report_problem_sent">已发送。管理员会进行确认。</string>
+    <string name="report_problem_title">报告问题 / 意见反馈</string>
+    <string name="report_problem_where_it_goes">举报和意见会发送给此工作区的所有管理员。其他用户不会得知您发送了举报。</string>
+    <string name="report_problem_write_the_details">请填写内容</string>
     <string name="reservations_an_operator_will_assign_it_shortly">负责人即将分配</string>
     <string name="reservations_assign_to">%1$s分配给 %2$s%3$s</string>
     <string name="reservations_assigned">已分配</string>

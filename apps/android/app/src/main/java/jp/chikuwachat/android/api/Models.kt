@@ -749,6 +749,10 @@ data class BlockStateOut(val userId: String, val blocked: Boolean)
 @Serializable
 data class ReportAck(val id: String, val messageId: String, val reason: String, val createdAt: String = "")
 
+/** POST /reports (M119, MODERATION.md §3.1): my own report; `userId` is the person reported, null for a general one. */
+@Serializable
+data class GeneralReportAck(val id: String, val category: String, val userId: String? = null, val createdAt: String = "")
+
 /** PUT / DELETE /channels/{id}/dm-pin (M118). */
 @Serializable
 data class DmPinStateOut(val channelId: String, val pinned: Boolean)
