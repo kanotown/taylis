@@ -100,6 +100,12 @@ struct MainView: View {
         nav.show(channelId, parentId: isPreview(channelId) ? nil : parentId, on: tab)
     }
 
+    /// 「スレッド」's conversation link / 「チャンネルを開く」: the conversation on this tab's stack, the thread's parent
+    /// revealed in its timeline (the thread itself not opened).
+    private func showThreadConversation(_ entry: ThreadEntry, on tab: MainTab) {
+        Task { if let channelId = await controller.revealThreadParent(entry) { show(channelId, parentId: nil, on: tab) } }
+    }
+
     /// A public channel I have not joined shows as its preview (`screen`), which opens no thread of its own.
     private func isPreview(_ channelId: String) -> Bool {
         guard let channel = store.channel(channelId) else { return false }
@@ -487,7 +493,7 @@ struct MainView: View {
             // M39: the message in its conversation, a reply in its thread, on this tab's stack.
             guard let message = item.message else { return }
             Task { if await controller.revealMessage(message) { show(message.channelId, parentId: message.parentId, on: tab) } }
-        })
+        }, onOpenThreadConversation: { showThreadConversation($0, on: tab) })
     }
 
     // MARK: the iPad's split (MOBILE_UI.md §13)
@@ -630,7 +636,8 @@ struct MainView: View {
         switch id {
         case MainNavigation.dmsId: dmList(on: tab)
         case MainNavigation.activityId: activityList(on: tab)
-        case ThreadsListView.selectionId: ThreadsListView(controller: controller)
+        case ThreadsListView.selectionId:
+            ThreadsListView(controller: controller, onOpenConversation: { showThreadConversation($0, on: tab) })
         case TimesFeedView.selectionId:
             // L8: a row shows its message in the channel (a reply shared there too, as the channel's row), on this stack.
             TimesFeedView(controller: controller, onOpen: { message in

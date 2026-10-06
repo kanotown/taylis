@@ -65,6 +65,13 @@ final class AppController {
             return true
         } catch { self.error = describe(error); return false }
     }
+
+    /// 「スレッド」's conversation link: the thread's parent revealed in its conversation's timeline (not the thread);
+    /// the caller then shows the conversation alone. Returns its channel, nil when the message could not be loaded.
+    func revealThreadParent(_ entry: ThreadEntry) async -> String? {
+        let channelId = entry.state.channelId
+        return await revealMessage(id: entry.parent.id, channelId: channelId, parentId: nil) ? channelId : nil
+    }
     /// The open workspace's client; the sign-in and workspace flows set it (a view test sets a stubbed one).
     var api: ApiClient?
     private(set) var store = Store()
