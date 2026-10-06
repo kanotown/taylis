@@ -27,7 +27,7 @@ export const NAV_CATALOGUE: readonly CatalogueItem[] = [
   { key: "reminders", label: "リマインダー", visible: true, platforms: ["desktop", "mobile"] },
   { key: "files", label: "ファイル", visible: true, platforms: ["desktop", "mobile"] },
   { key: "canvases", label: "キャンバス", visible: true, platforms: ["desktop", "mobile"] },
-  { key: "docs", label: "ドキュメント", visible: true, platforms: ["desktop"] },
+  { key: "docs", label: "ドキュメント", visible: true, platforms: ["desktop", "mobile"] },
   { key: "calendar", label: "カレンダー", visible: true, platforms: ["desktop", "mobile"] },
   { key: "tasks", label: "タスク", visible: true, platforms: ["desktop", "mobile"] },
   { key: "deadlines", label: "締切", visible: true, platforms: ["desktop", "mobile"] },
