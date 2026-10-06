@@ -28,6 +28,15 @@ CLAUDE.md の「AI は最初の実装の範囲外」を、この文書を指す�
   effort (low / medium / high), allow_private (bool), enabled, created_by, created_at, updated_at, deleted_at`。
 - ボットは定期投稿・Webhook と同じ `role = bot` のユーザー (ユーザー名は管理者が決める。例 `ai-chikuwa`)。メンションの候補・
   プロフィールに「AI」の印で出す。
+- **`users.bot_kind = 'ai'`**（2026-10-06、移行 0093）：AI のボットのユーザーには作るときに `bot_kind = 'ai'` を付ける
+  （今あるものは移行で付け、`updated_at` を進めたので端末の人の一覧も次の bootstrap で入れ替わる）。端末は
+  `UserPublic.bot_kind` だけで、`/ai/status` を読む前やオフラインでも AI のボットをほかのボット（受信 Webhook・フィード・
+  予約・定期投稿・移行したボット）と見分けられる。
+- **@ メンションの候補**（利用者の要望 2026-10-06）：候補に出すのは人（`role` が `bot` でない、無効化されていない）と、
+  `bot_kind = 'ai'` のボットだけ。ほかのボットは出さない（メンションしても答えないため）。さらに `/ai/status` を読めて
+  いれば、`agents[].bot_user_id` に無い AI のボット（止めた・削除したもの）も出さない（読めていなければ `bot_kind` だけで
+  決める）。ユーザーグループ（`@group`）・`@channel` / `@here` の候補は今までどおり。サーバには候補の API は無く、
+  端末が手元の人の一覧から絞る（3 端末で同じ規則）。すでに本文にあるメンションの表示は変えない。
 - ボットをチャンネルに入れるのは、そのチャンネルのメンバー (投稿できる人) か管理者。`allow_private = false` のボットは公開
   チャンネルにだけ入れられ、DM も作れない (`400 ai_private_not_allowed`)。
 

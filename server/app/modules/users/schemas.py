@@ -110,8 +110,10 @@ class UserPublic(BaseModel):
     # M14a: when the picture changed (clients cache by it); null = no picture.
     avatar_updated_at: datetime | None = None
     # M98: for a bot, what it is for: "feed" = a channel's feed bot (clients load the link
-    # previews of its posts by themselves, SECURITY.md §14); null = any other bot, or a person.
-    # Clients compare with "feed" only (other values may come later).
+    # previews of its posts by themselves, SECURITY.md §14); "reservation" = a reservation log
+    # channel's bot (M99); "ai" = an AI bot that answers mentions (docs/AI.md §2.1: the only bots
+    # among the @-mention suggestions); null = any other bot, or a person. Clients compare with
+    # the values they know (other values may come later).
     bot_kind: str | None = None
 
 

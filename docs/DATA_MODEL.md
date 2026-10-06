@@ -101,7 +101,7 @@ CREATE TABLE users (
   composer_mode         text,                   -- 2026-10-06 Desktop / Web の入力欄 'rich' (リッチ: 見たまま編集、同じ Markdown を書く) | 'markdown' (記号を打つ)。NULL = 選んでいない = リッチ。PATCH /users/me で設定し、別の端末へは user.updated で揃う。スマホはまだ読まない
   avatar_key         text,                          -- プロフィール画像のオブジェクトキー (avatars/<user_id>/<uuid>、M14a)
   avatar_updated_at  timestamptz,                   -- 画像の版。UserPublic に載り、クライアントはこれでキャッシュする
-  bot_kind              varchar(16),            -- M98 bot の用途。'feed' = チャンネルのフィードのボット (UserPublic.bot_kind、リンクプレビューを自動で取る。SECURITY.md §14)、'reservation' = 予約の記録のチャンネルのボット (M99、M112、RESERVATIONS.md)。それ以外の bot と人は NULL
+  bot_kind              varchar(16),            -- M98 bot の用途。'feed' = チャンネルのフィードのボット (UserPublic.bot_kind、リンクプレビューを自動で取る。SECURITY.md §14)、'reservation' = 予約の記録のチャンネルのボット (M99、M112、RESERVATIONS.md)、'ai' = AI のボット (`ai_agents` のボット。作るときに付け、移行 0093 で今あるもの (削除したものも) に付けて `updated_at` を進めた。@ メンションの候補に出すボットはこれだけ、AI.md §2.1)。それ以外の bot と人は NULL
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
   deactivated_at        timestamptz,                      -- 無効化 (ログイン不可、表示は残す)
