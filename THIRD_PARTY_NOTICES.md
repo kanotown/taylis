@@ -9,10 +9,11 @@ distributed under its own license; the exact versions are recorded in `server/uv
 `apps/desktop/package-lock.json`, `apps/desktop/src-tauri/Cargo.lock`, `apps/android/gradle/libs.versions.toml`,
 `apps/ios/project.yml` and `infra/docker-compose*.yml`.
 
-Two third-party fonts are bundled: Noto Sans JP into the desktop / web build, and JetBrains Mono (for code) into the
-desktop / web build and the Android app (both below; the npm packages' files ship inside the app and the web image).
-No other third-party fonts, images or sounds are bundled: iOS uses the system fonts, Android the system's except for
-code, and all clients the platform's emoji fonts and notification sounds.
+Two third-party text fonts are bundled: Noto Sans JP into the desktop / web build, and JetBrains Mono (for code) into
+the desktop / web build and the Android app (both below; the npm packages' files ship inside the app and the web image).
+The TeX math renderers carry their own math fonts into the apps (KaTeX's fonts, SwiftMath's and AndroidMath's math fonts;
+see "TeX math renderers" below). No other third-party fonts, images or sounds are bundled: iOS uses the system fonts,
+Android the system's except for code and math, and all clients the platform's emoji fonts and notification sounds.
 
 ## Emoji data
 
@@ -330,6 +331,43 @@ standard fonts and wasm decoders of the package are not bundled.
 
 Source: PDF.js (<https://github.com/mozilla/pdf.js>), Mozilla Foundation. License: Apache License 2.0 (the same text as
 [LICENSE](LICENSE)). Used unmodified.
+
+## TeX math renderers (desktop / web, iOS, Android)
+
+Formulas in messages and canvases (`$…$`, `$$…$$`; docs/DATA_MODEL.md 「本文の形式」) are drawn by a library on each
+client. None of them is copied into this repository; each comes from its package manager and ships inside the app.
+
+| Component | Where | License |
+| --- | --- | --- |
+| KaTeX (<https://github.com/KaTeX/KaTeX>), the `katex` npm package (version in `apps/desktop/package-lock.json`), with its `copy-tex` extension | desktop / web: a chunk of the build loaded only for a body with math (`apps/desktop/src/ui/MathView.tsx`) | MIT, Copyright (c) 2013-2020 Khan Academy and other contributors |
+| KaTeX fonts (the package's `dist/fonts`, woff2 only, emitted by the build) | the same chunk's stylesheet | MIT, Copyright (c) 2018 Khan Academy (<https://github.com/KaTeX/katex-fonts>) |
+| SwiftMath 1.7.3 (<https://github.com/mgriebling/SwiftMath>), a Swift package (`apps/ios/project.yml`) | iOS (`apps/ios/ChikuwaChat/UI/MathRender.swift`) | MIT, Copyright (c) 2023 Computer Inspirations; derived from iosMath, Copyright (c) 2013 MathChat (MIT) |
+| SwiftMath's `mathFonts.bundle` (Latin Modern Math, TeX Gyre Termes Math, XITS Math, KpMath, Asana, Euler, Fira Math, Garamond, Lete Sans, Libertinus, Noto Sans Math; the app draws with Latin Modern Math) | the iOS app, inside the package's resource bundle | GUST Font License (Latin Modern, TeX Gyre) and SIL Open Font License 1.1 (the others); the license texts ship in the bundle |
+| AndroidMath v1.1.0 (<https://github.com/gregcockroft/AndroidMath>), from JitPack (`apps/android/gradle/libs.versions.toml`) | Android (`apps/android/app/src/main/java/jp/chikuwachat/android/ui/MathRender.kt`) | MIT, Copyright (c) 2018 AndroidMath |
+| Latin Modern Math (`assets/fonts/latinmodern-math.otf` of AndroidMath; its other two fonts are left out of the app) | the Android app | GUST Font License (the license text ships in the app's assets) |
+| FreeType, inside AndroidMath's native library (and the NDK's `libc++_shared.so`) | the Android app | FreeType License (FTL): "Portions of this software are copyright © The FreeType Project (www.freetype.org). All rights reserved."; libc++: Apache-2.0 with LLVM exceptions |
+
+The MIT License text, as each of the MIT components above carries it with its own copyright line:
+
+```text
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## Document preview components that are not bundled (M108, docs/PREVIEWS.md)
 
