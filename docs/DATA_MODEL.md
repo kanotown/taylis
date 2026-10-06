@@ -1317,6 +1317,86 @@ CREATE TABLE canvas_templates (
 - **エクスポート**: `cli export-channel` の JSONL は、メッセージの後にキャンバスを 1 行ずつ `{"type": "canvas", …}` で出す
   (ゴミ箱を除く)。
 
+### wiki_pages ほか（ドキュメント、M120、docs/WIKI.md §11.1）
+
+ワークスペースに 1 つのページの木。権限は会話と無関係で、`wiki/access.py` だけが判定する（D27）。
+
+```sql
+CREATE SEQUENCE wiki_change_seq;                            -- 木の変更のフィード (1 つの変更に 1 つの番号)
+
+CREATE TABLE wiki_pages (
+  id              uuid PRIMARY KEY,                         -- UUIDv7
+  parent_id       uuid REFERENCES wiki_pages(id) ON DELETE SET NULL,  -- NULL = 最上位 (親が完全に消えたゴミ箱のページも)
+  path            uuid[] NOT NULL DEFAULT '{}',              -- 根から親までの id (パンくず、部分木の問い合わせ)。深さは 20 まで
+  position        text COLLATE "C" NOT NULL,                -- 兄弟の中の分数の索引 (サーバが作る。wiki/ordering.py)
+  kind            varchar(16) NOT NULL DEFAULT 'page',      -- page | database | row (database / row は M123 から)
+  title           varchar(200) NOT NULL DEFAULT '',
+  icon            varchar(64),                              -- 絵文字 1 つか :custom:
+  body            text NOT NULL DEFAULT '',                 -- キャンバスの方言 + `[題名](page:<uuid>)`。100,000 文字まで
+  version         bigint NOT NULL DEFAULT 1,                -- 本文・題名・アイコン・場所・ゴミ箱・権限の変更ごとに +1
+  head_rev_id     uuid NOT NULL,
+  meta_seq        bigint NOT NULL,                          -- 木に見える変更 (題名・アイコン・親・並び・ゴミ箱・権限) の番号。本文の保存では進めない
+  vis_seq         bigint NOT NULL,                          -- 見える人が変わりうる変更 (作成・権限・移動・ゴミ箱・復元) の番号
+  created_seq     bigint NOT NULL,                          -- 作成の番号 (作ってから見える人が変わっていないページは removed に出さない)
+  inherit_access  boolean NOT NULL DEFAULT true,
+  props           jsonb,                                    -- 行だけ (M123)
+  props_text      text,                                     -- 行だけ (検索用)
+  task_total      integer NOT NULL DEFAULT 0,
+  task_done       integer NOT NULL DEFAULT 0,
+  created_by      uuid NOT NULL REFERENCES users(id),
+  updated_by      uuid NOT NULL REFERENCES users(id),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  deleted_at      timestamptz,                              -- ゴミ箱 (部分木ごと、30 日で完全削除)
+  deleted_by      uuid REFERENCES users(id),
+  trash_root_id   uuid,                                     -- 一緒にゴミ箱に入った部分木の根 (戻す・消すのはこのまとまり)
+  CHECK (kind IN ('page', 'database', 'row')),
+  CHECK ((kind = 'row') = (props IS NOT NULL))
+);
+CREATE INDEX wiki_pages_children_idx ON wiki_pages (parent_id, position) WHERE deleted_at IS NULL;
+CREATE INDEX wiki_pages_path_idx ON wiki_pages USING gin (path);
+CREATE INDEX wiki_pages_meta_seq_idx ON wiki_pages (meta_seq);
+CREATE INDEX wiki_pages_trash_idx ON wiki_pages (trash_root_id) WHERE trash_root_id IS NOT NULL;
+CREATE INDEX wiki_pages_search_idx ON wiki_pages USING pgroonga
+  ((ARRAY[title::text, regexp_replace(body, '<タスクの印>', '', 'g'), coalesce(props_text, '')]));
+
+CREATE TABLE wiki_page_revisions (...);                     -- canvas_revisions と同じ形 + props。kind: create | save | merge | side | restore | erased | props | import
+CREATE TABLE wiki_grants (                                  -- ページの自前の項目
+  id uuid PRIMARY KEY, page_id uuid NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+  principal_type varchar(16) NOT NULL,                      -- workspace (principal_id NULL) | group | user
+  principal_id uuid, level varchar(8) NOT NULL,             -- view | edit | full
+  created_by uuid NOT NULL REFERENCES users(id), created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE NULLS NOT DISTINCT (page_id, principal_type, principal_id)
+);
+CREATE TABLE wiki_effective_grants (                        -- 受け継ぎを計算した結果 (同じトランザクションで部分木を書き換える)
+  page_id uuid NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+  principal_type varchar(16) NOT NULL, principal_id uuid,
+  level_rank smallint NOT NULL,                             -- 1 view / 2 edit / 3 full
+  source_page_id uuid NOT NULL,                             -- どのページの自前の項目から来たか
+  UNIQUE NULLS NOT DISTINCT (page_id, principal_type, principal_id)
+);
+CREATE INDEX wiki_effective_principal_idx ON wiki_effective_grants (principal_type, principal_id, page_id);
+CREATE TABLE wiki_links (src_page_id, dst_page_id, PRIMARY KEY (src_page_id, dst_page_id));  -- バックリンク。保存のたびに入れ直す
+CREATE TABLE wiki_notices (                                 -- アクティビティ (page_mention / page_shared)
+  id uuid PRIMARY KEY, user_id uuid NOT NULL, page_id uuid NOT NULL, kind varchar(16) NOT NULL,  -- mention | shared
+  rev_id uuid, actor_id uuid, excerpt varchar(200) NOT NULL DEFAULT '', level varchar(8), at timestamptz NOT NULL, …
+);
+CREATE TABLE wiki_tombstones (page_id uuid PRIMARY KEY, seq bigint NOT NULL, purged_at timestamptz NOT NULL);  -- 30 日
+CREATE TABLE wiki_feed_state (id smallint PRIMARY KEY CHECK (id = 1), purged_through bigint NOT NULL DEFAULT 0);
+ALTER TABLE attachments ADD COLUMN page_id uuid REFERENCES wiki_pages(id) ON DELETE SET NULL;
+```
+
+- **判定**：`wiki_effective_grants` の、本人に当たる行（`workspace` と本人のグループの `group` は admin / member だけ、`user` は
+  本人。ゲストとボットは名前を挙げた行だけ）の `max(level_rank)`。読めなければ 404 `page_not_found`。
+- **書き換え**：作成・移動・権限の変更・復元・引き取り・完全削除は、`pg_advisory_xact_lock` 1 つの下で部分木を Python で根から
+  計算し直し、同じトランザクションで消して入れ直す。`cli wiki-acl --verify` は全部を根から計算して表と比べる（`path` も）。
+- **フィードの番号**：木のロックの中で `nextval('wiki_change_seq')` を 1 回取り、その変更で触ったページの `meta_seq`（見える人が
+  変わりうるなら `vis_seq` も）に入れる。
+- **ゴミ箱**：部分木ごと（`trash_root_id`）、30 日で完全削除（版・項目・リンク・通知は CASCADE、ファイルは deleted、`wiki_tombstones`
+  に id と番号）。別に先にゴミ箱に入っていた子は、最上位に移して実効の項目を自前の項目に写す。
+- **ファイル**：本文の `attachment:<uuid>` が指す保存した本人の pending のアップロードを bind（`attachments.page_id`、1 ページ 200 件
+  まで）。読むのはページを読める人だけ。どの版も参照しなくなって 24 時間後に deleted。
+
 ### calendar_events / calendar_event_alarms (カレンダー、M51、CALENDAR.md §2)
 
 ```sql
@@ -1870,6 +1950,7 @@ CREATE TABLE attachments (
   uploader_id    uuid NOT NULL REFERENCES users(id),
   message_id     uuid REFERENCES messages(id),      -- bind 時に設定
   channel_id     uuid REFERENCES channels(id),      -- bind 時に設定。アクセス制御はこの列で判定
+  page_id        uuid REFERENCES wiki_pages(id) ON DELETE SET NULL,  -- M120: ページの画像・ファイル (message_id・channel_id・canvas_id は NULL。ページの view で読む)
   status         text NOT NULL DEFAULT 'pending',   -- 'pending' | 'attached' | 'deleted'
   filename       text NOT NULL,                     -- 元のファイル名 (表示用。パス区切りは除去)
   content_type   text NOT NULL,                     -- サーバ側で sniff した値
@@ -1960,7 +2041,7 @@ CREATE TABLE outbox_events (
   event_type     text NOT NULL,        -- 'message.created' など (SYNC_PROTOCOL.md §6)
   channel_id     uuid,                 -- チャンネル系イベント
   seq            bigint,               -- seq を消費したイベントのみ
-  audience_type  text NOT NULL,        -- 'channel' | 'user' | 'session' | 'all'
+  audience_type  text NOT NULL,        -- 'channel' | 'user' | 'session' | 'all' | 'page' (M120: ページを読める人、送る時点で解決)
   audience_id    uuid,                 -- user / session の場合
   payload        jsonb NOT NULL,       -- クライアントに送る data そのもの
   created_at     timestamptz NOT NULL DEFAULT now(),

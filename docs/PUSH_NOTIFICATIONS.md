@@ -113,6 +113,7 @@ NULL) 本人の全体設定 `users.notification_default` (`all` / `mentions` / `
 | `task.due` (M55、担当のタスクの期限の日の 8:00) | `notify_tasks` がオンのときだけ本人の端末へ `kind = task` (タイトル「タスク」、本文「今日が期限: 題名 (#チャンネル)」、自分用はチャンネル名なし)。worker (リマインダー・予定と同じループ) が `task_due_alarms` の時刻 (期限の日の 8:00、本人のゾーン: 変更した端末の `tz` → おやすみ時間のゾーン → Asia/Tokyo) に 1 回だけ発火する。予定の通知と同じく、会話の level・ミュートは見ず、DND 中は出さない (後で送り直さない)。未完了・担当のまま・メンバーのまま・アーカイブされていないことを送る直前に確かめる。`PUSH_INCLUDE_CONTENT=false` なら本文は「タスクが割り当てられました」/「今日が期限のタスクがあります」。M81: 時刻付きの期限 (`due_at`) はその時刻に 1 回、本文「14:00 が期限: 題名」(時刻は通知の行のゾーン、隠すときは「期限のタスクがあります」) | M55 |
 | `canvas.mentioned` (M72、キャンバスの保存で新しくメンションされた。CANVAS.md §18.1) | `kind = canvas` (タイトル「キャンバス」、サブタイトル「#チャンネル」(DM は無し)、本文「〇〇 が「題名」であなたをメンションしました」)。`channel_id` と `canvas_id` でそのキャンバスを開く。`collapse_key = canvas:<canvas_id>`。メッセージのメンションと同じく、その会話の level が none・ミュート中・DND・別端末でアクティブなら出さない (level が mentions なら出す)。計画の時点でキャンバスがゴミ箱にある・本人が会話から抜けていれば出さない。`PUSH_INCLUDE_CONTENT=false` なら本文は「キャンバスでメンションされました」。アクティビティには入れない (CANVAS.md §18.1) | M72 |
 | `reservation.notice` (M112、共有枠の予約の知らせ。RESERVATIONS.md §5) | 本人の端末へ `kind = reservation` (タイトル「予約」、本文は知らせの 1 行 (担当者の作業ならアドレスを含む)、`pool_id` で「予約」のページを開く)。`collapse_key = reservation:<item_id>`。DND 中・別端末でアクティブ (開いている端末がバナー / 通知を出す) なら出さない。計画の時点で項目が済んでいれば (ほかの担当者が対応した) 出さない。チャンネルの level・ミュートは見ない (会話のものではない)。`PUSH_INCLUDE_CONTENT=false` なら本文は「予約のお知らせがあります」。M99 のボットからの DM はやめた | M99 → M112 |
+| `wiki.mentioned` / `wiki.shared`（M120、ドキュメントのページで新しくメンションされた / 名前を挙げて共有された。docs/WIKI.md §9.3） | 本人の端末へ `kind = page`（タイトル「ドキュメント」、本文「〇〇 が「題名」であなたをメンションしました」/「〇〇 が「題名」を共有しました」）。`page_id` でそのページを開く。`collapse_key = page:<page_id>`。計画の時点で本人がそのページを読めない（権限が変わった・ゴミ箱）なら出さない。DND 中・別端末でアクティブ・`by_user_id` をブロックしていれば出さない。`PUSH_INCLUDE_CONTENT=false` なら本文は「ドキュメントでメンションされました」/「ドキュメントが共有されました」。アクティビティには `page_mention` / `page_shared`（`include` で頼んだ端末だけ） | M120 |
 | 本人の `dnd_until > now()`、または quiet hours の時間帯 (本人のタイムゾーン、`users.quiet_hours_*`) | 除外 (M12c 「通知を一時停止」。バッジは次のプッシュ / 起動時に追いつく) | M12c |
 | `level = all` | 対象 | M5 |
 | `level = mentions` | `mentioned_user_ids` か `keyword_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
@@ -189,6 +190,7 @@ payload と並べて保存する。プロバイダは `parent_id` も端末へ�
 そのスレッドが開く (M28d。以前はチャンネルだけが開いた)。`kind = calendar` (M51) は `event_id` も送る (APNs の本体、FCM の
 data)。`kind = task` (M55) は `task_id` を送る (同じく。自分用のタスクは `channel_id` が null)。`kind = canvas` (M72) は `canvas_id`
 を送る (同じく)。`kind = reservation` (M112) は `pool_id` を送り (同じく、`channel_id` は null)、タップで「予約」のページを開く。
+`kind = page`（M120）は `page_id` を送り（同じく、`channel_id` は null）、タップでドキュメントのページを開く（M122）。
 `kind = test` (§15) は会話を持たず、タップでアプリを開くだけ。クライアントは知らない項目を無視する。
 
 | 項目 | APNs | FCM (Android) |

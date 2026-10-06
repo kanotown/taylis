@@ -169,7 +169,7 @@ class PageUpdate(BaseModel):
     _title = field_validator("title")(_clean_title)
 
 
-class ContentSave(BaseModel):
+class PageContentSave(BaseModel):
     """PUT /wiki/pages/{id}/content: the same as a canvas's (CANVAS.md §4.4)."""
 
     model_config = ConfigDict(extra="forbid")
@@ -180,7 +180,7 @@ class ContentSave(BaseModel):
     on_conflict: OnConflict = "fail"
 
 
-class SaveOut(BaseModel):
+class PageSaveOut(BaseModel):
     page: PageContent
     # The version holding exactly the submitted body (the next save's base_rev_id while the
     # editor still differs from page.body).
@@ -188,7 +188,7 @@ class SaveOut(BaseModel):
     merged: bool
 
 
-class ConflictOut(BaseModel):
+class PageConflictOut(BaseModel):
     base: str
     ours: str
     theirs: str
@@ -198,7 +198,7 @@ class ConflictOut(BaseModel):
 
 class PageConflictDetails(BaseModel):
     head: PageContent
-    conflicts: list[ConflictOut] = Field(default_factory=list)
+    conflicts: list[PageConflictOut] = Field(default_factory=list)
     timed_out: bool = False
 
 
@@ -320,7 +320,7 @@ class ResolveIn(BaseModel):
     ids: list[UUID] = Field(max_length=MAX_RESOLVE)
 
 
-class RevisionMeta(BaseModel):
+class PageRevisionMeta(BaseModel):
     id: UUID
     page_id: UUID
     version: int | None
@@ -334,22 +334,22 @@ class RevisionMeta(BaseModel):
     created_at: datetime
 
 
-class RevisionOut(RevisionMeta):
+class PageRevisionOut(PageRevisionMeta):
     body: str
 
 
-class RevisionPage(BaseModel):
-    items: list[RevisionMeta]
+class PageRevisionPage(BaseModel):
+    items: list[PageRevisionMeta]
     next_cursor: str | None
 
 
-class RevisionUpdate(BaseModel):
+class PageRevisionUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     label: str | None = Field(default=None, max_length=80)
 
 
-class RevisionRestore(BaseModel):
+class PageRevisionRestore(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     client_save_id: UUID
@@ -456,8 +456,8 @@ def to_content(
     return PageContent(**item.model_dump(), body=row.body)
 
 
-def to_revision_meta(row: WikiPageRevision) -> RevisionMeta:
-    return RevisionMeta(
+def to_revision_meta(row: WikiPageRevision) -> PageRevisionMeta:
+    return PageRevisionMeta(
         id=row.id,
         page_id=row.page_id,
         version=row.version,
@@ -472,5 +472,5 @@ def to_revision_meta(row: WikiPageRevision) -> RevisionMeta:
     )
 
 
-def to_revision_out(row: WikiPageRevision) -> RevisionOut:
-    return RevisionOut(**to_revision_meta(row).model_dump(), body=row.body)
+def to_revision_out(row: WikiPageRevision) -> PageRevisionOut:
+    return PageRevisionOut(**to_revision_meta(row).model_dump(), body=row.body)

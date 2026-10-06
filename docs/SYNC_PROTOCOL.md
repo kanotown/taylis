@@ -259,6 +259,10 @@
 | `task.deleted` | channel (自分用: user) | — | `{ id, channel_id }` (M55)。手元から消す |
 | `task.assigned` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id, kind }` (M55。`kind` は L9、M63)。ほかの人が自分を担当に加えた (自分で加えたときは出ない)。DM のタスクの `channel_name` は空文字。アプリ内でも通知する (プッシュは PushPlanner) |
 | `task.review_done` | user | — | `{ task_id, channel_id, channel_name, title, by_user_id }` (L9、M63)。自分が出したレビュー依頼を依頼先が完了にした。アプリ内でも通知する (REVIEWS.md §4) |
+| `wiki.changed` | all | — | `{ seq }`（M120、§17）。ドキュメントの木の変更のフィードが進んだ。中身は人ごとに違うので載せない。端末は 300 ms まとめて `GET /wiki/changes?since=` |
+| `wiki.page.updated` | page（送る時点でページを読める人） | — | `{ page: PageMeta, change }`（M120）。`change` は `content` / `meta` / `restore`。開いているページを読み直す（編集中なら次の保存でマージ）。`page.parent_id` は常に null |
+| `wiki.mentioned` | user（読める人だけ） | — | `{ page_id, rev_id, title, by_user_id }`（M120）。ページの保存で新しくメンションされた |
+| `wiki.shared` | user（読める人だけ） | — | `{ page_id, title, level, by_user_id }`（M120）。名前を挙げて共有された |
 | `reservation.updated` | all | — | `{ pool_id, deleted }` (M99 → M112、RESERVATIONS.md §7)。ワークスペースの予約の枠が変わった (設定・予約・待ち・利用中、`deleted` なら枠が消えた)。中身は人ごとに違う (自分の予約、担当者だけのアドレスと作業) ので載せない。端末は `GET /reservation-pools` で読み直す (続けて届いたものは 300 ms で 1 回にまとめる)。bootstrap のたびにも読む。M99〜M111 の端末は `channel_id` が無いので読まない (`GET /channels/{id}/reservation-pools` はいつも空) |
 | `reservation.notice` | user | — | `{ item_id, pool_id, reservation_id, text, operator, at }` (M112)。自分あての予約の知らせ (担当者の作業か、自分の予約・利用のこと)。アクティビティの項目 (種類 `reservation`、`include=reservation`) が増えたのでバッジを読み直し、開いている端末はバナー / 通知を出す (プッシュは PUSH_NOTIFICATIONS.md §4)。ほかの担当者が対応して済みになった項目は `activity.updated` の `item_ids` に入る |
 | `task.due` | user | — | `{ task_id, channel_id, channel_name, title, due_on }` (M55)。担当 (自分用は自分) の未完了のタスクの期限の日の 8:00。1 回だけ。アプリ内でも通知する |
@@ -1084,3 +1088,23 @@ base・送られた本文・head を 3-way マージする。
 - **再接続**: 開いているボード・自分のタスク・カレンダーの期間を全部読み直す。チャンネルから抜けた (channel.member_removed が自分) ら、
   そのチャンネルのタスクを手元から外す。
 - **自分の変更**: POST / PATCH / move の応答をそのまま手元に入れる。作成の再送は `client_task_id` で同じタスクが返る (201 の代わりに 200)。
+
+## 17. ドキュメント（M120、docs/WIKI.md §10・§14）
+
+ページはチャンネルの seq を使わない。木は変更のフィード（`wiki_change_seq`）で、本文はキャンバスと同じ保存（§14.2）で同期する。
+
+- **起動**：bootstrap の `wiki.change_seq`（無ければサーバがドキュメントを持たない）。手元の木が無い・`reset` なら `GET /wiki/tree`
+  （読めるページのメタ全部と `cursor`。ETag で 304）。行（`kind = row`）は木に入らない。
+- **差分**：`GET /wiki/changes?since=<cursor>` → `{pages, removed, cursor, reset}`。`pages` は読めるページで変わったもの（新しい・題名・
+  アイコン・親・並び・復元・共有された）、`removed` は手元から外す id（ゴミ箱、完全に消えた、読めなくなった）。`cursor` を次の
+  `since` にする。`reset: true` なら木を全部読み直す（since が古すぎる・新しすぎる、変わったページが 5,000 を超えた）。本文の保存では
+  フィードは進まない（2 秒ごとの保存で全員が読み直さないように）。`removed` に知らない id が来たら無視する。
+- **並び**：親の中は `position` の文字列のバイト順（同じなら id）。端末は前後のページの id を送るだけ（`before_id` / `after_id`）、
+  キーはサーバが作る。親を読めないページは `parent_id: null` で届く（最上位に出す）。
+- **イベント**：`wiki.changed {seq}` が来たら 300 ms まとめて差分を読む。`wiki.page.updated` は開いているページを読み直す
+  （`GET /wiki/pages/{id}`、If-None-Match）。`wiki.mentioned` / `wiki.shared` は表示を変えず、アプリを開いている端末が通知する。
+- **再接続**：`GET /wiki/changes?since=`、開いているページは `GET /wiki/pages/{id}`（If-None-Match）。`group.updated` と自分の
+  ロールの変化（`user.updated`）では読める範囲が変わりうるので木を読み直す（グループの変化はフィードを進めない）。
+- **保存**：`PUT /wiki/pages/{id}/content`（キャンバスと同じ `base_rev_id`・`client_save_id`・`on_conflict`、409 `page_conflict` /
+  `page_base_expired`）。閲覧（view）の人はチェックも付けられない（403 `page_edit_restricted`）。
+- **読めないページ**：どの経路でも 404 `page_not_found`（存在ごと隠す）。手元にあれば外す。

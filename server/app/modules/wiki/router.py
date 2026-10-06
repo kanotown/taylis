@@ -14,23 +14,23 @@ from app.modules.wiki.schemas import (
     AccessUpdate,
     AdminPageOut,
     ChangesOut,
-    ContentSave,
     MoveOut,
     PageConflictResponse,
+    PageContentSave,
     PageCreate,
     PageItem,
     PageMeta,
     PageMove,
     PageOut,
     PageRef,
+    PageRevisionMeta,
+    PageRevisionOut,
+    PageRevisionPage,
+    PageRevisionRestore,
+    PageRevisionUpdate,
+    PageSaveOut,
     PageUpdate,
     ResolveIn,
-    RevisionMeta,
-    RevisionOut,
-    RevisionPage,
-    RevisionRestore,
-    RevisionUpdate,
-    SaveOut,
     TreeOut,
 )
 
@@ -145,12 +145,12 @@ async def get_page(
 
 @router.put(
     "/wiki/pages/{page_id}/content",
-    response_model=SaveOut,
+    response_model=PageSaveOut,
     responses={409: {"model": PageConflictResponse}},
 )
 async def save_page_content(
-    page_id: UUID, user: CurrentUser, body: ContentSave, db: Db, request: Request
-) -> SaveOut:
+    page_id: UUID, user: CurrentUser, body: PageContentSave, db: Db, request: Request
+) -> PageSaveOut:
     """Save the whole body written on `base_rev_id` (as a canvas, CANVAS.md §4.4); edit level.
     409 page_conflict / page_base_expired."""
     _limit_saves(request, user)
@@ -233,21 +233,21 @@ async def export_page(
     )
 
 
-@router.get("/wiki/pages/{page_id}/revisions", response_model=RevisionPage)
+@router.get("/wiki/pages/{page_id}/revisions", response_model=PageRevisionPage)
 async def list_page_revisions(
     page_id: UUID,
     user: CurrentUser,
     db: Db,
     cursor: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
-) -> RevisionPage:
+) -> PageRevisionPage:
     return await service.list_revisions(db, user, page_id, cursor=cursor, limit=limit)
 
 
-@router.get("/wiki/pages/{page_id}/revisions/{revision_id}", response_model=RevisionOut)
+@router.get("/wiki/pages/{page_id}/revisions/{revision_id}", response_model=PageRevisionOut)
 async def get_page_revision(
     page_id: UUID, revision_id: UUID, user: CurrentUser, db: Db
-) -> RevisionOut:
+) -> PageRevisionOut:
     return await service.get_revision(db, user, page_id, revision_id)
 
 
@@ -256,7 +256,7 @@ async def restore_page_revision(
     page_id: UUID,
     revision_id: UUID,
     user: CurrentUser,
-    body: RevisionRestore,
+    body: PageRevisionRestore,
     db: Db,
     request: Request,
 ) -> PageOut:
@@ -265,17 +265,17 @@ async def restore_page_revision(
     return await service.restore_revision(db, user, page_id, revision_id, body)
 
 
-@router.patch("/wiki/pages/{page_id}/revisions/{revision_id}", response_model=RevisionMeta)
+@router.patch("/wiki/pages/{page_id}/revisions/{revision_id}", response_model=PageRevisionMeta)
 async def label_page_revision(
-    page_id: UUID, revision_id: UUID, user: CurrentUser, body: RevisionUpdate, db: Db
-) -> RevisionMeta:
+    page_id: UUID, revision_id: UUID, user: CurrentUser, body: PageRevisionUpdate, db: Db
+) -> PageRevisionMeta:
     return await service.label_revision(db, user, page_id, revision_id, body)
 
 
-@router.delete("/wiki/pages/{page_id}/revisions/{revision_id}", response_model=RevisionMeta)
+@router.delete("/wiki/pages/{page_id}/revisions/{revision_id}", response_model=PageRevisionMeta)
 async def erase_page_revision(
     page_id: UUID, revision_id: UUID, user: CurrentUser, db: Db
-) -> RevisionMeta:
+) -> PageRevisionMeta:
     """Erase a version's body (full access). Audited."""
     return await service.erase_revision(db, user, page_id, revision_id)
 

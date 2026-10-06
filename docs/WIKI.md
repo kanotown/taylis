@@ -1,7 +1,8 @@
 # WIKI（ドキュメント：研究室のマニュアルとノート、Notion の置き換え）
 
-2026-10-07 の設計提案。**まだ実装していない**（状態は「設計」）。利用者（研究室の教員）の要望：研究室の Notion を Taylis の中の
-GitBook / Notion のような知識ベースに置き換えたい。
+2026-10-07 の設計。**M120（サーバ：木と権限）は実装済み**（2026-10-07、§14）。M121 以降（端末・データベース・取り込み）はまだ。
+利用者（研究室の教員）の要望：研究室の Notion を Taylis の中の GitBook / Notion のような知識ベースに置き換えたい。
+§13.2 の質問は 2026-10-07 に利用者が推奨どおりに決めた（Q8 と Q9 だけ未決）。
 
 利用者の回答（2026-10-07）：
 
@@ -12,7 +13,7 @@ GitBook / Notion のような知識ベースに置き換えたい。
 | ログインしていない人への公開 | 今は要らない（後で足せるようにしておく） |
 | Notion からの取り込み | ほぼ確実に要る（Notion の書き出し「Markdown & CSV」、サブページを含む zip） |
 
-画面の名前は仮に「ドキュメント」、コード上の名前は `wiki`（モジュール `app/modules/wiki/`、表 `wiki_*`、API `/wiki/*`）。
+画面の名前は「ドキュメント」（英語 Docs、中国語 文档。2026-10-07 決定、§13 Q12）、コード上の名前は `wiki`（モジュール `app/modules/wiki/`、表 `wiki_*`、API `/wiki/*`）。
 
 ## 0. 結論
 
@@ -50,7 +51,7 @@ GitBook / Notion のような知識ベースに置き換えたい。
 | データベースの関係（relation）・ロールアップ・数式 | 実装と 3 端末の表示の費用が大きい。取り込みでは「取り込んだ時の値」をテキストとして残す（§6.4） |
 | ボード・カレンダー・ギャラリーのビュー | まず表。ボード（セレクトでまとめる）は次の段（§5.6） |
 | 行ごとの共有設定 | 行はデータベースの権限をそのまま使う（表を見る人ごとに行を絞らずに済む） |
-| ページへのコメント（範囲・ページ全体） | 未決（§13 Q7）。当面はページのリンクを会話に貼り、そのスレッドで話す |
+| ページへのコメント（範囲・ページ全体） | v1 は作らない（§13 Q7、2026-10-07 決定）。ページのリンクを会話に貼り、そのスレッドで話す |
 | リアルタイムの共同編集・カーソル | キャンバスと同じ「自動保存 + サーバのマージ」。編集中の表示（presence）は後（M126 以降） |
 | ログインしていない人への公開（公開リンク・Web 公開） | 今は要らない。§4.9 で後から足せる形を残す |
 | 見たまま編集（WYSIWYG） | v1 はキャンバスと同じ Markdown + プレビュー。Desktop / Web のリッチ入力（TipTap、2026-10-06 のリッチな入力欄）の流用は後（§7.3、§13 Q6） |
@@ -160,7 +161,7 @@ GitBook / Notion のような知識ベースに置き換えたい。
 | `workspace` | ワークスペースの全員（admin と member。bot は除く） | 含まない |
 | `group` | ユーザーグループのメンバー（手で作るものと名簿の管理グループ `faculty`・`students`・`m2` など。DATA_MODEL.md user_groups） | 含まない（§4.4） |
 | `user` | 1 人 | 名前を挙げればゲストにも共有できる |
-| `channel`（v1 では作らない） | 会話のメンバー | 未決（§13 Q4）。列はこのまま値を足せる |
+| `channel`（v1 では作らない） | 会話のメンバー | v1 はグループで足りる（§13 Q4、2026-10-07 決定）。列はこのまま値を足せる |
 
 | 段階（`level`） | できること |
 | --- | --- |
@@ -184,7 +185,7 @@ merge         = 相手ごとに強い方の段階
   そこから外す。Notion で受け継いだ相手を外したときと同じ。共有の画面に「親から受け継いでいません」と出し、「親に合わせる」で戻せる。
 - データベースの**行は必ず受け継ぐ**（行に自前の項目は付けない）。
 - 新しい最上位のページの既定：「共有」の ＋ から作ると `workspace: edit` と作った人の `user: full`、「プライベート」の ＋ から作ると
-  作った人の `user: full` だけ（§13 Q2）。子ページは何も付けずに受け継ぐ。
+  作った人の `user: full` だけ（§13 Q2、2026-10-07 決定）。子ページは何も付けずに受け継ぐ。
 
 ### 4.3 管理者
 
@@ -194,7 +195,7 @@ merge         = 相手ごとに強い方の段階
     卒業でフルアクセスの人がいなくなったページ、間違えて全員から外したページを戻すため。
   - 完全削除（ゴミ箱）。
 - 一覧に題名を出すことは許す（管理者は運用者であり、SECURITY.md §1 のとおり技術的にはすべて読める。題名まで隠すと引き取りが
-  できない）。§13 Q5 で利用者に確かめる。
+  できない）。2026-10-07 に利用者が決めた（§13 Q5）。
 
 ### 4.4 ゲスト
 
@@ -666,7 +667,7 @@ v1 は M120〜M125。順番は「権限の土台（サーバ）→ 使う画面 
 
 | # | 名前 | 内容 | 完了条件 |
 | --- | --- | --- | --- |
-| M120 | ドキュメントのサーバ：木と権限 | `core/doctext` の切り出し（キャンバスの振る舞いは変えない）、`wiki_pages`・版・自前 / 実効の権限・リンク・ゴミ箱・画像（`attachments.page_id`）・変更のフィード・`wiki.*` イベントと audience `page`・メンションと共有の通知・`/search/pages`・`/p/`・管理者の引き取り・`wiki-acl --verify`。移行 0095〜 | pytest：権限の表（受け継ぎ・足す・絞る・移動・`keep_access`・復元・ゲスト・グループ・管理者・最後の full）を全部の経路（ページ・画像・検索・バックリンク・解決・イベント・通知・書き出し）で確かめ、読めない人に題名が 1 か所も出ないこと。実効の表と全部の計算し直しが常に一致。キャンバスのテストがすべて通る。1 万ページの判定・読める集合・1,000 ページの移動を測って §4.6 の目標に入る。OpenAPI・ws-events を再生成 |
+| M120 | ドキュメントのサーバ：木と権限（**実装済み 2026-10-07**、§14） | `core/doctext` の切り出し（キャンバスの振る舞いは変えない）、`wiki_pages`・版・自前 / 実効の権限・リンク・ゴミ箱・画像（`attachments.page_id`）・変更のフィード・`wiki.*` イベントと audience `page`・メンションと共有の通知・`/search/pages`・`/p/`・管理者の引き取り・`wiki-acl --verify`。移行 0095〜 | pytest：権限の表（受け継ぎ・足す・絞る・移動・`keep_access`・復元・ゲスト・グループ・管理者・最後の full）を全部の経路（ページ・画像・検索・バックリンク・解決・イベント・通知・書き出し）で確かめ、読めない人に題名が 1 か所も出ないこと。実効の表と全部の計算し直しが常に一致。キャンバスのテストがすべて通る。1 万ページの判定・読める集合・1,000 ページの移動を測って §4.6 の目標に入る。OpenAPI・ws-events を再生成 |
 | M121 | ドキュメント：Desktop / Web | §9.1（データベースを除く）：木・ページ・編集（`[[`、`/` のメニュー、子ページを作る）・共有の画面・移動（確認）・ゴミ箱・履歴・バックリンク・検索のタブ・`/p/` のカード・アクティビティ・管理の一覧 | tsc・vitest（共有の画面の受け継ぎの表示、変更のフィードの取り込み、`page:` の字句解析のケース）・vite build・`cargo check`。ブラウザで 2 人（片方はゲスト）で、共有の追加・絞り込み・移動で見えたり消えたりすることを確認 |
 | M122 | ドキュメント：iOS / Android | §9.2（データベースを除く）：木・閲覧・セクション / 全体の編集・オフライン閲覧・パーマリンク・プッシュ（`page_mention`・`page_shared`） | xcodebuild のテストと Gradle のビルド・テスト。`canvas_markdown.json` の追加のケースが 3 端末で通る。実機 / シミュレータで通知から開ける |
 | M123 | データベース：サーバと Desktop / Web | §5：スキーマ・行・プロパティの変更（マスごとの後勝ち）・ビュー（表、並べ替え・絞り込み）・行の履歴・CSV の書き出し | pytest（型ごとの値の検査と変換、並べ替え・絞り込みの共通のケース `apps/shared/wiki_db_query.json`、5,000 行で 50 ms 以下）、Desktop の表の編集とサイドピーク |
@@ -699,23 +700,131 @@ ARCHITECTURE.md（§5 のモジュールと依存、判断 D27「ドキュメン
 | 木が大きくなったときの `GET /wiki/tree` | 変更のフィードで差分だけ。1 万ページで 1.5 MB の見込みなので、超えたら最上位から開いた所だけ読む形に変える（API は `parent_id` で絞れるようにしておく） |
 | 3 端末の作業量 | スマホは閲覧と軽い編集。共有の設定・移動・スキーマは Desktop / Web だけ |
 
-### 13.2 利用者への質問
+### 13.2 利用者の決定（2026-10-07）
 
-1. **木は 1 つでよいか**（研究室全体の「ドキュメント」に最上位のページを並べる。チームスペースのような区分を別に作らない）。今の Notion の
-   最上位はどんな区分か。
-2. **新しい最上位のページの既定**：「全員が編集できる」でよいか（「全員が閲覧、作った人だけ編集」にもできる）。
-3. **ゲスト（卒業生など）**：ページを見せる必要があるか。見せるなら「名前を挙げた人だけ」でよいか（グループ `alumni` で一括に見せたいか）。
-4. **会話（チャンネル）のメンバーを共有の相手にしたいか**（例：「#プロジェクトA のメンバー」）。グループで足りるか。
-5. **管理者（先生）は学生のプライベートなページを読めなくてよいか**（提案：読めない。題名と共有の一覧と、記録に残る「引き取り」だけ）。
-6. **編集の形**：キャンバスと同じ Markdown + プレビュー（`/` のメニュー付き）で始めてよいか。Notion のような見たまま編集が最初から要るか。
-7. **ページへのコメント**は要るか（要るなら、ページ全体へのコメント欄か、範囲に付けるコメントか）。
+利用者は、Q8・Q9 を除くすべてを推奨どおりに決めた（番号は本文からの参照のため元のまま）。
+
+| # | 質問 | 決定 |
+| --- | --- | --- |
+| Q1 | 木は 1 つでよいか | **1 つ**（ワークスペースの「ドキュメント」に最上位のページを並べる。チームスペースの表は作らない） |
+| Q2 | 新しい最上位のページの既定 | **全員が編集できる**（`workspace: edit` + 作った人の `user: full`）。「プライベート」の ＋ からは作った人だけ |
+| Q3 | ゲスト（卒業生など） | **名前を挙げて共有したページだけ**読める（`alumni` などのグループ・全員の項目はゲストに効かない） |
+| Q4 | 会話のメンバーを共有の相手に | v1 は作らない（グループで足りる）。`principal_type = 'channel'` を後から足せる |
+| Q5 | 管理者は学生のプライベートなページを読めなくてよいか | **黙っては読めない**。題名と共有の一覧と、監査ログに残る「引き取り」だけ |
+| Q6 | 編集の形 | **キャンバスと同じ Markdown + プレビュー + 行頭の `/` メニュー**（キャンバスのエディタ）。見たまま編集は要らない（後で検討） |
+| Q7 | ページへのコメント | **v1 は作らない** |
+| Q10 | キャンバスとの関係 | 推奨どおり：会話の議事録・週報はキャンバス、長く残すものはドキュメント。「ドキュメントへ移す」は M126（任意） |
+| Q11 | スマホでどこまで | **閲覧・軽い編集（セクション / 全体）・データベースの行の値の変更**。共有の設定と移動はパソコン（Desktop / Web）だけ |
+| Q12 | 画面の名前 | **「ドキュメント」**（英語 Docs、中国語 文档） |
+| Q13 | ページのフォロー（変更の通知） | **後で**。v1 はメンションと共有の通知だけ |
+| Q14 | 公開ページ | **後で**（§4.9 の形を残す） |
+
+### 13.3 まだ利用者に確かめること
+
 8. **データベース**：今使っているプロパティの型、関係（relation）・ロールアップ・数式を実際に使っているか、ボードやカレンダーのビューを
-   使っているか。いちばん大きいデータベースの行数。
+   使っているか。いちばん大きいデータベースの行数（M123 の前に）。
 9. **Notion の書き出しのサンプル**（データベース 1 つと、画像のあるページ・サブページのあるページを含む小さな部分）。全体の大きさ（GB）と
-   ページ数の目安。取り込みはサーバでのコマンドでよいか（Web から zip を上げる画面が要るか）。
-10. **キャンバスとの関係**：会話の議事録・週報はキャンバスのまま、長く残すものをドキュメントに、という分け方でよいか。キャンバスを
-    ドキュメントへ移す機能は要るか。
-11. **スマホでどこまで**：閲覧と軽い編集（セクション）、データベースの行の値の変更でよいか。共有の設定・移動はパソコンだけでよいか。
-12. **画面の名前**：「ドキュメント」「Wiki」「ナレッジ」「ノート」のどれがよいか（「ドキュメント」は添付の「文書」と紛れるかもしれない）。
-13. **変更の通知**：ページの「フォロー」（誰かが変えたら知らせる）は要るか。今の案はメンションと共有だけ。
-14. **公開ページ**：後で要りそうか（例：研究室のホームページ代わり）。今は作らないが、作る時期の目安。
+   ページ数の目安（M125 の前に）。取り込みはサーバでのコマンドで始める（Web から zip を上げる画面は要望があれば後）。
+
+## 14. M120 の実装（2026-10-07）
+
+サーバだけ。端末（M121・M122）はこの API を使う。
+
+### 14.1 作ったもの
+
+- **`app/core/doctext/`**（§2.3）：`merge.py`（3-way マージ）・`markers.py`（タスクの印）は中身を変えずに移し、`canvases/merge.py`・
+  `markers.py` は再エクスポートだけにした。`body.py`（本文の整形・タスクの数・差分の行数・画像の参照・ページのリンク・メンションの
+  トークン）、`save.py`（保存の手順 `save_flow` とマージのスレッドプール）、`revisions.py`（版の整理の方針と、表ごとの SQL を作る
+  `thin_statement`）。キャンバスの保存もこの `save_flow` を通る。キャンバスの既存のテストはすべてそのまま通る。
+- **移行 0095**：§11.1 の表（`wiki_databases` は M123）。種類 `page | database | row` の制約は今から入れた（M120 の API は `page`
+  だけを作る）。
+- **`app/modules/wiki/`**：`access.py`（判定の 1 か所）、`ordering.py`（分数の索引）、`service.py`、`router.py`、`events.py`、
+  `repository.py`、`schemas.py`。依存は `wiki → users, groups, attachments, audit, activity（抜粋の純粋な関数）, canvases（テンプレートの
+  読み取り）, core.doctext`。`attachments → wiki` の判定は `main.py` が注入する（`set_page_access_check`）。
+  `search → wiki`・`activity → wiki`・`notifications → wiki`・`admin → wiki`（匿名化で `user` の項目を消す）は読み取りか同じ
+  トランザクションの呼び出し。
+- **CLI**：`python -m app.cli wiki-acl --verify`（違いがあれば終了コード 1）と `--rebuild`。
+
+### 14.2 API（M121・M122 が使うもの。すべて `/api/v1`）
+
+| メソッド | パス | 返すもの / 要点 |
+| --- | --- | --- |
+| GET | `/wiki/tree` | `TreeOut {pages: [PageItem], cursor}`。行（row）は入らない。ETag（中身のハッシュ）、`If-None-Match` で 304 |
+| GET | `/wiki/changes?since=` | `ChangesOut {pages: [PageItem], removed: [id], cursor, reset}`（§14.4） |
+| POST | `/wiki/pages` | `PageCreate {parent_id?, before_id? \| after_id?, title?, icon?, template_key?, body?, access: workspace \| private, tz?, client_save_id}` → 201 `PageOut`（再送は 200）。最上位はゲスト不可（403 `guest_restricted`） |
+| GET | `/wiki/pages/{id}` | `PageOut`（`PageItem` + `body` + `breadcrumbs: [Crumb {id?, title?, icon?, readable}]` + `children: [PageItem]`）。ETag `"v{version}-{my_level}"` |
+| PUT | `/wiki/pages/{id}/content` | `PageContentSave {base_rev_id, body, client_save_id, on_conflict}` → `PageSaveOut {page: PageContent, submitted_rev_id, merged}`。409 `page_conflict` / `page_base_expired`（`details.head` と `conflicts`、キャンバスと同じ形）、422 `page_too_large` |
+| PATCH | `/wiki/pages/{id}` | `{title?, icon?}`（`icon: ""` で外す）→ `PageOut` |
+| POST | `/wiki/pages/{id}/move` | `PageMove {parent_id, before_id? \| after_id?, keep_access, dry_run}` → `MoveOut {dry_run, page, changes: [AccessChange {principal_type, principal_id, before, after}], manager_lost}` |
+| DELETE / POST | `/wiki/pages/{id}`、`/wiki/pages/{id}/restore` | 部分木ごとゴミ箱へ（204）／戻す（`PageOut`）。一緒に入った子だけを戻すのは 409 `page_trashed_with_parent` |
+| GET | `/wiki/trash` | 自分が full のゴミ箱の根（`PageMeta`、`deleted_at` 付き） |
+| GET / PUT | `/wiki/pages/{id}/access` | `AccessOut {page_id, inherit_access, own: [GrantOut], effective: [EffectiveOut {…, source_page_id, inherited, source_title?}], my_level}`／`AccessUpdate {inherit_access, grants: [GrantIn]}`（自前の項目の置き換え、full かつゲストでない人） |
+| GET | `/wiki/pages/{id}/revisions`、`…/revisions/{rid}` | `PageRevisionPage` / `PageRevisionOut`（キャンバスと同じ） |
+| POST / PATCH / DELETE | `…/revisions/{rid}/restore`、`…/revisions/{rid}`、`…/revisions/{rid}` | 版の復元（edit、`client_save_id`）・ラベル（edit）・本文の消去（full、監査） |
+| GET | `/wiki/pages/{id}/backlinks` | 読めるページからのリンク（`[PageItem]`） |
+| POST | `/wiki/pages/resolve` | `{ids}`（200 まで）→ 読めるものだけの `[PageRef {id, title, icon, kind}]` |
+| GET | `/wiki/pages/lookup?q=&limit=` | `[[` の候補（題名の部分一致、前方一致が先） |
+| GET | `/wiki/pages/{id}/export[?subtree=true]` | Markdown（`text/markdown`）／読めるページだけの ZIP |
+| GET | `/search/pages?q&in_page&from_user_id&after&before&kind&sort&limit&offset` | `PageSearchOut {hits: [{page: PageItem, snippet, score}], keywords, filters (in_page を足した), …}`。`in:<題名>` で部分木 |
+| GET / POST / DELETE | `/admin/wiki/pages`、`/admin/wiki/pages/{id}/takeover`、`/admin/wiki/pages/{id}` | 管理者：題名と実効の相手の一覧（本文なし、`has_manager`）／引き取り（監査 `wiki.access_takeover`、ゴミ箱のページなら null）／ゴミ箱のページをすぐ完全削除（監査 `wiki.purge`） |
+| GET | `/p/{id}` | ブラウザ向けの案内（`/c/` と同じく中身も存在も出さない） |
+
+`PageItem` = `PageMeta {id, parent_id, position, kind, title, icon, version, head_rev_id, meta_seq, inherit_access, task_total,
+task_done, created_by, updated_by, created_at, updated_at, deleted_at}` + `my_level`（view / edit / full）+ `private`（実効の権限が
+自分だけ：サイドバーの「プライベート」）。兄弟の並びは `position` の文字列（バイト順）、同じなら id 順。
+
+bootstrap に `wiki: {change_seq}`。アクティビティは `include=page_mention` / `include=page_shared` で `ActivityItem.page
+{item_id, page_id, title, icon, excerpt, rev_id, level}`（そのページを今読める間だけ。未読数ではメンション扱い）。プッシュは
+`kind: "page"`（`page_id`、`collapse_key: page:<id>`、題名「ドキュメント」）。新しいエラーコードは `apps/shared/errors.json`。
+
+### 14.3 イベント
+
+| type | audience | data |
+| --- | --- | --- |
+| `wiki.changed` | all | `{seq}`。木のフィードが進んだ。端末は 300 ms まとめて `GET /wiki/changes?since=` |
+| `wiki.page.updated` | page（送る時点で読める人） | `{page: PageMeta, change: content \| meta \| restore}`。`page.parent_id` は常に null（場所はフィードから） |
+| `wiki.mentioned` | user（送る時点で読める人だけ） | `{page_id, rev_id, title, by_user_id}` |
+| `wiki.shared` | user（同上） | `{page_id, title, level, by_user_id}` |
+
+### 14.4 設計からの違い・足したもの（理由）
+
+- **`vis_seq` と `created_seq`**（`wiki_pages`）：§10 のとおり「読めないページは `removed`」にすると、読めない人にも題名の変更の
+  たびにほかの人のプライベートなページの id が届く。見える人が変わりうる変更（作成・共有・移動・ゴミ箱・復元）だけ `vis_seq` を進め、
+  作ってから見える人が変わっていないページ（`created_seq = vis_seq`）は `removed` に入れない。ゴミ箱のページは、そのページの実効の
+  権限が今もある人にだけ `removed` で出す。完全に消したページの id（tombstone）は全員に出る（id だけ）。
+- **フィードの番号は 1 つの変更（トランザクション）に 1 つ**：番号は木のロックの中で取るので、コミットの順と番号の順が一致する。
+  `cursor` は「今見えている最大の番号」（シーケンスの値ではない）を先に読むので、走っている変更を飛ばさない。変わったページが
+  5,000 を超えたら `reset`。`wiki_feed_state.purged_through`（tombstone を 30 日で消した位置）より古い `since` も `reset`。
+- **親が読めないページの `parent_id` は null**（その人の木・フィード・ページ・検索の結果）：§4.6 の「最上位に出す」をサーバでそろえ、
+  読めない親の id も出さない。`wiki.page.updated` の `parent_id` はいつも null。
+- **移動の `page_last_manager`**：受け継ぐ移動で full の人（ゲストでない有効な人）がいなくなるなら 409（`keep_access` で移せる）。
+  `dry_run` の `manager_lost` で先に分かる。
+- **親のないページの扱い**：親がゴミ箱・完全に削除されたあとで子を戻すとき、子だけ先にゴミ箱に入っていて親が先に完全に消えるとき
+  は、そのページを最上位に置き、実効の項目を自前の項目に写して受け継ぎを止める（見える人を変えない）。`parent_id` は
+  `ON DELETE SET NULL`。
+- **ゴミ箱は根だけを戻せる**：親と一緒に入ったページだけを戻すのは 409（親を戻す）。full の人が親を消すと、ほかの人だけの子も
+  一緒にゴミ箱に入り、戻せるのは親の full の人（Notion と同じ動き）。
+- **管理者の完全削除**：`DELETE /admin/wiki/pages/{id}`（§4.3 の「完全削除」）。
+- **作っていないもの**：`GET /wiki/pages/{id}/activity`（§7.2 のページの記録。監査ログには残している）は端末を作る M121 で足す。
+  `canvas_markdown.json` の `page:` のケースと `nav-items.json` の `docs` は端末の M121。データベース（§5）は M123。
+- **全体の木の大きさ**：1 万ページ（読める 7,000）で `GET /wiki/tree` は約 3.6 MB・約 100 ms（`PageItem` は 1 ページ約 520 バイト）。
+  §13.1 の見込み（1.5 MB）より大きい。差分は変更のフィードで取り、ETag で全体の読み直しを省く。超えたら木を開いた所だけ読む形にする。
+
+### 14.5 性能（`tests/test_wiki_perf.py`、1 万ページ・実効 31,644 行、M5 Max の開発機の Docker の PostgreSQL）
+
+| 測ったもの | 目標（§4.6） | 実測 |
+| --- | --- | --- |
+| 1 ページの判定（`access.level_of`、往復を含む中央値） | 1 ms 以下 | 0.6〜0.8 ms |
+| 読める集合（`access.readable_ids`、7,000 件を取り出す） | 10 ms 以下 | 約 5 ms |
+| 1,000 ページの部分木の移動（ロック・計算・3,000 行の書き換え・コミットまで） | 300 ms 以下 | 約 80 ms |
+
+テストは目標の 2 倍を上限として毎回確かめる（並列のテストで遅くなっても落ちないように）。
+
+### 14.6 テスト
+
+`tests/test_wiki.py`（作成・保存とマージ・履歴・閲覧の制限・リンク・移動と受け継ぎ・絞る / 足す・最後の full・ゲスト・管理者の
+引き取り・ゴミ箱と完全削除・変更のフィード・イベントの宛先・メンション・分数の索引・深さ・`/p/`・整理・`wiki-acl`）、
+`tests/test_wiki_no_leak.py`（読めない人（メンバー・グループに入ったゲスト・管理者）に 34 の経路を当て、404 と題名・本文・id が
+出ないことを確かめる 1 つのパラメータ化されたスイート）、`tests/test_wiki_acl_property.py`（無作為な操作の列と同時の変更のあとで
+実効の表 = 全部の計算し直し）、`tests/test_wiki_search.py`（検索の絞り込みと索引、ページの画像、プッシュ）、`tests/test_wiki_perf.py`、
+`tests/test_doctext.py`。

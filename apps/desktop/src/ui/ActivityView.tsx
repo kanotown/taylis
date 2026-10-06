@@ -253,7 +253,8 @@ function ActivityRow({ controller, item, unread, onOpen }: { controller: AppCont
   const excerpt = activityExcerpt(item, controller);
   const actors = item.actor_ids.slice(0, 3);
   const fallbackActor = item.message?.sender_id ?? "";
-  const kindIcon = item.kind === "canvas_mention" || item.kind === "reservation" ? null : KIND_ICON[item.kind];
+  // page_mention / page_shared (M120) come only with include=page_mention (M121); no icon of their own yet.
+  const kindIcon = item.kind === "mention" || item.kind === "thread_reply" || item.kind === "reaction" ? KIND_ICON[item.kind] : null;
   // M112: a to-do another operator handled (or no longer needed) is done: greyed with 「対応済み」.
   const done = !!item.reservation && (item.reservation.done || store.doneActivityItems.has(item.reservation.item_id));
   if (item.reservation) {

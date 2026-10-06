@@ -1,6 +1,140 @@
 {
   "components": {
     "schemas": {
+      "AccessChange": {
+        "description": "A principal whose level on the moved page would change (null: none).",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "enum": [
+                  "view",
+                  "edit",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "enum": [
+                  "view",
+                  "edit",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "principal_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principal Id"
+          },
+          "principal_type": {
+            "enum": [
+              "workspace",
+              "group",
+              "user"
+            ],
+            "title": "Principal Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "principal_type",
+          "principal_id",
+          "before",
+          "after"
+        ],
+        "title": "AccessChange",
+        "type": "object"
+      },
+      "AccessOut": {
+        "properties": {
+          "effective": {
+            "items": {
+              "$ref": "#/components/schemas/EffectiveOut"
+            },
+            "title": "Effective",
+            "type": "array"
+          },
+          "inherit_access": {
+            "title": "Inherit Access",
+            "type": "boolean"
+          },
+          "my_level": {
+            "enum": [
+              "view",
+              "edit",
+              "full"
+            ],
+            "title": "My Level",
+            "type": "string"
+          },
+          "own": {
+            "items": {
+              "$ref": "#/components/schemas/GrantOut"
+            },
+            "title": "Own",
+            "type": "array"
+          },
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id",
+          "inherit_access",
+          "own",
+          "effective",
+          "my_level"
+        ],
+        "title": "AccessOut",
+        "type": "object"
+      },
+      "AccessUpdate": {
+        "additionalProperties": false,
+        "description": "PUT /wiki/pages/{id}/access: the page's own entries and whether it takes its parent's.\nTo narrow an inherited entry, send inherit_access false with the effective entries you keep\n(WIKI.md §4.2).",
+        "properties": {
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/GrantIn"
+            },
+            "maxItems": 200,
+            "title": "Grants",
+            "type": "array"
+          },
+          "inherit_access": {
+            "title": "Inherit Access",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "inherit_access"
+        ],
+        "title": "AccessUpdate",
+        "type": "object"
+      },
       "AccountDeletion": {
         "additionalProperties": false,
         "description": "POST /users/me/delete-account: the current password, or for an account without one\n(Google sign-in) the username typed again.",
@@ -167,7 +301,9 @@
               "reaction",
               "thread_reply",
               "canvas_mention",
-              "reservation"
+              "reservation",
+              "page_mention",
+              "page_shared"
             ],
             "title": "Kind",
             "type": "string"
@@ -176,6 +312,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/MessageOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivityPage"
               },
               {
                 "type": "null"
@@ -245,6 +391,79 @@
           "read_at"
         ],
         "title": "ActivityListOut",
+        "type": "object"
+      },
+      "ActivityPage": {
+        "description": "A page_mention / page_shared item's page (M120): it opens the page. Listed only while I can\nread the page.",
+        "properties": {
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "enum": [
+                  "view",
+                  "edit",
+                  "full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "rev_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rev Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "page_id",
+          "title",
+          "icon",
+          "excerpt",
+          "rev_id",
+          "level"
+        ],
+        "title": "ActivityPage",
         "type": "object"
       },
       "ActivityReadIn": {
@@ -363,6 +582,139 @@
           "mention_unread"
         ],
         "title": "ActivitySummaryOut",
+        "type": "object"
+      },
+      "AdminEffective": {
+        "properties": {
+          "level": {
+            "enum": [
+              "view",
+              "edit",
+              "full"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "principal_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principal Id"
+          },
+          "principal_type": {
+            "enum": [
+              "workspace",
+              "group",
+              "user"
+            ],
+            "title": "Principal Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "principal_type",
+          "principal_id",
+          "level"
+        ],
+        "title": "AdminEffective",
+        "type": "object"
+      },
+      "AdminPageOut": {
+        "description": "GET /admin/wiki/pages (WIKI.md §4.3): titles and who has access, never bodies.",
+        "properties": {
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "effective": {
+            "items": {
+              "$ref": "#/components/schemas/AdminEffective"
+            },
+            "title": "Effective",
+            "type": "array"
+          },
+          "has_manager": {
+            "title": "Has Manager",
+            "type": "boolean"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "inherit_access": {
+            "title": "Inherit Access",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "page",
+              "database",
+              "row"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "parent_id",
+          "kind",
+          "title",
+          "icon",
+          "inherit_access",
+          "effective",
+          "has_manager",
+          "updated_at",
+          "deleted_at"
+        ],
+        "title": "AdminPageOut",
         "type": "object"
       },
       "AdminReportOut": {
@@ -2507,6 +2859,16 @@
             "title": "Users",
             "type": "array"
           },
+          "wiki": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WikiBootstrap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "workspace_settings": {
             "$ref": "#/components/schemas/WorkspaceSettingsOut",
             "default": {
@@ -4064,6 +4426,42 @@
         "title": "CanvasUpdate",
         "type": "object"
       },
+      "ChangesOut": {
+        "description": "GET /wiki/changes?since=: what changed in the tree after `since`.",
+        "properties": {
+          "cursor": {
+            "title": "Cursor",
+            "type": "integer"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/PageItem"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Removed",
+            "type": "array"
+          },
+          "reset": {
+            "title": "Reset",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pages",
+          "removed",
+          "cursor",
+          "reset"
+        ],
+        "title": "ChangesOut",
+        "type": "object"
+      },
       "ChannelCreate": {
         "properties": {
           "name": {
@@ -4727,6 +5125,57 @@
           "client_save_id"
         ],
         "title": "ContentSave",
+        "type": "object"
+      },
+      "Crumb": {
+        "description": "An ancestor in the breadcrumbs. One I cannot read has no id, title or icon (「…」).",
+        "properties": {
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "readable": {
+            "title": "Readable",
+            "type": "boolean"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "icon",
+          "readable"
+        ],
+        "title": "Crumb",
         "type": "object"
       },
       "CustomEmojiOut": {
@@ -5442,6 +5891,71 @@
           "body"
         ],
         "title": "DraftPut",
+        "type": "object"
+      },
+      "EffectiveOut": {
+        "description": "An entry of the page's effective access.",
+        "properties": {
+          "inherited": {
+            "title": "Inherited",
+            "type": "boolean"
+          },
+          "level": {
+            "enum": [
+              "view",
+              "edit",
+              "full"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "principal_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principal Id"
+          },
+          "principal_type": {
+            "enum": [
+              "workspace",
+              "group",
+              "user"
+            ],
+            "title": "Principal Type",
+            "type": "string"
+          },
+          "source_page_id": {
+            "format": "uuid",
+            "title": "Source Page Id",
+            "type": "string"
+          },
+          "source_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Title"
+          }
+        },
+        "required": [
+          "principal_type",
+          "principal_id",
+          "level",
+          "source_page_id",
+          "inherited",
+          "source_title"
+        ],
+        "title": "EffectiveOut",
         "type": "object"
       },
       "EmojiPackCreate": {
@@ -6167,6 +6681,88 @@
           "note"
         ],
         "title": "GeneralReportCreate",
+        "type": "object"
+      },
+      "GrantIn": {
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "enum": [
+              "view",
+              "edit",
+              "full"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "principal_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principal Id"
+          },
+          "principal_type": {
+            "enum": [
+              "workspace",
+              "group",
+              "user"
+            ],
+            "title": "Principal Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "principal_type",
+          "level"
+        ],
+        "title": "GrantIn",
+        "type": "object"
+      },
+      "GrantOut": {
+        "properties": {
+          "level": {
+            "enum": [
+              "view",
+              "edit",
+              "full"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "principal_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principal Id"
+          },
+          "principal_type": {
+            "enum": [
+              "workspace",
+              "group",
+              "user"
+            ],
+            "title": "Principal Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "principal_type",
+          "principal_id",
+          "level"
+        ],
+        "title": "GrantOut",
         "type": "object"
       },
       "GroupCreate": {
@@ -7969,6 +8565,43 @@
         "title": "MonthlySchedule",
         "type": "object"
       },
+      "MoveOut": {
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/AccessChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "manager_lost": {
+            "title": "Manager Lost",
+            "type": "boolean"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "dry_run",
+          "page",
+          "changes",
+          "manager_lost"
+        ],
+        "title": "MoveOut",
+        "type": "object"
+      },
       "MyLabProfileUpdate": {
         "additionalProperties": false,
         "description": "What people change on their own line (PATCH /lab/roster/me); null clears.",
@@ -8115,6 +8748,1332 @@
           "muted_until"
         ],
         "title": "NotificationPreferenceOut",
+        "type": "object"
+      },
+      "PageConflictDetails": {
+        "properties": {
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/PageConflictOut"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "head": {
+            "$ref": "#/components/schemas/PageContent"
+          },
+          "timed_out": {
+            "default": false,
+            "title": "Timed Out",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "head"
+        ],
+        "title": "PageConflictDetails",
+        "type": "object"
+      },
+      "PageConflictError": {
+        "properties": {
+          "code": {
+            "enum": [
+              "page_conflict",
+              "page_base_expired"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "$ref": "#/components/schemas/PageConflictDetails"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "details"
+        ],
+        "title": "PageConflictError",
+        "type": "object"
+      },
+      "PageConflictOut": {
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "ours": {
+            "title": "Ours",
+            "type": "string"
+          },
+          "ours_line": {
+            "title": "Ours Line",
+            "type": "integer"
+          },
+          "theirs": {
+            "title": "Theirs",
+            "type": "string"
+          },
+          "theirs_line": {
+            "title": "Theirs Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "base",
+          "ours",
+          "theirs",
+          "ours_line",
+          "theirs_line"
+        ],
+        "title": "PageConflictOut",
+        "type": "object"
+      },
+      "PageConflictResponse": {
+        "description": "409 from PUT /wiki/pages/{id}/content.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/PageConflictError"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "PageConflictResponse",
+        "type": "object"
+      },
+      "PageContent": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "head_rev_id": {
+            "format": "uuid",
+            "title": "Head Rev Id",
+            "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "inherit_access": {
+            "title": "Inherit Access",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "page",
+              "database",
+              "row"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "meta_seq": {
+            "title": "Meta Seq",
+            "type": "integer"
+          },
+          "my_level": {
+            "enum": [
+              "view",
+              "edit",
+              "full"
+            ],
+            "title": "My Level",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "private": {
+            "title": "Private",
+            "type": "boolean"
+          },
+          "task_done": {
+            "title": "Task Done",
+            "type": "integer"
+          },
+          "task_total": {
+            "title": "Task Total",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "parent_id",
+          "position",
+          "kind",
+          "title",
+          "icon",
+          "version",
+          "head_rev_id",
+          "meta_seq",
+          "inherit_access",
+          "task_total",
+          "task_done",
+          "created_by",
+          "updated_by",
+          "created_at",
+          "updated_at",
+          "my_level",
+          "private",
+          "body"
+        ],
+        "title": "PageContent",
+        "type": "object"
+      },
+      "PageContentSave": {
+        "additionalProperties": false,
+        "description": "PUT /wiki/pages/{id}/content: the same as a canvas's (CANVAS.md §4.4).",
+        "properties": {
+          "base_rev_id": {
+            "format": "uuid",
+            "title": "Base Rev Id",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "client_save_id": {
+            "format": "uuid",
+            "title": "Client Save Id",
+            "type": "string"
+          },
+          "on_conflict": {
+            "default": "fail",
+            "enum": [
+              "fail",
+              "ours",
+              "theirs",
+              "both"
+            ],
+            "title": "On Conflict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base_rev_id",
+          "body",
+          "client_save_id"
+        ],
+        "title": "PageContentSave",
+        "type": "object"
+      },
+      "PageCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "access": {
+            "default": "workspace",
+            "enum": [
+              "workspace",
+              "private"
+            ],
+            "title": "Access",
+            "type": "string"
+          },
+          "after_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Id"
+          },
+          "before_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Id"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "client_save_id": {
+            "format": "uuid",
+            "title": "Client Save Id",
+            "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "kind": {
+            "const": "page",
+            "default": "page",
+            "title": "Kind",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          }
+        },
+        "required": [
+          "client_save_id"
+        ],
+        "title": "PageCreate",
+        "type": "object"
+      },
+      "PageItem": {
+        "description": "A page as one person sees it: the tree, the change feed, search.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "head_rev_id": {
+            "format": "uuid",
+            "title": "Head Rev Id",
+            "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "inherit_access": {
+            "title": "Inherit Access",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "page",
+              "database",
+              "row"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "meta_seq": {
+            "title": "Meta Seq",
+            "type": "integer"
+          },
+          "my_level": {
+            "enum": [
+              "view",
+              "edit",
+              "full"
+            ],
+            "title": "My Level",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "private": {
+            "title": "Private",
+            "type": "boolean"
+          },
+          "task_done": {
+            "title": "Task Done",
+            "type": "integer"
+          },
+          "task_total": {
+            "title": "Task Total",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "parent_id",
+          "position",
+          "kind",
+          "title",
+          "icon",
+          "version",
+          "head_rev_id",
+          "meta_seq",
+          "inherit_access",
+          "task_total",
+          "task_done",
+          "created_by",
+          "updated_by",
+          "created_at",
+          "updated_at",
+          "my_level",
+          "private"
+        ],
+        "title": "PageItem",
+        "type": "object"
+      },
+      "PageMeta": {
+        "description": "A page without its body, the same for everyone (the wiki.page.updated event).",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "head_rev_id": {
+            "format": "uuid",
+            "title": "Head Rev Id",
+            "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "inherit_access": {
+            "title": "Inherit Access",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "page",
+              "database",
+              "row"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "meta_seq": {
+            "title": "Meta Seq",
+            "type": "integer"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "task_done": {
+            "title": "Task Done",
+            "type": "integer"
+          },
+          "task_total": {
+            "title": "Task Total",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "parent_id",
+          "position",
+          "kind",
+          "title",
+          "icon",
+          "version",
+          "head_rev_id",
+          "meta_seq",
+          "inherit_access",
+          "task_total",
+          "task_done",
+          "created_by",
+          "updated_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PageMeta",
+        "type": "object"
+      },
+      "PageMove": {
+        "additionalProperties": false,
+        "properties": {
+          "after_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Id"
+          },
+          "before_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Id"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "keep_access": {
+            "default": false,
+            "title": "Keep Access",
+            "type": "boolean"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          }
+        },
+        "title": "PageMove",
+        "type": "object"
+      },
+      "PageOut": {
+        "description": "GET /wiki/pages/{id}: the page, its breadcrumbs (root first) and its child pages I can\nread, in order.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "breadcrumbs": {
+            "items": {
+              "$ref": "#/components/schemas/Crumb"
+            },
+            "title": "Breadcrumbs",
+            "type": "array"
+          },
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/PageItem"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "head_rev_id": {
+            "format": "uuid",
+            "title": "Head Rev Id",
+            "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "inherit_access": {
+            "title": "Inherit Access",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "page",
+              "database",
+              "row"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "meta_seq": {
+            "title": "Meta Seq",
+            "type": "integer"
+          },
+          "my_level": {
+            "enum": [
+              "view",
+              "edit",
+              "full"
+            ],
+            "title": "My Level",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "private": {
+            "title": "Private",
+            "type": "boolean"
+          },
+          "task_done": {
+            "title": "Task Done",
+            "type": "integer"
+          },
+          "task_total": {
+            "title": "Task Total",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "parent_id",
+          "position",
+          "kind",
+          "title",
+          "icon",
+          "version",
+          "head_rev_id",
+          "meta_seq",
+          "inherit_access",
+          "task_total",
+          "task_done",
+          "created_by",
+          "updated_by",
+          "created_at",
+          "updated_at",
+          "my_level",
+          "private",
+          "body",
+          "breadcrumbs",
+          "children"
+        ],
+        "title": "PageOut",
+        "type": "object"
+      },
+      "PageRef": {
+        "properties": {
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "page",
+              "database",
+              "row"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "icon",
+          "kind"
+        ],
+        "title": "PageRef",
+        "type": "object"
+      },
+      "PageRevisionMeta": {
+        "properties": {
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "create",
+              "save",
+              "merge",
+              "side",
+              "restore",
+              "erased",
+              "props",
+              "import"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "lines_added": {
+            "title": "Lines Added",
+            "type": "integer"
+          },
+          "lines_removed": {
+            "title": "Lines Removed",
+            "type": "integer"
+          },
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "parent_rev_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Rev Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id",
+          "page_id",
+          "version",
+          "kind",
+          "parent_rev_id",
+          "author_id",
+          "title",
+          "label",
+          "lines_added",
+          "lines_removed",
+          "created_at"
+        ],
+        "title": "PageRevisionMeta",
+        "type": "object"
+      },
+      "PageRevisionOut": {
+        "properties": {
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "create",
+              "save",
+              "merge",
+              "side",
+              "restore",
+              "erased",
+              "props",
+              "import"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "lines_added": {
+            "title": "Lines Added",
+            "type": "integer"
+          },
+          "lines_removed": {
+            "title": "Lines Removed",
+            "type": "integer"
+          },
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "parent_rev_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Rev Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id",
+          "page_id",
+          "version",
+          "kind",
+          "parent_rev_id",
+          "author_id",
+          "title",
+          "label",
+          "lines_added",
+          "lines_removed",
+          "created_at",
+          "body"
+        ],
+        "title": "PageRevisionOut",
+        "type": "object"
+      },
+      "PageRevisionPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PageRevisionMeta"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "PageRevisionPage",
+        "type": "object"
+      },
+      "PageRevisionRestore": {
+        "additionalProperties": false,
+        "properties": {
+          "client_save_id": {
+            "format": "uuid",
+            "title": "Client Save Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_save_id"
+        ],
+        "title": "PageRevisionRestore",
+        "type": "object"
+      },
+      "PageRevisionUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "title": "PageRevisionUpdate",
+        "type": "object"
+      },
+      "PageSaveOut": {
+        "properties": {
+          "merged": {
+            "title": "Merged",
+            "type": "boolean"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageContent"
+          },
+          "submitted_rev_id": {
+            "format": "uuid",
+            "title": "Submitted Rev Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "submitted_rev_id",
+          "merged"
+        ],
+        "title": "PageSaveOut",
+        "type": "object"
+      },
+      "PageSearchHit": {
+        "properties": {
+          "page": {
+            "$ref": "#/components/schemas/PageItem"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "snippet",
+          "score"
+        ],
+        "title": "PageSearchHit",
+        "type": "object"
+      },
+      "PageSearchOut": {
+        "description": "Only pages the caller can read are ever counted or returned.",
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/SearchFilters"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/PageSearchHit"
+            },
+            "title": "Hits",
+            "type": "array"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "total_capped": {
+            "default": false,
+            "title": "Total Capped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "hits",
+          "keywords",
+          "filters",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "PageSearchOut",
+        "type": "object"
+      },
+      "PageUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "icon": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "PageUpdate",
         "type": "object"
       },
       "PasswordChange": {
@@ -9945,6 +11904,25 @@
         "title": "ReservationOut",
         "type": "object"
       },
+      "ResolveIn": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "ResolveIn",
+        "type": "object"
+      },
       "RevisionMeta": {
         "properties": {
           "author_id": {
@@ -10828,6 +12806,17 @@
               }
             ],
             "title": "In Channel"
+          },
+          "in_page": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Page"
           },
           "is_thread": {
             "default": false,
@@ -13125,6 +15114,28 @@
         "title": "TotpStatusOut",
         "type": "object"
       },
+      "TreeOut": {
+        "description": "Every page I can read (not database rows), and the change feed's position to continue\nfrom with GET /wiki/changes.",
+        "properties": {
+          "cursor": {
+            "title": "Cursor",
+            "type": "integer"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/PageItem"
+            },
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pages",
+          "cursor"
+        ],
+        "title": "TreeOut",
+        "type": "object"
+      },
       "UnreadSummaryOut": {
         "description": "What the workspace switcher shows for a workspace that is not open (WORKSPACES.md §6).",
         "properties": {
@@ -14028,6 +16039,20 @@
         "title": "WeeklySchedule",
         "type": "object"
       },
+      "WikiBootstrap": {
+        "description": "In GET /sync/bootstrap: the change feed's position (read the tree with GET /wiki/tree).",
+        "properties": {
+          "change_seq": {
+            "title": "Change Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "change_seq"
+        ],
+        "title": "WikiBootstrap",
+        "type": "object"
+      },
       "WorkflowCreate": {
         "additionalProperties": false,
         "properties": {
@@ -14637,13 +16662,13 @@
             }
           },
           {
-            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
             "in": "query",
             "name": "include",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
               "items": {
                 "type": "string"
               },
@@ -14691,13 +16716,13 @@
         "operationId": "mark_activity_read_api_v1_activity_read_put",
         "parameters": [
           {
-            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
             "in": "query",
             "name": "include",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
               "items": {
                 "type": "string"
               },
@@ -14755,13 +16780,13 @@
         "operationId": "activity_summary_api_v1_activity_summary_get",
         "parameters": [
           {
-            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
+            "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
             "in": "query",
             "name": "include",
             "required": false,
             "schema": {
               "default": [],
-              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112). Unknown values are ignored.",
+              "description": "Extra kinds this client shows (repeat for several): canvas_mention (M76), reservation (M112), page_mention and page_shared (M120). Unknown values are ignored.",
               "items": {
                 "type": "string"
               },
@@ -16468,6 +18493,136 @@
         "summary": "Update Webhook",
         "tags": [
           "webhooks"
+        ]
+      }
+    },
+    "/api/v1/admin/wiki/pages": {
+      "get": {
+        "description": "Administrators: every page's title and who has access (no bodies), the trash too.",
+        "operationId": "admin_list_pages_api_v1_admin_wiki_pages_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminPageOut"
+                  },
+                  "title": "Response Admin List Pages Api V1 Admin Wiki Pages Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin List Pages",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/admin/wiki/pages/{page_id}": {
+      "delete": {
+        "description": "Administrators: empty a page in the trash (with what went with it) now. Audited.",
+        "operationId": "admin_purge_page_api_v1_admin_wiki_pages__page_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Purge Page",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/admin/wiki/pages/{page_id}/takeover": {
+      "post": {
+        "description": "Administrators: give myself full access to the page (audited as wiki.access_takeover).\nnull when the page is in the trash.",
+        "operationId": "admin_takeover_page_api_v1_admin_wiki_pages__page_id__takeover_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PageOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Admin Takeover Page Api V1 Admin Wiki Pages  Page Id  Takeover Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Takeover Page",
+        "tags": [
+          "wiki"
         ]
       }
     },
@@ -26117,6 +28272,203 @@
         ]
       }
     },
+    "/api/v1/search/pages": {
+      "get": {
+        "description": "M120 (docs/WIKI.md §8.1): wiki pages I can read whose title, body or properties match\n(Japanese and English, the same query syntax; in:<page title> narrows to a subtree), with an\nexcerpt. Pages I cannot read are never counted.",
+        "operationId": "search_pages_api_v1_search_pages_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "This page and the pages below it",
+            "in": "query",
+            "name": "in_page",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "This page and the pages below it",
+              "title": "In Page"
+            }
+          },
+          {
+            "description": "The page's creator or its last editor",
+            "in": "query",
+            "name": "from_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The page's creator or its last editor",
+              "title": "From User Id"
+            }
+          },
+          {
+            "description": "Updated at or after",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Updated at or after",
+              "title": "After"
+            }
+          },
+          {
+            "description": "Updated before",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Updated before",
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "page",
+                    "database",
+                    "row"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "relevance",
+              "enum": [
+                "relevance",
+                "newest"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz_offset_minutes",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 840,
+              "minimum": -840,
+              "title": "Tz Offset Minutes",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageSearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Search Pages",
+        "tags": [
+          "search"
+        ]
+      }
+    },
     "/api/v1/server": {
       "get": {
         "operationId": "server_info_api_v1_server_get",
@@ -28349,6 +30701,1204 @@
         "summary": "Block User",
         "tags": [
           "moderation"
+        ]
+      }
+    },
+    "/api/v1/wiki/changes": {
+      "get": {
+        "description": "The tree's changes after `since` (SYNC_PROTOCOL.md §17): pages I can read that changed,\nand ids to drop. `reset`: read GET /wiki/tree again.",
+        "operationId": "wiki_changes_api_v1_wiki_changes_get",
+        "parameters": [
+          {
+            "description": "The last cursor",
+            "in": "query",
+            "name": "since",
+            "required": true,
+            "schema": {
+              "description": "The last cursor",
+              "minimum": 0,
+              "title": "Since",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Wiki Changes",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages": {
+      "post": {
+        "description": "A new page: under a page I can edit, or (not guests) at the top level with `access`.",
+        "operationId": "create_page_api_v1_wiki_pages_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOut"
+                }
+              }
+            },
+            "description": "A retry: the page made before"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Page",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/lookup": {
+      "get": {
+        "description": "The `[[` suggestions: pages I can read whose title contains `q`.",
+        "operationId": "lookup_pages_api_v1_wiki_pages_lookup_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PageRef"
+                  },
+                  "title": "Response Lookup Pages Api V1 Wiki Pages Lookup Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lookup Pages",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/resolve": {
+      "post": {
+        "description": "Titles for `page:` links: only the pages I can read (the others: 「表示できないページ」).",
+        "operationId": "resolve_pages_api_v1_wiki_pages_resolve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PageRef"
+                  },
+                  "title": "Response Resolve Pages Api V1 Wiki Pages Resolve Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve Pages",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/{page_id}": {
+      "delete": {
+        "description": "To the trash with everything below it (full access; 30 days).",
+        "operationId": "trash_page_api_v1_wiki_pages__page_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trash Page",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "get": {
+        "description": "The page with its body, head_rev_id, my level, breadcrumbs and child pages. ETag is the\nversion and my level.",
+        "operationId": "get_page_api_v1_wiki_pages__page_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "If-None-Match matched the version (ETag)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Page",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "patch": {
+        "description": "Title and icon (edit level).",
+        "operationId": "update_page_api_v1_wiki_pages__page_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Page",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/{page_id}/access": {
+      "get": {
+        "description": "Who has access: the page's own entries and the effective ones with where they come from.",
+        "operationId": "get_page_access_api_v1_wiki_pages__page_id__access_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Page Access",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "put": {
+        "description": "Replace the page's own entries and inherit_access (full access, not guests). 409\npage_last_manager when nobody could manage it afterwards.",
+        "operationId": "set_page_access_api_v1_wiki_pages__page_id__access_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Page Access",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/{page_id}/backlinks": {
+      "get": {
+        "description": "Pages I can read whose body links here.",
+        "operationId": "page_backlinks_api_v1_wiki_pages__page_id__backlinks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PageItem"
+                  },
+                  "title": "Response Page Backlinks Api V1 Wiki Pages  Page Id  Backlinks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Page Backlinks",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/{page_id}/content": {
+      "put": {
+        "description": "Save the whole body written on `base_rev_id` (as a canvas, CANVAS.md §4.4); edit level.\n409 page_conflict / page_base_expired.",
+        "operationId": "save_page_content_api_v1_wiki_pages__page_id__content_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageContentSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageSaveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageConflictResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Page Content",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/{page_id}/export": {
+      "get": {
+        "operationId": "export_page_api_v1_wiki_pages__page_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A ZIP with the pages below I can read",
+            "in": "query",
+            "name": "subtree",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "A ZIP with the pages below I can read",
+              "title": "Subtree",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {},
+              "text/markdown": {}
+            },
+            "description": "The page as Markdown, or with subtree=true a ZIP"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Page",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/{page_id}/move": {
+      "post": {
+        "description": "Move under another page or to the top level (full here, edit there). `dry_run` says who\nwould gain or lose access; `keep_access` keeps it as it is.",
+        "operationId": "move_page_api_v1_wiki_pages__page_id__move_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageMove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move Page",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/{page_id}/restore": {
+      "post": {
+        "description": "Back from the trash with what went with it (full access).",
+        "operationId": "restore_page_api_v1_wiki_pages__page_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Page",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/{page_id}/revisions": {
+      "get": {
+        "operationId": "list_page_revisions_api_v1_wiki_pages__page_id__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageRevisionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Page Revisions",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/{page_id}/revisions/{revision_id}": {
+      "delete": {
+        "description": "Erase a version's body (full access). Audited.",
+        "operationId": "erase_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageRevisionMeta"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Erase Page Revision",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "get": {
+        "operationId": "get_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageRevisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Page Revision",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "patch": {
+        "operationId": "label_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageRevisionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageRevisionMeta"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Label Page Revision",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/pages/{page_id}/revisions/{revision_id}/restore": {
+      "post": {
+        "description": "That version's body as a new version (edit level).",
+        "operationId": "restore_page_revision_api_v1_wiki_pages__page_id__revisions__revision_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageRevisionRestore"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Page Revision",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/trash": {
+      "get": {
+        "description": "Pages in the trash (as the root of what went together) that I have full access to.",
+        "operationId": "wiki_trash_api_v1_wiki_trash_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PageMeta"
+                  },
+                  "title": "Response Wiki Trash Api V1 Wiki Trash Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Wiki Trash",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/tree": {
+      "get": {
+        "description": "Every page I can read (not database rows) with my level, and the change feed's cursor.\nThe ETag is a hash of the answer.",
+        "operationId": "wiki_tree_api_v1_wiki_tree_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "If-None-Match matched (ETag)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Wiki Tree",
+        "tags": [
+          "wiki"
         ]
       }
     },
