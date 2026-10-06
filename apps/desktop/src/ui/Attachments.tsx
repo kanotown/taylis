@@ -136,7 +136,9 @@ function Thumbnail({ attachment, controller, square = false }: { attachment: Att
         onClick={() => setOpen(true)}
       >
         {url ? (
-          <img src={url} alt={attachment.filename} onError={onError} className={cn("block object-cover", square || box ? "h-full w-full" : "max-h-60 max-w-72")} />
+          // The picture is rounded too (the frame's inner radius): its right corners showed square on a single photo
+          // where the frame's clip did not reach them (2026-10-06); the tiles of a row look the same.
+          <img src={url} alt={attachment.filename} onError={onError} className={cn("block rounded-[11px] object-cover", square || box ? "h-full w-full" : "max-h-60 max-w-72")} />
         ) : (
           <span role="status" aria-label={t("attach.loadingImage")} className={cn("flex items-center justify-center text-muted", square || box ? "h-full w-full" : "h-24 w-40")}>
             <Loader2 size={18} className="animate-spin" />
