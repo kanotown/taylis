@@ -301,6 +301,11 @@
       "en": "This server only allows sign-in with Google accounts of approved universities and organizations.",
       "zh-Hans": "此服务器只允许使用获准的大学或组织的 Google 账号登录。"
     },
+    "duplicate_page_grant": {
+      "ja": "同じ相手が共有設定に 2 回入っています",
+      "en": "The same person or group appears twice in the sharing settings.",
+      "zh-Hans": "同一个人或群组在共享设置中出现了两次。"
+    },
     "email_domain_reserved": {
       "ja": "このドメインのメールアドレスは Google でのログインで登録されます。自分では設定できません",
       "en": "Email addresses of this domain are registered through Google sign-in. You can't set one yourself.",
@@ -506,6 +511,21 @@
       "en": "Reload the list.",
       "zh-Hans": "请重新加载列表。"
     },
+    "invalid_page_icon": {
+      "ja": "アイコンは絵文字 1 つかカスタム絵文字にしてください",
+      "en": "The icon must be one emoji or a custom emoji.",
+      "zh-Hans": "图标必须是一个表情符号或自定义表情。"
+    },
+    "invalid_page_parent": {
+      "ja": "この中にはページを作れません",
+      "en": "Pages can't be created here.",
+      "zh-Hans": "无法在此处创建页面。"
+    },
+    "invalid_page_position": {
+      "ja": "並べる位置のページが同じ親の下にありません。読み直してからやり直してください",
+      "en": "The page to place it next to is not under the same parent. Reload and try again.",
+      "zh-Hans": "要放在其旁边的页面不在同一父页面下。请刷新后重试。"
+    },
     "invalid_parent": {
       "ja": "スレッドの元のメッセージが正しくありません",
       "en": "The thread's parent message is invalid.",
@@ -625,6 +645,61 @@
       "ja": "ゲストとボットはオーナーにできません",
       "en": "Guests and bots can't be owners.",
       "zh-Hans": "访客和机器人不能成为所有者。"
+    },
+    "page_base_expired": {
+      "ja": "編集の元にした版がなくなりました。今の版と見比べてください",
+      "en": "The version you edited from is gone. Compare with the current version.",
+      "zh-Hans": "你编辑时所基于的版本已不存在。请与当前版本进行比较。"
+    },
+    "page_conflict": {
+      "ja": "ほかの人が同じ箇所を変更しました。どちらを残すか選んでください",
+      "en": "Someone else changed the same part. Choose which to keep.",
+      "zh-Hans": "其他人修改了同一处。请选择保留哪一个。"
+    },
+    "page_edit_restricted": {
+      "ja": "このページは閲覧だけできます。編集するには編集の権限が必要です",
+      "en": "You can only view this page. Editing needs edit access.",
+      "zh-Hans": "你只能查看此页面。编辑需要编辑权限。"
+    },
+    "page_last_manager": {
+      "ja": "フルアクセスの人（ゲスト以外）が 1 人は残るようにしてください",
+      "en": "At least one person (not a guest) must keep full access.",
+      "zh-Hans": "至少需要保留一位拥有完全访问权限的人（访客除外）。"
+    },
+    "page_manage_restricted": {
+      "ja": "この操作にはこのページのフルアクセスが必要です",
+      "en": "This needs full access to the page.",
+      "zh-Hans": "此操作需要该页面的完全访问权限。"
+    },
+    "page_not_found": {
+      "ja": "ページが見つかりません（共有されていないか、削除されました）",
+      "en": "Page not found (it is not shared with you, or it was deleted).",
+      "zh-Hans": "找不到页面（未与你共享或已被删除）。"
+    },
+    "page_revision_erased": {
+      "ja": "この版の本文は消去されています",
+      "en": "This version's text was erased.",
+      "zh-Hans": "此版本的正文已被清除。"
+    },
+    "page_revision_is_head": {
+      "ja": "今の版は消去できません。先に本文を変更してください",
+      "en": "The current version can't be erased. Change the text first.",
+      "zh-Hans": "无法清除当前版本。请先修改正文。"
+    },
+    "page_revision_not_found": {
+      "ja": "版が見つかりません",
+      "en": "Version not found.",
+      "zh-Hans": "找不到该版本。"
+    },
+    "page_too_large": {
+      "ja": "ページの本文は 100,000 文字までです",
+      "en": "A page can hold up to 100,000 characters.",
+      "zh-Hans": "页面正文最多 100,000 个字符。"
+    },
+    "page_trashed_with_parent": {
+      "ja": "このページは親のページと一緒にゴミ箱に入っています。親のページを戻してください",
+      "en": "This page went to the trash with its parent page. Restore the parent page.",
+      "zh-Hans": "此页面与其父页面一起被移入回收站。请恢复父页面。"
     },
     "password_change_required": {
       "ja": "パスワードを変更してください",
@@ -1086,6 +1161,11 @@
       "en": "Too many members.",
       "zh-Hans": "成员太多。"
     },
+    "too_many_page_files": {
+      "ja": "1 つのページに入れられる画像とファイルは 200 個までです",
+      "en": "A page can hold up to 200 images and files.",
+      "zh-Hans": "一个页面最多可包含 200 个图片和文件。"
+    },
     "too_many_recurring_posts": {
       "ja": "1 つのチャンネルの定期投稿は 20 件までです",
       "en": "A channel can have up to 20 recurring posts.",
@@ -1180,6 +1260,16 @@
       "ja": "Webhook が見つかりません",
       "en": "Webhook not found.",
       "zh-Hans": "找不到 Webhook。"
+    },
+    "wiki_move_cycle": {
+      "ja": "ページを自分自身やその下のページの下へは移動できません",
+      "en": "A page can't be moved under itself or its own subpages.",
+      "zh-Hans": "不能将页面移动到其自身或其子页面之下。"
+    },
+    "wiki_too_deep": {
+      "ja": "ページの入れ子は 20 段までです",
+      "en": "Pages can be nested up to 20 levels deep.",
+      "zh-Hans": "页面最多可嵌套 20 层。"
     },
     "workflow_channel_unsupported": {
       "ja": "ワークフローはダイレクトメッセージでは使えません",

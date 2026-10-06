@@ -89,6 +89,9 @@ from app.modules.times_feed.router import router as times_feed_router
 from app.modules.totp.router import router as totp_router
 from app.modules.users.router import router as users_router
 from app.modules.webhooks.router import router as webhooks_router
+from app.modules.wiki import events as wiki_events
+from app.modules.wiki import service as wiki
+from app.modules.wiki.router import router as wiki_router
 from app.modules.workflows.router import router as workflows_router
 from app.modules.workspace import service as workspace
 from app.modules.workspace.router import router as workspace_router
@@ -155,6 +158,19 @@ async def _purge_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     "canvases: %d versions pruned, %d purged from the trash, %d images released",
                     pruned,
                     purged_canvases,
+                    released,
+                )
+            async with app.state.db.session_factory() as session:
+                # M120 (docs/WIKI.md §3.2, §7.2): wiki versions thinned, the trash purged after 30
+                # days, files no version refers to let go, old tombstones of the change feed.
+                pruned, purged_pages, released = await wiki.housekeeping(
+                    session, now=utcnow(), trash_days=settings.canvas_trash_retention_days
+                )
+            if pruned or purged_pages or released:
+                log.info(
+                    "wiki: %d versions pruned, %d pages purged from the trash, %d files released",
+                    pruned,
+                    purged_pages,
                     released,
                 )
             async with app.state.db.session_factory() as session:
@@ -445,6 +461,7 @@ def build_api_router() -> APIRouter:
     api.include_router(drafts_router)
     api.include_router(channel_links_router)
     api.include_router(canvases_router)
+    api.include_router(wiki_router)
     api.include_router(calendar_router)
     api.include_router(tasks_router)
     api.include_router(scheduled_router)
@@ -501,6 +518,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # M80 (CANVAS.md §22): a box ticked on an item made a task moves that task; tasks depends on
     # canvases (not the other way round), so the canvas service gets the step here.
     canvases.set_task_ticks_handler(tasks_service.follow_canvas_ticks)
+    # M120 (docs/WIKI.md §4.7): a wiki page's files are read by whoever can read the page; the
+    # wiki depends on attachments, so the check is handed over here.
+    attachments_service.set_page_access_check(wiki.can_read)
     # M65: an AI bot without allow_private stays out of private channels and DMs; channels does
     # not depend on ai, so its router gets the check here.
     app.state.ai_private_guard = ai_service.check_private_allowed
@@ -578,7 +598,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.relay = OutboxRelay(
         app.state.db,
         app.state.bus,
-        channels_service.resolve_event_audience,
+        # M120: the wiki's audience `page` (who can read it when sent), then the channels'.
+        wiki_events.audience_resolver(channels_service.resolve_event_audience),
         handlers=[
             planner,
             calendar.CalendarLeaveHandler(),

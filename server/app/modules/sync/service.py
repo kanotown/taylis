@@ -31,6 +31,7 @@ from app.modules.threads import service as threads
 from app.modules.users import service as users
 from app.modules.users.models import User
 from app.modules.users.schemas import to_user_me, to_user_public
+from app.modules.wiki import service as wiki
 from app.modules.workspace import service as workspace
 
 
@@ -93,6 +94,7 @@ async def bootstrap(
         activity=await activity.summary(db, actor, activity_include),
         workspace_settings=await workspace.settings(db),
         blocked_user_ids=await blocks.blocked_ids_of(db, actor.id),
+        wiki=await wiki.bootstrap(db),
         presence=[
             PresenceEntry(user_id=user_id, status=status)  # type: ignore[arg-type]
             for user_id, status in presence

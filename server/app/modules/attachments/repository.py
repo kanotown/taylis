@@ -50,6 +50,25 @@ async def for_canvases(db: AsyncSession, canvas_ids: list[uuid.UUID]) -> list[At
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def for_pages(db: AsyncSession, page_ids: list[uuid.UUID]) -> list[Attachment]:
+    """Every attachment bound to these wiki pages (any status but deleted)."""
+    if not page_ids:
+        return []
+    stmt = select(Attachment).where(
+        Attachment.page_id.in_(page_ids), Attachment.status != "deleted"
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def count_for_page(db: AsyncSession, page_id: uuid.UUID) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(Attachment)
+        .where(Attachment.page_id == page_id, Attachment.status == "attached")
+    )
+    return int((await db.execute(stmt)).scalar_one())
+
+
 async def count_for_canvas(db: AsyncSession, canvas_id: uuid.UUID) -> int:
     stmt = (
         select(func.count())

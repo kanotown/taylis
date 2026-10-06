@@ -13,6 +13,9 @@ from app.modules.moderation.blocks import not_blocked_by
 from app.modules.reads.models import ReadState
 from app.modules.reservations.repository import unread_notices
 from app.modules.threads.models import ThreadFollow
+from app.modules.users.models import User
+from app.modules.wiki.access import readable_clause
+from app.modules.wiki.models import WikiNotice, WikiPage
 
 # Unread items counted up to this many (the badge shows 99+).
 UNREAD_CAP = 99
@@ -135,6 +138,49 @@ async def canvas_mentions(
     if before is not None:
         stmt = stmt.where(CanvasMention.at < before)
     return [(row[0], row[1]) for row in (await db.execute(stmt)).all()]
+
+
+def _page_notices(actor: User, kinds: list[str]):  # type: ignore[no-untyped-def]
+    """M120 (docs/WIKI.md §9.3): my wiki notices of these kinds, of live pages I can still read
+    (one taken away since is not listed: its title stays hidden)."""
+    return (
+        select(WikiNotice, WikiPage)
+        .join(WikiPage, WikiPage.id == WikiNotice.page_id)
+        .where(
+            WikiNotice.user_id == actor.id,
+            WikiNotice.kind.in_(kinds),
+            WikiPage.deleted_at.is_(None),
+            readable_clause(actor, WikiPage.id),
+        )
+    )
+
+
+async def page_notices(
+    db: AsyncSession, actor: User, kinds: list[str], *, before: datetime | None, limit: int
+) -> list[tuple[WikiNotice, WikiPage]]:
+    if not kinds:
+        return []
+    stmt = _page_notices(actor, kinds).order_by(WikiNotice.at.desc()).limit(limit)
+    if before is not None:
+        stmt = stmt.where(WikiNotice.at < before)
+    return [(row[0], row[1]) for row in (await db.execute(stmt)).all()]
+
+
+async def unread_page_notices(
+    db: AsyncSession, actor: User, kinds: list[str], since: datetime
+) -> int:
+    if not kinds:
+        return 0
+    count = await db.scalar(
+        select(func.count()).select_from(
+            _page_notices(actor, kinds)
+            .with_only_columns(WikiNotice.id)
+            .where(WikiNotice.at > since)
+            .limit(UNREAD_CAP)
+            .subquery()
+        )
+    )
+    return int(count or 0)
 
 
 async def mentions(

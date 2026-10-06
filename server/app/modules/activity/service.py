@@ -17,6 +17,7 @@ from app.modules.activity.schemas import (
     ActivityFilter,
     ActivityItem,
     ActivityListOut,
+    ActivityPage,
     ActivityReadData,
     ActivityReservation,
     ActivitySummaryOut,
@@ -25,6 +26,16 @@ from app.modules.messages.models import Message
 from app.modules.messages.service import messages_out
 from app.modules.reservations import repository as reservations_repo
 from app.modules.users.models import User
+
+# M120 (docs/WIKI.md §9.3): the wiki's kinds by the name a client asks for them, and the notice
+# kind each one is.
+PAGE_KINDS = {"page_mention": "mention", "page_shared": "shared"}
+
+
+def _page_kinds(include: Collection[str], kind: str) -> list[str]:
+    if kind not in ("all", "mentions"):
+        return []
+    return [notice for name, notice in PAGE_KINDS.items() if name in include]
 
 
 def _item_key(item: ActivityItem) -> tuple[datetime, str, str]:
@@ -36,6 +47,8 @@ def _item_key(item: ActivityItem) -> tuple[datetime, str, str]:
         ref = item.canvas.item_id
     elif item.reservation:
         ref = item.reservation.item_id
+    elif item.page:
+        ref = item.page.item_id
     return item.at, item.kind, str(ref)
 
 
@@ -71,6 +84,26 @@ async def list_activity(
                     read=row.at <= read_at,
                 )
             )
+    for page_notice, wiki_page in await repo.page_notices(
+        db, actor, _page_kinds(include, kind), before=cursor, limit=limit
+    ):
+        items.append(
+            ActivityItem(
+                kind="page_mention" if page_notice.kind == "mention" else "page_shared",
+                at=page_notice.at,
+                page=ActivityPage(
+                    item_id=page_notice.id,
+                    page_id=wiki_page.id,
+                    title=wiki_page.title,
+                    icon=wiki_page.icon,
+                    excerpt=page_notice.excerpt,
+                    rev_id=page_notice.rev_id,
+                    level=page_notice.level,  # type: ignore[arg-type]
+                ),
+                actor_ids=[page_notice.actor_id] if page_notice.actor_id else [],
+                read=page_notice.at <= read_at,
+            )
+        )
     if "reservation" in include and kind == "all":
         for notice, pool_name in await reservations_repo.notices_for(
             db, actor.id, before=cursor, limit=limit
@@ -162,8 +195,14 @@ async def summary(
         canvas="canvas_mention" in include,
         reservation="reservation" in include,
     )
+    # M120: wiki notices are addressed to me, so they count as mentions (the red badge).
+    pages = await repo.unread_page_notices(
+        db, actor, _page_kinds(include, "all"), actor.activity_read_at
+    )
     return ActivitySummaryOut(
-        read_at=actor.activity_read_at, unread_count=count, mention_unread=mention
+        read_at=actor.activity_read_at,
+        unread_count=min(count + pages, repo.UNREAD_CAP),
+        mention_unread=mention or pages > 0,
     )
 
 

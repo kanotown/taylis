@@ -14,6 +14,7 @@ from app.modules.sidebar.schemas import SidebarDefaultOut, SidebarSectionOut
 from app.modules.templates.schemas import TemplateOut
 from app.modules.threads.schemas import ThreadSummary
 from app.modules.users.schemas import UserMe, UserPublic
+from app.modules.wiki.schemas import WikiBootstrap
 from app.modules.workspace.schemas import WorkspaceSettingsOut
 
 
@@ -70,6 +71,9 @@ class BootstrapOut(BaseModel):
     # M104: the people I blocked (docs/MODERATION.md §4), oldest first; changes arrive as
     # block.updated. Their messages fold away and they never notify me.
     blocked_user_ids: list[UUID] = []
+    # M120 (docs/WIKI.md §10): the wiki's change feed position (the tree is GET /wiki/tree);
+    # absent from a server without the wiki.
+    wiki: WikiBootstrap | None = None
 
 
 class UnreadSummaryOut(BaseModel):

@@ -30,6 +30,7 @@ from app.modules.tasks import events as task_events
 from app.modules.templates import events as template_events
 from app.modules.threads import events as thread_events
 from app.modules.users import events as user_events
+from app.modules.wiki import events as wiki_events
 from app.modules.workspace import events as workspace_events
 from app.realtime.protocol import (
     CLOSE_AUTH_FAILED,
@@ -86,6 +87,15 @@ EVENT_CATALOG: dict[str, tuple[type[BaseModel], str, bool]] = {
     canvas_events.CANVAS_UPDATED: (canvas_events.CanvasUpdatedData, "channel", False),
     canvas_events.CANVAS_DELETED: (canvas_events.CanvasDeletedData, "channel", False),
     canvas_events.CANVAS_MENTIONED: (canvas_events.CanvasMentionedData, "user", False),
+    # M120 (docs/WIKI.md §10, SYNC_PROTOCOL.md §17).
+    wiki_events.WIKI_CHANGED: (wiki_events.WikiChangedData, "all", False),
+    wiki_events.WIKI_PAGE_UPDATED: (
+        wiki_events.WikiPageUpdatedData,
+        "page (who can read it when sent)",
+        False,
+    ),
+    wiki_events.WIKI_MENTIONED: (wiki_events.WikiMentionedData, "user (a reader)", False),
+    wiki_events.WIKI_SHARED: (wiki_events.WikiSharedData, "user (a reader)", False),
     calendar_events.CALENDAR_EVENT_UPDATED: (
         calendar_events.CalendarEventUpdatedData,
         "channel (a personal event: user)",

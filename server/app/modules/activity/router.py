@@ -20,7 +20,7 @@ Include = Query(
     default=[],
     description=(
         "Extra kinds this client shows (repeat for several): canvas_mention (M76), "
-        "reservation (M112). "
+        "reservation (M112), page_mention and page_shared (M120). "
         "Unknown values are ignored."
     ),
 )

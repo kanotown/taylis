@@ -31,6 +31,7 @@ from app.modules.users.events import (
     emit_user_event,
 )
 from app.modules.users.models import User
+from app.modules.wiki import service as wiki
 from app.modules.workspace import default_channels
 
 log = logging.getLogger("app.admin")
@@ -330,6 +331,8 @@ async def anonymize_in_tx(
     await totp.remove_in_tx(db, user.id)
     await sso_repo.forget_user_in_tx(db, user.id)  # M48: Google no longer signs in as it
     await lab.forget_in_tx(db, admin, user.id)  # the roster line, research topic included (M23)
+    # M120 (docs/WIKI.md §4.5): pages shared with the person by name no longer name them.
+    await wiki.remove_user_grants_in_tx(db, user.id)
     # M104: the person's own block list is theirs; blocks of them by others stay (harmless).
     await db.execute(delete(UserBlock).where(UserBlock.blocker_id == user.id))
     await emit_user_event(db, USER_DEACTIVATED, user)

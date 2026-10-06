@@ -19,7 +19,7 @@ class OutboxEvent(Base):
     event_type: Mapped[str] = mapped_column(String(64))
     channel_id: Mapped[uuid.UUID | None]
     seq: Mapped[int | None] = mapped_column(BigInteger)
-    audience_type: Mapped[str] = mapped_column(String(16))  # channel | user | session | all
+    audience_type: Mapped[str] = mapped_column(String(16))  # channel | user | session | all | page
     audience_id: Mapped[uuid.UUID | None]
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
