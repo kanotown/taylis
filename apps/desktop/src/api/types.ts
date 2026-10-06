@@ -36,6 +36,9 @@ export type WorkspaceSettingsOut = Omit<ServerWorkspaceSettings, CallSettingsFie
 export type AdminWorkspaceSettingsOut = Omit<ServerAdminWorkspaceSettings, CallSettingsFields> & Partial<Pick<ServerAdminWorkspaceSettings, CallSettingsFields>>;
 /** M118: a server before it sends no `dm_pins` (no pins, and the pin actions are not offered). */
 export type BootstrapOut = Omit<components["schemas"]["BootstrapOut"], "dm_pins" | "workspace_settings"> & { dm_pins?: string[]; workspace_settings?: WorkspaceSettingsOut | null };
+/** M117 (docs/CALLS.md §4): POST /channels/{id}/calls; `message.call` is the call's link and who started it. */
+export type CallOut = components["schemas"]["CallOut"];
+export type MessageCallOut = components["schemas"]["MessageCallOut"];
 export type WorkspaceSettingsUpdate = components["schemas"]["WorkspaceSettingsUpdate"];
 /** M90 (docs/MEMBERSHIP.md §6): 「今いる人も全員入れる」, counted (dry run) or done. */
 export type DefaultChannelsApplyOut = components["schemas"]["DefaultChannelsApplyOut"];

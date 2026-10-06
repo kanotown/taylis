@@ -23,6 +23,7 @@ const ALLOWED = [
   ["src/ui/commands.ts", '"明日"', "accepted input word next to 'tomorrow'"],
   ["src/ui/commands.ts", "SHRUG", "the shrug kaomoji (ツ) is the content"],
   ["src/ui/WorkspaceSettingsTab.tsx", "SUGGESTED_DEFAULTS", "names of channels created for a Japanese lab, not UI"],
+  ["src/ui/Calls.tsx", "通話を始めました\\n", "the server's call body (docs/CALLS.md §5), matched, not shown"],
   ["src/ui/canvasDiff.ts", "const WORD", PATTERN],
   ["src/ui/customEmoji.tsx", "text.split", PATTERN],
   ["src/ui/emoji.ts", "QUERY_TAIL", PATTERN],

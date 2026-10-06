@@ -6,6 +6,7 @@ import type { ActivityItem, ChannelLinkOut, MessageOut } from "../api/types";
 import { canEditLinks, ChannelLinkDialog, ChannelLinksBar } from "./ChannelLinks";
 import type { ChannelState, NotificationLevel, ThreadEntry } from "../sync/types";
 import { canMakePublic, canPostTopLevel, conversationTitle, effectiveNotificationLevel, FOLLOW_DEFAULT, hasUnread, isDmChannel, isMutedChannel, myName, notificationChoices, overallLevel, sectionChannels, stepChannel } from "./channels";
+import { CallButton, canStartCall } from "./Calls";
 import { Composer } from "./Composer";
 import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
 import { AddMemberDialog, MembersDialog, NewChannelDialog, NewDmDialog, RenameChannelDialog, ShortcutsDialog, TopicDialog } from "./Dialogs";
@@ -1307,6 +1308,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
               )}
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
+              {/* M117: 📞 stays on a phone too (one tap from 「今から話そう」). */}
+              {canStartCall(controller, current) && <CallButton key={current.id} controller={controller} channel={current} />}
               {/* A phone keeps the bell and the ⋯ menu; the rest of these move into that menu. */}
               {current.isMember && !compact && (
                 <>

@@ -984,6 +984,25 @@ export class AppController {
     return this.sidebarChange((api) => (sectionId ? api.placeInSidebarSection(sectionId, channelId) : api.removeFromSidebarSection(channelId)));
   }
 
+  /**
+   * M117 「通話を始める」 (docs/CALLS.md §7): posts the call and returns the room's URL, or null when refused (the error
+   * shown). The caller keeps `clientMsgId` for a retry, so a lost answer never starts a second call. 409 calls_disabled
+   * (turned off while this device missed the event) hides 📞 at once; the next settings event or bootstrap confirms.
+   */
+  async startCall(channelId: string, clientMsgId: string): Promise<string | null> {
+    if (!this.api) return null;
+    try {
+      const { call, created } = await this.api.startCall(channelId, clientMsgId);
+      if (created && this.engine) this.engine.postedFromHere(call.message);
+      else this.store.upsertMessage(call.message);
+      return call.url;
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "calls_disabled") this.store.setWorkspaceSettings({ ...this.store.workspaceSettings, calls_enabled: false });
+      this.setError(error);
+      return null;
+    }
+  }
+
   /** M12a: a starred channel; the store flag moves at once, favorite.updated confirms on every device. */
   async toggleFavorite(channelId: string): Promise<void> {
     if (!this.api) return;
@@ -1894,7 +1913,13 @@ export class AppController {
         // A DM is titled by its sender; a channel or group DM by the conversation, with the sender before the text. A
         // click shows the message in its conversation (a reply: in its thread), in its own workspace.
         const open = () => void this.openFromNotification(session.serverUrl, () => this.revealMessage(message));
-        if (channel.type === "dm") void notify(this.notificationTitle(session, sender), text, open);
+        // M117 (docs/CALLS.md §6): a call reads like the server's push, the name in the text (the room is not in it).
+        if (message.call) {
+          const title = channel.type === "dm" ? sender : conversationTitle(channel, store.users, store.me?.id ?? null);
+          void notify(this.notificationTitle(session, title), `📞 ${t("call.started", { name: sender })}`, open);
+          return;
+        }
+        if (channel.type === "dm")void notify(this.notificationTitle(session, sender), text, open);
         else void notify(this.notificationTitle(session, conversationTitle(channel, store.users, store.me?.id ?? null)), `${sender}: ${text}`, open);
       },
       // M39: a reaction to my message, only when I asked for reaction banners (the engine checks that and the
