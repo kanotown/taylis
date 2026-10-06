@@ -14,6 +14,7 @@ import {
   activeText,
   bookingDays,
   dayLabel,
+  dueTodos,
   durationChoices,
   durationDefault,
   hourCounts,
@@ -173,6 +174,13 @@ describe("the helpers", () => {
     expect(todoLine(todos[1]!, withTodos, name, NOW)).toBe("12:00 から：ボブ さん を外して アリス さん に割り当てる（保証時間が終了） · 予約 12:00〜15:00");
     expect(reservationTodoCount([withTodos])).toBe(1);
     expect(reservationTodoCount(null)).toBe(0);
+    // A returned seat (or a booking's time over) with nobody waiting: listed, not counted (RESERVATIONS.md §6).
+    const remove: TodoOut = { key: "remove:h1", action: "remove", reason: "returned", assign_id: null, remove_id: "h1", due_at: NOW.toISOString(), upcoming: false };
+    const swap: TodoOut = { key: "swap:h1:q1", action: "swap", reason: "returned", assign_id: "q1", remove_id: "h1", due_at: NOW.toISOString(), upcoming: false };
+    expect(reservationTodoCount([{ ...withTodos, todos: [...todos, remove] }])).toBe(1);
+    expect(reservationTodoCount([{ ...withTodos, todos: [remove] }])).toBe(0);
+    expect(reservationTodoCount([{ ...withTodos, todos: [remove, swap] }, { ...withTodos, todos: [todos[0]!] }])).toBe(2);
+    expect(dueTodos({ ...withTodos, todos: [...todos, remove] }).map((todo) => todo.key)).toEqual(["assign:q1", "remove:h1"]);
     expect(poolFormProblem({ name: "x", capacity: "3", maxHours: "25", minHours: "6", graceMinutes: "15" })).toMatch("予約の最長");
     expect(poolFormProblem({ name: "x", capacity: "3", maxHours: "6", minHours: "6", graceMinutes: "15" })).toBeNull();
   });
