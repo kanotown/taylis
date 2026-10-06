@@ -39,7 +39,7 @@ it("moves between rows in the same list and never intercepts text or action cont
 
 it("cycles visible regions in both directions without leaving a modal", () => {
   vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue([{}] as unknown as DOMRectList);
-  render(<><nav data-chat-focus><button>channels</button></nav><div data-chat-focus><article className="message" tabIndex={0}>message</article></div><div className="composer"><textarea aria-label="composer" /></div><div data-chat-focus style={{ visibility: "hidden" }}><button>hidden</button></div><div role="dialog"><button>modal</button></div></>);
+  render(<><nav data-chat-focus><button>channels</button></nav><div data-chat-focus><article className="message" tabIndex={0}>message</article></div><div className="composer"><textarea aria-label="composer" data-composer-input /></div><div data-chat-focus style={{ visibility: "hidden" }}><button>hidden</button></div><div role="dialog"><button>modal</button></div></>);
   screen.getByText("channels").focus();
   expect(focusChatRegion(false)).toBe(true);
   expect(document.activeElement).toBe(screen.getByRole("article"));

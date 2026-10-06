@@ -295,6 +295,25 @@ body.workspace-dragging, body.workspace-dragging * { cursor: grabbing !important
 .body .mention { color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 3px; font-weight: 500; }
 mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1px; }
 
+/* The rich composer (RichEditor.tsx): drawn as the message will be (MessageBody), one paragraph per line. */
+.rich-editor { outline: none; min-height: 3rem; }
+.rich-editor p { margin: 0; }
+.rich-editor h1, .rich-editor h2, .rich-editor h3 { margin: 4px 0 0; font-weight: 700; line-height: 1.25; }
+.rich-editor h1 { font-size: 1.5rem; }
+.rich-editor h2 { font-size: 1.25rem; }
+.rich-editor h3 { font-size: 1.125rem; }
+.rich-editor blockquote { margin: 4px 0; border-left: 3px solid var(--line); padding-left: 12px; color: var(--muted-fg); }
+.rich-editor ul, .rich-editor ol { margin: 2px 0; padding-left: 1.5rem; }
+.rich-editor ul { list-style-type: disc; }
+.rich-editor ul ul { list-style-type: circle; }
+.rich-editor ul ul ul { list-style-type: square; }
+.rich-editor ol { list-style-type: decimal; }
+.rich-editor ol ol { list-style-type: lower-alpha; }
+.rich-editor ol ol ol { list-style-type: lower-roman; }
+.rich-editor pre.rich-raw { font-size: 0.85em; color: var(--muted-fg); }
+.rich-editor a { cursor: text; }
+.rich-editor p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--muted-fg); float: left; height: 0; pointer-events: none; }
+
 /* Highlight of a message revealed from search */
 @keyframes message-highlight { from { background: var(--mark); } to { background: transparent; } }
 .message.highlighted { animation: message-highlight 3s ease-out; }

@@ -109,6 +109,17 @@ export function writePaneWidth(value: number): void {
   write(PANE_WIDTH, String(Math.round(value)));
 }
 
+/**
+ * The composer's mode, a per-user setting synced through the server (UserMe.composer_mode): "rich" is the WYSIWYG
+ * editor (RichEditor.tsx), "markdown" the plain text area. Both write the same Markdown body. Never chosen (null) =
+ * rich.
+ */
+export type ComposerMode = "rich" | "markdown";
+
+export function composerModeOf(me: { composer_mode?: string | null } | null | undefined): ComposerMode {
+  return me?.composer_mode === "markdown" ? "markdown" : "rich";
+}
+
 /** True when this keyboard event should send, given the preference. */
 export function isSendKey(event: { key: string; shiftKey: boolean; metaKey?: boolean; ctrlKey?: boolean }, sendKey: SendKey): boolean {
   if (event.key !== "Enter") return false;

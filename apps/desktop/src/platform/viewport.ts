@@ -68,7 +68,7 @@ export function tapClosesKeyboard(win: Window = window) {
 export function keyboardUp(win: Window = window): boolean {
   if (!win.matchMedia?.("(hover: none)").matches) return false;
   const active = win.document.activeElement as HTMLElement | null;
-  return !!active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT");
+  return !!active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT" || active.isContentEditable);
 }
 
 /**

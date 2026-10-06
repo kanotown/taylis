@@ -1463,7 +1463,7 @@ export class FakeServer {
   /** UserMe as bootstrap and GET /users/me give it. */
   meOf(userId: string): UserMe {
     const user = this.users.get(userId)!;
-    return { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: this.notificationDefaults.get(userId) ?? "mentions", notify_reactions: this.notifyReactions.has(userId), notify_tasks: !this.tasksOff.has(userId), has_password: true, quick_reactions: this.quickReactions.get(userId) ?? null };
+    return { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: this.notificationDefaults.get(userId) ?? "mentions", notify_reactions: this.notifyReactions.has(userId), notify_tasks: !this.tasksOff.has(userId), has_password: true, quick_reactions: this.quickReactions.get(userId) ?? null, composer_mode: "markdown" }; // the text area: the rich composer has tests of its own
   }
 
   apiFor(userId: string): SyncApi & FakeCanvasApi & FakeAiApi & { failNext: (error: Error) => void; listActivity: (options: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => Promise<ActivityListOut>; sessions: () => Promise<SessionOut[]>; revokeSession: (sessionId: string) => Promise<void> } {

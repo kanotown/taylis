@@ -1,5 +1,5 @@
 import { ArrowDown, AtSign, Bookmark, BookmarkCheck, Hash, Lock, MessageSquare, MessagesSquare, MoreHorizontal, Pencil, Pin, SmilePlus } from "lucide-react";
-import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiClient } from "../api/client";
 import type { AppController } from "../state/app";
@@ -26,6 +26,7 @@ import { RevisionsDialog } from "./RevisionsDialog";
 import { ShareDialog } from "./ShareDialog";
 import { ReportDialog } from "./ModerationDialogs";
 import { isSendKey, sendKeyLabel } from "./prefs";
+import { isImeKey, LazyRichEditor, type RichEditorApi } from "./richEditorApi";
 import { Button, cn, HoverList, IconButton, Input, Kbd, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 import { hoverMenuGroups, type MessageActionKey, messageActions, rowFitsQuickReactions } from "./messageActions";
 import { EmojiText, StatusEmoji, UserPopover } from "./UserPopover";
@@ -1287,27 +1288,34 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   );
 });
 
-/** Inline editor: Enter saves, Esc cancels, focus returns to the composer afterwards. */
+/**
+ * Inline editor: Enter saves, Esc cancels, focus returns to the composer afterwards. In 「リッチ」 mode (users.composer_mode)
+ * the message opens in the rich editor (its Markdown read back into formats) and is saved as Markdown again.
+ */
 function MessageEditor({ controller, message }: { controller: AppController; message: MessageState }) {
   const store = controller.store;
   const [draft, setDraft] = useState(() => decodeMentions(message.body, store.users, store.groups));
   const composing = useRef(false);
+  const rich = (controller.composerMode ?? "markdown") === "rich";
+  const richApi = useRef<RichEditorApi | null>(null);
+  const composedAt = useRef(0);
+  const latest = useRef(draft);
+  latest.current = draft;
   const [saving, setSaving] = useState(false);
   const finish = () => {
     controller.setEditing(null);
-    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(".composer [data-composer-input]")?.focus());
   };
   // Codex audit C4: closed only once the server took the edit; a failure (offline) keeps the text and the editor open.
   const save = async () => {
-    const body = encodeMentions(draft.trim(), store.users.values(), store.groups.values());
+    const body = encodeMentions(latest.current.trim(), store.users.values(), store.groups.values());
     if (!body || body === message.body) return finish();
     setSaving(true);
     const saved = await controller.editMessage(message.id, body);
     setSaving(false);
     if (saved) finish();
   };
-  return (
-    <div className="mt-1 space-y-2">
+  const textArea = (
       <Textarea
         value={draft}
         rows={3}
@@ -1340,6 +1348,47 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
           }
         }}
       />
+  );
+  /** The rich editor's keys (never during an IME composition): Esc, the save key, Shift+Enter as its newline. */
+  const onRichKeyDown = (event: KeyboardEvent): boolean => {
+    const api = richApi.current;
+    if (!api || isImeKey(event, api.composing(), composedAt.current)) return false;
+    if (event.key === "Escape") {
+      finish();
+      return true;
+    }
+    if (event.key !== "Enter") return false;
+    const sendKey = controller.sendKey ?? "mod-enter";
+    if (isSendKey(event, sendKey)) {
+      if (sendKey === "enter" && api.inCodeBlock()) return false;
+      if (latest.current.trim() && !saving) void save();
+      return true;
+    }
+    return event.shiftKey || event.metaKey || event.ctrlKey ? api.newline() : false;
+  };
+  return (
+    <div className="mt-1 space-y-2">
+      {rich ? (
+        <Suspense fallback={textArea}>
+          <LazyRichEditor
+            value={draft}
+            apiRef={richApi}
+            ariaLabel={t("timeline.editMessage")}
+            autoFocus
+            className="max-h-[280px] overflow-y-auto rounded-lg border border-line bg-canvas px-3 py-2 text-[14.5px] leading-6 text-ink focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25"
+            onChange={(markdown) => {
+              latest.current = markdown;
+              setDraft(markdown);
+            }}
+            onKeyDown={onRichKeyDown}
+            onCompositionEnd={() => {
+              composedAt.current = Date.now();
+            }}
+          />
+        </Suspense>
+      ) : (
+        textArea
+      )}
       <div className="flex items-center gap-2">
         <Button size="sm" onClick={() => void save()} disabled={!draft.trim() || saving}>
           {saving ? t("common.saving") : t("common.save")}

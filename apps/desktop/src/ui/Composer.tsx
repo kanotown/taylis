@@ -1,6 +1,6 @@
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
 import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X, Zap } from "lucide-react";
-import { Fragment, type KeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, type KeyboardEvent, type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut, Priority, TemplateOut, WorkflowOut } from "../api/types";
 import type { AppController } from "../state/app";
@@ -18,6 +18,7 @@ import { completeEmoji, customEmojiCandidates, emojiCandidates, emojiQuery, type
 import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
 import { isSendKey, readFormatBar, sendKeyLabel, writeFormatBar } from "./prefs";
+import { isImeKey, LazyRichEditor, NO_FORMAT, type RichEditorApi, type RichFormat, type RichFormatState } from "./richEditorApi";
 import { scheduleLabel, schedulePresets, toLocalInput } from "./schedule";
 import { PollDialog } from "./PollDialog";
 import { ChannelWorkflowsDialog, useChannelWorkflows, WorkflowEmoji, WorkflowRunDialog } from "./WorkflowViews";
@@ -31,8 +32,6 @@ import { t } from "../i18n";
 const MAX_LENGTH = 20_000;
 /** Bold, italic, strikethrough, code, code block: always on the formatting bar. */
 const PRIMARY_TOOLS = 5;
-/** WebKit delivers the Enter that commits an IME composition after compositionend. */
-const IME_COMMIT_GRACE_MS = 100;
 
 export function Composer({
   controller,
@@ -94,9 +93,19 @@ export function Composer({
     if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, composerMaxHeight())}px`;
     if (box) box.style.minHeight = held;
   }, [text, preview, viewportHeight]);
-  const query = mentionQuery(text, caret);
+  // 「リッチ」 / 「Markdown」 (users.composer_mode, rich when never chosen); both keep the draft as Markdown. A controller
+  // without the setting (the tests' stand-ins) keeps the text area.
+  const rich = (controller.composerMode ?? "markdown") === "rich";
+  const richApi = useRef<RichEditorApi | null>(null);
+  // The rich editor's line up to the caret (mentions and emoji complete there) and the formats at the caret.
+  const [richContext, setRichContext] = useState<{ text: string; caret: number } | null>(null);
+  const [richFormat, setRichFormat] = useState<RichFormatState>(NO_FORMAT);
+  /** The rich editor once it has loaded (the text area stands in until then). */
+  const editor = () => (rich ? richApi.current : null);
+  const typed = rich && richApi.current ? richContext ?? { text: "", caret: 0 } : { text, caret };
+  const query = rich && richApi.current && !richContext ? null : mentionQuery(typed.text, typed.caret);
   // `:tada` completes to an emoji (M11f) when no mention is being typed.
-  const emojiAt = query ? null : emojiQuery(text, caret);
+  const emojiAt = query || (rich && richApi.current && !richContext) ? null : emojiQuery(typed.text, typed.caret);
   // Esc closes the candidate list for what is typed now (and goes no further: the screen's Esc would close the thread
   // or read the conversation); typing on shows it again.
   const listKey = query ? `@${query.start}:${query.query}` : emojiAt ? `:${emojiAt.start}:${emojiAt.query}` : `/${text}`;
@@ -128,6 +137,8 @@ export function Composer({
   const [scheduleForm, setScheduleForm] = useState<ScheduleFormInitial | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const send = () => {
+    // The draft as it is now: the rich editor writes it on every keystroke, which may be newer than this render's.
+    const text = store.draft(channel.id, parentId).text;
     const command = parseSlashCommand(text);
     if (command) {
       if (!command.known) {
@@ -256,6 +267,12 @@ export function Composer({
 
   const pick = (candidate: MentionCandidate) => {
     if (!query) return;
+    const rich = editor();
+    if (rich) {
+      setSelected(0);
+      rich.replaceBeforeCaret(typed.caret - query.start, "@" + candidate.username + " ");
+      return;
+    }
     const next = text.slice(0, query.start) + "@" + candidate.username + " " + text.slice(caret);
     const position = query.start + candidate.username.length + 2;
     setSelected(0);
@@ -265,6 +282,11 @@ export function Composer({
   /** Replaces the input and puts the caret at its end (a template inserted, M30). */
   const putText = (next: string) => {
     setSelected(0);
+    const rich = editor();
+    if (rich) {
+      setText(rich.setMarkdown(next));
+      return;
+    }
     apply({ text: next, start: next.length, end: next.length });
   };
 
@@ -288,9 +310,14 @@ export function Composer({
 
   const pickEmoji = (entry: EmojiEntry) => {
     if (!emojiAt) return;
-    const next = completeEmoji(text, emojiAt.start, caret, entry.glyph);
+    const next = completeEmoji(typed.text, emojiAt.start, typed.caret, entry.glyph);
     rememberEmoji(entry.glyph);
     setSelected(0);
+    const rich = editor();
+    if (rich) {
+      rich.replaceBeforeCaret(typed.caret - emojiAt.start, next.text.slice(emojiAt.start, next.caret));
+      return;
+    }
     apply({ text: next.text, start: next.caret, end: next.caret });
   };
 
@@ -298,6 +325,8 @@ export function Composer({
   const insertEmoji = (entry: EmojiEntry) => {
     rememberEmoji(entry.glyph);
     setEmojiOpen(false);
+    const rich = editor();
+    if (rich) return rich.insertText(entry.glyph);
     edit((s) => ({ text: s.text.slice(0, s.start) + entry.glyph + s.text.slice(s.end), start: s.start + entry.glyph.length, end: s.start + entry.glyph.length }));
   };
 
@@ -335,7 +364,12 @@ export function Composer({
   };
 
   /** 「@」: an @ at the caret (after a space when a word ends there), which opens the member list. */
-  const startMention = () => edit((s) => {
+  const startMention = () => {
+    const rich = editor();
+    if (rich) return rich.insertText(richContext && richContext.caret > 0 && !/\s/.test(richContext.text[richContext.caret - 1]!) ? " @" : "@");
+    startMentionInText();
+  };
+  const startMentionInText = () => edit((s) => {
     const at = s.start > 0 && !/\s/.test(s.text[s.start - 1]!) ? " @" : "@";
     const caret = s.start + at.length;
     return { text: s.text.slice(0, s.start) + at + s.text.slice(s.end), start: caret, end: caret };
@@ -349,18 +383,55 @@ export function Composer({
   };
   // The first PRIMARY_TOOLS always show; the rest fold into 「その他の書式」 when the composer is narrow. `group`
   // starts a group after a divider.
-  const tools: Array<{ icon: ReactNode; label: string; run: () => void; group?: true }> = [
-    { icon: <Bold size={15} />, label: t("composer.format.boldKey", { key: `${modKey()}+B` }), run: () => edit((s) => toggleWrap(s, "**")) },
-    { icon: <Italic size={15} />, label: t("composer.format.italicKey", { key: `${modKey()}+I` }), run: () => edit((s) => toggleWrap(s, "_")) },
-    { icon: <Strikethrough size={15} />, label: t("composer.format.strikeKey", { key: `${modKey()}+Shift+X` }), run: () => edit((s) => toggleWrap(s, "~~")) },
-    { icon: <Code size={15} />, label: t("composer.format.codeKey", { key: `${modKey()}+Shift+C` }), run: () => edit((s) => toggleWrap(s, "`")), group: true },
-    { icon: <SquareCode size={15} />, label: t("composer.format.codeBlock"), run: () => edit(toggleFence) },
-    { icon: <Heading size={15} />, label: t("composer.format.heading"), run: () => edit((s) => toggleLinePrefix(s, "## ")), group: true },
-    { icon: <TextQuote size={15} />, label: t("composer.format.quote"), run: () => edit((s) => toggleLinePrefix(s, "> ")) },
-    { icon: <List size={15} />, label: t("composer.format.bullets"), run: () => edit((s) => toggleLinePrefix(s, "- ")) },
-    { icon: <ListOrdered size={15} />, label: t("composer.format.numbered"), run: () => edit((s) => toggleLinePrefix(s, (i) => `${i + 1}. `)) },
-    { icon: <LinkIcon size={15} />, label: t("composer.format.linkKey", { key: `${modKey()}+Shift+U` }), run: () => edit((s) => insertLink(s)), group: true },
+  const format = (name: RichFormat, markdown: () => void) => () => {
+    const rich = editor();
+    if (rich) rich.run(name);
+    else markdown();
+  };
+  const tools: Array<{ icon: ReactNode; label: string; run: () => void; group?: true; active?: boolean }> = [
+    { icon: <Bold size={15} />, label: t("composer.format.boldKey", { key: `${modKey()}+B` }), run: format("bold", () => edit((s) => toggleWrap(s, "**"))), active: richFormat.bold },
+    { icon: <Italic size={15} />, label: t("composer.format.italicKey", { key: `${modKey()}+I` }), run: format("italic", () => edit((s) => toggleWrap(s, "_"))), active: richFormat.italic },
+    { icon: <Strikethrough size={15} />, label: t("composer.format.strikeKey", { key: `${modKey()}+Shift+X` }), run: format("strike", () => edit((s) => toggleWrap(s, "~~"))), active: richFormat.strike },
+    { icon: <Code size={15} />, label: t("composer.format.codeKey", { key: `${modKey()}+Shift+C` }), run: format("code", () => edit((s) => toggleWrap(s, "`"))), group: true, active: richFormat.code },
+    { icon: <SquareCode size={15} />, label: t("composer.format.codeBlock"), run: format("codeBlock", () => edit(toggleFence)), active: richFormat.codeBlock },
+    { icon: <Heading size={15} />, label: t("composer.format.heading"), run: format("heading", () => edit((s) => toggleLinePrefix(s, "## "))), group: true, active: richFormat.heading },
+    { icon: <TextQuote size={15} />, label: t("composer.format.quote"), run: format("quote", () => edit((s) => toggleLinePrefix(s, "> "))), active: richFormat.quote },
+    { icon: <List size={15} />, label: t("composer.format.bullets"), run: format("bullets", () => edit((s) => toggleLinePrefix(s, "- "))), active: richFormat.bullets },
+    { icon: <ListOrdered size={15} />, label: t("composer.format.numbered"), run: format("numbered", () => edit((s) => toggleLinePrefix(s, (i) => `${i + 1}. `))), active: richFormat.numbered },
+    { icon: <LinkIcon size={15} />, label: t("composer.format.linkKey", { key: `${modKey()}+Shift+U` }), run: () => (editor() ? openLinkEditor() : edit((s) => insertLink(s))), group: true, active: richFormat.link },
   ];
+
+  // The rich editor's link: a URL row above the text (the selection, or the link at the caret, gets it).
+  const [linkEdit, setLinkEdit] = useState<{ href: string; error: boolean } | null>(null);
+  const openLinkEditor = () => setLinkEdit({ href: editor()?.link() ?? "https://", error: false });
+  const closeLinkEditor = () => {
+    setLinkEdit(null);
+    editor()?.focus("keep");
+  };
+  const applyLink = (remove = false) => {
+    const href = linkEdit?.href.trim() ?? "";
+    if (!remove && !/^https?:\/\/[^\s]+$/i.test(href)) {
+      setLinkEdit({ href: linkEdit?.href ?? "", error: true });
+      return;
+    }
+    editor()?.setLink(remove ? null : href);
+    setLinkEdit(null);
+  };
+
+  // 「Aa」 / 「M↓」: the mode for every composer of mine (synced); the draft (Markdown) carries over as it is.
+  const focusAfterSwitch = useRef(false);
+  const switchMode = (next: "rich" | "markdown") => {
+    if (next === (rich ? "rich" : "markdown")) return;
+    focusAfterSwitch.current = true;
+    setLinkEdit(null);
+    setPreview(false);
+    void controller.setComposerMode(next);
+  };
+  useEffect(() => {
+    if (!focusAfterSwitch.current || rich) return;
+    focusAfterSwitch.current = false;
+    area.current?.focus();
+  }, [rich]);
 
   // A menu entry that opens something else (a popover, the poll form, the member list) runs once the menu has closed
   // and handed focus back, which the new layer would otherwise take for a click outside and close again (Radix).
@@ -379,37 +450,40 @@ export function Composer({
   const emojiAnchor = useShownAnchor(emojiButton, moreButton);
   const priorityAnchor = useShownAnchor(priorityButton, moreButton);
 
+  /** ↑ / ↓ / Enter / Tab / Esc in an open candidate list; true when taken. */
+  const navigateList = (key: string): boolean => {
+    if (listLength === 0) return false;
+    if (key === "Escape") setDismissed(listKey);
+    else if (key === "ArrowDown") setSelected((active + 1) % listLength);
+    else if (key === "ArrowUp") setSelected((active - 1 + listLength) % listLength);
+    else if (key === "Enter" || key === "Tab") {
+      const candidate = candidates[active];
+      if (candidate) pick(candidate);
+      else if (emojiHits[active]) pickEmoji(emojiHits[active]!);
+      else if (slashHits[active]) pickSlash(slashHits[active]!);
+    } else return false;
+    return true;
+  };
+
+  /** ↑ in an empty composer edits my newest message here; Shift+↑ replies to the newest in a thread. */
+  const arrowUpWhenEmpty = (shift: boolean): boolean => {
+    if (shift) {
+      onReplyLast?.();
+      return !!onReplyLast;
+    }
+    const me = store.me;
+    const pool = parentId ? store.replies(channel.id, parentId) : store.messages(channel.id);
+    const mine = pool.filter((m) => m.sender_id === me?.id && !m.pending && !m.deleted).at(-1);
+    if (mine) controller.setEditing(mine.id);
+    return !!mine;
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    const imeEnter =
-      event.nativeEvent.isComposing ||
-      composing.current ||
-      event.keyCode === 229 ||
-      Date.now() - composedAt.current < IME_COMMIT_GRACE_MS;
-    if (listLength > 0 && !imeEnter) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        setDismissed(listKey);
-        return;
-      }
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setSelected((active + 1) % listLength);
-        return;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setSelected((active - 1 + listLength) % listLength);
-        return;
-      }
-      if (event.key === "Enter" || event.key === "Tab") {
-        event.preventDefault();
-        const candidate = candidates[active];
-        if (candidate) pick(candidate);
-        else if (emojiHits[active]) pickEmoji(emojiHits[active]!);
-        else if (slashHits[active]) pickSlash(slashHits[active]!);
-        return;
-      }
+    const imeEnter = isImeKey({ isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode }, composing.current, composedAt.current);
+    if (!imeEnter && navigateList(event.key)) {
+      event.preventDefault();
+      if (event.key === "Escape") event.stopPropagation();
+      return;
     }
     const mod = event.metaKey || event.ctrlKey;
     if (mod && !event.altKey && !event.nativeEvent.isComposing && !composing.current) {
@@ -435,21 +509,7 @@ export function Composer({
       return;
     }
     if (event.key === "ArrowUp" && text === "" && !imeEnter) {
-      if (event.shiftKey) {
-        if (onReplyLast) {
-          event.preventDefault();
-          onReplyLast();
-        }
-        return;
-      }
-      // ↑ in an empty composer edits my newest message in this conversation.
-      const me = store.me;
-      const pool = parentId ? store.replies(channel.id, parentId) : store.messages(channel.id);
-      const mine = pool.filter((m) => m.sender_id === me?.id && !m.pending && !m.deleted).at(-1);
-      if (mine) {
-        event.preventDefault();
-        controller.setEditing(mine.id);
-      }
+      if (arrowUpWhenEmpty(event.shiftKey)) event.preventDefault();
       return;
     }
     if (event.key !== "Enter") return;
@@ -466,6 +526,80 @@ export function Composer({
     // Newline: continue a list / quote (or end it on an empty item); otherwise the plain newline.
     if (edit((s) => continueStructure(s))) event.preventDefault();
   };
+
+  /**
+   * The rich editor's keys, before the editor's own (ProseMirror leaves composition keys out, and so does this): the
+   * candidate lists, the send key, Shift+Enter as the newline (the editor's Enter: a new line, item or code line; an
+   * empty item or quote line ends it), ⌘U / ⌘⇧U. Bold, italic, strike, code, lists and Tab are the editor's.
+   */
+  const onRichKeyDown = (event: globalThis.KeyboardEvent): boolean => {
+    const api = richApi.current;
+    if (!api) return false;
+    const imeKey = isImeKey(event, api.composing(), composedAt.current);
+    if (imeKey) return false;
+    if (navigateList(event.key)) {
+      if (event.key === "Escape") event.stopPropagation();
+      return true;
+    }
+    const mod = event.metaKey || event.ctrlKey;
+    if (mod && !event.altKey && event.key.toLowerCase() === "u") {
+      if (event.shiftKey) openLinkEditor();
+      else openPicker(fileInput.current);
+      return true;
+    }
+    if (event.key === "ArrowUp" && !mod && !event.altKey && api.isEmpty()) return arrowUpWhenEmpty(event.shiftKey);
+    if (event.key !== "Enter") return false;
+    const sendKey = controller.sendKey ?? "mod-enter";
+    if (isSendKey(event, sendKey)) {
+      // With Enter as the send key, Enter inside a code block is still a newline.
+      if (sendKey === "enter" && api.inCodeBlock()) return false;
+      send();
+      return true;
+    }
+    return event.shiftKey || mod ? api.newline() : false;
+  };
+
+  const textArea = (
+    <textarea
+      ref={area}
+      data-composer-input
+      value={text}
+      maxLength={MAX_LENGTH}
+      placeholder={placeholder}
+      className={cn("block max-h-[280px] w-full resize-none overflow-y-auto bg-transparent pb-1 pl-3 pr-10 pt-3 text-[14.5px] leading-6 text-ink outline-none placeholder:text-muted", preview && "hidden")}
+      onChange={(e) => {
+        setText(e.target.value);
+        syncCaret(e.target);
+        if (e.target.value.trim()) controller.engine?.sendTyping(channel.id, parentId ?? null); // §5.2, throttled by the engine
+      }}
+      onPaste={(event) => {
+        if (event.clipboardData.files.length) {
+          event.preventDefault();
+          void pickFiles(Array.from(event.clipboardData.files));
+          return;
+        }
+        // A URL pasted over selected text links it (composerEdit.linkFromPaste).
+        const el = event.currentTarget;
+        const linked = linkFromPaste({ text: el.value, start: el.selectionStart, end: el.selectionEnd }, event.clipboardData.getData("text/plain"));
+        if (linked) {
+          event.preventDefault();
+          apply(linked);
+        }
+      }}
+      aria-label={parentId ? t("composer.threadReply") : t("composer.message")}
+      onKeyDown={onKeyDown}
+      onKeyUp={(e) => syncCaret(e.currentTarget)}
+      onClick={(e) => syncCaret(e.currentTarget)}
+      onCompositionStart={() => {
+        composing.current = true;
+      }}
+      onCompositionEnd={() => {
+        composing.current = false;
+        composedAt.current = Date.now();
+      }}
+      rows={2}
+    />
+  );
 
   return (
     <div
@@ -562,7 +696,8 @@ export function Composer({
                 {tool.group && <span className={cn("mx-1 h-4 w-px shrink-0 bg-line", index >= PRIMARY_TOOLS && "hidden @[22rem]:block")} />}
                 <IconButton
                   label={tool.label}
-                  className={cn("h-7 w-7 shrink-0 text-muted hover:text-ink", index >= PRIMARY_TOOLS && "hidden @[22rem]:inline-flex")}
+                  aria-pressed={rich ? !!tool.active : undefined}
+                  className={cn("h-7 w-7 shrink-0 text-muted hover:text-ink", index >= PRIMARY_TOOLS && "hidden @[22rem]:inline-flex", rich && tool.active && "bg-accent-soft text-accent")}
                   disabled={preview}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={tool.run}
@@ -583,7 +718,8 @@ export function Composer({
                     <IconButton
                       key={tool.label}
                       label={tool.label}
-                      className="h-8 w-8 text-muted hover:text-ink"
+                      aria-pressed={rich ? !!tool.active : undefined}
+                      className={cn("h-8 w-8 text-muted hover:text-ink", rich && tool.active && "bg-accent-soft text-accent")}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
                         tool.run();
@@ -596,8 +732,45 @@ export function Composer({
                 </div>
               </PopoverContent>
             </PopoverRoot>
+            <ModeSwitch rich={rich} onSwitch={switchMode} />
           </div>
         )}
+        {linkEdit && (
+          <form
+            className="flex items-center gap-1.5 px-3 pt-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              applyLink();
+            }}
+          >
+            <LinkIcon size={13} className="shrink-0 text-muted" />
+            <input
+              autoFocus
+              value={linkEdit.href}
+              aria-label={t("composer.link.url")}
+              aria-invalid={linkEdit.error || undefined}
+              placeholder="https://"
+              className={cn("h-7 min-w-0 flex-1 rounded-md border bg-canvas px-2 text-xs outline-none focus:border-accent", linkEdit.error ? "border-danger" : "border-line")}
+              onChange={(e) => setLinkEdit({ href: e.target.value, error: false })}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  closeLinkEditor();
+                }
+              }}
+            />
+            <Button type="submit" size="sm" variant="secondary" className="h-7 shrink-0 text-xs">{t("composer.link.apply")}</Button>
+            {richFormat.link && (
+              <Button type="button" size="sm" variant="ghost" className="h-7 shrink-0 text-xs" onClick={() => applyLink(true)}>{t("composer.link.remove")}</Button>
+            )}
+            <IconButton label={t("common.cancel")} className="h-7 w-7 shrink-0 text-muted" onClick={closeLinkEditor}>
+              <X size={13} />
+            </IconButton>
+            {linkEdit.error && <span className="sr-only" role="alert">{t("composer.link.invalid")}</span>}
+          </form>
+        )}
+        {linkEdit?.error && <p className="px-3 pt-1 text-xs text-danger">{t("composer.link.invalid")}</p>}
         {(priority || ackRequested) && (
           <div className="flex items-center gap-2 px-3 pt-2 text-xs">
             {priority && <PriorityLabel priority={priority} />}
@@ -644,48 +817,37 @@ export function Composer({
               {text.trim() ? <MessageBody body={text} users={store.users} /> : <span className="text-sm text-muted">{t("composer.nothingToPreview")}</span>}
             </div>
           )}
-          <textarea
-            ref={area}
-            value={text}
-            maxLength={MAX_LENGTH}
-            placeholder={placeholder}
-            className={cn("block max-h-[280px] w-full resize-none overflow-y-auto bg-transparent pb-1 pl-3 pr-10 pt-3 text-[14.5px] leading-6 text-ink outline-none placeholder:text-muted", preview && "hidden")}
-            onChange={(e) => {
-              setText(e.target.value);
-              syncCaret(e.target);
-              if (e.target.value.trim()) controller.engine?.sendTyping(channel.id, parentId ?? null); // §5.2, throttled by the engine
-            }}
-            onPaste={(event) => {
-              if (event.clipboardData.files.length) {
-                event.preventDefault();
-                void pickFiles(Array.from(event.clipboardData.files));
-                return;
-              }
-              // A URL pasted over selected text links it (composerEdit.linkFromPaste).
-              const el = event.currentTarget;
-              const linked = linkFromPaste({ text: el.value, start: el.selectionStart, end: el.selectionEnd }, event.clipboardData.getData("text/plain"));
-              if (linked) {
-                event.preventDefault();
-                apply(linked);
-              }
-            }}
-            aria-label={parentId ? t("composer.threadReply") : t("composer.message")}
-            onKeyDown={onKeyDown}
-            onKeyUp={(e) => syncCaret(e.currentTarget)}
-            onClick={(e) => syncCaret(e.currentTarget)}
-            onCompositionStart={() => {
-              composing.current = true;
-            }}
-            onCompositionEnd={() => {
-              composing.current = false;
-              composedAt.current = Date.now();
-            }}
-            rows={2}
-          />
+          {rich ? (
+            <Suspense fallback={textArea}>
+              <LazyRichEditor
+                value={text}
+                apiRef={richApi}
+                ariaLabel={parentId ? t("composer.threadReply") : t("composer.message")}
+                placeholder={placeholder}
+                autoFocus={focusAfterSwitch.current}
+                className="overflow-y-auto pb-1 pl-3 pr-10 pt-3 text-[14.5px] leading-6 text-ink"
+                maxHeight={composerMaxHeight()}
+                onChange={(markdown) => {
+                  focusAfterSwitch.current = false;
+                  setText(markdown);
+                  if (markdown.trim()) controller.engine?.sendTyping(channel.id, parentId ?? null); // §5.2, throttled by the engine
+                }}
+                onKeyDown={onRichKeyDown}
+                onContext={setRichContext}
+                onFormat={setRichFormat}
+                onFiles={(files) => void pickFiles(files)}
+                onCompositionEnd={() => {
+                  composedAt.current = Date.now();
+                }}
+              />
+            </Suspense>
+          ) : (
+            textArea
+          )}
           {/* The preview toggle in the text's top-right corner (2026-10-04); 「書式の書き方」 is by the send button. */}
-          <IconButton label={preview ? t("composer.backToEdit") : t("composer.preview")} aria-pressed={preview} className={cn("absolute right-1 top-1 h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
+          {!rich && <IconButton label={preview ? t("composer.backToEdit") : t("composer.preview")} aria-pressed={preview} className={cn("absolute right-1 top-1 h-7 w-7 text-muted hover:text-ink", preview && "bg-accent-soft text-accent")} onClick={() => setPreview((v) => !v)}>
             {preview ? <EyeOff size={15} /> : <Eye size={15} />}
-          </IconButton>
+          </IconButton>}
         </div>
         <div className="flex flex-nowrap items-center gap-2 px-2 pb-2" data-composer-actions>
           <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5">
@@ -869,6 +1031,32 @@ function useShownAnchor(button: RefObject<HTMLElement | null>, more: RefObject<H
     if (event.target instanceof Node && button.current?.contains(event.target)) event.preventDefault();
   }, [button]);
   return { anchor, keepOpenOnButton };
+}
+
+/** 「Aa」 / 「M↓」 at the end of the format bar: rich text or Markdown (users.composer_mode, every composer of mine). */
+function ModeSwitch({ rich, onSwitch }: { rich: boolean; onSwitch: (mode: "rich" | "markdown") => void }) {
+  const option = (mode: "rich" | "markdown", glyph: string, label: string) => {
+    const on = (mode === "rich") === rich;
+    return (
+      <button
+        type="button"
+        aria-pressed={on}
+        aria-label={label}
+        title={label}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => onSwitch(mode)}
+        className={cn("h-6 rounded-[5px] px-1.5 text-[11px] font-semibold leading-none", on ? "bg-canvas text-ink shadow-sm" : "text-muted hover:text-ink")}
+      >
+        {glyph}
+      </button>
+    );
+  };
+  return (
+    <div role="group" aria-label={t("composer.mode")} className="ml-auto flex shrink-0 items-center gap-0.5 rounded-md bg-panel-2 p-0.5">
+      {option("rich", "Aa", t("composer.mode.rich"))}
+      {option("markdown", "M↓", t("composer.mode.markdown"))}
+    </div>
+  );
 }
 
 /** Marks my own templates in the lists (the workspace's have none). */

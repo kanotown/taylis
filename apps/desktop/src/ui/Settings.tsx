@@ -19,7 +19,7 @@ import { fullNavItems, moveNavItem, navLabel, reorderNavItems, setNavItemVisible
 import { customPauseAt, dayLabels, DND_OPTIONS, deviceTimeZone, dndUntilAt, inQuietHours, localInputValue, pausedUntil, pauseValue, type QuietHours, quietHoursLabel, quietHoursValue } from "./dnd";
 import { fullTimestamp, sinceLabel } from "./format";
 import { useNow, useStoreUpdates } from "./hooks";
-import { modKeyName, type SendKey } from "./prefs";
+import { type ComposerMode, composerModeOf, modKeyName, type SendKey } from "./prefs";
 import { Badge, Button, cn, Field, Input, Modal } from "./primitives";
 import { StatusForm } from "./StatusDialog";
 import { TemplatesSettings } from "./TemplatesSettings";
@@ -651,8 +651,44 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
         </span>
         <input type="checkbox" role="switch" className="h-4 w-4 accent-[var(--accent)]" checked={controller.groupPosts} onChange={(e) => controller.setGroupPosts(e.target.checked)} />
       </label>
+      <ComposerModeSettings controller={controller} />
       <NavItemsSettings controller={controller} />
     </div>
+  );
+}
+
+/**
+ * 「入力欄」: rich text (WYSIWYG) or Markdown, mine on every device's Desktop / Web (users.composer_mode; never chosen =
+ * rich). The composer's 「Aa」 / 「M↓」 switch changes the same setting. A server without it has no such setting.
+ */
+export function ComposerModeSettings({ controller }: { controller: AppController }) {
+  const me = meOf(controller);
+  if (!me || me.composer_mode === undefined) return null;
+  const current = composerModeOf(me);
+  return (
+    <section className="space-y-2">
+      <h3 className={HEADING}>{t("settings.composerMode.title")}</h3>
+      <div className="flex gap-2 max-sm:flex-col">
+        {(
+          [
+            ["rich", t("composer.mode.rich"), t("settings.composerMode.richNote")],
+            ["markdown", t("composer.mode.markdown"), t("settings.composerMode.markdownNote")],
+          ] as Array<[ComposerMode, string, string]>
+        ).map(([value, title, text]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={current === value}
+            onClick={() => void controller.setComposerMode(value)}
+            className={cn("flex-1 rounded-xl border p-3 text-left transition-colors", current === value ? "border-accent bg-accent-soft/60" : "border-line hover:bg-panel")}
+          >
+            <span className="block text-sm font-medium">{title}</span>
+            <span className="block text-xs text-muted">{text}</span>
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted">{t("settings.composerMode.note")}</p>
+    </section>
   );
 }
 
