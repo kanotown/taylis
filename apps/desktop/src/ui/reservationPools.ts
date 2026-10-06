@@ -248,9 +248,13 @@ export function dueTodos(pool: PoolOut): TodoOut[] {
   return pool.todos.filter((t) => !t.upcoming);
 }
 
-/** The home tile's and the sidebar row's number: to-dos due in the pools I operate. */
+/**
+ * The home tile's and the sidebar row's number: to-dos due in the pools I operate that someone is waiting on (assign,
+ * swap, a booking that started). `remove:<id>` (returned, or its time over, with nobody waiting: RESERVATIONS.md §4)
+ * stays listed on the page but is not counted (2026-10-06).
+ */
 export function reservationTodoCount(pools: readonly PoolOut[] | null): number {
-  return (pools ?? []).reduce((sum, pool) => sum + dueTodos(pool).length, 0);
+  return (pools ?? []).reduce((sum, pool) => sum + dueTodos(pool).filter((todo) => todo.action !== "remove").length, 0);
 }
 
 const REASONS: Record<TodoOut["reason"], string> = {
