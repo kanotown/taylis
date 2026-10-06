@@ -1707,6 +1707,13 @@
     <string name="notification_me">You</string>
     <string name="you_language">Language</string>
     <string name="you_language_hint">Your other devices and the server\'s notifications use this language too</string>
+    <string name="calls_start_call">Start a call</string>
+    <string name="calls_confirm_title">Start a call?</string>
+    <string name="calls_confirm_text">Members will be notified, and a meeting link will be posted.</string>
+    <string name="calls_start">Start call</string>
+    <string name="calls_join">Join</string>
+    <string name="calls_started_by">📞 %1$s started a call</string>
+    <string name="calls_could_not_open">No app can open the call link.</string>
     <plurals name="composer_message_max_length">
         <item quantity="one">The message can be up to %1$,d character</item>
         <item quantity="other">The message can be up to %1$,d characters</item>

@@ -1701,6 +1701,13 @@
     <string name="notification_me">我</string>
     <string name="you_language">语言</string>
     <string name="you_language_hint">你的其他设备和服务器发出的通知也将使用此语言</string>
+    <string name="calls_start_call">发起通话</string>
+    <string name="calls_confirm_title">要发起通话吗？</string>
+    <string name="calls_confirm_text">成员会收到通知，并会发布会议链接。</string>
+    <string name="calls_start">发起通话</string>
+    <string name="calls_join">加入</string>
+    <string name="calls_started_by">📞 %1$s 发起了通话</string>
+    <string name="calls_could_not_open">没有可以打开通话链接的应用。</string>
     <plurals name="composer_message_max_length">
         <item quantity="other">正文最多 %1$,d 个字符</item>
     </plurals>

@@ -5,6 +5,7 @@ import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.CustomEmojiOut
 import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.api.SystemEventOut
+import jp.chikuwachat.android.api.MessageCallOut
 import jp.chikuwachat.android.api.MessageWorkflowOut
 import jp.chikuwachat.android.api.WorkspaceSettingsOut
 import jp.chikuwachat.android.api.PollOut
@@ -121,6 +122,8 @@ data class MessageState(
     val systemEvent: SystemEventOut? = null,
     /** M95: the workflow that posted it (MessageOut.workflow); rows persisted earlier lack it (no Room version: it is JSON). */
     val workflow: MessageWorkflowOut? = null,
+    /** M117: the call it started (MessageOut.call, docs/CALLS.md §5); rows persisted earlier lack it. */
+    val call: MessageCallOut? = null,
 ) {
     /** M88: a system row (the join / leave lines): one muted line, never grouped, no actions, never unread. */
     val isSystem: Boolean get() = type != "user"
@@ -143,6 +146,7 @@ data class MessageState(
             pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy, poll = message.poll,
             priority = message.priority, ackRequested = message.ackRequested, acks = message.acks, type = message.type,
             collection = message.collection, tasks = message.tasks, systemEvent = message.systemEvent, workflow = message.workflow,
+            call = message.call,
         )
 
         fun placeholder(
@@ -325,7 +329,7 @@ fun MessageState.toOut(): MessageOut? {
         parentId = parentId, alsoInChannel = alsoInChannel, body = body, mentionedUserIds = mentionedUserIds, mentionAll = mentionAll, reactions = reactions,
         attachments = attachments, replyCount = replyCount, lastReplyAt = lastReplyAt, replyUserIds = replyUserIds, createdAt = createdAt, editedAt = editedAt, deleted = deleted,
         pinnedAt = pinnedAt, pinnedBy = pinnedBy, poll = poll, priority = priority, ackRequested = ackRequested, acks = acks, type = type,
-        collection = collection, tasks = tasks, workflow = workflow,
+        collection = collection, tasks = tasks, workflow = workflow, call = call,
     )
 }
 

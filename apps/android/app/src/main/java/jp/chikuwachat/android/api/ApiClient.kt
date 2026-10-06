@@ -542,6 +542,12 @@ class ApiClient(
     override suspend fun readAll(scope: String?): List<ChannelReadStateOut> =
         request("POST", "/api/v1/channels/read-all", buildJsonObject { scope?.let { put("scope", it) } })
 
+    // --- calls (M117, docs/CALLS.md §4) ---------------------------------------------------------
+
+    /** A new meeting room posted as a message; a retry with the same `clientMsgId` gets the same call back. */
+    suspend fun startCall(channelId: String, clientMsgId: String): CallOut =
+        request("POST", "/api/v1/channels/$channelId/calls", buildJsonObject { put("client_msg_id", clientMsgId) })
+
     // --- pins and bookmarks (M11c) --------------------------------------------------------------
 
     suspend fun listPins(channelId: String): List<MessageOut> = request("GET", "/api/v1/channels/$channelId/pins")

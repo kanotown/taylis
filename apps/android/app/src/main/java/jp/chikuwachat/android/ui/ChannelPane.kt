@@ -673,7 +673,10 @@ fun MessageRow(
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (message.body.isNotEmpty() && !pollHidesBody(message.body, message.poll)) {
+                // M117 (docs/CALLS.md §7): a call's card in place of its body (「📞 通話を始めました」 and the link, for older clients).
+                val call = message.call?.takeIf { !message.deleted }
+                if (call != null) CallCard(call, store.users, onJoin = { controller.openCall(call.url) })
+                else if (message.body.isNotEmpty() && !pollHidesBody(message.body, message.poll)) {
                     MessageBody(
                         message.body, store.users, groups = store.groups, internalBase = controller.serverBase, onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
                         onOpenCanvas = { id -> controller.scope.launch { controller.openCanvasLink(id) } },
@@ -688,7 +691,7 @@ fun MessageRow(
                 if (message.tasks.isNotEmpty()) MessageTaskChips(message, controller, version)  // L9 (M64)
                 AttachmentList(message.attachments, controller)
                 // Not for this server's /m/ and /c/ links: a message shows in place, a canvas as its card (M58).
-                if (!message.pending) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null && !CanvasCards.isCanvasLink(controller.serverBase, link) }?.let { link ->
+                if (!message.pending && call == null) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) } == null && !CanvasCards.isCanvasLink(controller.serverBase, link) }?.let { link ->
                     // Review v0.1.18 #5: an AI bot's link is not previewed until tapped (decided by the sender, here).
                     LinkPreviewCard(controller, link, message.id, auto = LinkPreviewPolicy.autoLoads(message.senderId, store.users[message.senderId]?.role, controller.aiStatus, store.users[message.senderId]?.botKind))
                 }

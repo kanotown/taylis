@@ -102,6 +102,9 @@
 - 設定：Desktop / Web の管理画面「ワークスペースの設定」に「通話の会議サービス」（URL の欄、空にするとオフ、既定に戻す
   ボタン、meet.jit.si の主催者のサインインの注意書き）。
 - 用語：「通話」= Call / 通话（apps/shared/i18n/glossary.json）。
+- **Android**（2026-10-06）：📞 は会話の上のバーの検索の左（`ui/Calls.kt` の `Calls.canStart`）。部屋は `Intent.ACTION_VIEW`
+  で開く（Custom Tab は使わない）。再送の鍵は答えが分からない失敗（ネットワーク・5xx・429）のときだけ 10 分残す（`CallKeys`）。
+  管理画面は無い。
 
 ## 8. 今後（今はやらない）
 

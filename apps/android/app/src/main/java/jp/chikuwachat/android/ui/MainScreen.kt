@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Add
@@ -169,6 +170,8 @@ fun MainScreen(controller: AppController) {
     // M26: the default sections folded on this device.
     var folded by remember { mutableStateOf(FoldedSections.read(controller.prefs)) }
     var bellOpen by remember { mutableStateOf(false) }
+    // M117 (docs/CALLS.md §7): the 📞's question, for this conversation.
+    var confirmCallIn by rememberSaveable { mutableStateOf<String?>(null) }
     // M37: 「未読をまとめる」 as it was left on this device (like the folded sections); it replaced M28c's 「未読のみ」.
     var groupUnread by remember { mutableStateOf(GroupUnread.read(controller.prefs)) }
     // M37: the home's ⋮ 「すべて既読にする」 asks first; ✏️ 新しいメッセージ's picker.
@@ -725,6 +728,10 @@ fun MainScreen(controller: AppController) {
                         // M35 (D1: the same menu as the details page's 「通知」).
                         ChannelNotificationMenu(controller, selectedChannel, bellOpen, onDismiss = { bellOpen = false })
                     }
+                    // M117 (docs/CALLS.md §7): 📞 on a conversation's own page while I may start one there.
+                    if (barButtons && conversationPage && Calls.canStart(store.workspaceSettings, selectedChannel, controller.isAdmin)) {
+                        IconButton(onClick = { confirmCallIn = selectedChannel?.id }) { Icon(Icons.Default.Call, contentDescription = stringResource(R.string.calls_start_call)) }
+                    }
                     // The 自分 tab is the settings page: no search or menu over it.
                     if (barButtons) {
                         IconButton(onClick = ::openSearch) { Icon(Icons.Default.Search, contentDescription = stringResource(R.string.common_search)) }
@@ -1189,6 +1196,10 @@ fun MainScreen(controller: AppController) {
         })
     }
     if (confirmLogout) LogoutConfirmDialog(controller, onDismiss = { confirmLogout = false })
+    confirmCallIn?.let { id ->
+        // Outside the screen's scope: leaving the conversation does not cancel a call being started.
+        StartCallDialog(onDismiss = { confirmCallIn = null }, onConfirm = { confirmCallIn = null; controller.scope.launch { controller.startCall(id) } })
+    }
     if (confirmReadTimes) {
         AlertDialog(
             onDismissRequest = { confirmReadTimes = false },
