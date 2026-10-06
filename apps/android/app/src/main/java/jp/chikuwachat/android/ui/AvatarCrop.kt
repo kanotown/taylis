@@ -29,6 +29,21 @@ data class AvatarCrop(val zoom: Float = 1f, val x: Float = 0f, val y: Float = 0f
         return AvatarCrop(next, px - (px - x) * ratio, py - (py - y) * ratio).clamped(width, height, frame)
     }
 
+    /**
+     * One step of a drag or pinch, applied in a single clamp: scale by [zoomChange] about the previous centroid
+     * ([cx], [cy], relative to the frame's centre) and move by the centroid's motion ([dx], [dy]). The picture point
+     * that was under the fingers ends up under them again, so the picture follows the fingers from the first event.
+     * Clamping once (not after the zoom and again after the pan) keeps a pinch near an edge from snapping.
+     */
+    fun transformed(
+        zoomChange: Float, dx: Float, dy: Float, cx: Float, cy: Float,
+        width: Float, height: Float, frame: Float,
+    ): AvatarCrop {
+        val next = (zoom * zoomChange).coerceIn(1f, MAX_ZOOM)
+        val ratio = next / zoom
+        return AvatarCrop(next, cx + dx - (cx - x) * ratio, cy + dy - (cy - y) * ratio).clamped(width, height, frame)
+    }
+
     /** The square of the picture, in picture pixels, that the frame shows. */
     fun sourceRect(width: Float, height: Float, frame: Float): Square {
         val scale = scale(width, height, frame, zoom)
