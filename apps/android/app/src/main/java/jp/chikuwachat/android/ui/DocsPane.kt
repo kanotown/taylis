@@ -95,13 +95,23 @@ object DocsText {
     }
 }
 
-/** The open rows across a rotation: their ids, joined. */
-private fun decodeOpen(raw: String): Set<String> = raw.split(',').filter { it.isNotBlank() }.toSet()
+/** The open rows (kept by the main screen, so they stay while a page is on top and across a rotation): ids, joined. */
+fun decodeOpenRows(raw: String): Set<String> = raw.split(',').filter { it.isNotBlank() }.toSet()
+
+fun toggleOpenRow(raw: String, id: String): String {
+    val open = decodeOpenRows(raw)
+    return (if (id in open) open - id else open + id).joinToString(",")
+}
 
 @Composable
 fun DocsPane(
     controller: AppController,
     listState: LazyListState,
+    /** The open rows ([decodeOpenRows]) and the filter, held by the main screen. */
+    openRows: String,
+    onOpenRows: (String) -> Unit,
+    query: String,
+    onQuery: (String) -> Unit,
     onOpen: (pageId: String) -> Unit,
     onSearchBodies: (String) -> Unit,
 ) {
@@ -115,12 +125,8 @@ fun DocsPane(
     val version by store.version.collectAsState()
     // From the tile: the tree asked again (ETag: usually a 304).
     LaunchedEffect(hub) { hub.reloadTree() }
-    var openRaw by rememberSaveable { mutableStateOf("") }
-    val open = remember(openRaw) { decodeOpen(openRaw) }
-    fun toggle(id: String) {
-        openRaw = (if (id in open) open - id else open + id).joinToString(",")
-    }
-    var query by rememberSaveable { mutableStateOf("") }
+    val open = remember(openRows) { decodeOpenRows(openRows) }
+    fun toggle(id: String) = onOpenRows(toggleOpenRow(openRows, id))
     var creating by remember { mutableStateOf<NewPageTarget?>(null) }
     val pages = remember(wikiVersion) { hub.pages }
     val sections = remember(pages) { WikiTree.sections(pages) }
@@ -140,7 +146,7 @@ fun DocsPane(
 
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(
-            query, { query = it }, singleLine = true,
+            query, onQuery, singleLine = true,
             placeholder = { Text(stringResource(R.string.docs_filter)) },
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),

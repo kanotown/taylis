@@ -143,6 +143,8 @@ fun MainScreen(controller: AppController) {
     val canvasesListState = rememberLazyListState()
     // M122: the tree's place, kept while a page is open over it.
     val docsListState = rememberLazyListState()
+    var docsOpenRows by rememberSaveable { mutableStateOf("") }
+    var docsQuery by rememberSaveable { mutableStateOf("") }
     var confirmReadTimes by remember { mutableStateOf(false) }
     // M39: the activity tab's ⋮ 「すべて既読」, handed to its list (which also clears its dots).
     var activityReadAll by remember { mutableStateOf(false) }
@@ -923,7 +925,7 @@ fun MainScreen(controller: AppController) {
                 } else if (pane == Route.Docs) {
                     // M122 (docs/WIKI.md §9.2): the tree; a row opens its page over it, the search key looks in the bodies.
                     DocsPane(
-                        controller, docsListState,
+                        controller, docsListState, docsOpenRows, { docsOpenRows = it }, docsQuery, { docsQuery = it },
                         onOpen = { id -> focusManager.clearFocus(); stack = MainNav.openPage(stack, id) },
                         onSearchBodies = { q ->
                             focusManager.clearFocus()
