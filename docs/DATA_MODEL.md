@@ -98,6 +98,7 @@ CREATE TABLE users (
   quick_reactions       text[],                 -- M50 長押しの「リアクションの候補」1〜6 個 (重複なし・普通の絵文字だけ)。NULL = クライアントの規則 (最近使った順、足りなければ既定)
   nav_items             jsonb,                  -- M111 サイドバーの項目 / ホームのタイルの順と表示 [{key, visible}] (64 個まで、key は ^[a-z][a-z0-9-]{0,31}$ で重複なし、知らない key もそのまま保存)。NULL = 既定 (apps/shared/nav-items.json、MOBILE_UI.md §14)
   locale                text,                   -- M115 UI の言語 'ja' | 'en' | 'zh-Hans'。NULL = 端末に合わせる (Accept-Language)。1 人向けのサーバの文 (エラー・プッシュ・知らせ) もこれ (I18N.md §1)
+  composer_mode         text,                   -- 2026-10-06 Desktop / Web の入力欄 'rich' (リッチ: 見たまま編集、同じ Markdown を書く) | 'markdown' (記号を打つ)。NULL = 選んでいない = リッチ。PATCH /users/me で設定し、別の端末へは user.updated で揃う。スマホはまだ読まない
   avatar_key         text,                          -- プロフィール画像のオブジェクトキー (avatars/<user_id>/<uuid>、M14a)
   avatar_updated_at  timestamptz,                   -- 画像の版。UserPublic に載り、クライアントはこれでキャッシュする
   bot_kind              varchar(16),            -- M98 bot の用途。'feed' = チャンネルのフィードのボット (UserPublic.bot_kind、リンクプレビューを自動で取る。SECURITY.md §14)、'reservation' = 予約の記録のチャンネルのボット (M99、M112、RESERVATIONS.md)。それ以外の bot と人は NULL
@@ -1636,6 +1637,14 @@ CREATE INDEX messages_mention_all_idx     ON messages (created_at) WHERE mention
   そのまま。見出し・引用・箇条書き・表・コードブロック自身の余白は変えない。入力欄のプレビューとキャンバスも
   同じ描き方。絵文字だけの大きな表示 (EMOJI.md §7) は対象外 (改行はそのまま)。3 クライアントのケースは
   `apps/shared/body-paragraphs.json`。
+- リッチ入力（2026-10-06、Desktop / Web、`users.composer_mode`）：見たまま編集する入力欄も本文はこの Markdown で
+  書き、編集・下書きはこの Markdown から開く（保存の形式は変えない）。太字は `**`、斜体は `_`（前後が文字なら
+  `_` の外側にゼロ幅スペース U+200B を入れて単語の境目にする）、取り消し `~~`、コード `` ` ``（中にバッククォートが
+  あれば二重）、リンクは `[表示名](URL)`（表示名が URL そのものなら URL だけ）。強調は入れ子にできないので入力欄でも
+  1 つずつ。打った記号が書式にならないよう、そのままでは書式に読まれる `_` `*` `~` `` ` `` だけを `\` で逃がす
+  （`snake_case` や URL・メールアドレスの中は逃がさない）。段落の行頭が見出し・引用・リスト・コードブロック・表の
+  区切りに読まれるときは行頭に U+200B を置く。入力欄の 1 段落は本文の 1 行、空の段落は空行。表はその Markdown を
+  そのまま編集するブロック、数式は文字のまま。
 プレーンテキスト保存は将来の全文検索・意味検索・要約の前提でもある (ARCHITECTURE.md §10)。
 
 ### 各操作と seq / updated_seq

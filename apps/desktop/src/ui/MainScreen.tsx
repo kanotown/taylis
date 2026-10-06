@@ -486,7 +486,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   useEffect(() => {
     if (!focusComposer.current || pane !== "main" || view !== "channel") return;
     focusComposer.current = false;
-    const timer = setTimeout(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus(), 0);
+    const timer = setTimeout(() => document.querySelector<HTMLElement>(".composer [data-composer-input]")?.focus(), 0);
     return () => clearTimeout(timer);
   }, [currentId, pane, view, mobileTab]);
 
@@ -914,7 +914,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         setDialog("browse");
       } else if (mod && event.shiftKey && key === "l" && !covered) {
         event.preventDefault();
-        document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
+        document.querySelector<HTMLElement>(".composer [data-composer-input]")?.focus();
       } else if (mod && key === "/") {
         event.preventDefault();
         setDialog((d) => (d === "shortcuts" ? null : "shortcuts"));

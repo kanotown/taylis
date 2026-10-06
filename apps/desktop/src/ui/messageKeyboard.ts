@@ -29,7 +29,7 @@ export function messageRowKey(event: KeyboardEvent<HTMLElement>, openThread?: ()
 /** Cycle visible regions in DOM order; leave modal focus traps and normal text editing intact. */
 export function focusChatRegion(backwards: boolean): boolean {
   if (document.activeElement?.closest('[role="dialog"], [role="alertdialog"]')) return false;
-  const regions = [...document.querySelectorAll<HTMLElement>("[data-chat-focus], .composer textarea")].filter((element) => {
+  const regions = [...document.querySelectorAll<HTMLElement>("[data-chat-focus], .composer [data-composer-input]")].filter((element) => {
     const style = getComputedStyle(element);
     return element.getClientRects().length > 0 && style.visibility !== "hidden" && style.display !== "none";
   });
