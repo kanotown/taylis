@@ -383,7 +383,7 @@ function ActivityStageA({ controller, onOpenMessage, onOpenThread }: {
       </div>
       {threadsShown && (
         <div className="flex min-h-0 flex-1 flex-col" hidden={segment !== "threads"}>
-          <ThreadsView controller={controller} selectedId={null} onOpen={onOpenThread} embedded />
+          <ThreadsView controller={controller} selectedId={null} onOpen={onOpenThread} onOpenChannel={(entry) => onOpenMessage(entry.parent)} embedded />
         </div>
       )}
     </section>

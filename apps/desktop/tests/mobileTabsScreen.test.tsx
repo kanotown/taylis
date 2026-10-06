@@ -537,3 +537,53 @@ it("only the selected tab's top screen reads: a conversation left on another tab
   expect(serverRead(w)).toBe(last + 1);
   w.engine.stop();
 });
+
+it("the threads list: a row's conversation name opens the conversation at the parent message, not the thread", async () => {
+  const { w, controller, first } = await setup();
+  fireEvent.click(within(root("home")!).getByText("スレッド"));
+  await flush();
+  const link = screen.getByRole("button", { name: "#c を開く" });
+  expect(link.textContent).toBe("#c");
+  fireEvent.click(link);
+  await act(async () => { await w.engine.idle(); });
+  await flush();
+  expect(selected()).toBeNull(); // a conversation is on screen, over the home tab
+  expect(w.engine.currentChannelId).toBe(w.channelId);
+  expect(controller.messageFocus?.messageId).toBe(first.id);
+  expect(controller.messageFocus?.parentId).toBeNull();
+  expect(within(header()).getByText("c")).toBeTruthy();
+  expect(screen.queryByLabelText("スレッドのメッセージ一覧")).toBeNull(); // the conversation, not the thread
+  w.engine.stop();
+});
+
+it("the threads list, wide: 「チャンネルを開く」 in a row's menu, or its name, opens the channel at the parent", async () => {
+  compact = false;
+  const { w, controller, first } = await setup();
+  const openList = async () => {
+    fireEvent.click(screen.getByTitle(/^スレッド（/));
+    await flush();
+    expect(document.querySelector("[data-thread-channel]")).not.toBeNull();
+  };
+  await openList();
+
+  // The row's menu: 「スレッドを開く」 and 「チャンネルを開く」 (a DM's: 「会話を開く」).
+  fireEvent.contextMenu(document.querySelector(`[data-row-key="${first.id}"]`)!);
+  expect(await screen.findByRole("menuitem", { name: "スレッドを開く" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("menuitem", { name: "チャンネルを開く" }));
+  await act(async () => { await w.engine.idle(); });
+  await flush();
+  expect(document.querySelector("[data-thread-channel]")).toBeNull(); // the list gave way to the channel
+  expect(w.engine.currentChannelId).toBe(w.channelId);
+  expect(controller.messageFocus).toMatchObject({ channelId: w.channelId, messageId: first.id, parentId: null });
+  expect(screen.queryByLabelText("スレッドのメッセージ一覧")).toBeNull();
+
+  // The name does the same.
+  controller.clearMessageFocus();
+  await openList();
+  fireEvent.click(screen.getByRole("button", { name: "#c を開く" }));
+  await act(async () => { await w.engine.idle(); });
+  await flush();
+  expect(document.querySelector("[data-thread-channel]")).toBeNull();
+  expect(controller.messageFocus?.messageId).toBe(first.id);
+  w.engine.stop();
+});

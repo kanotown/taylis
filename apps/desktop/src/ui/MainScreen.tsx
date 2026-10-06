@@ -1199,7 +1199,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
         // M34: a thread from the activity tab covers this; the tab's own list is under it.
         null
       ) : view === "threads" ? (
-        <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} />
+        <ThreadsView controller={controller} selectedId={threadId} onOpen={openThreadEntry} onOpenChannel={(entry) => revealFromList(entry.parent)} />
       ) : view === "saved" ? (
         <SavedView controller={controller} onOpen={revealFromList} />
       ) : view === "times" ? (
