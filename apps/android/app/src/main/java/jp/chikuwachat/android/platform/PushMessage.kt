@@ -24,6 +24,8 @@ data class PushMessage(
     val taskId: String? = null,
     /** M73: the canvas that newly mentions me (`kind = canvas`, CANVAS.md §18.1); `channel_id` is its conversation. */
     val canvasId: String? = null,
+    /** M122 (docs/WIKI.md §9.3): the page that mentions me or was shared with me (`kind = page`). */
+    val pageId: String? = null,
     /**
      * PUSH_NOTIFICATIONS.md §16 (`kind = message`): who sent it, their picture's version (null without one) and the
      * conversation's type (public / private / dm / group_dm), for the MessagingStyle notification with the sender's picture.
@@ -44,6 +46,9 @@ data class PushMessage(
     /** M73 (CANVAS.md §18.5): a canvas mentioned me; the tap opens it in its conversation's 「キャンバス」 tab. */
     val isCanvas: Boolean get() = kind == "canvas" && canvasId != null
 
+    /** M122: a page of 「ドキュメント」 mentioned me or was shared with me; the tap opens the page. */
+    val isPage: Boolean get() = kind == "page" && pageId != null
+
     /** M112: a reservation notice (an operator's to-do, or news of my own reservation): the tap opens 「予約」. */
     val isReservation: Boolean get() = kind == "reservation"
 
@@ -51,7 +56,7 @@ data class PushMessage(
     val isTest: Boolean get() = kind == "test"
 
     /** Whether it becomes a notification: a conversation's, or a calendar alarm's / a task's / a test's (which have no conversation). */
-    val shown: Boolean get() = !isSilent && notificationKey != null && (channelId != null || isCalendar || isTask || isTest || isReservation)
+    val shown: Boolean get() = !isSilent && notificationKey != null && (channelId != null || isCalendar || isTask || isTest || isReservation || isPage)
 
     /** M39: someone reacted to my message (PUSH_NOTIFICATIONS.md §4); the tap opens that message. */
     val isReaction: Boolean get() = kind == "reaction"
@@ -91,6 +96,8 @@ data class PushMessage(
         "task" -> collapseKey ?: taskId?.let { "task:$it" }
         // M73: one per canvas ("canvas:<canvas id>"): the next mention in it replaces it; a read of the conversation keeps it.
         "canvas" -> collapseKey ?: canvasId?.let { "canvas:$it" }
+        // M122: one per page ("page:<page id>", the server's collapse key).
+        "page" -> collapseKey ?: pageId?.let { "page:$it" }
         // M112: one per notice ("reservation:<item id>", the server's collapse key).
         "reservation" -> collapseKey ?: "reservation"
         // §15: one test notification at a time (the server's collapse key is "test").
@@ -116,6 +123,7 @@ data class PushMessage(
                 eventId = data["event_id"]?.takeIf { it.isNotBlank() },
                 taskId = data["task_id"]?.takeIf { it.isNotBlank() },
                 canvasId = data["canvas_id"]?.takeIf { it.isNotBlank() },
+                pageId = data["page_id"]?.takeIf { it.isNotBlank() },
                 senderId = data["sender_id"]?.takeIf { it.isNotBlank() },
                 senderName = data["sender_name"]?.takeIf { it.isNotBlank() },
                 senderAvatar = data["sender_avatar"]?.takeIf { it.isNotBlank() },

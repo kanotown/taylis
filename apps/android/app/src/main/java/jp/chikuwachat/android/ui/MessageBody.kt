@@ -229,6 +229,8 @@ fun bodyInline(
     }
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
+    // M122: links to pages of 「ドキュメント」 and to files (DocLinks.kt); null outside the main screen.
+    val docLinks = LocalPageLinks.current
     // TeX math (MathRender.kt): drawn at the body text's size, tinted with the text's colour.
     val context = LocalContext.current
     val mathFontPx = with(LocalDensity.current) { MaterialTheme.typography.bodyLarge.fontSize.toPx() }
@@ -248,7 +250,23 @@ fun bodyInline(
                 is BodyToken.Link -> {
                     val internal = internalBase?.let { Permalink.messageId(it, token.url) }
                     val canvas = internalBase?.let { Permalink.canvasId(it, token.url) }
-                    if (internal != null && onOpenMessage != null) {
+                    // M122: `page:<id>` (the canvas dialect) or this server's `/p/<id>`; `attachment:<id>` a file.
+                    val page = jp.chikuwachat.android.sync.WikiLinks.idOf(token.url) ?: internalBase?.let { Permalink.pageId(it, token.url) }
+                    val file = jp.chikuwachat.android.sync.WikiLinks.attachmentOf(token.url)
+                    val written = token.label?.takeIf { it != token.url }
+                    if (page != null) {
+                        val label = docLinks?.label?.invoke(page)
+                        val text = DocLinkText.page(label, written)
+                        val style = SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)
+                        if (docLinks != null && label !is jp.chikuwachat.android.sync.PageLabel.Hidden) {
+                            withLink(LinkAnnotation.Clickable("page:$page", TextLinkStyles(style)) { docLinks.open(page) }) { appendWithEmoji(text) }
+                        } else withStyle(if (docLinks == null) style else SpanStyle(color = mutedColor)) { appendWithEmoji(text) }
+                    } else if (file != null) {
+                        val text = DocLinkText.file(written)
+                        if (docLinks != null) {
+                            withLink(LinkAnnotation.Clickable("file:$file", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { docLinks.openFile(file) }) { append(text) }
+                        } else append(text)
+                    } else if (internal != null && onOpenMessage != null) {
                         withLink(LinkAnnotation.Clickable("message:$internal", TextLinkStyles(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium))) { onOpenMessage(internal) }) {
                             val label = token.label?.takeIf { it != token.url }
                             if (citations && label != null) append("[$label]")

@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -80,6 +81,7 @@ import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -222,6 +224,69 @@ class SearchResults {
             }.onFailure { failed = true }
         } finally {
             if (id == request) loading = false
+        }
+    }
+
+    // --- M122: the 「ドキュメント」 tab (GET /search/pages, docs/WIKI.md §8.1) ---
+
+    var pageHits by mutableStateOf<List<jp.chikuwachat.android.api.PageSearchHit>>(emptyList())
+        private set
+    var pageKeywords by mutableStateOf<List<String>>(emptyList())
+        private set
+    var pageTotal by mutableIntStateOf(0)
+        private set
+    var pageCapped by mutableStateOf(false)
+        private set
+    var pageHasMore by mutableStateOf(false)
+        private set
+    var pageLoading by mutableStateOf(false)
+        private set
+    var pageLoaded by mutableStateOf(false)
+        private set
+    var pageFailed by mutableStateOf(false)
+        private set
+    private var pageQuery: String? = null
+    private var pageRequest = 0
+
+    /** The pages for the words (the same ones again keep what is shown); nothing is sent without words. */
+    suspend fun showPages(controller: AppController, q: String) {
+        val words = q.trim()
+        if (words == pageQuery && (pageLoaded || pageLoading)) return
+        pageQuery = words
+        pageHits = emptyList()
+        pageKeywords = emptyList()
+        pageTotal = 0
+        pageCapped = false
+        pageHasMore = false
+        pageLoaded = false
+        pageFailed = false
+        loadPages(controller, 0)
+    }
+
+    suspend fun loadMorePages(controller: AppController) {
+        if (pageHasMore && !pageLoading) loadPages(controller, pageHits.size)
+    }
+
+    suspend fun retryPages(controller: AppController) = loadPages(controller, pageHits.size)
+
+    private suspend fun loadPages(controller: AppController, offset: Int) {
+        val q = pageQuery?.takeIf { it.isNotEmpty() } ?: return
+        val id = ++pageRequest
+        pageLoading = true
+        pageFailed = false
+        try {
+            val result = controller.searchPages(q, offset)
+            if (id != pageRequest) return
+            result.onSuccess { out ->
+                pageHits = if (offset == 0) out.hits else (pageHits + out.hits).distinctBy { it.page.id }
+                pageKeywords = out.keywords
+                pageTotal = out.total
+                pageCapped = out.totalCapped
+                pageHasMore = out.hasMore
+                pageLoaded = true
+            }.onFailure { pageFailed = true }
+        } finally {
+            if (id == pageRequest) pageLoading = false
         }
     }
 
@@ -647,6 +712,9 @@ const val SEARCH_TAB_FILES = 1
 /** M58: tab index of the canvases tab (CANVAS.md §4.8: 「メッセージ / ファイル」 の隣). */
 const val SEARCH_TAB_CANVASES = 2
 
+/** M122: tab index of the 「ドキュメント」 tab (docs/WIKI.md §8.1: 「メッセージ / ファイル / キャンバス」 の隣). */
+const val SEARCH_TAB_DOCS = 3
+
 @Composable
 fun SearchResultsPane(
     controller: AppController,
@@ -669,15 +737,24 @@ fun SearchResultsPane(
     onOpenCanvas: (CanvasMeta) -> Unit,
     /** M71: a message an AI answer cites (docs/AI.md §13.3), opened like a result. */
     onOpenCited: (messageId: String, channelId: String, parentId: String?) -> Unit = { _, _, _ -> },
+    /** M122: the 「ドキュメント」 tab (the server keeps pages): its state, and a hit opening its page. */
+    docs: Boolean = false,
+    docsState: LazyListState? = null,
+    onLoadMorePages: () -> Unit = {},
+    onRetryPages: () -> Unit = {},
+    onOpenPage: (String) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize()) {
         PrimaryTabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { onTabChange(0) }, text = { Text(L10n.str(R.string.common_message)) })
             Tab(selected = tab == SEARCH_TAB_FILES, onClick = { onTabChange(SEARCH_TAB_FILES) }, text = { Text(L10n.str(R.string.common_files)) })
             Tab(selected = tab == SEARCH_TAB_CANVASES, onClick = { onTabChange(SEARCH_TAB_CANVASES) }, text = { Text(L10n.str(R.string.common_canvas)) })
+            if (docs) Tab(selected = tab == SEARCH_TAB_DOCS, onClick = { onTabChange(SEARCH_TAB_DOCS) }, text = { Text(L10n.str(R.string.docs_title), maxLines = 1, overflow = TextOverflow.Ellipsis) })
         }
-        FilterRow(controller, version, params, onChange, tab)
+        // M122: a page's search takes its modifiers in the words (from:@ before: in:<題名>); no chips.
+        if (tab != SEARCH_TAB_DOCS) FilterRow(controller, version, params, onChange, tab)
         when (tab) {
+            SEARCH_TAB_DOCS -> PageResults(controller, version, params, results, docsState ?: rememberLazyListState(), onLoadMorePages, onRetryPages, onOpenPage)
             SEARCH_TAB_FILES -> FileResults(controller, results, filesState, onLoadMoreFiles, onOpenFile)
             SEARCH_TAB_CANVASES -> CanvasResults(controller, version, params, results, onChange, canvasesState, onLoadMoreCanvases, onRetryCanvases, onOpenCanvas)
             else -> MessageResults(controller, version, params, results, onChange, listState, onLoadMore, onRetry, onOpen, onOpenCited)
@@ -765,6 +842,112 @@ private fun CanvasResults(
                 Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                     OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.common_load_again)) }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * M122 (docs/WIKI.md §8.1): pages I can read whose title or body matches. A hit shows where it is in the tree, who changed
+ * it last and when, its icon and title and the server's excerpt with the words marked; it opens the page (the results
+ * stay behind it).
+ */
+@Composable
+private fun PageResults(
+    controller: AppController,
+    version: Int,
+    params: SearchParams,
+    results: SearchResults,
+    state: LazyListState,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit,
+    onOpen: (String) -> Unit,
+) {
+    LaunchedEffect(state, results) {
+        snapshotFlow {
+            val info = state.layoutInfo
+            val count = results.pageHits.size
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            results.pageHasMore && !results.pageLoading && count > 0 && info.totalItemsCount >= count && last >= count - 5
+        }.distinctUntilChanged().collect { near -> if (near) onLoadMore() }
+    }
+    if (params.q.isBlank()) {
+        Text(
+            stringResource(R.string.docs_search_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
+        )
+        return
+    }
+    val hub = controller.wiki
+    val wikiVersion = hub?.version?.collectAsState()?.value ?: 0
+    Text(
+        if (results.pageLoaded) Search.totalLabel(results.pageTotal, results.pageCapped) else "",
+        style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+    LazyColumn(Modifier.fillMaxSize(), state = state) {
+        when {
+            results.pageLoaded && results.pageHits.isEmpty() -> item(key = "empty") {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.SearchOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
+                    Text(stringResource(R.string.docs_search_empty), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+                    Text(
+                        stringResource(R.string.docs_search_hint), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+            else -> items(results.pageHits, key = { it.page.id }) { hit ->
+                val path = remember(wikiVersion, hit.page.id) {
+                    hub?.let { jp.chikuwachat.android.sync.WikiTree.ancestors(it.pages, hit.page.id).joinToString(" / ") { page -> DocsText.title(page) } }.orEmpty()
+                }
+                PageResultRow(controller, version, hit, results.pageKeywords, path, onOpen = { onOpen(hit.page.id) })
+                HorizontalDivider()
+            }
+        }
+        if (results.pageLoading) {
+            item(key = "loading:" + results.pageHits.size) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (results.pageHits.isEmpty()) stringResource(R.string.search_pane_searching) else stringResource(R.string.search_pane_loading_more), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        } else if (results.pageFailed) {
+            item(key = "retry") {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.common_load_again)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PageResultRow(controller: AppController, version: Int, hit: jp.chikuwachat.android.api.PageSearchHit, keywords: List<String>, path: String, onOpen: () -> Unit) {
+    val store = controller.store
+    val page = hit.page
+    val who = store.users[page.updatedBy]?.displayName ?: stringResource(R.string.common_member)
+    val snippet = remember(hit.snippet, version) { CanvasText.readableSnippet(Mentions.toNames(hit.snippet, store.users, store.groups)) }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.docs_open_page), onClick = onOpen).padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                listOf(path.ifEmpty { stringResource(R.string.docs_title) }, who).joinToString(" · "),
+                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = muted,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(YouSettings.lastUsedLabel(page.updatedAt), style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 1)
+        }
+        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Top) {
+            Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                EmojiLineText(page.icon?.takeIf { it.isNotBlank() } ?: "📄", controller, version, MaterialTheme.typography.titleMedium, MaterialTheme.colorScheme.onSurface)
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(highlighted(page.title.ifBlank { stringResource(R.string.docs_untitled) }, keywords), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (snippet.isNotBlank()) Text(highlighted(snippet, keywords), style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         }
     }

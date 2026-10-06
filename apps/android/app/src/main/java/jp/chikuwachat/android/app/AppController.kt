@@ -242,6 +242,8 @@ class AppController(private val app: Application) {
     var pendingJump by mutableStateOf(false)
     /** M46: a canvas to open once the main screen sees it (a `/c/<id>` link tapped in a body): its conversation and id. */
     var pendingCanvas by mutableStateOf<Pair<String, String>?>(null)
+    /** M122: a page of 「ドキュメント」 to open on the home tab (a tapped notification, a page activity row from elsewhere). */
+    var pendingPage by mutableStateOf<String?>(null)
     /** M52: a calendar event to open once the main screen sees it (a tapped alarm): its channel (null: my own) and id. */
     data class PendingEvent(val channelId: String?, val eventId: String)
     var pendingEvent by mutableStateOf<PendingEvent?>(null)
@@ -638,6 +640,7 @@ class AppController(private val app: Application) {
         messageFocus = null
         pendingReveal = null
         pendingCanvas = null
+        pendingPage = null
         pendingEvent = null
         calendarForm = null
         calendarFeeds = null
@@ -1128,6 +1131,15 @@ class AppController(private val app: Application) {
             notice = "📝 $text"
             if (!dndActive(store)) notify(workspace(), channel.id, L10n.str(R.string.common_canvas), text, key = "canvas:${mention.canvasId}", canvasId = mention.canvasId)
         }
+        // M122 (docs/WIKI.md §9.3): mentioned in a page, or a page shared with me by name, while the app is open: the
+        // banner and a local notification worded like the push (which is not shown then); its tap opens the page.
+        engine.onWikiNotice = { wiki, shared ->
+            val who = wiki.byUserId?.let { store.users[it]?.displayName } ?: L10n.str(R.string.docs_someone)
+            val title = wiki.title.ifBlank { L10n.str(R.string.docs_untitled) }
+            val text = if (shared) L10n.str(R.string.docs_shared_with_you, who, title) else L10n.str(R.string.docs_mentioned_you, who, title)
+            notice = "📄 $text"
+            if (!dndActive(store)) notify(workspace(), null, L10n.str(R.string.docs_title), text, key = "page:${wiki.pageId}", pageId = wiki.pageId)
+        }
         // M112: a reservation notice while the app is open: the banner and a local notification (the push is not shown then).
         engine.onReservationNotice = { notice ->
             notice.text.let { text ->
@@ -1217,7 +1229,7 @@ class AppController(private val app: Application) {
     private fun notify(
         entry: Workspace?, channelId: String?, title: String, body: String, key: String = channelId ?: "", messageId: String? = null, parentId: String? = null,
         reveal: Boolean = false, eventId: String? = null, taskId: String? = null, canvasId: String? = null, reservations: Boolean = false,
-        conversation: ConversationNote? = null,
+        conversation: ConversationNote? = null, pageId: String? = null,
     ) {
         val named = workspaces.size >= 2
         if (conversation != null && channelId != null) {
@@ -1240,7 +1252,7 @@ class AppController(private val app: Application) {
         notifier.notifyMessage(
             channelId, title, body, key = key, workspace = entry?.serverUrl, subText = if (named) entry?.name else null,
             messageId = messageId, parentId = parentId, reveal = reveal, badge = totalBadge(), eventId = eventId, taskId = taskId,
-            canvasId = canvasId, reservations = reservations,
+            canvasId = canvasId, reservations = reservations, pageId = pageId,
         )
     }
 
@@ -1290,7 +1302,7 @@ class AppController(private val app: Application) {
                 // M52: a calendar alarm's push is shown the same way (while live, the socket's calendar.alarm.updated says it).
                 // §15: a test push is what the reader just asked for: shown even with the app open and the socket live.
                 if (message.shown && (message.isTest || (!live && !reading)) && key != null) {
-                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation)
+                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation, pageId = message.pageId)
                 }
                 // M28c: the push's own conversation catches up too (the socket may be stale), not only the open one.
                 engine?.pushReceived(message.channelId, message.messageId)
@@ -1299,7 +1311,7 @@ class AppController(private val app: Application) {
             // The mark first: the notification's number counts this workspace's badge with the others'.
             if (message.kind == "message") updateWorkspace(target.serverUrl) { it.copy(hasUnread = true, badge = message.badge ?: it.badge) }
             if (message.shown && key != null) {
-                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation)
+                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation, pageId = message.pageId)
             }
         }
     }
@@ -1360,6 +1372,13 @@ class AppController(private val app: Application) {
         bringWorkspace { pendingCanvas = target }
     }
 
+    /** M122 (docs/WIKI.md §9.3): a tapped page notification: its workspace comes on screen, then the page on the home tab. */
+    fun openPageFromNotification(workspaceKey: String?, pageId: String) {
+        pendingWorkspaceKey = workspaceKey
+        pendingPage = pageId
+        bringWorkspace { pendingPage = pageId }
+    }
+
     /**
      * M77 (CANVAS.md §20.7): a canvas row of the activity tab whose conversation the store does not know yet: it lands like
      * a tapped canvas push in the workspace on screen, once the conversation is known (a known one goes on the activity
@@ -1392,6 +1411,7 @@ class AppController(private val app: Application) {
         appForeground = active
         engine?.reportActivity()
         if (!active) engine?.canvases?.flushAll() // M46 (CANVAS.md §4.4): what is typed is saved when the app goes to the background
+        if (!active) engine?.wiki?.flushAll() // M122: a page's too
         if (!active) engine?.stopCanvasEditing() // M73 (§18.2): no 「編集中」 from a phone in a pocket
         if (active) {
             // M86 (DEADLINES.md §8 1.): the deadlines' window read again (a reconnect reads it anyway).
@@ -1486,7 +1506,11 @@ class AppController(private val app: Application) {
             if (engine != null) {
                 // M46: a canvas typed in the last seconds too (briefly: the sign-out does not wait on a dead network).
                 engine.canvases.flushAll()
-                kotlinx.coroutines.withTimeoutOrNull(3_000) { engine.canvases.settleAll() }
+                engine.wiki.flushAll() // M122: a page's too
+                kotlinx.coroutines.withTimeoutOrNull(3_000) {
+                    engine.canvases.settleAll()
+                    engine.wiki.settleAll()
+                }
             }
             engine?.stop()
         }
@@ -2225,6 +2249,68 @@ class AppController(private val app: Application) {
 
     /** M56: the engine's tasks; null before sign-in. */
     val tasks: jp.chikuwachat.android.sync.TaskHub? get() = engine?.tasks
+
+    // --- 「ドキュメント」 (M122, docs/WIKI.md §9.2) ---------------------------------------------------------
+
+    /** The tree, the open pages' save loops and the titles of linked pages (null: signed out). */
+    val wiki: jp.chikuwachat.android.sync.WikiHub? get() = engine?.wiki
+
+    /**
+     * A new page: under `parentId` (it takes the parent's access), or top-level with `access` "workspace" (everyone edits,
+     * I manage it) or "private" (only me) — WIKI.md §4.2. A network failure is sent again with the same key, so a retry
+     * never makes a second page. The page joins the tree at once (the feed confirms it).
+     */
+    suspend fun createWikiPage(parentId: String?, title: String?, access: String): jp.chikuwachat.android.api.PageOut? {
+        val api = api ?: return null
+        val zone = java.util.TimeZone.getDefault().id
+        return try {
+            jp.chikuwachat.android.sync.CanvasRequests.sameKey(java.util.UUID.randomUUID().toString()) { key ->
+                api.createWikiPage(parentId, title, access, zone, key)
+            }.also { page -> engine?.wiki?.noteItem(page.item) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            report(e)
+            null
+        }
+    }
+
+    /** A page's title (edit or full). */
+    suspend fun renameWikiPage(pageId: String, title: String): Boolean {
+        val api = api ?: return false
+        return attempt { api.renameWikiPage(pageId, title) }
+            .onSuccess { page ->
+                engine?.wiki?.noteItem(page.item)
+                engine?.wiki?.current(pageId)?.remoteVersion(page.version)
+            }
+            .onFailure { report(it) }.isSuccess
+    }
+
+    /** The readable pages that link to this one (null: could not be read). */
+    suspend fun wikiBacklinks(pageId: String): List<jp.chikuwachat.android.api.PageItem>? {
+        val api = api ?: return null
+        return attempt { api.wikiBacklinks(pageId) }.getOrNull()
+    }
+
+    /** The search's 「ドキュメント」 tab (GET /search/pages): only pages I can read come back. */
+    suspend fun searchPages(q: String, offset: Int = 0): Result<jp.chikuwachat.android.api.PageSearchOut> =
+        attempt { api!!.searchPages(q, limit = 20, offset = offset) }.onFailure { error = describe(it) }
+
+    /** A file link in a page (`attachment:<id>`): its metadata, then it opens like a message's file. */
+    fun openAttachmentById(attachmentId: String) {
+        val api = api ?: return
+        scope.launch {
+            attempt { api.attachment(attachmentId) }.onSuccess { openAttachment(it) }.onFailure { report(it) }
+        }
+    }
+
+    /** 「リンクをコピー」: the page's `<server>/p/<id>` (WIKI.md §9.3). */
+    fun copyPageLink(pageId: String) {
+        val base = serverBase ?: return
+        val clipboard = app.getSystemService(ClipboardManager::class.java) ?: return
+        clipboard.setPrimaryClip(ClipData.newPlainText("Taylis", jp.chikuwachat.android.ui.Permalink.pageUrl(base, pageId)))
+        notice = L10n.str(R.string.docs_link_copied)
+    }
 
     /** The channels I may add events to: those I may post in, not archived (§3). */
     fun writableCalendars(): List<jp.chikuwachat.android.sync.ChannelState> = CalendarChannels.writable(store.channels.values, isAdmin)

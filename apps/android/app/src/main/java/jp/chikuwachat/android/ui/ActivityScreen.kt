@@ -82,6 +82,12 @@ object ActivityText {
         // 「佐藤 が」 but 「佐藤 ほか 2 人が」 (MOBILE_UI.md §6.4).
         // M112: a reservation notice — the pool, and whether it is a to-do (an operator's) or news of my own reservation.
         item.reservation?.let { return it.poolName.ifEmpty { L10n.str(R.string.common_reservations) } + if (it.operator) L10n.str(R.string.activity_screen_operator_task) else L10n.str(R.string.activity_screen_reservation) }
+        // M122 (docs/WIKI.md §9.3): 「佐藤 が「題名」であなたをメンションしました」 / 「佐藤 が「題名」を共有しました」.
+        item.page?.let { page ->
+            val title = page.title.ifBlank { L10n.str(R.string.docs_untitled) }
+            val actor = actors(item.actorIds, name)
+            return if (item.kind == "page_shared") L10n.str(R.string.docs_shared_with_you, actor, title) else L10n.str(R.string.docs_mentioned_you, actor, title)
+        }
         val who = actors(item.actorIds, name) + if (item.actorIds.size > 1) "" else " "
         return when (item.kind) {
             "mention" -> L10n.str(R.string.activity_screen_mentioned_you, who)
@@ -97,6 +103,7 @@ object ActivityText {
 
     /** The second line: the conversation (「#一般」 / a DM's names), 「#一般 のキャンバス」 for a canvas item (M77). */
     fun where(item: ActivityItem, conversation: String): String = when {
+        item.page != null -> L10n.str(R.string.docs_activity_where) // M122: a page belongs to no conversation
         conversation.isEmpty() -> ""
         item.kind == "canvas_mention" -> L10n.str(R.string.activity_screen_canvas_in, conversation)
         else -> conversation
@@ -110,6 +117,7 @@ object ActivityText {
     fun target(item: ActivityItem): ActivityTarget? {
         if (item.reservation != null) return ActivityTarget.Reservations
         item.canvas?.takeIf { item.kind == "canvas_mention" }?.let { return ActivityTarget.Canvas(it.channelId, it.canvasId) }
+        item.page?.let { return ActivityTarget.Page(it.pageId) } // M122
         return item.message?.let { ActivityTarget.Message(it) }
     }
 
@@ -140,6 +148,7 @@ object ActivityText {
     fun excerpt(item: ActivityItem, blanked: Set<String>, messageLine: (MessageOut) -> String): String {
         item.reservation?.let { return it.text } // M112
         item.canvas?.takeIf { item.kind == "canvas_mention" }?.let { return if (it.itemId in blanked) "" else it.excerpt }
+        item.page?.let { return if (it.itemId in blanked) "" else it.excerpt } // M122: a mention's line; a share has none
         return item.message?.let(messageLine) ?: ""
     }
 }
@@ -151,6 +160,8 @@ sealed interface ActivityTarget {
     data class Canvas(val channelId: String, val canvasId: String) : ActivityTarget
     /** M112: 「予約」. */
     data object Reservations : ActivityTarget
+    /** M122 (docs/WIKI.md §9.3): a page of 「ドキュメント」, on the activity tab's stack. */
+    data class Page(val pageId: String) : ActivityTarget
 }
 
 /** The activity tab's list on screen: its rows, where the next page starts, and which rows have the unread dot. */
@@ -257,6 +268,8 @@ fun ActivityScreen(
     onOpenCanvas: (channelId: String, canvasId: String) -> Unit,
     /** M112: a reservation row opens 「予約」. */
     onOpenReservations: () -> Unit = {},
+    /** M122: a page row (a mention in a page, a page shared with me) opens the page. */
+    onOpenPage: (String) -> Unit = {},
 ) {
     val store = controller.store
     if (store.activity == null) {
@@ -366,6 +379,7 @@ fun ActivityScreen(
                                         is ActivityTarget.Message -> onOpenMessage(target.message)
                                         is ActivityTarget.Canvas -> onOpenCanvas(target.channelId, target.canvasId)
                                         ActivityTarget.Reservations -> onOpenReservations()
+                                        is ActivityTarget.Page -> onOpenPage(target.pageId)
                                         null -> Unit
                                     }
                                 },
@@ -412,6 +426,7 @@ private fun ActivityRow(
     val conversation = remember(version, channelId) { channel?.let { channelTitle(it, store) } ?: "" }
     val where = ActivityText.where(item, conversation)
     val canvas = item.canvas.takeIf { item.kind == "canvas_mention" }
+    val page = item.page // M122
     // M112: a to-do another operator handled (or no longer needed) is done: dimmed, 「対応済み」 (activity.updated names it).
     val reservation = item.reservation
     val done = reservation != null && (reservation.done || reservation.itemId in store.blankedActivityItems)
@@ -420,7 +435,7 @@ private fun ActivityRow(
     }
     val time = MainTabs.dmTimeLabel(item.at, now) ?: ""
     // M77: a canvas row reads as one sentence (CANVAS.md §20.5); the others keep their parts.
-    val spoken = canvas?.let { ActivityText.spokenCanvas(item, name, conversation, unread) }
+    val spoken = if (page != null) ActivityText.spokenCanvas(item, name, where, unread) else canvas?.let { ActivityText.spokenCanvas(item, name, conversation, unread) }
     val tap = onClick
     Row(
         Modifier.fillMaxWidth()
@@ -442,12 +457,12 @@ private fun ActivityRow(
                 ActorFaces(item.actorIds, name)
             }
             // M77: the kind's mark on the face, 📝 for a canvas mention.
-            if (canvas != null) {
+            if (canvas != null || page != null) {
                 Box(
                     Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp).size(18.dp)
                         .background(MaterialTheme.colorScheme.surface, CircleShape),
                     contentAlignment = Alignment.Center,
-                ) { Text("📝", style = MaterialTheme.typography.labelSmall) }
+                ) { Text(if (page != null) "📄" else "📝", style = MaterialTheme.typography.labelSmall) }
             }
         }
         Spacer(Modifier.width(10.dp))
@@ -470,7 +485,7 @@ private fun ActivityRow(
                 // Custom emoji as their pictures and `:shortcode:`s as glyphs, as in the message (2026-10-05: `:ckw-yay:`).
                 EmojiLineText(
                     excerpt, store, onNeedEmojiImage, version, MaterialTheme.typography.bodyMedium, androidx.compose.ui.graphics.Color.Unspecified,
-                    Modifier.padding(top = 2.dp), maxLines = if (canvas != null) 2 else 3,
+                    Modifier.padding(top = 2.dp), maxLines = if (canvas != null || page != null) 2 else 3,
                 )
             }
         }

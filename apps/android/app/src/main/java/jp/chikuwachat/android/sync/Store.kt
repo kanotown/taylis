@@ -223,12 +223,23 @@ interface Persistence {
     fun loadAllCanvases(): List<CachedCanvas>
     fun deleteCanvas(id: String)
     fun deleteCanvases(channelId: String)
+
+    // M122 (docs/WIKI.md §10): the last copy of each page read (20 at most), apart from the canvases' trim. Read on demand.
+    /** Writes the copy (a [CachedPage] as JSON) and keeps only the `keep` most recently written pages. */
+    fun saveWikiPage(id: String, json: String, savedAt: Long, keep: Int) {}
+    /** Blocking, like [loadCanvas]. */
+    fun loadWikiPage(id: String): String? = null
+    fun deleteWikiPage(id: String) {}
 }
 
 const val LOCAL_PREFIX = "local:"
 
 /** M46: the meta key prefix of a canvas's unsaved edits ("canvas:<id>"). */
 const val CANVAS_PENDING_PREFIX = "canvas:"
+
+/** M122: the meta key prefix of a page's unsaved edits ("wikipage:<id>"), and the key of the tree kept for offline reading. */
+const val WIKI_PENDING_PREFIX = "wikipage:"
+const val WIKI_TREE_KEY = "wiki:tree"
 
 /**
  * At most this many messages are kept per channel (M22, SYNC_PROTOCOL.md §7.7): the newest ones (pending sends always
@@ -539,6 +550,45 @@ class Store(private val persistence: Persistence? = null) {
     private fun sortCanvases(list: List<CanvasMeta>): List<CanvasMeta> =
         list.sortedWith(compareByDescending<CanvasMeta> { it.updatedAt }.thenByDescending { it.id })
 
+    // --- M122: 「ドキュメント」 (docs/WIKI.md §10) ------------------------------------------------------
+
+    /** The tree as kept at start (read once by WikiHub.restore); later writes go straight to the meta table. */
+    private var wikiTreeKept: WikiTreeSnapshot? = null
+
+    fun wikiTree(): WikiTreeSnapshot? = wikiTreeKept
+
+    fun saveWikiTree(snapshot: WikiTreeSnapshot?) {
+        wikiTreeKept = snapshot
+        persist { it.saveMeta(WIKI_TREE_KEY, snapshot?.let { value -> Codec.plain.encodeToString(WikiTreeSnapshot.serializer(), value) }) }
+    }
+
+    /** The last copy of a page read on this device. Blocking: call off the main thread. */
+    fun cachedPage(pageId: String): CachedPage? = persistence?.let { p ->
+        runCatching { p.loadWikiPage(pageId)?.let { Codec.plain.decodeFromString(CachedPage.serializer(), it) } }.getOrNull()
+    }
+
+    fun cachePage(page: jp.chikuwachat.android.api.PageOut, at: Long = System.currentTimeMillis()) {
+        val json = Codec.plain.encodeToString(CachedPage.serializer(), CachedPage(page, at))
+        persist { it.saveWikiPage(page.id, json, at, WIKI_PAGE_CACHE_LIMIT) }
+    }
+
+    fun uncachePage(pageId: String) {
+        persist { it.deleteWikiPage(pageId) }
+    }
+
+    /** Unsaved page edits, kept under "wikipage:<id>" (the same state as a canvas's). */
+    private val pagePending = LinkedHashMap<String, CanvasPendingState>()
+
+    fun pendingPage(pageId: String): CanvasPendingState? = pagePending[pageId]
+
+    fun pendingPages(): List<Pair<String, CanvasPendingState>> = pagePending.entries.map { it.key to it.value }
+
+    fun setPendingPage(pageId: String, state: CanvasPendingState?) {
+        if (state != null) pagePending[pageId] = state
+        else if (pagePending.remove(pageId) == null) return
+        persist { it.saveMeta(WIKI_PENDING_PREFIX + pageId, state?.let { value -> Codec.plain.encodeToString(CanvasPendingState.serializer(), value) }) }
+    }
+
     /** M46: unsaved canvas edits, kept in the meta table under "canvas:<id>" so a restart sends them (same key, §4.4). */
     private val canvasPending = LinkedHashMap<String, CanvasPendingState>()
 
@@ -668,6 +718,10 @@ class Store(private val persistence: Persistence? = null) {
         snapshot.meta.filterKeys { it.startsWith(CANVAS_PENDING_PREFIX) }.forEach { (key, value) ->
             runCatching { Codec.plain.decodeFromString(CanvasPendingState.serializer(), value) }.getOrNull()?.let { canvasPending[key.removePrefix(CANVAS_PENDING_PREFIX)] = it }
         }
+        snapshot.meta.filterKeys { it.startsWith(WIKI_PENDING_PREFIX) }.forEach { (key, value) ->
+            runCatching { Codec.plain.decodeFromString(CanvasPendingState.serializer(), value) }.getOrNull()?.let { pagePending[key.removePrefix(WIKI_PENDING_PREFIX)] = it }
+        }
+        wikiTreeKept = snapshot.meta[WIKI_TREE_KEY]?.let { runCatching { Codec.plain.decodeFromString(WikiTreeSnapshot.serializer(), it) }.getOrNull() }
         me = snapshot.meta["me"]?.let { runCatching { Codec.plain.decodeFromString(UserMe.serializer(), it) }.getOrNull() }
         snapshot.users.forEach { users[it.id] = it }
         // §7.3: a timeline cached before `oldestLoadedSeq` existed may hide holes, so it loads again from the

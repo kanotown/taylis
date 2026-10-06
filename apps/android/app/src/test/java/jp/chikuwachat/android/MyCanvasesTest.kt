@@ -267,10 +267,14 @@ class MyCanvasesTest {
     @Test
     fun theTileComesAfterFiles() {
         val tiles = HomeTiles.tiles(ThreadSummary(), drafts = 0, saved = 0, firedReminders = 0)
-        assertEquals(HomeTile.FILES, tiles[tiles.size - 2].tile)
-        assertEquals(HomeTile.CANVASES, tiles.last().tile)
-        assertNull(tiles.last().count)
-        assertEquals("キャンバス", HomeTiles.description(tiles.last()))
+        // M122: 「ドキュメント」 follows キャンバス (WIKI.md §9.2).
+        assertEquals(HomeTile.FILES, tiles[tiles.size - 3].tile)
+        val canvases = tiles[tiles.size - 2]
+        assertEquals(HomeTile.CANVASES, canvases.tile)
+        assertNull(canvases.count)
+        assertEquals("キャンバス", HomeTiles.description(canvases))
+        assertEquals(HomeTile.DOCS, tiles.last().tile)
+        assertEquals("ドキュメント", HomeTiles.description(tiles.last()))
     }
 
     @Test

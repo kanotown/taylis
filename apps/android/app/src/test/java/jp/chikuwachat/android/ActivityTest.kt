@@ -314,10 +314,10 @@ class ActivityTest {
         val summary = client.markActivityRead("2026-09-30T05:00:00Z")
         client.activitySummary()
         // M77: every activity call names the canvas items (CANVAS.md §20.5; ActivityCanvasTest checks bootstrap too).
-        assertEquals("GET /api/v1/activity?filter=reactions&limit=50&include=canvas_mention&include=reservation&cursor=2026-09-30T01%3A00%3A00.5%2B00%3A00", requests[0].first)
-        assertEquals("PUT /api/v1/activity/read?include=canvas_mention&include=reservation", requests[1].first)
+        assertEquals("GET /api/v1/activity?filter=reactions&limit=50&include=canvas_mention&include=reservation&include=page_mention&include=page_shared&cursor=2026-09-30T01%3A00%3A00.5%2B00%3A00", requests[0].first)
+        assertEquals("PUT /api/v1/activity/read?include=canvas_mention&include=reservation&include=page_mention&include=page_shared", requests[1].first)
         assertEquals("2026-09-30T05:00:00Z", Codec.plain.parseToJsonElement(requests[1].second!!).jsonObject["read_at"]?.jsonPrimitive?.content)
-        assertEquals("GET /api/v1/activity/summary?include=canvas_mention&include=reservation", requests[2].first)
+        assertEquals("GET /api/v1/activity/summary?include=canvas_mention&include=reservation&include=page_mention&include=page_shared", requests[2].first)
         assertEquals(0, summary.unreadCount)
     }
 

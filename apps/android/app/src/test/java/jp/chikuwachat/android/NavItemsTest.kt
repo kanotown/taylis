@@ -82,7 +82,7 @@ class NavItemsTest {
             NavItem("some-future-page", true), NavItem("threads", true), NavItem("files", false),
         ))
         assertEquals(
-            listOf(HomeTile.CALENDAR, HomeTile.THREADS, HomeTile.DRAFTS, HomeTile.SAVED, HomeTile.REMINDERS, HomeTile.TASKS, HomeTile.DEADLINES, HomeTile.CANVASES),
+            listOf(HomeTile.CALENDAR, HomeTile.THREADS, HomeTile.DRAFTS, HomeTile.SAVED, HomeTile.REMINDERS, HomeTile.TASKS, HomeTile.DEADLINES, HomeTile.CANVASES, HomeTile.DOCS),
             mine.map { it.tile },
         )
         val tile = mine.first { it.tile == HomeTile.THREADS }

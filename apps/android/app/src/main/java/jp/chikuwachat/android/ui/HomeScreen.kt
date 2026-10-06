@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AlarmOn
@@ -370,6 +371,7 @@ private fun tileIcon(tile: HomeTile): ImageVector = when (tile) {
     HomeTile.RESERVATIONS -> Icons.Outlined.ConfirmationNumber
     HomeTile.FILES -> Icons.Outlined.Folder
     HomeTile.CANVASES -> Icons.AutoMirrored.Outlined.Article
+    HomeTile.DOCS -> Icons.AutoMirrored.Outlined.MenuBook
 }
 
 /**

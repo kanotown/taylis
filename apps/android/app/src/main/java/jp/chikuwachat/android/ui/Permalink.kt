@@ -11,11 +11,17 @@ object Permalink {
 
     fun canvasUrl(baseUrl: String, canvasId: String): String = baseUrl.trimEnd('/') + "/c/" + canvasId
 
+    /** M122 (docs/WIKI.md §9.3): a page of 「ドキュメント」, `<server>/p/<page_id>`. */
+    fun pageUrl(baseUrl: String, pageId: String): String = baseUrl.trimEnd('/') + "/p/" + pageId
+
     /** The message id when `url` is a permalink on `baseUrl` (case-insensitive prefix, query / fragment ignored). */
     fun messageId(baseUrl: String, url: String): String? = idAfter(baseUrl, url, "/m/")
 
     /** The canvas id when `url` is a canvas link on `baseUrl`. */
     fun canvasId(baseUrl: String, url: String): String? = idAfter(baseUrl, url, "/c/")
+
+    /** M122: the page id when `url` is a page link on `baseUrl`. */
+    fun pageId(baseUrl: String, url: String): String? = idAfter(baseUrl, url, "/p/")
 
     private fun idAfter(baseUrl: String, url: String, path: String): String? {
         val prefix = baseUrl.trimEnd('/') + path

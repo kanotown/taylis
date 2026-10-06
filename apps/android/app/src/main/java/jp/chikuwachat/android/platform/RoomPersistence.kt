@@ -16,6 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.sync.CachedCanvas
+import jp.chikuwachat.android.sync.WIKI_CHANNEL
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.OutboxItem
@@ -79,6 +80,9 @@ interface LocalDao {
     @Query("DELETE FROM canvases WHERE id = :id") fun deleteCanvas(id: String)
     @Query("DELETE FROM canvases WHERE channelId = :channelId") fun deleteCanvases(channelId: String)
     @Query("DELETE FROM canvases WHERE id NOT IN (SELECT id FROM canvases ORDER BY savedAt DESC, id DESC LIMIT :keep)") fun trimCanvases(keep: Int)
+    /** M122: the pages' copies share the table (channelId "wiki") and are trimmed apart, to their own limit. */
+    @Query("DELETE FROM canvases WHERE channelId = :channelId AND id NOT IN (SELECT id FROM canvases WHERE channelId = :channelId ORDER BY savedAt DESC, id DESC LIMIT :keep)")
+    fun trimCanvasesOf(channelId: String, keep: Int)
 }
 
 @Database(entities = [MetaRow::class, UserRow::class, ChannelRow::class, MessageRow::class, OutboxRow::class, CanvasRow::class], version = RoomPersistence.SCHEMA_VERSION, exportSchema = false)
@@ -126,9 +130,19 @@ class RoomPersistence private constructor(private val db: LocalDatabase) : Persi
     override fun loadCanvases(channelId: String): List<CachedCanvas> =
         read { dao.canvasesOf(channelId).mapNotNull { decode(CachedCanvas.serializer(), it.json) } } ?: emptyList()
     override fun loadAllCanvases(): List<CachedCanvas> =
-        read { dao.allCanvases().mapNotNull { decode(CachedCanvas.serializer(), it.json) } } ?: emptyList()
+        read { dao.allCanvases().filter { it.channelId != WIKI_CHANNEL }.mapNotNull { decode(CachedCanvas.serializer(), it.json) } } ?: emptyList()
     override fun deleteCanvas(id: String) = run { dao.deleteCanvas(id) }
     override fun deleteCanvases(channelId: String) = run { dao.deleteCanvases(channelId) }
+
+    // M122: a page's copy (CachedPage as JSON) in the canvases table under the pseudo conversation "wiki".
+    override fun saveWikiPage(id: String, json: String, savedAt: Long, keep: Int) = run {
+        db.runInTransaction {
+            dao.putCanvas(CanvasRow(id, WIKI_CHANNEL, savedAt, json))
+            dao.trimCanvasesOf(WIKI_CHANNEL, keep)
+        }
+    }
+    override fun loadWikiPage(id: String): String? = read { dao.canvas(id)?.takeIf { it.channelId == WIKI_CHANNEL }?.json }
+    override fun deleteWikiPage(id: String) = run { dao.deleteCanvas(id) }
 
     /** Lets the queued writes finish (briefly), then closes the database; call off the main thread. */
     fun close() {

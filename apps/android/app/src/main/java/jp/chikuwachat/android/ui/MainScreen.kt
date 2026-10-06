@@ -62,6 +62,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
@@ -139,6 +141,8 @@ fun MainScreen(controller: AppController) {
         })
     }
     val canvasesListState = rememberLazyListState()
+    // M122: the tree's place, kept while a page is open over it.
+    val docsListState = rememberLazyListState()
     var confirmReadTimes by remember { mutableStateOf(false) }
     // M39: the activity tab's ⋮ 「すべて既読」, handed to its list (which also clears its dots).
     var activityReadAll by remember { mutableStateOf(false) }
@@ -156,6 +160,7 @@ fun MainScreen(controller: AppController) {
     val searchListState = rememberLazyListState()
     val searchFilesState = rememberLazyListState()
     val searchCanvasesState = rememberLazyListState()
+    val searchDocsState = rememberLazyListState()
     val recentKey = controller.accountKey?.let { RecentSearches.key(it) }
     var recentSearches by remember(recentKey) { mutableStateOf(recentKey?.let { RecentSearches.read(controller.prefs, it) } ?: emptyList()) }
     // Saveable (M28c): an open dialog (and what was typed in it) survives a rotation.
@@ -376,6 +381,11 @@ fun MainScreen(controller: AppController) {
         val params = searchParams
         if (searching && searchTab == SEARCH_TAB_CANVASES && params != null) searchResults.showCanvases(controller, params)
     }
+    // M122: the 「ドキュメント」 tab asks when it shows (and again for other words).
+    LaunchedEffect(searching, searchTab, searchParams?.q) {
+        val params = searchParams
+        if (searching && searchTab == SEARCH_TAB_DOCS && params != null) searchResults.showPages(controller, params.q)
+    }
     /** M58: a canvas found by the search, in its conversation's 「キャンバス」 tab with the results kept behind it. */
     fun openCanvasFromSearch(canvas: jp.chikuwachat.android.api.CanvasMeta) {
         val channel = store.channel(canvas.channelId)
@@ -490,6 +500,30 @@ fun MainScreen(controller: AppController) {
         controller.messageFocus = null
         focusManager.clearFocus()
         tabs = MainTabs.landCanvas(tabs, MainTabs.landingTab(channel), channelId, canvasId)
+    }
+    // M122 (docs/WIKI.md §9.3): a tapped page notification: the page over 「ドキュメント」 on the home tab.
+    LaunchedEffect(controller.pendingPage) {
+        val pageId = controller.pendingPage ?: return@LaunchedEffect
+        controller.pendingPage = null
+        controller.messageFocus = null
+        focusManager.clearFocus()
+        tabs = MainTabs.landPage(tabs, pageId)
+    }
+    // M122: links to pages (`page:` and `/p/`) and files in every body on this screen (DocLinks.kt).
+    val wikiHub = controller.wiki
+    val wikiVersion = wikiHub?.version?.collectAsState()?.value ?: 0
+    val pageLinks = remember(wikiHub, wikiVersion) {
+        wikiHub?.let { hub ->
+            PageLinks(
+                open = { id ->
+                    focusManager.clearFocus()
+                    tabs = MainTabs.update(tabs) { MainNav.openPage(it, id) }
+                },
+                label = { id -> hub.label(id) },
+                openFile = { id -> controller.openAttachmentById(id) },
+                version = wikiVersion,
+            )
+        }
     }
     // M112: a tapped reservation notice (or an activity row): 「予約」 on the home tab.
     LaunchedEffect(controller.pendingReservations) {
@@ -644,6 +678,8 @@ fun MainScreen(controller: AppController) {
                         pane == Route.Drafts -> Text(stringResource(R.string.common_drafts))
                         pane is Route.Files -> Text(stringResource(R.string.common_files))
                         pane == Route.Canvases -> Text(stringResource(R.string.common_canvas))
+                        pane == Route.Docs -> Text(stringResource(R.string.docs_title))
+                        pane is Route.DocPage -> DocPageBarTitle(controller, pane.id)
                         pane == Route.Reminders -> Text(stringResource(R.string.common_reminders))
                         pane == Route.Calendar -> Text(stringResource(R.string.common_calendar))
                         pane == Route.Tasks -> Text(stringResource(R.string.common_tasks))
@@ -841,6 +877,7 @@ fun MainScreen(controller: AppController) {
     @Composable
     fun Page(view: List<Route>, modifier: Modifier, banner: Boolean = true, open: ChannelState? = openChannel) {
         val (top, searching, _, _, pane, selectedChannel, threadId, detailsOpen, _, previewing, backToSearch, conversationTab) = pageView(view, open)
+        CompositionLocalProvider(LocalPageLinks provides pageLinks) {
         Column(modifier) {
             // M29: the tab row sits directly under the app bar of a joined conversation's timeline.
             if (selectedChannel != null && ConversationNav.tabRowShown(true, selectedChannel.isMember, threadId != null, searching, detailsOpen)) {
@@ -875,6 +912,33 @@ fun MainScreen(controller: AppController) {
                             onOpenCanvas = ::openCanvasFromSearch,
                             // M71: a message the AI's answer cites opens like a result (the results stay behind it).
                             onOpenCited = { messageId, channelId, parentId -> openFromSearch(messageId, channelId, parentId) },
+                            // M122: pages I can read (the server keeps 「ドキュメント」); a hit opens over the results.
+                            docs = controller.wiki?.available == true,
+                            docsState = searchDocsState,
+                            onLoadMorePages = { scope.launch { searchResults.loadMorePages(controller) } },
+                            onRetryPages = { scope.launch { searchResults.retryPages(controller) } },
+                            onOpenPage = { id -> focusManager.clearFocus(); stack = MainNav.openPage(stack, id) },
+                        )
+                    }
+                } else if (pane == Route.Docs) {
+                    // M122 (docs/WIKI.md §9.2): the tree; a row opens its page over it, the search key looks in the bodies.
+                    DocsPane(
+                        controller, docsListState,
+                        onOpen = { id -> focusManager.clearFocus(); stack = MainNav.openPage(stack, id) },
+                        onSearchBodies = { q ->
+                            focusManager.clearFocus()
+                            openSearch()
+                            searchTab = SEARCH_TAB_DOCS
+                            runSearch(SearchParams(q = q))
+                        },
+                    )
+                } else if (pane is Route.DocPage) {
+                    // M122: a page (over the tree, another page, a conversation or the results); pages stack.
+                    key(pane.id) {
+                        DocPagePane(
+                            controller, pane.id,
+                            onOpenPage = { id -> focusManager.clearFocus(); stack = MainNav.openPage(stack, id) },
+                            onOpenCrumb = { id -> focusManager.clearFocus(); stack = MainNav.openCrumb(stack, id) },
                         )
                     }
                 } else if (pane is Route.Files) {
@@ -1028,6 +1092,11 @@ fun MainScreen(controller: AppController) {
                         // stack, like the message rows (back returns here). A conversation the store does not know yet
                         // lands like the canvas push (M73) once it does.
                         onOpenReservations = { controller.pendingReservations = true },
+                        // M122: a page row opens the page on this tab's stack (back returns here).
+                        onOpenPage = { pageId ->
+                            controller.messageFocus = null
+                            stack = MainNav.openPage(stack, pageId)
+                        },
                         onOpenCanvas = { channelId, canvasId ->
                             if (store.channel(channelId) != null) {
                                 controller.messageFocus = null
@@ -1069,6 +1138,7 @@ fun MainScreen(controller: AppController) {
                                     HomeTile.DEADLINES -> Route.Deadlines
                                     HomeTile.RESERVATIONS -> Route.Reservations
                                     HomeTile.FILES -> Route.Files()
+                                    HomeTile.DOCS -> Route.Docs
                                     HomeTile.CANVASES -> {
                                         // Afresh from the tile (back from a canvas keeps the pages and the place).
                                         myCanvases.clear()
@@ -1101,6 +1171,7 @@ fun MainScreen(controller: AppController) {
                     )
                 }
             }
+        }
         }
     }
 
@@ -1294,7 +1365,8 @@ private data class PageView(
 
 private fun pageView(view: List<Route>, open: ChannelState?): PageView {
     val top = MainNav.top(view)
-    val conversation = MainNav.conversation(view)
+    // M122: a page of 「ドキュメント」 opened over a conversation (a /p/ link) is its own page, not the conversation's.
+    val conversation = if (top is Route.Docs || top is Route.DocPage) null else MainNav.conversation(view)
     val channel = open?.takeIf { conversation?.id == it.id }
     return PageView(
         top = top,
