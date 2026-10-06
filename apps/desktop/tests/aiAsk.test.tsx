@@ -157,10 +157,17 @@ it("asks with the words and filters, follows the run, and links the answer's [n]
   expect(server.aiAsks).toEqual([expect.objectContaining({ q: "ゼミの発表順", channel_id: null })]);
   expect(within(panel()).getByText("「ゼミの発表順」")).toBeTruthy();
   expect(within(panel()).getByText("メッセージを探しています…")).toBeTruthy();
+  // While it is answered the button waits too (a second press would ask again).
+  const busy = () => within(panel()).getByRole("button", { name: "考えています…" }) as HTMLButtonElement;
+  expect(busy().disabled).toBe(true);
   const run = server.lastAiRun()!;
   server.updateAiRun(run.id, { status: "running" });
   await settle();
   expect(within(panel()).getByText("答えを書いています…")).toBeTruthy();
+  expect(busy().disabled).toBe(true);
+  fireEvent.click(busy());
+  await settle();
+  expect(server.aiAsks).toHaveLength(1);
 
   server.updateAiRun(run.id, {
     status: "done",
@@ -197,6 +204,7 @@ it("asks with the words and filters, follows the run, and links the answer's [n]
   expect(within(panel()).queryByText(/発表順は山田さん/)).toBeNull();
   fireEvent.click(within(panel()).getByRole("button", { name: /履歴/ }));
   await settle();
+  expect((within(panel()).getByRole("button", { name: "AI に聞く" }) as HTMLButtonElement).disabled).toBe(false); // answered: free again
   const past = within(panel()).getByRole("list", { name: "過去の質問" });
   fireEvent.click(within(past).getByText("ゼミの発表順"));
   await settle();

@@ -2009,6 +2009,7 @@ export const ja = {
   "ai.summarizeDays": "直近 {days} 日を要約",
   "ai.thisConversation": "この会話",
   "ai.onlyYou": "自分にだけ見えます",
+  "ai.thinking": "考えています…",
   "ai.preparing": "要約を準備しています…",
   "ai.writing": "要約を書いています…",
   "ai.failed": "要約できませんでした",

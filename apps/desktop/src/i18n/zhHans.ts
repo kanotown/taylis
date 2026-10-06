@@ -2010,6 +2010,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "ai.summarizeDays": "总结最近 {days} 天",
   "ai.thisConversation": "此对话",
   "ai.onlyYou": "仅自己可见",
+  "ai.thinking": "正在思考…",
   "ai.preparing": "正在准备摘要…",
   "ai.writing": "正在撰写摘要…",
   "ai.failed": "无法生成摘要",

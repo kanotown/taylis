@@ -169,8 +169,8 @@ export function SummaryDialog({ controller }: { controller: AppController }) {
             </Button>
           </div>
         ) : !run || !isFinished(run) ? (
-          <div className="flex items-center gap-2 py-6 text-sm text-muted" role="status">
-            <Loader2 size={16} className="animate-spin" />
+          <div className="flex items-center gap-2 py-6 text-sm text-ink" role="status">
+            <Loader2 size={16} className="animate-spin text-accent" />
             {!run || run.status === "pending" ? t("ai.preparing") : t("ai.writing")}
           </div>
         ) : run.status === "failed" ? (

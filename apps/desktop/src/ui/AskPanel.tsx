@@ -50,7 +50,10 @@ export function AskPanel({ controller, params, onOpenMessage }: {
   // A server without 「AI に聞く」 (404 on the target): nothing, unless a question is already on screen.
   if (!hub || ((!usable || target === null || !question) && !session)) return null;
   const line = target ? askTargetLine(target) : null;
-  const canAsk = usable && !!question && !!target?.available && !session?.sending;
+  // A question on its way or being answered: the button waits with it (2026-10-06: it looked idle, and a second press
+  // asked again).
+  const thinking = !!session && (session.error === null || session.error === undefined) && (session.sending || !session.run || !isFinished(session.run));
+  const canAsk = usable && !!question && !!target?.available && !thinking;
 
   const toggleHistory = () => {
     const next = !historyOpen;
@@ -62,8 +65,8 @@ export function AskPanel({ controller, params, onOpenMessage }: {
     <section aria-label={t("ask.title")} data-testid="ai-ask" className="mb-3 max-w-3xl rounded-xl border border-accent/30 bg-accent-soft/30 px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <Sparkles size={16} className="shrink-0 text-accent" />
-        <Button size="sm" disabled={!canAsk} onClick={() => { setHistoryOpen(false); void hub.startAsk(question, channelId); }}>
-          {t("ask.title")}
+        <Button size="sm" disabled={!canAsk} aria-busy={thinking || undefined} onClick={() => { setHistoryOpen(false); void hub.startAsk(question, channelId); }}>
+          {thinking ? <><Loader2 size={14} className="animate-spin" /> {t("ai.thinking")}</> : t("ask.title")}
         </Button>
         {line && (
           <span data-testid="ai-ask-target" className={cn("min-w-0 flex-1 text-xs", target?.available ? "text-muted" : "text-danger")}>
@@ -101,8 +104,8 @@ export function AskPanel({ controller, params, onOpenMessage }: {
               </Button>
             </div>
           ) : !session.run || !isFinished(session.run) ? (
-            <div className="flex items-center gap-2 py-3 text-sm text-muted" role="status">
-              <Loader2 size={16} className="animate-spin" />
+            <div className="flex items-center gap-2 py-3 text-sm text-ink" role="status">
+              <Loader2 size={16} className="animate-spin text-accent" />
               {!session.run || session.run.status === "pending" ? t("ask.searching") : t("ask.writing")}
             </div>
           ) : (
