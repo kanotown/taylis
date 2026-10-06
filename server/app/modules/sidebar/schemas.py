@@ -1,5 +1,5 @@
 import re
-from typing import get_args
+from typing import Literal, get_args
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -7,6 +7,17 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.modules.emoji.schemas import TextEmojiColor
 
 MAX_SECTIONS = 20
+# 2026-10-07 (DATA_MODEL.md sidebar_sections 「並べ替え」): how a section is ordered, and
+# which default sections have their own sort. The clients sort (apps/shared/sidebar-order.json);
+# the server only keeps the choice.
+SidebarSort = Literal["name", "recent", "manual"]
+DefaultSectionKey = Literal["favorites", "channels", "dms"]
+DEFAULT_SORTS: dict[DefaultSectionKey, SidebarSort] = {
+    "favorites": "name",
+    "channels": "name",
+    "dms": "recent",
+}
+MAX_MANUAL_ORDER = 1000
 # M26: a custom emoji by name, or a few code points of emoji (a flag or a family is several).
 _CUSTOM_EMOJI = re.compile(r"^:[a-z0-9_+-]{1,32}:$")
 _MAX_EMOJI_CODEPOINTS = 16
@@ -27,6 +38,11 @@ def _clean_letter(value: str) -> str:
             "A letter icon is letter:<1-2 letters or digits, or one Japanese character>:<colour>"
         )
     return value
+
+
+def _clean_order(value: list[UUID] | None) -> list[UUID] | None:
+    """The hand-made order: each id once, the first place kept."""
+    return None if value is None else list(dict.fromkeys(value))
 
 
 def _clean_name(value: str) -> str:
@@ -76,6 +92,11 @@ class SectionUpdate(BaseModel):
     collapsed: bool | None = None
     # The new index among my sections (0 = first); others shift to make room.
     position: int | None = Field(default=None, ge=0, le=MAX_SECTIONS)
+    # 2026-10-07: the sort, and the hand-made order (the conversation ids in order) for "manual".
+    sort: SidebarSort | None = None
+    manual_order: list[UUID] | None = Field(default=None, max_length=MAX_MANUAL_ORDER)
+
+    _order = field_validator("manual_order")(_clean_order)
 
     @field_validator("name")
     @classmethod
@@ -93,11 +114,37 @@ class SidebarSectionOut(BaseModel):
     emoji: str | None = None
     collapsed: bool = False
     position: int
-    # Conversations placed here (clients order them like the default sections).
+    # Conversations placed here, in no meaningful order (the clients sort by `sort`).
     channel_ids: list[UUID]
+    # 2026-10-07: name / recent / manual, and for manual the conversation ids in order (ids no
+    # longer here are skipped; conversations not in it follow by name).
+    sort: SidebarSort = "name"
+    manual_order: list[UUID] = []
+
+
+class SidebarDefaultOut(BaseModel):
+    """The sort of a default section (お気に入り / チャンネル / ダイレクトメッセージ); always
+    all three."""
+
+    key: DefaultSectionKey
+    sort: SidebarSort
+    manual_order: list[UUID] = []
+
+
+class SidebarDefaultUpdate(BaseModel):
+    """Only the fields sent change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sort: SidebarSort | None = None
+    manual_order: list[UUID] | None = Field(default=None, max_length=MAX_MANUAL_ORDER)
+
+    _order = field_validator("manual_order")(_clean_order)
 
 
 class SidebarUpdatedData(BaseModel):
     """The whole list after any change: small, and clients simply replace theirs."""
 
     sections: list[SidebarSectionOut]
+    # 2026-10-07: the default sections' sorts (all three); older servers sent none.
+    defaults: list[SidebarDefaultOut] = []

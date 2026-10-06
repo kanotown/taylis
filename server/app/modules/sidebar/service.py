@@ -3,9 +3,13 @@
 Each user may group their conversations into named sections (at most 20). A conversation sits in
 at most one of my sections; the rest stay in the default ones (お気に入り / チャンネル / DM).
 Every change fans out to my own devices as `sidebar.updated` carrying the whole list.
+
+2026-10-07 (DATA_MODEL.md sidebar_sections 「並べ替え」): every section, the default ones too, has a
+sort (name / recent / manual) and a hand-made order; the clients sort by them.
 """
 
 import uuid
+from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,12 +18,17 @@ from app.events.outbox import write_outbox
 from app.modules.channels import service as channels
 from app.modules.sidebar import repository as repo
 from app.modules.sidebar.events import SIDEBAR_UPDATED, SidebarUpdatedData
-from app.modules.sidebar.models import SidebarSection
+from app.modules.sidebar.models import SidebarDefaultSection, SidebarSection
 from app.modules.sidebar.schemas import (
+    DEFAULT_SORTS,
     MAX_SECTIONS,
+    DefaultSectionKey,
     SectionCreate,
     SectionUpdate,
+    SidebarDefaultOut,
+    SidebarDefaultUpdate,
     SidebarSectionOut,
+    SidebarSort,
 )
 from app.modules.users.models import User
 
@@ -37,9 +46,31 @@ async def list_for(db: AsyncSession, user_id: uuid.UUID) -> list[SidebarSectionO
             collapsed=s.collapsed,
             position=s.position,
             channel_ids=placed[s.id],
+            sort=_sort(s.sort, "name"),
+            manual_order=list(s.manual_order),
         )
         for s in sections
     ]
+
+
+def _sort(value: str, fallback: SidebarSort) -> SidebarSort:
+    return cast(SidebarSort, value) if value in ("name", "recent", "manual") else fallback
+
+
+async def list_defaults(db: AsyncSession, user_id: uuid.UUID) -> list[SidebarDefaultOut]:
+    """The three default sections, in sidebar order, with the default sort where I chose none."""
+    rows = {row.key: row for row in await repo.defaults_for(db, user_id)}
+    out = []
+    for key, fallback in DEFAULT_SORTS.items():
+        row = rows.get(key)
+        out.append(
+            SidebarDefaultOut(
+                key=key,
+                sort=_sort(row.sort, fallback) if row else fallback,
+                manual_order=list(row.manual_order) if row else [],
+            )
+        )
+    return out
 
 
 async def _renumber(sections: list[SidebarSection]) -> None:
@@ -50,12 +81,13 @@ async def _renumber(sections: list[SidebarSection]) -> None:
 async def _commit(db: AsyncSession, actor: User) -> list[SidebarSectionOut]:
     await db.flush()
     out = await list_for(db, actor.id)
+    defaults = await list_defaults(db, actor.id)
     await write_outbox(
         db,
         event_type=SIDEBAR_UPDATED,
         audience_type="user",
         audience_id=actor.id,
-        payload=SidebarUpdatedData(sections=out).model_dump(mode="json"),
+        payload=SidebarUpdatedData(sections=out, defaults=defaults).model_dump(mode="json"),
     )
     await db.commit()
     return out
@@ -96,6 +128,10 @@ async def update(
         section.emoji = data.emoji
     if data.collapsed is not None:
         section.collapsed = data.collapsed
+    if data.sort is not None:
+        section.sort = data.sort
+    if data.manual_order is not None:
+        section.manual_order = data.manual_order
     if data.position is not None:
         ordered = [s for s in await repo.sections_for(db, actor.id) if s.id != section.id]
         ordered.insert(min(data.position, len(ordered)), section)
@@ -124,3 +160,21 @@ async def place(
 async def unplace(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> list[SidebarSectionOut]:
     await repo.unplace(db, actor.id, channel_id)
     return await _commit(db, actor)
+
+
+async def update_default(
+    db: AsyncSession, actor: User, key: DefaultSectionKey, data: SidebarDefaultUpdate
+) -> list[SidebarDefaultOut]:
+    """The sort / hand-made order of a default section; the whole sidebar goes out again."""
+    row = await repo.default_section(db, actor.id, key)
+    if row is None:
+        row = SidebarDefaultSection(
+            user_id=actor.id, key=key, sort=DEFAULT_SORTS[key], manual_order=[]
+        )
+        db.add(row)
+    if data.sort is not None:
+        row.sort = data.sort
+    if data.manual_order is not None:
+        row.manual_order = data.manual_order
+    await _commit(db, actor)
+    return await list_defaults(db, actor.id)
