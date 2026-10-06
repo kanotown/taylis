@@ -226,7 +226,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
     val hasCamera = openCamera != null
     Column {
         val query = Mentions.query(draft)
-        val candidates = if (query != null) Mentions.candidates(query, store.users.values, store.groups.values, aiBotIds = controller.aiBotIds) else emptyList()
+        val candidates = if (query != null) Mentions.candidates(query, store.users.values, store.groups.values, aiBotIds = controller.aiBotIdsRead) else emptyList()
         // `:tada` completes to an emoji (M11f) when no mention is being typed.
         val emojiHits = if (candidates.isEmpty()) Emoji.query(draft)?.let { q ->
             // M100: also by label and keywords (":ありがとう" finds :hpd-bow:).

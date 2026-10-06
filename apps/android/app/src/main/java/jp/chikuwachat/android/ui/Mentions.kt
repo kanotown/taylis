@@ -51,13 +51,24 @@ object Mentions {
     /** The `@prefix` being typed at the end of `text`, or null. */
     fun query(text: String): String? = QUERY.find(text)?.groupValues?.get(2)
 
-    /** `aiBotIds` (M66, docs/AI.md §6): the AI bots' user ids, marked `ai`. */
-    fun candidates(query: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList(), limit: Int = 6, aiBotIds: Set<String> = emptySet()): List<Candidate> {
+    /**
+     * docs/AI.md §2.1: who `@` suggests — people (not bots, not deactivated) and the AI bots (`bot_kind = "ai"`), which
+     * answer a mention; no other bot (webhooks, feeds, reservations…). `aiBotIds` (M66): the AI bots of `GET /ai/status`
+     * once it was read (null before): then only those, so a stopped or deleted one is not offered either.
+     */
+    fun suggests(user: UserPublic, aiBotIds: Set<String>?): Boolean = user.deactivatedAt == null && when {
+        user.role != "bot" -> true
+        aiBotIds != null -> user.id in aiBotIds
+        else -> user.botKind == "ai"
+    }
+
+    /** `aiBotIds`: as [suggests]; the AI bots are marked `ai`. */
+    fun candidates(query: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList(), limit: Int = 6, aiBotIds: Set<String>? = null): List<Candidate> {
         val q = query.lowercase()
-        val people = users.filter { it.deactivatedAt == null }
+        val people = users.filter { suggests(it, aiBotIds) }
             .filter { it.username.lowercase().startsWith(q) || it.displayName.lowercase().contains(q) }
             .sortedBy { it.username }
-            .map { Candidate(it.username, it.displayName, ai = it.id in aiBotIds) }
+            .map { Candidate(it.username, it.displayName, ai = it.role == "bot") }
         val teams = groups.filter { it.name.lowercase().startsWith(q) || (it.description ?: "").lowercase().contains(q) }
             .sortedBy { it.name }
             .map { Candidate(it.name, L10n.str(R.string.mentions_group_people, it.memberIds.size) + (it.description?.let { d -> " · $d" } ?: ""), kind = "group") }

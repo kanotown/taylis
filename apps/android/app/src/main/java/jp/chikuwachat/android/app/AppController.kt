@@ -168,6 +168,8 @@ class AppController(private val app: Application) {
     }
     /** The AI bots' user ids: 「AI」 instead of 「BOT」 on their rows and mention candidates. */
     val aiBotIds: Set<String> get() = aiStatus?.agents?.map { it.botUserId }?.toSet() ?: emptySet()
+    /** The same once GET /ai/status was read, null before (the @-mention suggestions then go by bot_kind, AI.md §2.1). */
+    val aiBotIdsRead: Set<String>? get() = aiStatus?.agents?.map { it.botUserId }?.toSet()
     val aiSummaryAvailable: Boolean get() = aiStatus?.let { it.available && it.summaryAvailable } == true
 
     fun requestSummary(request: jp.chikuwachat.android.sync.AiSummaryRequest) {
