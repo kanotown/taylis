@@ -1564,6 +1564,7 @@
     <string name="you_screens_end">End %1$s</string>
     <string name="you_screens_end_of_this_week">End of this week</string>
     <string name="you_screens_end_of_today">End of today</string>
+    <string name="you_screens_gestures">Gestures</string>
     <string name="you_screens_group_consecutive_posts">Group consecutive posts</string>
     <string name="you_screens_hide_presence">Hide presence</string>
     <string name="you_screens_home_tiles">Home tiles</string>
@@ -1616,6 +1617,8 @@
     <string name="you_screens_signs_you_out_of_all_devices">Signs you out of all devices and erases your profile and sign-in details. Messages you posted remain as \"Deleted user\".</string>
     <string name="you_screens_start">Start %1$s</string>
     <string name="you_screens_status">Status</string>
+    <string name="you_screens_swipe_back_forward">Swipe to go back and forward</string>
+    <string name="you_screens_swipe_back_forward_detail">Swipe right in a conversation to go back to the list, and left on the list to return to the conversation you had open</string>
     <string name="you_screens_tasks_assignments_and_due_dates">Tasks (assignments and due dates)</string>
     <string name="you_screens_that_device_will_have_to_sign">That device will have to sign in again.</string>
     <string name="you_screens_the_emoji_in_the_long_press">The emoji in the long-press menu. They are the same on all your devices.</string>

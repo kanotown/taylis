@@ -1559,6 +1559,7 @@
     <string name="you_screens_end">終了 %1$s</string>
     <string name="you_screens_end_of_this_week">今週の終わり</string>
     <string name="you_screens_end_of_today">今日の終わり</string>
+    <string name="you_screens_gestures">操作</string>
     <string name="you_screens_group_consecutive_posts">連続した投稿をまとめる</string>
     <string name="you_screens_hide_presence">在席を隠す</string>
     <string name="you_screens_home_tiles">ホームのタイル</string>
@@ -1611,6 +1612,8 @@
     <string name="you_screens_signs_you_out_of_all_devices">すべての端末からログアウトし、プロフィールとログイン情報を消去します。投稿したメッセージは「退会したユーザー」として残ります。</string>
     <string name="you_screens_start">開始 %1$s</string>
     <string name="you_screens_status">ステータス</string>
+    <string name="you_screens_swipe_back_forward">スワイプで戻る・進む</string>
+    <string name="you_screens_swipe_back_forward_detail">会話で右へスワイプすると一覧へ戻り、一覧で左へスワイプすると最後に開いていた会話へ進みます</string>
     <string name="you_screens_tasks_assignments_and_due_dates">タスク（割り当て・期限）</string>
     <string name="you_screens_that_device_will_have_to_sign">その端末では、もう一度ログインが必要になります。</string>
     <string name="you_screens_the_emoji_in_the_long_press">長押しのメニューに並ぶ絵文字です。すべての端末で同じになります。</string>

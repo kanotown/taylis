@@ -3,6 +3,7 @@ package jp.chikuwachat.android.ui
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -185,6 +186,13 @@ fun MainScreen(controller: AppController) {
     val recentConversationsKey = controller.accountKey?.let { RecentConversations.key(it) }
     var recentConversations by remember(recentConversationsKey) {
         mutableStateOf(recentConversationsKey?.let { RecentConversations.read(controller.prefs, it) } ?: emptyList())
+    }
+    // Issue #1: the conversation each tab left last, for the left swipe on its root (SwipeNav.noteLeft).
+    var lastConversations by rememberSaveable(stateSaver = LastConversationsSaver) { mutableStateOf(emptyMap<MainTab, String>()) }
+    val previousTabs = remember { arrayOf(tabs) }
+    LaunchedEffect(tabs) {
+        lastConversations = SwipeNav.noteLeft(lastConversations, previousTabs[0], tabs)
+        previousTabs[0] = tabs
     }
     val focusManager = LocalFocusManager.current
     val snackbar = remember { SnackbarHostState() }
@@ -401,8 +409,39 @@ fun MainScreen(controller: AppController) {
     fun openThread(parentId: String) {
         stack = if (layout == PaneLayout.PHONE) MainNav.openThread(stack, parentId) else AdaptiveLayout.openThread(stack, parentId)
     }
+    // Issue #1 (MOBILE_UI.md §5.1): on the phone, a conversation's back plays the swipe's slide — the system's back
+    // gesture follows the finger (predictive back), the button slides it at once. What it goes to: SwipeNav.backTarget.
+    val swipe = remember { SwipeNavState(scope) }
+    val slideBack = if (layout == PaneLayout.PHONE) SwipeNav.backTarget(tabs) else null
+    val swipeOn = layout == PaneLayout.PHONE && controller.swipeNavigation
+    val swipeBack = slideBack.takeIf { swipeOn }
+    // A left swipe on a tab's root brings back its last conversation, but not while a dialog or a sheet is open.
+    val sheetOpen = dialog != null || composing || channelMenuFor != null || sectionMenuFor != null || sectionForm != null ||
+        bellOpen || confirmReadAll || confirmReadTimes || confirmLogout
+    val swipeForward = if (swipeOn && !sheetOpen) SwipeNav.forwardTarget(tabs, lastConversations) { store.channel(it) != null } else null
+    fun commitSwipe(target: TabStacks) {
+        focusManager.clearFocus()
+        // A focused message belongs to the conversation it was revealed in.
+        controller.messageFocus = null
+        tabs = target
+    }
+    PredictiveBackHandler(enabled = slideBack != null) { events ->
+        val target = SwipeNav.backTarget(tabs)
+        if (target == null || swipe.active) {
+            events.collect {}
+            return@PredictiveBackHandler
+        }
+        swipe.begin(target, forward = false)
+        try {
+            events.collect { swipe.shift = it.progress }
+            swipe.settle(complete = true, velocity = 0f, onCommit = ::commitSwipe)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            swipe.settle(complete = false, velocity = 0f, onCommit = ::commitSwipe)
+            throw e
+        }
+    }
     // The suggestions fold through the search bar's own back handling (SearchBar → collapseSearch).
-    BackHandler(enabled = MainTabs.canGoBack(tabs) && !searchExpanded) { goBack() }
+    BackHandler(enabled = MainTabs.canGoBack(tabs) && !searchExpanded && slideBack == null) { goBack() }
     /** A card in the pins pane / saved list: show the message in its conversation. */
     fun reveal(message: jp.chikuwachat.android.api.MessageOut) {
         scope.launch {
@@ -513,8 +552,8 @@ fun MainScreen(controller: AppController) {
      * `closes`, the ✕ of the thread's pane); `barWidth`: the bar's width in dp (whether the follow chip keeps its label).
      */
     @Composable
-    fun Bar(view: List<Route>, back: (() -> Unit)?, barWidth: Float, closes: Boolean = false) {
-        val (top, searching, searchExpanded, jumping, pane, selectedChannel, threadId, detailsOpen, isChannel, previewing) = pageView(view, openChannel)
+    fun Bar(view: List<Route>, back: (() -> Unit)?, barWidth: Float, closes: Boolean = false, open: ChannelState? = openChannel) {
+        val (top, searching, searchExpanded, jumping, pane, selectedChannel, threadId, detailsOpen, isChannel, previewing) = pageView(view, open)
         var menuOpen by remember { mutableStateOf(false) }
         if (searching) {
             SearchTopBar(
@@ -791,8 +830,8 @@ fun MainScreen(controller: AppController) {
 
     /** The page `view` is the top of, under its bar (T1: the list pane's root, the main pane's page; [pageView]). */
     @Composable
-    fun Page(view: List<Route>, modifier: Modifier, banner: Boolean = true) {
-        val (top, searching, _, _, pane, selectedChannel, threadId, detailsOpen, _, previewing, backToSearch, conversationTab) = pageView(view, openChannel)
+    fun Page(view: List<Route>, modifier: Modifier, banner: Boolean = true, open: ChannelState? = openChannel) {
+        val (top, searching, _, _, pane, selectedChannel, threadId, detailsOpen, _, previewing, backToSearch, conversationTab) = pageView(view, open)
         Column(modifier) {
             // M29: the tab row sits directly under the app bar of a joined conversation's timeline.
             if (selectedChannel != null && ConversationNav.tabRowShown(true, selectedChannel.isMember, threadId != null, searching, detailsOpen)) {
@@ -1056,26 +1095,40 @@ fun MainScreen(controller: AppController) {
 
     val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
     if (layout == PaneLayout.PHONE) {
-        Scaffold(
-            snackbarHost = { SnackbarHost(snackbar) },
-            // M34: the bottom tabs, on the roots and the lists pushed on them; hidden in a conversation, a thread or details.
-            // M40: wide, the 自分 tab's list stays beside its screens, and so does the bar.
-            bottomBar = {
-                if (MainTabs.barShown(stack) || (youTwoPane && top is Route.Settings)) MainTabBar(store, version, tabs.selected, onTab = ::selectMainTab)
-            },
-            // M37 (MOBILE_UI.md §6.1): ✏️ 新しいメッセージ, bottom right over the tab bar, on the home's list.
-            floatingActionButton = {
-                if (top == Route.ChannelList) {
-                    FloatingActionButton(onClick = { focusManager.clearFocus(); composing = true }) {
-                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_new_message))
+        // Issue #1 (MOBILE_UI.md §5.1): the page on screen, and while a swipe (or the system's back gesture) slides it the
+        // page it goes to, drawn under or over it (SwipeNavHost). Each is a whole page: its bar, its content, the tabs.
+        SwipeNavHost(
+            current = tabs,
+            swipe = swipe,
+            backTarget = swipeBack,
+            forwardTarget = swipeForward,
+            onCommit = ::commitSwipe,
+        ) { state, isCurrent ->
+            val view = MainTabs.stack(state)
+            val viewTop = MainNav.top(view)
+            // A page under the swipe shows its own conversation (the one a left swipe brings back is not open yet).
+            val open = MainNav.conversation(view)?.id?.let { id -> if (id == selection) openChannel else store.channel(id) }
+            Scaffold(
+                snackbarHost = { if (isCurrent) SnackbarHost(snackbar) },
+                // M34: the bottom tabs, on the roots and the lists pushed on them; hidden in a conversation, a thread or details.
+                // M40: wide, the 自分 tab's list stays beside its screens, and so does the bar.
+                bottomBar = {
+                    if (MainTabs.barShown(view) || (youTwoPane && viewTop is Route.Settings)) MainTabBar(store, version, state.selected, onTab = ::selectMainTab)
+                },
+                // M37 (MOBILE_UI.md §6.1): ✏️ 新しいメッセージ, bottom right over the tab bar, on the home's list.
+                floatingActionButton = {
+                    if (viewTop == Route.ChannelList) {
+                        FloatingActionButton(onClick = { focusManager.clearFocus(); composing = true }) {
+                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_new_message))
+                        }
                     }
-                }
-            },
-            topBar = { Bar(stack, back = if (MainNav.canGoBack(stack)) ({ goBack() }) else null, barWidth = windowWidth) },
-        ) { padding ->
-            // The scaffold's insets are consumed here (M28c): the panes below add `imePadding()`, which otherwise counted the
-            // navigation bar a second time and left a blank band of its height between the composer and the keyboard.
-            Page(stack, Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding))
+                },
+                topBar = { Bar(view, back = if (MainNav.canGoBack(view)) ({ goBack() }) else null, barWidth = windowWidth, open = open) },
+            ) { padding ->
+                // The scaffold's insets are consumed here (M28c): the panes below add `imePadding()`, which otherwise counted the
+                // navigation bar a second time and left a blank band of its height between the composer and the keyboard.
+                Page(view, Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), open = open)
+            }
         }
     } else {
         // T1 (MOBILE_UI.md §12): the rail, the tab's list, the page opened from it and (three panes) the thread. The
