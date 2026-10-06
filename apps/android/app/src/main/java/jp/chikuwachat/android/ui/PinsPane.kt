@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -28,11 +29,35 @@ import androidx.compose.ui.res.stringResource
 @Composable
 fun PinsPane(controller: AppController, channelId: String, version: Int, onOpen: (MessageOut) -> Unit) {
     val store = controller.store
-    var pins by remember { mutableStateOf<List<MessageOut>?>(null) }
-    // Pin changes arrive as message.updated; re-read when the pinned rows move (also ones older than the loaded timeline).
-    val signature = remember(version, channelId) { store.pinnedIds(channelId).joinToString(",") }
-    LaunchedEffect(channelId, signature, controller.engineStatus) {
+    var pins by remember(channelId) { mutableStateOf<List<MessageOut>?>(null) }
+    // A read again: a row pinned meanwhile (its place is the server's), a change during a read, events lost.
+    var reads by remember(channelId) { mutableIntStateOf(0) }
+    var reading by remember(channelId) { mutableStateOf(false) }
+    var changedWhileReading by remember(channelId) { mutableStateOf(false) }
+    LaunchedEffect(channelId, controller.engineStatus, reads) {
+        reading = true
+        changedWhileReading = false
         controller.listPins(channelId).onSuccess { pins = it }.onFailure { controller.error = controller.describe(it) }
+        reading = false
+        if (changedWhileReading) reads += 1
+    }
+    // 2026-10-06: pin changes arrive as message.updated / message.deleted (pinned_at null), live or as rows the store takes
+    // (my own delete or unpin): a deleted or unpinned row leaves at once, also one older than the rows held here (the
+    // store's pinned rows alone missed those).
+    val engine = controller.engine
+    LaunchedEffect(engine, channelId) {
+        engine?.rowEvents?.collect { event ->
+            val message = event.message?.takeIf { it.channelId == channelId } ?: return@collect
+            if (reading) { changedWhileReading = true; return@collect }
+            val shown = pins ?: return@collect
+            val next = PinsList.applied(shown, message)
+            if (next == null) reads += 1 else pins = next
+        }
+    }
+    LaunchedEffect(engine, channelId) {
+        val stale = engine?.rowsStale ?: return@LaunchedEffect
+        var seen = stale.value
+        stale.collect { count -> if (count != seen) { seen = count; reads += 1 } }
     }
     val list = pins
     LazyColumn(Modifier.fillMaxSize()) {
@@ -49,5 +74,20 @@ fun PinsPane(controller: AppController, channelId: String, version: Int, onOpen:
                 HorizontalDivider()
             }
         }
+    }
+}
+
+/** The pins pane's list (most recently pinned first) after a change to one row of its channel. */
+object PinsList {
+    /**
+     * A deleted or unpinned row leaves, a pinned one the list holds takes the newer version (by updated_seq,
+     * SYNC_PROTOCOL.md §8); null for a pinned row the list does not hold: its place is the server's (read the list again).
+     */
+    fun applied(list: List<MessageOut>, message: MessageOut): List<MessageOut>? {
+        val index = list.indexOfFirst { it.id == message.id }
+        val pinned = message.pinnedAt != null && !message.deleted
+        if (index < 0) return if (pinned) null else list
+        if (message.updatedSeq < list[index].updatedSeq) return list
+        return if (pinned) list.toMutableList().also { it[index] = message } else list.filterIndexed { i, _ -> i != index }
     }
 }

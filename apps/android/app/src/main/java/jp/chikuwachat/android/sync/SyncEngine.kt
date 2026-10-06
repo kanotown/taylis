@@ -186,6 +186,15 @@ class SyncEngine(
     private val _timelineStale = MutableStateFlow(0)
     /** Bumped when [timelineEvents] could not take an event (its buffer full): the list on screen reads the server again. */
     val timelineStale: StateFlow<Int> = _timelineStale
+    private val _rowEvents = MutableSharedFlow<TimelineEvent>(extraBufferCapacity = TIMELINE_BUFFER)
+    /**
+     * The same changes as [timelineEvents] in every conversation (not only the times), for the pins pane: a pinned row
+     * deleted or unpinned leaves it at once, one older than the rows this device holds too. Nothing is replayed.
+     */
+    val rowEvents: SharedFlow<TimelineEvent> = _rowEvents
+    private val _rowsStale = MutableStateFlow(0)
+    /** Bumped when [rowEvents] could not take an event (its buffer full): the list on screen reads the server again. */
+    val rowsStale: StateFlow<Int> = _rowsStale
     /** M15d: my drafts across devices. */
     val drafts = DraftSync(api as? DraftApi, store, scope, { _status.value == EngineStatus.ONLINE }, options.draftSaveMs)
 
@@ -959,6 +968,7 @@ class SyncEngine(
      * A full buffer loses it: [timelineStale] then says the list must be read again.
      */
     private fun emitTimeline(channelId: String, event: TimelineEvent) {
+        if (_rowEvents.subscriptionCount.value > 0 && !_rowEvents.tryEmit(event)) _rowsStale.value += 1
         if (_timelineEvents.subscriptionCount.value == 0) return
         val channel = store.channel(channelId) ?: return
         if (!channel.isMember || channel.channel.timesOwnerId == null) return
