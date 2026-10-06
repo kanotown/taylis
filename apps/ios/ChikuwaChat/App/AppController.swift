@@ -42,6 +42,8 @@ final class AppController {
     var workflowRun: WorkflowRunTarget?
     /// M95: each channel's workflows as last read, kept a minute (their changes send no events, WORKFLOWS.md §4).
     @ObservationIgnored var workflowLists: [String: (at: Date, list: [WorkflowOut])] = [:]
+    /// M117: the call each conversation is starting, kept for a retry (CallKeys).
+    @ObservationIgnored var callKeys = CallKeys()
     func revealMessage(_ message: MessageOut) async -> Bool {
         await revealMessage(id: message.id, channelId: message.channelId, parentId: message.parentId)
     }

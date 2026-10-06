@@ -768,11 +768,13 @@ struct MessageOut: Codable, Identifiable, Equatable {
     /// M95 (WORKFLOWS.md D4 / §8): the workflow whose form posted it; nil otherwise, from older servers, and when the field
     /// is missing or null.
     var workflow: MessageWorkflow? = nil
+    /// M117 (docs/CALLS.md §5): the call it started (its card and 「参加する」); nil otherwise, once deleted, and from older servers.
+    var call: MessageCall? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted
         case type, mentionedUserIds, mentionAll, reactions, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
-        case priority, ackRequested, acks, collection, tasks, systemEvent, workflow
+        case priority, ackRequested, acks, collection, tasks, systemEvent, workflow, call
     }
 
     func mentions(_ userId: String) -> Bool { mentionAll || mentionedUserIds.contains(userId) }
@@ -884,7 +886,20 @@ extension MessageOut {
         tasks = MessageTaskOut.list(c, forKey: .tasks)
         systemEvent = try? c.decodeIfPresent(SystemEvent.self, forKey: .systemEvent)
         workflow = try? c.decodeIfPresent(MessageWorkflow.self, forKey: .workflow)
+        call = try? c.decodeIfPresent(MessageCall.self, forKey: .call)
     }
+}
+
+/// M117 (docs/CALLS.md §5): `MessageOut.call`, the meeting room a message started; `startedBy` is its sender.
+struct MessageCall: Codable, Equatable {
+    let url: String
+    let startedBy: String
+}
+
+/// M117 (docs/CALLS.md §4): `POST /channels/{id}/calls`, the room to open and the message that announces it.
+struct CallOut: Codable {
+    let url: String
+    let message: MessageOut
 }
 
 /// M88 (MEMBERSHIP.md §1): a system line's event. `kind` stays a string: a kind this version does not know shows the
@@ -919,13 +934,21 @@ struct WorkspaceSettings: Codable, Equatable {
     var iconVersion: String?
     /// The answer had `icon_version` (null or not); a server before M93 has none, and then the saved one stays.
     var hasIconVersion = false
+    /// M117 (docs/CALLS.md §3): the 📞 shows only when true; false when missing (a server before M117) and before the
+    /// first bootstrap.
+    var callsEnabled = false
+    /// The meeting service rooms are made on, for display only (the server makes the rooms); nil = calls off.
+    var meetingBaseUrl: String?
 
     static let defaults = WorkspaceSettings()
 
     /// `iconVersion`: .none = the field is missing (a server before M93), .some(nil) = no icon.
-    init(showMembershipMessages: Bool = true, previewBeforeJoin: Bool = true, iconVersion: String?? = .none) {
+    init(showMembershipMessages: Bool = true, previewBeforeJoin: Bool = true, iconVersion: String?? = .none,
+         callsEnabled: Bool = false, meetingBaseUrl: String? = nil) {
         self.showMembershipMessages = showMembershipMessages
         self.previewBeforeJoin = previewBeforeJoin
+        self.callsEnabled = callsEnabled
+        self.meetingBaseUrl = meetingBaseUrl
         if case .some(let version) = iconVersion {
             self.iconVersion = version
             hasIconVersion = true
@@ -938,6 +961,8 @@ struct WorkspaceSettings: Codable, Equatable {
         previewBeforeJoin = try c.decodeIfPresent(Bool.self, forKey: .previewBeforeJoin) ?? true
         hasIconVersion = c.contains(.iconVersion)
         iconVersion = try? c.decodeIfPresent(String.self, forKey: .iconVersion)
+        callsEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .callsEnabled)) ?? false
+        meetingBaseUrl = try? c.decodeIfPresent(String.self, forKey: .meetingBaseUrl)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -945,9 +970,11 @@ struct WorkspaceSettings: Codable, Equatable {
         try c.encode(showMembershipMessages, forKey: .showMembershipMessages)
         try c.encode(previewBeforeJoin, forKey: .previewBeforeJoin)
         if hasIconVersion { try c.encode(iconVersion, forKey: .iconVersion) }
+        try c.encode(callsEnabled, forKey: .callsEnabled)
+        try c.encodeIfPresent(meetingBaseUrl, forKey: .meetingBaseUrl)
     }
 
-    enum CodingKeys: String, CodingKey { case showMembershipMessages, previewBeforeJoin, iconVersion }
+    enum CodingKeys: String, CodingKey { case showMembershipMessages, previewBeforeJoin, iconVersion, callsEnabled, meetingBaseUrl }
 }
 
 /// M15e: one member's 「確認しました」.

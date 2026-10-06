@@ -645,6 +645,11 @@ struct ChannelView: View {
                     .accessibilityLabel("チャンネル情報")
                 }
             }
+            // M117 (docs/CALLS.md §7): 📞 where I may start a call here.
+            if let channel, CallRules.canStart(channel, settings: controller.store.workspaceSettings, isAdmin: controller.store.me?.role == "admin",
+                                               meId: controller.store.me?.id) {
+                ToolbarItem(placement: .topBarTrailing) { CallButton(controller: controller, channelId: channelId) }
+            }
             // One ⋯ for the rest (testers, 2026-09-28): four buttons left the channel's name almost no room.
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -1007,7 +1012,8 @@ struct MessageRow: View {
 
     /// The link a preview card is shown for (M11g): the body's first, unless it opens a message or a canvas here.
     private var previewLink: String? {
-        guard !message.pending, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil,
+        // M117: a call's link is its card, without a preview.
+        guard !message.pending, message.call == nil, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil,
               CanvasLink.canvasId(base: controller.api?.baseUrl, url: link) == nil else { return nil }
         return link
     }
@@ -1108,8 +1114,12 @@ struct MessageRow: View {
                     Text(tr("\(Timeline.fullLabel(message.createdAt))（編集済み）"))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
-                if !message.body.isEmpty && !PollCardView.hidesBody(message.body, poll: message.poll) {
-                    MessageBodyView(text: message.body, users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
+                if let call = message.call, !message.deleted {  // M117: the card instead of the link
+                    CallCardView(call: call, starter: store.users[call.startedBy]?.displayName ?? senderName)
+                }
+                let body = message.call.map { CallRules.extraBody(message.body, call: $0) } ?? message.body
+                if !body.isEmpty && !PollCardView.hidesBody(body, poll: message.poll) {
+                    MessageBodyView(text: body, users: store.users, groups: store.groups, internalBase: controller.api?.baseUrl,
                                     customEmoji: store.customEmoji, emojiImages: store.emojiImages, emojiAnimations: store.emojiAnimations,
                                     onNeedEmojiImage: { controller.loadEmojiImage($0) }, keywords: store.me?.notifyKeywords ?? [], jumbo: true)
                         .environment(\.openURL, OpenURLAction { url in
