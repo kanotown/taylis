@@ -1066,14 +1066,25 @@ final class AppController {
     }
 
     /// M12a: a starred channel; the flag moves at once, favorite.updated confirms on every device.
+    /// Starring takes it out of my section at once (DATA_MODEL.md sidebar_sections 「1 つの会話は 1 か所」; the server does
+    /// the same and sidebar.updated confirms); a refusal puts both back.
     func toggleFavorite(_ channelId: String) async {
         guard let api else { return }
         let on = !store.isFavorite(channelId)
+        let sections = store.sidebarSections
         store.setFavorite(channelId, on: on)
+        if on, store.sectionOf(channelId) != nil {
+            store.replaceSidebar(sections.map { section in
+                var section = section
+                section.channelIds.removeAll { $0 == channelId }
+                return section
+            })
+        }
         do {
             if on { _ = try await api.favoriteChannel(id: channelId) } else { _ = try await api.unfavoriteChannel(id: channelId) }
         } catch {
             store.setFavorite(channelId, on: !on)
+            if on { store.replaceSidebar(sections) }
             self.error = describe(error)
         }
     }
@@ -1645,7 +1656,15 @@ final class AppController {
 
     /// A new section at the end (M26: with its icon); `channelIds` move into it from wherever they were.
     func createSection(_ name: String, emoji: String?, channelIds: [String]) async -> Bool {
-        await sidebarChange { try await $0.createSidebarSection(name: name, emoji: emoji, channelIds: channelIds) }
+        let done = await sidebarChange { try await $0.createSidebarSection(name: name, emoji: emoji, channelIds: channelIds) }
+        if done { leaveFavorites(channelIds) }
+        return done
+    }
+
+    /// DATA_MODEL.md sidebar_sections 「1 つの会話は 1 か所」: a conversation put in one of my sections is no longer
+    /// starred. The server unstarred it in the same change (favorite.updated confirms); the row moves here at once.
+    private func leaveFavorites(_ channelIds: [String]) {
+        for id in channelIds { store.setFavorite(id, on: false) }
     }
 
     /// M26: the name and the icon (nil takes it off).
@@ -1722,11 +1741,14 @@ final class AppController {
     }
 
     /// `sectionId` nil puts the conversation back in the default sections.
+    /// `sectionId` nil puts it back in the default sections; into a section it leaves お気に入り too.
     func moveToSection(_ channelId: String, sectionId: String?) async -> Bool {
-        await sidebarChange { api in
+        let done = await sidebarChange { api in
             if let sectionId { return try await api.placeInSidebarSection(sectionId, channelId: channelId) }
             return try await api.removeFromSidebarSection(channelId)
         }
+        if done, sectionId != nil { leaveFavorites([channelId]) }
+        return done
     }
 
     // MARK: edit history (M14c)

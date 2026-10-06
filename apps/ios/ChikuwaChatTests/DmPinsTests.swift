@@ -91,3 +91,68 @@ final class DmPinsTests: XCTestCase {
                        DmPinStateOut(channelId: "c1", pinned: true))
     }
 }
+
+/// DATA_MODEL.md sidebar_sections 「1 つの会話は 1 か所」 (2026-10-07, user report: a starred conversation moved into a new
+/// section seemed to do nothing): a conversation is in お気に入り or in one of my sections, never both. The server applies
+/// the rule; the controller applies it here at once (and puts it back when refused).
+@MainActor
+final class SidebarOnePlaceTests: XCTestCase {
+    private static let section = #"[{"id":"s1","name":"研究","position":0,"channel_ids":["c1","c2"],"collapsed":false,"sort":"name","manual_order":[]}]"#
+    private static let refused = #"{"error":{"code":"section_not_found","message":"Section not found"}}"#
+
+    override func tearDown() {
+        StubProtocol.handler = nil
+        super.tearDown()
+    }
+
+    private func client(_ reply: @escaping (URLRequest) -> (Int, String)) -> ApiClient {
+        StubProtocol.handler = { request in
+            let (status, body) = reply(request)
+            return (status, Data(body.utf8))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        return ApiClient(baseUrl: URL(string: "http://server")!, session: URLSession(configuration: configuration))
+    }
+
+    func testANewSectionMadeWithStarredConversationsTakesThemOutOfFavorites() async {
+        let controller = AppController()
+        controller.api = client { _ in (201, Self.section) }
+        controller.store.replaceFavorites(["c1", "c3"])
+        let made = await controller.createSection("研究", emoji: nil, channelIds: ["c1", "c2"])
+        XCTAssertTrue(made)
+        XCTAssertEqual(controller.store.sectionOf("c1"), "s1")
+        XCTAssertEqual(controller.store.favorites, ["c3"])
+    }
+
+    func testMovingAStarredConversationIntoASectionUnstarsItUnlessRefused() async {
+        let controller = AppController()
+        var refuse = false
+        controller.api = client { _ in refuse ? (404, Self.refused) : (200, Self.section) }
+        controller.store.replaceFavorites(["c1", "c2"])
+        let moved = await controller.moveToSection("c1", sectionId: "s1")
+        XCTAssertTrue(moved)
+        XCTAssertFalse(controller.store.isFavorite("c1"))
+        refuse = true
+        let refusedMove = await controller.moveToSection("c2", sectionId: "s1")
+        XCTAssertFalse(refusedMove)
+        XCTAssertTrue(controller.store.isFavorite("c2"))
+        XCTAssertNotNil(controller.error)
+    }
+
+    func testStarringTakesAConversationOutOfItsSectionAndARefusalPutsItBack() async {
+        let controller = AppController()
+        var refuse = false
+        controller.api = client { request in
+            refuse ? (403, #"{"error":{"code":"not_a_member","message":"no"}}"#) : (201, #"{"channel_id":"\#(request.url!.pathComponents[4])","favorite":true}"#)
+        }
+        controller.store.replaceSidebar([SidebarSectionOut(id: "s1", name: "研究", position: 0, channelIds: ["c1", "c2"])])
+        await controller.toggleFavorite("c1")
+        XCTAssertTrue(controller.store.isFavorite("c1"))
+        XCTAssertEqual(controller.store.sidebarSections.first?.channelIds, ["c2"])
+        refuse = true
+        await controller.toggleFavorite("c2")
+        XCTAssertFalse(controller.store.isFavorite("c2"))
+        XCTAssertEqual(controller.store.sidebarSections.first?.channelIds, ["c2"])
+    }
+}
