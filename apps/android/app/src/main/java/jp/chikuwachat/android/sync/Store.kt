@@ -861,9 +861,6 @@ class Store(private val persistence: Persistence? = null) {
         return ordered(bucket(channelId).values.filter { it.inTimeline && (it.seq == null || (oldest != null && it.seq >= oldest)) })
     }
 
-    /** Pinned messages held for the channel, loaded range or not (the pins pane re-reads when they change). */
-    fun pinnedIds(channelId: String): List<String> = bucket(channelId).values.filter { it.pinnedAt != null && !it.pending }.map { it.id }.sorted()
-
     /** A thread: the replies of one parent, oldest first (pending ones last). */
     fun replies(channelId: String, parentId: String): List<MessageState> =
         ordered(bucket(channelId).values.filter { it.parentId == parentId })

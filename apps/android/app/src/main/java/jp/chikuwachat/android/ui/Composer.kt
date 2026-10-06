@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -98,6 +99,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
@@ -302,9 +304,19 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         val channel = store.channel(channelId)
         val canShare = parentId != null && channel?.canPostTopLevel(isAdmin = store.me?.role == "admin") == true
         if (canShare) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp)) {
-                Checkbox(checked = alsoInChannel, onCheckedChange = { alsoInChannel = it })
-                Text(if (channel?.channel?.isDm == true) stringResource(R.string.composer_also_send_to_the_conversation) else stringResource(R.string.composer_also_send_to, channel?.channel?.name ?: ""), style = MaterialTheme.typography.bodySmall)
+            // 2026-10-06 (as on iOS): only the box and its label take the tap (a 48 dp tall target as wide as they are), and
+            // a gap keeps it off the input below: a tap at the input's top edge used to tick it.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 8.dp, bottom = 8.dp).heightIn(min = TouchTarget.MIN)
+                    .toggleable(value = alsoInChannel, role = Role.Checkbox, onValueChange = { alsoInChannel = it })
+                    .padding(horizontal = 4.dp),
+            ) {
+                Checkbox(checked = alsoInChannel, onCheckedChange = null)
+                Text(
+                    if (channel?.channel?.isDm == true) stringResource(R.string.composer_also_send_to_the_conversation) else stringResource(R.string.composer_also_send_to, channel?.channel?.name ?: ""),
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp),
+                )
             }
         }
         // M15e: priority and "ask for acknowledgement" for a top-level post; cleared after each send.

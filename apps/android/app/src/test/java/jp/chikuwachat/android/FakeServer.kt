@@ -975,7 +975,8 @@ class FakeServer {
         val (record, message) = live(channelId, userId, messageId)
         val seq = record.channel.lastSeq + 1
         record.channel = record.channel.copy(lastSeq = seq)
-        val tombstone = message.copy(body = "", deleted = true, updatedSeq = seq, reactions = emptyList())
+        // A deleted message is unpinned with it, as on the server.
+        val tombstone = message.copy(body = "", deleted = true, updatedSeq = seq, reactions = emptyList(), pinnedAt = null, pinnedBy = null)
         replace(record, tombstone, "message.deleted")
         return tombstone
     }
