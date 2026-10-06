@@ -243,7 +243,7 @@
 | `template.updated` | all (個人のテンプレートは本人) | — | `{ template: TemplateOut, deleted }` (M30)。投稿テンプレートの追加・変更・削除。クライアントは id で差し替えるか取り除く (DATA_MODEL.md message_templates) |
 | `group.updated` | all | — | `{ group: GroupOut, deleted }` (M12k)。ユーザーグループの作成 / 変更 / 削除。クライアントは id の表を差し替える (`@name` の候補と `<@group:id>` の表示に使う) |
 | `roster.updated` | all (guest を除く) | — | `{ user_id, profile: LabProfileOut \| null }` (M23)。名簿の行の追加 / 変更 / 削除 (`profile` が null なら外れた)。クライアントは user_id の表を差し替える。管理グループのメンバーの変化は別に `group.updated` で届く |
-| `sidebar.updated` | user | — | `{ sections: [SidebarSectionOut] }` (M14f)。自分のサイドバーのセクション一覧全体。クライアントは差し替える |
+| `sidebar.updated` | user | — | `{ sections: [SidebarSectionOut], defaults: [SidebarDefaultOut] }` (M14f、`defaults` と各セクションの `sort` / `manual_order` は 2026-10-07)。自分のサイドバーのセクション一覧全体と既定のセクションの並べ替え。クライアントは差し替える (`defaults` が無ければ今のまま) |
 | `channel.links_updated` | channel | — | `{ channel_id, links: [ChannelLinkOut] }` (M15f)。会話の上部のリンク全体。クライアントは差し替える (bootstrap には含めず、会話を開いたときに `GET /channels/{id}/links` で読む) |
 | `canvas.created` | channel | — | `{ canvas: CanvasMeta }` (M41)。キャンバスの作成、ゴミ箱からの復元。本文は載せない。手順は §14 |
 | `canvas.updated` | channel | — | `{ canvas: CanvasMeta, change: "content" \| "title" \| "settings" \| "restore" }` (M41)。`version` が手元より大きければメタを差し替え、開いていて編集中でなければ本文を読み直す (§14) |
