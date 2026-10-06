@@ -51,7 +51,7 @@ export function ReportsTab({ controller }: { controller: AppController }) {
       setBusy(false);
     }
   };
-  const name = (id: string) => store.users.get(id)?.display_name ?? t("common.unknownUser");
+  const name = (id: string | null) => (id ? store.users.get(id)?.display_name : undefined) ?? t("common.unknownUser");
   const where = (report: AdminReportOut) => (report.channel_name ? `#${report.channel_name}` : report.channel_type === "group_dm" ? t("common.groupDm") : "DM");
   return (
     <div className="space-y-3 py-3">
@@ -91,8 +91,8 @@ export function ReportsTab({ controller }: { controller: AppController }) {
               </blockquote>
               {report.note && <p className="text-xs text-muted">{t("reports.note", { note: report.note })}</p>}
               <div className="flex flex-wrap justify-end gap-2">
-                {!report.message_deleted && (
-                  <Button size="sm" variant="ghost" onClick={() => void controller.copyPermalink(report.message_id)}>
+                {report.message_id && !report.message_deleted && (
+                  <Button size="sm" variant="ghost" onClick={() => { if (report.message_id) void controller.copyPermalink(report.message_id); }}>
                     <Link size={13} /> {t("canvas.copyLink")}
                   </Button>
                 )}

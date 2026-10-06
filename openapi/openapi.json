@@ -361,9 +361,16 @@
             "type": "string"
           },
           "channel_id": {
-            "format": "uuid",
-            "title": "Channel Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
           },
           "channel_name": {
             "anyOf": [
@@ -390,14 +397,31 @@
             "title": "Id",
             "type": "string"
           },
+          "kind": {
+            "default": "message",
+            "enum": [
+              "message",
+              "user",
+              "general"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "message_deleted": {
             "title": "Message Deleted",
             "type": "boolean"
           },
           "message_id": {
-            "format": "uuid",
-            "title": "Message Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
           },
           "note": {
             "anyOf": [
@@ -412,18 +436,27 @@
           },
           "reason": {
             "enum": [
-              "spam",
+              "child_safety",
               "harassment",
               "inappropriate",
+              "spam",
+              "feedback",
               "other"
             ],
             "title": "Reason",
             "type": "string"
           },
           "reported_user_id": {
-            "format": "uuid",
-            "title": "Reported User Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported User Id"
           },
           "reporter_id": {
             "format": "uuid",
@@ -6025,6 +6058,106 @@
         "title": "FileListOut",
         "type": "object"
       },
+      "GeneralReportAck": {
+        "description": "What the reporter gets back: their own report only.",
+        "properties": {
+          "category": {
+            "enum": [
+              "child_safety",
+              "harassment",
+              "inappropriate",
+              "spam",
+              "feedback",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "user_id",
+          "created_at"
+        ],
+        "title": "GeneralReportAck",
+        "type": "object"
+      },
+      "GeneralReportCreate": {
+        "additionalProperties": false,
+        "description": "POST /reports (M119, docs/MODERATION.md §3.1): a report about a person (`user_id`) or\nabout anything else, or feedback. The note is required.",
+        "properties": {
+          "category": {
+            "enum": [
+              "child_safety",
+              "harassment",
+              "inappropriate",
+              "spam",
+              "feedback",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "client_report_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Report Id"
+          },
+          "note": {
+            "maxLength": 8000,
+            "title": "Note",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "category",
+          "note"
+        ],
+        "title": "GeneralReportCreate",
+        "type": "object"
+      },
       "GroupCreate": {
         "additionalProperties": false,
         "properties": {
@@ -9540,6 +9673,7 @@
               "spam",
               "harassment",
               "inappropriate",
+              "child_safety",
               "other"
             ],
             "title": "Reason",
@@ -9575,6 +9709,7 @@
               "spam",
               "harassment",
               "inappropriate",
+              "child_safety",
               "other"
             ],
             "title": "Reason",
@@ -15689,7 +15824,7 @@
     },
     "/api/v1/admin/reports": {
       "get": {
-        "description": "Reported messages, newest first (administrators).",
+        "description": "Reports, newest first (administrators): of messages, and since M119 of people and\ngeneral reports / feedback (`kind`; those have no message or channel).",
         "operationId": "list_reports_api_v1_admin_reports_get",
         "parameters": [
           {
@@ -24777,6 +24912,53 @@
         "summary": "Close Reminder",
         "tags": [
           "reminders"
+        ]
+      }
+    },
+    "/api/v1/reports": {
+      "post": {
+        "description": "Report a person (`user_id`) or anything else, or send feedback, to the administrators\n(M119, docs/MODERATION.md §3.1). Anyone signed in, guests too. 201; a retry with the same\n`client_report_id` returns the first report (200). 10 an hour per person (429).",
+        "operationId": "submit_report_api_v1_reports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneralReportCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneralReportAck"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Report",
+        "tags": [
+          "moderation"
         ]
       }
     },

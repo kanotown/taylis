@@ -753,23 +753,32 @@ CREATE INDEX user_blocks_blocked_idx ON user_blocks (blocked_id);  -- 「この�
 - 読むのは `moderation/blocks.py` だけ (messages・channels の 1 対 1 の DM の拒否、notifications のプッシュの除外、
   activity の一覧の除外)。本人のアカウントを削除 (匿名化) すると、本人がブロックした行は消える (された側の行は残す)。
 
-### message_reports (メッセージの報告、M104、MODERATION.md §3)
+### message_reports (メッセージの報告、M104、MODERATION.md §3。M119 から人の報告・ご意見も §3.1)
 
 ```sql
 CREATE TABLE message_reports (
   id                uuid PRIMARY KEY,                        -- UUIDv7
-  message_id        uuid NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-  channel_id        uuid NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  kind              varchar(16) NOT NULL DEFAULT 'message',  -- M119: message / user / general
+  message_id        uuid REFERENCES messages(id) ON DELETE CASCADE,   -- kind = message だけ
+  channel_id        uuid REFERENCES channels(id) ON DELETE CASCADE,   -- kind = message だけ
   reporter_id       uuid NOT NULL REFERENCES users(id),
-  reported_user_id  uuid NOT NULL REFERENCES users(id),      -- 報告した時のメッセージの送信者
-  reason            varchar(16) NOT NULL CHECK (reason IN ('spam', 'harassment', 'inappropriate', 'other')),
-  note              text,                                    -- 補足 (1,000 文字まで)
+  reported_user_id  uuid REFERENCES users(id),               -- メッセージの送信者 / 報告した相手 (general は NULL)
+  reason            varchar(16) NOT NULL CHECK (reason IN ('spam', 'harassment', 'inappropriate',
+                                                           'child_safety', 'feedback', 'other')),
+  client_report_id  uuid,                                    -- M119: POST /reports の再送をまとめる
+  note              text,                                    -- 補足 (メッセージ 1,000 文字・それ以外 4,000 文字まで)
   body_snapshot     text NOT NULL DEFAULT '',                -- 報告した時の本文 (4,000 文字まで)
   status            varchar(16) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
   created_at        timestamptz NOT NULL DEFAULT now(),
   resolved_at       timestamptz,
   resolved_by       uuid REFERENCES users(id) ON DELETE SET NULL,
-  CONSTRAINT message_reports_once UNIQUE (message_id, reporter_id)
+  CONSTRAINT message_reports_once UNIQUE (message_id, reporter_id),
+  CONSTRAINT message_reports_client_id UNIQUE (reporter_id, client_report_id),
+  CONSTRAINT message_reports_kind_check CHECK (
+       (kind = 'message' AND message_id IS NOT NULL AND channel_id IS NOT NULL
+        AND reported_user_id IS NOT NULL AND reason <> 'feedback')
+    OR (kind = 'user' AND message_id IS NULL AND channel_id IS NULL AND reported_user_id IS NOT NULL)
+    OR (kind = 'general' AND message_id IS NULL AND channel_id IS NULL AND reported_user_id IS NULL))
 );
 CREATE INDEX message_reports_status_idx ON message_reports (status, created_at);
 ```
@@ -777,6 +786,10 @@ CREATE INDEX message_reports_status_idx ON message_reports (status, created_at);
 - 同じ人が同じメッセージを報告できるのは 1 回 (2 回目は最初の行を返す)。読むのは管理者だけ (`GET /admin/reports`)。
 - 本文の写しは、投稿者が後で編集・削除しても何が報告されたかを確かめるため (メッセージ本体はソフト削除なので行は残る)。
   イベントは無い (管理者にはモデレーションのボットの DM で知らせる)。
+- M119（移行 0094）：メッセージによらない報告（`POST /reports`）も同じ表に入れる。`kind = 'user'` は人の報告、
+  `'general'` はそれ以外の報告とご意見（`reason = 'feedback'` はこの 2 つだけ）。別の表にしないのは、管理画面の
+  一覧・対応済み・未対応の操作を 1 つのまま使うため。`client_report_id` は同じ人の再送を最初の行にまとめる
+  （NULL どうしは重複にならない）。
 
 ### invites (招待リンク、M12h)
 

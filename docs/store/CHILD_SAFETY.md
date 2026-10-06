@@ -7,8 +7,11 @@ Google Play は、ソーシャル・コミュニケーションのアプリに�
 3. CSAM（児童性的虐待のコンテンツ）への対応と、関係する法律の順守
 4. 子どもの安全についての**連絡先**
 
-Taylis は 2 をすでに持っている（MODERATION.md §3 のメッセージの報告。4 クライアントのメッセージの操作 →「報告する」、
-理由と補足を付けてサーバの管理者全員に届く）。足りなかったのは 1 の公開ページと、Play Console の申告。
+2 はメッセージの報告（MODERATION.md §3。メッセージの操作 →「報告する」）があったが、審査では見つけてもらえず
+「アプリを離れずにフィードバックを送る手段を用意すること」として差し戻された（2026-10-06）。そこで M119 で、
+メッセージを選ばずに送れる報告（MODERATION.md §3.1）を足した：「設定」→「問題を報告・ご意見」（いつでも見える
+場所）と、相手のプロフィール →「報告する」。種類に「子どもの安全」があり、届いた報告は管理者への DM の先頭に
+「⚠️ 子どもの安全」と出る。足りなかったのは、この見える場所の手段と、1 の公開ページと、Play Console の申告。
 
 ## 1. 公開ページ
 
@@ -34,8 +37,11 @@ Taylis では、次の行為とコンテンツを禁止します。
 
 **報告の方法**
 
-- アプリの中で：問題のメッセージを長押し（デスクトップでは右クリック）して「報告する」を選び、理由を選んで送信します。
-  アプリを離れずに報告でき、報告はそのサーバの管理者全員に直ちに届きます。
+- アプリの「設定」→「問題を報告・ご意見」：種類（「子どもの安全」など）を選び、内容を書いて送信します。
+  特定のメッセージや相手がなくても、いつでも送れます。
+- 相手のプロフィール →「報告する」：その人についての懸念を送れます。
+- 問題のメッセージを長押し（デスクトップでは右クリック）→「報告する」：理由を選んで、そのメッセージを報告します。
+- どの方法もアプリを離れずに送れ、報告はそのサーバの管理者全員に直ちに届きます。
 - ユーザーのブロック：相手のプロフィールから「ブロック」を選べます。
 - 開発者への連絡：下の連絡先へメールでお知らせください。
 
@@ -59,7 +65,9 @@ Taylis has zero tolerance for child sexual abuse and exploitation (CSAE).
 minors (images, video, text or illustrations); grooming, sexual solicitation or sextortion of minors; trafficking or
 any other sexual exploitation of children.
 
-**How to report**: in the app, long-press a message (right-click on desktop), choose "Report" (報告する) and send it.
+**How to report**: in the app, open Settings > "Report a problem / feedback" (問題を報告・ご意見), choose a category
+(such as "Child safety") and describe the concern; no message or person needs to be selected. You can also report a
+person from their profile ("Report", 報告する), or long-press a message (right-click on desktop) and choose "Report".
 Reports reach all administrators of the server immediately, without leaving the app. You can also block a user from
 their profile, or email the contact below.
 
@@ -78,7 +86,7 @@ Play Console → ポリシー → アプリのコンテンツ →「子どもの
 | 質問 | 答え |
 |---|---|
 | CSAE を禁止する公開の基準 | `https://kano.ac/pages/apps/taylis-child-safety/` |
-| アプリ内のフィードバックの手段 | あり：メッセージの長押し →「報告する」（アプリを離れずに送れる。サーバの管理者に届く） |
+| アプリ内のフィードバックの手段 | あり：「設定」→「問題を報告・ご意見」（種類に「子どもの安全」、メッセージや相手を選ばずに送れる）、プロフィール →「報告する」、メッセージの長押し →「報告する」。どれもアプリを離れずに送れ、サーバの管理者全員に届く |
 | CSAM への対応 | 確認したら削除し、法律に従って関係機関に報告する |
 | 法律の順守 | 順守する |
 | 子どもの安全の連絡先 | 加納 徹、kanotown@gmail.com |

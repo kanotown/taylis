@@ -12,6 +12,7 @@
 | アカウントを削除 | 4 クライアントの「設定 → アカウント → アカウントを削除」、公開ページ `/account-deletion` (案内) | パスワード (Google のアカウントはユーザー名) で確認、**すぐに**匿名化。メッセージは「退会したユーザー」として残る |
 | 管理者による削除 (匿名化) | Desktop / Web の「管理 → ユーザー」の ⋯ →「削除 (匿名化)…」(有効な人にも、無効化した人にも) | 本人の削除と同じ処理 |
 | メッセージを報告 | 4 クライアントのメッセージの操作 →「報告する」 | 理由と補足を保存、本文の写しを取り、管理者全員にモデレーションのボットから DM。管理者は「管理 → 報告」で確認し「対応済み」にする |
+| 問題の報告・ご意見 (M119) | クライアントの「設定」→「問題を報告・ご意見」、プロフィール →「報告する」 | 種類と内容（必須）を保存し、管理者全員にモデレーションのボットから DM。メッセージの報告と同じ「管理 → 報告」の一覧に並ぶ |
 | ブロック | 4 クライアントのプロフィール →「ブロック」/「ブロックを解除」、「設定 → アカウント」の一覧で解除 | 相手のメッセージは自分の画面で折りたたまれ、相手からの通知・プッシュは来ず、相手は自分に 1 対 1 の DM を送れない。相手には知らされない |
 
 ## 2. アカウントの削除
@@ -83,7 +84,8 @@
 
 - `POST /api/v1/messages/{id}/report` `{reason, note?}` → `201` (2 回目以降は最初の報告を `200` で返す。同じ人が同じ
   メッセージを報告できるのは 1 回)。
-  - `reason`: `spam` (迷惑・スパム) / `harassment` (嫌がらせ) / `inappropriate` (不適切な内容) / `other` (その他)。
+  - `reason`: `spam` (迷惑・スパム) / `harassment` (嫌がらせ) / `inappropriate` (不適切な内容) /
+    `child_safety`（子どもの安全、M119 で追加）/ `other` (その他)。
     `note` は 1,000 文字まで。
   - 報告できるのは、そのメッセージを読める人 (メンバー、参加前のプレビューができる公開チャンネル) で、自分のメッセージは
     不可 (`400 cannot_report_own`)。削除済みは `404`。
@@ -103,6 +105,42 @@
   対応そのもの (メッセージの削除、無効化、匿名化) は既存の管理操作で行う。管理者がメンバーでない非公開の会話の
   メッセージでも、報告の写しで内容を確かめられる (報告した人が管理者に見せることを選んだもの)。
 - 通知の DM は送れなくても (ボットが無効、DM の作成に失敗) 報告そのものは残り、管理画面に出る (ログに残す)。
+- 理由が `child_safety` の報告の DM は、先頭の行を「⚠️ 子どもの安全」にして目立たせる（M119）。
+
+### 3.1 問題の報告・ご意見（メッセージによらない報告、M119）
+
+Google Play の「子どもの安全基準」のポリシーは、アプリを離れずに利用者が懸念やフィードバックを送れる手段を求める
+（2026-10-06 の指摘：メッセージの長押しの「報告する」だけでは、審査で見つけられなかった）。そこで、メッセージを
+選ばなくても送れる報告を足す。クライアントは「設定」→「問題を報告・ご意見」（いつでも見える場所）と、
+プロフィール →「報告する」（その人についての報告）から送る。
+
+- `POST /api/v1/reports` `{category, note, user_id?, client_report_id?}` → `201` `{id, category, user_id, created_at}`。
+  - `category`：`child_safety`（子どもの安全）/ `harassment`（嫌がらせ）/ `inappropriate`（不適切な内容）/
+    `spam`（迷惑・スパム）/ `feedback`（ご意見）/ `other`（その他）。
+  - `note`：前後の空白を除いて 1〜4,000 文字（必須。メッセージの報告と違い、内容は書いてもらう）。外れたら `422`。
+  - `user_id`（任意）：報告する相手。自分は `400 cannot_report_self`、存在しない人・ゲストから見えない人は
+    `404 user_not_found`（ブロックと同じ見え方の規則）。無効化・匿名化した人も報告できる（去った後の報告のため）。
+  - `client_report_id`（任意、uuid）：クライアントが報告ごとに作る id。同じ人が同じ id で送り直すと、新しく作らず
+    最初の報告を `200` で返す（通信が切れた後の再送で重複しない。中身が違っても最初のものを返す）。クライアントは送る。
+    id なしの要求は毎回新しい報告になる（同じ内容を何度送っても構わない、冪等にはしない）。
+  - **送れる人：サインインしている全員（ゲストも）**。子どもの安全の懸念は、誰でもいつでも送れなければならないため。
+    ゲストが報告できる相手は、ゲストから見える人（同じ会話にいる人）だけ。
+  - レートリミット：1 人 1 時間に 10 件（使い切ったら `429 rate_limited`、`Retry-After` 付き）。`client_report_id` の
+    再送は数えない（リミットの前に既存の報告を返す）。
+- 保存：`message_reports` に `kind = 'user'`（相手あり）/ `'general'`（相手なし）の行として入れる（DATA_MODEL.md）。
+  `message_id`・`channel_id` は NULL、本文の写しは空、`reason` に category。監査は `moderation.report_submitted`
+  （target は相手のユーザー、相手がなければ報告そのもの。details に `kind`・`category`）。
+- 管理者への通知：§3 と同じく、コミットの後にモデレーションのボットから有効な管理者全員（報告した本人を除く）に DM：
+  「🚩 報告が届きました / 種類 / 報告者 / 対象のユーザー（あれば）/ 内容 /「管理」→「報告」で確認」。
+  `child_safety` は先頭に「⚠️ 子どもの安全」の行、`feedback` は 1 行目を「💬 ご意見が届きました」にする。
+  名前と内容は §3 と同じく `<` と `*` を全角にする。内容は DM には 1,000 文字まで（続きは管理画面で）。
+- 管理画面：`GET /admin/reports` は 1 つの一覧のまま、メッセージの報告と新しい順に混ざる。各行に `kind`
+  （`message` / `user` / `general`）。メッセージによらない行は `message_id`・`channel_id`・`channel_name` が null、
+  `channel_type` が `"none"`、`body_snapshot` が `""`、`message_deleted` が false、`general` は `reported_user_id` も
+  null。「対応済みにする」/「未対応に戻す」はそのまま使える。
+- 古い Desktop / Web の管理画面（M119 より前）でも落ちない：場所は「DM」、投稿者は「不明なユーザー」（`user` は
+  相手の名前）、本文は「（本文なし）」、補足に内容が出る。理由の `child_safety` / `feedback` は英語のコードのまま出る。
+  「リンクをコピー」は M119 の型の更新で `message_id` があるときだけに直した。
 
 ## 4. ブロック
 
@@ -136,7 +174,7 @@
 ## 6. 実装の場所
 
 - サーバ: `server/app/modules/moderation/` (models・blocks (他のモジュールが読むだけの問い合わせ)・service・router)、
-  移行 0081 (`user_blocks`、`message_reports`)。DM の拒否は `channels.get_or_create_dm` と `messages.create_message`、
+  移行 0081 (`user_blocks`、`message_reports`)、0094（`message_reports.kind`・`client_report_id`、M119）。DM の拒否は `channels.get_or_create_dm` と `messages.create_message`、
   プッシュの抑止は `notifications/planner.py`、アクティビティは `activity/repository.py`、公開ページは `core/pages.py`。
 - Desktop / Web: `ui/ModerationDialogs.tsx` (報告・削除のダイアログ)、`ui/AdminReportsTab.tsx`、`ui/UserPopover.tsx`、
   `ui/Timeline.tsx` (折りたたみ)、`ui/Settings.tsx` (アカウント)、`state/app.ts`。

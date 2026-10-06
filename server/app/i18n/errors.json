@@ -201,6 +201,11 @@
    "en": "You can't report your own message.",
    "zh-Hans": "不能举报自己的消息。"
   },
+  "cannot_report_self": {
+   "ja": "自分自身は報告できません",
+   "en": "You can't report yourself.",
+   "zh-Hans": "不能举报自己。"
+  },
   "canvas_base_expired": {
    "ja": "編集の元にした版がなくなりました。今の版と見比べてください",
    "en": "The version you edited from is gone. Compare with the current version.",
