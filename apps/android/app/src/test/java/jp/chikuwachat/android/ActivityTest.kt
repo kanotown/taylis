@@ -215,10 +215,13 @@ class ActivityTest {
 
         // Someone reacts to my message: reaction.added.
         val (mine, _) = server.post(channel.id, bob.id, "mine")
+        // My post moved my read position (read.updated), which reads the badge again too (MOBILE_UI.md §6.4).
+        engine.flushActivity(); settle(engine)
+        assertEquals(1, api.activitySummaryCalls)
         server.activity[bob.id] = ActivitySummaryOut("2026-09-30T00:00:00Z", 1, false)
         server.react(channel.id, alice.id, mine.id, "👍", present = true)
         engine.flushActivity(); settle(engine)
-        assertEquals(1, api.activitySummaryCalls)
+        assertEquals(2, api.activitySummaryCalls)
         assertEquals(1, store.activity?.unreadCount)
         assertEquals(1, store.activityRevision)
 
@@ -227,34 +230,34 @@ class ActivityTest {
         server.react(channel.id, bob.id, theirs.id, "👍", present = true)
         server.react(channel.id, alice.id, mine.id, "👍", present = false) // taken away: no event
         engine.flushActivity(); settle(engine)
-        assertEquals(1, api.activitySummaryCalls)
+        assertEquals(2, api.activitySummaryCalls)
 
         // A mention of me.
         server.activity[bob.id] = ActivitySummaryOut("2026-09-30T00:00:00Z", 2, true)
         server.post(channel.id, alice.id, "<@${bob.id}> 見て")
         engine.flushActivity(); settle(engine)
-        assertEquals(2, api.activitySummaryCalls)
+        assertEquals(3, api.activitySummaryCalls)
         assertEquals(ActivitySummaryOut("2026-09-30T00:00:00Z", 2, true), store.activity)
 
         // A reply in a thread I follow (I replied in it), not my own reply nor one in a thread I do not follow.
         val (topic, _) = server.post(channel.id, alice.id, "topic")
         server.post(channel.id, bob.id, "my reply", parentId = topic.id)
         engine.flushActivity(); settle(engine)
-        assertEquals(2, api.activitySummaryCalls)
+        assertEquals(3, api.activitySummaryCalls)
         server.post(channel.id, alice.id, "their reply", parentId = topic.id)
         engine.flushActivity(); settle(engine)
-        assertEquals(3, api.activitySummaryCalls)
+        assertEquals(4, api.activitySummaryCalls)
         val (other, _) = server.post(channel.id, alice.id, "other topic")
         server.post(channel.id, alice.id, "self reply", parentId = other.id)
         engine.flushActivity(); settle(engine)
-        assertEquals(3, api.activitySummaryCalls)
+        assertEquals(4, api.activitySummaryCalls)
         assertEquals(3, store.activityRevision)
 
         // My other device read the activity: activity.read.
         server.activity[bob.id] = ActivitySummaryOut("2026-09-30T05:00:00Z", 0, false)
         server.emitActivityRead(bob.id, "2026-09-30T05:00:00Z")
         engine.flushActivity(); settle(engine)
-        assertEquals(4, api.activitySummaryCalls)
+        assertEquals(5, api.activitySummaryCalls)
         assertEquals(ActivitySummaryOut("2026-09-30T05:00:00Z", 0, false), store.activity)
         assertEquals(3, store.activityRevision) // no new item
 

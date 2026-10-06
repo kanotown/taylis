@@ -880,6 +880,8 @@ class SyncEngine(
                 // refreshed from the server shortly after, which also covers threads we do not hold.
                 store.applyThreadState(withFloor(Codec.snake.decodeFromJsonElement(ThreadState.serializer(), frame.data)))
                 scheduleThreadRefresh()
+                // MOBILE_UI.md §6.4: replies and mentions read in the thread no longer count in the activity badge.
+                if (frame.data.str("reason") == "read") scheduleActivityRefresh()
             }
             "channel.created", "channel.updated" -> {
                 val channel = Codec.snake.decodeFromJsonElement(ChannelOut.serializer(), frame.data["channel"] ?: return)
@@ -919,7 +921,12 @@ class SyncEngine(
             }
             "read.updated" -> {
                 val channelId = frame.data.str("channel_id") ?: return
-                applyReadState(channelId, Codec.snake.decodeFromJsonElement(ReadStateOut.serializer(), frame.data), allowDecrease = frame.data.str("reason") == "set")
+                val set = frame.data.str("reason") == "set"
+                applyReadState(channelId, Codec.snake.decodeFromJsonElement(ReadStateOut.serializer(), frame.data), allowDecrease = set)
+                // MOBILE_UI.md §6.4: mentions read in the conversation no longer count in the activity badge; a position
+                // moved back may make them unread again, so the list on screen loads again.
+                scheduleActivityRefresh()
+                if (set && store.activity != null) store.reloadActivity()
             }
             "notification_preference.updated" -> {
                 val channelId = frame.data.str("channel_id") ?: return
@@ -1288,6 +1295,8 @@ class SyncEngine(
             post {
                 store.updateChannel(channelId) { if ((it.unsentReadSeq ?: 0) <= target) it.copy(unsentReadSeq = null) else it }
                 applyReadState(channelId, state)
+                // §6.4: my read here may clear activity items; recount now rather than after the read.updated echo.
+                scheduleActivityRefresh()
             }
         }
     }
@@ -1344,6 +1353,7 @@ class SyncEngine(
         if (seq <= current) return
         threadReadFloor[parentId] = seq
         unsentThreadReads[parentId] = seq
+        store.noteThreadRead(parentId, seq) // the activity list's dots, held thread or not (§6.4)
         store.threads[parentId]?.state?.let { state ->
             val newest = store.replies(state.channelId, parentId).mapNotNull { it.seq }.maxOrNull() ?: 0
             store.applyThreadState(if (seq >= newest) state.copy(lastReadSeq = seq, unreadCount = 0, mentionCount = 0) else state.copy(lastReadSeq = seq))
@@ -1367,7 +1377,10 @@ class SyncEngine(
                 return@launch
             }
             if ((unsentThreadReads[parentId] ?: 0) <= target) unsentThreadReads.remove(parentId)
-            post { store.applyThreadState(withFloor(state)) }
+            post {
+                store.applyThreadState(withFloor(state))
+                scheduleActivityRefresh() // §6.4, as in sendRead
+            }
         }
     }
 
