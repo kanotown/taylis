@@ -358,6 +358,15 @@ class AppController(private val app: Application) {
         groupPosts = on
     }
 
+    /** Issue #1: 「スワイプで戻る・進む」 (on by default), kept on this device. */
+    var swipeNavigation by mutableStateOf(jp.chikuwachat.android.ui.SwipeNavigation.read(prefs))
+        private set
+
+    fun changeSwipeNavigation(on: Boolean) {
+        jp.chikuwachat.android.ui.SwipeNavigation.write(prefs, on)
+        swipeNavigation = on
+    }
+
     /**
      * The UI language (docs/I18N.md): "ja" / "en" / "zh-Hans", or null to follow the device. Applied on this device at
      * once (AppLanguage), then saved as my `locale` on the server so my other devices and the server's texts (pushes,

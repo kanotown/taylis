@@ -1559,6 +1559,7 @@
     <string name="you_screens_end">结束 %1$s</string>
     <string name="you_screens_end_of_this_week">本周结束时</string>
     <string name="you_screens_end_of_today">今天结束时</string>
+    <string name="you_screens_gestures">手势</string>
     <string name="you_screens_group_consecutive_posts">合并连续的帖子</string>
     <string name="you_screens_hide_presence">隐藏在线状态</string>
     <string name="you_screens_home_tiles">首页磁贴</string>
@@ -1611,6 +1612,8 @@
     <string name="you_screens_signs_you_out_of_all_devices">将从所有设备退出登录，并清除个人资料和登录信息。你发布的消息将以\"已注销用户\"保留。</string>
     <string name="you_screens_start">开始 %1$s</string>
     <string name="you_screens_status">状态</string>
+    <string name="you_screens_swipe_back_forward">滑动返回和前进</string>
+    <string name="you_screens_swipe_back_forward_detail">在对话中向右滑动返回列表，在列表中向左滑动回到上次打开的对话</string>
     <string name="you_screens_tasks_assignments_and_due_dates">任务 (分配和期限)</string>
     <string name="you_screens_that_device_will_have_to_sign">该设备需要重新登录。</string>
     <string name="you_screens_the_emoji_in_the_long_press">长按菜单中显示的表情。所有设备上都相同。</string>

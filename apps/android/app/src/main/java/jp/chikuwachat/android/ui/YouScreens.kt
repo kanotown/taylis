@@ -618,6 +618,13 @@ private fun AppearanceScreen(controller: AppController, version: Int) {
             stringResource(R.string.you_screens_off_show_the_avatar_and_name),
             checked = controller.groupPosts,
         ) { controller.changeGroupPosts(it) }
+        // Issue #1 (MOBILE_UI.md §5.1): the horizontal swipe between a conversation and the list, for whom it gets in the way.
+        SectionTitle(stringResource(R.string.you_screens_gestures))
+        SwitchRow(
+            stringResource(R.string.you_screens_swipe_back_forward),
+            stringResource(R.string.you_screens_swipe_back_forward_detail),
+            checked = controller.swipeNavigation,
+        ) { controller.changeSwipeNavigation(it) }
         Hint(stringResource(R.string.you_screens_this_setting_is_only_for_this), Modifier.padding(top = 4.dp))
         // Only against a server that sends the field (null or a list): an older one would drop what is saved here.
         if (me != null && me.knowsQuickReactions) QuickReactionsSection(controller, me)
