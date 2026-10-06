@@ -4,10 +4,10 @@
  * escapes everything.
  *
  * Inline: **bold** / *bold*, _italic_ (never inside a word, M107), ~~strike~~, `code`, [label](url), bare https?:// links,
- * e-mail addresses (text, never read for emphasis), \_ \* \~ \` escapes,
+ * e-mail addresses (text, never read for emphasis), \_ \* \~ \` \$ escapes, $TeX$ math (apps/shared/math.json),
  * <@user-id>, <@group:group-id> (M12k), <!channel> / <!here>. Blocks: "# " … "### " headings, ``` fences (optional language),
  * "> " quotes, "- " / "* " bullets, "1. " numbered items (nested by indenting 2–4 spaces or a tab, three levels;
- * numbering and markers in `listItems`, apps/shared/lists.json), and (M15g) GFM tables: a "| a | b |" header, a "| --- | :-: |" separator, then "| … |" rows.
+ * numbering and markers in `listItems`, apps/shared/lists.json), "$$" display math, and (M15g) GFM tables: a "| a | b |" header, a "| --- | :-: |" separator, then "| … |" rows.
  *
  * The canvas dialect (CANVAS.md §4.2, `{ canvas: true }`) adds tasks ("- [ ] item" / "- [x] item", "*" too, two leading
  * spaces nest), images of the canvas ("![alt](attachment:<uuid>)" on a line of its own; other image URLs stay text) and
@@ -29,6 +29,8 @@ export type Token =
   | { kind: "mention"; userId: string }
   | { kind: "mention_group"; groupId: string }
   | { kind: "mention_all"; target: string }
+  /** TeX math (apps/shared/math.json): `text` is the formula as written; `display` for `$$…$$` within a line. */
+  | { kind: "math"; text: string; display: boolean }
   | { kind: "newline" };
 
 export type Block =
@@ -38,6 +40,8 @@ export type Block =
   /** `ordered` / `start`: the first item's (a top-level item of the other kind starts a new list). */
   | { kind: "list"; ordered: boolean; start: number; items: ListItem[] }
   | { kind: "codeblock"; text: string; lang: string | null }
+  /** Display math: `$$…$$` on a line (or lines) of its own (apps/shared/math.json). */
+  | { kind: "math"; tex: string }
   | { kind: "table"; align: TableAlign[]; header: Token[][]; rows: Token[][][] }
   // The canvas dialect (CANVAS.md §4.2): `line` is the item's line in the body (0-based), which a tick changes.
   | { kind: "task"; items: TaskItem[] }
@@ -79,10 +83,45 @@ export type TableAlign = "left" | "center" | "right" | null;
 // (also inside emphasis). E-mail addresses (and the shrug ¯\_(ツ)_/¯, which keeps its backslash) are text tokens of
 // their own, so emphasis and escapes are never read inside them.
 const INLINE =
-  /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)|(\\([_*~`]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)/gu;
+  /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))/gu;
 const WITH_BLOCKS = new RegExp(`(\`\`\`([\\s\\S]*?)\`\`\`)|${INLINE.source}|(\\n)`, "gu");
 const WORD_BEFORE = /[\p{L}\p{N}_]$/u;
-const ESCAPED = /\\([_*~`])/g;
+
+/**
+ * TeX math (apps/shared/math.json, DATA_MODEL.md 「本文の形式」). Inline `$…$` as Pandoc reads it: the opening `$` is
+ * followed by a non-space, the closing one preceded by a non-space and not followed by a digit (nor an ASCII letter, so
+ * `$HOME and $PATH` stays text), so prices ($5 and $10) are not math. `$$…$$` within a line is math too; on a line (or
+ * lines, no blank line between) of its own it is a display block (`mathBlockAt`). `\$` is a dollar; code spans, code
+ * blocks and URLs are never read for math; an unmatched `$` stays as it is. A formula longer than this stays text.
+ */
+export const MATH_MAX_LENGTH = 2000;
+
+/** Display math starting at `lines[index]`: its formula and its last line, or null when the line opens none. */
+export function mathBlockAt(lines: readonly string[], index: number): { tex: string; end: number } | null {
+  const first = (lines[index] ?? "").trim();
+  if (!first.startsWith("$$")) return null;
+  const done = (tex: string, end: number) => {
+    const trimmed = tex.trim();
+    return trimmed === "" || trimmed.length > MATH_MAX_LENGTH ? null : { tex: trimmed, end };
+  };
+  if (first.length >= 4 && first.endsWith("$$")) {
+    const tex = first.slice(2, -2);
+    return tex.includes("$$") ? null : done(tex, index);
+  }
+  const head = first.slice(2);
+  if (head.includes("$$")) return null;
+  for (let k = index + 1; k < lines.length; k++) {
+    const line = lines[k] ?? "";
+    const trimmed = line.trim();
+    if (trimmed === "") return null; // a blank line ends the search: the $$ was not math
+    if (!trimmed.includes("$$")) continue;
+    const tail = trimmed.slice(0, -2);
+    if (!trimmed.endsWith("$$") || tail.includes("$$")) return null;
+    return done([head, ...lines.slice(index + 1, k), tail].join("\n"), k);
+  }
+  return null;
+}
+const ESCAPED = /\\([_*~`$])/g;
 
 /** Whole-body tokens (inline markup, fenced code and newlines); kept for highlighting and old callers. */
 export function tokenize(body: string): Token[] {
@@ -131,7 +170,12 @@ function scan(body: string, pattern: RegExp, withBlocks: boolean): Token[] {
     else if (g(20) !== undefined) tokens.push({ kind: "link", url: g(20) ?? "" });
     else if (g(21) !== undefined) text(g(22) ?? "");
     else if (g(23) !== undefined) text(g(23) ?? "");
-    else tokens.push({ kind: "newline" });
+    else if (g(24) !== undefined || g(26) !== undefined) {
+      // TeX math: too long or blank, it stays the text it was.
+      const tex = g(24) !== undefined ? (g(25) ?? "") : (g(27) ?? "");
+      if (tex.length > MATH_MAX_LENGTH || tex.trim() === "") text(match[0]);
+      else tokens.push({ kind: "math", text: tex, display: g(24) !== undefined });
+    } else tokens.push({ kind: "newline" });
     last = index + match[0].length;
   }
   text(body.slice(last));
@@ -231,6 +275,12 @@ export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
       i = close + 1;
       continue;
     }
+    const math = mathBlockAt(lines, i);
+    if (math) {
+      push({ kind: "math", tex: math.tex });
+      i = math.end + 1;
+      continue;
+    }
     const heading = HEADING.exec(line);
     if (heading) {
       push({ kind: "heading", level: (heading[1] ?? "#").length as 1 | 2 | 3, tokens: tokenizeInline(heading[2] ?? ""), ...(canvas ? { line: i } : {}) });
@@ -307,7 +357,7 @@ export function parseBlocks(body: string, options: ParseOptions = {}): Block[] {
     const paragraph: Token[][] = [];
     while (i < lines.length) {
       const current = lines[i] ?? "";
-      if (paragraph.length > 0 && (opensFence(i) || opensTable(i) || HEADING.test(current) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current) || isImage(i) || isRule(i))) break;
+      if (paragraph.length > 0 && (opensFence(i) || opensTable(i) || HEADING.test(current) || QUOTE.test(current) || BULLET.test(current) || NUMBERED.test(current) || isImage(i) || isRule(i) || mathBlockAt(lines, i))) break;
       paragraph.push(tokenizeInline(current));
       i++;
     }
@@ -446,6 +496,8 @@ function inlineText(token: Token): string {
       return `<!${token.target}>`;
     case "newline":
       return "\n";
+    case "math":
+      return token.display ? `$$${token.text}$$` : `$${token.text}$`; // the source as written (apps/shared/math.json)
     default:
       return token.text;
   }

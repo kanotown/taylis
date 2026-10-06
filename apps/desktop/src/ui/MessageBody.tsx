@@ -12,6 +12,7 @@ import { openExternalLink } from "../platform/external";
 import { cn } from "./primitives";
 import { type EmojiOnly, emojiOnly, JUMBO } from "./emojiOnly";
 import { t } from "../i18n";
+import { MathView } from "./MathView";
 
 const NO_CUSTOM: ReadonlyMap<string, CustomEmojiOut> = new Map();
 
@@ -134,6 +135,8 @@ export function BlockView({ block, users, options }: { block: Block; users: Map<
           </table>
         </div>
       );
+    case "math":
+      return <MathView tex={block.tex} display />;
     case "codeblock":
       return (
         <pre className="relative my-1">
@@ -298,6 +301,8 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
             @{token.target}
           </span>
         );
+      case "math":
+        return <MathView key={i} tex={token.text} display={false} inlineDisplay={token.display} />;
       case "newline":
         return <br key={i} />;
     }
