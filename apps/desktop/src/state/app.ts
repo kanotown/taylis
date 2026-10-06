@@ -1861,7 +1861,7 @@ export class AppController {
         if (this.quiet(session) || (store.me ?? session.me)?.notify_tasks === false) return;
         const { body, taskId, channelId } = taskNoticeText(notice, (id) => store.users.get(id)?.display_name ?? null);
         void notify(this.notificationTitle(session, t("notification.task")), body, () => {
-          if (this.active === session) this.requestOpenTask(taskId, channelId);
+          void this.openFromNotification(session.serverUrl, () => this.requestOpenTask(taskId, channelId));
         });
       },
       // M72 (CANVAS.md §18.1): a canvas newly mentions me (the engine checks the conversation's level and mute), worded
@@ -1871,14 +1871,14 @@ export class AppController {
         const who = store.users.get(mention.by_user_id)?.display_name ?? t("common.member");
         const where = channel.type === "public" || channel.type === "private" ? ` (#${channel.name})` : "";
         void notify(this.notificationTitle(session, t("notification.canvas")), t("notification.canvasMention", { who, title: mention.title }) + where, () => {
-          if (this.active === session) this.requestOpenCanvas(mention.channel_id, mention.canvas_id);
+          void this.openFromNotification(session.serverUrl, () => this.requestOpenCanvas(mention.channel_id, mention.canvas_id));
         });
       },
       // M112: a reservation notice (a to-do as an operator, or news of my own booking); a click opens 「予約」.
       onReservationNotice: (notice) => {
         if (this.quiet(session)) return;
         void notify(this.notificationTitle(session, t("notification.reservation")), notice.text, () => {
-          if (this.active === session) this.requestOpenReservations();
+          void this.openFromNotification(session.serverUrl, () => this.requestOpenReservations());
         });
       },
       // §15: a test notification asked for on another device of mine (this one showed its own when the button was pressed).
@@ -1891,9 +1891,11 @@ export class AppController {
         if (store.isBlocked(message.sender_id)) return; // M104: nothing from someone I blocked
         const sender = store.users.get(message.sender_id)?.display_name ?? t("common.member");
         const text = plainText(mentionsToNames(message.body, store.users, store.groups)) || attachmentText(message.attachments) || t("notification.newMessage");
-        // A DM is titled by its sender; a channel or group DM by the conversation, with the sender before the text.
-        if (channel.type === "dm") void notify(this.notificationTitle(session, sender), text);
-        else void notify(this.notificationTitle(session, conversationTitle(channel, store.users, store.me?.id ?? null)), `${sender}: ${text}`);
+        // A DM is titled by its sender; a channel or group DM by the conversation, with the sender before the text. A
+        // click shows the message in its conversation (a reply: in its thread), in its own workspace.
+        const open = () => void this.openFromNotification(session.serverUrl, () => this.revealMessage(message));
+        if (channel.type === "dm") void notify(this.notificationTitle(session, sender), text, open);
+        else void notify(this.notificationTitle(session, conversationTitle(channel, store.users, store.me?.id ?? null)), `${sender}: ${text}`, open);
       },
       // M39: a reaction to my message, only when I asked for reaction banners (the engine checks that and the
       // conversation's level and mute; the activity lists it either way). Titled like the server's push.
@@ -1903,7 +1905,9 @@ export class AppController {
         const message = store.getMessage(channel.id, reaction.message_id);
         const excerpt = message && !message.deleted ? plainText(mentionsToNames(message.body, store.users, store.groups), 80) : "";
         const where = channel.type === "dm" ? "" : ` · ${conversationTitle(channel, store.users, store.me?.id ?? null)}`;
-        void notify(this.notificationTitle(session, t("notification.reacted", { who: actor }) + where), excerpt ? t("notification.reactionQuote", { emoji: reactionText(reaction.emoji, store.customEmoji), excerpt }) : reactionText(reaction.emoji, store.customEmoji));
+        void notify(this.notificationTitle(session, t("notification.reacted", { who: actor }) + where), excerpt ? t("notification.reactionQuote", { emoji: reactionText(reaction.emoji, store.customEmoji), excerpt }) : reactionText(reaction.emoji, store.customEmoji), () => {
+          void this.openFromNotification(session.serverUrl, () => this.openPermalink(reaction.message_id));
+        });
       },
       // A workspace in the background is not being looked at: its server may push to the phone (§6).
       // In use: the open workspace, its window focused, and touched within the last minutes (platform/idle.ts).
@@ -1913,6 +1917,23 @@ export class AppController {
       if (this.active === session) this.emit();
     });
     return engine;
+  }
+
+  /**
+   * A click on a notification (WORKSPACES.md §7): its workspace comes on screen first, then `open` runs there, as a
+   * click in the open workspace does. Before, a click on another workspace's notification did nothing (2026-10-06). The
+   * switch mounts that workspace's main screen; `open` waits a task for it, so its request is not taken as an old one.
+   */
+  async openFromNotification(serverUrl: string, open: () => unknown): Promise<void> {
+    const session = this.sessions.get(serverUrl);
+    if (!session || session.leaving) return; // signed out since
+    if (this.active !== session) {
+      await this.switchWorkspace(serverUrl);
+      if (this.active !== session) return;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (this.active !== session) return;
+    }
+    await open();
   }
 
   /** M12c: paused notifications or quiet hours of that workspace's account. */
