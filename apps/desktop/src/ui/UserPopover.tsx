@@ -1,5 +1,5 @@
 import { Ban, MessageSquare, Pencil, UserRoundPen } from "lucide-react";
-import { Fragment, type ReactNode, useState } from "react";
+import { Fragment, type PointerEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { AppController } from "../state/app";
 import { Avatar, presenceLabel } from "./Avatar";
@@ -10,7 +10,7 @@ import { displayTitle, supervisorLabel } from "./roster";
 import { expiryLabel } from "./users";
 import { dndActive, quietHoursLabel } from "./dnd";
 import { activeStatus } from "./users";
-import { Button, cn, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { Button, cn, PopoverAnchor, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { t } from "../i18n";
 
 /**
@@ -21,8 +21,103 @@ import { t } from "../i18n";
  */
 export function UserPopover({ controller, userId, children, className }: { controller: AppController; userId: string; children: ReactNode; className?: string }) {
   const [open, setOpen] = useState(false);
+  const store = controller.store;
+  const user = store.users.get(userId);
+  const me = store.me?.id === userId;
+  return (
+    <PopoverRoot open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" className={cn("rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/40", className)} aria-label={me ? t("popover.myProfile", { name: user?.display_name ?? "" }) : t("popover.profileOf", { name: user?.display_name ?? "?" })}>
+          {children}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-0">
+        <UserCard controller={controller} userId={userId} onClose={() => setOpen(false)} />
+      </PopoverContent>
+    </PopoverRoot>
+  );
+}
+
+/** How long the pointer rests on a mention before its card opens, and how long the card waits for it to come over. */
+export const MENTION_HOVER_MS = 400;
+export const MENTION_LEAVE_MS = 200;
+
+/**
+ * A user mention in a message body (`<@uuid>` of someone this device knows, 2026-10-06): the same card as an avatar's.
+ * Resting the mouse on it opens the card after a moment, and it closes once the pointer has left both (with a short grace
+ * to move into the card). A click (Enter / Space from the keyboard) opens it pinned, until a click outside or Esc. Hover
+ * never takes the focus (the composer keeps it); a pinned card does, as any popover.
+ */
+export function MentionCard({ controller, userId, children }: { controller: AppController; userId: string; children: ReactNode }) {
+  const [open, setOpen] = useState<"hover" | "pinned" | null>(null);
+  const timer = useRef<number | null>(null);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const clear = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => clear, []);
+  const later = (ms: number, next: "hover" | null) => {
+    clear();
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      setOpen((now) => (now === "pinned" ? now : next));
+    }, ms);
+  };
+  const mouse = (event: PointerEvent) => event.pointerType === "mouse";
+  const name = controller.store.users.get(userId)?.display_name ?? "?";
+  const toggle = () => {
+    clear();
+    setOpen((now) => (now === "pinned" ? null : "pinned"));
+  };
+  return (
+    <PopoverRoot open={open !== null} onOpenChange={(next) => { clear(); setOpen(next ? "pinned" : null); }}>
+      <PopoverAnchor asChild>
+        <span
+          ref={anchor}
+          role="button"
+          tabIndex={0}
+          className="mention cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          aria-haspopup="dialog"
+          aria-expanded={open !== null}
+          aria-label={t("popover.profileOf", { name })}
+          data-mention-user={userId}
+          onPointerEnter={(event) => { if (mouse(event) && open === null) later(MENTION_HOVER_MS, "hover"); else if (mouse(event)) clear(); }}
+          onPointerLeave={(event) => { if (!mouse(event)) return; if (open === "hover") later(MENTION_LEAVE_MS, null); else if (open === null) clear(); }}
+          onClick={(event) => {
+            event.stopPropagation(); // not the row's (a phone's tap opens the thread)
+            toggle();
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            event.stopPropagation();
+            toggle();
+          }}
+        >
+          {children}
+        </span>
+      </PopoverAnchor>
+      <PopoverContent
+        align="start"
+        className="w-72 p-0"
+        onPointerEnter={(event) => { if (mouse(event)) clear(); }}
+        onPointerLeave={(event) => { if (mouse(event) && open === "hover") later(MENTION_LEAVE_MS, null); }}
+        onOpenAutoFocus={(event) => { if (open === "hover") event.preventDefault(); }}
+        // A click on the mention itself is its own toggle, not a click outside.
+        onInteractOutside={(event) => { if (anchor.current?.contains(event.target as Node)) event.preventDefault(); }}
+        onCloseAutoFocus={(event) => { if (open !== "pinned") event.preventDefault(); }}
+      >
+        <UserCard controller={controller} userId={userId} onClose={() => { clear(); setOpen(null); }} />
+      </PopoverContent>
+    </PopoverRoot>
+  );
+}
+
+/** The card's content (UserPopover, MentionCard); `onClose` once it opened the DM or a settings screen. */
+function UserCard({ controller, userId, onClose }: { controller: AppController; userId: string; onClose: () => void }) {
   // Its trigger sits in memoized message rows: the open card follows presence and status itself.
-  useStoreUpdates(controller, open);
+  useStoreUpdates(controller, true);
   const store = controller.store;
   const user = store.users.get(userId);
   const me = store.me?.id === userId;
@@ -36,18 +131,12 @@ export function UserPopover({ controller, userId, children, className }: { contr
   const openDm = async () => {
     const id = await controller.openDmWith(userId);
     if (id) {
-      setOpen(false);
+      onClose();
       window.dispatchEvent(new CustomEvent("chikuwa:open-channel", { detail: id }));
     }
   };
   return (
-    <PopoverRoot open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button type="button" className={cn("rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-accent/40", className)} aria-label={me ? t("popover.myProfile", { name: user?.display_name ?? "" }) : t("popover.profileOf", { name: user?.display_name ?? "?" })}>
-          {children}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-0">
+    <>
         <div className="flex items-center gap-3 border-b border-line p-4">
           <Avatar id={userId} name={user?.display_name ?? "?"} size={56} className="rounded-2xl text-xl" presence={presence} />
           <div className="min-w-0">
@@ -80,10 +169,10 @@ export function UserPopover({ controller, userId, children, className }: { contr
         <div className={cn("flex gap-2 p-3", me && "flex-col")}>
           {me ? (
             <>
-              <Button size="sm" variant="secondary" className="w-full justify-center" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("chikuwa:open-status")); }}>
+              <Button size="sm" variant="secondary" className="w-full justify-center" onClick={() => { onClose(); window.dispatchEvent(new CustomEvent("chikuwa:open-status")); }}>
                 <Pencil size={14} /> {t("popover.setStatus")}
               </Button>
-              <Button size="sm" variant="secondary" className="w-full justify-center" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent("chikuwa:open-profile")); }}>
+              <Button size="sm" variant="secondary" className="w-full justify-center" onClick={() => { onClose(); window.dispatchEvent(new CustomEvent("chikuwa:open-profile")); }}>
                 <UserRoundPen size={14} /> {t("settings.section.profile")}
               </Button>
             </>
@@ -106,8 +195,7 @@ export function UserPopover({ controller, userId, children, className }: { contr
             </>
           )}
         </div>
-      </PopoverContent>
-    </PopoverRoot>
+    </>
   );
 }
 
