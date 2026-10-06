@@ -7,7 +7,8 @@
 #    versionName for a new version, and commit first — Play refuses a versionCode it has already seen), the upload
 #    key's settings, and app/google-services.json (without it the build has no FCM push).
 # 2. Unit tests and lint (skipped with --skip-checks), then :app:bundleRelease signed with the upload key.
-# 3. Verifies the signature and copies the AAB to the output folder as taylis-<versionName>-<versionCode>.aab.
+# 3. Verifies the signature and copies the AAB to the output folder as taylis-<versionName>-<versionCode>.aab, with R8's
+#    mapping.txt beside it (-mapping.txt; the AAB carries it too, so Play deobfuscates crashes without an upload).
 #    Upload it by hand in Play Console (Test and release → a track → Create new release).
 #
 # Settings (docs/STORE_RELEASE.md): ~/.config/taylis/android-release.properties (TAYLIS_ANDROID_SIGNING overrides the
@@ -89,13 +90,14 @@ OUT="${TAYLIS_ANDROID_BUILD_DIR:-$HOME/Library/Caches/taylis-release/android}"
 OUT="${OUT/#\~/$HOME}"
 AAB="$ANDROID/app/build/outputs/bundle/release/app-release.aab"
 TARGET="$OUT/taylis-$VERSION_NAME-$VERSION_CODE.aab"
+MAPPING="$ANDROID/app/build/outputs/mapping/release/mapping.txt"
 
 # --- 2. build ------------------------------------------------------------------------------------------
 
 TASKS=(:app:bundleRelease)
 if ((!SKIP_CHECKS)); then TASKS=(:app:testDebugUnitTest :app:lintRelease "${TASKS[@]}"); fi
 step "Gradle: ${TASKS[*]}"
-run rm -f "$AAB"
+run rm -f "$AAB" "$MAPPING"
 run "$ANDROID/gradlew" -p "$ANDROID" "${TASKS[@]}"
 
 # --- 3. verify and copy --------------------------------------------------------------------------------
@@ -111,6 +113,8 @@ else
 fi
 run mkdir -p "$OUT"
 run cp "$AAB" "$TARGET"
+if ((!DRY_RUN)); then [[ -s "$MAPPING" ]] || fail "no R8 mapping at $MAPPING (is isMinifyEnabled on?)"; fi
+run cp "$MAPPING" "${TARGET%.aab}-mapping.txt"
 
 echo
 if ((DRY_RUN)); then

@@ -72,9 +72,11 @@ android {
     buildTypes {
         release {
             if (releaseSigning != null) signingConfig = signingConfigs.getByName("release")
-            // R8 stays off: the app has never been tested minified (kotlinx.serialization, Room, OkHttp and Firebase
-            // ship their own keep rules, but a missed rule only shows at run time). The AAB is a few MB larger.
-            isMinifyEnabled = false
+            // R8 shrinks and obfuscates the release build (Play warns about unobfuscated DEX). kotlinx.serialization,
+            // Room, OkHttp and Firebase ship their own keep rules; proguard-rules.pro adds AndroidMath's JNI classes.
+            // The AAB carries mapping.txt for Play's stack traces; release-android.sh also keeps a copy next to it.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
