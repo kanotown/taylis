@@ -421,6 +421,7 @@ struct AppearanceView: View {
     @Bindable var controller: AppController
     @AppStorage(AppTheme.storageKey) private var theme: AppTheme = .system
     @AppStorage(Timeline.groupingKey) private var grouping = false
+    @AppStorage(SwipeNav.settingKey) private var swipeNavigation = true
     @AppStorage(EmojiUsage.recentKey) private var recentRaw = ""
     /// The slot whose emoji the picker is choosing.
     @State private var slot: Int?
@@ -509,6 +510,14 @@ struct AppearanceView: View {
             Text("メッセージ")
         } footer: {
             Text("オフ：投稿ごとにアイコンと名前を表示します。オン：同じ人の続けての投稿をまとめます（チャンネル・DM・スレッド）。この端末だけの設定です。")
+        }
+        // Issue #1 (MOBILE_UI.md §5.1): the swipe from anywhere between a conversation and the list (the edge stays).
+        Section {
+            Toggle("スワイプで戻る・進む", isOn: $swipeNavigation)
+        } header: {
+            Text("操作")
+        } footer: {
+            Text("会話で右へスワイプすると一覧へ戻り、一覧で左へスワイプすると最後に開いていた会話へ進みます。この端末だけの設定です。")
         }
     }
 }
