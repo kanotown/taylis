@@ -584,6 +584,94 @@
         "title": "ActivitySummaryOut",
         "type": "object"
       },
+      "AddProperty": {
+        "additionalProperties": false,
+        "properties": {
+          "after_id": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_]{1,24}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Id"
+          },
+          "name": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Name",
+            "type": "string"
+          },
+          "number_format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "number",
+                  "integer",
+                  "percent",
+                  "yen"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number Format"
+          },
+          "op": {
+            "const": "add",
+            "title": "Op",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/OptionIn"
+            },
+            "maxItems": 200,
+            "title": "Options",
+            "type": "array"
+          },
+          "relation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RelationIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "enum": [
+              "text",
+              "number",
+              "select",
+              "multi_select",
+              "date",
+              "person",
+              "checkbox",
+              "url",
+              "relation",
+              "created_time",
+              "updated_time",
+              "created_by",
+              "updated_by"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "type"
+        ],
+        "title": "AddProperty",
+        "type": "object"
+      },
       "AdminEffective": {
         "properties": {
           "level": {
@@ -5527,6 +5615,147 @@
         "title": "CustomEmojiUpdate",
         "type": "object"
       },
+      "DatabaseLimits": {
+        "properties": {
+          "options": {
+            "title": "Options",
+            "type": "integer"
+          },
+          "properties": {
+            "title": "Properties",
+            "type": "integer"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "views": {
+            "title": "Views",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rows",
+          "properties",
+          "options",
+          "views"
+        ],
+        "title": "DatabaseLimits",
+        "type": "object"
+      },
+      "DatabaseOut": {
+        "description": "GET /wiki/databases/{id}. `properties` in display order; the title property first.",
+        "properties": {
+          "limits": {
+            "$ref": "#/components/schemas/DatabaseLimits"
+          },
+          "my_level": {
+            "enum": [
+              "view",
+              "edit",
+              "full"
+            ],
+            "title": "My Level",
+            "type": "string"
+          },
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/PropertyOut"
+            },
+            "title": "Properties",
+            "type": "array"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "views": {
+            "items": {
+              "$ref": "#/components/schemas/ViewOut"
+            },
+            "title": "Views",
+            "type": "array"
+          }
+        },
+        "required": [
+          "page_id",
+          "schema_version",
+          "properties",
+          "views",
+          "my_level",
+          "row_count",
+          "limits"
+        ],
+        "title": "DatabaseOut",
+        "type": "object"
+      },
+      "DateRange": {
+        "additionalProperties": false,
+        "description": "The calendar's window: rows whose date (or date range) on `prop_id` touches [start, end].",
+        "properties": {
+          "end": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "title": "End",
+            "type": "string"
+          },
+          "prop_id": {
+            "pattern": "^[a-z0-9_]{1,24}$",
+            "title": "Prop Id",
+            "type": "string"
+          },
+          "start": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prop_id",
+          "start",
+          "end"
+        ],
+        "title": "DateRange",
+        "type": "object"
+      },
+      "DateValue": {
+        "description": "A date property's value. time false: \"YYYY-MM-DD\"; time true: ISO 8601 with its offset\n(\"2026-10-07T09:30:00+09:00\"). end: a range (not before start), else null.",
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "time": {
+            "default": false,
+            "title": "Time",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "start"
+        ],
+        "title": "DateValue",
+        "type": "object"
+      },
       "DayOut": {
         "description": "One day of the period in the requested time zone.",
         "properties": {
@@ -5642,6 +5871,27 @@
           "channels"
         ],
         "title": "DefaultChannelsApplyOut",
+        "type": "object"
+      },
+      "DeleteProperty": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[a-z0-9_]{1,24}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "op": {
+            "const": "delete",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "id"
+        ],
+        "title": "DeleteProperty",
         "type": "object"
       },
       "DeltaOut": {
@@ -6745,6 +6995,72 @@
           "next_cursor"
         ],
         "title": "FileListOut",
+        "type": "object"
+      },
+      "FilterCondition": {
+        "additionalProperties": false,
+        "description": "One condition. value: text (contains…), a number (gt…), an option id (select), a user\nid or \"me\" (person), a row id (relation), true / false (checkbox), \"YYYY-MM-DD\" (date), or\n{\"start\", \"end\"} dates (between). is_empty / is_not_empty take none.",
+        "properties": {
+          "op": {
+            "enum": [
+              "contains",
+              "not_contains",
+              "equals",
+              "not_equals",
+              "starts_with",
+              "is_empty",
+              "is_not_empty",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "before",
+              "after",
+              "on_or_before",
+              "on_or_after",
+              "between"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "prop_id": {
+            "pattern": "^[a-z0-9_]{1,24}$",
+            "title": "Prop Id",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "prop_id",
+          "op"
+        ],
+        "title": "FilterCondition",
+        "type": "object"
+      },
+      "FilterGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "combinator": {
+            "default": "and",
+            "enum": [
+              "and",
+              "or"
+            ],
+            "title": "Combinator",
+            "type": "string"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/FilterCondition"
+            },
+            "maxItems": 20,
+            "title": "Conditions",
+            "type": "array"
+          }
+        },
+        "title": "FilterGroup",
         "type": "object"
       },
       "GeneralReportAck": {
@@ -9039,6 +9355,51 @@
         "title": "NotificationPreferenceOut",
         "type": "object"
       },
+      "OptionIn": {
+        "additionalProperties": false,
+        "description": "An option in a schema change: a new one has no id (the server gives one).",
+        "properties": {
+          "color": {
+            "default": "gray",
+            "enum": [
+              "gray",
+              "brown",
+              "orange",
+              "yellow",
+              "green",
+              "blue",
+              "purple",
+              "pink",
+              "red"
+            ],
+            "title": "Color",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_]{1,24}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "OptionIn",
+        "type": "object"
+      },
       "PageConflictDetails": {
         "properties": {
           "conflicts": {
@@ -9384,8 +9745,11 @@
             "title": "Icon"
           },
           "kind": {
-            "const": "page",
             "default": "page",
+            "enum": [
+              "page",
+              "database"
+            ],
             "title": "Kind",
             "type": "string"
           },
@@ -11328,6 +11692,79 @@
         "title": "PresenceEntry",
         "type": "object"
       },
+      "PropertyOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "number_format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "number",
+                  "integer",
+                  "percent",
+                  "yen"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number Format"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/SelectOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "relation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RelationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "enum": [
+              "title",
+              "text",
+              "number",
+              "select",
+              "multi_select",
+              "date",
+              "person",
+              "checkbox",
+              "url",
+              "relation",
+              "created_time",
+              "updated_time",
+              "created_by",
+              "updated_by"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type"
+        ],
+        "title": "PropertyOut",
+        "type": "object"
+      },
       "ProviderMethod": {
         "properties": {
           "domains": {
@@ -11775,6 +12212,44 @@
         "title": "RecurringRunOut",
         "type": "object"
       },
+      "ReferencedBy": {
+        "description": "Rows I can read that link here through a one-way relation (two-way ones are columns).",
+        "properties": {
+          "database_id": {
+            "format": "uuid",
+            "title": "Database Id",
+            "type": "string"
+          },
+          "database_title": {
+            "title": "Database Title",
+            "type": "string"
+          },
+          "prop_id": {
+            "title": "Prop Id",
+            "type": "string"
+          },
+          "prop_name": {
+            "title": "Prop Name",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RowRef"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "database_id",
+          "database_title",
+          "prop_id",
+          "prop_name",
+          "rows"
+        ],
+        "title": "ReferencedBy",
+        "type": "object"
+      },
       "RefreshRequest": {
         "properties": {
           "refresh_token": {
@@ -11792,6 +12267,83 @@
           }
         },
         "title": "RefreshRequest",
+        "type": "object"
+      },
+      "RelationIn": {
+        "additionalProperties": false,
+        "properties": {
+          "database_id": {
+            "format": "uuid",
+            "title": "Database Id",
+            "type": "string"
+          },
+          "pair_name": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Pair Name",
+            "type": "string"
+          },
+          "two_way": {
+            "default": false,
+            "title": "Two Way",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "database_id"
+        ],
+        "title": "RelationIn",
+        "type": "object"
+      },
+      "RelationOut": {
+        "description": "Where a relation points. A database I cannot read (or one that is gone) has no id or\ntitle here: its rows show as 「アクセスできないページ」 (WIKI.md §5.7).",
+        "properties": {
+          "database_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Database Id"
+          },
+          "database_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Database Title"
+          },
+          "pair_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pair Id"
+          },
+          "primary": {
+            "title": "Primary",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "database_id",
+          "database_title",
+          "pair_id",
+          "primary"
+        ],
+        "title": "RelationOut",
         "type": "object"
       },
       "ReminderCreate": {
@@ -11907,6 +12459,31 @@
           "created_at"
         ],
         "title": "ReminderOut",
+        "type": "object"
+      },
+      "ReorderProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "pattern": "^[a-z0-9_]{1,24}$",
+              "type": "string"
+            },
+            "maxItems": 60,
+            "title": "Ids",
+            "type": "array"
+          },
+          "op": {
+            "const": "reorder",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "ids"
+        ],
+        "title": "ReorderProperties",
         "type": "object"
       },
       "ReportAck": {
@@ -12210,6 +12787,75 @@
           "ids"
         ],
         "title": "ResolveIn",
+        "type": "object"
+      },
+      "RetypeProperty": {
+        "additionalProperties": false,
+        "description": "Change the type; the server converts every row's value (WIKI.md §5.2: values it cannot\nconvert are kept for 30 days and come back if the type is changed back).",
+        "properties": {
+          "id": {
+            "pattern": "^[a-z0-9_]{1,24}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "number_format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "number",
+                  "integer",
+                  "percent",
+                  "yen"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number Format"
+          },
+          "op": {
+            "const": "retype",
+            "title": "Op",
+            "type": "string"
+          },
+          "relation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RelationIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "enum": [
+              "text",
+              "number",
+              "select",
+              "multi_select",
+              "date",
+              "person",
+              "checkbox",
+              "url",
+              "relation",
+              "created_time",
+              "updated_time",
+              "created_by",
+              "updated_by"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "id",
+          "type"
+        ],
+        "title": "RetypeProperty",
         "type": "object"
       },
       "RevisionMeta": {
@@ -12783,6 +13429,420 @@
         "title": "RolloverPreviewOut",
         "type": "object"
       },
+      "RowCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "client_save_id": {
+            "format": "uuid",
+            "title": "Client Save Id",
+            "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "props": {
+            "additionalProperties": true,
+            "title": "Props",
+            "type": "object"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_save_id"
+        ],
+        "title": "RowCreate",
+        "type": "object"
+      },
+      "RowDetailOut": {
+        "description": "GET /wiki/rows/{id}: the row's cells with its database's schema (the row page shows them\nabove the body).",
+        "properties": {
+          "database": {
+            "$ref": "#/components/schemas/DatabaseOut"
+          },
+          "database_title": {
+            "title": "Database Title",
+            "type": "string"
+          },
+          "referenced_by": {
+            "items": {
+              "$ref": "#/components/schemas/ReferencedBy"
+            },
+            "title": "Referenced By",
+            "type": "array"
+          },
+          "refs": {
+            "items": {
+              "$ref": "#/components/schemas/RowRef"
+            },
+            "title": "Refs",
+            "type": "array"
+          },
+          "row": {
+            "$ref": "#/components/schemas/RowOut"
+          }
+        },
+        "required": [
+          "row",
+          "database",
+          "database_title",
+          "refs",
+          "referenced_by"
+        ],
+        "title": "RowDetailOut",
+        "type": "object"
+      },
+      "RowOut": {
+        "description": "A row without its body (GET /wiki/pages/{id} has the body).",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "database_id": {
+            "format": "uuid",
+            "title": "Database Id",
+            "type": "string"
+          },
+          "head_rev_id": {
+            "format": "uuid",
+            "title": "Head Rev Id",
+            "type": "string"
+          },
+          "hidden_relations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hidden Relations",
+            "type": "array"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "props": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "$ref": "#/components/schemas/DateValue"
+                }
+              ]
+            },
+            "title": "Props",
+            "type": "object"
+          },
+          "relations": {
+            "additionalProperties": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Relations",
+            "type": "object"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "database_id",
+          "title",
+          "icon",
+          "position",
+          "version",
+          "head_rev_id",
+          "props",
+          "relations",
+          "hidden_relations",
+          "created_at",
+          "created_by",
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "RowOut",
+        "type": "object"
+      },
+      "RowPropsUpdate": {
+        "additionalProperties": false,
+        "description": "PATCH /wiki/rows/{id}/props: each cell given is replaced (the last write wins per cell,\nWIKI.md §5.3); null clears it. `title` sets the title. A retry with the same client_op_id\nchanges nothing again.",
+        "properties": {
+          "client_op_id": {
+            "format": "uuid",
+            "title": "Client Op Id",
+            "type": "string"
+          },
+          "set": {
+            "additionalProperties": true,
+            "maxProperties": 60,
+            "minProperties": 1,
+            "title": "Set",
+            "type": "object"
+          }
+        },
+        "required": [
+          "set",
+          "client_op_id"
+        ],
+        "title": "RowPropsUpdate",
+        "type": "object"
+      },
+      "RowQuery": {
+        "additionalProperties": false,
+        "description": "POST /wiki/databases/{id}/query. A saved view's sort and filter, unless `sort` / `filter`\nare given (a sort or filter not saved: WIKI.md §5.4).",
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "default": 100,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DateRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SortKey"
+                },
+                "maxItems": 5,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
+          },
+          "view_id": {
+            "anyOf": [
+              {
+                "maxLength": 24,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Id"
+          }
+        },
+        "title": "RowQuery",
+        "type": "object"
+      },
+      "RowQueryOut": {
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "refs": {
+            "items": {
+              "$ref": "#/components/schemas/RowRef"
+            },
+            "title": "Refs",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rows",
+          "refs",
+          "total",
+          "next_cursor",
+          "schema_version"
+        ],
+        "title": "RowQueryOut",
+        "type": "object"
+      },
+      "RowRef": {
+        "description": "A linked row I can read.",
+        "properties": {
+          "database_id": {
+            "format": "uuid",
+            "title": "Database Id",
+            "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "database_id",
+          "title",
+          "icon"
+        ],
+        "title": "RowRef",
+        "type": "object"
+      },
+      "RowWithRefs": {
+        "properties": {
+          "refs": {
+            "items": {
+              "$ref": "#/components/schemas/RowRef"
+            },
+            "title": "Refs",
+            "type": "array"
+          },
+          "row": {
+            "$ref": "#/components/schemas/RowOut"
+          }
+        },
+        "required": [
+          "row",
+          "refs"
+        ],
+        "title": "RowWithRefs",
+        "type": "object"
+      },
       "SaveOut": {
         "properties": {
           "canvas": {
@@ -13038,6 +14098,57 @@
           "created_at"
         ],
         "title": "ScheduledOut",
+        "type": "object"
+      },
+      "SchemaChange": {
+        "additionalProperties": false,
+        "description": "PATCH /wiki/databases/{id}/schema (full access). 409 wiki_schema_conflict when the\nschema changed since `base_schema_version`: read it again and redo the change.",
+        "properties": {
+          "base_schema_version": {
+            "title": "Base Schema Version",
+            "type": "integer"
+          },
+          "ops": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "add": "#/components/schemas/AddProperty",
+                  "delete": "#/components/schemas/DeleteProperty",
+                  "reorder": "#/components/schemas/ReorderProperties",
+                  "retype": "#/components/schemas/RetypeProperty",
+                  "update": "#/components/schemas/UpdateProperty"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AddProperty"
+                },
+                {
+                  "$ref": "#/components/schemas/UpdateProperty"
+                },
+                {
+                  "$ref": "#/components/schemas/RetypeProperty"
+                },
+                {
+                  "$ref": "#/components/schemas/DeleteProperty"
+                },
+                {
+                  "$ref": "#/components/schemas/ReorderProperties"
+                }
+              ]
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Ops",
+            "type": "array"
+          }
+        },
+        "required": [
+          "base_schema_version",
+          "ops"
+        ],
+        "title": "SchemaChange",
         "type": "object"
       },
       "SearchFilters": {
@@ -13338,6 +14449,43 @@
         "title": "SectionUpdate",
         "type": "object"
       },
+      "SelectOption": {
+        "properties": {
+          "color": {
+            "default": "gray",
+            "enum": [
+              "gray",
+              "brown",
+              "orange",
+              "yellow",
+              "green",
+              "blue",
+              "purple",
+              "pink",
+              "red"
+            ],
+            "title": "Color",
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^[a-z0-9_]{1,24}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "SelectOption",
+        "type": "object"
+      },
       "ServerInfoOut": {
         "properties": {
           "api_version": {
@@ -13625,6 +14773,30 @@
           }
         },
         "title": "SlotAnswersOut",
+        "type": "object"
+      },
+      "SortKey": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "prop_id": {
+            "pattern": "^[a-z0-9_]{1,24}$",
+            "title": "Prop Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prop_id"
+        ],
+        "title": "SortKey",
         "type": "object"
       },
       "SsoExchange": {
@@ -15444,6 +16616,72 @@
         "title": "UnreadSummaryOut",
         "type": "object"
       },
+      "UpdateProperty": {
+        "additionalProperties": false,
+        "description": "Rename, change the options (a removed option is cleared from the rows) or the number\nformat. Left-out fields stay.",
+        "properties": {
+          "id": {
+            "pattern": "^[a-z0-9_]{1,24}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "number_format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "number",
+                  "integer",
+                  "percent",
+                  "yen"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number Format"
+          },
+          "op": {
+            "const": "update",
+            "title": "Op",
+            "type": "string"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OptionIn"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          }
+        },
+        "required": [
+          "op",
+          "id"
+        ],
+        "title": "UpdateProperty",
+        "type": "object"
+      },
       "UserMe": {
         "properties": {
           "avatar_updated_at": {
@@ -16125,6 +17363,167 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "ViewColumn": {
+        "additionalProperties": false,
+        "properties": {
+          "hidden": {
+            "default": false,
+            "title": "Hidden",
+            "type": "boolean"
+          },
+          "prop_id": {
+            "pattern": "^[a-z0-9_]{1,24}$",
+            "title": "Prop Id",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 60.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "prop_id"
+        ],
+        "title": "ViewColumn",
+        "type": "object"
+      },
+      "ViewIn": {
+        "additionalProperties": false,
+        "description": "PUT /wiki/databases/{id}/views/{view_id}: a saved view (shared by everyone who reads the\ndatabase). Board views come later: `type` grows a value, the rest stays.",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ViewColumn"
+            },
+            "maxItems": 80,
+            "title": "Columns",
+            "type": "array"
+          },
+          "date_prop_id": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_]{1,24}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Prop Id"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Name",
+            "type": "string"
+          },
+          "sort": {
+            "items": {
+              "$ref": "#/components/schemas/SortKey"
+            },
+            "maxItems": 5,
+            "title": "Sort",
+            "type": "array"
+          },
+          "type": {
+            "default": "table",
+            "enum": [
+              "table",
+              "calendar"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "ViewIn",
+        "type": "object"
+      },
+      "ViewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ViewColumn"
+            },
+            "maxItems": 80,
+            "title": "Columns",
+            "type": "array"
+          },
+          "date_prop_id": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_]{1,24}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Prop Id"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Name",
+            "type": "string"
+          },
+          "sort": {
+            "items": {
+              "$ref": "#/components/schemas/SortKey"
+            },
+            "maxItems": 5,
+            "title": "Sort",
+            "type": "array"
+          },
+          "type": {
+            "default": "table",
+            "enum": [
+              "table",
+              "calendar"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ViewOut",
         "type": "object"
       },
       "WebhookCreate": {
@@ -31300,6 +32699,513 @@
         ]
       }
     },
+    "/api/v1/wiki/databases/{database_id}": {
+      "get": {
+        "description": "The schema (properties in order) and the saved views, my level and the row count. A\nrelation to a database I cannot read has no database id or title.",
+        "operationId": "get_database_api_v1_wiki_databases__database_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Database Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Database",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/databases/{database_id}/export.csv": {
+      "get": {
+        "description": "The view's rows and columns as CSV (WIKI.md §5.6).",
+        "operationId": "export_csv_api_v1_wiki_databases__database_id__export_csv_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Database Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "view_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 24,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "View Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "UTF-8 with a BOM"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Csv",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/databases/{database_id}/properties/{prop_id}/candidates": {
+      "get": {
+        "description": "Rows a relation cell may link to: rows of the related database I can read.",
+        "operationId": "relation_candidates_api_v1_wiki_databases__database_id__properties__prop_id__candidates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Database Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "prop_id",
+            "required": true,
+            "schema": {
+              "title": "Prop Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RowRef"
+                  },
+                  "title": "Response Relation Candidates Api V1 Wiki Databases  Database Id  Properties  Prop Id  Candidates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Relation Candidates",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/databases/{database_id}/query": {
+      "post": {
+        "description": "The rows (without bodies) sorted and filtered by the server: a saved view's, or the\ngiven sort / filter; `range` for a calendar month. Cursor pages of `limit`.",
+        "operationId": "query_rows_api_v1_wiki_databases__database_id__query_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Database Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowQueryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Query Rows",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/databases/{database_id}/rows": {
+      "post": {
+        "description": "A new row at the end (edit access). 409 wiki_too_many_rows past 5,000.",
+        "operationId": "create_row_api_v1_wiki_databases__database_id__rows_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Database Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowWithRefs"
+                }
+              }
+            },
+            "description": "A retry: the row made before"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowWithRefs"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Row",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/databases/{database_id}/schema": {
+      "patch": {
+        "description": "Add, rename, retype (the values are converted), reorder or delete properties (full\naccess). 409 wiki_schema_conflict when written on an older schema_version.",
+        "operationId": "change_schema_api_v1_wiki_databases__database_id__schema_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Database Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchemaChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change Schema",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/databases/{database_id}/views/{view_id}": {
+      "delete": {
+        "description": "Delete a view (full access; the last one stays: 409 wiki_last_view).",
+        "operationId": "delete_view_api_v1_wiki_databases__database_id__views__view_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Database Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete View",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "put": {
+        "description": "Save a view under the client's id (create or replace; full access).",
+        "operationId": "put_view_api_v1_wiki_databases__database_id__views__view_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Database Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put View",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
     "/api/v1/wiki/pages": {
       "post": {
         "description": "A new page: under a page I can edit, or (not guests) at the top level with `access`.",
@@ -32353,6 +34259,114 @@
           }
         ],
         "summary": "Restore Page Revision",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/rows/{row_id}": {
+      "get": {
+        "description": "A row's cells with its database's schema, and the rows I can read that link here\none-way (the body: GET /wiki/pages/{id}).",
+        "operationId": "get_row_api_v1_wiki_rows__row_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "row_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Row Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Row",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/v1/wiki/rows/{row_id}/props": {
+      "patch": {
+        "description": "Set cells (edit access); the last write wins per cell. `client_op_id` makes a retry\nharmless.",
+        "operationId": "update_row_props_api_v1_wiki_rows__row_id__props_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "row_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Row Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowPropsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowWithRefs"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Row Props",
         "tags": [
           "wiki"
         ]

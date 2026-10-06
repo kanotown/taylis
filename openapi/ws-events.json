@@ -8988,7 +8988,8 @@
             "enum": [
               "content",
               "meta",
-              "restore"
+              "restore",
+              "props"
             ],
             "title": "Change",
             "type": "string"
@@ -9002,6 +9003,35 @@
           "change"
         ],
         "title": "WikiPageUpdatedData",
+        "type": "object"
+      }
+    },
+    "wiki.rows.changed": {
+      "audience": "page (who can read the database when sent)",
+      "consumes_seq": false,
+      "data": {
+        "description": "wiki.rows.changed (audience: who can read the database when sent): re-run the open\ntable / calendar; read GET /wiki/databases/{id} when schema_version moved.",
+        "properties": {
+          "database_id": {
+            "format": "uuid",
+            "title": "Database Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "database_id",
+          "seq",
+          "schema_version"
+        ],
+        "title": "WikiRowsChangedData",
         "type": "object"
       }
     },
