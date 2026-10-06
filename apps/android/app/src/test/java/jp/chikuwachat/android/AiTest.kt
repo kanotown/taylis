@@ -348,15 +348,34 @@ class AiTest {
         assertTrue(AiTexts.memberNotice(sol, listOf("bot3", "bot4"))!!.contains("Anthropic と OpenAI の API"))
     }
 
-    @Test fun mentionCandidatesMarkTheAiBots() {
+    /** AI.md §2.1: people and the AI bots only, marked 「AI」; with the status read, only the AI bots it lists. */
+    @Test fun mentionCandidatesAreThePeopleAndTheAiBots() {
         val users = listOf(
-            UserPublic("u1", "ai-chikuwa", "ちくわ", "bot", null, "t", "t"),
+            UserPublic("u1", "ai-chikuwa", "ちくわ", "bot", null, "t", "t", botKind = "ai"),
             UserPublic("u2", "hook", "Webhook", "bot", null, "t", "t"),
             UserPublic("u3", "alice", "Alice", "member", null, "t", "t"),
+            UserPublic("u4", "ai-old", "止めたAI", "bot", null, "t", "t", botKind = "ai"),
+            UserPublic("u5", "feed", "Feed", "bot", null, "t", "t", botKind = "feed"),
+            UserPublic("u6", "reserve", "Reserve", "bot", null, "t", "t", botKind = "reservation"),
+            UserPublic("u7", "gone", "Gone", "member", "2026-10-01T00:00:00Z", "t", "t"),
+            UserPublic("u8", "guest1", "Guest", "guest", null, "t", "t"),
+            UserPublic("u9", "admin1", "Admin", "admin", null, "t", "t"),
         )
-        val found = Mentions.candidates("", users, aiBotIds = setOf("u1"))
-        assertEquals(listOf("ai-chikuwa" to true, "alice" to false, "hook" to false), found.filter { it.kind == "user" }.map { it.username to it.ai })
-        assertTrue(Mentions.candidates("ai", users).none { it.ai }) // without the status, no mark
+        fun users(found: List<Mentions.Candidate>) = found.filter { it.kind == "user" }.map { it.username to it.ai }
+        // Before /ai/status: by bot_kind.
+        assertEquals(
+            listOf("admin1" to false, "ai-chikuwa" to true, "ai-old" to true, "alice" to false, "guest1" to false),
+            users(Mentions.candidates("", users, limit = 20)),
+        )
+        // Once read: only the AI bots it lists (a stopped or deleted one is left out).
+        assertEquals(
+            listOf("admin1" to false, "ai-chikuwa" to true, "alice" to false, "guest1" to false),
+            users(Mentions.candidates("", users, limit = 20, aiBotIds = setOf("u1"))),
+        )
+        // A server without AI (an empty status): no bot at all.
+        assertEquals(listOf("admin1", "alice", "guest1"), users(Mentions.candidates("", users, limit = 20, aiBotIds = emptySet())).map { it.first })
+        // Groups and @channel / @here as before.
+        assertEquals(listOf("channel", "here"), Mentions.candidates("", users, limit = 20).filter { it.kind == "all" }.map { it.username })
     }
 
     @Test fun summariesJoinTheMenusOnlyWhenTheServerTakesThem() {
