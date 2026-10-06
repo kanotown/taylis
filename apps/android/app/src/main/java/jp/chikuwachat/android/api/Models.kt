@@ -847,6 +847,12 @@ data class ActivityItem(
     val canvas: ActivityCanvas? = null,
     /** M112: a reservation item's notice (asked for with `include=reservation`). */
     val reservation: ActivityReservation? = null,
+    /**
+     * 2026-10-06 (MOBILE_UI.md §6.4): whether the server counts the item read: not newer than the activity read
+     * position, or (a mention, a thread reply) read in its conversation or thread. Null from an older server: the
+     * time against the page's `read_at` decides, as before.
+     */
+    val read: Boolean? = null,
 ) {
     /** One row per kind and message (a reaction row is per message, whoever reacts next); a canvas one per item. */
     val key: String get() = canvas?.let { "canvas_mention:${it.itemId}" } ?: reservation?.let { "reservation:${it.itemId}" } ?: "$kind:${message?.id}"

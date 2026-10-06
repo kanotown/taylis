@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import java.time.Instant
 import java.time.ZonedDateTime
 import jp.chikuwachat.android.api.ActivityItem
+import jp.chikuwachat.android.api.ActivityListOut
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.sync.ActivityRules
@@ -164,6 +166,18 @@ private class ActivityFeed(var trigger: Any?) {
      * 「すべて既読」 move it.
      */
     var baseline by mutableStateOf<String?>(null)
+    /** §6.4: the server sends `read` (since 2026-10-06), so items read in their conversation lose the dot. */
+    var conversationRule by mutableStateOf(false)
+    /** Rows the server said were read in their conversation when their page came ([ActivityRules.readByServerInConversation]). */
+    var readInConversation by mutableStateOf<Set<String>>(emptySet())
+
+    /** Takes a page's `read` flags, replacing those of its rows (of every row when [whole]). */
+    private fun takeReads(page: ActivityListOut, whole: Boolean) {
+        if (page.items.any { it.read != null }) conversationRule = true
+        val keys = page.items.map { it.key }.toSet()
+        val read = page.items.filter { ActivityRules.readByServerInConversation(it, page.readAt) }.map { it.key }
+        readInConversation = (if (whole) emptySet() else readInConversation - keys) + read
+    }
 
     suspend fun load(controller: AppController, filter: String, resetBaseline: Boolean = false) {
         if (this.filter != filter) {
@@ -177,6 +191,7 @@ private class ActivityFeed(var trigger: Any?) {
             items = page.items
             cursor = page.nextCursor
             failed = false
+            takeReads(page, whole = true)
             if (baseline == null || resetBaseline) baseline = page.readAt
         }.onFailure {
             if (this.filter == filter && items == null) failed = true
@@ -193,6 +208,7 @@ private class ActivityFeed(var trigger: Any?) {
             if (this.filter != filter) return@onSuccess
             val whole = page.nextCursor == null
             items = ActivityText.merge(items ?: shown, page.items, whole)
+            takeReads(page, whole)
             if (whole) cursor = null
         }
     }
@@ -207,6 +223,7 @@ private class ActivityFeed(var trigger: Any?) {
             val keys = (items ?: emptyList()).map { it.key }.toSet()
             items = (items ?: emptyList()) + page.items.filter { it.key !in keys }
             cursor = page.nextCursor
+            takeReads(page, whole = false)
         }.onFailure { controller.error = controller.describe(it) }
         loading = false
     }
@@ -261,6 +278,14 @@ fun ActivityScreen(
         val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
         feed.refresh(controller)
         if (atTop) listState.requestScrollToItem(0)
+    }
+    // §6.4: a read position moved back (read.updated "set"): items read in that conversation may be unread again.
+    val reloads = store.activityReloads
+    val shownReloads = remember { mutableIntStateOf(reloads) }
+    LaunchedEffect(reloads) {
+        if (shownReloads.intValue == reloads) return@LaunchedEffect
+        shownReloads.intValue = reloads
+        if (online && feed.filter == segment.filter) feed.load(controller, segment.filter)
     }
     // Looked at: the activity is read up to the newest row shown (the badge clears), not while the app is away, and
     // only under 「すべて」: one read position covers every kind, so a filtered list would mark unseen items of the
@@ -330,7 +355,11 @@ fun ActivityScreen(
                         items(list, key = { it.key }) { item ->
                             ActivityRow(
                                 item, store, version, now,
-                                unread = ActivityRules.isUnread(item.at, feed.baseline),
+                                unread = ActivityRules.showsUnread(
+                                    item, feed.baseline, feed.conversationRule,
+                                    serverRead = item.key in feed.readInConversation,
+                                    readHere = ActivityRules.readInConversation(item, { store.channel(it)?.lastReadSeq }, { store.threadReadSeqs[it] }),
+                                ),
                                 onNeedEmojiImage = { controller.loadEmojiImage(it) },
                                 onClick = {
                                     when (val target = ActivityText.target(item)) {

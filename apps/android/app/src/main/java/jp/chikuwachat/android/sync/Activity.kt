@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.sync
 
+import jp.chikuwachat.android.api.ActivityItem
 import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.ParentThread
@@ -44,6 +45,35 @@ object ActivityRules {
         val second = b?.let(::parse) ?: return a
         return if (second.isAfter(first)) b else a
     }
+
+    /**
+     * MOBILE_UI.md §6.4 rule 2, from the read positions held here: a mention or thread reply whose message I have read
+     * in its conversation. A timeline row (top level, or a reply also sent to the channel) at or below the channel's
+     * read position; a reply at or below its thread's (either one for a reply also in the channel). Other kinds never.
+     */
+    fun readInConversation(item: ActivityItem, channelReadSeq: (String) -> Int?, threadReadSeq: (String) -> Int?): Boolean {
+        if (item.kind != "mention" && item.kind != "thread_reply") return false
+        val message = item.message ?: return false
+        if (message.seq <= 0) return false
+        val parentId = message.parentId
+        if ((parentId == null || message.alsoInChannel) && (channelReadSeq(message.channelId) ?: 0) >= message.seq) return true
+        return parentId != null && (threadReadSeq(parentId) ?: 0) >= message.seq
+    }
+
+    /**
+     * The server says the item is read although it is newer than the page's read position: it was read in its
+     * conversation (§6.4). One the read position covers is not this (its dot follows the list's baseline as before).
+     */
+    fun readByServerInConversation(item: ActivityItem, pageReadAt: String?): Boolean =
+        item.read == true && isUnread(item.at, pageReadAt)
+
+    /**
+     * The unread dot: newer than the list's baseline and, with a server that sends `read` ([conversationRule]), not read
+     * in its conversation, whether by the server's flag when the page came ([serverRead]) or the positions held since
+     * ([readHere]).
+     */
+    fun showsUnread(item: ActivityItem, baseline: String?, conversationRule: Boolean, serverRead: Boolean, readHere: Boolean): Boolean =
+        isUnread(item.at, baseline) && !(conversationRule && (serverRead || readHere))
 
     fun parse(iso: String): Instant? =
         runCatching { Instant.parse(iso) }.getOrNull() ?: runCatching { OffsetDateTime.parse(iso).toInstant() }.getOrNull()

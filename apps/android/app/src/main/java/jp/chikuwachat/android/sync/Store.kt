@@ -356,6 +356,17 @@ class Store(private val persistence: Persistence? = null) {
      */
     var activityRevision = 0
         private set
+    /**
+     * MOBILE_UI.md §6.4: bumped when my read position in a conversation moved back (read.updated, reason "set"): items
+     * read in it may be unread again, so the activity list on screen loads again.
+     */
+    var activityReloads = 0
+        private set
+    /**
+     * My read position per thread (parent id), from every thread state seen and the replies read on this device, held
+     * or not: the activity list unmarks the replies read in their thread (§6.4). Not persisted.
+     */
+    val threadReadSeqs = HashMap<String, Int>()
     var threadsFilter = "all"
         private set
     var threadsLoaded = false
@@ -918,6 +929,18 @@ class Store(private val persistence: Persistence? = null) {
         emit()
     }
 
+    fun reloadActivity() {
+        activityReloads += 1
+        emit()
+    }
+
+    /** A thread's read position as last seen (a thread state, or a reply read here); the list's dots follow it. */
+    fun noteThreadRead(parentId: String, seq: Int) {
+        if (threadReadSeqs[parentId] == seq) return
+        threadReadSeqs[parentId] = seq
+        emit()
+    }
+
     /**
      * Review v0.1.22 (CANVAS.md §20.8): canvas activity items whose excerpt the server blanked (activity.updated: a
      * version's body was erased). Rows shown drop their excerpt at once; the list on screen also reads its first page
@@ -957,6 +980,7 @@ class Store(private val persistence: Persistence? = null) {
 
     /** thread.updated / a PUT response: replace the state; the badge moves with it when the old state is known. */
     fun applyThreadState(state: ThreadState, parent: MessageOut? = null) {
+        threadReadSeqs[state.parentId] = state.lastReadSeq
         val existing = threads[state.parentId]
         val before = existing?.state
         if (existing != null) {
