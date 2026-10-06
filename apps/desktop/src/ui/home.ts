@@ -119,7 +119,10 @@ export interface HomeSections {
   custom: Array<{ section: SidebarSectionOut; channels: ChannelState[] }>;
   channels: ChannelState[];
   times: ChannelState[];
-  /** My own DM first, then the first 5 others in the section's sort (and any other unread one); the rest are on the DM tab. */
+  /**
+   * Pinned DMs (M118) and my own DM first, then the first 5 others in the section's sort (and any other unread one); the
+   * rest are on the DM tab.
+   */
   dms: ChannelState[];
   /** More DMs than the section shows: it ends with 「すべての DM」. */
   moreDms: boolean;
@@ -135,10 +138,12 @@ export function homeSections(
     meId?: string | null;
     now?: Date;
     title?: (channel: ChannelState) => string;
+    /** M118: my pinned DMs, oldest pin first. */
+    dmPins?: readonly string[] | null;
   } = {},
 ): HomeSections {
   const meId = options.meId ?? null;
-  const base = sectionChannels(all, { favorites: options.favorites, sections: options.sections, defaults: options.defaults, meId, now: options.now, title: options.title });
+  const base = sectionChannels(all, { favorites: options.favorites, sections: options.sections, defaults: options.defaults, meId, now: options.now, title: options.title, dmPins: options.dmPins });
   const unread: ChannelState[] = [];
   const pick = (list: ChannelState[]) => {
     if (!options.gatherUnread) return list;
@@ -153,9 +158,11 @@ export function homeSections(
   const channels = pick(base.channels);
   const times = pick(base.times);
   const allDms = pick(base.dms);
-  const self = allDms.filter((c) => isSelfNotes(c, meId));
-  const others = allDms.filter((c) => !isSelfNotes(c, meId));
-  const dms = [...self, ...others.filter((c, index) => index < HOME_DM_LIMIT || hasUnread(c, meId, options.now))];
+  // M118: every pinned DM stays (they are the ones I keep at hand); the limit counts the others.
+  const pinned = new Set(options.dmPins ?? []);
+  const kept = allDms.filter((c) => pinned.has(c.id) || isSelfNotes(c, meId));
+  const others = allDms.filter((c) => !kept.includes(c));
+  const dms = [...kept, ...others.filter((c, index) => index < HOME_DM_LIMIT || hasUnread(c, meId, options.now))];
   // Newest first, as on iOS and Android (M37): the conversation that just moved is on top.
   unread.sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""));
   return { unread, favorites, custom, channels, times, dms, moreDms: others.length > HOME_DM_LIMIT };

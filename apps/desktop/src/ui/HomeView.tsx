@@ -14,7 +14,7 @@ import { channelTitle, myDisplayName } from "./MainScreen";
 import { Badge, Button, cn, Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Modal } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { statusLabel, statusTitle, useFoldedDefaults } from "./Sidebar";
-import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
+import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu } from "./SidebarMenus";
 import { StatusEmoji } from "./UserPopover";
 import { t } from "../i18n";
 
@@ -64,7 +64,7 @@ export function HomeView(props: HomeViewProps) {
   const me = store.me ?? controller.me;
   const meId = me?.id ?? null;
   const channels = [...store.channels.values()];
-  const sections = homeSections(channels, { gatherUnread, favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId, title: (c) => channelTitle(c, controller) });
+  const sections = homeSections(channels, { gatherUnread, favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId, title: (c) => channelTitle(c, controller), dmPins: store.dmPins });
   const ids = (list: ChannelState[]) => () => list.map((c) => c.id);
   const sortMenu = (key: DefaultSectionKey, title: string, list: ChannelState[]) => (
     <DefaultSectionMenu controller={controller} target={{ default: key }} title={title} sort={defaultSort(store.sidebarDefaults, key).sort ?? "name"} shownIds={ids(list)} />
@@ -74,6 +74,8 @@ export function HomeView(props: HomeViewProps) {
   const [newSection, setNewSection] = useState(false);
   const myName = myDisplayName(controller);
   const selfPlaceholder = showsSelfNotesInDmSection(channels, meId, myName, { collapsed: folded.has("dms") });
+  // M118: the placeholder stands after the pinned DMs, where my own DM would be.
+  const pinnedDms = sections.dms.filter((c) => store.isDmPinned(c.id)).length;
   const { creating: creatingSelf, open: openSelfNotes } = useOpenSelfNotes(controller, meId, onOpen);
   const hasMyTimes = !!meId && channels.some((c) => c.times_owner_id === meId);
 
@@ -140,6 +142,7 @@ export function HomeView(props: HomeViewProps) {
         )}
         <HomeSection title={t("sidebar.dms")} sectionKey="dms" collapsed={folded.has("dms")} onToggle={() => toggleFolded("dms")} action={sortMenu("dms", t("sidebar.dms"), sections.dms)}>
           <ul>
+            {rows(sections.dms.slice(0, pinnedDms), folded.has("dms"))}
             {selfPlaceholder && me && (
               <li>
                 <button
@@ -156,7 +159,7 @@ export function HomeView(props: HomeViewProps) {
                 </button>
               </li>
             )}
-            {rows(sections.dms, folded.has("dms"))}
+            {rows(sections.dms.slice(pinnedDms), folded.has("dms"))}
             {sections.moreDms && (
               <FoldRow folded={folded.has("dms")}>
                 <button type="button" onClick={props.onAllDms} className={ROW} data-all-dms="">
@@ -382,6 +385,7 @@ function HomeRow({ controller, channel, folded, onOpen }: { controller: AppContr
           </span>
           <span className="min-w-0 flex-1 truncate">{title.replace(/^#/, "")}</span>
           {other && !group && <StatusEmoji controller={controller} userId={other} className="shrink-0" />}
+          {store.isDmPinned(channel.id) && <PinMark size={14} className="text-muted" />}
           {muted && <BellOff size={15} className="shrink-0 text-muted" aria-label={t("home.muted")} />}
           {unread && badge > 0 ? (
             <Badge tone="danger">{badge}</Badge>

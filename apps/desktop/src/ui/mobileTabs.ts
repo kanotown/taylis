@@ -5,7 +5,7 @@
  */
 import type { ActivitySummaryOut } from "../api/types";
 import type { ChannelState, ThreadSummary } from "../sync/types";
-import { hasUnread, isDmChannel, isSelfNotes } from "./channels";
+import { hasUnread, isDmChannel, isSelfNotes, pinnedFirst } from "./channels";
 import { t, weekdayName } from "../i18n";
 
 export type MobileTab = "home" | "dm" | "activity" | "you";
@@ -61,11 +61,14 @@ export function findDmWith(channels: Iterable<ChannelState>, userId: string, meI
   return undefined;
 }
 
-/** My DMs and group DMs: my own DM first, then the newest last message first; `query` filters by name. */
-export function dmList(channels: Iterable<ChannelState>, title: (channel: ChannelState) => string, meId: string | null, query = ""): ChannelState[] {
+/**
+ * My DMs and group DMs: the pinned ones in pin order (M118), my own DM, then the newest last message first; `query`
+ * filters by name.
+ */
+export function dmList(channels: Iterable<ChannelState>, title: (channel: ChannelState) => string, meId: string | null, query = "", dmPins: readonly string[] | null = null): ChannelState[] {
   const needle = query.trim().toLowerCase();
   const rows = [...channels].filter((c) => c.isMember && isDmChannel(c) && (!needle || title(c).toLowerCase().includes(needle)));
-  return rows.sort((a, b) => Number(isSelfNotes(b, meId)) - Number(isSelfNotes(a, meId)) || (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""));
+  return pinnedFirst(rows.sort((a, b) => Number(isSelfNotes(b, meId)) - Number(isSelfNotes(a, meId)) || (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "")), dmPins);
 }
 
 
