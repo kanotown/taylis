@@ -89,13 +89,18 @@ struct MainView: View {
     /// From a notification, a permalink, a search result, a new DM: a DM on the DM tab, a channel on the home tab, its
     /// stack replaced (M34 (7)); alone in the detail column in the split.
     private func land(_ channelId: String, parentId: String? = nil) {
-        nav.land(channelId, isDm: isDm(channelId), parentId: parentId)
+        nav.land(channelId, isDm: isDm(channelId), parentId: isPreview(channelId) ? nil : parentId)
     }
 
     /// A revealed message (a list row): its conversation on this tab's stack, into its thread if a reply.
     private func show(_ channelId: String, parentId: String?, on tab: MainTab) {
-        push(.channel(channelId), on: tab)
-        if let parentId { nav.pendingThread = ThreadRef(channelId: channelId, parentId: parentId) }
+        nav.show(channelId, parentId: isPreview(channelId) ? nil : parentId, on: tab)
+    }
+
+    /// A public channel I have not joined shows as its preview (`screen`), which opens no thread of its own.
+    private func isPreview(_ channelId: String) -> Bool {
+        guard let channel = store.channel(channelId) else { return false }
+        return !channel.isMember && channel.channel.type == "public" && !controller.isGuest
     }
 
     /// The layout for the window's width. Not while in the background: the app-switcher snapshots are taken at other
@@ -377,6 +382,7 @@ struct MainView: View {
         switch nav.sidebarSelection {
         case .channel(let id)?: id
         case .list(let id)?: id
+        case .thread(let id, _)?: id
         case nil: nil
         }
     }
@@ -560,6 +566,13 @@ struct MainView: View {
     private func screen(_ route: MainRoute, on tab: MainTab) -> some View {
         switch route {
         case .list(let id): list(id, on: tab)
+        case .thread(let channelId, let parentId):
+            // Pushed with its conversation under it (MainNavigation.show / land): Back goes to the conversation.
+            if store.channel(channelId) != nil {
+                ThreadView(controller: controller, channelId: channelId, parentId: parentId).modifier(HidesTabBar())
+            } else {
+                ContentUnavailableView("会話が見つかりません", systemImage: "bubble.left.and.bubble.right")
+            }
         case .channel(let id):
             if let channel = store.channel(id) {
                 Group {

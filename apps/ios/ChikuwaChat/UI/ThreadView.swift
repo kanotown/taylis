@@ -408,29 +408,35 @@ private struct ToolbarPill: ViewModifier {
 
 /// M15c / M38: 「#… にも送信」 as Slack has it, a checkbox inside the composer above the input. It was a switch between
 /// the replies and the composer, on the composer's top line (testers, 2026-09-30).
+/// Only the box and its label take the tap, with a strip under them that takes none: the whole row was the target,
+/// right on the input's top edge, and taps meant for the input ticked it (2026-10-06).
 private struct AlsoSendRow: View {
     let title: String
     @Binding var isOn: Bool
 
     var body: some View {
-        Button { isOn.toggle() } label: {
-            HStack(spacing: 8) {
-                Image(systemName: isOn ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 18))
-                    .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
-                Text(title).font(.footnote).foregroundStyle(.primary).lineLimit(1)
-                Spacer(minLength: 0)
+        HStack(spacing: 0) {
+            Button { isOn.toggle() } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isOn ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 18))
+                        .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                    Text(title).font(.footnote).foregroundStyle(.primary).lineLimit(1)
+                }
+                .padding(.horizontal, 6)
+                .frame(minHeight: 40)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 2)
-            .frame(minHeight: 36)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(title)
+            .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+        .padding(.leading, 10)
+        .padding(.trailing, 16)
+        .padding(.top, 2)
+        .padding(.bottom, 6) // with the input row's own top padding: 14 pt between the box and the input that toggle nothing
     }
 }
 

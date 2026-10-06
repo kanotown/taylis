@@ -42,10 +42,12 @@ struct MainNavigation: Equatable {
     /// The screen in front: the top of the selected tab's stack, or of the detail column.
     var front: MainRoute? { layout == .split ? split.last : paths[tab]?.last }
 
-    /// The conversation on screen (M34 (8): only it reads and is "open").
+    /// The conversation on screen (M34 (8): only it reads and is "open"), or the one of the thread in front.
     var frontChannelId: String? {
-        if case .channel(let id)? = front { return id }
-        return nil
+        switch front {
+        case .channel(let id)?, .thread(let id, _)?: id
+        default: nil
+        }
     }
 
     /// What the sidebar shows as selected.
@@ -72,10 +74,28 @@ struct MainNavigation: Equatable {
             youSheet = false
         } else {
             let target: MainTab = isDm ? .dms : .home
-            paths[target] = [.channel(channelId)]
+            paths[target] = Self.conversation(channelId, thread: parentId)
             tab = target
+            return
         }
         if let parentId { pendingThread = ThreadRef(channelId: channelId, parentId: parentId) }
+    }
+
+    /// A revealed message (a list row: the activity, mentions, saved, the Times feed): its conversation over this tab's
+    /// stack, a reply's thread over it. On the phone both are pushed at once and the thread slides in alone; the
+    /// conversation opened its thread once it had appeared, two pushes one after the other (2026-10-06).
+    mutating func show(_ channelId: String, parentId: String?, on tab: MainTab) {
+        if layout == .split {
+            split.append(.channel(channelId))
+            if let parentId { pendingThread = ThreadRef(channelId: channelId, parentId: parentId) } // its pane
+        } else {
+            paths[tab, default: []] += Self.conversation(channelId, thread: parentId)
+        }
+    }
+
+    /// A conversation's screens on a phone's stack: the conversation, and the thread over it.
+    static func conversation(_ channelId: String, thread parentId: String?) -> [MainRoute] {
+        [.channel(channelId)] + (parentId.map { [.thread(channelId: channelId, parentId: $0)] } ?? [])
     }
 
     /// A list (the calendar, the tasks) from a notification: on the home tab, or alone in the detail column.
@@ -95,7 +115,12 @@ struct MainNavigation: Equatable {
     /// Takes every screen of a conversation no longer in the store (and those over it) off the stacks.
     mutating func dropChannels(where gone: (String) -> Bool) {
         func cut(_ path: [MainRoute]) -> [MainRoute] {
-            guard let index = path.firstIndex(where: { if case .channel(let id) = $0 { gone(id) } else { false } }) else { return path }
+            guard let index = path.firstIndex(where: {
+                switch $0 {
+                case .channel(let id), .thread(let id, _): gone(id)
+                case .list: false
+                }
+            }) else { return path }
             return Array(path[..<index])
         }
         for (key, path) in paths { paths[key] = cut(path) }
@@ -112,9 +137,12 @@ struct MainNavigation: Equatable {
     /// again in the new layout's conversation.
     mutating func setLayout(_ new: MainLayout, isDm: (String) -> Bool) {
         guard new != layout else { return }
-        let thread = openThread
+        var thread = openThread
         if new == .split {
-            let stack = paths[tab] ?? []
+            // A thread pushed as its own screen goes to the conversation's pane.
+            var stack = paths[tab] ?? []
+            if case .thread(let channelId, let parentId)? = stack.last { thread = ThreadRef(channelId: channelId, parentId: parentId) }
+            stack.removeAll { if case .thread = $0 { true } else { false } }
             switch tab {
             case .home: split = stack
             case .dms: split = stack.isEmpty ? [.list(Self.dmsId)] : stack

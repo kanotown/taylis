@@ -33,10 +33,12 @@ final class MainNavigationTests: XCTestCase {
         tabs.land("dm-1", isDm: true)
         XCTAssertEqual(tabs.tab, .dms)
         XCTAssertEqual(tabs.paths[.dms], [.channel("dm-1")])
+        // A reply's notification: the conversation and its thread at once, the thread in front (2026-10-06).
         tabs.land("general", isDm: false, parentId: "p1")
         XCTAssertEqual(tabs.tab, .home)
+        XCTAssertEqual(tabs.paths[.home], [.channel("general"), .thread(channelId: "general", parentId: "p1")])
         XCTAssertEqual(tabs.frontChannelId, "general")
-        XCTAssertEqual(tabs.pendingThread, ThreadRef(channelId: "general", parentId: "p1"))
+        XCTAssertNil(tabs.pendingThread)
 
         var split = navigation(.split)
         split.youSheet = true
@@ -46,6 +48,44 @@ final class MainNavigationTests: XCTestCase {
         XCTAssertEqual(split.frontChannelId, "dm-1")
         XCTAssertEqual(split.sidebarSelection, .channel("dm-1"))
         XCTAssertTrue(split.paths.isEmpty) // the tabs' stacks are not touched
+        split.land("general", isDm: false, parentId: "p1")
+        XCTAssertEqual(split.split, [.channel("general")])
+        XCTAssertEqual(split.pendingThread, ThreadRef(channelId: "general", parentId: "p1")) // in the pane
+    }
+
+    /// An activity (or mentions, saved, Times) row of a reply: one push of the conversation and its thread; Back goes to
+    /// the conversation, then to the list.
+    func testARevealedReplyPushesItsConversationAndThreadAtOnce() {
+        var nav = navigation(.tabs)
+        nav.tab = .activity
+        nav.show("general", parentId: "p1", on: .activity)
+        XCTAssertEqual(nav.paths[.activity], [.channel("general"), .thread(channelId: "general", parentId: "p1")])
+        XCTAssertEqual(nav.frontChannelId, "general")
+        XCTAssertNil(nav.pendingThread)
+        nav.back()
+        XCTAssertEqual(nav.paths[.activity], [.channel("general")])
+        nav.show("random", parentId: nil, on: .activity)
+        XCTAssertEqual(nav.paths[.activity], [.channel("general"), .channel("random")])
+
+        var split = navigation(.split)
+        split.select(.list(MainNavigation.activityId))
+        split.show("general", parentId: "p1", on: .home)
+        XCTAssertEqual(split.split, [.list(MainNavigation.activityId), .channel("general")])
+        XCTAssertEqual(split.pendingThread, ThreadRef(channelId: "general", parentId: "p1"))
+    }
+
+    func testAThreadScreenGoesToThePaneInTheSplitAndLeavesWithItsConversation() {
+        var nav = navigation(.tabs)
+        nav.tab = .activity
+        nav.show("general", parentId: "p1", on: .activity)
+        nav.setLayout(.split, isDm: isDm)
+        XCTAssertEqual(nav.split, [.list(MainNavigation.activityId), .channel("general")])
+        XCTAssertEqual(nav.pendingThread, ThreadRef(channelId: "general", parentId: "p1"))
+
+        var gone = navigation(.tabs)
+        gone.land("general", isDm: false, parentId: "p1")
+        gone.dropChannels { $0 == "general" }
+        XCTAssertEqual(gone.paths[.home], [])
     }
 
     func testSidebarSelectionReplacesTheDetailAndPushesStack() {
