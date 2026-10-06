@@ -24,6 +24,7 @@ object NavItems {
         Entry("reminders", L10n.str(R.string.common_reminders), visible = true, platforms = BOTH),
         Entry("files", L10n.str(R.string.common_files), visible = true, platforms = BOTH),
         Entry("canvases", L10n.str(R.string.common_canvas), visible = true, platforms = BOTH),
+        Entry("docs", L10n.str(R.string.docs_title), visible = true, platforms = BOTH),
         Entry("calendar", L10n.str(R.string.common_calendar), visible = true, platforms = BOTH),
         Entry("tasks", L10n.str(R.string.common_tasks), visible = true, platforms = BOTH),
         Entry("deadlines", L10n.str(R.string.common_deadlines), visible = true, platforms = BOTH),
@@ -31,8 +32,8 @@ object NavItems {
     )
 
     val order: Map<Platform, List<String>> = mapOf(
-        Platform.DESKTOP to listOf("threads", "activity", "drafts", "reminders", "files", "canvases", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed"),
-        Platform.MOBILE to listOf("threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "activity"),
+        Platform.DESKTOP to listOf("threads", "activity", "drafts", "reminders", "files", "canvases", "docs", "calendar", "tasks", "deadlines", "reservations", "saved", "times-feed"),
+        Platform.MOBILE to listOf("threads", "times-feed", "drafts", "saved", "reminders", "calendar", "tasks", "deadlines", "reservations", "files", "canvases", "docs", "activity"),
     )
 
     /**

@@ -52,6 +52,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import java.util.UUID
 import kotlin.math.min
 import kotlin.random.Random
@@ -201,6 +202,9 @@ class SyncEngine(
     /** M46: the conversations' canvases and the save loops of the open ones (CANVAS.md §4.4 / §4.6). */
     val canvases = CanvasHub(api as? CanvasApi, store, scope, options.canvasSave)
 
+    /** M122 (docs/WIKI.md §10, SYNC_PROTOCOL.md §17): 「ドキュメント」 — the tree (kept in Room) and the open pages' save loops. */
+    val wiki = WikiHub(api as? WikiApi, store, scope, options.canvasSave)
+
     /** M52: the ranges of the calendar on screen and the channels' 「予定」 counts (CALENDAR.md §5, §15). */
     val calendar = CalendarHub(api as? CalendarApi, scope, { store.me?.id })
 
@@ -211,6 +215,7 @@ class SyncEngine(
     val ai = AiHub(api as? AiApi, scope)
 
     init {
+        wiki.restore() // M122: the tree kept on this device shows until the server answers
         store.onDraftEdited = { channelId, parentId -> drafts.edited(channelId, parentId) }
         store.onTimelineRow = { channelId, event -> emitTimeline(channelId, event) }
         store.onStalePreview = { channelId -> post { refreshLastMessage(channelId) } }
@@ -294,6 +299,9 @@ class SyncEngine(
      * when the conversation's level is not 「なし」 and it is not muted (DND is the caller's).
      */
     var onCanvasMention: ((jp.chikuwachat.android.api.CanvasMentioned, ChannelState) -> Unit)? = null
+
+    /** M122: wiki.mentioned / wiki.shared (to me) while the app is open; `shared`: shared with me by name. */
+    var onWikiNotice: ((jp.chikuwachat.android.api.WikiNotice, Boolean) -> Unit)? = null
     /** A channel became fully read (here or on another device): dismiss its notification. */
     var onRead: ((String) -> Unit)? = null
     var isActive: () -> Boolean = { true }
@@ -393,6 +401,7 @@ class SyncEngine(
     fun stop() {
         stopped = true
         canvases.stop()
+        wiki.stop()
         calendar.stop()
         tasks.stop()
         ai.stop()
@@ -497,6 +506,7 @@ class SyncEngine(
         scope.launch { flushOutbox() }
         scope.launch { drafts.flush() } // edited while offline (M15d)
         canvases.online() // M46: canvas saves that failed, open canvases read again, edits kept from before a restart
+        wiki.online() // M122: the same for pages (the tree itself was caught up by applyBootstrap)
         calendar.online() // M52: the calendar's ranges on screen and the counts read again (CALENDAR.md §5)
         tasks.online() // M56: the boards, 「自分のタスク」 and the due ranges on screen read again (SYNC_PROTOCOL.md §16)
         ai.online() // M66: the AI status, and the open summary's run read again (docs/AI.md §5)
@@ -687,6 +697,7 @@ class SyncEngine(
         store.replaceSidebarDefaults(bootstrap.sidebarDefaults)
         applyWorkspaceSettings(bootstrap.workspaceSettings, live = false) // the reconnect's openChannel loads a preview again
         drafts.applyBootstrap(bootstrap.drafts)
+        wiki.applyBootstrap(bootstrap.wiki) // M122: the tree read, or caught up from the feed
         scope.launch { loadScheduled() }
         scope.launch { loadReminders() }
         scope.launch { loadReservationPools() } // M112
@@ -818,6 +829,21 @@ class SyncEngine(
                     .onSuccess { notice -> onReservationNotice?.invoke(notice) }
             }
             "canvas.created", "canvas.updated", "canvas.deleted" -> canvases.applyEvent(frame.event, frame.data)
+            // M122 (SYNC_PROTOCOL.md §17): the tree's feed moved (what changed differs per person: read it), a page changed.
+            "wiki.changed" -> frame.data["seq"]?.jsonPrimitive?.longOrNull?.let { wiki.changed(it) }
+            "wiki.page.updated" -> {
+                val page = frame.data["page"]?.let { runCatching { Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.PageItem.serializer(), it) }.getOrNull() } ?: return
+                wiki.pageUpdated(page)
+            }
+            "wiki.mentioned", "wiki.shared" -> {
+                // An activity item of mine was written: the badge and the list read again; the app says it while open.
+                store.noteActivity()
+                scheduleActivityRefresh()
+                val notice = runCatching { Codec.snake.decodeFromJsonElement(jp.chikuwachat.android.api.WikiNotice.serializer(), frame.data) }.getOrNull() ?: return
+                val me = store.me
+                if (notice.byUserId != null && (notice.byUserId == me?.id || store.isBlocked(notice.byUserId))) return
+                onWikiNotice?.invoke(notice, frame.event == "wiki.shared")
+            }
             "canvas.mentioned" -> {
                 // M77 (CANVAS.md §20.5): the save wrote (or moved) my canvas activity item: the badge and the list on
                 // screen read again, collapsed like a message mention.
@@ -842,6 +868,7 @@ class SyncEngine(
             "group.updated" -> {
                 val row = Codec.snake.decodeFromJsonElement(GroupOut.serializer(), frame.data["group"] ?: return)
                 store.applyGroup(row, frame.data.bool("deleted") ?: false)
+                wiki.reloadTree() // M122: who reads which page may have changed (the feed does not move for groups)
             }
             "template.updated" -> {  // M30: replaced by id, or removed
                 val row = Codec.snake.decodeFromJsonElement(TemplateOut.serializer(), frame.data["template"] ?: return)
@@ -918,6 +945,8 @@ class SyncEngine(
                 // in the event (it is everyone's), so read them again.
                 val me = store.me
                 if (frame.event == "user.updated" && me != null && user.id == me.id && isNewer(user.updatedAt, me.updatedAt)) post { refreshMe() }
+                // M122: my role may have changed (a guest reads only what is shared by name): the tree again.
+                if (frame.event == "user.updated" && me != null && user.id == me.id && user.role != me.role) wiki.reloadTree()
             }
             "read.updated" -> {
                 val channelId = frame.data.str("channel_id") ?: return

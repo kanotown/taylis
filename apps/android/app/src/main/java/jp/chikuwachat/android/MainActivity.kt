@@ -87,6 +87,15 @@ class MainActivity : ComponentActivity() {
             controller.openReservationsFromNotification(workspace)
             return
         }
+        // M122: a page's notification (a mention, a page shared with me) opens the page on the home tab.
+        val pageId = intent?.getStringExtra(Notifier.EXTRA_PAGE_ID)
+        if (pageId != null) {
+            val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
+            intent.removeExtra(Notifier.EXTRA_PAGE_ID)
+            intent.removeExtra(Notifier.EXTRA_WORKSPACE)
+            controller.openPageFromNotification(workspace, pageId)
+            return
+        }
         // M73: a canvas mention's notification opens the canvas in its conversation's 「キャンバス」 tab.
         val canvasId = intent?.getStringExtra(Notifier.EXTRA_CANVAS_ID)
         val canvasChannel = intent?.getStringExtra(Notifier.EXTRA_CHANNEL_ID)

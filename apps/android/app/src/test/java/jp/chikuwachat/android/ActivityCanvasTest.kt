@@ -111,10 +111,10 @@ class ActivityCanvasTest {
         client.markActivityRead("2026-09-30T05:00:00Z")
         assertEquals(
             listOf(
-                "GET /api/v1/sync/bootstrap?activity_include=canvas_mention&activity_include=reservation",
-                "GET /api/v1/activity?filter=mentions&limit=50&include=canvas_mention&include=reservation",
-                "GET /api/v1/activity/summary?include=canvas_mention&include=reservation",
-                "PUT /api/v1/activity/read?include=canvas_mention&include=reservation",
+                "GET /api/v1/sync/bootstrap?activity_include=canvas_mention&activity_include=reservation&activity_include=page_mention&activity_include=page_shared",
+                "GET /api/v1/activity?filter=mentions&limit=50&include=canvas_mention&include=reservation&include=page_mention&include=page_shared",
+                "GET /api/v1/activity/summary?include=canvas_mention&include=reservation&include=page_mention&include=page_shared",
+                "PUT /api/v1/activity/read?include=canvas_mention&include=reservation&include=page_mention&include=page_shared",
             ),
             seen,
         )

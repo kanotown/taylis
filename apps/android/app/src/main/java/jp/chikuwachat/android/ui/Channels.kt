@@ -335,6 +335,8 @@ enum class HomeTile(private val labelRes: Int?) {
     FILES(R.string.common_files),
     /** M78 (CANVAS.md §21.2): the canvases of all my conversations, after ファイル (as the desktop's sidebar); no number. */
     CANVASES(R.string.home_tile_canvases),
+    /** M122 (docs/WIKI.md §9.2): 「ドキュメント」, the tree of pages, after キャンバス; no number. */
+    DOCS(R.string.docs_title),
     ;
 
     /** The tile's name; 「Times」 is the same in every language. */
@@ -385,6 +387,7 @@ object HomeTiles {
         TileState(HomeTile.DEADLINES, null),
         TileState(HomeTile.FILES, null),
         TileState(HomeTile.CANVASES, null),
+        TileState(HomeTile.DOCS, null),
     )
 
     /** What TalkBack reads for a tile. */

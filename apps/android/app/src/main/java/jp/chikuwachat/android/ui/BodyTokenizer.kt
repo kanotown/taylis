@@ -76,6 +76,12 @@ private const val INLINE =
     // i18n: keep (inline-format pattern)
     """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?=[^$\n])[^$\n\\]*(?:\\.[^$\n\\]*)*)\$\$)|(\$(?![\s$])([^$\n\\]*(?:\\.[^$\n\\]*)*(?:(?<!\s)|(?<=\\\s)))\$(?![0-9A-Za-z]))"""
 private val INLINE_PATTERN = Regex(INLINE)
+
+/**
+ * M122 (docs/WIKI.md §2.3): the canvas dialect's links also point at a page (`[名前](page:<uuid>)`) or a file
+ * (`[名前](attachment:<uuid>)`); the same groups as [INLINE], only the link's target is wider. Messages keep [INLINE].
+ */
+private val DOC_INLINE_PATTERN = Regex(INLINE.replace("""\((https?://[^\s)]+)\)""", """\((https?://[^\s)]+|(?:page|attachment):[0-9a-fA-F-]{36})\)"""))
 private val FULL_PATTERN = Regex("""(```([\s\S]*?)```)|$INLINE|(\n)""")
 private val FENCE_OPEN = Regex("""^```([A-Za-z0-9_+#.-]{0,20})\s*$""")
 private val FENCE_CLOSE = Regex("""^```\s*$""")
@@ -131,6 +137,9 @@ fun tokenizeBody(body: String): List<BodyToken> = scan(body, FULL_PATTERN, withB
 
 /** Inline tokens of a single line. */
 fun tokenizeInline(line: String): List<BodyToken> = scan(line, INLINE_PATTERN, withBlocks = false)
+
+/** M122: a line of the canvas dialect — [tokenizeInline] plus links to pages and files (`page:` / `attachment:`). */
+fun tokenizeDocInline(line: String): List<BodyToken> = scan(line, DOC_INLINE_PATTERN, withBlocks = false)
 
 private val ESCAPED = Regex("""\\([_*~`$])""")
 
@@ -305,7 +314,7 @@ private const val LIST_LEVELS = 3
  * list of its own: it starts at the number its first item is written with and counts on by one; a nested list starts
  * again under every parent item. Numbers are 1. / a. / i. by level, bullets • / ◦ / ▪.
  */
-fun listItems(rows: List<ListLine>): List<BodyListItem> {
+fun listItems(rows: List<ListLine>, inline: (String) -> List<BodyToken> = ::tokenizeInline): List<BodyListItem> {
     val indents = ArrayList<Int>()
     val counters = ArrayList<Pair<Boolean, Int>?>() // (ordered, next number) by level
     return rows.map { row ->
@@ -320,7 +329,7 @@ fun listItems(rows: List<ListLine>): List<BodyListItem> {
         val counter = counters[level]
         val number = if (!row.ordered) 0 else if (counter != null && counter.first) counter.second else row.written
         counters[level] = row.ordered to number + 1
-        BodyListItem(level, tokenizeInline(row.text), row.ordered, number, listMarker(row.ordered, level, number))
+        BodyListItem(level, inline(row.text), row.ordered, number, listMarker(row.ordered, level, number))
     }
 }
 
@@ -356,6 +365,8 @@ data class BlockSpan(val block: BodyBlock, val start: Int, val end: Int)
 fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
     // M83 (CANVAS.md §22): a canvas's hidden task markers are never shown (each line keeps its place).
     val lines = body.replace("\r\n", "\n").replace('\r', '\n').split("\n").let { all -> if (canvas) all.map(CanvasMarkers::strip) else all }
+    // M122: the canvas dialect reads `page:` and `attachment:` links too.
+    val inlineOf: (String) -> List<BodyToken> = if (canvas) ::tokenizeDocInline else ::tokenizeInline
     fun blank(index: Int) = index < 0 || index >= lines.size || lines[index].isBlank()
     fun isTask(index: Int) = canvas && TASK_LINE.matches(lines[index])
     fun isImage(index: Int) = canvas && IMAGE_LINE.matches(lines[index])
@@ -402,7 +413,7 @@ fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
             continue
         }
         HEADING.find(line)?.let { h ->
-            blocks.add(BodyBlock.Heading(h.groupValues[1].length, tokenizeInline(h.groupValues[2]), if (canvas) i else null))
+            blocks.add(BodyBlock.Heading(h.groupValues[1].length, inlineOf(h.groupValues[2]), if (canvas) i else null))
             i++
             continue
         }
@@ -411,7 +422,7 @@ fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
             while (i < lines.size && isTask(i)) {
                 val m = TASK_LINE.find(lines[i])!!
                 val indent = m.groupValues[1].replace("\t", "  ").length
-                items.add(BodyTaskItem(if (indent >= 2) 1 else 0, m.groupValues[2] != " ", tokenizeInline(m.groupValues[3]), i))
+                items.add(BodyTaskItem(if (indent >= 2) 1 else 0, m.groupValues[2] != " ", inlineOf(m.groupValues[3]), i))
                 i++
             }
             blocks.add(BodyBlock.Tasks(items))
@@ -432,7 +443,7 @@ fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
             val quoted = ArrayList<List<BodyToken>>()
             while (i < lines.size) {
                 val q = QUOTE.find(lines[i]) ?: break
-                quoted.add(tokenizeInline(q.groupValues[1]))
+                quoted.add(inlineOf(q.groupValues[1]))
                 i++
             }
             blocks.add(BodyBlock.Quote(quoted))
@@ -445,10 +456,10 @@ fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
             i += 2
             while (i < lines.size && '|' in lines[i] && lines[i].isNotBlank()) {
                 val cells = splitTableRow(lines[i])
-                rows.add(header.indices.map { tokenizeInline(cells.getOrElse(it) { "" }) }) // short rows pad, long rows are cut (GFM)
+                rows.add(header.indices.map { inlineOf(cells.getOrElse(it) { "" }) }) // short rows pad, long rows are cut (GFM)
                 i++
             }
-            blocks.add(BodyBlock.Table(align, header.map(::tokenizeInline), rows))
+            blocks.add(BodyBlock.Table(align, header.map(inlineOf), rows))
             continue
         }
         if (listLine(line) != null) {
@@ -458,7 +469,7 @@ fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
                 i++
             }
             // A top-level item of the other kind starts a new list (as in CommonMark).
-            val items = listItems(rows)
+            val items = listItems(rows, inlineOf)
             var from = 0
             for (k in 1..items.size) {
                 if (k < items.size && !(items[k].level == 0 && items[k].ordered != items[from].ordered)) continue
@@ -472,7 +483,7 @@ fun parseBlockSpans(body: String, canvas: Boolean = false): List<BlockSpan> {
         while (i < lines.size) {
             val current = lines[i]
             if (paragraph.isNotEmpty() && (opensFence(i) || opensTable(i) || HEADING.matches(current) || QUOTE.matches(current) || BULLET.matches(current) || NUMBERED.matches(current) || isImage(i) || isRule(i) || mathBlock(lines, i) != null)) break
-            paragraph.add(tokenizeInline(current))
+            paragraph.add(inlineOf(current))
             i++
         }
         blocks.add(BodyBlock.Paragraph(paragraph))

@@ -147,6 +147,10 @@ object MainTabs {
     fun landReservations(state: TabStacks): TabStacks =
         withStack(state, MainTab.HOME, MainNav.openReservations(rootStack(MainTab.HOME))).copy(selected = MainTab.HOME)
 
+    /** M122: a page's notification (`kind = page`, WIKI.md §9.3): the home tab shows the page over 「ドキュメント」. */
+    fun landPage(state: TabStacks, pageId: String): TabStacks =
+        withStack(state, MainTab.HOME, MainNav.landPage(rootStack(MainTab.HOME), pageId)).copy(selected = MainTab.HOME)
+
     /** M56: a personal task's notification: the home tab shows 「タスク」 over its list. */
     fun landMyTasks(state: TabStacks): TabStacks =
         withStack(state, MainTab.HOME, MainNav.openMyTasks(rootStack(MainTab.HOME))).copy(selected = MainTab.HOME)

@@ -9,6 +9,7 @@ import jp.chikuwachat.android.sync.TaskApi
 import jp.chikuwachat.android.sync.AiApi
 import jp.chikuwachat.android.sync.CanvasApi
 import jp.chikuwachat.android.sync.MyCanvasesApi
+import jp.chikuwachat.android.sync.WikiApi
 import jp.chikuwachat.android.sync.ChannelApi
 import jp.chikuwachat.android.sync.ChannelLinksApi
 import jp.chikuwachat.android.sync.ReservationsApi
@@ -69,7 +70,7 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi {
+) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -840,6 +841,63 @@ class ApiClient(
         return request("GET", "/api/v1/search/canvases?$params")
     }
 
+    // --- 「ドキュメント」 (docs/WIKI.md §14.2, M122) -------------------------------------------------------
+
+    override suspend fun wikiTree(etag: String?): Pair<WikiTreeOut?, String?> {
+        val tag = arrayOfNulls<String>(1)
+        val headers = if (etag == null) emptyMap() else mapOf("If-None-Match" to etag)
+        val (text, status) = requestRaw("GET", "/api/v1/wiki/tree", null, auth = true, retry401 = true, headers = headers, etagOut = tag)
+        if (status == 304) return null to etag
+        return decodeOrThrow(WikiTreeOut.serializer(), text) to tag[0]
+    }
+
+    override suspend fun wikiChanges(since: Long): WikiChangesOut = request("GET", "/api/v1/wiki/changes?since=$since")
+
+    override suspend fun wikiPage(pageId: String, etag: String?): PageOut? {
+        val headers = if (etag == null) emptyMap() else mapOf("If-None-Match" to etag)
+        val (text, status) = requestRaw("GET", "/api/v1/wiki/pages/$pageId", null, auth = true, retry401 = true, headers = headers)
+        if (status == 304) return null
+        return decodeOrThrow(PageOut.serializer(), text)
+    }
+
+    /** CANVAS.md §4.4 on a page: 409 page_conflict / page_base_expired carry the head (PageContent) in `details`. */
+    override suspend fun saveWikiPage(pageId: String, baseRevId: String, body: String, clientSaveId: String, onConflict: String): PageSaveOut =
+        request("PUT", "/api/v1/wiki/pages/$pageId/content", buildJsonObject {
+            put("base_rev_id", baseRevId)
+            put("body", body)
+            put("client_save_id", clientSaveId)
+            put("on_conflict", onConflict)
+        })
+
+    /** A new page (201; a retry with the same key answers the first one, 200). `access` matters for a top-level page only. */
+    override suspend fun createWikiPage(parentId: String?, title: String?, access: String, tz: String?, clientSaveId: String): PageOut =
+        request("POST", "/api/v1/wiki/pages", buildJsonObject {
+            parentId?.let { put("parent_id", it) }
+            title?.let { put("title", it) }
+            if (parentId == null) put("access", access)
+            tz?.let { put("tz", it) }
+            put("client_save_id", clientSaveId)
+        })
+
+    override suspend fun renameWikiPage(pageId: String, title: String): PageOut =
+        request("PATCH", "/api/v1/wiki/pages/$pageId", buildJsonObject { put("title", title) })
+
+    override suspend fun resolveWikiPages(ids: List<String>): List<PageRef> =
+        request("POST", "/api/v1/wiki/pages/resolve", buildJsonObject { put("ids", buildJsonArray { ids.forEach { add(JsonPrimitive(it)) } }) })
+
+    override suspend fun wikiBacklinks(pageId: String): List<PageItem> = request("GET", "/api/v1/wiki/pages/$pageId/backlinks")
+
+    override suspend fun searchPages(q: String, limit: Int, offset: Int): PageSearchOut {
+        val tzOffset = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
+        return request("GET", "/api/v1/search/pages?q=" + Enc.encode(q, "UTF-8") + "&tz_offset_minutes=$tzOffset&limit=$limit&offset=$offset")
+    }
+
+    private fun <T> decodeOrThrow(serializer: kotlinx.serialization.KSerializer<T>, text: String): T = try {
+        Codec.snake.decodeFromString(serializer, text)
+    } catch (e: Exception) {
+        throw ApiException.Api(0, "decode_error", "Unexpected response: ${e.message}")
+    }
+
     /** An attachment's metadata (a canvas image knows only its id). */
     suspend fun attachment(attachmentId: String): AttachmentOut = request("GET", "/api/v1/attachments/$attachmentId")
 
@@ -1086,7 +1144,11 @@ class ApiClient(
         }
     }
 
-    private suspend fun requestRaw(method: String, path: String, body: JsonElement?, auth: Boolean, retry401: Boolean, headers: Map<String, String> = emptyMap()): Pair<String, Int> {
+    private suspend fun requestRaw(
+        method: String, path: String, body: JsonElement?, auth: Boolean, retry401: Boolean, headers: Map<String, String> = emptyMap(),
+        /** M122: the answer's ETag lands here (GET /wiki/tree). */
+        etagOut: Array<String?>? = null,
+    ): Pair<String, Int> {
         if (auth && accessToken == null && refreshToken != null) ensureAccessToken()
         val builder = Request.Builder().url(baseUrl.trimEnd('/') + path).header("Accept", "application/json")
         headers.forEach { (name, value) -> builder.header(name, value) }
@@ -1096,7 +1158,10 @@ class ApiClient(
 
         val (status, text) = withContext(Dispatchers.IO) {
             try {
-                http.newCall(builder.build()).execute().use { response -> response.code to (response.body.string()) }
+                http.newCall(builder.build()).execute().use { response ->
+                    if (etagOut != null) etagOut[0] = response.header("ETag")
+                    response.code to (response.body.string())
+                }
             } catch (e: IOException) {
                 throw ApiException.Network(e)
             }
@@ -1108,7 +1173,7 @@ class ApiClient(
         val error = ApiException.Api(status, envelope?.error?.code ?: "http_$status", envelope?.error?.message ?: "Request failed", envelope?.error?.details)
         if (auth && status == 401 && error.code == "token_expired" && retry401) {
             refresh()
-            return requestRaw(method, path, body, auth, retry401 = false, headers = headers)
+            return requestRaw(method, path, body, auth, retry401 = false, headers = headers, etagOut = etagOut)
         }
         if (auth && status == 401 && error.code != "token_expired") signOut()
         throw error

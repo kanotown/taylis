@@ -45,4 +45,14 @@ class MemoryPersistence : Persistence {
     override fun loadAllCanvases(): List<CachedCanvas> = canvases.values.toList()
     override fun deleteCanvas(id: String) { canvases.remove(id) }
     override fun deleteCanvases(channelId: String) { canvases.values.removeAll { it.canvas.channelId == channelId } }
+
+    /** M122: the pages' copies (CachedPage JSON), oldest write first. */
+    val wikiPages = LinkedHashMap<String, String>()
+    override fun saveWikiPage(id: String, json: String, savedAt: Long, keep: Int) {
+        wikiPages.remove(id)
+        wikiPages[id] = json
+        while (wikiPages.size > keep) wikiPages.remove(wikiPages.keys.first())
+    }
+    override fun loadWikiPage(id: String): String? = wikiPages[id]
+    override fun deleteWikiPage(id: String) { wikiPages.remove(id) }
 }

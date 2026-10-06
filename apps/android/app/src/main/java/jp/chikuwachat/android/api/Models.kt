@@ -620,6 +620,8 @@ data class BootstrapOut(
     val workspaceSettings: WorkspaceSettingsOut = WorkspaceSettingsOut(),
     /** M104 (MODERATION.md §4): the people I blocked; changes arrive as block.updated. Empty from an older server. */
     val blockedUserIds: List<String> = emptyList(),
+    /** M122 (docs/WIKI.md §10): the 「ドキュメント」 change feed's position; null from a server without it. */
+    val wiki: WikiBootstrap? = null,
 )
 
 /**
@@ -847,6 +849,8 @@ data class ActivityItem(
     val canvas: ActivityCanvas? = null,
     /** M112: a reservation item's notice (asked for with `include=reservation`). */
     val reservation: ActivityReservation? = null,
+    /** M122 (docs/WIKI.md §9.3): a page_mention / page_shared item's page (asked for with `include=page_mention` / `page_shared`). */
+    val page: ActivityPage? = null,
     /**
      * 2026-10-06 (MOBILE_UI.md §6.4): whether the server counts the item read: not newer than the activity read
      * position, or (a mention, a thread reply) read in its conversation or thread. Null from an older server: the
@@ -855,13 +859,15 @@ data class ActivityItem(
     val read: Boolean? = null,
 ) {
     /** One row per kind and message (a reaction row is per message, whoever reacts next); a canvas one per item. */
-    val key: String get() = canvas?.let { "canvas_mention:${it.itemId}" } ?: reservation?.let { "reservation:${it.itemId}" } ?: "$kind:${message?.id}"
+    val key: String get() = canvas?.let { "canvas_mention:${it.itemId}" } ?: reservation?.let { "reservation:${it.itemId}" }
+        ?: page?.let { "$kind:${it.itemId}" } ?: "$kind:${message?.id}"
 
     /** Whether this device can show the item: a kind it knows, with the part that kind needs. */
     val isShown: Boolean get() = when (kind) {
         "mention", "reaction", "thread_reply" -> message != null
         "canvas_mention" -> canvas != null
         "reservation" -> reservation != null
+        "page_mention", "page_shared" -> page != null
         else -> false
     }
 
@@ -886,9 +892,9 @@ data class ActivityCanvas(
 /** M77 (CANVAS.md §20.3): the kinds beyond M39's this device reads, sent on every activity call (`include=`). */
 object ActivityInclude {
     /** M112: reservation notices too. */
-    val VALUES = listOf("canvas_mention", "reservation")
+    val VALUES = listOf("canvas_mention", "reservation", "page_mention", "page_shared")
 
-    /** `name=canvas_mention&name=reservation`. */
+    /** `name=canvas_mention&name=reservation&…` (M122: the pages' two kinds too). */
     fun query(name: String): String = VALUES.joinToString("&") { "$name=$it" }
 }
 

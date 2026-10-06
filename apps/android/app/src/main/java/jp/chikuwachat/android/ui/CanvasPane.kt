@@ -163,7 +163,7 @@ fun CanvasPane(controller: AppController, channel: ChannelState, version: Int, c
 }
 
 @Composable
-private fun CanvasEmpty(title: String, text: String?, loading: Boolean = false, action: (@Composable () -> Unit)? = null) {
+internal fun CanvasEmpty(title: String, text: String?, loading: Boolean = false, action: (@Composable () -> Unit)? = null) {
     Column(
         Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -215,7 +215,7 @@ private fun OpenCanvas(
     CanvasView(controller, channel, version, canvasId, list, open, onOpenList, onTrashed, onOpenThread)
 }
 
-private enum class CanvasMode { VIEW, EDIT }
+internal enum class CanvasMode { VIEW, EDIT }
 
 /** One canvas on screen: its bar, the document (and the editor), the choices a save may ask for. */
 @Composable
@@ -438,13 +438,13 @@ private fun CanvasEditing(controller: AppController, canvasId: String, modifier:
 }
 
 /** The list item of the heading on `line` (the title row comes first). */
-private suspend fun scrollToHeading(state: LazyListState, text: String, line: Int) {
+internal suspend fun scrollToHeading(state: LazyListState, text: String, line: Int) {
     val index = parseBlocks(text, canvas = true).indexOfFirst { it is BodyBlock.Heading && it.line == line }
     if (index >= 0) state.animateScrollToItem(index + 1)
 }
 
 @Composable
-private fun ModeSwitch(mode: CanvasMode, onChange: (CanvasMode) -> Unit) {
+internal fun ModeSwitch(mode: CanvasMode, onChange: (CanvasMode) -> Unit) {
     SingleChoiceSegmentedButtonRow(Modifier.height(36.dp)) {
         listOf(CanvasMode.VIEW to stringResource(R.string.canvas_pane_view), CanvasMode.EDIT to stringResource(R.string.common_edit)).forEachIndexed { index, (value, label) ->
             SegmentedButton(
@@ -459,7 +459,7 @@ private fun ModeSwitch(mode: CanvasMode, onChange: (CanvasMode) -> Unit) {
 
 /** 「保存済み」 and the rest; a conflict reopens its choice. */
 @Composable
-private fun SaveState(saver: CanvasSaver, onOpenConflict: () -> Unit) {
+internal fun SaveState(saver: CanvasSaver, onOpenConflict: () -> Unit) {
     // Collected here too: the section sheet shows it outside the screen that collects the saver's changes.
     val revision by saver.revision.collectAsState()
     val status = remember(revision) { saver.status }
@@ -505,7 +505,7 @@ private fun SaveState(saver: CanvasSaver, onOpenConflict: () -> Unit) {
 
 /** M74: 「オフライン — 最後に読み込んだ時点 (日時) の内容です」 over the kept copy, with 再読み込み. */
 @Composable
-private fun OfflineCopyNotice(fetchedAt: Long, onRetry: () -> Unit) {
+internal fun OfflineCopyNotice(fetchedAt: Long, onRetry: () -> Unit) {
     val text = remember(fetchedAt) { CanvasOffline.notice(fetchedAt) }
     Row(
         Modifier.fillMaxWidth()
@@ -612,7 +612,7 @@ private fun Byline(controller: AppController, canvas: CanvasMeta) {
 }
 
 @Composable
-private fun OutlineMenu(headings: List<CanvasText.OutlineEntry>, onPick: (CanvasText.OutlineEntry) -> Unit) {
+internal fun OutlineMenu(headings: List<CanvasText.OutlineEntry>, onPick: (CanvasText.OutlineEntry) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.AutoMirrored.Outlined.List, contentDescription = stringResource(R.string.canvas_pane_contents)) }
@@ -628,7 +628,7 @@ private fun OutlineMenu(headings: List<CanvasText.OutlineEntry>, onPick: (Canvas
 }
 
 @Composable
-private fun OutlineColumn(headings: List<CanvasText.OutlineEntry>, modifier: Modifier, onPick: (CanvasText.OutlineEntry) -> Unit) {
+internal fun OutlineColumn(headings: List<CanvasText.OutlineEntry>, modifier: Modifier, onPick: (CanvasText.OutlineEntry) -> Unit) {
     Column(modifier.verticalScroll(rememberScrollState()).padding(vertical = 12.dp)) {
         Text(stringResource(R.string.canvas_pane_contents), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         headings.forEach { entry ->
@@ -665,9 +665,11 @@ private val HEADING_IN_SECTION = Regex("""(?m)^#{1,3}\s+\S""")
  * field, so the preview can follow it and drive it ([CanvasScrollSyncEffect]); typing makes the editor the side that drives.
  */
 @Composable
-private fun CanvasEditorField(
+internal fun CanvasEditorField(
     controller: AppController, saver: CanvasSaver, section: CanvasSections.Key?, modifier: Modifier,
     autoFocus: Boolean = false, onSectionGone: () -> Unit = {}, scroll: CanvasScrollLink? = null,
+    /** M122: 「編集中」 (canvas_presence) is a canvas's; a page's editor says nothing (WIKI.md §7.3: presence comes later). */
+    presence: Boolean = true,
 ) {
     val store = controller.store
     val markers = remember(saver, section) { CanvasMarkers.Table() }
@@ -717,7 +719,7 @@ private fun CanvasEditorField(
     // M73 (CANVAS.md §18.2 / §18.5): 「編集中」 for the conversation's other members while this field has the focus — said
     // on focus, on typing and when the caret's heading changes (the engine sends a new heading after 2 s at most, the
     // same one every 20 s; this loop asks every 2 s), stopped on blur, when the editor goes and in the background.
-    val engine = controller.engine
+    val engine = controller.engine?.takeIf { presence }
     var announcedAt by remember { mutableLongStateOf(0L) }
     fun announce(editing: Boolean, soon: Boolean = false) {
         if (engine == null) return
@@ -984,7 +986,7 @@ private fun EditorToolbar(apply: ((CanvasText.Edit) -> CanvasText.Edit) -> Unit,
 /** 「このセクションを編集」: the lines under one heading in a sheet (the rest of the canvas stays as it is). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SectionSheet(controller: AppController, saver: CanvasSaver, key: CanvasSections.Key, onDismiss: () -> Unit) {
+internal fun SectionSheet(controller: AppController, saver: CanvasSaver, key: CanvasSections.Key, onDismiss: () -> Unit, presence: Boolean = true) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val heading = key.heading.replace(Regex("""^#{1,3}\s+"""), "")
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
@@ -997,8 +999,8 @@ private fun SectionSheet(controller: AppController, saver: CanvasSaver, key: Can
                 SaveState(saver, onOpenConflict = onDismiss)
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done_2)) }
             }
-            CanvasEditing(controller, saver.id, Modifier.padding(horizontal = 16.dp).padding(bottom = 4.dp))
-            CanvasEditorField(controller, saver, key, Modifier.fillMaxWidth().weight(1f), autoFocus = true, onSectionGone = {
+            if (presence) CanvasEditing(controller, saver.id, Modifier.padding(horizontal = 16.dp).padding(bottom = 4.dp))
+            CanvasEditorField(controller, saver, key, Modifier.fillMaxWidth().weight(1f), autoFocus = true, presence = presence, onSectionGone = {
                 controller.notice = L10n.str(R.string.canvas_pane_the_heading_changed_so_the_section)
                 onDismiss()
             })
@@ -1251,7 +1253,7 @@ private fun TrashDialog(controller: AppController, channel: ChannelState, onDism
 
 /** §4.4 409 canvas_conflict: where both changed the same words, and the choices (a ticker only takes theirs). */
 @Composable
-private fun ConflictDialog(controller: AppController, saver: CanvasSaver, tickOnly: Boolean, conflicts: List<CanvasConflict>, timedOut: Boolean, onDismiss: () -> Unit) {
+internal fun ConflictDialog(controller: AppController, saver: CanvasSaver, tickOnly: Boolean, conflicts: List<CanvasConflict>, timedOut: Boolean, onDismiss: () -> Unit) {
     val store = controller.store
     fun names(text: String) = Mentions.toNames(CanvasMarkers.strip(text), store.users, store.groups) // M83: markers hidden
     val shown = conflicts.take(5)
@@ -1304,7 +1306,7 @@ private fun ConflictSide(label: String, text: String, mine: Boolean) {
 
 /** §4.4 409 canvas_base_expired: mine and the current body one above the other. */
 @Composable
-private fun ExpiredDialog(controller: AppController, saver: CanvasSaver, head: CanvasOut, canOverwrite: Boolean, onDismiss: () -> Unit) {
+internal fun ExpiredDialog(controller: AppController, saver: CanvasSaver, head: CanvasOut, canOverwrite: Boolean, onDismiss: () -> Unit) {
     val store = controller.store
     fun names(text: String) = Mentions.toNames(CanvasMarkers.strip(text), store.users, store.groups) // M83: markers hidden
     AlertDialog(

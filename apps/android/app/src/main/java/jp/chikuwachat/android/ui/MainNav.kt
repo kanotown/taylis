@@ -111,6 +111,20 @@ sealed interface Route {
     @Serializable @SerialName("canvases")
     data object Canvases : Pane { override val keptUnderConversation get() = true }
 
+    /**
+     * M122 (docs/WIKI.md §9.2): 「ドキュメント」 — the tree of pages (共有 / プライベート), from the home's tile. A page opens
+     * over it ([DocPage]); back returns to it.
+     */
+    @Serializable @SerialName("docs")
+    data object Docs : Pane { override val keptUnderConversation get() = true }
+
+    /**
+     * M122: one page of 「ドキュメント」, over the tree, another page (a `page:` link), a conversation (a `/p/` link) or the
+     * search's results. Pages stack: back returns to where the link was.
+     */
+    @Serializable @SerialName("doc_page")
+    data class DocPage(val id: String) : Pane { override val keptUnderConversation get() = true }
+
     /** 「ファイル」 of every channel, or of the one picked in its scope menu. */
     @Serializable @SerialName("files")
     data class Files(val channelId: String? = null) : Pane { override val keptUnderConversation get() = false }
@@ -251,6 +265,32 @@ object MainNav {
     /** M56: 「タスク」 over the home's list (the tile, or a personal task's notification); one already open stays as it is. */
     fun openMyTasks(stack: List<Route>): List<Route> =
         if (top(stack) == Route.Tasks) stack else stack.filter { it is Route.Root } + Route.Tasks
+
+    /**
+     * M122: a page of 「ドキュメント」 over what is on screen (a link in a page, a message or a canvas; a row of the tree; a
+     * search result, whose results stay behind it folded). The same page on top stays as it is.
+     */
+    fun openPage(stack: List<Route>, pageId: String): List<Route> {
+        val top = top(stack)
+        if (top is Route.DocPage && top.id == pageId) return stack
+        val base = if (top is Route.Search) replaceTop(stack, top.copy(expanded = false)) else stack
+        return base + Route.DocPage(pageId)
+    }
+
+    /**
+     * M122: a page from outside the tab (a notification, an activity row whose tab is not this one): the tree over the
+     * tab's root, then the page — back goes to the tree, then the list.
+     */
+    fun landPage(stack: List<Route>, pageId: String): List<Route> = listOf(rootOf(stack), Route.Docs, Route.DocPage(pageId))
+
+    /**
+     * M122: a breadcrumb (WIKI.md §9.2 「パンくず（タップで戻る）」): back to that page when it is under this one on the stack,
+     * else it opens over it.
+     */
+    fun openCrumb(stack: List<Route>, pageId: String): List<Route> {
+        val at = stack.indexOfLast { it is Route.DocPage && it.id == pageId }
+        return if (at >= 0) stack.take(at + 1) else openPage(stack, pageId)
+    }
 
     /** M29: the conversation's details page, over whichever tab. */
     fun openDetails(stack: List<Route>): List<Route> = updateChannel(stack) { it.copy(detailsOpen = true) }
