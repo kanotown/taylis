@@ -28,6 +28,9 @@ from app.modules.attachments.models import Attachment
 from app.modules.canvases import markers as canvas_markers
 from app.modules.canvases.models import Canvas
 from app.modules.messages.models import Message, Reaction
+from app.modules.users.models import User
+from app.modules.wiki.access import readable_ids
+from app.modules.wiki.models import WikiPage
 
 _LINK = r"https?://"
 # Counting stops here: past it the clients show "1000 件以上" (a count is cheap below that).
@@ -369,4 +372,131 @@ async def count_canvases(
         stmt = select(_canvas_hits(query, scope, escaped).c.id).limit(TOTAL_CAP + 1)
     else:
         stmt = _canvas_within(select(Canvas.id), scope, Canvas).limit(TOTAL_CAP + 1)
+    return int((await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
+
+
+# --- wiki pages (M120, docs/WIKI.md §8.1): read-only access to wiki_pages ------------------------
+
+
+@dataclass(frozen=True)
+class PageScope:
+    """Who searches (only the pages they can read), where (a subtree) and who / when."""
+
+    actor: User
+    in_page: uuid.UUID | None = None
+    from_user_id: uuid.UUID | None = None
+    after: datetime | None = None
+    before: datetime | None = None
+    kind: str | None = None
+
+
+def page_document() -> Any:
+    """`ARRAY[title::text, body without task markers, props_text]`: the expression of
+    wiki_pages_search_idx (migration 0095), written the same way (see canvas_document)."""
+    body = func.regexp_replace(
+        WikiPage.body,
+        literal_column(f"'{canvas_markers.MARKER_SQL}'"),
+        literal_column("''"),
+        literal_column("'g'"),
+        type_=Text,
+    )
+    props = func.coalesce(WikiPage.props_text, literal_column("''"), type_=Text)
+    return postgresql.array([cast(WikiPage.title, Text), body, props])
+
+
+def _page_within(stmt: Select[Any], scope: PageScope, row: Any) -> Select[Any]:
+    """Always: live pages the actor can read (the effective access, docs/WIKI.md §8.1)."""
+    stmt = stmt.where(row.id.in_(readable_ids(scope.actor)), row.deleted_at.is_(None))
+    if scope.in_page is not None:
+        stmt = stmt.where(or_(row.id == scope.in_page, row.path.contains([scope.in_page])))
+    if scope.kind is not None:
+        stmt = stmt.where(row.kind == scope.kind)
+    if scope.from_user_id is not None:
+        stmt = stmt.where(
+            or_(row.created_by == scope.from_user_id, row.updated_by == scope.from_user_id)
+        )
+    if scope.after is not None:
+        stmt = stmt.where(row.updated_at >= scope.after)
+    if scope.before is not None:
+        stmt = stmt.where(row.updated_at < scope.before)
+    return stmt
+
+
+def _page_hits(query: str, scope: PageScope, escaped: bool) -> Subquery:
+    """Pages whose title, body or properties match, scored; the words alone go through the index
+    (a materialized step), the access and the rest are applied to what it found."""
+    matched = (
+        select(
+            WikiPage.id.label("id"),
+            WikiPage.path.label("path"),
+            WikiPage.kind.label("kind"),
+            WikiPage.created_by.label("created_by"),
+            WikiPage.updated_by.label("updated_by"),
+            WikiPage.updated_at.label("updated_at"),
+            WikiPage.deleted_at.label("deleted_at"),
+            func.pgroonga_score(
+                literal_column("wiki_pages.tableoid"), literal_column("wiki_pages.ctid")
+            ).label("score"),
+        )
+        .where(page_document().op("&@~")(_text_needle(query, escaped)))
+        .cte("page_hits")
+        .prefix_with("MATERIALIZED")
+    )
+    stmt = _page_within(select(matched.c.id, matched.c.score), scope, matched.c)
+    return stmt.subquery("page_scored")
+
+
+def page_search_statement(
+    query: str, scope: PageScope, *, sort: Sort, limit: int, offset: int, escaped: bool
+) -> Select[Any]:
+    """The query search_pages runs (the tests EXPLAIN it: wiki_pages_search_idx must be used)."""
+    hits = _page_hits(query, scope, escaped)
+    order = (
+        (hits.c.score.desc(), WikiPage.updated_at.desc())
+        if sort == "relevance"
+        else (WikiPage.updated_at.desc(),)
+    )
+    return (
+        select(WikiPage, hits.c.score)
+        .join(hits, hits.c.id == WikiPage.id)
+        .order_by(*order, WikiPage.id)
+        .limit(limit)
+        .offset(offset)
+    )
+
+
+async def search_pages(
+    db: AsyncSession,
+    *,
+    query: str,
+    scope: PageScope,
+    sort: Sort,
+    limit: int,
+    offset: int,
+    escaped: bool,
+) -> list[tuple[WikiPage, float]]:
+    stmt = page_search_statement(
+        query, scope, sort=sort, limit=limit, offset=offset, escaped=escaped
+    )
+    rows = (await db.execute(stmt)).all()
+    return [(row[0], float(row[1] or 0.0)) for row in rows]
+
+
+async def list_pages(
+    db: AsyncSession, *, scope: PageScope, limit: int, offset: int
+) -> list[WikiPage]:
+    """Modifier-only searches: the most recently updated pages in scope."""
+    stmt = _page_within(select(WikiPage), scope, WikiPage).order_by(
+        WikiPage.updated_at.desc(), WikiPage.id
+    )
+    return list((await db.execute(stmt.limit(limit).offset(offset))).scalars().all())
+
+
+async def count_pages(
+    db: AsyncSession, *, query: str | None, scope: PageScope, escaped: bool
+) -> int:
+    if query:
+        stmt = select(_page_hits(query, scope, escaped).c.id).limit(TOTAL_CAP + 1)
+    else:
+        stmt = _page_within(select(WikiPage.id), scope, WikiPage).limit(TOTAL_CAP + 1)
     return int((await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())

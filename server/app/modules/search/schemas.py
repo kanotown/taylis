@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.modules.canvases.schemas import CanvasMeta
 from app.modules.channels.schemas import ChannelOut
 from app.modules.messages.schemas import MessageOut
+from app.modules.wiki.schemas import PageItem
 
 MAX_QUERY_LENGTH = 200
 
@@ -48,6 +49,8 @@ class SearchFilters(BaseModel):
     has: list[str] = Field(default_factory=list)
     is_thread: bool = False
     is_times: bool = False
+    # M120 (/search/pages): the page whose subtree in:<title> narrowed the search to.
+    in_page: str | None = None
     # Modifiers that named nothing the caller can see (unknown user / channel, bad date or flag).
     unresolved: list[str] = Field(default_factory=list)
 
@@ -108,5 +111,46 @@ class CanvasSearchOut(BaseModel):
     offset: int
     has_more: bool
     # How many canvases match (counting stops past 1000: then total_capped is true).
+    total: int = 0
+    total_capped: bool = False
+
+
+# --- wiki pages (M120, docs/WIKI.md §8.1) ---------------------------------------------------
+
+
+class PageSearchQuery(BaseModel):
+    # Words and modifiers: from:@ before: after: on:, and in:<page title> (that page and the
+    # pages below it); has: / is: do not apply to pages.
+    q: str = Field(default="", max_length=MAX_QUERY_LENGTH)
+    # Only this page and the pages below it.
+    in_page: UUID | None = None
+    # The page's creator or its last editor.
+    from_user_id: UUID | None = None
+    # On the last update (updated_at).
+    after: datetime | None = None
+    before: datetime | None = None
+    kind: Literal["page", "database", "row"] | None = None
+    sort: SearchSort = "relevance"
+    tz_offset_minutes: int = Field(default=0, ge=-840, le=840)
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0, le=10_000)
+
+
+class PageSearchHit(BaseModel):
+    page: PageItem
+    # Plain text around the first matching word of the body (as for canvases).
+    snippet: str
+    score: float
+
+
+class PageSearchOut(BaseModel):
+    """Only pages the caller can read are ever counted or returned."""
+
+    hits: list[PageSearchHit]
+    keywords: list[str]
+    filters: SearchFilters
+    limit: int
+    offset: int
+    has_more: bool
     total: int = 0
     total_capped: bool = False
