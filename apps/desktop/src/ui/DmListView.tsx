@@ -10,6 +10,7 @@ import { fullTimestamp } from "./format";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { dmList, dmTimeLabel, isSelfNotes, showsSelfNotesPlaceholder } from "./mobileTabs";
 import { Badge, cn, IconButton } from "./primitives";
+import { ChannelContextMenu, PinMark } from "./SidebarMenus";
 import { EmojiText, StatusGlyph } from "./UserPopover";
 import { activeStatus } from "./users";
 import { t } from "../i18n";
@@ -47,7 +48,10 @@ export function DmListView({ controller, onOpen, onNew }: { controller: AppContr
   const store = controller.store;
   const meId = store.me?.id ?? controller.me?.id ?? null;
   const [query, setQuery] = useState("");
-  const rows = dmList(store.channels.values(), (c) => channelTitle(c, controller), meId, query);
+  const rows = dmList(store.channels.values(), (c) => channelTitle(c, controller), meId, query, store.dmPins);
+  // M118: my own DM's placeholder stands after the pinned DMs.
+  const pinnedRows = rows.filter((c) => store.isDmPinned(c.id)).length;
+  const row = (channel: ChannelState) => <DmRow key={channel.id} controller={controller} channel={channel} meId={meId} now={now} onOpen={() => onOpen(channel.id)} />;
   const placeholder = showsSelfNotesPlaceholder(store.channels.values(), meId, myDisplayName(controller), query);
   const { creating, open: openSelfNotes } = useOpenSelfNotes(controller, meId, onOpen);
   const now = new Date();
@@ -77,10 +81,9 @@ export function DmListView({ controller, onOpen, onNew }: { controller: AppContr
           <p className="px-6 py-12 text-center text-sm text-muted">{query.trim() ? t("dmList.noMatch") : t("dmList.none")}</p>
         ) : (
           <ul>
+            {rows.slice(0, pinnedRows).map(row)}
             {placeholder && meId && <SelfNotesPlaceholderRow controller={controller} meId={meId} busy={creating} onOpen={openSelfNotes} />}
-            {rows.map((channel) => (
-              <DmRow key={channel.id} controller={controller} channel={channel} meId={meId} now={now} onOpen={() => onOpen(channel.id)} />
-            ))}
+            {rows.slice(pinnedRows).map(row)}
           </ul>
         )}
       </div>
@@ -126,8 +129,10 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
   // M49: the last message (「あなた: …」 / 「佐藤: …」, dmPreview.ts); without one, the status, presence or size as before.
   const preview = previewLine(channel, channel.last_message, meId, store.users);
   const second = preview || (status ? `${status.emoji ?? ""} ${status.text ?? ""}`.trim() : single ? presenceLabel(presence ?? "offline") : others.length > 1 ? t("common.people", { count: others.length + 1 }) : "");
+  // M118: right-click (a long press on a touch screen) offers 「上に固定」/「固定を外す」 as in the sidebar.
   return (
     <li>
+      <ChannelContextMenu controller={controller} channel={channel}>
       <button type="button" onClick={onOpen} className="flex min-h-16 w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-panel active:bg-panel">
         {others.length > 1 ? (
           <span className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-panel-2 text-muted" aria-hidden="true">
@@ -155,12 +160,14 @@ function DmRow({ controller, channel, meId, now, onOpen }: { controller: AppCont
             <span data-dm-preview={preview ? "" : undefined} className={cn("min-w-0 flex-1 truncate text-[13px]", preview && unread ? "font-semibold text-ink" : "text-muted")}>
               <EmojiText controller={controller} text={second} />
             </span>
+            {store.isDmPinned(channel.id) && <PinMark size={13} className="text-muted" />}
             {muted && <BellOff size={13} className="shrink-0 text-muted" aria-label={t("home.muted")} />}
             {unread && badge > 0 && <Badge tone="danger">{badge}</Badge>}
             {unread && badge === 0 && <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-label={t("sidebar.unread")} />}
           </span>
         </span>
       </button>
+      </ChannelContextMenu>
     </li>
   );
 }

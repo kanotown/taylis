@@ -96,6 +96,11 @@ export class Store {
   readonly bookmarks = new Set<string>();
   /** My starred channel ids (M12a); from bootstrap and favorite.updated, not persisted. */
   readonly favorites = new Set<string>();
+  /**
+   * M118: the DMs and group DMs I pinned to the top, oldest pin first (DATA_MODEL.md conversation_pins); from bootstrap
+   * and dm_pin.updated, not persisted. Null until a server that has them says so (before M118: no pin actions).
+   */
+  dmPins: readonly string[] | null = null;
   /** M104: the people I blocked (docs/MODERATION.md §4); from bootstrap and block.updated, not persisted. */
   readonly blockedUsers = new Set<string>();
   /** My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted. */
@@ -941,6 +946,26 @@ export class Store {
   replaceFavorites(ids: string[]): void {
     this.favorites.clear();
     for (const id of ids) this.favorites.add(id);
+    this.emit();
+  }
+
+  // --- DM pins (M118) ----------------------------------------------------------------------
+
+  isDmPinned(channelId: string): boolean {
+    return this.dmPins?.includes(channelId) ?? false;
+  }
+
+  /** dm_pin.updated: a new pin goes last (one already there keeps its place); an unpin leaves the others in order. */
+  setDmPinned(channelId: string, on: boolean): void {
+    const pins = this.dmPins ?? [];
+    if (on === pins.includes(channelId)) return;
+    this.dmPins = on ? [...pins, channelId] : pins.filter((id) => id !== channelId);
+    this.emit();
+  }
+
+  /** Bootstrap's `dm_pins` (null from a server before M118); also puts a rolled-back order back as it was. */
+  replaceDmPins(ids: readonly string[] | null): void {
+    this.dmPins = ids ? [...ids] : null;
     this.emit();
   }
 

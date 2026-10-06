@@ -115,6 +115,8 @@ export type FileListOut = components["schemas"]["FileListOut"];
 
 /** Starred channels and 「すべて既読にする」 (M12a). */
 export type FavoriteStateOut = components["schemas"]["FavoriteStateOut"];
+/** M118: PUT / DELETE /channels/{id}/dm-pin. */
+export type DmPinStateOut = components["schemas"]["DmPinStateOut"];
 export type ChannelReadStateOut = components["schemas"]["ChannelReadStateOut"];
 
 /** Moderation (M104, docs/MODERATION.md): blocks, message reports, account deletion. */

@@ -155,7 +155,7 @@ export interface ChannelSections {
   channels: ChannelState[];
   /** M24: times channels I am in, mine first; left out of `channels`. */
   times: ChannelState[];
-  /** My own DM first, then the newest. */
+  /** Pinned DMs (M118), my own DM, then the section's sort (newest first unless chosen otherwise). */
   dms: ChannelState[];
   browse: ChannelState[];
 }
@@ -298,7 +298,21 @@ export function sectionOrder<T extends Sortable>(rows: readonly T[], sort: Secti
   return [...rows.filter((row) => !isDm(row)).sort(compareByName), ...rows.filter(isDm).sort(byTitle)];
 }
 
-/** The sidebar order: each section in its sort (DMs: my own DM first unless by hand), joinable public channels by name. */
+/**
+ * M118 (DATA_MODEL.md sidebar_sections 「DM の固定」): the pinned DMs of a section first, in pin order (bootstrap's
+ * `dm_pins`), then the others as they were. Only DMs and group DMs are ever pinned, so a channel never moves.
+ */
+export function pinnedFirst<T extends { id: string }>(rows: readonly T[], pins: readonly string[] | null | undefined): T[] {
+  if (!pins?.length) return [...rows];
+  const place = new Map(pins.map((id, index) => [id, index] as const));
+  const pinned = rows.filter((row) => place.has(row.id)).sort((a, b) => place.get(a.id)! - place.get(b.id)!);
+  return pinned.length ? [...pinned, ...rows.filter((row) => !place.has(row.id))] : [...rows];
+}
+
+/**
+ * The sidebar order: each section in its sort (DMs: my own DM first unless by hand), joinable public channels by name.
+ * M118: pinned DMs come first in every section that holds them, even by hand; then my own DM (when not pinned).
+ */
 export function sectionChannels(
   all: ChannelState[],
   options: {
@@ -310,6 +324,8 @@ export function sectionChannels(
     defaults?: readonly SidebarDefaultOut[];
     meId?: string | null;
     title?: (channel: ChannelState) => string;
+    /** M118: my pinned DMs, oldest pin first. */
+    dmPins?: readonly string[] | null;
   } = {},
 ): ChannelSections {
   const meId = options.meId ?? null;
@@ -324,13 +340,15 @@ export function sectionChannels(
   const visible = (channel: ChannelState) => channel.isMember && !channel.archived && keep(channel);
   const dmSort = defaultSort(options.defaults, "dms");
   const dms = all.filter((c) => c.isMember && isDmChannel(c) && keep(c) && loose(c));
-  const self = dmSort.sort === "manual" ? [] : dms.filter((c) => isSelfNotes(c, meId));
+  const pins = options.dmPins ?? null;
+  const pinned = new Set(pins ?? []);
+  const self = dmSort.sort === "manual" ? [] : dms.filter((c) => isSelfNotes(c, meId) && !pinned.has(c.id));
   return {
-    favorites: sectionOrder(all.filter((c) => visible(c) && starred(c)), defaultSort(options.defaults, "favorites"), title),
-    custom: (options.sections ?? []).map((section) => ({ section, channels: sectionOrder(all.filter((c) => visible(c) && !starred(c) && placed.get(c.id) === section.id), section, title) })),
+    favorites: pinnedFirst(sectionOrder(all.filter((c) => visible(c) && starred(c)), defaultSort(options.defaults, "favorites"), title), pins),
+    custom: (options.sections ?? []).map((section) => ({ section, channels: pinnedFirst(sectionOrder(all.filter((c) => visible(c) && !starred(c) && placed.get(c.id) === section.id), section, title), pins) })),
     channels: sectionOrder(all.filter((c) => visible(c) && !isDmChannel(c) && !isTimes(c) && loose(c)), defaultSort(options.defaults, "channels"), title),
     times: all.filter((c) => visible(c) && isTimes(c) && loose(c)).sort(mineFirst),
-    dms: [...self, ...sectionOrder(dms.filter((c) => !self.includes(c)), dmSort, title)],
+    dms: [...pinnedFirst(dms.filter((c) => pinned.has(c.id)), pins), ...self, ...sectionOrder(dms.filter((c) => !pinned.has(c.id) && !self.includes(c)), dmSort, title)],
     browse: options.unreadOnly ? [] : all.filter((c) => !c.isMember && c.type === "public" && !c.archived).sort(compareByName),
   };
 }

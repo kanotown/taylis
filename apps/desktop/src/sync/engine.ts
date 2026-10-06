@@ -743,6 +743,7 @@ export class SyncEngine {
     store.replacePresence(bootstrap.presence ?? []);
     store.replaceBookmarks(bootstrap.bookmarks ?? []);
     store.replaceFavorites(bootstrap.favorites ?? []);
+    store.replaceDmPins(bootstrap.dm_pins ?? null);
     store.replaceBlocked(bootstrap.blocked_user_ids ?? []);
     store.replaceCustomEmoji(bootstrap.custom_emoji ?? []);
     store.replaceEmojiPacks(bootstrap.emoji_packs ?? []);
@@ -1002,6 +1003,12 @@ export class SyncEngine {
       case "favorite.updated": {
         const data = frame.data as { channel_id: string; favorite: boolean };
         store.setFavorite(data.channel_id, data.favorite);
+        return;
+      }
+      case "dm_pin.updated": {
+        // M118: my own devices; a server before M118 sends none.
+        const data = frame.data as { channel_id: string; pinned: boolean };
+        store.setDmPinned(data.channel_id, data.pinned);
         return;
       }
       case "bookmark.updated": {

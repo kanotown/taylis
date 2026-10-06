@@ -976,6 +976,9 @@ export class FakeServer {
 
   /** "user" → starred channel ids (M12a). */
   readonly favorites = new Map<string, string[]>();
+  /** M118: each user's pinned DMs, oldest pin first; `dmPinsEnabled` false plays a server before M118 (no dm_pins). */
+  readonly dmPins = new Map<string, string[]>();
+  dmPinsEnabled = true;
   /** M15f: each conversation's link bar; setLinks announces it like the server does. */
   readonly links = new Map<string, ChannelLinkOut[]>();
 
@@ -1314,6 +1317,14 @@ export class FakeServer {
     this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "favorite.updated", ts: now(), channel_id: channelId, seq: null, data: { channel_id: channelId, favorite: on } });
   }
 
+  /** M118: PUT / DELETE /channels/{id}/dm-pin; dm_pin.updated to the user only when it changed. */
+  setDmPin(userId: string, channelId: string, on: boolean): void {
+    const list = this.dmPins.get(userId) ?? [];
+    if (on === list.includes(channelId)) return;
+    this.dmPins.set(userId, on ? [...list, channelId] : list.filter((id) => id !== channelId));
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "dm_pin.updated", ts: now(), channel_id: null, seq: null, data: { channel_id: channelId, pinned: on, at: now() } });
+  }
+
   /**
    * POST /channels/read-all: every membership read to its end; read.updated per moved channel. L8: scope "times" reads only
    * the Times feed's channels (member, a times, not muted).
@@ -1507,6 +1518,7 @@ export class FakeServer {
           presence: [...new Set([...this.sockets].filter((s) => s.authed).map((s) => s.userId))].map((id) => ({ user_id: id, status: this.presenceOf(id) })),
           bookmarks: this.bookmarks.get(userId) ?? [],
           favorites: (this.favorites.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)),
+          ...(this.dmPinsEnabled ? { dm_pins: (this.dmPins.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)) } : {}),
           blocked_user_ids: [],
           custom_emoji: [...this.customEmoji.values()],
           emoji_packs: [],

@@ -1,11 +1,11 @@
 import { ContextMenu, DropdownMenu } from "radix-ui";
-import { Check, MoreHorizontal } from "lucide-react";
+import { Check, MoreHorizontal, Pin } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 
 import type { SidebarSectionOut, SidebarSort } from "../api/types";
 import type { AppController, SortTarget } from "../state/app";
 import type { ChannelState } from "../sync/types";
-import { isTimedMuted } from "./channels";
+import { isDmChannel, isTimedMuted } from "./channels";
 import { SectionDialog } from "./SectionDialog";
 import { Button, cn, Input, Modal } from "./primitives";
 import { t, type MessageKey } from "../i18n";
@@ -21,12 +21,20 @@ export function ChannelContextMenu({ controller, channel, children }: { controll
   const [naming, setNaming] = useState(false);
   const starred = store.isFavorite(channel.id);
   const muted = !!channel.muted || isTimedMuted(channel);
+  // M118: DMs and group DMs (my own DM too) pin to the top; not offered by a server before M118 (no dm_pins).
+  const pinnable = isDmChannel(channel) && channel.isMember && store.dmPins !== null;
+  const pinned = store.isDmPinned(channel.id);
   return (
     <>
       <ContextMenu.Root>
         <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
         <ContextMenu.Portal>
           <ContextMenu.Content className={CONTENT}>
+            {pinnable && (
+              <ContextMenu.Item className={ITEM} onSelect={() => void controller.toggleDmPin(channel.id)}>
+                {pinned ? t("dmPin.unpin") : t("dmPin.pin")}
+              </ContextMenu.Item>
+            )}
             <ContextMenu.Item className={ITEM} onSelect={() => void controller.toggleFavorite(channel.id)}>
               {starred ? t("channel.unfavorite") : t("channel.favorite")}
             </ContextMenu.Item>
@@ -80,6 +88,15 @@ export function ChannelContextMenu({ controller, channel, children }: { controll
         />
       )}
     </>
+  );
+}
+
+/** M118: the mark on a pinned DM's row (sidebar, home, the DM tab). */
+export function PinMark({ size = 12, className }: { size?: number; className?: string }) {
+  return (
+    <span role="img" aria-label={t("dmPin.pinned")} title={t("dmPin.pinned")} data-dm-pinned="" className={cn("inline-flex shrink-0", className)}>
+      <Pin size={size} className="rotate-45" aria-hidden />
+    </span>
   );
 }
 

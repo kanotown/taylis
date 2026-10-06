@@ -1018,6 +1018,24 @@ export class AppController {
   }
 
   /**
+   * M118 「上に固定」/「固定を外す」 on a DM or group DM: the order moves at once and is put back as it was when refused;
+   * dm_pin.updated brings my other devices along.
+   */
+  async toggleDmPin(channelId: string): Promise<void> {
+    if (!this.api || this.store.dmPins === null) return;
+    const before = this.store.dmPins;
+    const on = !this.store.isDmPinned(channelId);
+    this.store.setDmPinned(channelId, on);
+    try {
+      if (on) await this.api.pinDm(channelId);
+      else await this.api.unpinDm(channelId);
+    } catch (error) {
+      this.store.replaceDmPins(before);
+      this.setError(error);
+    }
+  }
+
+  /**
    * M104 「ブロック」/「ブロックを解除」 (docs/MODERATION.md §4): the store flag moves at once, block.updated brings my other
    * devices along. The blocked person is not told.
    */

@@ -12,7 +12,7 @@ import { activityBadge } from "./mobileTabs";
 import { sidebarNavKeys } from "./navItems";
 import { Badge, cn, IconButton, Kbd, modKey } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
-import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, SectionHeaderMenu } from "./SidebarMenus";
+import { ChannelContextMenu, DefaultSectionMenu, NewSectionDialog, PinMark, SectionHeaderMenu } from "./SidebarMenus";
 import { StatusEmoji, UserPopover } from "./UserPopover";
 import { t } from "../i18n";
 
@@ -86,7 +86,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // M39: the same badge as the phone's activity tab (none before M39: the entry is the mentions list then).
   const activity = activityBadge(channels, store.threadSummary, store.activity);
   const me = store.me ?? controller.me;
-  const sections = sectionChannels(channels, { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId: me?.id ?? null, title: (c) => channelTitle(c, controller) });
+  const sections = sectionChannels(channels, { unreadOnly, currentId, favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId: me?.id ?? null, title: (c) => channelTitle(c, controller), dmPins: store.dmPins });
   // DATA_MODEL.md sidebar_sections 「並べ替え」: each section's sort from its ⋯ menu; in 「手動」 a row dragged onto another row of
   // the same section lands before or after it (not while only unread conversations are listed: the hidden ones would
   // lose their place).
@@ -106,6 +106,9 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
   // stands there, not while the section is folded or only unread conversations are listed.
   const myName = myDisplayName(controller);
   const selfPlaceholder = showsSelfNotesInDmSection(channels, me?.id ?? null, myName, { collapsed: folded.has("dms"), unreadOnly });
+  // M118: the placeholder stands after the pinned DMs, where my own DM would be.
+  const pinnedDms = sections.dms.filter((c) => store.isDmPinned(c.id)).length;
+  const dmOrder = reorder({ default: "dms" }, sections.dms, defaultSortOf("dms"));
   const { creating: creatingSelf, open: openSelfNotes } = useOpenSelfNotes(controller, me?.id ?? null, onOpen);
   // A folded section still shows what is unread and the open conversation (Slack). The others stay in the list, folded
   // away (.fold-row), so they slide shut and open rather than jump (testers, 2026-09-29).
@@ -181,6 +184,7 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
           )}
           <span className="flex-1 truncate">{channelTitle(channel, controller).replace(/^#/, "")}</span>
           {other && <StatusEmoji controller={controller} userId={other} className="shrink-0" />}
+          {store.isDmPinned(channel.id) && <PinMark className="opacity-70" />}
           {muted && <BellOff size={12} className="shrink-0 opacity-70" />}
           {unread && badge > 0 ? <Badge tone="danger">{badge}</Badge> : unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-sidebar-strong" /> : quietUnread ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sidebar-strong/40" title={t("sidebar.quietUnread")} /> : null}
         </button>
@@ -592,6 +596,7 @@ collapsed={folded.has("dms")}
         }
       >
         <ul className="space-y-px">
+          {shown(sections.dms.slice(0, pinnedDms), folded.has("dms"), undefined, dmOrder)}
           {selfPlaceholder && me && (
             <li>
               <button
@@ -608,7 +613,7 @@ collapsed={folded.has("dms")}
               </button>
             </li>
           )}
-          {shown(sections.dms, folded.has("dms"), undefined, reorder({ default: "dms" }, sections.dms, defaultSortOf("dms")))}
+          {shown(sections.dms.slice(pinnedDms), folded.has("dms"), undefined, dmOrder)}
         </ul>
         {sections.dms.length === 0 && !selfPlaceholder && <Hint>{unreadOnly ? t("sidebar.noUnreadDms") : t("sidebar.dmsEmptyHint")}</Hint>}
       </Section>
