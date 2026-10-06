@@ -558,7 +558,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update Workspace Settings */
+        /**
+         * Update Workspace Settings
+         * @description M117 (docs/CALLS.md): also the meeting service for calls (`meeting_base_url`).
+         */
         patch: operations["update_workspace_settings_api_v1_admin_workspace_settings_patch"];
         trace?: never;
     };
@@ -1578,6 +1581,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Call
+         * @description M117 (docs/CALLS.md): start a call — a message 「📞 通話を始めました」 with a new meeting
+         *     room's link (`message.call`). 201 when created, 200 for a retry with the same `client_msg_id`.
+         *     403 not_a_member / posting_restricted / dm_unavailable, 409 channel_archived /
+         *     calls_disabled / idempotency_conflict.
+         */
+        post: operations["start_call_api_v1_channels__channel_id__calls_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}/canvases": {
         parameters: {
             query?: never;
@@ -1597,6 +1623,32 @@ export interface paths {
          */
         post: operations["create_canvas_api_v1_channels__channel_id__canvases_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/channels/{channel_id}/dm-pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Pin Dm
+         * @description Pin a DM or group DM I belong to at the top of my DM list (M118); 201 when it was not
+         *     pinned yet, 200 when it was (it keeps its place). 403 not_a_member, 409 dm_pin_not_dm for a
+         *     channel.
+         */
+        put: operations["pin_dm_api_v1_channels__channel_id__dm_pin_put"];
+        post?: never;
+        /**
+         * Unpin Dm
+         * @description Idempotent: 200 whether or not it was pinned.
+         */
+        delete: operations["unpin_dm_api_v1_channels__channel_id__dm_pin_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4488,6 +4540,11 @@ export interface components {
          */
         AdminWorkspaceSettingsOut: {
             /**
+             * Calls Enabled
+             * @default true
+             */
+            calls_enabled: boolean;
+            /**
              * Default Channel Ids
              * @default []
              */
@@ -4509,6 +4566,11 @@ export interface components {
              * @default []
              */
             legacy_sso_default_channels: string[];
+            /**
+             * Meeting Base Url
+             * @default https://meet.jit.si/
+             */
+            meeting_base_url: string | null;
             /**
              * Preview Before Join
              * @default true
@@ -5118,6 +5180,11 @@ export interface components {
              */
             custom_emoji: components["schemas"]["CustomEmojiOut"][];
             /**
+             * Dm Pins
+             * @default []
+             */
+            dm_pins: string[];
+            /**
              * Drafts
              * @default []
              */
@@ -5180,6 +5247,8 @@ export interface components {
             users: components["schemas"]["UserPublic"][];
             /**
              * @default {
+             *       "calls_enabled": true,
+             *       "meeting_base_url": "https://meet.jit.si/",
              *       "preview_before_join": true,
              *       "show_membership_messages": true
              *     }
@@ -5401,6 +5470,24 @@ export interface components {
             title?: string | null;
             /** Tz */
             tz?: string | null;
+        };
+        /**
+         * CallCreate
+         * @description POST /channels/{id}/calls. `client_msg_id` is the message's idempotency key, as for any
+         *     post: a retry gets the same call back.
+         */
+        CallCreate: {
+            /**
+             * Client Msg Id
+             * Format: uuid
+             */
+            client_msg_id: string;
+        };
+        /** CallOut */
+        CallOut: {
+            message: components["schemas"]["MessageOut"];
+            /** Url */
+            url: string;
         };
         /** CanvasConflictDetails */
         CanvasConflictDetails: {
@@ -6137,6 +6224,16 @@ export interface components {
         DmCreate: {
             /** User Ids */
             user_ids: string[];
+        };
+        /** DmPinStateOut */
+        DmPinStateOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Pinned */
+            pinned: boolean;
         };
         /** DraftOut */
         DraftOut: {
@@ -6889,6 +6986,21 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /**
+         * MessageCallOut
+         * @description M117 (docs/CALLS.md): this message started a call. Clients show a 「参加する」 button
+         *     that opens `url` outside the app; the body (「📞 通話を始めました」 and the same link) is what
+         *     clients before M117 show.
+         */
+        MessageCallOut: {
+            /**
+             * Started By
+             * Format: uuid
+             */
+            started_by: string;
+            /** Url */
+            url: string;
+        };
         /** MessageCreate */
         MessageCreate: {
             /**
@@ -6948,6 +7060,7 @@ export interface components {
             attachments: components["schemas"]["AttachmentOut"][];
             /** Body */
             body: string;
+            call?: components["schemas"]["MessageCallOut"] | null;
             /**
              * Channel Id
              * Format: uuid
@@ -9500,8 +9613,18 @@ export interface components {
          *     workspace.settings_updated).
          */
         WorkspaceSettingsOut: {
+            /**
+             * Calls Enabled
+             * @default true
+             */
+            calls_enabled: boolean;
             /** Icon Version */
             icon_version?: string | null;
+            /**
+             * Meeting Base Url
+             * @default https://meet.jit.si/
+             */
+            meeting_base_url: string | null;
             /**
              * Preview Before Join
              * @default true
@@ -9520,6 +9643,8 @@ export interface components {
         WorkspaceSettingsUpdate: {
             /** Default Channel Ids */
             default_channel_ids?: string[] | null;
+            /** Meeting Base Url */
+            meeting_base_url?: string | null;
             /** Preview Before Join */
             preview_before_join?: boolean | null;
             /** Show Membership Messages */
@@ -12650,6 +12775,41 @@ export interface operations {
             };
         };
     };
+    start_call_api_v1_channels__channel_id__calls_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CallCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_channel_canvases_api_v1_channels__channel_id__canvases_get: {
         parameters: {
             query?: {
@@ -12715,6 +12875,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CanvasOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pin_dm_api_v1_channels__channel_id__dm_pin_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DmPinStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unpin_dm_api_v1_channels__channel_id__dm_pin_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DmPinStateOut"];
                 };
             };
             /** @description Validation Error */

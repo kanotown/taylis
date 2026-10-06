@@ -27,10 +27,15 @@ export interface ParentThread {
 }
 export type HistoryOut = components["schemas"]["HistoryOut"];
 export type DeltaOut = components["schemas"]["DeltaOut"];
-export type BootstrapOut = components["schemas"]["BootstrapOut"];
+/** M117 (docs/CALLS.md §3): the calls fields; a server before M117 sends none (calls off). */
+type CallSettingsFields = "calls_enabled" | "meeting_base_url";
+type ServerWorkspaceSettings = components["schemas"]["WorkspaceSettingsOut"];
+type ServerAdminWorkspaceSettings = components["schemas"]["AdminWorkspaceSettingsOut"];
 /** M88 (docs/MEMBERSHIP.md §3): the workspace switches every client follows; the admin form adds who changed them. */
-export type WorkspaceSettingsOut = components["schemas"]["WorkspaceSettingsOut"];
-export type AdminWorkspaceSettingsOut = components["schemas"]["AdminWorkspaceSettingsOut"];
+export type WorkspaceSettingsOut = Omit<ServerWorkspaceSettings, CallSettingsFields> & Partial<Pick<ServerWorkspaceSettings, CallSettingsFields>>;
+export type AdminWorkspaceSettingsOut = Omit<ServerAdminWorkspaceSettings, CallSettingsFields> & Partial<Pick<ServerAdminWorkspaceSettings, CallSettingsFields>>;
+/** M118: a server before it sends no `dm_pins` (no pins, and the pin actions are not offered). */
+export type BootstrapOut = Omit<components["schemas"]["BootstrapOut"], "dm_pins" | "workspace_settings"> & { dm_pins?: string[]; workspace_settings?: WorkspaceSettingsOut | null };
 export type WorkspaceSettingsUpdate = components["schemas"]["WorkspaceSettingsUpdate"];
 /** M90 (docs/MEMBERSHIP.md §6): 「今いる人も全員入れる」, counted (dry run) or done. */
 export type DefaultChannelsApplyOut = components["schemas"]["DefaultChannelsApplyOut"];
