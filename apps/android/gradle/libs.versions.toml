@@ -15,6 +15,7 @@ googleServices = "4.5.0"
 firebaseBom = "34.19.0"
 fragment = "1.9.1"
 browser = "1.10.0"
+androidMath = "v1.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -35,6 +36,8 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
+
+androidmath = { group = "com.github.gregcockroft", name = "AndroidMath", version.ref = "androidMath" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

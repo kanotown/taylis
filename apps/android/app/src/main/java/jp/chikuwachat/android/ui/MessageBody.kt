@@ -12,6 +12,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.Placeholder
@@ -222,6 +225,12 @@ fun bodyInline(
     }
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
+    // TeX math (MathRender.kt): drawn at the body text's size, tinted with the text's colour.
+    val context = LocalContext.current
+    val mathFontPx = with(LocalDensity.current) { MaterialTheme.typography.bodyLarge.fontSize.toPx() }
+    val mathDescentPx = remember(mathFontPx) { MathRender.fontDescent(mathFontPx) }
+    val mathColor = MaterialTheme.colorScheme.onSurface
+    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
     fun inline(tokens: List<BodyToken>): AnnotatedString = buildAnnotatedString {
         for (token in tokens) {
             when (token) {
@@ -254,6 +263,22 @@ fun bodyInline(
                 }
                 is BodyToken.MentionGroup -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) { append("@" + (groups[token.groupId]?.name ?: L10n.str(R.string.common_group))) }
                 is BodyToken.MentionAll -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) { append("@" + token.target) }
+                is BodyToken.Math -> {
+                    val source = if (token.display) "\$\$" + token.tex + "\$\$" else "\$" + token.tex + "\$"
+                    val rendered = MathRender.render(context, token.tex, mathFontPx, display = false, fontDescentPx = mathDescentPx)
+                    if (rendered == null) {
+                        // A formula AndroidMath cannot read: its source, code-like and muted.
+                        withStyle(SpanStyle(fontFamily = CodeFont, fontSize = 0.9.em, background = codeBackground, color = mutedColor)) { append(" " + source + " ") }
+                    } else {
+                        // Its box ends at the text's bottom (the font's descent below the baseline, which the bitmap
+                        // reaches too), so the formula's baseline is the text's; in em, so it follows the text size.
+                        val key = "math:" + rendered.width + "x" + rendered.height + ":" + token.tex
+                        inlineContent[key] = InlineTextContent(Placeholder((rendered.width / mathFontPx).em, (rendered.height / mathFontPx).em, PlaceholderVerticalAlign.TextBottom)) {
+                            Image(rendered.bitmap, contentDescription = null, colorFilter = ColorFilter.tint(mathColor), modifier = Modifier.fillMaxSize())
+                        }
+                        appendInlineContent(key, source)
+                    }
+                }
                 BodyToken.Newline -> append("\n")
             }
         }
@@ -357,6 +382,7 @@ fun BodyBlockView(block: BodyBlock, inline: BodyInline) {
         }
         is BodyBlock.Image -> Text("🖼 " + block.alt.ifEmpty { stringResource(R.string.common_image) }, style = MaterialTheme.typography.bodyMedium, color = muted)
         BodyBlock.Rule -> HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        is BodyBlock.Math -> MathBlockView(block.tex)
     }
 }
 

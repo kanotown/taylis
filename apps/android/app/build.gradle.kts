@@ -94,6 +94,11 @@ android {
     }
 
     // docs/I18N.md: the in-app language may differ from the device's, so Play must not split the strings by language.
+    // AndroidMath ships three math fonts; the renderer uses its default (Latin Modern), so the other two stay out.
+    androidResources {
+        ignoreAssetsPatterns += listOf("!xits-math.otf", "!texgyretermes-math.otf")
+    }
+
     bundle {
         language {
             enableSplit = false
@@ -108,6 +113,9 @@ dependencies {
     implementation(libs.androidx.fragment)
     // Custom Tabs for Google sign-in (M48, docs/SSO.md §6): Jetpack; falls back to the default browser by itself.
     implementation(libs.androidx.browser)
+    // TeX math in messages (ui/MathRender.kt; MIT, THIRD_PARTY_NOTICES.md). Its POM lists test and AppCompat artifacts
+    // as runtime dependencies it never uses; only the library itself (Kotlin's stdlib is the app's own).
+    implementation(libs.androidmath) { isTransitive = false }
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
