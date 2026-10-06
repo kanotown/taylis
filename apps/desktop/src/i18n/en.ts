@@ -132,6 +132,8 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "settings.appearance.paletteNote": "The color of the sidebar and accents (links, buttons, the selected row), in both light and dark.",
   "settings.appearance.sidebar": "Sidebar",
   "settings.appearance.sidebarNote": "“Light” applies in light mode only. In dark mode the sidebar stays dark.",
+  "settings.appearance.workspaceThemeNote": "The theme color and sidebar apply to “{name}” only (each workspace can have its own).",
+  "settings.appearance.useForAllWorkspaces": "Use for all workspaces",
   "settings.appearance.font": "Font",
   "settings.appearance.fontNote": "For this device only. “Noto Sans JP” comes with the app and looks the same on every system.",
   "settings.appearance.zoom": "Text size",

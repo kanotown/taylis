@@ -131,6 +131,8 @@ export const ja = {
   "settings.appearance.paletteNote": "サイドバーとアクセント（リンク・ボタン・選択中の行）の色です。ライト / ダークのどちらにも効きます。",
   "settings.appearance.sidebar": "サイドバー",
   "settings.appearance.sidebarNote": "「明るい色」はライト表示のときだけ効きます。ダーク表示ではサイドバーは濃い色のままです。",
+  "settings.appearance.workspaceThemeNote": "テーマの色とサイドバーは「{name}」だけに使われます（ワークスペースごとに変えられます）。",
+  "settings.appearance.useForAllWorkspaces": "すべてのワークスペースに使う",
   "settings.appearance.font": "フォント",
   "settings.appearance.fontNote": "この端末だけの設定です。「Noto Sans JP」はアプリに含まれるフォントで、どの OS でも同じ見た目になります。",
   "settings.appearance.zoom": "文字の大きさ",

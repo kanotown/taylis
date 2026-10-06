@@ -25,7 +25,7 @@ import { StatusForm } from "./StatusDialog";
 import { TemplatesSettings } from "./TemplatesSettings";
 import { TestNotificationCard } from "./TestNotification";
 import { displayTitle } from "./roster";
-import { FONT_OPTIONS, PALETTES, SIDEBAR_TONES, THEME_OPTIONS, themeLabel, useFont, usePalette, useSidebarTone, useTheme, writeFont, writePalette, writeSidebarTone, writeTheme } from "./theme";
+import { applyThemeToAllWorkspaces, FONT_OPTIONS, PALETTES, SIDEBAR_TONES, THEME_OPTIONS, type ThemeScope, themeLabel, useFont, usePalette, useSidebarTone, useTheme, useWorkspaceThemesDiffer, writeFont, writePalette, writeSidebarTone, writeTheme } from "./theme";
 import { TotpDisableDialog, TotpSetupDialog } from "./TotpDialog";
 import { DeleteAccountDialog } from "./ModerationDialogs";
 import { UsernameEditor } from "./UsernameEditor";
@@ -519,12 +519,16 @@ function NotificationsSection({ controller }: { controller: AppController }) {
 
 /**
  * 「表示」: 端末に合わせる / ライト / ダーク, 「テーマの色」, 「サイドバー」 (濃い色 / 明るい色), 「フォント」, 「文字の大きさ」 (the desktop app; a browser zooms by itself) and
- * 「連続した投稿をまとめる」 (M47), on this device only.
+ * 「連続した投稿をまとめる」 (M47), on this device only. With two or more workspaces (the rail), 「テーマの色」 and
+ * 「サイドバー」 are the workspace on screen's own, and 「すべてのワークスペースに使う」 makes them every workspace's.
  */
 function AppearanceSection({ controller, desktop = isTauri() }: { controller: AppController; desktop?: boolean }) {
   const theme = useTheme();
   const palette = usePalette();
   const sidebarTone = useSidebarTone();
+  const perWorkspace = controller.showsRail;
+  const scope: ThemeScope = perWorkspace ? "workspace" : "all";
+  const themesDiffer = useWorkspaceThemesDiffer();
   const font = useFont();
   const zoom = useZoom();
   return (
@@ -552,7 +556,7 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
                 palette === option.value ? "border-accent bg-accent-soft/50" : "border-line",
               )}
             >
-              <input type="radio" name="palette" className="sr-only" checked={palette === option.value} onChange={() => writePalette(option.value)} />
+              <input type="radio" name="palette" className="sr-only" checked={palette === option.value} onChange={() => writePalette(option.value, scope)} />
               <span aria-hidden className="flex h-7 w-7 shrink-0 overflow-hidden rounded-lg ring-1 ring-black/10">
                 <span className="w-1/2" style={{ background: option.swatch.sidebar }} />
                 <span className="w-1/2" style={{ background: option.swatch.accent }} />
@@ -576,7 +580,7 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
                   sidebarTone === value ? "border-accent bg-accent-soft/50" : "border-line",
                 )}
               >
-                <input type="radio" name="sidebar-tone" className="sr-only" checked={sidebarTone === value} onChange={() => writeSidebarTone(value)} />
+                <input type="radio" name="sidebar-tone" className="sr-only" checked={sidebarTone === value} onChange={() => writeSidebarTone(value, scope)} />
                 <span aria-hidden className="flex h-7 w-7 shrink-0 flex-col justify-center gap-1 overflow-hidden rounded-lg px-1.5 ring-1 ring-black/10" style={{ background: value === "light" ? `color-mix(in srgb, ${swatch.accent} 5%, #ffffff)` : swatch.sidebar }}>
                   <span className="h-1 rounded-full" style={{ background: value === "light" ? swatch.sidebar : "#ffffff", opacity: 0.7 }} />
                   <span className="h-1.5 rounded-sm" style={{ background: value === "light" ? swatch.accent : "rgba(255,255,255,0.35)" }} />
@@ -589,6 +593,14 @@ function AppearanceSection({ controller, desktop = isTauri() }: { controller: Ap
         </div>
         <p className="text-xs text-muted">{t("settings.appearance.sidebarNote")}</p>
       </section>
+      {perWorkspace && (
+        <div data-testid="workspace-theme" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line px-3 py-2.5">
+          <p className="min-w-0 flex-1 text-xs text-muted">{t("settings.appearance.workspaceThemeNote", { name: controller.workspaceName })}</p>
+          <Button size="sm" variant="secondary" disabled={!themesDiffer} onClick={() => applyThemeToAllWorkspaces()}>
+            {t("settings.appearance.useForAllWorkspaces")}
+          </Button>
+        </div>
+      )}
       <section className="space-y-2">
         <h3 className={HEADING}>{t("settings.appearance.font")}</h3>
         <div role="radiogroup" aria-label={t("settings.appearance.font")} className="rounded-xl border border-line p-1">

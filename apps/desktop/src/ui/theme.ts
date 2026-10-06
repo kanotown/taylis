@@ -70,13 +70,24 @@ export function paletteLabel(palette: Palette): string {
   return PALETTES.find((p) => p.value === palette)?.label ?? PALETTES[0]!.label;
 }
 
-export function readPalette(): Palette {
+function isPalette(value: unknown): value is Palette {
+  return PALETTES.some((p) => p.value === value);
+}
+
+/** The choice for every workspace (the fallback of a workspace without its own). */
+function globalPalette(): Palette {
   try {
     const value = localStorage.getItem(PALETTE_KEY);
-    return PALETTES.find((p) => p.value === value)?.value ?? DEFAULT_PALETTE;
+    return isPalette(value) ? value : DEFAULT_PALETTE;
   } catch {
     return DEFAULT_PALETTE;
   }
+}
+
+/** The palette a workspace shows: its own choice, else the one for every workspace. Default: the one on screen. */
+export function readPalette(workspace: string | null = themeWorkspace): Palette {
+  const own = workspace === null ? undefined : readWorkspaceThemes()[workspace]?.palette;
+  return isPalette(own) ? own : globalPalette();
 }
 
 /** Puts the palette on screen (<html data-palette>; the default has none). */
@@ -87,15 +98,28 @@ export function applyPalette(palette: Palette, root: HTMLElement = document.docu
 
 const paletteListeners = new Set<() => void>();
 
-export function writePalette(palette: Palette): void {
+function writeGlobalPalette(palette: Palette): void {
   try {
     if (palette === DEFAULT_PALETTE) localStorage.removeItem(PALETTE_KEY);
     else localStorage.setItem(PALETTE_KEY, palette);
   } catch {
     /* per-device convenience only: it still applies to this window */
   }
-  applyPalette(palette);
-  for (const listener of paletteListeners) listener();
+}
+
+/**
+ * 「テーマの色」 chosen: for the workspace on screen only (`"workspace"`, the settings with two or more workspaces), or
+ * for every workspace (`"all"`: the fallback, and no workspace keeps a palette of its own).
+ */
+export function writePalette(palette: Palette, scope: ThemeScope = "all"): void {
+  if (scope === "workspace" && themeWorkspace !== null) {
+    patchWorkspaceTheme(themeWorkspace, { palette });
+  } else {
+    writeGlobalPalette(palette);
+    dropWorkspaceThemeField("palette");
+  }
+  applyPalette(readPalette());
+  notifyAppearance();
 }
 
 export function usePalette(): Palette {
@@ -134,12 +158,22 @@ export const SIDEBAR_TONES: Array<[SidebarTone, string]> = [
   labelled("light", "theme.sidebar.light"),
 ];
 
-export function readSidebarTone(): SidebarTone {
+function isSidebarTone(value: unknown): value is SidebarTone {
+  return value === "dark" || value === "light";
+}
+
+function globalSidebarTone(): SidebarTone {
   try {
     return localStorage.getItem(SIDEBAR_KEY) === "light" ? "light" : "dark";
   } catch {
     return "dark";
   }
+}
+
+/** The tone a workspace shows: its own choice, else the one for every workspace. Default: the one on screen. */
+export function readSidebarTone(workspace: string | null = themeWorkspace): SidebarTone {
+  const own = workspace === null ? undefined : readWorkspaceThemes()[workspace]?.sidebar;
+  return isSidebarTone(own) ? own : globalSidebarTone();
 }
 
 /** Puts the choice on screen (<html data-sidebar="light">; the default has none). */
@@ -150,15 +184,25 @@ export function applySidebarTone(tone: SidebarTone, root: HTMLElement = document
 
 const sidebarListeners = new Set<() => void>();
 
-export function writeSidebarTone(tone: SidebarTone): void {
+function writeGlobalSidebarTone(tone: SidebarTone): void {
   try {
     if (tone === "light") localStorage.setItem(SIDEBAR_KEY, "light");
     else localStorage.removeItem(SIDEBAR_KEY);
   } catch {
     /* per-device convenience only: it still applies to this window */
   }
-  applySidebarTone(tone);
-  for (const listener of sidebarListeners) listener();
+}
+
+/** 「サイドバー」 chosen, for the workspace on screen or for every workspace (as writePalette). */
+export function writeSidebarTone(tone: SidebarTone, scope: ThemeScope = "all"): void {
+  if (scope === "workspace" && themeWorkspace !== null) {
+    patchWorkspaceTheme(themeWorkspace, { sidebar: tone });
+  } else {
+    writeGlobalSidebarTone(tone);
+    dropWorkspaceThemeField("sidebar");
+  }
+  applySidebarTone(readSidebarTone());
+  notifyAppearance();
 }
 
 export function useSidebarTone(): SidebarTone {
@@ -168,6 +212,117 @@ export function useSidebarTone(): SidebarTone {
       return () => sidebarListeners.delete(listener);
     },
     readSidebarTone,
+  );
+}
+
+/**
+ * Per-workspace 「テーマの色」 and 「サイドバー」 (2026-10-06): each workspace may keep its own palette and sidebar tone, so
+ * workspaces look different at a glance (the light / dark mode and the font stay one choice for the device). Kept on
+ * this device: one localStorage map keyed by the workspace's list key (WorkspaceEntry.serverUrl); a workspace without
+ * an entry shows the choice for every workspace (the keys above). The controller names the workspace on screen
+ * (setThemeWorkspace, each time the active one changes), and main.tsx names the last active one before the first paint.
+ */
+export type ThemeScope = "workspace" | "all";
+
+interface WorkspaceTheme {
+  palette?: Palette;
+  sidebar?: SidebarTone;
+}
+
+export const WORKSPACE_THEME_KEY = "chikuwa.prefs.workspaceTheme";
+
+let themeWorkspace: string | null = null;
+
+function readWorkspaceThemes(): Record<string, WorkspaceTheme> {
+  try {
+    const raw = localStorage.getItem(WORKSPACE_THEME_KEY);
+    const parsed: unknown = raw === null ? null : JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, WorkspaceTheme>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeWorkspaceThemes(themes: Record<string, WorkspaceTheme>): void {
+  try {
+    if (Object.keys(themes).length === 0) localStorage.removeItem(WORKSPACE_THEME_KEY);
+    else localStorage.setItem(WORKSPACE_THEME_KEY, JSON.stringify(themes));
+  } catch {
+    /* per-device convenience only: it still applies to this window */
+  }
+}
+
+function patchWorkspaceTheme(workspace: string, patch: WorkspaceTheme): void {
+  const themes = readWorkspaceThemes();
+  themes[workspace] = { ...themes[workspace], ...patch };
+  writeWorkspaceThemes(themes);
+}
+
+function dropWorkspaceThemeField(field: keyof WorkspaceTheme): void {
+  const themes = readWorkspaceThemes();
+  for (const [key, theme] of Object.entries(themes)) {
+    const rest = { ...theme };
+    delete rest[field];
+    if (Object.keys(rest).length === 0) delete themes[key];
+    else themes[key] = rest;
+  }
+  writeWorkspaceThemes(themes);
+}
+
+function notifyAppearance(): void {
+  for (const listener of paletteListeners) listener();
+  for (const listener of sidebarListeners) listener();
+}
+
+/** The workspace whose colours are on screen (null before one is known). */
+export function currentThemeWorkspace(): string | null {
+  return themeWorkspace;
+}
+
+/**
+ * The workspace on screen changed (or, from main.tsx, the last active one before the first paint): its palette and
+ * sidebar tone are put on screen at once, in the same task (no frame in the old colours). Null (the login form for a
+ * new workspace) keeps the colours as they are.
+ */
+export function setThemeWorkspace(workspace: string | null): void {
+  if (workspace === null || workspace === themeWorkspace) return;
+  themeWorkspace = workspace;
+  if (typeof document === "undefined") return;
+  applyPalette(readPalette());
+  applySidebarTone(readSidebarTone());
+  notifyAppearance();
+}
+
+/** 「すべてのワークスペースに使う」: the colours on screen become the choice for every workspace; none keeps its own. */
+export function applyThemeToAllWorkspaces(): void {
+  const palette = readPalette();
+  const tone = readSidebarTone();
+  writeGlobalPalette(palette);
+  writeGlobalSidebarTone(tone);
+  writeWorkspaceThemes({});
+  notifyAppearance();
+}
+
+/** Whether some workspace shows colours other than the choice for every workspace (the button above would change something). */
+export function workspaceThemesDiffer(): boolean {
+  const palette = globalPalette();
+  const tone = globalSidebarTone();
+  return Object.values(readWorkspaceThemes()).some(
+    (theme) => (isPalette(theme.palette) && theme.palette !== palette) || (isSidebarTone(theme.sidebar) && theme.sidebar !== tone),
+  );
+}
+
+export function useWorkspaceThemesDiffer(): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      paletteListeners.add(listener);
+      sidebarListeners.add(listener);
+      return () => {
+        paletteListeners.delete(listener);
+        sidebarListeners.delete(listener);
+      };
+    },
+    workspaceThemesDiffer,
   );
 }
 

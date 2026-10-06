@@ -15,6 +15,7 @@ import { AppController } from "../src/state/app";
 import { COMPACT_QUERY } from "../src/ui/compact";
 import { pauseValue } from "../src/ui/dnd";
 import { MainScreen } from "../src/ui/MainScreen";
+import { readPalette, readSidebarTone, setThemeWorkspace } from "../src/ui/theme";
 import { world, type World } from "./unreadWorld";
 
 let compact = true;
@@ -264,7 +265,36 @@ it("「表示」 → テーマの色: a palette goes on <html> and stays on this
   w.engine.stop();
 });
 
-it("every old setting is still there: 入力 (送信キー, テンプレート), プロフィール (写真, 表示名, 肩書, 在席を隠す), 通知 (全体, キーワード, 端末の通知), ワークスペース", async () => {
+it("「表示」 with two workspaces: テーマの色 and サイドバー are this workspace's own, 「すべてのワークスペースに使う」 shares them", async () => {
+  const { w, controller } = await setup();
+  const entry = (serverUrl: string, name: string) => ({ serverUrl, workspaceId: null, name, username: "bob", userId: null });
+  controller.workspaces = [entry("http://server", "研究室"), entry("http://other", "別の場所")];
+  controller.activeServer = "http://server";
+  Object.defineProperty(controller, "showsRail", { get: () => true });
+  setThemeWorkspace("http://server");
+  await tap("you");
+  await openRow("表示 端末に合わせる");
+  const box = within(you()).getByTestId("workspace-theme");
+  expect(box.textContent).toContain("テーマの色とサイドバーは「研究室」だけに使われます");
+  const shareAll = within(box).getByRole("button", { name: "すべてのワークスペースに使う" }) as HTMLButtonElement;
+  expect(shareAll.disabled).toBe(true);
+  fireEvent.click(within(you()).getByRole("radio", { name: "紫" }));
+  fireEvent.click(within(within(you()).getByRole("radiogroup", { name: "サイドバー" })).getByRole("radio", { name: "明るい色" }));
+  expect(document.documentElement.dataset["palette"]).toBe("purple");
+  expect(document.documentElement.dataset["sidebar"]).toBe("light");
+  expect(localStorage.getItem("chikuwa.prefs.palette")).toBeNull(); // the shared choice is untouched
+  expect(readPalette("http://other")).toBe("taylis");
+  expect(shareAll.disabled).toBe(false);
+  fireEvent.click(shareAll);
+  expect(readPalette("http://other")).toBe("purple");
+  expect(readSidebarTone("http://other")).toBe("light");
+  expect(shareAll.disabled).toBe(true);
+  delete document.documentElement.dataset["palette"];
+  delete document.documentElement.dataset["sidebar"];
+  w.engine.stop();
+});
+
+it("every old setting is still there:入力 (送信キー, テンプレート), プロフィール (写真, 表示名, 肩書, 在席を隠す), 通知 (全体, キーワード, 端末の通知), ワークスペース", async () => {
   const { w, updates } = await setup();
   await tap("you");
   await openRow("入力");
