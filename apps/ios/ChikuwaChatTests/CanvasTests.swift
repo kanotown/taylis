@@ -25,6 +25,7 @@ final class CanvasMarkdownFixtureTests: XCTestCase {
             case .mention(let id): return "@" + id
             case .mentionGroup(let id): return "@" + id
             case .mentionAll(let target): return "@" + target
+            case .math(let tex, _): return tex
             case .newline: return "\n"
             }
         }.joined()
@@ -52,6 +53,8 @@ final class CanvasMarkdownFixtureTests: XCTestCase {
             return .object(["kind": .string("quote"), "lines": .array(lines.map { .string(plain($0)) })])
         case .table:
             return .object(["kind": .string("table")])
+        case .math(let tex):
+            return .object(["kind": .string("math"), "tex": .string(tex)])
         }
     }
 
