@@ -112,7 +112,7 @@ class ActivityOpenedReadTest {
         feed.unreadOnly = true
         assertEquals(listOf(mention.key), feed.shown(s.store)!!.map { it.key })
         // A newer reaction to the same message (its `at` moves on): unread again.
-        val again = reaction.copy(at = "2026-10-07T09:00:00Z")
+        val again = reaction.copy(at = "2999-01-01T00:00:00Z") // later than any opened time, whatever the clock says
         assertTrue(feed.unread(again, s.store))
         s.engine.stop(); s.scope.cancel()
     }
