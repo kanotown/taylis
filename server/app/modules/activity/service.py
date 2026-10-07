@@ -8,6 +8,7 @@ from collections.abc import Collection
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
@@ -229,17 +230,23 @@ async def mark_read(
     devices follow. The items opened one by one at or below it are forgotten (they are read by
     the position now)."""
     target = min(read_at, utcnow())
-    if target > actor.activity_read_at:
-        actor.activity_read_at = target
-        await repo.purge_opened(db, actor.id, target)
+    # The forward-only rule is applied by the database against the stored value (REVIEW-v0.1.43
+    # #10): two devices' requests that read the same old position must not let the older one,
+    # committing last, move it back. The UPDATE re-checks its WHERE on the latest row version.
+    stored = await repo.advance_read_at(db, actor.id, target)
+    if stored is not None:
+        await repo.purge_opened(db, actor.id, stored)
         await write_outbox(
             db,
             event_type=ACTIVITY_READ,
             audience_type="user",
             audience_id=actor.id,
-            payload=ActivityReadData(read_at=target).model_dump(mode="json"),
+            payload=ActivityReadData(read_at=stored).model_dump(mode="json"),
         )
         await db.commit()
+    else:
+        stored = await repo.read_at(db, actor.id)
+    set_committed_value(actor, "activity_read_at", stored)
     return await summary(db, actor, include)
 
 

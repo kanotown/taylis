@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, and_, delete, exists, func, not_, or_, select
+from sqlalchemy import ColumnElement, and_, delete, exists, func, not_, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -382,3 +382,25 @@ async def purge_opened(db: AsyncSession, user_id: uuid.UUID, upto: datetime) -> 
             ActivityItemRead.user_id == user_id, ActivityItemRead.read_at <= upto
         )
     )
+
+
+async def advance_read_at(
+    db: AsyncSession, user_id: uuid.UUID, target: datetime
+) -> datetime | None:
+    """Moves the user's activity read position to `target` when it is ahead of the stored one
+    (forward only, decided against the row's current value, not a value read earlier). Returns
+    the new position, or None when the stored one is already at or past it."""
+    return await db.scalar(
+        update(User)
+        .where(User.id == user_id, User.activity_read_at < target)
+        .values(activity_read_at=target)
+        .returning(User.activity_read_at)
+        .execution_options(synchronize_session=False)
+    )
+
+
+async def read_at(db: AsyncSession, user_id: uuid.UUID) -> datetime:
+    """The stored activity read position."""
+    value = await db.scalar(select(User.activity_read_at).where(User.id == user_id))
+    assert value is not None
+    return value
