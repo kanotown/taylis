@@ -700,11 +700,16 @@ final class FakeServer {
         return ThreadSummary(unreadCount: states.filter { $0.unreadCount > 0 }.count, mentionCount: states.filter { $0.mentionCount > 0 }.count)
     }
 
+    /// false: GET /threads answers as a server before the reply previews did (no latest_replies).
+    var threadPreviews = true
+
     func threads(userId: String, filter: String, cursor: String?, limit: Int) -> ThreadListOut {
         var items: [ThreadItem] = threadFollows.values.filter { $0.userId == userId && $0.following }.compactMap { row in
             guard let found = try? threadParent(row.parentId), !found.parent.deleted, found.parent.replyCount > 0,
                   let state = try? threadState(userId: userId, parentId: row.parentId) else { return nil }
-            return ThreadItem(parent: found.parent, state: state)
+            // THREADS.md §5: the newest two live replies, oldest first; none from a server before the previews.
+            let latest = found.record.messages.filter { $0.parentId == found.parent.id && !$0.deleted }.sorted { $0.seq < $1.seq }.suffix(2)
+            return ThreadItem(parent: found.parent, state: state, latestReplies: threadPreviews ? Array(latest) : nil)
         }
         items.sort { ($0.parent.lastReplyAt ?? "", $0.parent.seq) > ($1.parent.lastReplyAt ?? "", $1.parent.seq) }
         if let cursor { items = items.filter { ($0.parent.lastReplyAt ?? "") < cursor } }

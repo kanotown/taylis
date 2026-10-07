@@ -1489,6 +1489,8 @@ struct ThreadState: Codable, Equatable {
 struct ThreadItem: Codable, Equatable {
     let parent: MessageOut
     let state: ThreadState
+    /// The newest live replies, oldest first (THREADS.md §5); nil from a server before the previews.
+    var latestReplies: [MessageOut]? = nil
 }
 
 struct ThreadSummary: Codable, Equatable {

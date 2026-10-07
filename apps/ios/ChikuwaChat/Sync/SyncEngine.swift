@@ -1237,7 +1237,7 @@ final class SyncEngine {
             let cursor = more && store.threadsFilter == filter ? store.threadsCursor : nil
             if more && cursor == nil { return }
             let page = try await api.threads(filter: filter, cursor: cursor, limit: options.threadPageSize)
-            let items = page.items.map { ThreadItem(parent: $0.parent, state: floored($0.state)) }
+            let items = page.items.map { ThreadItem(parent: $0.parent, state: floored($0.state), latestReplies: $0.latestReplies) }
             store.setThreadPage(filter: filter, items: items, cursor: page.nextCursor, append: cursor != nil, pageSize: options.threadPageSize)
             store.setThreadSummary(page.summary)
             onBadge?(store.badgeCount)

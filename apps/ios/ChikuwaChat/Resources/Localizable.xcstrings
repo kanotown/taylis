@@ -2623,6 +2623,22 @@
         }
       }
     },
+    "%@ さんの返信、スレッドで開く" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reply from %@, open in thread"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的回复，在话题中打开"
+          }
+        }
+      }
+    },
     "%@ 以降" : {
       "localizations" : {
         "en" : {
@@ -15210,6 +15226,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "本周结束时"
+          }
+        }
+      }
+    },
+    "他 %lld 件の返信" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld more reply"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld more replies"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另有 %lld 条回复"
           }
         }
       }
