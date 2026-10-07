@@ -2255,6 +2255,8 @@ export const ja = {
   "thread.actions": "スレッドの操作",
   "thread.summarize": "このスレッドを要約",
   "thread.newReplies": "新しい返信",
+  "thread.newCount": "新しい返信 {count} 件",
+  "thread.toLatest": "最新の返信へ",
   "thread.replyPlaceholder": "スレッドに返信",
   "files.filter": "ファイル名で絞り込む",
   "files.allChannels": "すべてのチャンネル",

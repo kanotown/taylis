@@ -12,8 +12,8 @@ import { channelTitle } from "./MainScreen";
 import { PaneBackButton, PaneCloseButton } from "./compact";
 import { Button, Menu, MenuContent, MenuTrigger } from "./primitives";
 import { SummaryChoices, summaryAvailable } from "./ai";
-import { useListAnchor } from "./scrollAnchor";
-import { MessageRow, screenRows } from "./Timeline";
+import { jumpToLatestShown, unseenBelow, useListAnchor } from "./scrollAnchor";
+import { JumpToLatestButton, MessageRow, screenRows } from "./Timeline";
 import { TypingIndicator } from "./Typing";
 import { READER_BACK } from "../platform/idle";
 import { t } from "../i18n";
@@ -59,12 +59,29 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   const divider = useRef<HTMLDivElement>(null);
   // A search hit or permalink inside this thread.
   const focusId = controller.messageFocus?.parentId === parentId ? controller.messageFocus.messageId : null;
+  /**
+   * 「最新の返信へ」 / 「新しい返信 N 件」, the timeline's button (long threads, testers 2026-10-07): shown while the reader
+   * is up in the thread, counting replies from others newer than the newest one they had on screen at the end (or, on
+   * opening, than their read position in the thread).
+   */
+  const [showJump, setShowJump] = useState(false);
+  const [seenSeq, setSeenSeq] = useState<number | null>(null);
+  const maxSeq = useRef(0);
+  maxSeq.current = replies.reduce((max, reply) => (reply.seq !== null && reply.seq > max ? reply.seq : max), 0);
+  const measureJump = () => {
+    const el = list.current;
+    if (!el) return;
+    setShowJump(jumpToLatestShown(anchor.atBottom, el.scrollHeight - el.scrollTop - el.clientHeight));
+    if (anchor.atBottom && positioned.current === parentId) setSeenSeq(maxSeq.current);
+  };
 
   useLayoutEffect(() => {
     anchored.current = false;
     positioned.current = null;
     userScrolled.current = false;
     anchor.reset();
+    setShowJump(false);
+    setSeenSeq(null);
   }, [parentId]);
 
   // Replies came or went (the whole thread arriving puts the older ones above those held): the row on screen stays
@@ -82,6 +99,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     if (!el || !last) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     if (anchor.atBottom || nearBottom || (last.sender_id === store.me?.id && last.pending)) anchor.toBottom();
+    measureJump(); // a reply from someone else below a reader up in the thread: the button shows and counts it
   }, [lastReplyId]);
 
   // Fetched on open and after reconnecting, and again as soon as the engine forgets the whole thread while online (a
@@ -118,6 +136,8 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     if (!ready) return;
     positioned.current = parentId;
     if (!hit && unread) anchored.current = true;
+    setSeenSeq(state?.last_read_seq ?? maxSeq.current); // the replies after the read position are new for the button
+    measureJump();
   }, [parentId, replies.length, ready, focusId]);
 
   useEffect(() => {
@@ -176,6 +196,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     // is on screen reads.
     const onScroll = () => {
       anchor.scrolled();
+      measureJump();
       markVisible();
     };
     el?.addEventListener("scroll", onScroll, { passive: true });
@@ -212,6 +233,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
   // M47 「連続した投稿をまとめる」: replies group by the timeline's rule; the parent above always has its picture, and
   // 「新しい返信」 starts a new run.
   const group = controller.groupPosts;
+  const unseen = unseenBelow(replies, seenSeq, me);
 
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-col border-l border-line bg-canvas max-md:border-l-0">
@@ -248,6 +270,7 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
         )}
         <PaneCloseButton onClick={onClose} />
       </header>
+      <div className="relative flex min-h-0 flex-1 flex-col">
       {/* Chromium's own scroll anchoring is off: the pane anchors itself, the same on every engine (scrollAnchor.ts). */}
       <div data-message-list data-chat-focus tabIndex={-1} aria-label={t("preview.threadList")} ref={list} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [overflow-anchor:none]" {...tapHandlers}>
         <div ref={content}>
@@ -276,6 +299,17 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
           <div className="py-8 text-center text-sm text-muted">{t("preview.messageMissing")}</div>
         )}
         </div>
+      </div>
+      {parent && showJump && (
+        <JumpToLatestButton
+          label={unseen > 0 ? t("thread.newCount", { count: unseen }) : t("thread.toLatest")}
+          highlighted={unseen > 0}
+          onClick={() => {
+            anchor.toBottom();
+            measureJump();
+          }}
+        />
+      )}
       </div>
       {parent && channel.isMember && !channel.archived && <Composer key={parentId} controller={controller} channel={channel} parentId={parentId} placeholder={t("thread.replyPlaceholder")} />}
       {parent && channel.isMember && !channel.archived && <TypingIndicator controller={controller} channelId={channel.id} parentId={parentId} />}

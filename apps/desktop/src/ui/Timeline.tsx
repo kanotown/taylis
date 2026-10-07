@@ -41,7 +41,7 @@ import { firstLink } from "./links";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
-import { BOTTOM_SLACK_PX, ListAnchor, stillAtBottom } from "./scrollAnchor";
+import { BOTTOM_SLACK_PX, jumpToLatestShown, ListAnchor, stillAtBottom, unseenBelow as countUnseen } from "./scrollAnchor";
 import { conversationScrollKey, restoreDecision, scrollMemoryFor } from "./scrollMemory";
 import { READER_BACK } from "../platform/idle";
 import { ReactionsDialog } from "./WhoDialogs";
@@ -121,7 +121,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
   const last = messages[messages.length - 1];
   const lastId = last ? rowKey(last) : undefined;
   const maxSeq = messages.reduce((max, m) => (m.seq !== null && m.seq > max ? m.seq : max), 0);
-  const unseenBelow = focus ? 0 : messages.filter((m) => m.seq !== null && m.seq > seenSeq && m.sender_id !== me?.id).length;
+  const unseenBelow = focus ? 0 : countUnseen(messages, seenSeq, me?.id);
   const markSeen = () => {
     if (activeRef.current && maxSeq > seenSeq) setSeenSeq(maxSeq);
   };
@@ -196,7 +196,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     // Content growing under a reader at the bottom is no scroll of theirs: the list stays there (scrollAnchor.ts).
     atBottom.current = landed ? distance < BOTTOM_SLACK_PX : stillAtBottom(atBottom.current, lastTop.current, el.scrollTop, distance);
     lastTop.current = el.scrollTop;
-    setShowJump(!atBottom.current && distance > 240);
+    setShowJump(jumpToLatestShown(atBottom.current, distance));
     // Before positioning the list sits at its initial place (the bottom): what is below the divider is still new (7.).
     if (atBottom.current && positioned.current) markSeen();
   };
@@ -564,22 +564,36 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
         </div>
       </div>
       {!focus && showJump && active && (
-        <button
-          type="button"
+        <JumpToLatestButton
+          label={unseenBelow > 0 ? t("timeline.newCount", { count: unseenBelow }) : t("timeline.toLatest")}
+          highlighted={unseenBelow > 0}
           onClick={() => {
             quiet.current = false; // the reader's own move
             scrollToBottom();
           }}
-          className={cn(
-            "absolute bottom-3 right-6 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-lg transition-colors",
-            unseenBelow > 0 ? "border-accent bg-accent-solid text-white hover:bg-accent-solid/90" : "border-line bg-canvas text-ink hover:bg-panel",
-          )}
-        >
-          <ArrowDown size={14} />
-          {unseenBelow > 0 ? t("timeline.newCount", { count: unseenBelow }) : t("timeline.toLatest")}
-        </button>
+        />
       )}
     </div>
+  );
+}
+
+/**
+ * The round button over the bottom of a message list (the timeline, a thread) that goes to the newest row at once (no
+ * animated scroll). Highlighted while it counts rows from others that came in below.
+ */
+export function JumpToLatestButton({ label, highlighted, onClick }: { label: string; highlighted: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "absolute bottom-3 right-6 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-lg transition-colors",
+        highlighted ? "border-accent bg-accent-solid text-white hover:bg-accent-solid/90" : "border-line bg-canvas text-ink hover:bg-panel",
+      )}
+    >
+      <ArrowDown size={14} />
+      {label}
+    </button>
   );
 }
 

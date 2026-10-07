@@ -14,7 +14,7 @@ import type { AppController } from "../src/state/app";
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
 import { PreviewTimeline } from "../src/ui/ChannelPreview";
-import { anchorCorrection, BOTTOM_SLACK_PX, firstRowBelow, stillAtBottom } from "../src/ui/scrollAnchor";
+import { anchorCorrection, BOTTOM_SLACK_PX, firstRowBelow, JUMP_BUTTON_PX, jumpToLatestShown, stillAtBottom, unseenBelow } from "../src/ui/scrollAnchor";
 import { ThreadPane } from "../src/ui/ThreadPane";
 import { Timeline } from "../src/ui/Timeline";
 import { FakeServer } from "./fakeServer";
@@ -36,6 +36,22 @@ describe("decisions", () => {
     expect(firstRowBelow(bottoms.length, (i) => bottoms[i]!, -200)).toBe(0);
     expect(firstRowBelow(bottoms.length, (i) => bottoms[i]!, 500)).toBe(-1);
     expect(firstRowBelow(0, () => 0, 0)).toBe(-1);
+  });
+
+  it("shows the button to the newest row away from the end, counting rows from others the reader has not had on screen", () => {
+    expect(jumpToLatestShown(true, 5000)).toBe(false); // following the end (content growing under it)
+    expect(jumpToLatestShown(false, JUMP_BUTTON_PX)).toBe(false); // just above the end
+    expect(jumpToLatestShown(false, JUMP_BUTTON_PX + 1)).toBe(true);
+    const rows = [
+      { seq: 10, sender_id: "alice" },
+      { seq: 11, sender_id: "me" },
+      { seq: 12, sender_id: "alice" },
+      { seq: null, sender_id: "me" }, // my placeholder
+    ];
+    expect(unseenBelow(rows, 9, "me")).toBe(2);
+    expect(unseenBelow(rows, 10, "me")).toBe(1); // my own row is not new
+    expect(unseenBelow(rows, 12, "me")).toBe(0);
+    expect(unseenBelow(rows, null, "me")).toBe(0); // not positioned yet
   });
 
   it("corrects by how far the anchor row moved, ignoring sub-pixel rounding", () => {
@@ -302,6 +318,38 @@ describe("the thread pane holds its place while content arrives", () => {
     });
     expect(w.store.replies(w.channelId, w.parent.id)).toHaveLength(31);
     expect(atEnd(list)).toBe(0);
+    w.engine.stop();
+  });
+
+  it("offers 「最新の返信へ」 to a reader up in a long thread, counts a live reply without moving, and goes to the end", async () => {
+    const w = await threadWorld({ threadRead: 530 });
+    const list = await openThread(w);
+    expect(atEnd(list)).toBe(0);
+    expect(screen.queryByText("最新の返信へ")).toBeNull(); // at the end: no button
+    fireEvent.wheel(list);
+    list.scrollTop -= 900; // reading older replies
+    fireEvent.scroll(list);
+    expect(screen.getByText("最新の返信へ")).toBeTruthy();
+    const before = rowTop(list, 515);
+    await act(async () => {
+      w.server.post(w.channelId, w.alice.id, "r31", undefined, w.parent.id);
+      await w.engine.idle();
+    });
+    expect(w.store.replies(w.channelId, w.parent.id)).toHaveLength(31);
+    expect(rowTop(list, 515)).toBe(before); // the reading position stays put
+    expect(screen.getByText("新しい返信 1 件")).toBeTruthy();
+    fireEvent.click(screen.getByText("新しい返信 1 件"));
+    fireEvent.scroll(list);
+    expect(atEnd(list)).toBe(0);
+    expect(screen.queryByText("新しい返信 1 件")).toBeNull();
+    expect(screen.queryByText("最新の返信へ")).toBeNull();
+    w.engine.stop();
+  });
+
+  it("counts the unread replies below 「新しい返信」 on the button when it opens there", async () => {
+    const w = await threadWorld({ threadRead: 510 });
+    await openThread(w);
+    expect(screen.getByText("新しい返信 20 件")).toBeTruthy(); // r11..r30, 1200 px below the landing
     w.engine.stop();
   });
 

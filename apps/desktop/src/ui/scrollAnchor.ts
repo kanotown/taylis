@@ -17,6 +17,20 @@ import { type RefObject, useEffect, useState } from "react";
 /** Within this distance of the end the list counts as at the bottom. */
 export const BOTTOM_SLACK_PX = 48;
 
+/** Further than this from the end, a list away from the bottom shows its 「最新のメッセージへ」 / 「最新の返信へ」 button. */
+export const JUMP_BUTTON_PX = 240;
+
+/** Whether a list shows its button to the newest row: away from the bottom by the reader, and far enough from it. */
+export function jumpToLatestShown(atBottom: boolean, distance: number): boolean {
+  return !atBottom && distance > JUMP_BUTTON_PX;
+}
+
+/** Rows from others newer than `seenSeq` (the newest one the reader had on screen at the bottom): the button's count. */
+export function unseenBelow(rows: readonly { seq: number | null; sender_id: string }[], seenSeq: number | null, meId: string | undefined): number {
+  if (seenSeq === null) return 0;
+  return rows.filter((row) => row.seq !== null && row.seq > seenSeq && row.sender_id !== meId).length;
+}
+
 /**
  * Whether the list is still at the bottom after a scroll event. Near the end it is. Further away it stays at the bottom
  * only when it was there and the scroll did not go up: content grew under it (an image, a card), which is no move of

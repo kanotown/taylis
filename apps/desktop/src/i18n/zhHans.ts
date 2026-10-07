@@ -2256,6 +2256,8 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "thread.actions": "话题操作",
   "thread.summarize": "总结此话题",
   "thread.newReplies": "新回复",
+  "thread.newCount": "{count} 条新回复",
+  "thread.toLatest": "跳到最新回复",
   "thread.replyPlaceholder": "在话题中回复",
   "files.filter": "按文件名筛选",
   "files.allChannels": "所有频道",
