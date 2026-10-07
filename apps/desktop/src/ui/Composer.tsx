@@ -84,17 +84,27 @@ export function Composer({
     viewport.addEventListener("resize", update);
     return () => viewport.removeEventListener("resize", update);
   }, []);
+  // The box of the text area or the rich editor, and its height as last laid out. Whatever takes its place is held at
+  // that height until it has its own: the text area measuring itself (every keystroke), the other mode's input put in
+  // its place (「Aa」 / 「M↓」, every composer of mine at once). Shorter for a moment, it would let the list above grow
+  // and lose its bottom to the browser's clamping, and the list would stay up by as much (user report 2026-10-07). On
+  // a switch the hold is part of the render, so it is there before any composer's input lays out the page.
+  const inputBox = useRef<HTMLDivElement>(null);
+  const inputHeight = useRef(0);
+  const shownRich = useRef(rich);
+  const switchHold = shownRich.current !== rich && inputHeight.current > 0 ? inputHeight.current : undefined;
   useLayoutEffect(() => {
+    const box = inputBox.current;
     const el = area.current;
-    if (!el || preview) return;
-    // Measuring collapses the text area for a moment; its box keeps its height meanwhile, or the timeline above would
-    // grow, lose its bottom to the browser's clamping and jump on every keystroke.
-    const box = el.parentElement;
-    const held = box?.style.minHeight ?? "";
-    if (box) box.style.minHeight = `${box.offsetHeight}px`;
-    el.style.height = "auto";
-    if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, composerMaxHeight())}px`;
-    if (box) box.style.minHeight = held;
+    if (!box) return;
+    if (el && !preview) {
+      if (inputHeight.current > 0) box.style.minHeight = `${inputHeight.current}px`;
+      el.style.height = "auto";
+      if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, composerMaxHeight())}px`;
+    }
+    box.style.minHeight = "";
+    shownRich.current = rich;
+    inputHeight.current = box.offsetHeight;
   }, [text, preview, viewportHeight, rich]);
   const richApi = useRef<RichEditorApi | null>(null);
   // The rich editor's line up to the caret (mentions and emoji complete there) and the formats at the caret.
@@ -812,7 +822,7 @@ export function Composer({
             void pickFiles(picked.files, picked);
           }}
         />
-        <div className="relative">
+        <div ref={inputBox} className="relative" style={switchHold ? { minHeight: switchHold } : undefined}>
           {/* As tall as the text area at most: a long preview pushed the send button off the window (tester, 2026-09-30). */}
           {preview && (
             <div className="max-h-[280px] min-h-14 overflow-y-auto pb-1 pl-3 pr-10 pt-3" aria-label={t("composer.preview")}>
@@ -829,6 +839,7 @@ export function Composer({
                 autoFocus={focusAfterSwitch.current}
                 className="overflow-y-auto pb-1 pl-3 pr-10 pt-3 text-[14.5px] leading-6 text-ink"
                 maxHeight={composerMaxHeight()}
+                holdHeight={() => inputHeight.current}
                 onChange={(markdown) => {
                   focusAfterSwitch.current = false;
                   setText(markdown);
