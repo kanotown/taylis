@@ -2289,7 +2289,8 @@ CREATE TABLE workspace_settings (
 `personal_group_ids`、`log_retention_days` 既定 365・0 = 消さない）、`attendance_states`（`owner_id` NULL = ワークスペースの
 状態、ほかはその人の状態。`label` 40 文字、`icon`（移行 0101。apps/shared/attendance-icons.json の鍵、NULL 可）、`emoji`（アイコンを出せない
 端末の代わり）、`color` は text-emoji.json の色の鍵、`kind` in_room / on_site / off_site /
-gone、`position`、消すと `archived_at`）、`attendance_current`（1 人 1 行：`state_id`・`since`・`note`・`source` app / admin /
+gone、`position`、消すと `archived_at`）、`attendance_current`（1 人 1 行：`state_id`・`since`（この状態になった時刻）・`changed_at`（移行 0104。最後に受け付けた変更の時刻。
+メモだけの変更でも進み、受信 API の古さの比較に使う）・`note`・`source` app / admin /
 integration / auto・`actor_id`・`integration_id`）、`attendance_log`（追記だけ。保持日数を過ぎたら毎日の整理で消す）、
 `attendance_integrations`（`url`・`secret_name`（鍵のファイル名。秘密そのものは DB に入れない）・`token_hash`（受信トークンの
 SHA-256）・`enabled`）、`attendance_deliveries`（送信 Webhook の配送。id = `delivery_id`、`(outbox_event_id, integration_id)`

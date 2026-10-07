@@ -102,7 +102,11 @@ class AttendanceCurrent(Base):
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     state_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("attendance_states.id"))
+    # When this state began (a note-only change leaves it).
     since: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # When the last change taken (state or note) happened: what a late change is compared with
+    # (migration 0104, docs/PRESENCE.md §6).
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     note: Mapped[str | None] = mapped_column(String(100))
     source: Mapped[str] = mapped_column(Text)  # app | admin | integration | auto
     actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

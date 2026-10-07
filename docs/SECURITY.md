@@ -724,7 +724,7 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
   `attendance.set_by_admin` に残る。設定・状態・連携の変更も監査（`attendance.*`。秘密の値は残さない）。
 - **受信 API**：連携のトークン（`Authorization: Bearer`、ハッシュで保存、作り直し・停止・受信の取り消しができる）。
   連携ごとに 1 分 60 回（まとめて 30 回）。人はメールアドレス・ユーザー名・id で探し、ゲスト・ボット・無効の人は 404。
-  状態は既にあるものだけ（作らない）。24 時間より前の変更は 422、今より古い変更は反映しない。
+  状態は既にあるものだけ（作らない）。24 時間より前の変更は 422、最後に受け付けた変更（メモだけの変更も含む）より古い変更は反映しない。
 - **送信 Webhook**：https の公開の URL だけ（保存時に形、送るたびに DNS の結果を §14 と同じ検査）。リダイレクトは追わない。
   DNS の確認から応答までの全体を 10 秒で切り、応答の本文は先頭だけ読む（遅い受け手がワーカーを止めない）。
   開発のときだけ `ATTENDANCE_WEBHOOK_ALLOW_PRIVATE=true` で私的なアドレスと http を許す（`ENVIRONMENT=production` では効かない）。本文は HMAC-SHA256 で署名し（`X-Taylis-Signature`・`X-Taylis-Timestamp`）、`delivery_id` で重複を捨てられる。
