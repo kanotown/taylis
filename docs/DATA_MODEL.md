@@ -2307,6 +2307,19 @@ SHA-256）・`enabled`）、`attendance_deliveries`（送信 Webhook の配送�
 - 状態の名前は、消していない同じ範囲で大文字小文字を区別せず一意（個人の名前はワークスペースの名前とも重ならない）。
 - 匿名化（`admin.anonymize`）でその人の今の値・記録・個人の状態・配送を消す（`attendance.forget_in_tx`）。無効化だけなら行は残り、ボードから外れる。
 
+### action_*（操作ボタン、M143、docs/ACTIONS.md §3）
+
+移行 0106。`action_settings`（1 行。`enabled` 既定 false、`show_on_attendance` 既定 false、`log_retention_days` 既定 365・0 = 消さない）、
+`actions`（`name`・`group_label` 40 文字、`icon`（attendance-icons.json の鍵）・`emoji`、`action_key`（中継に送る鍵）、`url`（https の公開の
+URL）、`secret_name`（署名の鍵のファイル名。秘密そのものは DB に入れない）、`confirm`・`confirm_text`、押せる人 `allowed_roles`（admin /
+manager / member）・`allowed_group_ids`・`allowed_user_ids`（配列。どれかに当てはまる人。ゲストとボットはいつも不可）、`notice_channel_id`
+（成功を知らせる会話、ON DELETE SET NULL）、`enabled`、`position`）、`action_invocations`（押した 1 回とテスト送信。id = `invoke_id`、
+`UNIQUE (user_id, client_invoke_id)`、`kind` invoke / test、`status` pending / succeeded / failed、`status_code`・`error`・`message`・`latency_ms`。
+ボタンを消すと一緒に消え、保持日数を過ぎたら定期の整理で消す）。
+
+- 押すと `pending` の行を書いてコミットし、トランザクションの外で中継を 1 回呼び、結果・監査（`action.invoked`）・任意の通知を 1 トランザクションで書く。outbox は使わない（再送しないため）。
+- 匿名化（`admin.anonymize`）でその人を全ボタンの `allowed_user_ids` から外す（`actions.forget_in_tx`）。押した記録は残る。
+
 ### import_refs (移行元の対応、M18・M87・M125)
 
 ```sql

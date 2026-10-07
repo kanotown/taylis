@@ -7,7 +7,8 @@
 ただし Taylis は **汎用** のまま作る（ほかの研究室・会社も使う）：リポジトリに SwitchBot・Sesame・特定のサイトの名前や API は持たない。
 SwitchBot / Sesame の API への翻訳は中継（研究室の Web サイト。別に作る）の仕事。既定は **オフ** で、管理者が有効にする。
 
-**状態**：設計（本書）と、サーバ・Desktop / Web を実装（2026-10-07、移行 0106）。iOS・Android は §9 のとおり後の作業。
+**状態**：設計（本書）と、サーバ・Desktop / Web を実装（2026-10-07、移行 0106）。iOS・Android は §9.2 のとおり後の作業
+（IMPLEMENTATION_PLAN.md の M143）。テスト：server `tests/test_actions.py`、desktop `tests/actions.test.tsx`。
 マイルストーンの番号 M143 は仮（並行する作業と重なれば振り直す）。
 
 ## 1. 問題
@@ -38,6 +39,7 @@ SwitchBot / Sesame の API への翻訳は中継（研究室の Web サイト。
 | D14 | 会話への通知 | ★ ボタンごとに任意（既定はオフ）：成功したら選んだチャンネルに「🔓 山田 太郎 が 研究室の鍵：開ける を実行」 | いつも投稿：多くの操作では要らない（照明など）。失敗は投稿しない（記録で見る） |
 | D15 | 機能の切り替え | ★ ワークスペースの設定（`action_settings.enabled`、既定オフ）。オフのあいだは押せない（`409 actions_disabled`）、一覧は空 | 常にオン：使わないワークスペースに画面が増える |
 | D16 | アイコン | ★ 在室状況のアイコンの一覧（apps/shared/attendance-icons.json）を使い、絵文字を代わりに（🔓 🔒 💡 など） | 新しいアイコンの一覧：鍵のアイコンが無いのは不便だが、一覧を増やすと 3 端末の写しとテストも増える。今は絵文字で足りる（§10） |
+| D17 | 置き場所 | ★ 自分の画面「操作」（サイドバーのメニュー・ホームのタイル。apps/shared/nav-items.json の `actions`）。機能が有効で、押せるボタンが 1 つ以上ある人にだけ出す。在室状況の画面の上と在室状況のピルのメニューにも出すかはワークスペースの設定「在室状況のページにも表示する」（`show_on_attendance`、既定オフ） | 在室状況の中だけ：汎用の機能を研究室向けの 1 つの画面に縛ることになり、在室状況を使わないワークスペースでは置き場所が無い（利用者の決定 2026-10-07 で退けた） |
 
 ## 3. データ（移行 0106）
 
@@ -45,6 +47,7 @@ SwitchBot / Sesame の API への翻訳は中継（研究室の Web サイト。
 CREATE TABLE action_settings (            -- 1 行（無ければ既定値：オフ）
   singleton          boolean PRIMARY KEY DEFAULT true CHECK (singleton),
   enabled            boolean NOT NULL DEFAULT false,
+  show_on_attendance boolean NOT NULL DEFAULT false, -- 在室状況の画面とピルにも出す（D17）
   log_retention_days integer NOT NULL DEFAULT 365,   -- 0 = 消さない
   updated_at, updated_by
 );
@@ -88,7 +91,7 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
 - ボタンは 50 個まで。人数は数十人なので、権限の判定は行を全部読んで端末ごとに絞る。
 - 押せる人の配列にある、消したグループ・ユーザーの id は害がない（当てはまる人がいない）。管理の出力では、もう無いグループの id を外して返す。
   アカウントを匿名化すると、全ボタンの `allowed_user_ids` からその人を外す（`actions.forget_in_tx`）。記録の行は残る（名前は匿名化後のもの）。
-- 記録は `log_retention_days` を過ぎたら消す（毎時の整理。在室状況の記録と同じ）。ボタンを消すと、その記録も消える（監査ログには残る）。
+- 記録は `log_retention_days` を過ぎたら消す（定期の整理。在室状況の記録と同じ）。ボタンを消すと、その記録も消える（監査ログには残る）。
 
 ## 4. 押したときの流れ（`POST /actions/{id}/invoke`）
 
@@ -118,7 +121,7 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
 中継が失敗を返しても HTTP は 200（`ok: false`）。押せなかった理由（権限・オフ・連打）は HTTP のエラー。
 
 - **タイムアウトの意味**：`error: "timeout"` は「中継が 10 秒以内に答えなかった」で、**操作が起きなかったとは限らない**。端末は
-  「結果がわかりません。鍵の状態を確かめてください」と出す。自動ではやり直さない。
+  「機器（またはハブ）から応答がありませんでした。実行されたかどうかわかりません」と出す。自動ではやり直さない。
 
 ## 5. 中継へのリクエスト
 
@@ -162,7 +165,7 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
 
 ### 7.1 使う人
 
-- `GET /actions` → `ActionListOut { enabled, actions: [ActionOut] }`。自分が押せるボタンだけ（止めたボタン・押せないボタンは出ない）。
+- `GET /actions` → `ActionListOut { enabled, show_on_attendance, actions: [ActionOut] }`。自分が押せるボタンだけ（止めたボタン・押せないボタンは出ない）。
   `ActionOut = { id, name, group_label, icon, emoji, confirm, confirm_text, position }`（URL・`action_key`・鍵の名前・押せる人は出さない）。
   オフのとき・ゲスト・ボットは `{ enabled: false または true, actions: [] }`。
 - `POST /actions/{id}/invoke { client_invoke_id }` → `ActionInvokeOut`（§4）。
@@ -170,7 +173,7 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
 
 ### 7.2 管理（`integrations.manage`、管理者だけ）
 
-- `GET /admin/actions/settings` / `PATCH {enabled?, log_retention_days?}` → `ActionSettingsOut`。
+- `GET /admin/actions/settings` / `PATCH {enabled?, show_on_attendance?, log_retention_days?}` → `ActionSettingsOut`。
 - `GET /admin/actions` → `[ActionAdminOut]`（すべてのボタン。`ActionOut` に `action_key, url, secret_name, secret_present,
   allowed_roles, allowed_group_ids, allowed_user_ids, notice_channel_id, enabled, created_at, updated_at, last_invoked_at` を足す。
   `secret_present` は鍵のファイルがあり 16 バイト以上か。**鍵の中身は返さない**）。
@@ -200,16 +203,18 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
 ### 9.1 Desktop / Web（2026-10-07 実装）
 
 - **使う人**：
-  - 「在室状況」の画面の一番上に「操作」の欄（押せるボタンがあるときだけ）。`group_label` ごとの組（見出しと、その組のボタンを横に並べる）、
-    組の無いボタンは最後に。ボタンはアイコン（無ければ絵文字）と名前。
-  - ヘッダのピル（在室状況の素早い切り替え、PRESENCE.md §7.1）のメニューにも「操作」の欄（同じ組と並び。行は「組：名前」）。
-    在室状況がオフで押せるボタンがあるときは、ピルを「操作」のピル（稲妻のアイコンと「操作」）として出し、メニューは「操作」の欄だけにする
-    （ボタンの置き場所が無くならないように）。
+  - ナビの「操作」（サイドバーのメニュー、`nav-items.json` の `actions`。設定の「メニュー」で隠せる）。機能が有効で、押せるボタンが
+    1 つ以上あるときだけ実装済みに数える（無ければメニューにも設定の行にも出ない）。画面は `group_label` ごとの組（見出しと、その組のボタンを
+    横に並べる）、組の無いボタンは最後に。ボタンはアイコン（無ければ絵文字）と名前。
+  - スマホ幅の Web ではホームのタイル「操作」からも開く。
+  - `show_on_attendance` のとき、「在室状況」の画面の一番上に同じ組の「操作」の欄と、ヘッダのピル（在室状況の素早い切り替え、
+    PRESENCE.md §7.1）のメニューに「操作」の欄（行は「組：名前」）。オフなら在室状況の画面には何も足さない。
   - 押す → 確認のダイアログ（`confirm` のとき。文は `confirm_text` か「研究室の鍵：開ける を実行しますか？」）→ ボタンにスピナー
     （その間は同じボタンを押せない）→ トーストで中継の `message`（無ければ「実行しました」）か、失敗の理由
-    （中継の `message`、無ければ「失敗しました（HTTP 503）」、タイムアウトは「結果がわかりません。状態を確かめてください」、
-    `429` は「少し待ってからもう一度押してください」）。
-  - `client_invoke_id` は押すごとに新しく作り、通信の失敗で同じ要求をやり直すときだけ同じ id を使う。
+    （中継の `message` があればそれ。無ければ HTTP の失敗は「実行できませんでした（HTTP 503）」、タイムアウトは「機器（またはハブ）から
+    応答がありませんでした。実行されたかどうかわかりません。状態を確かめてください」、つながらない（DNS・接続の失敗）は
+    「機器（またはハブ）に接続できませんでした」、`429` は「少し待ってからもう一度押してください」）。
+  - `client_invoke_id` は押すごとに新しく作り、通信の失敗（サーバから答えが無い）のときだけ同じ id で 2 回までやり直す（サーバは前の結果を返し、中継は呼ばない）。
 - **管理 →「操作ボタン」タブ**（`integrations.manage`）：有効・無効、記録の保持日数、ボタンの一覧（並べ替え・有効の切り替え・鍵のファイルが
   あるかの印）、作成・編集のフォーム（名前・組・アイコン・絵文字・中継の URL・`action_key`・鍵のファイル名・確認と文・押せる人
   （ロールのチェック、グループと人を選ぶ）・通知の会話）、テスト送信（結果を出す）、最近の記録（50 件）。
@@ -218,7 +223,8 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
 ### 9.2 iOS / Android（後の作業）
 
 - bootstrap の `actions` を持ち、`actions.updated` で `GET /actions` を読み直す。
-- 在室状況の画面の上と、在室状況のピルのシートに「操作」の欄。押す → 確認 → 待ち → バナー（Desktop / Web と同じ規則・文）。
+- ホームのタイル「操作」（`nav-items.json` の `actions` に `mobile` を足す）。`show_on_attendance` のときは在室状況の画面の上と
+  ピルのシートにも「操作」の欄。押す → 確認 → 待ち → バナー（Desktop / Web と同じ規則・文）。
 - `client_invoke_id` は押すごとに作り、通信のやり直しだけ同じ id。管理の画面は作らない（Desktop / Web で）。
 
 ## 10. やらないこと（今は）
@@ -226,7 +232,6 @@ CREATE TABLE action_invocations (          -- 押した 1 回（とテスト送�
 - 鍵の今の状態（開いている・閉まっている）の表示：中継から Taylis へ状態を送る受信 API が要る。必要になったら在室状況の受信 API の形で足す。
 - 予約と連動した自動の解錠、時間帯の制限（中継の側で絞れる）。
 - 鍵・電球などのアイコン：今は絵文字。要望が増えたら attendance-icons.json とは別の一覧を作る。
-- 「操作」だけのナビの画面（在室状況がオフのときはピルのメニューから押す）。
 
 ## 11. セキュリティのまとめ（SECURITY.md §17 にも）
 

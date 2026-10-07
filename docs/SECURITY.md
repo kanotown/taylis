@@ -539,6 +539,8 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 - 在室状況の送信 Webhook の署名の鍵（M140、docs/PRESENCE.md §5.3）は `ATTENDANCE_WEBHOOK_SECRETS_DIR`（既定
   `/run/secrets/attendance`）のファイルで、DB には鍵の名前だけを置く（バックアップに秘密を含めない）。受信のトークンは
   SHA-256 だけを保存し、作成と作り直しの応答で 1 回だけ見せる。
+- 操作ボタンの中継への署名の鍵（M143、docs/ACTIONS.md §5）も同じく `ACTION_SECRETS_DIR`（既定 `/run/secrets/actions`）のファイルで、
+  DB・API・監査・記録には鍵のファイル名だけが出る（管理の一覧はファイルがあるかの印 `secret_present` だけ）。
 
 - `SECRET_KEY`、DB パスワード、versitygw のルート認証情報 (`ROOT_ACCESS_KEY_ID` / `ROOT_SECRET_ACCESS_KEY`)、APNs の `.p8` 鍵、FCM サービスアカウント、Google でログインの client secret (M48)、Anthropic の API キー (M65、`AI_API_KEY_FILE`。DB にも端末にも置かない)、Team ID /
   Key ID / Bundle ID は環境変数またはマウントしたファイル (`/run/secrets/...`) で渡す。
@@ -732,3 +734,19 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
 - **送る中身**：外の名簿と突き合わせるため、本人の id・メールアドレス・ユーザー名・表示名、前後の状態、メモ、時刻、変更の出どころ。
   ほかのプロフィールは送らない。メールアドレスを外に出すので、送信先は管理者が信頼できるサイトだけにする。
 - **ループ**：ある連携から来た変更はその連携に送り返さない。同じ状態・メモの再送は何もしない（別の連携を経て戻ってきても止まる）。
+
+## 17. 操作ボタン（M143、docs/ACTIONS.md）
+
+- **押せる人**：サーバが押すたびに確かめる（ボタンのロール・ユーザーグループ・個別のユーザーのどれか。ゲストとボット・無効の人はいつも
+  `403 action_not_allowed`）。一覧（`GET /actions`）も押せるボタンだけで、URL・`action_key`・鍵の名前・押せる人は出さない。
+- **作る人**：管理者だけ（`integrations.manage`）。設定・ボタンの変更は監査（`action.*`。鍵の中身は無い）。
+- **遅れた・重なった操作を起こさない**：同期で 1 回だけ送り、outbox も再送も使わない。同じ人の同じ `client_invoke_id` は前の結果を返して
+  中継を呼ばない（同時に来ても一意の制約で 1 回）。人ごと・ボタンごとに 3 秒に 1 回（`429`）。送っている途中でサーバが落ちた押下は
+  `interrupted` と答え、送り直さない。
+- **中継への要求**：HMAC-SHA256 の署名（`X-Taylis-Signature`・`X-Taylis-Timestamp`）と `X-Taylis-Delivery`（= `invoke_id`）。中継は時刻
+  （1 分以内）・署名・`invoke_id` の重複を確かめる。送信先は https の公開の URL だけ（保存時に形、送るたびに DNS の結果を §14 と同じ検査）。
+  リダイレクトは追わず、DNS の確認から応答までの全体を 10 秒で切り、応答は 4 KB まで読む。開発のときだけ `ACTION_ALLOW_PRIVATE=true`
+  （`ENVIRONMENT=production` では効かない）。
+- **送る中身**：押した人の id・ユーザー名・メールアドレス・表示名・ロール、`action_key`、時刻、ワークスペース。中継の名簿と突き合わせるため。
+- **中継の答え**：JSON の `message`（文字列だけ、制御文字を除いて 200 文字まで）をプレーンテキストとして押した人に見せる。HTML は描かない。
+- **記録**：押すたびに `action_invocations` と監査ログ `action.invoked`。保持日数で消える（既定 365 日）。
