@@ -724,6 +724,125 @@ def cmd_import_slack(args: argparse.Namespace) -> int:
     return asyncio.run(_import_slack(args))
 
 
+def _notion_user_map(pairs: Sequence[str], files: Sequence[str]) -> dict[str, str]:
+    """NOTION_NAME=USERNAME pairs (--user) and lines of files (--user-map, # comments). The
+    Notion name keeps its case and spaces (a display name)."""
+    lines = list(pairs)
+    for path in files:
+        lines += Path(path).read_text(encoding="utf-8").splitlines()
+    mapping: dict[str, str] = {}
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, sep, username = line.rpartition("=")
+        if not sep or not name.strip() or not username.strip():
+            raise ValueError(f"{line!r}: use NOTION_NAME=USERNAME")
+        mapping[name.strip().lstrip("@")] = username.strip().lstrip("@")
+    return mapping
+
+
+def print_notion_report(report: Any) -> None:
+    """The summary of a Notion import (M125): counts, databases and their guessed types, links
+    and files that did not come, blocks written another way, pages left as edited."""
+    print("dry run: nothing was written" if report.dry_run else "imported")
+    print("counts:")
+    for key, value in sorted(report.counts.items()):
+        print(f"  {key}: {value}")
+    if report.databases:
+        print("databases (column: guessed type):")
+        for line in report.databases:
+            extra = []
+            if line.extra_rows:
+                extra.append(f"{line.extra_rows} row pages not in the CSV (templates?)")
+            if line.csv_only:
+                extra.append(f"{line.csv_only} CSV rows without a page")
+            if line.calendar:
+                extra.append("calendar view added")
+            print(f"  {line.title}: {line.rows} rows" + (f" ({'; '.join(extra)})" if extra else ""))
+            for column in line.columns:
+                note = f"  ({column.note})" if column.note else ""
+                print(f"    {column.name}: {column.type}{note}")
+    if report.unsupported:
+        print("written another way:")
+        for what, count in report.unsupported.most_common():
+            print(f"  {what}: {count}")
+    sections = (
+        ("pages changed in Taylis since the last import (left as they are)", report.edited),
+        ("links that do not lead to an imported page or file", report.unresolved_links),
+        ("files not brought over", report.failed_files),
+        ("warnings", report.warnings),
+    )
+    for title, lines in sections:
+        if not lines:
+            continue
+        print(f"{title} ({len(lines)}):")
+        for line in lines[:300]:
+            print(f"  {line}")
+        if len(lines) > 300:
+            print(f"  … and {len(lines) - 300} more")
+    if report.roots and not report.dry_run:
+        print("imported top pages: " + ", ".join(str(r) for r in report.roots))
+
+
+async def _import_notion(args: argparse.Namespace, options: Any) -> int:
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.attachments.blobstore import build_blobstore
+    from app.modules.importer.core import ImportFailed
+    from app.modules.importer.notion_import import import_notion
+
+    settings = get_settings()
+    db = Database(settings.database_url)
+    try:
+        async with db.session_factory() as session:
+            try:
+                report = await import_notion(
+                    session,
+                    Path(args.export),
+                    actor_username=args.actor,
+                    blobs=build_blobstore(settings),
+                    settings=settings,
+                    options=options,
+                    dry_run=args.dry_run,
+                )
+            except (ImportFailed, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+    finally:
+        await db.dispose()
+    print_notion_report(report)
+    return 0
+
+
+def cmd_import_notion(args: argparse.Namespace) -> int:
+    """Import a Notion export into Docs (M125, docs/WIKI.md §6). Safe to run again."""
+    import uuid
+
+    from app.modules.importer.notion_import import Options, parse_column_types
+
+    try:
+        user_map = _notion_user_map(args.user or [], args.user_map or [])
+        column_types = (
+            parse_column_types(Path(args.column_types).read_text(encoding="utf-8").splitlines())
+            if args.column_types
+            else {}
+        )
+        parent = uuid.UUID(args.parent) if args.parent else None
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    options = Options(
+        parent_id=parent,
+        access=args.access,
+        user_map=user_map,
+        column_types=column_types,
+        timezone=args.timezone,
+        progress=lambda message: print(message, file=sys.stderr, flush=True),
+    )
+    return asyncio.run(_import_notion(args, options))
+
+
 async def _import_emoji_presets(directory: str, restore: Sequence[str]) -> int:
     from app.core.db import Database
     from app.core.settings import get_settings
@@ -989,6 +1108,40 @@ def build_parser() -> argparse.ArgumentParser:
     sl.add_argument("--include-dms", action="store_true", help="also dms.json and mpims.json")
     sl.add_argument("--dry-run", action="store_true", help="check everything, write nothing")
     sl.set_defaults(func=cmd_import_slack)
+
+    notion = sub.add_parser(
+        "import-notion", help="import a Notion export (Markdown & CSV) into Docs"
+    )
+    notion.add_argument("export", help="the export ZIP (a ZIP of ZIPs too) or its unpacked folder")
+    notion.add_argument("--actor", required=True, help="the administrator running the import")
+    notion.add_argument(
+        "--parent", help="the id of the page to import under (default: the top level)"
+    )
+    notion.add_argument(
+        "--access",
+        choices=("workspace-edit", "workspace-view", "private"),
+        help="the imported top pages' sharing (default: workspace-edit at the top level; "
+        "under --parent they inherit)",
+    )
+    notion.add_argument(
+        "--user",
+        action="append",
+        metavar="NOTION_NAME=USERNAME",
+        help="a person's name in Notion (person columns, @mentions) → an account (repeatable)",
+    )
+    notion.add_argument(
+        "--user-map", action="append", metavar="PATH", help="NOTION_NAME=USERNAME lines"
+    )
+    notion.add_argument(
+        "--column-types",
+        metavar="PATH",
+        help="lines 'COLUMN = TYPE' or 'DATABASE / COLUMN = TYPE' overriding the guesses",
+    )
+    notion.add_argument(
+        "--timezone", default="Asia/Tokyo", help="the zone of times written without one"
+    )
+    notion.add_argument("--dry-run", action="store_true", help="check everything, write nothing")
+    notion.set_defaults(func=cmd_import_notion)
 
     presets = sub.add_parser(
         "import-emoji-presets",
