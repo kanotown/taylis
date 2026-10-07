@@ -236,6 +236,7 @@
 | `read.updated` | user | — | `{ channel_id, last_read_seq, unread_count, mention_count, first_unread_at, reason }`。アクティビティのバッジも取り直す (その会話のメンションが既読になる、MOBILE_UI.md §6.4) |
 | `bookmark.updated` | user | — | `{ message_id, channel_id, bookmarked }` (M11c)。自分の他端末が保存 / 解除したときに届く |
 | `activity.read` | user | — | `{ read_at }` (M39)。アクティビティの既読位置が進んだ (自分の他端末から)。クライアントはバッジを取り直す |
+| `activity.items_read` | user | — | `{ item_ids, read_at }` (2026-10-07、MOBILE_UI.md §6.4)。自分のどれかの端末でアクティビティの項目を開いた (`PUT /activity/items/read`)。項目は `at` ≦ `read_at` のあいだ既読。クライアントはその行の点を消し、バッジを取り直す。知らないクライアントは無視してよい |
 | `activity.updated` | user | — | `{ item_ids }` (Review v0.1.22)。持っているアクティビティの項目が書き換わった (キャンバスの版の本文の消去で抜粋が空になったとき、CANVAS.md §20.8。M112: 予約の担当者の作業が済んだとき、RESERVATIONS.md §5)。一覧を表示・保持していれば読み直す (予約の項目は「対応済み」に)。M112 からバッジも読み直す (済んだ作業は未読に数えない) |
 | `reaction.added` | user (投稿者) | — | `{ channel_id, message_id, user_id, emoji, at }` (M39)。他の人が自分の投稿にリアクションした。アクティビティのバッジを取り直す (`GET /activity/summary`)。外したときは送らない (一覧は表から作るので消える) |
 | `favorite.updated` | user | — | `{ channel_id, favorite }` (M12a)。自分の他端末が星を付けた / 外したときに届く。会話を自分のセクションへ入れたときも `favorite: false` で届く (DATA_MODEL.md sidebar_sections「1 つの会話は 1 か所」、2026-10-07) |
