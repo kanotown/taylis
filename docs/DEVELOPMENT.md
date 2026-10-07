@@ -96,7 +96,13 @@ TestFlight / App Store と Google Play への配信 (版の番号、署名、ス
 ```
 apps/desktop/scripts/release-desktop.sh v0.1.30 --dry-run           # 何をするかを表示するだけ
 apps/desktop/scripts/release-desktop.sh v0.1.30 --notes notes.md    # 公開する (notes は省くと「Taylis v0.1.30」)
+apps/desktop/scripts/sync-release-notes.sh v0.1.30                  # GitHub で直したリリースノートを latest.json にも写す
 ```
+
+- **リリースノートの文体**（利用者の決まり、2026-10-07）：敬体（「できます」「なりました」）は使わず、「〜可能に」「〜ように」や
+  体言止めで終える。例：「ページの木で整理可能に」「会話名をクリックすると、その会話の該当メッセージを開くように」「会議リンクの通話を廃止」。
+- アプリ内の更新の案内に出るのは GitHub のリリースの本文ではなく、そのリリースの `latest.json` の `notes`。公開した後に GitHub の
+  エディタで本文を直したら `sync-release-notes.sh` で写す（`notes` は署名の外なので、それ以外は何も変わらない）。
 
 1. Windows: Actions の `desktop` ワークフローをタグで (os = windows) 起動して待ち、成果物を落とす。同じタグで成功した
    実行の成果物が残っていればそれを使う (`--rebuild-windows` で作り直し)。NSIS のインストーラはこの Mac で更新の鍵で署名する
