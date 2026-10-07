@@ -290,6 +290,13 @@ final class SyncEngine {
         }
     }
 
+    /// M143 (docs/ACTIONS.md §12.3): GET /actions/status into the store (`refresh`: ask the relays now). Throws for the
+    /// page to say why (429, no answer from the server); nothing for guests or while the buttons are off.
+    func loadActionStatuses(refresh: Bool = false) async throws {
+        guard let actionsApi = api as? ActionsApi, store.actions != nil, let role = store.me?.role, role != "guest", role != "bot" else { return }
+        store.setActionStatuses(try await actionsApi.actionStatuses(refresh: refresh))
+    }
+
     /// GET /actions started, and the latest one whose answer the store took (an older answer never overwrites).
     private var actionReads = 0
     private var actionsKept = 0
@@ -665,6 +672,8 @@ final class SyncEngine {
         // M143: the same for the buttons (nil for guests, while off, before M143).
         actionsKept = actionReads
         store.setActions(bootstrap.actions)
+        // §12.3: the states are a copy (events may have been missed): read again once a page has shown them.
+        if store.actions != nil, !store.actionStatuses.isEmpty { Task { try? await self.loadActionStatuses() } }
         let wikiFeed = bootstrap.wiki
         Task { await self.wiki.bootstrap(wikiFeed) }  // M122: the tree, or its change feed
         onBadge?(store.badgeCount)
@@ -813,6 +822,9 @@ final class SyncEngine {
             // M140 (docs/PRESENCE.md §4): one person's row; a state not on the board held here (someone's new own
             // state): read the board.
             if !store.applyAttendanceEntry(try frame.data.decode(AttendanceEntryOut.self)) { scheduleAttendanceReload() }
+        case "actions.status_updated":
+            // M143 (docs/ACTIONS.md §12.3): a group's state, read again after a press or found changed.
+            store.applyActionStatus(try frame.data.decode(ActionStatusOut.self))
         case "actions.updated":
             // M143 (docs/ACTIONS.md §8): the switch or a button changed; what I may press differs per person, so the
             // event is empty.

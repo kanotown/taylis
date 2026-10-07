@@ -493,6 +493,24 @@ final class Store {
     func setActions(_ list: ActionListOut?) {
         let next = list?.enabled == true ? list : nil
         if next != actions { actions = next }
+        if next == nil, !actionStatuses.isEmpty { actionStatuses = [:] }
+    }
+    /// M143 (docs/ACTIONS.md §12): the state of each group's devices by group key (ActionRules.statusKey: "g:<label>",
+    /// or "a:<id>" for a button without a group). From GET /actions/status and actions.status_updated; not persisted.
+    private(set) var actionStatuses: [String: ActionStatusOut] = [:]
+    /// A whole answer of GET /actions/status (groups no longer in it are dropped).
+    func setActionStatuses(_ list: ActionStatusListOut) {
+        var next: [String: ActionStatusOut] = [:]
+        if list.enabled {
+            for status in list.statuses { next[ActionRules.statusKey(status.groupLabel, status.actionId)] = status }
+        }
+        if next != actionStatuses { actionStatuses = next }
+    }
+    /// One group's state (actions.status_updated): an answer older than the one held is ignored.
+    func applyActionStatus(_ status: ActionStatusOut) {
+        let key = ActionRules.statusKey(status.groupLabel, status.actionId)
+        if let held = actionStatuses[key], ActionRules.isNewer(held.fetchedAt, than: status.fetchedAt) { return }
+        if actionStatuses[key] != status { actionStatuses[key] = status }
     }
     /// One person's row (attendance.updated, or my own change answered). False when its state is not on the board held
     /// here (someone's new own state): the caller reads the board again.

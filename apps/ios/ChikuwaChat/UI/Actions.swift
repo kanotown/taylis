@@ -220,11 +220,14 @@ struct ActionButtonSections: View {
     let presser: ActionPresser
     /// A heading over the first group (the 在室状況 page: 「操作」).
     var heading: String? = nil
+    /// M143 §12.4: the groups' states, a line under each heading (nil: none shown).
+    var feed: ActionStatusFeed? = nil
 
     var body: some View {
         let groups = ActionRules.groups(actions)
         ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
             Section {
+                if let feed { ActionGroupStatus(controller: controller, group: group, feed: feed) }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8)], spacing: 8) {
                     ForEach(group.actions) { action in button(action) }
                 }
@@ -318,6 +321,7 @@ struct ActionsView: View {
     static let selectionId = "actions"
     @Bindable var controller: AppController
     @State private var presser = ActionPresser()
+    @State private var statusFeed = ActionStatusFeed()
 
     var body: some View {
         let actions = ActionRules.pressable(controller.store.actions)
@@ -326,11 +330,12 @@ struct ActionsView: View {
                 ContentUnavailableView("押せるボタンはありません", systemImage: "bolt.slash")
                     .listRowBackground(Color.clear)
             } else {
-                ActionButtonSections(controller: controller, actions: actions, presser: presser)
+                ActionButtonSections(controller: controller, actions: actions, presser: presser, feed: statusFeed)
             }
         }
         .listStyle(.insetGrouped)
         .actionConfirmation(presser, controller: controller)
+        .actionStatusPolling(controller, feed: statusFeed, active: !actions.isEmpty)
         .navigationTitle(actionsTitle)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await controller.engine?.loadActions() }

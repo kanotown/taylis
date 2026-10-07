@@ -15,6 +15,8 @@ struct ActionOut: Codable, Equatable, Identifiable, Hashable {
     var confirm: Bool = true
     var confirmText: String? = nil
     var position: Int = 0
+    /// M143 §12: this button's relay tells its group's state (one per group); nil from a server before the states.
+    var providesStatus: Bool? = nil
 }
 
 /// GET /actions and the bootstrap's `actions` (nil for guests and while the feature is off).
@@ -44,11 +46,52 @@ struct ActionInvokeOut: Codable, Equatable {
     var repeated: Bool = false
 }
 
+/// M143 §12.2: one line of a state's details (「電池」「85%」).
+struct ActionStatusDetail: Codable, Equatable, Hashable {
+    let label: String
+    let value: String
+}
+
+/// M143 §12.2: what the relay says the devices are like, cleaned by the server (plain text only).
+struct ActionStatusValue: Codable, Equatable {
+    /// 「施錠中・ドア閉・電池 85%」 (at most 80 characters).
+    let text: String
+    /// ok / warn / alert / neutral (another word: neutral).
+    let tone: String
+    /// A short machine word (`locked`…), or nil.
+    var state: String? = nil
+    var details: [ActionStatusDetail]? = nil
+}
+
+/// M143 §12.3: the state of one group (GET /actions/status, actions.status_updated).
+struct ActionStatusOut: Codable, Equatable {
+    /// The button that provides the state (maybe one I cannot press myself).
+    let actionId: String
+    /// The group it is the state of; nil = the button has no group and is its own.
+    var groupLabel: String? = nil
+    let ok: Bool
+    var status: ActionStatusValue? = nil
+    /// timeout / network / relay_error / invalid_answer / url_not_allowed / secret_missing (nil when ok).
+    var error: String? = nil
+    /// The relay's own message on a failure.
+    var message: String? = nil
+    /// When the relay answered (the server may answer from its short cache).
+    let fetchedAt: String
+}
+
+/// GET /actions/status: one per group I may press something in (empty while off, for guests and bots).
+struct ActionStatusListOut: Codable, Equatable {
+    let enabled: Bool
+    var statuses: [ActionStatusOut] = []
+}
+
 /// M143: the buttons (ApiClient and the test fake).
 @MainActor
 protocol ActionsApi: AnyObject {
     func actions() async throws -> ActionListOut
     func invokeAction(id: String, clientInvokeId: String) async throws -> ActionInvokeOut
+    /// The groups' states; `refresh` asks the relays now (429 more often than every 5 seconds).
+    func actionStatuses(refresh: Bool) async throws -> ActionStatusListOut
 }
 
 extension ApiClient: ActionsApi {
@@ -60,5 +103,10 @@ extension ApiClient: ActionsApi {
     /// One press: the server calls the relay once. The same `clientInvokeId` again answers the first result.
     func invokeAction(id: String, clientInvokeId: String) async throws -> ActionInvokeOut {
         try await requestJSON("POST", "/api/v1/actions/\(id)/invoke", body: .object(["client_invoke_id": .string(clientInvokeId)]))
+    }
+
+    /// The groups' states (docs/ACTIONS.md §12.3), from the server's 30-second cache unless `refresh`.
+    func actionStatuses(refresh: Bool) async throws -> ActionStatusListOut {
+        try await requestJSON("GET", refresh ? "/api/v1/actions/status?refresh=true" : "/api/v1/actions/status")
     }
 }

@@ -80,6 +80,14 @@ final class FakeServer {
             return server.actionList(for: userId)
         }
 
+        func actionStatuses(refresh: Bool) async throws -> ActionStatusListOut {
+            try maybeFail("actionStatuses")
+            server.statusReads.append(refresh)
+            guard server.actions?.enabled == true else { return ActionStatusListOut(enabled: false) }
+            let role = server.users[userId]?.role
+            return ActionStatusListOut(enabled: true, statuses: role == "guest" || role == "bot" ? [] : server.statuses)
+        }
+
         func invokeAction(id: String, clientInvokeId: String) async throws -> ActionInvokeOut {
             try maybeFail("invokeAction")
             let out = try server.invokeAction(userId, actionId: id, clientInvokeId: clientInvokeId)
@@ -628,6 +636,15 @@ final class FakeServer {
     var relayAnswer: (ok: Bool, message: String?) = (true, nil)
     /// Presses whose answer is lost on the way back (the server did them): ApiError.network after the work.
     var actionAnswersLost = 0
+    /// M143 §12: the groups' states GET /actions/status answers, and its reads (`refresh` each).
+    var statuses: [ActionStatusOut] = []
+    var statusReads: [Bool] = []
+
+    /// actions.status_updated for one group's state.
+    func sendActionStatus(_ status: ActionStatusOut) {
+        emitEvent(actionsAudience, "actions.status_updated", channelId: nil, data: (try? JSONValue.from(status)) ?? .null)
+    }
+
     /// "user:client_invoke_id" → the first answer (docs/ACTIONS.md §4 2.).
     private var invocations: [String: ActionInvokeOut] = [:]
 
