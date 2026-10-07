@@ -829,7 +829,9 @@ export function Composer({
           {/* As tall as the text area at most: a long preview pushed the send button off the window (tester, 2026-09-30). */}
           {preview && (
             <div className="mr-9 max-h-[280px] min-h-14 overflow-y-auto pb-1 pl-3 pr-1 pt-3" aria-label={t("composer.preview")}>
-              {text.trim() ? <MessageBody body={text} users={store.users} /> : <span className="text-sm text-muted">{t("composer.nothingToPreview")}</span>}
+              {/* The same renderer and inputs as the timeline (custom emoji, packs, groups, an emoji-only message drawn large), so the
+                  preview looks like the posted message. */}
+              {text.trim() ? <MessageBody body={text} users={store.users} internalBase={controller.api?.baseUrl} customEmoji={store.customEmoji} controller={controller} groups={store.groups} jumbo /> : <span className="text-sm text-muted">{t("composer.nothingToPreview")}</span>}
             </div>
           )}
           {rich ? (

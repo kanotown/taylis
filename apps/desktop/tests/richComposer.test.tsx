@@ -232,6 +232,19 @@ describe("rich composer", () => {
     expect(screen.getByRole("button", { name: "プレビュー" }).getAttribute("aria-pressed")).toBe("false");
   });
 
+  it("previews custom emoji as the timeline draws them (not as :name: text)", async () => {
+    const w = await world({ draft: "OK :kakunin:" });
+    w.store.customEmoji.set("kakunin", {
+      id: "e1", name: "kakunin", kind: "text", label: "確認", color: "green", content_type: "", width: 0, height: 0,
+      keywords: [], position: 0, created_by: "u", created_at: "", pack_id: null,
+    } as never);
+    act(() => void fireEvent.click(screen.getByRole("button", { name: "Markdown" })));
+    act(() => void fireEvent.click(screen.getByRole("button", { name: "プレビュー" })));
+    const preview = document.querySelector<HTMLElement>("[aria-label='プレビュー']:not(button)")!;
+    expect(preview.textContent).toContain("確認");
+    expect(preview.textContent).not.toContain(":kakunin:");
+  });
+
   it("pastes HTML as the supported formats, plain text literally, files as attachments", async () => {
     const w = await world();
     act(() => void w.editor().commands.focus());
