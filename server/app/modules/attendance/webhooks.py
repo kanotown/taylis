@@ -14,6 +14,7 @@ Signing: X-Taylis-Signature: sha256=hex(HMAC-SHA256(key, timestamp + "." + body)
 from ATTENDANCE_WEBHOOK_SECRETS_DIR/<secret_name> at each send (never stored in the DB).
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -71,6 +72,8 @@ MAX_ATTEMPTS = len(BACKOFF)
 LEASE = timedelta(minutes=2)
 SECRET_MIN_BYTES = 16
 RESPONSE_SNIPPET = 200
+# The most of an error answer's body read (enough for RESPONSE_SNIPPET characters of UTF-8).
+RESPONSE_PREFIX_BYTES = 4 * RESPONSE_SNIPPET
 # What a delivery that was never sent because the board was turned off records.
 DISABLED_ERROR = "attendance_disabled"
 
@@ -131,10 +134,14 @@ Sender = Callable[[str, dict[str, str], bytes], Awaitable[SendResult]]
 
 
 def build_sender(settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> Sender:
+    """Posts with httpx. `attendance_webhook_timeout_seconds` bounds the whole send — the DNS
+    check, connecting, the request and the answer — not each read (httpx's own timeout is per
+    read, so an answer that trickles in a byte at a time would hold the worker for good). Only
+    the status and, for an error, a bounded prefix of the body are read (docs/PRESENCE.md §5.1)."""
     allow_private = service.private_targets_allowed(settings)
     timeout = settings.attendance_webhook_timeout_seconds
 
-    async def send(url: str, headers: dict[str, str], body: bytes) -> SendResult:
+    async def post(url: str, headers: dict[str, str], body: bytes) -> SendResult:
         if not allow_private:
             if not url.startswith("https://"):
                 return SendResult(None, "url_not_allowed")
@@ -143,16 +150,36 @@ def build_sender(settings: Settings, transport: httpx.AsyncBaseTransport | None 
             except PreviewError as exc:
                 return SendResult(None, exc.code)
         try:
-            async with httpx.AsyncClient(
-                follow_redirects=False, timeout=httpx.Timeout(timeout), transport=transport
-            ) as client:
-                response = await client.post(url, content=body, headers=headers)
+            async with (
+                httpx.AsyncClient(
+                    follow_redirects=False, timeout=httpx.Timeout(timeout), transport=transport
+                ) as client,
+                client.stream("POST", url, content=body, headers=headers) as response,
+            ):
+                if response.is_success:
+                    return SendResult(response.status_code, None)  # the body is not read
+                prefix = bytearray()
+                async for chunk in response.aiter_bytes():
+                    prefix += chunk
+                    if len(prefix) >= RESPONSE_PREFIX_BYTES:
+                        break
+                encoding = response.encoding or "utf-8"
         except httpx.TimeoutException:
             return SendResult(None, "timeout")
         except httpx.HTTPError as exc:
             return SendResult(None, f"network: {type(exc).__name__}")
-        snippet = response.text[:RESPONSE_SNIPPET] if not response.is_success else None
-        return SendResult(response.status_code, snippet or None)
+        try:
+            snippet = bytes(prefix[:RESPONSE_PREFIX_BYTES]).decode(encoding, errors="replace")
+        except LookupError:  # a charset Python does not know
+            snippet = bytes(prefix[:RESPONSE_PREFIX_BYTES]).decode("utf-8", errors="replace")
+        return SendResult(response.status_code, snippet[:RESPONSE_SNIPPET] or None)
+
+    async def send(url: str, headers: dict[str, str], body: bytes) -> SendResult:
+        try:
+            async with asyncio.timeout(timeout):
+                return await post(url, headers, body)
+        except TimeoutError:
+            return SendResult(None, "timeout")
 
     return send
 
