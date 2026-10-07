@@ -17,6 +17,8 @@ struct MainView: View {
     @State private var youPath: [YouRoute] = []
     /// The home list's tap (ChannelListView's selection), turned into a screen on the home stack.
     @State private var homeSelection: String?
+    /// The home list's width: the room of its header's title and 在室状況 pill (PRESENCE.md §9.1).
+    @State private var homeWidth: CGFloat = 0
     /// A permalink into a channel I have not joined (M27): the preview opens around this message.
     @State private var previewMessageId: String?
     @State private var sheet: Sheet?
@@ -287,7 +289,7 @@ struct MainView: View {
                 .tabItem { Label("アクティビティ", systemImage: "bell") }
                 .badge(activityBadge.count)
                 .tag(MainTab.activity)
-            YouView(controller: controller, path: $youPath)
+            YouView(controller: controller, path: $youPath, onOpenAttendance: openAttendance)
                 .tabItem { Label("自分", systemImage: "person.crop.circle") }
                 .tag(MainTab.you)
         }
@@ -369,11 +371,16 @@ struct MainView: View {
            activity: sidebar ? .init(count: activityBadge.count, mention: activityBadge.mention, selected: nav.sidebarSelection == .list(MainNavigation.activityId),
                                      open: { nav.select(.list(MainNavigation.activityId)) }) : nil)
         .overlay(alignment: .bottomTrailing) { composeButton }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { homeWidth = $0 }
         .navigationTitle(controller.workspaceName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // M16c / M37: the workspace on screen; with two or more, a tap opens the switcher.
-            ToolbarItem(placement: .principal) { WorkspaceTitle(controller: controller) { sheet = .workspaces } }
+            // PRESENCE.md §9.1: my 在室状況 pill right beside the name (while the board is on for me).
+            ToolbarItem(placement: .principal) {
+                HomeHeaderTitle(controller: controller, room: AttendanceRules.headerRoom(barWidth: homeWidth), onSwitch: { sheet = .workspaces },
+                                onOpenBoard: openAttendance)
+            }
             // M38: my picture (to the 自分 tab) with my presence, and the connection while it is down. Without the
             // glass circle iOS 26 puts behind a bar item: a rounded-square picture in a circle looked odd, and the
             // glass washed the badge's colour out (testers, 2026-09-30).
@@ -411,6 +418,17 @@ struct MainView: View {
     /// My picture at the home's top left: the 自分 tab, or 自分 as a sheet over the split.
     private func openYou() {
         if nav.layout == .split { nav.youSheet = true } else { nav.tab = .you }
+    }
+
+    /// The pill's 「在室状況を開く」 (the home header or 自分): the page alone on the home tab, or in the detail column.
+    private func openAttendance() {
+        if nav.layout == .split {
+            nav.youSheet = false
+            nav.select(.list(AttendanceView.selectionId))
+        } else {
+            nav.paths[.home] = [.list(AttendanceView.selectionId)]
+            nav.tab = .home
+        }
     }
 
     /// M37 (1): the home's ⋯ (MOBILE_UI.md §6.1), with what the old ＋ menu had.
@@ -538,7 +556,7 @@ struct MainView: View {
             }
         }
         .sheet(isPresented: $nav.youSheet) {
-            YouView(controller: controller, path: $youPath) { nav.youSheet = false }
+            YouView(controller: controller, path: $youPath, onClose: { nav.youSheet = false }, onOpenAttendance: openAttendance)
         }
     }
 

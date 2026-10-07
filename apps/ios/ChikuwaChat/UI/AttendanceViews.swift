@@ -92,7 +92,7 @@ struct AttendanceView: View {
                     ForEach(own) { state in
                         Button { editing = OwnStateTarget(state: state) } label: {
                             HStack(spacing: 8) {
-                                AttendanceStateLabel(controller: controller, state: state)
+                                AttendanceChip(controller: controller, state: state, large: true)
                                 Spacer()
                                 Text(AttendanceRules.kindLabel(state.kind)).font(.caption).foregroundStyle(.secondary)
                             }
@@ -139,7 +139,7 @@ struct AttendanceView: View {
         return Button {
             choose(state.id, note: AttendanceRules.noteForChoice(state, mine: mine))
         } label: {
-            AttendanceStateLabel(controller: controller, state: state)
+            AttendanceStateLabel(controller: controller, state: state, glyphSize: 17, iconColor: !selected)
                 .font(.body.weight(selected ? .semibold : .regular))
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .padding(.horizontal, 8)
@@ -195,14 +195,18 @@ struct OwnStateTarget: Identifiable {
     var id: String { state?.id ?? "new" }
 }
 
-/// A state's emoji (a custom one as its image) and name.
+/// A state's picture (its icon, else its emoji — a custom one as its image) and name. `iconColor`: the picture in the
+/// state's colour (an unselected button).
 struct AttendanceStateLabel: View {
     let controller: AppController
     let state: AttendanceStateOut
+    var glyphSize: CGFloat = 16
+    var iconColor = false
 
     var body: some View {
-        HStack(spacing: 4) {
-            if let emoji = state.emoji, !emoji.isEmpty { StatusGlyph(controller: controller, emoji: emoji, size: 16) }
+        HStack(spacing: glyphSize < 14 ? 3 : 5) {
+            AttendanceGlyph(controller: controller, state: state, size: glyphSize)
+                .foregroundStyle(iconColor ? AnyShapeStyle(AttendancePalette.foreground(state.color)) : AnyShapeStyle(.foreground))
             Text(state.label).lineLimit(1)
         }
     }
@@ -236,10 +240,10 @@ struct AttendanceChip: View {
     var large = false
 
     var body: some View {
-        AttendanceStateLabel(controller: controller, state: state)
+        AttendanceStateLabel(controller: controller, state: state, glyphSize: large ? 14 : 11)
             .font(large ? .subheadline.weight(.semibold) : .caption2.weight(.medium))
-            .padding(.horizontal, large ? 7 : 5)
-            .padding(.vertical, large ? 2 : 1)
+            .padding(.horizontal, large ? 8 : 5)
+            .padding(.vertical, large ? 3 : 1.5)
             .foregroundStyle(AttendancePalette.foreground(state.color))
             .background(AttendancePalette.chipBackground(state.color), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             .fixedSize()
@@ -269,30 +273,50 @@ struct OwnStateForm: View {
     @State private var emoji = ""
     @State private var color = "gray"
     @State private var kind = "on_site"
+    /// nil = not picked yet (a new state follows its kind's default icon); `.some(nil)` = 「なし」.
+    @State private var pickedIcon: String?? = nil
     @State private var busy = false
+
+    private var icon: String? { AttendanceRules.formIcon(picked: pickedIcon, kind: kind) }
+
+    /// The badge as it will look.
+    private var preview: AttendanceStateOut {
+        let name = label.trimmingCharacters(in: .whitespaces)
+        let trimmedEmoji = emoji.trimmingCharacters(in: .whitespaces)
+        return AttendanceStateOut(id: "preview", ownerId: nil, label: name.isEmpty ? tr("例：会議") : name, emoji: trimmedEmoji.isEmpty ? nil : trimmedEmoji,
+                                  icon: icon, color: color, kind: kind, position: 0)
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
+                    HStack {
+                        Spacer()
+                        AttendanceChip(controller: controller, state: preview, large: true)
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                } header: { Text("見た目") }
+                Section {
                     TextField("例：会議", text: $label)
                         .onChange(of: label) { _, text in if text.count > 40 { label = String(text.prefix(40)) } }
                 } header: { Text("名前") }
                 Section {
+                    AttendanceIconPicker(selection: Binding(get: { icon }, set: { pickedIcon = .some($0) }), color: color)
+                } header: { Text("アイコン") }
+                Section {
+                    AttendanceColorSwatches(selection: $color)
+                } header: { Text("色") }
+                Section {
                     TextField("🗣️", text: $emoji)
                         .onChange(of: emoji) { _, text in if text.count > 32 { emoji = String(text.prefix(32)) } }
-                } header: { Text("絵文字（なくても可）") }
+                } header: {
+                    Text("絵文字（なくても可）")
+                } footer: {
+                    Text("絵文字はアイコンを表示できない古いアプリでの代わりです")
+                }
                 Section {
-                    Picker("色", selection: $color) {
-                        ForEach(SectionLetterIcon.colors, id: \.key) { option in
-                            HStack {
-                                Circle().fill(AttendancePalette.chipBackground(option.key)).frame(width: 14, height: 14)
-                                    .overlay(Circle().strokeBorder(AttendancePalette.foreground(option.key), lineWidth: 1))
-                                Text(option.name)
-                            }
-                            .tag(option.key)
-                        }
-                    }
                     Picker("分類", selection: $kind) {
                         ForEach(AttendanceRules.kinds, id: \.self) { kind in Text(AttendanceRules.kindLabel(kind)).tag(kind) }
                     }
@@ -315,13 +339,14 @@ struct OwnStateForm: View {
                 emoji = state.emoji ?? ""
                 color = state.color
                 kind = state.kind
+                pickedIcon = .some(state.icon)
             }
         }
     }
 
     private func save() {
         let trimmedEmoji = emoji.trimmingCharacters(in: .whitespaces)
-        let form = AttendanceStateForm(label: label.trimmingCharacters(in: .whitespaces), emoji: trimmedEmoji.isEmpty ? nil : trimmedEmoji,
+        let form = AttendanceStateForm(label: label.trimmingCharacters(in: .whitespaces), icon: icon, emoji: trimmedEmoji.isEmpty ? nil : trimmedEmoji,
                                        color: color, kind: kind)
         busy = true
         Task {

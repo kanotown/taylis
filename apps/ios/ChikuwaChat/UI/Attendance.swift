@@ -146,10 +146,64 @@ enum AttendanceRules {
         return tr("\(when) から")
     }
 
-    /// A state's name with its emoji (「🟢 在室」); a custom emoji `:name:` is left to the view (StatusGlyph).
+    /// A state as plain text: its name, with the emoji in front (「🟢 在室」) only when it has no icon this app draws
+    /// (PRESENCE.md §2.1); where a picture can be drawn, AttendanceGlyph / AttendanceChip draw it.
     static func stateText(_ state: AttendanceStateOut) -> String {
-        guard let emoji = state.emoji, !emoji.isEmpty else { return state.label }
+        guard AttendanceIcons.symbol(state.icon) == nil, let emoji = state.emoji, !emoji.isEmpty else { return state.label }
         return "\(emoji) \(state.label)"
+    }
+
+    /// A new state's icon until one is picked: its kind's default state's (PRESENCE.md §2.1).
+    static func defaultIcon(kind: String) -> String? { AttendanceIcons.defaults[kind] }
+
+    /// The icon the own-state form sends: the picked one (`.some(nil)` = 「なし」), else (not picked) the kind's default.
+    static func formIcon(picked: String??, kind: String) -> String? {
+        if let picked { return picked }
+        return defaultIcon(kind: kind)
+    }
+
+    // MARK: the quick switch (PRESENCE.md §7.1, §9.1)
+
+    /// My state now (nil: none, or the board is off).
+    static func myState(_ board: AttendanceBoardOut?, _ meId: String?) -> AttendanceStateOut? {
+        state(board, entry(board, meId)?.stateId)
+    }
+
+    /// Whether the pill shows: while the board is on, never for a guest or a bot.
+    static func pillVisible(board: AttendanceBoardOut?, role: String?) -> Bool { visible(board: board, role: role) }
+
+    /// The pill's name: about 8 characters, cut with 「…」.
+    static func pillText(_ label: String) -> String {
+        label.count > 8 ? String(label.prefix(7)) + "…" : label
+    }
+
+    /// 「在室状況：学外」, or 「在室状況」 while I have no state.
+    static func pillAccessibilityLabel(_ state: AttendanceStateOut?) -> String {
+        guard let state else { return tr("在室状況") }
+        return tr("在室状況：\(state.label)")
+    }
+
+    enum PillMode: Equatable { case full, icon, hidden }
+
+    /// The workspace's name keeps at least this many characters before the pill gives way.
+    static let nameMinCharacters = 4
+    /// The icon-only pill's width and the space between the name and the pill (pt).
+    static let pillIconWidth: CGFloat = 28
+    static let pillGap: CGFloat = 6
+
+    /// The home header title's room in a bar `barWidth` wide: the bar less the picture (left) and ⋯ (right) on both
+    /// sides, as the title is centred. 0 = not measured yet.
+    static func headerRoom(barWidth: CGFloat) -> CGFloat {
+        barWidth > 0 ? max(0, barWidth - 2 * 68) : 0
+    }
+
+    /// How the pill fits beside the workspace's name in `room` (pt): whole while both fit, else only its icon (the name
+    /// cut down to `nameMin` at most), else not at all. `room` 0 = not laid out yet: whole.
+    static func pillMode(room: CGFloat, nameNatural: CGFloat, nameMin: CGFloat, full: CGFloat) -> PillMode {
+        if room <= 0 { return .full }
+        if room - nameNatural - pillGap >= full { return .full }
+        if room - min(nameNatural, nameMin) - pillGap >= pillIconWidth { return .icon }
+        return .hidden
     }
 
     /// attendance.updated (or my own change answered): the person's row replaced. `known` is false when its state is not
