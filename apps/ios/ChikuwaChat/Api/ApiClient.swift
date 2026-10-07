@@ -1269,6 +1269,11 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         try await request(method, path, body: body)
     }
 
+    /// M140: a call answered with no body (204), for the calls kept in other files (Api/AttendanceModels.swift).
+    func requestNoContent(_ method: String, _ path: String, body: JSONValue? = nil) async throws {
+        _ = try await requestRaw(method, path, body: body, auth: true, retry401: true)
+    }
+
     // MARK: wiki (M122, docs/WIKI.md §14.2)
 
     /// Every page I can read and the change feed's cursor; nil when `etag` is still the answer (304).

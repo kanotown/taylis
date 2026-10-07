@@ -60,6 +60,22 @@
         }
       }
     },
+    "%@ から" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "since %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自 %@"
+          }
+        }
+      }
+    },
     "%@ さんが通話を始めました" : {
       "localizations" : {
         "en" : {
@@ -260,6 +276,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有关联的行"
+          }
+        }
+      }
+    },
+    "まだ状態を選んでいません。上のボタンで選べます" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You haven't chosen a status yet. Pick one above."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未选择状态。请点击上方的按钮。"
           }
         }
       }
@@ -472,6 +504,22 @@
         }
       }
     },
+    "メモ（例：〇〇室、15 時に戻ります）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Note (e.g. Room 3, back at 3 pm)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "备注（例：3 号室，15 点回来）"
+          }
+        }
+      }
+    },
     "メンバーに通知が届き、会議のリンクが投稿されます。" : {
       "localizations" : {
         "en" : {
@@ -552,6 +600,22 @@
         }
       }
     },
+    "不在（帰宅など）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gone (home etc.)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不在（已回家等）"
+          }
+        }
+      }
+    },
     "人を探す" : {
       "localizations" : {
         "en" : {
@@ -564,6 +628,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "查找用户"
+          }
+        }
+      }
+    },
+    "今この状態の人はそのまま残ります。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anyone in this status now keeps it."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前处于此状态的人保持不变。"
           }
         }
       }
@@ -596,6 +676,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "创建者"
+          }
+        }
+      }
+    },
+    "例：会議" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "e.g. Meeting"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例：会议"
           }
         }
       }
@@ -664,6 +760,38 @@
         }
       }
     },
+    "分類" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kind"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分类"
+          }
+        }
+      }
+    },
+    "分類はボードの並びと「在室 n 人」の数え方に使います" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The kind sets the board’s order and the “in the room” count."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分类用于看板的排列和“在室 n 人”的计数。"
+          }
+        }
+      }
+    },
     "名前を付けて行を作ります。作ると行のページが開きます。" : {
       "localizations" : {
         "en" : {
@@ -712,6 +840,70 @@
         }
       }
     },
+    "在室 %lld 人" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld in the room"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在室 %lld 人"
+          }
+        }
+      }
+    },
+    "在室状況はオフになっています" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The attendance board is turned off"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在室状况已关闭"
+          }
+        }
+      }
+    },
+    "在室状況：" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attendance: "
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在室状况："
+          }
+        }
+      }
+    },
+    "在室（部屋にいる）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In the room"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在室（在房间里）"
+          }
+        }
+      }
+    },
     "報告とご意見は、このワークスペースの管理者に届きます。" : {
       "localizations" : {
         "en" : {
@@ -740,6 +932,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "举报将发送给此工作区的管理员。对方不会收到通知。"
+          }
+        }
+      }
+    },
+    "外出（学外・社外）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off site"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外出（校外、公司外）"
           }
         }
       }
@@ -820,6 +1028,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "数字"
+          }
+        }
+      }
+    },
+    "敷地内（学内・社内）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On site"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在场内（校内、公司内）"
           }
         }
       }
@@ -980,6 +1204,134 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "空"
+          }
+        }
+      }
+    },
+    "管理者が Desktop / Web で有効にできます" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An administrator can turn it on in Desktop / Web."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理员可以在 Desktop / Web 中开启。"
+          }
+        }
+      }
+    },
+    "絵文字（なくても可）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Emoji (optional)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表情（可选）"
+          }
+        }
+      }
+    },
+    "編集します" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edits it"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "进行编辑"
+          }
+        }
+      }
+    },
+    "自分の状態" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "My status"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的状态"
+          }
+        }
+      }
+    },
+    "自分用の状態" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "My own statuses"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自用状态"
+          }
+        }
+      }
+    },
+    "自分用の状態はまだありません（例：会議、出張）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No statuses of your own yet (e.g. Meeting, Business trip)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有自用状态（例：会议、出差）。"
+          }
+        }
+      }
+    },
+    "自分用の状態を編集" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit my own status"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑自用状态"
+          }
+        }
+      }
+    },
+    "自分用の状態を追加" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add my own status"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加自用状态"
           }
         }
       }
@@ -4689,6 +5041,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "（空）"
+          }
+        }
+      }
+    },
+    "（自分用）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " (my own)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（自用）"
           }
         }
       }
@@ -29956,6 +30324,9 @@
           }
         }
       }
+    },
+    "🗣️" : {
+      "shouldTranslate" : false
     }
   },
   "version" : "1.0"

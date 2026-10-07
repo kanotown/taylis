@@ -475,6 +475,22 @@ final class Store {
         reservationPools = list
     }
     func dropReservationPool(_ poolId: String) { reservationPools = reservationPools?.filter { $0.id != poolId } }
+    /// M140 (docs/PRESENCE.md §4): the 在室状況 board (not persisted); nil for guests, while it is off and from a server
+    /// before M140. From the bootstrap, attendance.updated (one row) and GET /attendance (attendance.config_updated).
+    private(set) var attendance: AttendanceBoardOut?
+    func setAttendance(_ board: AttendanceBoardOut?) {
+        let next = board?.enabled == true ? board : nil
+        if next != attendance { attendance = next }  // every reconnect bootstraps: unchanged redraws nothing
+    }
+    /// One person's row (attendance.updated, or my own change answered). False when its state is not on the board held
+    /// here (someone's new own state): the caller reads the board again.
+    @discardableResult
+    func applyAttendanceEntry(_ entry: AttendanceEntryOut) -> Bool {
+        guard let board = attendance else { return true }
+        let next = AttendanceRules.applying(entry, to: board)
+        if next.board != board { attendance = next.board }
+        return next.known
+    }
     private var drafts: [String: Draft] = [:]
     private var uploads: [String: Int] = [:]
 

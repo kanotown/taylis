@@ -299,7 +299,7 @@ enum SidebarOrder {
 /// still opens its list.
 struct HomeTile: Identifiable, Equatable {
     enum Kind: String, CaseIterable {
-        case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, reservations, files, canvases, docs
+        case threads, times, drafts, saved, reminders, calendar, tasks, deadlines, reservations, files, canvases, docs, attendance
 
         /// M111: the key in apps/shared/nav-items.json (UserMe.nav_items).
         var navKey: String { self == .times ? "times-feed" : rawValue }
@@ -328,6 +328,7 @@ struct HomeTile: Identifiable, Equatable {
         case .files: tr("ファイル")
         case .canvases: tr("キャンバス")
         case .docs: tr("ドキュメント")
+        case .attendance: tr("在室状況")
         }
     }
 
@@ -345,6 +346,7 @@ struct HomeTile: Identifiable, Equatable {
         case .files: "doc.on.doc"
         case .canvases: "doc.text"
         case .docs: "book.closed"
+        case .attendance: "door.left.hand.open"
         }
     }
 
@@ -363,6 +365,7 @@ struct HomeTile: Identifiable, Equatable {
         case .files: FilesView.selectionId
         case .canvases: CanvasesView.selectionId
         case .docs: DocsView.selectionId
+        case .attendance: AttendanceView.selectionId
         }
     }
 
@@ -373,6 +376,7 @@ struct HomeTile: Identifiable, Equatable {
         case .threads: return count == 0 ? tr("未読なし") : alert ? tr("未読 \(count) 件、メンションあり") : tr("未読 \(count) 件")
         case .reminders: return count == 0 ? tr("通知済みなし") : tr("通知済み \(count) 件")
         case .reservations: return count == 0 ? tr("作業なし") : tr("担当者の作業 \(count) 件")
+        case .attendance: return tr("在室 \(count) 人")
         default: return tr("\(count) 件")
         }
     }
@@ -385,11 +389,14 @@ struct HomeTile: Identifiable, Equatable {
     /// M112: 予約 (key "reservations", after 締切) once the server answered the pools (`reservations` non-nil); its
     /// number is the to-dos due in the pools I operate (red), none for the others.
     /// M122: ドキュメント (key "docs", after キャンバス) while the server has the wiki (`docs`): no number.
+    /// M140 (docs/PRESENCE.md §9): 在室状況 (key "attendance", last) only while the board is on for me (`attendance`, the
+    /// 「在室 n 人」 number, never red; nil = off, a guest, an older server).
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int, navItems: [NavItem]?,
-                      reservations: ReservationTile? = nil, docs: Bool = false) -> [HomeTile] {
-        let all = tiles(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders, reservations: reservations, docs: docs)
+                      reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil) -> [HomeTile] {
+        let all = tiles(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders, reservations: reservations, docs: docs,
+                        attendance: attendance)
         let byKey = Dictionary(uniqueKeysWithValues: all.map { ($0.kind.navKey, $0) })
-        return NavItems.tileKeys(navItems).compactMap { byKey[$0] }
+        return NavItems.tileKeys(navItems, implemented: NavItems.implemented(attendance: attendance != nil)).compactMap { byKey[$0] }
     }
 
     struct ReservationTile: Equatable {
@@ -398,7 +405,7 @@ struct HomeTile: Identifiable, Equatable {
     }
 
     static func tiles(threads: ThreadSummary, drafts: Int, saved: Int, firedReminders: Int,
-                      reservations: ReservationTile? = nil, docs: Bool = false) -> [HomeTile] {
+                      reservations: ReservationTile? = nil, docs: Bool = false, attendance: Int? = nil) -> [HomeTile] {
         var row = base(threads: threads, drafts: drafts, saved: saved, firedReminders: firedReminders)
         if docs, let at = row.firstIndex(where: { $0.kind == .canvases }) {
             row.insert(HomeTile(kind: .docs, count: nil, alert: false), at: at + 1)
@@ -407,6 +414,7 @@ struct HomeTile: Identifiable, Equatable {
             row.insert(HomeTile(kind: .reservations, count: reservations.operates ? reservations.todos : nil,
                                 alert: reservations.todos > 0), at: at + 1)
         }
+        if let attendance { row.append(HomeTile(kind: .attendance, count: attendance, alert: false)) }
         return row
     }
 

@@ -27,7 +27,7 @@ enum NavItems {
         Entry(key: "tasks", label: tr("タスク"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "deadlines", label: tr("締切"), visible: true, platforms: [.desktop, .mobile]),
         Entry(key: "reservations", label: tr("予約"), visible: true, platforms: [.desktop, .mobile]),
-        // M140 (docs/PRESENCE.md): only while the workspace has the board on (not drawn by this app yet).
+        // M140 (docs/PRESENCE.md §9): implemented only while the workspace has the board on (and never for a guest).
         Entry(key: "attendance", label: tr("在室状況"), visible: true, platforms: [.desktop, .mobile]),
     ] }
 
@@ -39,8 +39,12 @@ enum NavItems {
     ]
 
     /// The tiles this app has (「予約」 joins when its page exists). アクティビティ is the phone's tab and the iPad
-    /// sidebar's own row, never a tile, so it cannot be hidden here.
-    static var implemented: [String] { HomeTile.Kind.allCases.map(\.navKey) }
+    /// sidebar's own row, never a tile, so it cannot be hidden here. 「在室状況」 (M140) only while the board is on.
+    static var implemented: [String] { implemented(attendance: false) }
+
+    static func implemented(attendance: Bool) -> [String] {
+        HomeTile.Kind.allCases.filter { attendance || $0 != .attendance }.map(\.navKey)
+    }
 
     private static let byKey = Dictionary(uniqueKeysWithValues: catalogue.map { ($0.key, $0) })
 
@@ -84,8 +88,8 @@ enum NavItems {
     }
 
     /// The tiles to draw, in my order.
-    static func tileKeys(_ stored: [NavItem]?) -> [String] {
-        shown(full(stored)).filter(\.visible).map(\.key)
+    static func tileKeys(_ stored: [NavItem]?, implemented: [String]? = nil) -> [String] {
+        shown(full(stored), implemented: implemented).filter(\.visible).map(\.key)
     }
 }
 
@@ -96,10 +100,12 @@ struct HomeTilesSettingsView: View {
     @State private var editMode: EditMode = .inactive
 
     private var setting: NavItemsSetting { (controller.store.me ?? controller.me)?.navItems ?? .unsupported }
+    /// M140: 「在室状況」 has its switch only while the board is on for me.
+    private var implemented: [String] { NavItems.implemented(attendance: controller.store.attendance != nil && !controller.isGuest) }
 
     var body: some View {
         let full = NavItems.full(setting.chosen)
-        let shown = NavItems.shown(full)
+        let shown = NavItems.shown(full, implemented: implemented)
         List {
             Section {
                 ForEach(shown, id: \.key) { item in
@@ -116,7 +122,7 @@ struct HomeTilesSettingsView: View {
                 .onMove { from, to in
                     var keys = shown.map(\.key)
                     keys.move(fromOffsets: from, toOffset: to)
-                    save(NavItems.reorder(full, order: keys))
+                    save(NavItems.reorder(full, order: keys, implemented: implemented))
                 }
             } footer: {
                 Text("ホームの上に並ぶタイルです。「編集」でドラッグして並べ替えます。すべての端末で同じになり、パソコンのサイドバーにも同じ順と表示が使われます。アクティビティは下のタブにいつもあります。")

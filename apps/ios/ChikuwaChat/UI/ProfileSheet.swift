@@ -30,6 +30,15 @@ struct ProfileSheet: View {
                             // The roster label is the title too (LAB.md 「肩書と名簿」): 「M2 · 研究室長」.
                             if let title = Roster.displayTitle(user?.title, controller.store.roster[userId]) { Text(title).font(.footnote).foregroundStyle(.secondary) }
                             Text(presenceLabel(controller.store.presenceOf(userId))).font(.caption).foregroundStyle(.secondary)
+                            // M140 (docs/PRESENCE.md §9): the 在室状況 chip, its note and since when.
+                            if !controller.isGuest, let chip = AttendanceRules.chip(controller.store.attendance, userId) {
+                                HStack(spacing: 6) {
+                                    AttendanceChip(controller: controller, state: chip.state, note: chip.entry.note)
+                                    Text([chip.entry.note, AttendanceRules.sinceLabel(chip.entry.since)].compactMap { $0?.isEmpty == false ? $0 : nil }
+                                        .joined(separator: " · "))
+                                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                }
+                            }
                             if DND.isActive(user) {
                                 Text(tr("🔕 通知を一時停止中") + (user?.quietHours.map { " · " + DND.label($0) } ?? "")).font(.caption).foregroundStyle(.secondary)
                             }
