@@ -1,12 +1,13 @@
 """M130 (docs/CALLS.md): in-app calls on LiveKit — tokens, who may start and join, the webhook,
 the reconcile loop, events, messages and pushes — and the end of M117's meeting links (§11)."""
 
+import asyncio
 import base64
 import hashlib
 import json
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ from app.modules.calls.livekit import (
     FakeLiveKitGateway,
     InvalidWebhook,
     LiveKitConfig,
+    LiveKitParticipant,
     LiveKitUnavailable,
     access_token,
     config_from_settings,
@@ -803,6 +805,113 @@ async def test_reconcile_ends_an_empty_room_and_cuts_off_people(
     await db.refresh(row)
     assert row.ended_at is not None and row.end_reason == "archived"
     assert second not in fake.rooms
+
+
+class HeldListing:
+    """Holds FakeLiveKitGateway.list_participants after it has read the room (the answer is
+    LiveKit's state when asked) until released, so webhooks can run in between."""
+
+    def __init__(self, fake: FakeLiveKitGateway) -> None:
+        self.fake = fake
+        self.asked = asyncio.Event()
+        self.release = asyncio.Event()
+        self.original = fake.list_participants
+
+    async def list_participants(self, room: str) -> list[LiveKitParticipant]:
+        answer = await self.original(room)
+        self.asked.set()
+        await self.release.wait()
+        return answer
+
+    async def reconcile_around(
+        self, app: FastAPI, meanwhile: Callable[[], Awaitable[None]], now: Any = None
+    ) -> int:
+        self.fake.list_participants = self.list_participants  # type: ignore[method-assign]
+        try:
+            task = asyncio.create_task(reconcile(app, self.fake, now=now))
+            await asyncio.wait_for(self.asked.wait(), 5)
+            await meanwhile()
+            self.release.set()
+            return await asyncio.wait_for(task, 5)
+        finally:
+            self.fake.list_participants = self.original  # type: ignore[method-assign]
+
+
+async def test_reconcile_racing_webhooks_converges_on_livekit(
+    client: AsyncClient,
+    db: AsyncSession,
+    app: FastAPI,
+    as_user: Callable[[User], None],
+    fake: FakeLiveKitGateway,
+) -> None:
+    """Review v0.1.43 #5: a join (or leave) webhook handled while the reconcile waits for
+    LiveKit's list must not be undone by that older list; a connection only a reconcile closed
+    comes back when LiveKit still has it; a confirmed leave does not."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    general = (await client.post(f"{API}/channels", json={"name": "general"})).json()
+    await client.post(f"{API}/channels/{general['id']}/members", json={"user_id": str(bob.id)})
+    call_id = await _open_call(client, general["id"])
+    later = utcnow() + timedelta(seconds=300)  # an empty room would be ended by now
+
+    async def participants() -> list[str]:
+        state = (await client.get(f"{API}/calls/{call_id}")).json()["call"]
+        assert state["ended_at"] is None
+        return sorted(p["user_id"] for p in state["participants"])
+
+    # Alice joins while the reconcile waits for the (empty) list.
+    async def alice_joins() -> None:
+        fake.join(call_id, str(alice.id), "PA_a")
+        assert (await webhook(client, joined(call_id, str(alice.id), "PA_a"))).status_code == 200
+        assert await participants() == [str(alice.id)]
+
+    await HeldListing(fake).reconcile_around(app, alice_joins, now=later)
+    assert await participants() == [str(alice.id)]  # not closed, the call not ended
+    assert await reconcile(app, fake, now=later) == 0
+    assert await participants() == [str(alice.id)]
+
+    # Bob joins, then leaves while the reconcile holds a list that still has him.
+    fake.join(call_id, str(bob.id), "PA_b")
+    await webhook(client, joined(call_id, str(bob.id), "PA_b"))
+    assert await participants() == sorted([str(alice.id), str(bob.id)])
+
+    async def bob_leaves() -> None:
+        fake.rooms[call_id] = [p for p in fake.rooms[call_id] if p.sid != "PA_b"]
+        await webhook(client, left(call_id, str(bob.id), "PA_b"))
+
+    await HeldListing(fake).reconcile_around(app, bob_leaves, now=later)
+    assert await participants() == [str(alice.id)]  # the older list does not bring him back
+    row = (
+        await db.execute(select(CallParticipant).where(CallParticipant.livekit_sid == "PA_b"))
+    ).scalar_one()
+    assert row.left_at is not None and row.left_reason == "left"
+
+    # A connection missing from one list (only the reconcile closed it) comes back with the
+    # next list that has it.
+    held = [p for p in fake.rooms[call_id] if p.sid == "PA_a"]
+    fake.rooms[call_id] = []
+    assert await reconcile(app, fake) == 1
+    assert await participants() == []
+    fake.rooms[call_id] = held
+    assert await reconcile(app, fake, now=later) == 1
+    assert await participants() == [str(alice.id)]
+    # A late participant_joined changes nothing either way (the row exists).
+    await webhook(client, joined(call_id, str(alice.id), "PA_a"))
+    assert await participants() == [str(alice.id)]
+
+    # Closed by a reconcile, then LiveKit confirms the leave: a stale list does not reopen it.
+    fake.rooms[call_id] = []
+    assert await reconcile(app, fake) == 1
+    await webhook(client, left(call_id, str(alice.id), "PA_a"))
+    fake.rooms[call_id] = held
+    assert await reconcile(app, fake) == 0
+    assert await participants() == []
+    db.expire_all()
+    reasons = dict(
+        (await db.execute(select(CallParticipant.livekit_sid, CallParticipant.left_reason))).all()
+    )
+    assert reasons == {"PA_a": "left", "PA_b": "left"}
 
 
 async def test_wake_events(fake: FakeLiveKitGateway, app: FastAPI) -> None:

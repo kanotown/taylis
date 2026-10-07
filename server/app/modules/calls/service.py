@@ -363,7 +363,7 @@ async def leave(db: AsyncSession, rt: CallsRuntime | None, actor: User, call_id:
             log.warning("LiveKit cannot be reached: a participant was not removed", exc_info=True)
     locked = await get_call(db, call_id, for_update=True)
     assert locked is not None
-    if locked.ended_at is None and await _close_rows(db, locked, user_id=actor.id):
+    if locked.ended_at is None and await _close_rows(db, locked, "left", user_id=actor.id):
         await _recount(db, locked)
         await _announce(db, locked, CALL_UPDATED)
     await db.commit()
@@ -383,13 +383,19 @@ async def _announce(db: AsyncSession, call: Call, event_type: str) -> None:
 
 
 async def _close_rows(
-    db: AsyncSession, call: Call, *, user_id: uuid.UUID | None = None, sids: Iterable[str] = ()
+    db: AsyncSession,
+    call: Call,
+    reason: str,
+    *,
+    user_id: uuid.UUID | None = None,
+    sids: Iterable[str] = (),
 ) -> int:
-    """Close open connections: all of them, one person's, or these sids."""
+    """Close open connections: all of them, one person's, or these sids. `reason` is the
+    row's left_reason ('left' | 'reconciled' | 'ended')."""
     stmt = (
         update(CallParticipant)
         .where(CallParticipant.call_id == call.id, CallParticipant.left_at.is_(None))
-        .values(left_at=utcnow())
+        .values(left_at=utcnow(), left_reason=reason)
     )
     if user_id is not None:
         stmt = stmt.where(CallParticipant.user_id == user_id)
@@ -424,11 +430,32 @@ async def _add_connection(
     joined_at: datetime | None,
     *,
     left: bool = False,
+    reopen: bool = False,
 ) -> bool:
-    """A connection LiveKit reported: a row unless that sid has one (any state). True if added."""
-    known = await db.scalar(select(CallParticipant.id).where(CallParticipant.livekit_sid == sid))
+    """A connection LiveKit reported: a row unless that sid has one (any state). True if added.
+    With `reopen` (the reconcile, which sees LiveKit's list now), a row only a reconcile closed
+    opens again; a confirmed leave stays closed. A webhook never reopens: a late
+    participant_joined is older news than the list that found the connection gone."""
+    known = (
+        await db.execute(
+            select(CallParticipant.id, CallParticipant.left_reason).where(
+                CallParticipant.livekit_sid == sid
+            )
+        )
+    ).first()
     if known is not None:
-        return False
+        if not reopen or known.left_reason != "reconciled":
+            return False
+        result = await db.execute(
+            update(CallParticipant)
+            .where(
+                CallParticipant.id == known.id,
+                CallParticipant.call_id == call.id,
+                CallParticipant.left_reason == "reconciled",
+            )
+            .values(left_at=None, left_reason=None)
+        )
+        return bool(result.rowcount)  # type: ignore[attr-defined]
     if await db.get(User, user_id) is None:
         return False  # not one of ours
     now = utcnow()
@@ -441,6 +468,7 @@ async def _add_connection(
                     livekit_sid=sid,
                     joined_at=joined_at or now,
                     left_at=now if left else None,
+                    left_reason="left" if left else None,
                 )
             )
             await db.flush()
@@ -457,7 +485,7 @@ async def end_call_in_tx(db: AsyncSession, call: Call, reason: str) -> None:
         return
     call.ended_at = utcnow()
     call.end_reason = reason
-    await _close_rows(db, call)
+    await _close_rows(db, call, "ended")
     await _recount(db, call)
     if call.message_id is not None:
         await messages.announce_change_by_id_in_tx(db, call.message_id, "call")
@@ -499,7 +527,18 @@ async def handle_webhook(db: AsyncSession, event: dict[str, Any]) -> str:
     else:
         # Left before its join was seen: the row is made closed.
         changed = await _add_connection(db, call, user_id, sid, joined_at, left=True)
-        changed = bool(await _close_rows(db, call, sids=[sid])) or changed
+        changed = bool(await _close_rows(db, call, "left", sids=[sid])) or changed
+        # Closed by a reconcile before: now a confirmed leave (a later reconcile must not reopen
+        # it from a list taken before the leave).
+        await db.execute(
+            update(CallParticipant)
+            .where(
+                CallParticipant.livekit_sid == sid,
+                CallParticipant.call_id == call.id,
+                CallParticipant.left_reason == "reconciled",
+            )
+            .values(left_reason="left")
+        )
     if changed:
         await _recount(db, call)
         await _announce(db, call, CALL_UPDATED)
@@ -536,7 +575,12 @@ async def reconcile(
 ) -> int:
     """Puts `calls` / `call_participants` right against LiveKit and cuts off whoever may no longer
     be in a call. Nothing is ended while LiveKit cannot be reached (LiveKitUnavailable propagates).
-    Returns how many calls changed."""
+    Returns how many calls changed.
+
+    LiveKit is asked without a transaction held, so webhooks run meanwhile. Only connections that
+    were already open before the list was requested are closed for missing from it (one that
+    joined while listing is not in an older list); one the reconcile closed is reopened when a
+    later list has it; a confirmed leave is not (§3.3)."""
     open_calls = (
         await db.execute(
             select(Call.id, Call.channel_id, Call.started_at)
@@ -555,6 +599,16 @@ async def reconcile(
         channel = await channels.find_channel(db, channel_id)
         archived = channel is None or channel.is_archived
         allowed = await _allowed_users(db, channel) if channel is not None else set()
+        # Read before LiveKit is asked: only these may be closed for missing from its answer.
+        open_before = set(
+            (
+                await db.execute(
+                    select(CallParticipant.livekit_sid).where(
+                        CallParticipant.call_id == call_id, CallParticipant.left_at.is_(None)
+                    )
+                )
+            ).scalars()
+        )
         await db.rollback()
         reason: str | None = None
         present: dict[str, uuid.UUID] = {}
@@ -587,13 +641,22 @@ async def reconcile(
                 .scalars()
                 .all()
             )
-            gone = [r.livekit_sid for r in open_rows if r.livekit_sid not in present]
-            if gone and await _close_rows(db, call, sids=gone):
+            gone = [
+                r.livekit_sid
+                for r in open_rows
+                if r.livekit_sid not in present and r.livekit_sid in open_before
+            ]
+            if gone and await _close_rows(db, call, "reconciled", sids=gone):
                 changed = True
             for sid, uid in present.items():
-                if await _add_connection(db, call, uid, sid, None):
+                if await _add_connection(db, call, uid, sid, None, reopen=True):
                     changed = True
-            if not present:
+            still_open = await db.scalar(
+                select(func.count())
+                .select_from(CallParticipant)
+                .where(CallParticipant.call_id == call.id, CallParticipant.left_at.is_(None))
+            )
+            if not present and not still_open:
                 last_left = await db.scalar(
                     select(func.max(CallParticipant.left_at)).where(
                         CallParticipant.call_id == call.id
