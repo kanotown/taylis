@@ -118,6 +118,12 @@ export class Store {
    * and dm_pin.updated, not persisted. Null until a server that has them says so (before M118: no pin actions).
    */
   dmPins: readonly string[] | null = null;
+  /**
+   * M141 (SYNC_PROTOCOL.md §7.9): the DMs and group DMs I closed (「会話を閉じる」) and nobody wrote in since; hidden from
+   * every DM list. From bootstrap, dm_close.updated and a timeline message.created; not persisted. Null until a server
+   * that has them says so (before M141: nothing closed, and no close action).
+   */
+  closedDms: ReadonlySet<string> | null = null;
   /** M104: the people I blocked (docs/MODERATION.md §4); from bootstrap and block.updated, not persisted. */
   readonly blockedUsers = new Set<string>();
   /** My pending scheduled messages (M12d); from GET /scheduled and scheduled.updated, not persisted. */
@@ -1105,6 +1111,29 @@ export class Store {
   /** Bootstrap's `dm_pins` (null from a server before M118); also puts a rolled-back order back as it was. */
   replaceDmPins(ids: readonly string[] | null): void {
     this.dmPins = ids ? [...ids] : null;
+    this.emit();
+  }
+
+  // --- closed DMs (M141) --------------------------------------------------------------------
+
+  isDmClosed(channelId: string): boolean {
+    return this.closedDms?.has(channelId) ?? false;
+  }
+
+  /** dm_close.updated, a timeline message (opens it), my own close / reopen. Nothing when the server has no closes. */
+  setDmClosed(channelId: string, closed: boolean): void {
+    const set = this.closedDms;
+    if (!set || closed === set.has(channelId)) return;
+    const next = new Set(set);
+    if (closed) next.add(channelId);
+    else next.delete(channelId);
+    this.closedDms = next;
+    this.emit();
+  }
+
+  /** Bootstrap's `closed_dms` (null from a server before M141); also puts a rolled-back set back as it was. */
+  replaceClosedDms(ids: Iterable<string> | null): void {
+    this.closedDms = ids ? new Set(ids) : null;
     this.emit();
   }
 

@@ -63,11 +63,18 @@ export function findDmWith(channels: Iterable<ChannelState>, userId: string, meI
 
 /**
  * My DMs and group DMs: the pinned ones in pin order (M118), my own DM, then the newest last message first; `query`
- * filters by name.
+ * filters by name. M141: the ones I closed are left out.
  */
-export function dmList(channels: Iterable<ChannelState>, title: (channel: ChannelState) => string, meId: string | null, query = "", dmPins: readonly string[] | null = null): ChannelState[] {
+export function dmList(
+  channels: Iterable<ChannelState>,
+  title: (channel: ChannelState) => string,
+  meId: string | null,
+  query = "",
+  dmPins: readonly string[] | null = null,
+  closedDms: ReadonlySet<string> | null = null,
+): ChannelState[] {
   const needle = query.trim().toLowerCase();
-  const rows = [...channels].filter((c) => c.isMember && isDmChannel(c) && (!needle || title(c).toLowerCase().includes(needle)));
+  const rows = [...channels].filter((c) => c.isMember && isDmChannel(c) && !closedDms?.has(c.id) && (!needle || title(c).toLowerCase().includes(needle)));
   return pinnedFirst(rows.sort((a, b) => Number(isSelfNotes(b, meId)) - Number(isSelfNotes(a, meId)) || (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "")), dmPins);
 }
 

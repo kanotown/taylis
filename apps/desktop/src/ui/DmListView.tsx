@@ -48,7 +48,7 @@ export function DmListView({ controller, onOpen, onNew }: { controller: AppContr
   const store = controller.store;
   const meId = store.me?.id ?? controller.me?.id ?? null;
   const [query, setQuery] = useState("");
-  const rows = dmList(store.channels.values(), (c) => channelTitle(c, controller), meId, query, store.dmPins);
+  const rows = dmList(store.channels.values(), (c) => channelTitle(c, controller), meId, query, store.dmPins, store.closedDms);
   // M118: my own DM's placeholder stands after the pinned DMs.
   const pinnedRows = rows.filter((c) => store.isDmPinned(c.id)).length;
   const row = (channel: ChannelState) => <DmRow key={channel.id} controller={controller} channel={channel} meId={meId} now={now} onOpen={() => onOpen(channel.id)} />;

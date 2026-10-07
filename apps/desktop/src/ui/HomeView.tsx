@@ -70,7 +70,7 @@ export function HomeView(props: HomeViewProps) {
   const me = store.me ?? controller.me;
   const meId = me?.id ?? null;
   const channels = [...store.channels.values()];
-  const sections = homeSections(channels, { gatherUnread, favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId, title: (c) => channelTitle(c, controller), dmPins: store.dmPins });
+  const sections = homeSections(channels, { gatherUnread, favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId, title: (c) => channelTitle(c, controller), dmPins: store.dmPins, closedDms: store.closedDms });
   const ids = (list: ChannelState[]) => () => list.map((c) => c.id);
   const sortMenu = (key: DefaultSectionKey, title: string, list: ChannelState[]) => (
     <DefaultSectionMenu controller={controller} target={{ default: key }} title={title} sort={defaultSort(store.sidebarDefaults, key).sort ?? "name"} shownIds={ids(list)} />

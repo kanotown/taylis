@@ -5,7 +5,7 @@
  */
 import { ApiError } from "../src/api/errors";
 import type { PoolOut, ActivityFilter, ActivityItem, ActivityListOut, ActivitySummaryOut, AttachmentOut, BootstrapOut, CanvasConflict, CanvasCreate, CanvasMeta, CanvasOnConflict, CanvasOut, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasSaveIn, CanvasSaveOut, CanvasSearchOut, CanvasTemplateCreate, CanvasTemplateOut, CanvasTemplateUpdate, CanvasUpdate, ChannelLinkOut, MemberOut, ChannelOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, DraftOut, HistoryOut, MessageOut, NotificationLevel, NotificationPreferenceOut, ParentThread, ReadStateOut, ReminderOut, ScheduledOut, SessionOut, ThreadFilter, ThreadListOut, ThreadState, ThreadSummary, UserMe, UserPublic, LabProfileOut, TemplateOut } from "../src/api/types";
-import type { AttendanceBoardOut, LastMessageOut, WorkspaceSettingsOut } from "../src/api/types";
+import type { AttendanceBoardOut, DmCloseStateOut, DmPinStateOut, LastMessageOut, WorkspaceSettingsOut } from "../src/api/types";
 import { aiProviderOf, type AiAgentCreate, type AiAgentOut, type AiAgentUpdate, type AiAskCreate, type AiAskTargetOut, type AiProviderOut, type AiRunOut, type AiStatusOut, type AiSummaryCreate, type AiSummaryTargetOut, type AiUsageOut } from "../src/api/ai";
 import type { components } from "../src/api/schema";
 import type { SyncApi, WsConnector, WsLike } from "../src/sync/engine";
@@ -1038,6 +1038,12 @@ export class FakeServer {
   /** M118: each user's pinned DMs, oldest pin first; `dmPinsEnabled` false plays a server before M118 (no dm_pins). */
   readonly dmPins = new Map<string, string[]>();
   dmPinsEnabled = true;
+  /**
+   * M141: each user's closed DMs with the channel's last_seq when closed (DATA_MODEL.md conversation_closes);
+   * `dmClosesEnabled` false plays a server before M141 (no closed_dms).
+   */
+  readonly dmCloses = new Map<string, Map<string, number>>();
+  dmClosesEnabled = true;
   /** M15f: each conversation's link bar; setLinks announces it like the server does. */
   readonly links = new Map<string, ChannelLinkOut[]>();
 
@@ -1385,6 +1391,31 @@ export class FakeServer {
   }
 
   /**
+   * M141: closed while no timeline row (top level or also_in_channel) is newer than the closing seq; a new message opens
+   * it without a write, as on the server.
+   */
+  isDmClosedFor(userId: string, channelId: string): boolean {
+    const closedSeq = this.dmCloses.get(userId)?.get(channelId);
+    if (closedSeq === undefined) return false;
+    const record = this.channels.get(channelId);
+    return !!record && !record.messages.some((m) => m.seq !== null && m.seq > closedSeq && (!m.parent_id || m.also_in_channel));
+  }
+
+  /** M141: PUT / DELETE /channels/{id}/close; dm_close.updated to the user only when it changed. */
+  setDmClose(userId: string, channelId: string, closed: boolean): void {
+    const record = this.channels.get(channelId);
+    if (!record) throw new ApiError(404, "not_found", "Channel not found");
+    if (record.channel.type !== "dm" && record.channel.type !== "group_dm") throw new ApiError(422, "dm_close_not_dm", "Only DMs can be closed");
+    const was = this.isDmClosedFor(userId, channelId);
+    const map = this.dmCloses.get(userId) ?? new Map<string, number>();
+    this.dmCloses.set(userId, map);
+    if (closed) map.set(channelId, record.channel.last_seq);
+    else map.delete(channelId);
+    if (was === closed) return;
+    this.emit(new Set([userId]), { type: "event", id: ++this.eventId, event: "dm_close.updated", ts: now(), channel_id: null, seq: null, data: { channel_id: channelId, closed, at: now() } });
+  }
+
+  /**
    * POST /channels/read-all: every membership read to its end; read.updated per moved channel. L8: scope "times" reads only
    * the Times feed's channels (member, a times, not muted).
    */
@@ -1536,7 +1567,7 @@ export class FakeServer {
     return { ...user, email: null, must_change_password: false, notify_keywords: this.keywords.get(userId) ?? [], presence_hidden: false, notification_default: this.notificationDefaults.get(userId) ?? "mentions", notify_reactions: this.notifyReactions.has(userId), notify_tasks: !this.tasksOff.has(userId), has_password: true, quick_reactions: this.quickReactions.get(userId) ?? null, composer_mode: "markdown" }; // the text area: the rich composer has tests of its own
   }
 
-  apiFor(userId: string): SyncApi & FakeCanvasApi & FakeAiApi & { failNext: (error: Error) => void; listActivity: (options: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => Promise<ActivityListOut>; sessions: () => Promise<SessionOut[]>; revokeSession: (sessionId: string) => Promise<void> } {
+  apiFor(userId: string): SyncApi & FakeCanvasApi & FakeAiApi & { failNext: (error: Error) => void; listActivity: (options: { filter?: ActivityFilter; cursor?: string | null; limit?: number }) => Promise<ActivityListOut>; sessions: () => Promise<SessionOut[]>; revokeSession: (sessionId: string) => Promise<void>; closeDm: (channelId: string) => Promise<DmCloseStateOut>; reopenDm: (channelId: string) => Promise<DmCloseStateOut>; pinDm: (channelId: string) => Promise<DmPinStateOut> } {
     let pendingFailure: Error | null = null;
     const maybeFail = (): void => {
       if (pendingFailure) {
@@ -1549,6 +1580,26 @@ export class FakeServer {
       ...this.aiApiFor(userId),
       failNext: (error: Error) => {
         pendingFailure = error;
+      },
+      // M141: closing reads it to its end and unpins it (the star and the section stay), as on the server.
+      closeDm: async (channelId: string) => {
+        maybeFail();
+        this.requireMember(channelId, userId);
+        this.setDmClose(userId, channelId, true);
+        this.markRead(userId, channelId, this.channels.get(channelId)!.channel.last_seq);
+        this.setDmPin(userId, channelId, false);
+        return { channel_id: channelId, closed: true, closed_at: now() };
+      },
+      reopenDm: async (channelId: string) => {
+        maybeFail();
+        this.requireMember(channelId, userId);
+        this.setDmClose(userId, channelId, false);
+        return { channel_id: channelId, closed: false, closed_at: null };
+      },
+      pinDm: async (channelId: string) => {
+        maybeFail();
+        this.setDmPin(userId, channelId, true);
+        return { channel_id: channelId, pinned: true };
       },
       me: async (): Promise<UserMe> => {
         maybeFail();
@@ -1578,6 +1629,7 @@ export class FakeServer {
           bookmarks: this.bookmarks.get(userId) ?? [],
           favorites: (this.favorites.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)),
           ...(this.dmPinsEnabled ? { dm_pins: (this.dmPins.get(userId) ?? []).filter((id) => this.channels.get(id)?.members.has(userId)) } : {}),
+          ...(this.dmClosesEnabled ? { closed_dms: [...(this.dmCloses.get(userId)?.keys() ?? [])].filter((id) => this.channels.get(id)?.members.has(userId) && this.isDmClosedFor(userId, id)) } : {}),
           blocked_user_ids: [],
           custom_emoji: [...this.customEmoji.values()],
           emoji_packs: [],

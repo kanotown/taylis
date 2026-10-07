@@ -151,7 +151,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // macOS: room for the window buttons, in full screen too (they show during the exit animation; README).
   const trafficLights = overlayTitleBar();
   const windowButtons = customTitleBar();
-  const [currentId, setCurrentId] = useState<string | null>(() => engine?.currentChannelId ?? engine?.preview?.channelId ?? [...store.channels.values()].find((channel) => channel.isMember)?.id ?? null);
+  const [currentId, setCurrentId] = useState<string | null>(() => engine?.currentChannelId ?? engine?.preview?.channelId ?? [...store.channels.values()].find((channel) => channel.isMember && !store.isDmClosed(channel.id))?.id ?? null);
   const [dialog, setDialog] = useState<Dialog>(null);
   // M93: the section the settings open on (「プロフィールを編集」 from my profile card opens 「プロフィール」).
   const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>(undefined);
@@ -391,7 +391,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
   useEffect(() => {
     // Only a channel I belong to; a new member without channels sees the empty state (M12h invites).
     if (!currentId && channels.length > 0) {
-      const first = channels.find((c) => c.isMember);
+      const first = channels.find((c) => c.isMember && !store.isDmClosed(c.id)) ?? channels.find((c) => c.isMember);
       if (first) setCurrentId(first.id);
     }
   }, [currentId, channels.length]);
@@ -437,6 +437,21 @@ export function MainScreen({ controller }: { controller: AppController }) {
     setThreadId(focus.parentId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controller.messageFocus]);
+
+  // M141: the DM on screen was just closed here (its ⋯ menu or its sidebar row): leave it as leaving a channel does.
+  useEffect(() => {
+    const id = controller.closedChannelRequest;
+    if (!id) return;
+    controller.closedChannelRequest = null;
+    if (id !== currentId) return;
+    setCurrentId(null);
+    setThreadId(null);
+    setThreadChannelId(null);
+    setPinsOpen(false);
+    resetConversation();
+    setPane("list");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller.closedChannelRequest]);
 
   // M13b: a slash command (/join, /dm) asked for a conversation.
   useEffect(() => {
@@ -489,6 +504,9 @@ export function MainScreen({ controller }: { controller: AppController }) {
       if (compact) engine.closeChannel();
       return;
     }
+    // M141 (SYNC_PROTOCOL.md §7.9): a closed DM opened on purpose (search, ⌘K, a profile, a link, a notification, the
+    // history) shows in the lists again.
+    if (!previewing) controller.reopenIfClosed(engineChannelId);
     const opened = previewing ? engine.openPreview(engineChannelId) : engine.openChannel(engineChannelId);
     void opened.catch((error) => controller.setError(error));
   }, [engineChannelId, engine, previewing, compact]);
@@ -929,7 +947,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
     const navigationOrder = () => {
       const all = [...controller.store.channels.values()];
       const store = controller.store;
-      const sections = sectionChannels(all, { favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId: store.me?.id ?? null, title: (c) => channelTitle(c, controller), dmPins: store.dmPins });
+      const sections = sectionChannels(all, { favorites: store.favorites, sections: store.sidebarSections, defaults: store.sidebarDefaults, meId: store.me?.id ?? null, title: (c) => channelTitle(c, controller), dmPins: store.dmPins, closedDms: store.closedDms });
       return [...sections.favorites, ...sections.custom.flatMap((group) => group.channels), ...sections.channels, ...sections.times, ...sections.dms];
     };
     const onKey = (event: KeyboardEvent) => {
@@ -1057,6 +1075,8 @@ export function MainScreen({ controller }: { controller: AppController }) {
   const overall = overallLevel(store.me ?? controller.me);
   const silenced = !!current && (effectiveNotificationLevel(current, store.me?.id ?? null, overall) === "none" || isMutedChannel(current));
   const isChannel = current?.type === "public" || current?.type === "private";
+  // M141 「会話を閉じる」: DMs and group DMs of mine, on a server that has closes (bootstrap's closed_dms).
+  const closable = !!current && isDmChannel(current) && current.isMember && store.closedDms !== null;
   // M51: the channel's events today and tomorrow, for the 「予定」 tab's count (read when it opens, kept by the hub).
   const calendar = useCalendarHub(controller);
   const upcomingChannelId = current && current.isMember && isChannel && view === "channel" ? current.id : null;
@@ -1441,7 +1461,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                   </MenuContent>
                 </Menu>
               )}
-              {current.isMember && (isChannel || compact || tightHeader || summaryAvailable(controller)) && (
+              {current.isMember && (isChannel || compact || tightHeader || closable || summaryAvailable(controller)) && (
                 <Menu>
                   <MenuTrigger asChild>
                     <button type="button" aria-label={isChannel ? t("main.channelActions") : t("main.conversationActions")} title={isChannel ? t("main.channelActions") : t("main.conversationActions")} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink transition-colors hover:bg-ink/6">
@@ -1472,8 +1492,14 @@ export function MainScreen({ controller }: { controller: AppController }) {
                         {isChannel && channelMenuItems}
                       </>
                     )}
+                    {closable && (
+                      <>
+                        {(compact || tightHeader) && <MenuSeparator />}
+                        <MenuItem onSelect={() => void controller.closeDm(current.id)}>{t("dmClose.close")}</MenuItem>
+                      </>
+                    )}
                     {/* M65: 「要約」 (docs/AI.md §6), only to the one who asks. */}
-                    <SummaryMenuItems controller={controller} channel={current} onSummary={(target) => startSummary(controller, target)} separator={compact || isChannel || tightHeader} />
+                    <SummaryMenuItems controller={controller} channel={current} onSummary={(target) => startSummary(controller, target)} separator={compact || isChannel || tightHeader || closable} />
                   </MenuContent>
                 </Menu>
               )}

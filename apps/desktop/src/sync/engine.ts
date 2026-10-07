@@ -780,6 +780,7 @@ export class SyncEngine {
     store.replaceBookmarks(bootstrap.bookmarks ?? []);
     store.replaceFavorites(bootstrap.favorites ?? []);
     store.replaceDmPins(bootstrap.dm_pins ?? null);
+    store.replaceClosedDms(bootstrap.closed_dms ?? null);
     store.replaceBlocked(bootstrap.blocked_user_ids ?? []);
     store.replaceCustomEmoji(bootstrap.custom_emoji ?? []);
     store.replaceEmojiPacks(bootstrap.emoji_packs ?? []);
@@ -1079,6 +1080,12 @@ export class SyncEngine {
         store.setDmPinned(data.channel_id, data.pinned);
         return;
       }
+      case "dm_close.updated": {
+        // M141 (SYNC_PROTOCOL.md §7.9): my own devices; a server before M141 sends none.
+        const data = frame.data as { channel_id: string; closed: boolean };
+        store.setDmClosed(data.channel_id, data.closed);
+        return;
+      }
       case "bookmark.updated": {
         const data = frame.data as { message_id: string; bookmarked: boolean };
         store.setBookmarked(data.message_id, data.bookmarked);
@@ -1161,6 +1168,8 @@ export class SyncEngine {
     if (thread) this.timesFeed.applyParentThread(thread);
     if (isNew) {
       store.clearTyping(channel.id, message.parent_id ?? null, message.sender_id);
+      // M141 (§7.9): a new timeline row opens a closed DM (the server reads it the same way; no request).
+      if (!message.parent_id || message.also_in_channel) store.setDmClosed(channel.id, false);
       this.noteLastMessage(channel.id, message);
       this.noteActivity(message, thread);
     }

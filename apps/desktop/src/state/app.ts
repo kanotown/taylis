@@ -9,7 +9,7 @@ import { inviteErrorText } from "../ui/invite";
 import { challengeFor, newVerifier, parseSsoDeepLink, saveSsoPending, type SsoPending, ssoErrorText, ssoStartUrl, takeSsoPending, takeSsoReturn } from "../ui/sso";
 import { totpErrorText } from "../ui/totp";
 import { shareBody } from "../ui/share";
-import { conversationTitle, hasUnread, unreadBadgeTotal } from "../ui/channels";
+import { conversationTitle, hasUnread, isDmChannel, unreadBadgeTotal } from "../ui/channels";
 import { configureAvatars, noteVersions } from "../ui/avatars";
 import { setThemeWorkspace } from "../ui/theme";
 import { findDmWith } from "../ui/mobileTabs";
@@ -71,11 +71,16 @@ async function withDeadline(work: Promise<unknown>, ms: number, onTimeout: () =>
   }
 }
 
+/** A notice's button: its label and what it does (the toast closes after). */
+export type NoticeAction = { label: string; run: () => void };
+
 export class AppController {
   screen: Screen = "boot";
   error: string | null = null;
   /** A short confirmation (「リンクをコピーしました」); null when nothing to say. */
   notice: string | null = null;
+  /** M141: a button on the notice (「元に戻す」 after 「会話を閉じました」); null for a plain one. */
+  noticeAction: NoticeAction | null = null;
   /** M12i: the last login was refused for lack of an authenticator code; the form asks for one. */
   totpRequired = false;
   /**
@@ -669,8 +674,9 @@ export class AppController {
     }
   }
 
-  setNotice(text: string | null): void {
+  setNotice(text: string | null, action: NoticeAction | null = null): void {
     this.notice = text;
+    this.noticeAction = text === null ? null : action;
     this.emit();
   }
 
@@ -1074,6 +1080,61 @@ export class AppController {
       this.setError(error);
     }
   }
+
+  /**
+   * M141 「会話を閉じる」 (SYNC_PROTOCOL.md §7.9): the DM leaves every list at once, unpinned and read; all three are put
+   * back when refused. The main screen leaves it when it is the one open (`closedChannelRequest`), and a toast offers
+   * 「元に戻す」. dm_close.updated brings my other devices along.
+   */
+  async closeDm(channelId: string): Promise<boolean> {
+    const channel = this.store.getChannel(channelId);
+    if (!this.api || this.store.closedDms === null || !channel || !isDmChannel(channel) || this.store.isDmClosed(channelId)) return false;
+    const pins = this.store.dmPins;
+    const wasPinned = this.store.isDmPinned(channelId);
+    const read = { lastReadSeq: channel.lastReadSeq, unreadCount: channel.unreadCount, mentionCount: channel.mentionCount, firstUnreadAt: channel.firstUnreadAt };
+    this.store.setDmClosed(channelId, true);
+    if (wasPinned) this.store.setDmPinned(channelId, false);
+    this.store.updateChannel(channelId, { lastReadSeq: Math.max(channel.lastReadSeq, channel.lastSeq), unreadCount: 0, mentionCount: 0, firstUnreadAt: null });
+    this.closedChannelRequest = channelId;
+    this.emit();
+    try {
+      await this.api.closeDm(channelId);
+    } catch (error) {
+      this.store.setDmClosed(channelId, false);
+      if (pins !== null) this.store.replaceDmPins(pins);
+      this.store.updateChannel(channelId, read);
+      this.setError(error);
+      return false;
+    }
+    this.setNotice(t("dmClose.closed"), { label: t("dmClose.undo"), run: () => void this.undoCloseDm(channelId, wasPinned) });
+    return true;
+  }
+
+  /** M141 「元に戻す」: opens it again (DELETE) and pins it again (last) when it was pinned; the read position stays. */
+  async undoCloseDm(channelId: string, repin: boolean): Promise<void> {
+    if (!this.api) return;
+    this.store.setDmClosed(channelId, false);
+    if (repin) this.store.setDmPinned(channelId, true);
+    try {
+      await this.api.reopenDm(channelId);
+      if (repin) await this.api.pinDm(channelId);
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
+  /**
+   * M141: a closed DM opened on purpose (search, ⌘K, a profile's 「メッセージを送る」, a link, a notification) shows in the
+   * lists again at once; a refused DELETE is only logged (the next bootstrap closes it again).
+   */
+  reopenIfClosed(channelId: string): void {
+    if (!this.store.isDmClosed(channelId)) return;
+    this.store.setDmClosed(channelId, false);
+    void this.api?.reopenDm(channelId).catch((error: unknown) => console.warn("could not reopen a closed DM", error));
+  }
+
+  /** M141: the DM just closed here; the main screen leaves it if it is the one on screen, and clears this. */
+  closedChannelRequest: string | null = null;
 
   /**
    * M104 「ブロック」/「ブロックを解除」 (docs/MODERATION.md §4): the store flag moves at once, block.updated brings my other
