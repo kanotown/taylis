@@ -636,7 +636,9 @@ async def test_webhook_tracks_who_is_in_and_ends_the_call(
     assert (await webhook(client, joined("not-ours", str(bob.id), "PA_z"))).status_code == 200
     assert (await webhook(client, joined(call_id, "someone", "PA_z"))).status_code == 200
     assert (await webhook(client, {"event": "track_published"})).status_code == 200
-    forged = await webhook(client, joined(call_id, str(bob.id), "PA_f"), secret="guessed")
+    forged = await webhook(
+        client, joined(call_id, str(bob.id), "PA_f"), secret="guessed-" + "y" * 40
+    )
     assert forged.status_code == 401
     expired = await webhook(client, joined(call_id, str(bob.id), "PA_f"), ttl=-3600)
     assert expired.status_code == 401
