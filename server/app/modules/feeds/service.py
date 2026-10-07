@@ -1,15 +1,17 @@
 """Channel feeds (M97, docs/FEEDS.md): RSS / Atom subscriptions whose new entries are posted into
 a channel.
 
-Any member registers a feed (it is theirs); the channel's feed bot (role `bot`, one per channel,
-shared by its feeds, named 「RSS」) posts 「📝 {owner} の新しい記事: {title}」 through the ordinary
-message path (seq, outbox, pushes, search), without taking mentions from the text. Adding a feed
-fetches it once: it must parse, and what it holds then is recorded as seen (the backlog is never
-posted). The worker fetches each enabled feed every FEED_POLL_INTERVAL_MINUTES with a conditional
-GET through the previews' SSRF-safe fetcher, posts at most FEED_MAX_POSTS_PER_FETCH new entries
-(newest ones, oldest first), and after FEED_FAILURE_NOTIFY_AFTER failures in a row tells the owner
-once, in a DM from the bot. Nothing is fetched while the channel is archived or the owner is
-deactivated or not a member; what was published meanwhile is not posted afterwards.
+Any member registers a feed (it is theirs); the channel's feed bot (role `bot`, one
+per channel, shared by its feeds, named 「RSS」) posts 「📝 {site title} の新しい記事：{title}」
+through the ordinary message path (seq, outbox, pushes, search), without taking
+mentions from the text. Adding a feed fetches it once: it must parse, and what it
+holds then is recorded as seen (the backlog is never posted). The worker fetches each
+enabled feed every FEED_POLL_INTERVAL_MINUTES with a conditional GET through the
+previews' SSRF-safe fetcher, posts at most FEED_MAX_POSTS_PER_FETCH new entries
+(newest ones, oldest first), and after FEED_FAILURE_NOTIFY_AFTER failures in a row
+tells the owner once, in a DM from the bot. Nothing is fetched while the channel is
+archived or the owner is deactivated or not a member; what was published meanwhile is
+not posted afterwards.
 
 M98: the feed bot is kept per channel (channel_feed_bots, users.bot_kind = "feed"): its owners
 and administrators rename it, and an administrator may adopt an existing bot (an imported Slack
@@ -23,6 +25,7 @@ import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 
 import httpx
 from sqlalchemy.exc import IntegrityError
@@ -517,8 +520,16 @@ def _safe(text: str) -> str:
     return escape_text(text)
 
 
-def post_body(owner_name: str, entry: FeedEntry) -> str:
-    lines = [f"📝 {_safe(owner_name)} の新しい記事: {_safe(entry.title)}"]
+def source_name(row: ChannelFeed) -> str:
+    """The site's name for a post: the feed's own title, else the URL's host (the writer is often
+    not the person who added the feed)."""
+    if row.title and row.title.strip():
+        return row.title.strip()
+    return urlsplit(row.url).hostname or row.url
+
+
+def post_body(source: str, entry: FeedEntry) -> str:
+    lines = [f"📝 {_safe(source)} の新しい記事：{_safe(entry.title)}"]
     if entry.link:
         lines.append(entry.link)
     if entry.summary and entry.summary != entry.title:
@@ -565,7 +576,7 @@ async def _post_entries(
                     channel.id,
                     MessageCreate(
                         client_msg_id=uuid.uuid5(_POST_NAMESPACE, f"{feed_id}/{entry.key}"),
-                        body=post_body(owner.display_name, entry),
+                        body=post_body(source_name(row), entry),
                     ),
                     advance_read=False,
                     commit=False,

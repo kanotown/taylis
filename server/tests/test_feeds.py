@@ -199,7 +199,7 @@ def test_html_helpers() -> None:
 def test_post_body_neutralizes_mentions() -> None:
     entry = parse_feed(rss([("x", "告知 &lt;@abc&gt;", "")]), FEED_URL).entries[0]
     body = feeds.post_body("<!channel> アリス", entry)
-    assert body.startswith("📝 \uff1c!channel> アリス の新しい記事: 告知 \uff1c@abc>")
+    assert body.startswith("📝 \uff1c!channel> アリス の新しい記事：告知 \uff1c@abc>")
     assert "\nhttps://blog.example.com/x\n> 今週は" in body
     assert "<!" not in body and "<@" not in body
 
@@ -333,7 +333,9 @@ async def test_add_validates_records_the_backlog_and_posts_only_new_entries(
     await _poll(app, now=utcnow() + timedelta(hours=2))
     posts = await _bot_posts(db, feed["bot_user_id"])
     assert len(posts) == 1
-    assert posts[0].body.startswith("📝 Bob の新しい記事: 第2週\nhttps://blog.example.com/w2\n> ")
+    assert posts[0].body.startswith(
+        "📝 アリスの週報 の新しい記事：第2週\nhttps://blog.example.com/w2\n> "
+    )
     assert posts[0].channel_id == uuid.UUID(cid)
     fetch.etags.pop(FEED_URL)  # a server without validators: the full document each time
     await _poll(app, now=utcnow() + timedelta(hours=3))
@@ -408,7 +410,7 @@ async def test_flood_cap_posts_the_newest_oldest_first(
     fetch.docs[FEED_URL] = rss([*fresh, ("old", "昔の記事", "Mon, 01 Jun 2020 09:00:00 +0900")])
     await _poll(app)
     posts = await _bot_posts(db, feed["bot_user_id"])
-    titles = [p.body.split(": ", 1)[1].split("\n")[0] for p in posts]
+    titles = [p.body.split("：", 1)[1].split("\n")[0] for p in posts]
     assert titles == ["記事4", "記事5", "記事6", "記事7", "記事8"]
     # The rest were marked seen: nothing more comes later.
     await _poll(app, now=utcnow() + timedelta(hours=2))
@@ -635,7 +637,7 @@ async def test_archived_channel_absent_owner_and_resume_post_no_backlog(
     fetch.docs[FEED_URL] = rss([("w5", "第5週", ""), ("w4", "第4週", ""), WEEK2, WEEK1])
     await _poll(app, now=start + timedelta(hours=7))
     posts = await _bot_posts(db, feed["bot_user_id"])
-    assert [p.body.split("\n")[0] for p in posts] == ["📝 Bob の新しい記事: 第5週"]
+    assert [p.body.split("\n")[0] for p in posts] == ["📝 アリスの週報 の新しい記事：第5週"]
 
 
 # --- the real fetcher over a mock transport -------------------------------------------------------
@@ -797,3 +799,10 @@ async def test_a_dripping_feed_fails_at_the_deadline_and_the_next_feed_is_polled
     slow_row, fast_row = await _row(db, ids[0]), await _row(db, ids[1])
     assert slow_row.last_error_code == "timeout" and slow_row.consecutive_failures == 1
     assert fast_row.last_error_code is None and fast_row.consecutive_failures == 0
+
+
+def test_source_name_is_the_site_title_else_the_host() -> None:
+    row = ChannelFeed(url="https://blog.example.com/feed.xml", title="  加納研の週報 ")
+    assert feeds.source_name(row) == "加納研の週報"
+    row.title = None
+    assert feeds.source_name(row) == "blog.example.com"

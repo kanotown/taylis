@@ -177,7 +177,7 @@ async def test_admin_adopts_an_imported_bot(
     fetch.docs[FEED_URL] = rss([WEEK2, WEEK1])
     await _poll(app, now=utcnow() + timedelta(hours=2))
     posts = await _bot_posts(db, imported.id)
-    assert len(posts) == 2 and posts[1].body.startswith("📝 Bob の新しい記事: 第2週")
+    assert len(posts) == 2 and posts[1].body.startswith("📝 アリスの週報 の新しい記事：第2週")
 
     # The last feed goes: an adopted bot stays (active, in the channel).
     assert (await client.delete(f"/api/v1/feeds/{feed['id']}")).status_code == 204
