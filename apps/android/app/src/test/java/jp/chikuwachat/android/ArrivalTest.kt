@@ -131,6 +131,17 @@ class ArrivalTest {
         assertFalse(ThreadRows.atNewestEnd(null, 0, 11, 1000, 21))
     }
 
+    @Test fun aReaderUpInALongThreadGetsTheButtonToTheNewestReply() {
+        // 2 header items + 60 replies: the last index is 61.
+        assertFalse(ThreadRows.jumpShown(61, 61, atNewestEnd = true, unseenBelow = 0)) // at the end
+        assertFalse(ThreadRows.jumpShown(59, 61, atNewestEnd = false, unseenBelow = 0)) // just above it
+        assertTrue(ThreadRows.jumpShown(58, 61, atNewestEnd = false, unseenBelow = 0)) // reading older replies: 「最新の返信へ」
+        assertTrue(ThreadRows.jumpShown(30, 61, atNewestEnd = false, unseenBelow = 0))
+        assertTrue(ThreadRows.jumpShown(60, 61, atNewestEnd = false, unseenBelow = 1)) // a reply from someone else came below
+        assertFalse(ThreadRows.jumpShown(61, 61, atNewestEnd = true, unseenBelow = 1))
+        assertFalse(ThreadRows.jumpShown(null, 61, atNewestEnd = false, unseenBelow = 0)) // nothing laid out yet
+    }
+
     @Test fun onlyRepliesAddedAtTheEndCountAsThreadArrivals() {
         val replies = (1..5).map { row(it, parentId = "p").rowKey }
         assertTrue(ThreadRows.arrivedAtEnd(replies, replies + "cmid-6"))

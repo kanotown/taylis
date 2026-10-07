@@ -1462,6 +1462,7 @@
     <string name="test_notification_this_server_has_no_push_notifications">此服务器未设置推送通知 (iPhone 和 Android 应用仅在打开时显示通知)</string>
     <string name="thread_pane_message_not_found">找不到消息</string>
     <string name="thread_pane_new_replies">"  新回复"</string>
+    <string name="thread_pane_go_to_the_latest_reply">转到最新回复</string>
     <string name="threads_pane_cant_load_threads_while_offline">离线时无法加载话题</string>
     <string name="threads_pane_couldnt_load_threads">无法加载话题</string>
     <string name="threads_pane_no_followed_threads">没有关注的话题</string>
