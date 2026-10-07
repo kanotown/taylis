@@ -669,10 +669,14 @@ struct MessageBodyView: View {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(item.marker)
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                            .frame(minWidth: 20, alignment: .trailing)
+                        Group {
+                            if item.ordered {
+                                Text(item.marker).monospacedDigit().foregroundStyle(.secondary)
+                            } else {
+                                ListBulletMark(level: item.level).padding(.trailing, 2)
+                            }
+                        }
+                        .frame(minWidth: 20, alignment: .trailing)
                         inlineText(item.tokens)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -879,6 +883,32 @@ struct MessageBodyView: View {
     }
 }
 
+
+/// 2026-10-08: a bullet drawn rather than a glyph ("•" in the secondary colour was small and faint), as the web draws
+/// it (styles.css `.md-ul`): a solid dot for the first level, a ring for the second, a small square for the third, in
+/// the text's colour, about 0.4 of the body size, its centre on the middle of the first line's lowercase letters. It
+/// sits on the row's first text baseline, so a line with a large emoji keeps its dot by the text.
+struct ListBulletMark: View {
+    let level: Int
+    /// About 0.4 of the body text (17 pt at the default size), growing with Dynamic Type.
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 6.8
+    /// How far above the baseline the mark's centre sits: half the x-height and a little (as `vertical-align: middle`).
+    @ScaledMetric(relativeTo: .body) private var lift: CGFloat = 5.2
+
+    var body: some View {
+        mark
+            .accessibilityHidden(true)
+            .alignmentGuide(.firstTextBaseline) { d in d.height / 2 + lift }
+    }
+
+    @ViewBuilder private var mark: some View {
+        switch min(level, 2) {
+        case 0: Circle().fill(Color.primary).frame(width: size, height: size)
+        case 1: Circle().strokeBorder(Color.primary, lineWidth: max(1.3, size * 0.2)).frame(width: size * 1.05, height: size * 1.05)
+        default: RoundedRectangle(cornerRadius: 1).fill(Color.primary).frame(width: size * 0.9, height: size * 0.9)
+        }
+    }
+}
 
 /// M38: its content at most `max` wide, wrapping there, also where it is offered any width (a sideways scroll view):
 /// `.frame(maxWidth:)` let a Text take its one-line width there and was then only as wide as `max`, the text beyond it.
