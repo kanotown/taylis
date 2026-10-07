@@ -139,6 +139,17 @@ final class AttendanceIconsTests: XCTestCase {
         XCTAssertEqual(AttendanceRules.headerRoom(barWidth: 100), 0)
     }
 
+    /// The quick switch sheet opens tall enough for its whole list (「在室状況を開く」 was under a medium sheet's edge).
+    func testTheQuickSheetFitsItsList() {
+        // The list, the navigation bar above and the home indicator below, rounded up.
+        XCTAssertEqual(AttendanceRules.quickSheetHeight(contentHeight: 440.4, topInset: 88, bottomInset: 34), 563)
+        // A home button iPhone (no inset below).
+        XCTAssertEqual(AttendanceRules.quickSheetHeight(contentHeight: 445, topInset: 88, bottomInset: 0), 533)
+        // Not laid out yet: no height (the sheet stays at medium until measured).
+        XCTAssertEqual(AttendanceRules.quickSheetHeight(contentHeight: 0, topInset: 88, bottomInset: 34), 0)
+        XCTAssertEqual(AttendanceRules.quickSheetHeight(contentHeight: 400, topInset: -10, bottomInset: 0), 400)
+    }
+
     // MARK: the sheet's one-tap switch
 
     private static func body(_ request: URLRequest) -> [String: JSONValue] {

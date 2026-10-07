@@ -127,7 +127,6 @@ struct AttendancePill: View {
                     sheetShown = false
                     onOpenBoard()
                 }
-                .presentationDetents([.medium, .large])
             }
     }
 }
@@ -179,6 +178,9 @@ struct AttendanceQuickSheet: View {
     @State private var note = ""
     @State private var busy = false
     @FocusState private var noteFocused: Bool
+    /// The sheet's height for its whole content (AttendanceRules.quickSheetHeight), measured once; nil until then.
+    @State private var fitted: CGFloat?
+    @State private var detent: PresentationDetent = .medium
 
     private var meId: String? { controller.store.me?.id ?? controller.me?.id }
 
@@ -219,7 +221,18 @@ struct AttendanceQuickSheet: View {
             }
             .onAppear { note = mine?.note ?? "" }
             .onChange(of: board == nil) { _, off in if off { dismiss() } }  // turned off meanwhile
+            .modifier(ContentHeightProbe { height in
+                // Once, as the sheet opens (a later change would move it under the reader's finger), and only with the
+                // board loaded (its rows are the content).
+                guard fitted == nil, board != nil, height > 0 else { return }
+                fitted = height
+                detent = .height(height)
+            })
         }
+        // Tall enough for every row down to 「在室状況を開く」: at .medium it was under the edge with 4 states and the note
+        // (2026-10-07). Taller than the screen (many states, large text, a small iPhone), the system keeps it to the
+        // large detent and the rows scroll. iOS 17 (no scroll geometry) keeps medium / large.
+        .presentationDetents(fitted.map { [.height($0), .large] } ?? [.medium, .large], selection: $detent)
     }
 
     private func row(_ state: AttendanceStateOut, mine: AttendanceEntryOut?) -> some View {
@@ -264,6 +277,23 @@ struct AttendanceQuickSheet: View {
             let ok = await controller.setMyAttendance(stateId: mine.stateId, note: AttendanceRules.cleanNote(note))
             busy = false
             if ok { dismiss() }
+        }
+    }
+}
+
+/// The height a sheet needs for its list's whole content (AttendanceRules.quickSheetHeight), from the list's scroll
+/// geometry (iOS 18; nothing on iOS 17).
+private struct ContentHeightProbe: ViewModifier {
+    let measured: (CGFloat) -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self, of: { geometry in
+                AttendanceRules.quickSheetHeight(contentHeight: geometry.contentSize.height,
+                                                 topInset: geometry.contentInsets.top, bottomInset: geometry.contentInsets.bottom)
+            }, action: { _, height in measured(height) })
+        } else {
+            content
         }
     }
 }

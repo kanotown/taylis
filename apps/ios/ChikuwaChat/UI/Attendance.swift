@@ -209,6 +209,13 @@ enum AttendanceRules {
         return .hidden
     }
 
+    /// The quick switch sheet's height for its whole list (the states, the note, 「在室状況を開く」): the list's content
+    /// and the insets around it (the navigation bar above, the home indicator below), rounded up to a point. 0 while
+    /// the list has no content yet.
+    static func quickSheetHeight(contentHeight: CGFloat, topInset: CGFloat, bottomInset: CGFloat) -> CGFloat {
+        contentHeight > 0 ? (contentHeight + max(0, topInset) + max(0, bottomInset)).rounded(.up) : 0
+    }
+
     /// attendance.updated (or my own change answered): the person's row replaced. `known` is false when its state is not
     /// on this board (someone's new own state): read the board again.
     static func applying(_ entry: AttendanceEntryOut, to board: AttendanceBoardOut) -> (board: AttendanceBoardOut, known: Bool) {
