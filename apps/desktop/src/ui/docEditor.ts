@@ -47,7 +47,7 @@ export function slashQuery(text: string, caret: number): { start: number; query:
   return match ? { start: lineStart, query: match[1] ?? "" } : null;
 }
 
-export type SlashKey = "h1" | "h2" | "h3" | "bullets" | "numbered" | "tasks" | "quote" | "table" | "code" | "math" | "divider" | "image" | "pageLink" | "childPage";
+export type SlashKey = "h1" | "h2" | "h3" | "bullets" | "numbered" | "tasks" | "quote" | "table" | "code" | "math" | "divider" | "image" | "pageLink" | "childPage" | "database";
 
 interface SlashItem {
   key: SlashKey;
@@ -71,6 +71,7 @@ export const SLASH_ITEMS: readonly SlashItem[] = [
   { key: "image", label: "docs.slash.image", words: ["image", "picture", "photo", "gazou", "画像"] },
   { key: "pageLink", label: "docs.slash.pageLink", words: ["link", "page", "rinku", "リンク", "ページ"] },
   { key: "childPage", label: "docs.slash.childPage", words: ["page", "child", "subpage", "new", "pe-ji", "子ページ", "ページ"] },
+  { key: "database", label: "docs.slash.database", words: ["database", "db", "calendar", "de-tabe-su", "データベース", "カレンダー"] },
 ];
 
 /** The items that match what was typed after `/` (all of them for nothing). */
@@ -81,7 +82,7 @@ export function slashItems(query: string): SlashItem[] {
 }
 
 /** What a chosen item does: a text edit, or something the editor runs once `/query` is gone. */
-export type SlashResult = { kind: "edit"; state: EditState } | { kind: "table" | "image" | "childPage"; state: EditState };
+export type SlashResult = { kind: "edit"; state: EditState } | { kind: "table" | "image" | "childPage" | "database"; state: EditState };
 
 /** The `/query` (from `start` to the caret) taken out, then the item applied at that line. */
 export function applySlash(state: EditState, start: number, key: SlashKey): SlashResult {
@@ -117,6 +118,7 @@ export function applySlash(state: EditState, start: number, key: SlashKey): Slas
     case "table":
     case "image":
     case "childPage":
+    case "database":
       return { kind: key, state: { text, start: at, end: at } };
   }
 }

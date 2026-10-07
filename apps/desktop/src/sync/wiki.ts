@@ -12,7 +12,7 @@
  *   back is one I cannot read (「アクセスできないページ」).
  */
 import { ApiError, isRetryable } from "../api/errors";
-import type { PageContent, PageItem, PageMeta, PageOut, PageRef, PageSaveIn, PageSaveOut, WikiChangesOut, WikiChanged, WikiMentioned, WikiPageUpdated, WikiShared, WikiTreeOut } from "../api/types";
+import type { PageContent, PageItem, PageMeta, PageOut, PageRef, PageSaveIn, PageSaveOut, WikiChangesOut, WikiChanged, WikiMentioned, WikiPageUpdated, WikiRowsChanged, WikiShared, WikiTreeOut } from "../api/types";
 import { CanvasSaver, type CanvasSaverOptions } from "./canvasSave";
 import type { Store } from "./store";
 import { applyChanges, buildTree, type WikiTree } from "./wikiTree";
@@ -56,6 +56,8 @@ export class WikiHub {
   private resolveQueue = new Set<string>();
   private resolveTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly listeners = new Set<() => void>();
+  /** M123: the open tables / calendars, by database id (wiki.rows.changed, and a reconnect, read them again). */
+  private readonly rowListeners = new Map<string, Set<(event: WikiRowsChanged | null) => void>>();
   private stopped = false;
 
   constructor(
@@ -259,8 +261,24 @@ export class WikiHub {
 
   // --- events -----------------------------------------------------------------------------------
 
+  /** M123: called on wiki.rows.changed for this database, and with null after a reconnect (events may be lost). */
+  onRows(databaseId: string, listener: (event: WikiRowsChanged | null) => void): () => void {
+    let set = this.rowListeners.get(databaseId);
+    if (!set) this.rowListeners.set(databaseId, (set = new Set()));
+    set.add(listener);
+    return () => {
+      set.delete(listener);
+      if (set.size === 0) this.rowListeners.delete(databaseId);
+    };
+  }
+
   applyEvent(event: string, data: unknown): void {
     if (!this.deps.api) return;
+    if (event === "wiki.rows.changed") {
+      const changed = data as WikiRowsChanged;
+      for (const listener of this.rowListeners.get(changed.database_id) ?? []) listener(changed);
+      return;
+    }
     if (event === "wiki.changed") {
       const seq = (data as WikiChanged).seq;
       if (this.cursor === null) {
@@ -463,6 +481,7 @@ export class WikiHub {
   online(): void {
     if (!this.deps.api) return;
     for (const saver of this.savers.values()) saver.online();
+    for (const set of this.rowListeners.values()) for (const listener of set) listener(null);
     for (const [pageId] of this.deps.store.pendingPages()) {
       if (!this.savers.has(pageId)) {
         const saver = this.saver(pageId);

@@ -165,7 +165,7 @@ export function DocsTree({ controller, selectedId, onOpen, onCreate, onMove, onT
             <ChevronRight size={14} className={cn("transition-transform", open && "rotate-90")} />
           </button>
           <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={() => onOpen(page.id)} aria-current={selected ? "page" : undefined}>
-            <PageIcon controller={controller} icon={page.icon} size={15} />
+            <PageIcon controller={controller} icon={page.icon} kind={page.kind} size={15} />
             <span className="truncate">{pageTitle(page, t("docs.untitled"))}</span>
           </button>
           <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 pointer-coarse:opacity-100">
